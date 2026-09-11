@@ -1,0 +1,69 @@
+id: 桃太郎
+
+traits:
+  social: 0.65
+  stubbornness: 0.55
+  curiosity: 0.55
+  diligence: 0.70
+  temper: 0.70
+
+base: 50
+modifiers: []
+
+beliefs_about:
+  鬼:
+    known_modifiers: []
+    base_estimate: 80
+    identity_seen: false
+    observe_progress: 0.0
+
+knowledge: [造船術]
+inventory: {きびだんご: 3}
+reputation: 0.0
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - observe
+  - share_knowledge
+  - give_item
+  - craft
+  - fight
+  - train
+  - rescue
+  - rest
+  - withdraw
+
+identity:
+  "true": 桃から生まれた者
+  displayed: 桃太郎
+
+goal:
+  target: 鬼ヶ島の宝物
+  deliver_to: 村
+  obstacles: [鬼]
+  outcome: null
+
+relations:
+  おじいさん: {affinity: 0.85, awareness: 1.0}
+  おばあさん: {affinity: 0.90, awareness: 1.0}
+  猿: {affinity: 0.10, awareness: 0.15}
+  犬: {affinity: 0.10, awareness: 0.15}
+  キジ: {affinity: 0.10, awareness: 0.15}
+  鬼: {affinity: -0.50, awareness: 0.60}
+
+stamina:
+  max: 14
+  recover_per_slot: 1.5
+
+range:
+  zones: [村, 道中, 森, 海, 鬼ヶ島]
+  entry: 村
+  exclude:
+    - zones: [村]
+      until_item: 鬼ヶ島の宝物
+
+companions: [桃太郎, 猿, 犬, キジ]
+ally_value: 15
+objective_claimant: true

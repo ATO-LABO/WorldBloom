@@ -1,0 +1,61 @@
+id: 犬
+
+traits:
+  social: 0.75
+  stubbornness: 0.60
+  curiosity: 0.40
+  diligence: 0.70
+  temper: 0.60
+
+base: 30
+modifiers: []
+
+beliefs_about:
+  鬼:
+    known_modifiers: []
+    base_estimate: 80
+    identity_seen: false
+    observe_progress: 0.0
+
+knowledge: []
+inventory: {}
+reputation: 0.0
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - share_knowledge
+  - give_item
+  - fight
+  - rescue
+  - rest
+  - withdraw
+
+identity:
+  "true": 村外れに住む犬
+  displayed: 犬
+
+goal:
+  target: 鬼ヶ島の宝物
+  deliver_to: null
+  obstacles: [鬼]
+  outcome: null
+
+relations:
+  桃太郎: {affinity: 0.15, awareness: 0.20}
+  猿: {affinity: 0.0, awareness: 0.50}
+  キジ: {affinity: 0.05, awareness: 0.10}
+  鬼: {affinity: -0.30, awareness: 0.30}
+
+stamina:
+  max: 12
+  recover_per_slot: 1.5
+
+range:
+  zones: [村, 道中, 森, 海, 鬼ヶ島]
+  entry: 道中
+
+companions: [桃太郎, 猿, 犬, キジ]
+ally_value: 15
+objective_claimant: false
