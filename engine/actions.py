@@ -75,21 +75,39 @@ def _permission_weight(
 
 def _normalize_opened(
     weighted: list[tuple[Action, float]],
+    subject: Subject,
     world: World,
     single_weight: float,
 ) -> list[tuple[Action, float]]:
     if not world.action_graph_enabled or not weighted:
         return weighted
 
-    total = sum(max(0.0, float(weight)) for _, weight in weighted)
-    if total <= 0.0:
+    normalization_total = 0.0
+    for action, weight in weighted:
+        permission = 1.0
+        target_id = action.meta.get("target")
+        if isinstance(target_id, str) and target_id in world.subjects:
+            permission = _permission_weight(
+                subject,
+                world.subjects[target_id],
+                action.verb,
+                world,
+            )
+        if permission > 0.0:
+            normalization_total += (
+                max(0.0, float(weight)) / permission
+            )
+
+    if normalization_total <= 0.0:
         return []
+
     target_total = max(
         0.0,
         float(single_weight) * (1.0 + world.open_bonus),
     )
+    scale = target_total / normalization_total
     return [
-        (action, float(weight) * target_total / total)
+        (action, float(weight) * scale)
         for action, weight in weighted
         if weight > 0.0
     ]
@@ -435,7 +453,12 @@ def _neutralize_candidates(
                     single_weight * permission,
                 )
             )
-    return _normalize_opened(result, world, single_weight)
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        single_weight,
+    )
 
 
 def _sabotage_candidates(
@@ -479,7 +502,12 @@ def _sabotage_candidates(
                 single_weight * permission,
             )
         )
-    return _normalize_opened(result, world, single_weight)
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        single_weight,
+    )
 
 
 def _sacrifice_candidates(
@@ -623,7 +651,12 @@ def _mislead_candidates(
                         single_weight * permission,
                     )
                 )
-    return _normalize_opened(result, world, single_weight)
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        single_weight,
+    )
 
 
 def _confront_candidates(
@@ -770,7 +803,12 @@ def _share_candidates(
                 single_weight * permission,
             )
         )
-    return _normalize_opened(result, world, single_weight)
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        single_weight,
+    )
 
 
 def _material_products(item: str, world: World) -> list[str]:
@@ -853,7 +891,12 @@ def _give_candidates(
                     ),
                 )
             )
-    return _normalize_opened(result, world, single_weight)
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        single_weight,
+    )
 
 
 def _persuade_candidates(
@@ -888,7 +931,12 @@ def _persuade_candidates(
                 single_weight * permission,
             )
         )
-    return _normalize_opened(result, world, single_weight)
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        single_weight,
+    )
 
 
 def _pledge_candidates(
@@ -1111,7 +1159,12 @@ def _fight_candidates(
                 weight,
             )
         )
-    return _normalize_opened(result, world, single_weight)
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        single_weight,
+    )
 
 
 def _train_candidates(

@@ -229,6 +229,53 @@ def _repetition_penalty(
     return 0.05 * penalty_count
 
 
+def _completed_prerequisite_chains(
+    rows: Sequence[Mapping[str, Any]],
+) -> int:
+    observed: set[tuple[str, str]] = set()
+    pledged: set[frozenset[str]] = set()
+    negotiated: set[tuple[str, str]] = set()
+    completed_pledges: set[frozenset[str]] = set()
+    completed = 0
+
+    for row in rows:
+        kind = row.get("kind")
+        verb = str(row.get("verb", ""))
+        subject = str(row.get("subject", ""))
+        details = row.get("details")
+        if not isinstance(details, Mapping):
+            details = {}
+
+        if kind == "decision":
+            if row.get("result") == "invalid":
+                continue
+            target = _decision_target(row)
+
+            if verb == "observe":
+                observed.add((subject, target))
+            elif verb == "neutralize":
+                if (subject, target) in observed:
+                    completed += 1
+            elif verb == "pledge":
+                pledged.add(frozenset((subject, target)))
+            elif verb == "negotiate":
+                negotiated.add((subject, target))
+            elif verb == "concede":
+                if (target, subject) in negotiated:
+                    completed += 1
+
+        elif kind == "event" and verb == "betrayal":
+            target = details.get("target")
+            if not isinstance(target, str):
+                continue
+            pair = frozenset((subject, target))
+            if pair in pledged and pair not in completed_pledges:
+                completed += 1
+                completed_pledges.add(pair)
+
+    return completed
+
+
 def quality(
     rows: Sequence[Mapping[str, Any]],
     world_meta: Mapping[str, Any],
@@ -240,6 +287,7 @@ def quality(
     affinity_change = 0.0
     revived = 0
     learning = 0
+    dramatic_turns = 0
     strength_diffs: list[float] = []
 
     protagonist_decisions = [
@@ -277,10 +325,17 @@ def quality(
 
         if (
             row.get("kind") == "event"
+            and row.get("verb") == "betrayal"
+        ):
+            dramatic_turns += 1
+
+        if (
+            row.get("kind") == "event"
             and row.get("verb") == "learn_fact"
             and row.get("subject") == protagonist
         ):
             learning += 1
+
         if (
             row.get("kind") == "decision"
             and row.get("verb") == "observe"
@@ -289,18 +344,28 @@ def quality(
             learning += 1
 
         details = row.get("details")
-        if (
-            isinstance(details, Mapping)
-            and "strength_diff" in details
-        ):
-            strength_diffs.append(float(details["strength_diff"]))
+        if isinstance(details, Mapping):
+            if (
+                row.get("kind") == "decision"
+                and row.get("verb") == "concede"
+                and details.get("mode") == "goodwill"
+                and row.get("result") != "invalid"
+            ):
+                dramatic_turns += 1
+            if "strength_diff" in details:
+                strength_diffs.append(
+                    float(details["strength_diff"])
+                )
 
+    completed_chains = _completed_prerequisite_chains(rows)
     metrics = (
         min(1.0, objective_changes / 2.0),
         min(1.0, affinity_change / 3.0),
         min(1.0, revived / 2.0),
         min(1.0, _sign_flips(strength_diffs) / 2.0),
         min(1.0, learning / 3.0),
+        min(1.0, dramatic_turns / 2.0),
+        min(1.0, completed_chains / 2.0),
     )
     score = sum(metrics) / len(metrics)
 

@@ -54,6 +54,14 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    def non_negative_int(value: str) -> int:
+        parsed = int(value)
+        if parsed < 0:
+            raise argparse.ArgumentTypeError(
+                "value must not be negative"
+            )
+        return parsed
+
     parser = argparse.ArgumentParser(
         description="Run a policy-free random-seed baseline.",
     )
@@ -61,6 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--template", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seeds", type=int, default=300)
+    parser.add_argument(
+        "--seed-base",
+        type=non_negative_int,
+        default=0,
+    )
     return parser
 
 
@@ -72,18 +85,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     project = args.project.resolve()
     template = args.template.resolve()
     output = args.out.resolve()
+    action_graph_path = template / "action_graph.yaml"
     qd_cfg = yaml.safe_load(
         (template / "qd.yaml").read_text(encoding="utf-8")
     )
     action_cfg = yaml.safe_load(
-        (template / "action_graph.yaml").read_text(encoding="utf-8")
+        action_graph_path.read_text(encoding="utf-8")
     )
     results: list[dict[str, Any]] = []
     reached_sequences: list[list[tuple[str, str, str]]] = []
     distribution: Counter[str] = Counter()
+    all_distribution: Counter[str] = Counter()
 
-    for seed in range(args.seeds):
-        world = World.from_yaml(project / "world.yaml")
+    for seed in range(
+        args.seed_base,
+        args.seed_base + args.seeds,
+    ):
+        world = World.from_yaml(
+            project / "world.yaml",
+            action_graph_path=action_graph_path,
+        )
         subjects = _load_subjects(project / "subjects")
         policy = Policy(
             Genome.neutral(),
@@ -100,12 +121,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ).run()
         rows = read_rows(layer_path)
         run_descriptor = descriptor(rows, qd_cfg)
+        category = run_descriptor.category or "unclassified"
+        all_distribution[category] += 1
         did_reach = reached(rows, world.target_ending)
         if did_reach:
             reached_sequences.append(effective_sequence(rows))
-            distribution[
-                run_descriptor.category or "unclassified"
-            ] += 1
+            distribution[category] += 1
         results.append(
             {
                 "category": run_descriptor.category,
@@ -122,12 +143,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     summary = {
+        "all_descriptor_distribution": {
+            key: all_distribution[key]
+            for key in sorted(all_distribution)
+        },
         "descriptor_distribution": {
             key: distribution[key] for key in sorted(distribution)
         },
         "reached": len(reached_sequences),
-        "route_dissimilarity": sequence_dissimilarity(reached_sequences),
+        "route_dissimilarity": sequence_dissimilarity(
+            reached_sequences
+        ),
         "runs": results,
+        "seed_base": args.seed_base,
         "seeds": args.seeds,
         "success_rate": len(reached_sequences) / args.seeds,
     }

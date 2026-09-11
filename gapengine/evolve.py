@@ -77,6 +77,12 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
     logical_root = Path(str(job["logical_root"]))
     protagonist = str(job["protagonist"])
     action_cfg = dict(job["action_cfg"])
+    raw_action_graph_path = job.get("action_graph_path")
+    action_graph_path = (
+        Path(str(raw_action_graph_path))
+        if raw_action_graph_path is not None
+        else None
+    )
     rules = list(job.get("rules", []))
     qd_cfg = dict(job["qd_cfg"])
     precedent = (
@@ -87,7 +93,10 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
 
     runs: list[dict[str, Any]] = []
     for seed in seeds:
-        world = World.from_yaml(world_path)
+        world = World.from_yaml(
+            world_path,
+            action_graph_path=action_graph_path,
+        )
         subjects = _load_subjects(subjects_dir)
         seed_dir = out_dir / f"seed-{seed}"
         policy = Policy(
@@ -351,6 +360,18 @@ def _prune_layers(
             for run in result["runs"]
             if bool(run["reached"])
         )
+        if not retained and results:
+            shaped_best = sorted(
+                results,
+                key=lambda value: (
+                    -float(value["shaped"]),
+                    int(value["index"]),
+                ),
+            )[0]
+            retained.update(
+                str(run["layers_path"])
+                for run in shaped_best["runs"]
+            )
     elif keep == "exemplar":
         for result in results:
             exemplar = _best_reached(result)
@@ -369,6 +390,9 @@ def _prune_layers(
             layer_path = out_dir / relative_path
             if layer_path.exists():
                 layer_path.unlink()
+            seed_dir = layer_path.parent
+            if seed_dir.is_dir() and not any(seed_dir.iterdir()):
+                seed_dir.rmdir()
 
 
 def evolve(cfg: Mapping[str, Any]) -> Archive:
@@ -377,6 +401,14 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
     out_dir = Path(str(cfg["out"])).resolve()
     world_path = project_dir / "world.yaml"
     subjects_dir = project_dir / "subjects"
+    configured_action_graph_path = (
+        template_dir / "action_graph.yaml"
+    )
+    action_graph_path: Path | None = (
+        configured_action_graph_path
+        if configured_action_graph_path.is_file()
+        else None
+    )
 
     generations = int(cfg.get("generations", 20))
     population_size = int(cfg.get("population", 100))
@@ -386,16 +418,25 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
     processes = int(cfg.get("processes", 1))
     keep = str(cfg.get("keep", "reached"))
     if generations < 1 or population_size < 1 or seed_count < 1:
-        raise ValueError("generations, population, and seeds must be positive")
+        raise ValueError(
+            "generations, population, and seeds must be positive"
+        )
+    if seed_base < 0:
+        raise ValueError("seed_base must not be negative")
     if processes < 1:
         raise ValueError("processes must be positive")
     if keep not in {"all", "reached", "exemplar"}:
-        raise ValueError("keep must be one of: all, reached, exemplar")
+        raise ValueError(
+            "keep must be one of: all, reached, exemplar"
+        )
 
     seeds = list(range(seed_base, seed_base + seed_count))
     ga_rng = random.Random(ga_seed)
     action_cfg = dict(
-        _load_yaml(template_dir / "action_graph.yaml", {"nodes": [], "edges": []})
+        _load_yaml(
+            configured_action_graph_path,
+            {"nodes": [], "edges": []},
+        )
     )
     qd_cfg = dict(
         _load_yaml(
@@ -425,7 +466,13 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             else []
         )
         precedent = canon.merge(
-            from_runs(archive_runs, protagonist=World.from_yaml(world_path).protagonist)
+            from_runs(
+                archive_runs,
+                protagonist=World.from_yaml(
+                    world_path,
+                    action_graph_path=action_graph_path,
+                ).protagonist,
+            )
         )
         precedent_path = generation_dir / "precedent.json"
         _json_write(precedent_path, json.loads(precedent.to_json()))
@@ -450,10 +497,18 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             ],
         )
 
-        protagonist = World.from_yaml(world_path).protagonist
+        protagonist = World.from_yaml(
+            world_path,
+            action_graph_path=action_graph_path,
+        ).protagonist
         jobs = [
             {
                 "action_cfg": action_cfg,
+                "action_graph_path": (
+                    str(action_graph_path)
+                    if action_graph_path is not None
+                    else None
+                ),
                 "genome": genome.to_dict(),
                 "index": index,
                 "logical_root": str(out_dir),

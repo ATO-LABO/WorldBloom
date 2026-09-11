@@ -16,6 +16,14 @@ from gapengine.evolve import evolve
 
 
 def build_parser() -> argparse.ArgumentParser:
+    def non_negative_int(value: str) -> int:
+        parsed = int(value)
+        if parsed < 0:
+            raise argparse.ArgumentTypeError(
+                "value must not be negative"
+            )
+        return parsed
+
     parser = argparse.ArgumentParser(
         description="Run deterministic MAP-Elites evolution.",
     )
@@ -25,7 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--generations", type=int, default=20)
     parser.add_argument("--population", type=int, default=100)
     parser.add_argument("--seeds", type=int, default=3)
-    parser.add_argument("--seed-base", type=int, default=0)
+    parser.add_argument(
+        "--seed-base",
+        type=non_negative_int,
+        default=0,
+    )
     parser.add_argument("--ga-seed", type=int, default=1)
     parser.add_argument("--processes", type=int, default=1)
     parser.add_argument(
