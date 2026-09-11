@@ -88,18 +88,6 @@ phase_rules:
     when: "'越境' in phase"
     disable:
       - train
-      - rescue
-      - rest
-      - withdraw
-      - guard
-      - plant
-      - payoff
-      - disguise
-      - grand_gesture
-      - trial
-      - donate
-    disable:
-      - train
 
 awareness_per_encounter: 0.15
 

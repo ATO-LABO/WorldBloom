@@ -355,8 +355,8 @@ class EngineTests(unittest.TestCase):
                 if seed == 153:
                     self.assertEqual(
                         normalized_layers_hash(first),
-                        "5201253ed64f807e0255089ef754c0a1"
-                        "7f8e2f5dcaaf5673bb4a8c2813b629f4",
+                        "c9c60c156c1ab227b15cd76e47b4f120"
+                        "12a70d1fd133709bbb01c824b96d22df",
                     )
 
     def test_phase0_opt_in_removal_restores_old_seed_hash(
@@ -2574,6 +2574,13 @@ class EngineTests(unittest.TestCase):
 
         momotaro.zone = "道中"
         dog.zone = "道中"
+        # campfire_oath is planted only toward allies (to_role: [ally]) since the
+        # Phase 2 review (B-1): raise the dog to companionship stance first.
+        world.relations.change(
+            momotaro.id,
+            dog.id,
+            affinity=1.0 - world.relations.stance(momotaro.id, dog.id),
+        )
         result, _, markers = VerbEngine(
             world,
             FixedRandom([]),
