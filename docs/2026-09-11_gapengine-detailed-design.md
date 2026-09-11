@@ -529,7 +529,7 @@ C:\Projects\WorldBloom-local\runs\<experiment>\g<N>\ind-<i>\seed-<s>\layers.json
 
 ### 20.1 確定した設計判断
 - **整形適応度の二系統**: `deliver` を持つ結末は従来式（0.4×所持＋0.3×距離＋0.3×到達）、それ以外は結末述語の連言肢平均（`holds`/`known`/`knows_modifier`/`confront_success` は 0/1、`zone` は最短 hop、`stance ≥ θ` は `(stance+1)/(θ+1)`）。複数 target は最大値。統一は実験系列の区切りで行う（§3.1 と同じ扱い）。
-- **真相のシード抽選**: `truth.<fact>.candidates` を `random.Random(f"{seed}:{fact_id}")` で抽選（主 rng 不消費）、header に記録。`known_by: ["$truth"]` は抽選結果の主体にのみ confidence 1.0 の直接信念を与える。証拠の `implies/refutes.value` には `$truth` / `$innocent:1` / `$innocent:2`（候補の名前順から真相を除いた 1・2 番目）を許し、bind 時に解決する。
+- **真相のシード抽選**: `truth.<fact>.candidates` を `random.Random(f"{seed}:{fact_id}")` で抽選（主 rng 不消費）、header に記録。`known_by: ["$truth"]` は抽選結果の主体にのみ confidence 1.0 の直接信念を与える。証拠の `implies/refutes.value` には `$truth` / `$innocent:1` / `$innocent:2`（候補の名前順から真相を除いた 1・2 番目）を許し、bind 時に解決する。ここでの「名前順」は **Python の文字列比較＝Unicode コードポイント順**で、日本語の直観的な並び（甲・乙・丙）とは一致しない（実際は 丙 < 乙 < 甲）。テンプレートは、この順序が物語上の役割（第一の容疑者・第二の容疑者）に対応している前提を置かないこと。
 - **rethink（II-6）**: 候補は「verbs に含む・implies/refutes を持つ証拠を 2 件以上保持・新事実なしの停滞 N スロット」。効果は保持証拠が触れる valued 信念を再導出（refutes→implies、confidence 降順、fact id の順）、保護は真相所有者の直接知（confidence 1.0）のみ。quality には `rethink` で値が反転した fact 数を `dramatic_turns` として計上。
 - **`rule_bits`（メタ進化の準備）**: `meta_evolution: false` では空で 9 スカラーと byte 互換。ON で規則 id ごとに一様交叉・反転 0.1、Policy は無効規則を無視。
 - **`affinity_cap`（能力→関係の層間作用）**: 能力層の active な modifier が、所有者を observer とする affinity の上昇を `max(cap, 現在値)` で止める（初期 bind は clamp、`affinity_cap_targets` で対象を限定、複数は最小）。ally modifier（関係→能力）の逆向き。`neutralize` や伏線の payoff で解除。cap を持たない世界では不変。
