@@ -119,3 +119,12 @@
 ## 9. Phase 4 合格判定（2026-09-11）
 1. 恋愛: exp6（8 マス）・exp7（6 マス）✓　2. 探偵: exp8（9 マス、誤認→rethink→正解 1 件以上）✓　3. 桃太郎不変: 各コミットで固定ハッシュ 2 本・小規模 evolve の byte-match 83/83（engine_hash 除く）✓　4. メタ進化 ON/OFF: `--meta-evolution` で `rule_bits` が母集団に乗り、OFF は archive.json バイト一致 ✓。
 設計書 §16 の全フェーズ完了。保留（サブプロット差分トラック、QD 軸の追加、メタ進化の本格導入、恋愛での rethink 実証、deliver 結末の個別到達判定、縦軸 I/IV が恋愛で未占有）は設計書「未解決の論点」へ。
+
+## 10. レビュー後の是正と設計決定（2026-09-12、Opus レビュー D11r3＋D12／Fable 最終確認「条件付き承認」）
+
+- **§9 の訂正**: 恋愛の縦軸 IV は「未占有」ではなく**到達不能**だった（`confront` は valued fact の信念がないと候補に立たず、恋愛には valued fact が無い。exp7 全 1714 ランで confront 0 回）。探偵では `observe`→IV・`move`→IV が設計書 §12.1（move の反復は雑音）に反していた。→ **両ジャンルとも縦軸 `[I, II, III]`**、探偵の `observe` は II、`move` は null（コミット e0c2358）。exp7 は confront 0 回のため IV 除外で結果不変（再実行不要）。exp8 は D12 差し戻し 2 回目の後に再実行して合格条件 2 を再判定する。
+- **恋愛の C 規則 `rival_courts_b`**: NPC には Policy が無く（`--coevolve` 時の敵役のみ）規則は評価されない→削除。C の競争は噂 cap で表現する。`question_rival_advantage` も IV 廃止に伴い削除。
+- **探偵の推理が真相と無相関**（Opus B-1）: 証拠 6 件が毎回同一で丙だけ否定証拠を持たず、rethink は真相に関係なく丙に収束（有効 confront 正解率 25%）。→ **設計決定**: `implies/refutes.value` に `$truth` / `$innocent:1` / `$innocent:2` トークンを許し（`bind_subjects` で抽選後に解決、固定値の世界では無変更）、無実の 2 人には必ずアリバイ反証を置く。真犯人の自白漏れは `share_min_affinity: 0.6` で抑制。
+- **rethink の再設計**（Fable 項目 3）: 保持証拠が触れる valued 信念を派生・非派生を問わず再導出し、保護は真相所有者の直接知（confidence 1.0）のみ。再走査順は refutes → implies、confidence 降順、fact id。候補ゲートは「証拠 2 件以上」（`weapon` 埋め草の解消）。
+- **受理**: 汎用 shaped の二系統（deliver＝従来式）は互換分岐として確定。`affinity_cap` は ally modifier の逆向きの層間作用として正当、「上昇のみ阻止」も妥当。恋愛で rethink 不発は受理。`old_promise` の 2 行は決定行＋派生イベント行で重複ではない。
+- **未解決の論点へ**: `_mislead_candidates` が全主体で `world.truth` を参照する漏洩（Phase 1 由来、golden を変えるため系列境界で）／裏切り判定を verb 固定から分類器の `stance_sign` へ（恋愛の neutralize sign +1 と不整合）／`confront_success` 型結末は shaped に勾配が無い（確信度マージンの導入）／cap 専用 modifier（value 0）の関係層への移設／探偵の能力層（証拠力 base・アリバイ）が結末に効かない／恋愛で A→B が雑談で飽和する。
