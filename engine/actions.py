@@ -1319,48 +1319,6 @@ def _rescue_candidates(
         )
     return result
 
-def _rescue_candidates(
-    subject: Subject,
-    world: World,
-    present: list[Subject],
-) -> list[tuple[Action, float]]:
-    if "rescue" not in subject.verbs:
-        return []
-
-    result: list[tuple[Action, float]] = []
-    for target in sorted(present, key=lambda value: value.id):
-        if target.id == subject.id or target.vitality != "downed":
-            continue
-        affinity = world.relations.stance(subject.id, target.id)
-        if affinity < 0.3:
-            continue
-
-        permission = _permission_weight(
-            subject,
-            target,
-            "rescue",
-            world,
-        )
-        if permission <= 0.0:
-            continue
-
-        result.append(
-            (
-                Action(
-                    "rescue",
-                    (target.id,),
-                    {"target": target.id},
-                ),
-                (
-                    0.3
-                    + subject.traits["social"]
-                    + affinity
-                )
-                * permission,
-            )
-        )
-    return result
-
 
 def _withdraw_candidates(
     subject: Subject,
