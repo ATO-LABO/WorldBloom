@@ -9,7 +9,12 @@ from typing import Any, TYPE_CHECKING
 
 import yaml
 
-from engine.predicate import Namespace, Predicate, compile_predicate
+from engine.predicate import (
+    Namespace,
+    Predicate,
+    compile_predicate,
+    compile_predicate_syntax,
+)
 from engine.relations import Relations
 
 if TYPE_CHECKING:
@@ -213,22 +218,13 @@ class World:
             ),
         }
 
-        predicate_names = (
-            set(_PREDICATE_NAMES)
-            | set(self.zones)
-            | set(self.items)
-            | set(self.facts)
-            | {self.protagonist, self.antagonist}
-        )
-
         self.thresholds: list[dict[str, Any]] = []
         for raw_threshold in definition.get("thresholds", []) or []:
             threshold = dict(raw_threshold)
             threshold["id"] = str(threshold["id"])
             threshold["predicate_source"] = str(threshold["when"])
-            threshold["predicate"] = compile_predicate(
-                threshold["predicate_source"],
-                predicate_names,
+            threshold["predicate"] = compile_predicate_syntax(
+                threshold["predicate_source"]
             )
             self.thresholds.append(threshold)
         self.thresholds.sort(key=lambda value: value["id"])
@@ -249,9 +245,8 @@ class World:
                 ending["predicate"] = None
             else:
                 ending["predicate_source"] = str(source_when)
-                ending["predicate"] = compile_predicate(
-                    ending["predicate_source"],
-                    predicate_names,
+                ending["predicate"] = compile_predicate_syntax(
+                    ending["predicate_source"]
                 )
             self.endings.append(ending)
         self.endings.sort(key=lambda value: value["id"])
@@ -363,8 +358,26 @@ class World:
                     raise ValueError(f"Unknown fact source zone: {fact}:{zone}")
 
     def bind_subjects(self, subjects: dict[str, Subject]) -> None:
+        self.delivered.clear()
+        self.pending_effects.clear()
+
         if set(subjects) != {subject.id for subject in subjects.values()}:
             raise ValueError("Subject dictionary keys must match Subject.id")
+
+        subject_ids = set(subjects)
+        item_collisions = subject_ids & set(self.items)
+        if item_collisions:
+            raise ValueError(
+                "Subject ids collide with item names: "
+                f"{sorted(item_collisions)}"
+            )
+        fact_collisions = subject_ids & set(self.facts)
+        if fact_collisions:
+            raise ValueError(
+                "Subject ids collide with fact ids: "
+                f"{sorted(fact_collisions)}"
+            )
+
         if self.protagonist not in subjects:
             raise ValueError(f"Unknown protagonist: {self.protagonist}")
         if self.antagonist not in subjects:
@@ -461,7 +474,20 @@ class World:
             | set(self.facts)
             | set(self.zones)
         )
+
+        for threshold in self.thresholds:
+            source = threshold.get("predicate_source")
+            if not isinstance(source, str):
+                raise ValueError(
+                    f"Threshold predicate is unresolved: {threshold['id']}"
+                )
+            threshold["predicate"] = compile_predicate(
+                source,
+                predicate_names,
+            )
+
         for ending in self.endings:
+            ending.pop("deliver", None)
             sugar_agent = ending.get("sugar_agent")
             if sugar_agent is not None:
                 if sugar_agent not in self.subjects:
@@ -479,6 +505,12 @@ class World:
                 )
                 ending["when"] = source
                 ending["predicate_source"] = source
+                ending["deliver"] = {
+                    "subject": sugar_agent,
+                    "item": goal.target,
+                    "zone": goal.deliver_to,
+                }
+
             source = ending.get("predicate_source")
             if not isinstance(source, str):
                 raise ValueError(

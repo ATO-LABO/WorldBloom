@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import tempfile
@@ -11,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from engine.actions import Action, candidates
+from engine.predicate import compile_predicate
 from engine.sim import Simulation
 from engine.subject import Modifier, Subject
 from engine.verbs import VerbEngine
@@ -55,7 +57,121 @@ def read_rows(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def normalized_layers_hash(path: Path) -> str:
+    """Hash compact JSONL while normalizing the source-derived engine hash."""
+
+    rows = read_rows(path)
+    rows[0]["engine_hash"] = "<engine-hash>"
+    payload = "".join(
+        json.dumps(
+            row,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+        for row in rows
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 class EngineTests(unittest.TestCase):
+    def test_lethal_modifier_is_snapshotted_before_loot(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.base = 200
+        oni.base = 1
+        world.vitality["lethal_exempt"].discard(oni.id)
+
+        self.assertTrue(oni.has_item("金棒"))
+        engine = VerbEngine(world, FixedRandom([0.0]))
+        result, details, _ = engine.execute(
+            momotaro,
+            Action("fight", (oni.id,)),
+            turn=1,
+            day=1,
+        )
+
+        self.assertEqual(result, "won")
+        self.assertEqual(oni.vitality, "downed")
+        self.assertNotEqual(oni.vitality, "dead")
+        self.assertTrue(momotaro.has_item("金棒"))
+        self.assertFalse(oni.has_item("金棒"))
+        self.assertIsNone(details["lethal_chance"])
+        self.assertIsNone(details["lethal_roll"])
+
+    def test_vehicle_is_not_transferred_as_fight_loot(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.base = 200
+        oni.base = 1
+        oni.add_item("船", 1)
+
+        engine = VerbEngine(world, FixedRandom([0.0]))
+        result, details, _ = engine.execute(
+            momotaro,
+            Action("fight", (oni.id,)),
+            turn=1,
+            day=1,
+        )
+
+        self.assertEqual(result, "won")
+        self.assertTrue(oni.has_item("船"))
+        self.assertFalse(momotaro.has_item("船"))
+        self.assertNotIn("船", details["loot"])
+
+    def test_hostile_permission_reduces_give_and_share_weights(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        dog = subjects["犬"]
+        dog.zone = momotaro.zone
+        simulation_state = SimpleNamespace(day=1, turn=1)
+
+        def selected_weights(affinity: float) -> dict[tuple[Any, ...], float]:
+            current = world.relations.stance(momotaro.id, dog.id)
+            world.relations.change(
+                momotaro.id,
+                dog.id,
+                affinity=affinity - current,
+            )
+            return {
+                (action.verb, *action.args): weight
+                for action, weight in candidates(
+                    momotaro,
+                    world,
+                    simulation_state,
+                )
+                if action.verb in {"give_item", "share_knowledge"}
+                and action.meta.get("target") == dog.id
+            }
+
+        neutral = selected_weights(0.0)
+        hostile = selected_weights(-0.5)
+        restricted = world.permission_restricted_weight
+
+        give_key = ("give_item", "犬", "きびだんご")
+        share_key = ("share_knowledge", "犬", "雑談")
+        self.assertIn(give_key, neutral)
+        self.assertIn(give_key, hostile)
+        self.assertIn(share_key, neutral)
+        self.assertIn(share_key, hostile)
+        self.assertAlmostEqual(
+            hostile[give_key],
+            neutral[give_key] * restricted,
+        )
+        self.assertAlmostEqual(
+            hostile[share_key],
+            neutral[share_key] * restricted,
+        )
+
+    def test_compile_predicate_rejects_unknown_import(self) -> None:
+        with self.assertRaises(ValueError):
+            compile_predicate("__import__('os')")
+
     def test_observe_then_neutralize_transfers_item_modifier(self) -> None:
         world, subjects = load_fixture()
         momotaro = subjects["桃太郎"]
@@ -198,6 +314,13 @@ class EngineTests(unittest.TestCase):
                     second.read_bytes(),
                     f"seed {seed} was not byte deterministic",
                 )
+
+                if seed == 153:
+                    self.assertEqual(
+                        normalized_layers_hash(first),
+                        "3e95ce8034428ba63fa833f39f6e87ff"
+                        "daeb9a8bae42af464ee421ddeaae958e",
+                    )
 
     def test_vitality_down_revive_ally_speedup_and_lethal(self) -> None:
         world, subjects = load_fixture()
@@ -479,6 +602,7 @@ class EngineTests(unittest.TestCase):
                     row,
                     sort_keys=True,
                     ensure_ascii=False,
+                    separators=(",", ":"),
                 ),
             )
 

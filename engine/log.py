@@ -10,6 +10,8 @@ from typing import Any, TextIO
 def nested_diff(before: Any, after: Any) -> Any:
     """Return changed leaves, or None when values are equal."""
 
+    if before == after:
+        return None
     if isinstance(before, dict) and isinstance(after, dict):
         result: dict[str, Any] = {}
         for key in sorted(set(before) | set(after)):
@@ -23,8 +25,6 @@ def nested_diff(before: Any, after: Any) -> Any:
             if changed is not None:
                 result[key] = changed
         return result or None
-    if before == after:
-        return None
     return after
 
 
@@ -32,6 +32,9 @@ def relation_diff(
     before: dict[str, dict[str, dict[str, float]]],
     after: dict[str, dict[str, dict[str, float]]],
 ) -> list[dict[str, str | float]]:
+    if before == after:
+        return []
+
     rows: list[dict[str, str | float]] = []
     observers = sorted(set(before) | set(after))
     for observer in observers:
@@ -139,6 +142,7 @@ class LayersWriter:
             row,
             ensure_ascii=False,
             sort_keys=True,
+            separators=(",", ":"),
         )
         self._handle.write(serialized)
         self._handle.write("\n")
