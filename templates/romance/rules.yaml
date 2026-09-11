@@ -21,3 +21,11 @@
     category_weight.IV: 0.25
     novelty_drive: 0.10
   description: Cの優位が噂によるものだと知った後は、その構造を明らかにする
+
+- id: rival_courts_b
+  scope: candidate
+  when: "self == C and target == B"
+  adjust:
+    category_weight.III: 0.40
+    stance_shift_bias: 0.25
+  description: CはBに対する対話と働きかけを優先し、Aとの競争を生む

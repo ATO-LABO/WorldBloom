@@ -34,6 +34,68 @@ def load_yaml(path: Path) -> Any:
 
 
 class RomanceTemplateTests(unittest.TestCase):
+    def test_b_has_independent_defense_and_rumor_caps(
+        self,
+    ) -> None:
+        world = World.from_yaml(
+            PROJECT / "world.yaml",
+            action_graph_path=(
+                TEMPLATE / "action_graph.yaml"
+            ),
+        )
+        subjects = load_subjects(
+            PROJECT / "subjects"
+        )
+        world.bind_subjects(subjects)
+
+        modifiers = {
+            modifier.source: modifier
+            for modifier in subjects["B"].modifiers
+        }
+        defense = modifiers["防衛"]
+        rumor = modifiers["噂"]
+        resolver = world.relations._affinity_cap_resolver
+
+        self.assertEqual(defense.affinity_cap, 0.35)
+        self.assertEqual(
+            defense.affinity_cap_targets,
+            ("A", "C"),
+        )
+        self.assertEqual(rumor.affinity_cap, 0.5)
+        self.assertEqual(
+            rumor.affinity_cap_targets,
+            ("A",),
+        )
+
+        self.assertIsNotNone(resolver)
+        assert resolver is not None
+        self.assertEqual(
+            resolver("B", "A"),
+            0.35,
+        )
+
+        defense.active = False
+        self.assertEqual(
+            resolver("B", "A"),
+            0.5,
+        )
+
+        rumor.active = False
+        self.assertIsNone(
+            resolver("B", "A")
+        )
+
+        effect = world.effect_library[
+            "rival_rumor_exposed"
+        ]
+        self.assertEqual(
+            effect["payoff"]["effect"]["neutralize"],
+            {
+                "target": "B",
+                "source": "噂",
+            },
+        )
+
     def test_world_and_five_subjects_load_without_objectives(
         self,
     ) -> None:
@@ -213,10 +275,9 @@ class RomanceTemplateTests(unittest.TestCase):
                         )
                         or []
                     ):
-                        if (
-                            modifier.get("source")
-                            == "防衛"
-                        ):
+                        if modifier.get(
+                            "source"
+                        ) in {"防衛", "噂"}:
                             modifier["active"] = False
                 else:
                     definition["verbs"] = ["rest"]

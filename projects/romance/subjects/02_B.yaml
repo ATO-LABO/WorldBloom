@@ -18,6 +18,15 @@ modifiers:
     affinity_cap: 0.35
     affinity_cap_targets: [A, C]
 
+  - id: rumor:c_advantage
+    source: 噂
+    value: 0
+    kind: rumor
+    visible: false
+    active: true
+    affinity_cap: 0.5
+    affinity_cap_targets: [A]
+
 beliefs_about:
   A:
     known_modifiers: []
