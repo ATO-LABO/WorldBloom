@@ -396,3 +396,14 @@ volatility_bins: [low, mid, high]       # 三分位
 ## 9. Phase 0 への前倒し（2026-09-11、実走の結果を受けて）
 
 30 シードの実走で結末到達 0/30（桃太郎 50＋味方 40 vs 鬼 80＋隠し金棒 40。差分ゲームの仕様どおり力押しでは勝てない）。GA ループの検証には到達ランが要るため、Phase 1 予定の **`neutralize(target, source)`（弱体化・間接）を D1b として Phase 0 に前倒し**（候補条件 `known_modifiers ∋ source`、効果 `active=False`＋lootable なら道具を actor の inventory へ移す＝付け替え）。あわせて桃太郎テンプレートに `vitality.lethal_exempt: [桃太郎]`（設計書 §10.4 のジャンルの約束事）を設定。
+
+## 10. レビュー後の計画補足（2026-09-11、設計役）
+
+- §7-8 の「マーカー行の `delta: {}`」は、実装では `delta` を 4 キー（actor/targets/relations/objective）すべて空の辞書に正規化する。消費側の挙動は同じ。文言を実装に合わせて読み替える。
+- `canon.yaml` に `neutralize` の前例は**入れない**（GA に発見させる。前例の床値＝新規扱いのまま）。
+- Phase 0 の `m_stance` は行動の符号のみ。対象選択項 `1 + b×sign×(−stance)` は Phase 1 の対象開放と同時に入れる。
+- ending 行の `delta.objective`（村への搬入）は quality の「所持者交代」に +1 として数える。アーカイブに入るのは到達ランだけなので一律の加点であり、マス内の比較を歪めない（採用）。
+- テスト 10 は `archive.cells` が非空であることを合格条件に含める（到達を保証するため `reached` を monkeypatch してよい）。
+- 無作為ベースラインは `Policy(neutral, annotate_only=True)` で分類だけ書く（重みは無変調）。
+- 評価シードは `--seed-base` で可変（既定 0）。到達不能なシード集合に固定されるのを避ける。
+- ラン出力は `--keep reached`（既定）で到達ランと模範ラン以外の layers.jsonl を削除する。
