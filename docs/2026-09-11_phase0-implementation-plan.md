@@ -407,3 +407,19 @@ volatility_bins: [low, mid, high]       # 三分位
 - 無作為ベースラインは `Policy(neutral, annotate_only=True)` で分類だけ書く（重みは無変調）。
 - 評価シードは `--seed-base` で可変（既定 0）。到達不能なシード集合に固定されるのを避ける。
 - ラン出力は `--keep reached`（既定）で到達ランと模範ラン以外の layers.jsonl を削除する。
+
+## 11. Phase 0 合格判定（2026-09-11、設計役）
+
+| 合格条件（設計書 §16） | 結果 |
+|---|---|
+| ① 同一入力で layers.jsonl がバイト一致 | ✓ テスト（3 シード）＋レビュー役の PYTHONHASHSEED 4 種・42 シード検証 |
+| ② 中立遺伝子 ≡ policy=None | ✓ テスト 6（policy/classification 除外比較、乗数すべて 1.0、choice_prob ビット一致） |
+| ③ N=100・G=20 が 30 分以内 | △→✓ 初回（D1c、CPU 競合あり）は約 75 分。D1d 高速化後は 1 シード 0.14〜0.3 秒（レビュー役実測 1.6〜1.9 倍）で見込み約 10 分。Phase 1 の本番実験で再確認 |
+| ④ 到達率がベースラインを上回り ≥4 マス | ✓ 無作為 0/300 → GA 0.7%→6〜10%、占有 10/18 マス |
+| ⑤ 同一設定の再実行でアーカイブ一致 | ✓ テスト 10＋レビュー役の processes 1/4 全出力バイト一致 |
+| ⑥ QD アーカイブが無作為より多様 | ✓（縮退比較）無作為は到達 0 で相異度 null、アーカイブ相異度 0.73 |
+| ⑦ downed から復帰して到達するラン | ✓ 全エリートが「倒される→復帰→観測→金棒を封じ奪う→逆転→帰還」 |
+
+レビュー: D1 要修正→D1c 問題なし→D1d 問題なし（B-1 潜在: scoped capture が傍観者の `delta.targets[*].objective` を落とす。Phase 1 engine ラウンドで「目的物の保持者が変わった決定は全主体 capture」に修正）。D2 要修正→D2b 問題なし（C-5〜C-9 は D4 に同梱）。
+
+Phase 1 engine ラウンドへの持ち越し: B-1（上記）、C-1 `_PREDICATE_NAMES` の重複を predicate.py に一本化、C-2 zone 名との id 衝突検査、C-5 `_engine_source_hash` の ThreadPoolExecutor を lru_cache＋単純ループに。
