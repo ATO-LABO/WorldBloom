@@ -156,7 +156,6 @@ def _movement_candidates(
             companions,
             key=lambda peer: peer.id,
         )[0].zone
-        companion_destination = sorted(companions, key=lambda peer: peer.id)[0].zone
 
     for destination, path in sorted(paths.items()):
         weight = world.movement["destination_weights"].get(destination, 1.0)
