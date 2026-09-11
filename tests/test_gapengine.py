@@ -721,7 +721,14 @@ class Phase1GapEngineTests(unittest.TestCase):
         if trade:
             holder.remove_item("金棒", 1)
             claimant.add_item("金棒", 1)
+            # keep 金棒 as the only tradeable asset (勾玉 added in D3c)
+            if claimant.has_item("勾玉"):
+                claimant.remove_item("勾玉", claimant.inventory.get("勾玉", 0))
         else:
+            # 勾玉 (D3c fixture) would make the offer a trade; drop it so the
+            # goodwill path is exercised (Claude-side test fix).
+            if claimant.has_item("勾玉"):
+                claimant.remove_item("勾玉", claimant.inventory.get("勾玉", 0))
             world.relations.change(
                 holder.id,
                 claimant.id,

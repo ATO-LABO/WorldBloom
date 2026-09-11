@@ -727,12 +727,6 @@ class World:
                 "Subject ids collide with zone names: "
                 f"{sorted(zone_collisions)}"
             )
-        fact_collisions = subject_ids & set(self.facts)
-        if fact_collisions:
-            raise ValueError(
-                "Subject ids collide with fact ids: "
-                f"{sorted(fact_collisions)}"
-            )
 
         if self.protagonist not in subjects:
             raise ValueError(f"Unknown protagonist: {self.protagonist}")
