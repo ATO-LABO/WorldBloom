@@ -1,0 +1,55 @@
+weight: 1.0
+entries:
+  - ctx:
+      phase: []
+      hostile_present: false
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: I, verb: investigate, role: none}
+    n: 9
+
+  - ctx:
+      phase: []
+      hostile_present: true
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: IV, verb: observe, role: hostile}
+    n: 7
+
+  - ctx:
+      phase: []
+      hostile_present: true
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: I, verb: neutralize, role: hostile}
+    n: 5
+
+  - ctx:
+      phase: []
+      hostile_present: false
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: III, verb: share_knowledge, role: neutral}
+    n: 7
+
+  - ctx:
+      phase: []
+      hostile_present: true
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: II, verb: rethink, role: none}
+    n: 5
+
+  - ctx:
+      phase: []
+      hostile_present: true
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: II, verb: confront, role: hostile}
+    n: 6

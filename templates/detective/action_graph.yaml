@@ -1,0 +1,37 @@
+genre: detective
+
+nodes:
+  - {verb: investigate, category: I, subtype: gather_evidence, risk: neutral, sign: 0, genres: [detective]}
+  - {verb: neutralize, category: I, subtype: break_alibi, risk: risky, sign: -1, genres: [detective]}
+
+  - {verb: rethink, category: II, subtype: rethink, risk: neutral, sign: 0, genres: [detective]}
+  - {verb: confront, category: II, subtype: accuse_suspect, risk: risky, sign: -1, genres: [detective]}
+
+  - {verb: share_knowledge, category: III, subtype: interview, risk: neutral, sign: 1, genres: [detective]}
+  - {verb: persuade, category: III, subtype: press_witness, risk: neutral, sign: 1, genres: [detective]}
+  - {verb: mislead, category: III, subtype: false_testimony, risk: neutral, sign: -1, genres: [detective]}
+
+  - {verb: observe, category: IV, subtype: tail_suspect, risk: neutral, sign: 0, genres: [detective]}
+  - {verb: move, category: IV, subtype: infiltrate_room, risk: neutral, sign: 0, genres: [detective]}
+
+  - {verb: rest, category: null, subtype: review_notes, risk: neutral, sign: 0, genres: [detective]}
+
+  - {verb: fight, category: I, subtype: physical_violence, risk: risky, sign: -1, genres: [adventure]}
+  - {verb: sabotage, category: I, subtype: destructive_sabotage, risk: risky, sign: -1, genres: [adventure]}
+
+edges:
+  - {from: observe, to: neutralize, requires: known_modifier}
+  - {from: observe, to: confront, requires: observed}
+
+permission:
+  fight: {hostile: deny, neutral: deny, ally: deny, self: deny}
+  sabotage: {hostile: deny, neutral: deny, ally: deny, self: deny}
+  observe: {hostile: allow, neutral: allow, ally: allow}
+  neutralize: {hostile: allow, neutral: restricted, ally: deny}
+  confront: {hostile: allow, neutral: restricted, ally: deny}
+  mislead: {hostile: allow, neutral: restricted, ally: restricted}
+  share_knowledge: {hostile: restricted, neutral: allow, ally: allow}
+  persuade: {hostile: restricted, neutral: allow, ally: allow}
+
+restricted_weight: 0.15
+rethink_stagnation_slots: 3

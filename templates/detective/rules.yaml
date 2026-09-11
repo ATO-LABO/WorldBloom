@@ -1,0 +1,23 @@
+- id: follow_red_herring
+  scope: turn
+  when: "known(self, evidence_01_red_thread) or known(self, evidence_02_muddy_footprint)"
+  adjust:
+    category_weight.II: 0.25
+    risk_tolerance: 0.05
+  description: 怪しい痕跡を得た後は、容疑者への仮説を検証する
+
+- id: break_known_alibi
+  scope: candidate
+  when: "knows_modifier(self, target, 'アリバイ')"
+  adjust:
+    category_weight.I: 0.35
+    novelty_drive: 0.10
+  description: 観察でアリバイを把握した相手には、その成立条件を崩す行動を重視する
+
+- id: reconstruct_after_alibis
+  scope: turn
+  when: "known(self, evidence_04_first_alibi) or known(self, evidence_05_second_alibi)"
+  adjust:
+    category_weight.II: 0.40
+    novelty_drive: 0.15
+  description: アリバイを裏づける証言を得た後は、既存証拠の再検討を重視する

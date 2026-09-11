@@ -1,0 +1,82 @@
+id: 容疑者乙
+
+traits:
+  social: 0.55
+  stubbornness: 0.62
+  curiosity: 0.48
+  diligence: 0.52
+  temper: 0.40
+
+base: 45
+modifiers:
+  - id: alibi:suspect-b
+    source: アリバイ
+    value: 25
+    kind: alibi
+    visible: false
+    active: true
+
+beliefs_about:
+  探偵:
+    known_modifiers: []
+    base_estimate: 72
+    identity_seen: true
+    observe_progress: 0.0
+  容疑者甲:
+    known_modifiers: []
+    base_estimate: 70
+    identity_seen: true
+    observe_progress: 0.0
+  容疑者丙:
+    known_modifiers: []
+    base_estimate: 70
+    identity_seen: true
+    observe_progress: 0.0
+
+beliefs:
+  culprit:
+    value: 容疑者丙
+    confidence: 0.35
+
+knowledge: []
+inventory: {}
+reputation: 0.05
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - observe
+  - mislead
+  - share_knowledge
+  - persuade
+  - rest
+
+identity:
+  "true": 雨の温室にいたと主張し、靴跡を疑われる容疑者
+  displayed: 容疑者乙
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: [探偵]
+  outcome: null
+
+relations:
+  探偵: {affinity: -0.35, awareness: 0.80}
+  容疑者甲: {affinity: -0.05, awareness: 0.55}
+  容疑者丙: {affinity: -0.05, awareness: 0.55}
+  証人壱: {affinity: 0.05, awareness: 0.45}
+  証人弐: {affinity: 0.05, awareness: 0.45}
+
+stamina:
+  max: 11
+  recover_per_slot: 1.2
+
+range:
+  zones: [温室]
+  entry: 温室
+
+companions: []
+ally_value: 0
+objective_claimant: false

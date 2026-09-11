@@ -1,0 +1,84 @@
+id: 探偵
+
+traits:
+  social: 0.62
+  stubbornness: 0.55
+  curiosity: 0.82
+  diligence: 0.80
+  temper: 0.34
+
+base: 72
+modifiers: []
+
+beliefs_about:
+  容疑者甲:
+    known_modifiers: []
+    base_estimate: 70
+    identity_seen: false
+    observe_progress: 0.0
+  容疑者乙:
+    known_modifiers: []
+    base_estimate: 70
+    identity_seen: false
+    observe_progress: 0.0
+  容疑者丙:
+    known_modifiers: []
+    base_estimate: 70
+    identity_seen: false
+    observe_progress: 0.0
+  証人壱:
+    known_modifiers: []
+    base_estimate: 28
+    identity_seen: false
+    observe_progress: 0.0
+  証人弐:
+    known_modifiers: []
+    base_estimate: 28
+    identity_seen: false
+    observe_progress: 0.0
+
+beliefs: {}
+knowledge: []
+inventory: {}
+reputation: 0.25
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - observe
+  - neutralize
+  - confront
+  - rethink
+  - share_knowledge
+  - persuade
+  - rest
+
+identity:
+  "true": 痕跡と証言の矛盾を組み直して真相へ迫る探偵
+  displayed: 探偵
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: [容疑者甲, 容疑者乙, 容疑者丙]
+  outcome: solved
+
+relations:
+  容疑者甲: {affinity: -0.25, awareness: 0.75}
+  容疑者乙: {affinity: -0.25, awareness: 0.75}
+  容疑者丙: {affinity: -0.25, awareness: 0.75}
+  証人壱: {affinity: 0.25, awareness: 0.65}
+  証人弐: {affinity: 0.25, awareness: 0.65}
+
+stamina:
+  max: 14
+  recover_per_slot: 1.5
+
+range:
+  zones: [玄関広間, 書斎, 食堂, 温室, 客室]
+  entry: 玄関広間
+
+companions: []
+ally_value: 0
+objective_claimant: false
