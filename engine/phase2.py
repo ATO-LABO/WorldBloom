@@ -769,9 +769,14 @@ def _effect_reference(
     pending: dict[str, Any],
     value: Any,
 ) -> str:
-    if value == "$target":
+    if value in {"target", "$target"}:
         return str(pending["target"])
-    if value in {"$planter", "$self"}:
+    if value in {
+        "planter",
+        "$planter",
+        "self",
+        "$self",
+    }:
         return str(pending["planted_by"])
     return str(value)
 
@@ -1090,6 +1095,7 @@ def grand_gesture_asset(
         if subject.inventory[item] > 0
         and item not in world.objectives
         and not world.items[item].get("vehicle", False)
+        and not world.items[item].get("keepsake", False)
     ]
     if not assets:
         return None

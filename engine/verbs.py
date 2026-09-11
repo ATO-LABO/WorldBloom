@@ -474,22 +474,23 @@ class VerbEngine:
                 )
 
             if misled_by is not None:
-                exposed_estimate = previous_estimate
                 belief.misled_by = None
-                markers.append(
-                    {
-                        "verb": "exposure",
-                        "subject": actor.id,
-                        "details": {
-                            "target": target.id,
-                            "about": target.id,
-                            "reported": previous_estimate,
-                            "actual": target.base,
-                            "misled_by": misled_by,
-                            "source": "observe",
-                        },
-                    }
-                )
+                if previous_estimate != target.base:
+                    exposed_estimate = previous_estimate
+                    markers.append(
+                        {
+                            "verb": "exposure",
+                            "subject": actor.id,
+                            "details": {
+                                "target": target.id,
+                                "about": target.id,
+                                "reported": previous_estimate,
+                                "actual": target.base,
+                                "misled_by": misled_by,
+                                "source": "observe",
+                            },
+                        }
+                    )
 
         details: dict[str, Any] = {
             "target": target.id,
@@ -853,7 +854,14 @@ class VerbEngine:
         identity_observers: list[str] = []
 
         if correct:
-            if expose_identity(self.world, actor, target):
+            if (
+                target.identity_displayed != target.id
+                and expose_identity(
+                    self.world,
+                    actor,
+                    target,
+                )
+            ):
                 identity_observers.append(actor.id)
 
             self.world.relations.change(
@@ -865,10 +873,13 @@ class VerbEngine:
             for witness in self._present(actor):
                 if witness.id in {actor.id, target.id}:
                     continue
-                if expose_identity(
-                    self.world,
-                    witness,
-                    target,
+                if (
+                    target.identity_displayed != target.id
+                    and expose_identity(
+                        self.world,
+                        witness,
+                        target,
+                    )
                 ):
                     identity_observers.append(witness.id)
                 self.world.relations.change(
@@ -1437,10 +1448,13 @@ class VerbEngine:
             (actor, target),
             (target, actor),
         ):
-            if not expose_identity(
-                self.world,
-                observer,
-                revealed,
+            if (
+                revealed.identity_displayed == revealed.id
+                or not expose_identity(
+                    self.world,
+                    observer,
+                    revealed,
+                )
             ):
                 continue
             markers.append(

@@ -153,10 +153,11 @@ def _betrayal_meta(
     target: Subject,
     world: World,
 ) -> dict[str, Any]:
-    betrayed = world.is_pledged(subject.id, target.id)
+    if not world.is_pledged(subject.id, target.id):
+        return {"betrayal": False}
     return {
-        "betrayal": betrayed,
-        "subtype": "betray" if betrayed else None,
+        "betrayal": True,
+        "subtype": "betray",
     }
 
 
@@ -565,6 +566,7 @@ def _sacrifice_candidates(
         item
         for item in sorted(subject.inventory)
         if subject.inventory[item] > 0
+        and not world.items[item].get("keepsake", False)
         and (
             bool(world.items[item].get("modifier"))
             or (
@@ -755,7 +757,7 @@ def _confront_candidates(
                         "stance_sign": -1,
                     },
                 ),
-                permission,
+                single_weight * permission,
             )
         )
 
@@ -763,7 +765,7 @@ def _confront_candidates(
         result,
         subject,
         world,
-        max(single_weights, default=0.0),
+        sum(single_weights),
     )
 
 
@@ -892,6 +894,7 @@ def _give_candidates(
         item
         for item, definition in world.items.items()
         if definition.get("vehicle", False)
+        or definition.get("keepsake", False)
     )
 
     for target in _living_targets(subject, present):
@@ -1227,6 +1230,19 @@ def _fight_candidates(
             world,
             present,
         )
+        advantage = 1.0
+        if world.action_graph_enabled and subject.policy is None:
+            strength_margin = (
+                actor_strength - perceived
+            ) / max(
+                1.0,
+                abs(actor_strength),
+            )
+            advantage = min(
+                1.5,
+                max(0.5, 1.0 + strength_margin),
+            )
+
         meta = {
             "target": target.id,
             "outmatched": perceived >= actor_strength,
@@ -1236,7 +1252,7 @@ def _fight_candidates(
         result.append(
             (
                 Action("fight", (target.id,), meta),
-                single_weight * permission,
+                single_weight * advantage * permission,
             )
         )
     return _normalize_opened(
@@ -1259,6 +1275,49 @@ def _train_candidates(
             0.15 + subject.traits["diligence"] * 0.5,
         )
     ]
+
+
+def _rescue_candidates(
+    subject: Subject,
+    world: World,
+    present: list[Subject],
+) -> list[tuple[Action, float]]:
+    if "rescue" not in subject.verbs:
+        return []
+
+    result: list[tuple[Action, float]] = []
+    for target in sorted(present, key=lambda value: value.id):
+        if target.id == subject.id or target.vitality != "downed":
+            continue
+        affinity = world.relations.stance(subject.id, target.id)
+        if affinity < 0.3:
+            continue
+
+        permission = _permission_weight(
+            subject,
+            target,
+            "rescue",
+            world,
+        )
+        if permission <= 0.0:
+            continue
+
+        result.append(
+            (
+                Action(
+                    "rescue",
+                    (target.id,),
+                    {"target": target.id},
+                ),
+                (
+                    0.3
+                    + subject.traits["social"]
+                    + affinity
+                )
+                * permission,
+            )
+        )
+    return result
 
 def _rescue_candidates(
     subject: Subject,
