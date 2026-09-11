@@ -14,18 +14,3 @@
     stance_shift_bias: 0.20
   description: Bへの気持ちが明確になった後は、対話と誓約を重視する
 
-- id: question_rival_advantage
-  scope: candidate
-  when: "target == C and knows_modifier(self, C, '噂')"
-  adjust:
-    category_weight.IV: 0.25
-    novelty_drive: 0.10
-  description: Cの優位が噂によるものだと知った後は、その構造を明らかにする
-
-- id: rival_courts_b
-  scope: candidate
-  when: "self == C and target == B"
-  adjust:
-    category_weight.III: 0.40
-    stance_shift_bias: 0.25
-  description: CはBに対する対話と働きかけを優先し、Aとの競争を生む

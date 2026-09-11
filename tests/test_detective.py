@@ -297,7 +297,7 @@ class DetectiveTemplateTests(unittest.TestCase):
         )
         self.assertEqual(
             qd["categories"],
-            ["I", "II", "III", "IV"],
+            ["I", "II", "III"],
         )
 
     def test_decoy_misjudgment_rethink_and_correct_confront(
