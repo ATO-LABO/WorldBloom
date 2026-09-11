@@ -39,6 +39,10 @@ class BeliefAbout:
     base_estimate: float = 50.0
     identity_seen: bool = False
     observe_progress: float = 0.0
+@dataclass
+class Belief:
+    value: str
+    confidence: float
 
 
 @dataclass
@@ -56,6 +60,7 @@ class Subject:
     base: float
     modifiers: list[Modifier]
     beliefs_about: dict[str, BeliefAbout]
+    beliefs: dict[str, Belief]
     knowledge: set[str]
     inventory: dict[str, int]
     reputation: float
@@ -102,7 +107,9 @@ class Subject:
             "diligence",
             "temper",
         }
-        if not isinstance(raw_traits, dict) or not required_traits.issubset(raw_traits):
+        if not isinstance(raw_traits, dict) or not required_traits.issubset(
+            raw_traits
+        ):
             raise ValueError(f"Subject {subject_id} is missing required traits")
         traits = {
             name: float(raw_traits[name])
@@ -120,7 +127,9 @@ class Subject:
                     visible=bool(raw_modifier.get("visible", True)),
                     active=bool(raw_modifier.get("active", True)),
                     lethal=bool(raw_modifier.get("lethal", False)),
-                    lethal_chance=float(raw_modifier.get("lethal_chance", 0.0)),
+                    lethal_chance=float(
+                        raw_modifier.get("lethal_chance", 0.0)
+                    ),
                 )
             )
 
@@ -133,14 +142,42 @@ class Subject:
                 },
                 base_estimate=float(belief.get("base_estimate", 50.0)),
                 identity_seen=bool(belief.get("identity_seen", False)),
-                observe_progress=float(belief.get("observe_progress", 0.0)),
+                observe_progress=float(
+                    belief.get("observe_progress", 0.0)
+                ),
+            )
+
+        beliefs: dict[str, Belief] = {}
+        raw_beliefs = raw.get("beliefs", {}) or {}
+        if not isinstance(raw_beliefs, dict):
+            raise ValueError(
+                f"Subject {subject_id} beliefs must be a mapping"
+            )
+        for fact_id in sorted(raw_beliefs):
+            raw_belief = raw_beliefs[fact_id] or {}
+            if not isinstance(raw_belief, dict):
+                raise ValueError(
+                    f"Subject belief must be a mapping: "
+                    f"{subject_id}:{fact_id}"
+                )
+            confidence = float(raw_belief.get("confidence", 0.0))
+            if not 0.0 <= confidence <= 1.0:
+                raise ValueError(
+                    f"Subject belief confidence must be within [0, 1]: "
+                    f"{subject_id}:{fact_id}"
+                )
+            beliefs[str(fact_id)] = Belief(
+                value=str(raw_belief["value"]),
+                confidence=confidence,
             )
 
         raw_goal = raw.get("goal", {}) or {}
         goal = Goal(
             target=raw_goal.get("target"),
             deliver_to=raw_goal.get("deliver_to"),
-            obstacles=sorted(str(value) for value in raw_goal.get("obstacles", [])),
+            obstacles=sorted(
+                str(value) for value in raw_goal.get("obstacles", [])
+            ),
             outcome=raw_goal.get("outcome"),
         )
 
@@ -164,10 +201,14 @@ class Subject:
 
         inventory = {
             str(item): int(count)
-            for item, count in sorted((raw.get("inventory", {}) or {}).items())
+            for item, count in sorted(
+                (raw.get("inventory", {}) or {}).items()
+            )
         }
         if any(count < 0 for count in inventory.values()):
-            raise ValueError(f"Subject {subject_id} has a negative inventory count")
+            raise ValueError(
+                f"Subject {subject_id} has a negative inventory count"
+            )
 
         return cls(
             id=subject_id,
@@ -175,19 +216,28 @@ class Subject:
             base=float(raw.get("base", 0.0)),
             modifiers=sorted(modifiers, key=lambda modifier: modifier.id),
             beliefs_about=beliefs_about,
+            beliefs=beliefs,
             knowledge={str(value) for value in raw.get("knowledge", [])},
             inventory=inventory,
             reputation=float(raw.get("reputation", 0.0)),
             phase={str(value) for value in raw.get("phase", [])},
             verbs={str(value) for value in raw.get("verbs", [])},
             identity_true=str(raw_identity.get("true", subject_id)),
-            identity_displayed=str(raw_identity.get("displayed", subject_id)),
+            identity_displayed=str(
+                raw_identity.get("displayed", subject_id)
+            ),
             goal=goal,
             stamina=_clamp(stamina, 0.0, stamina_max),
             stamina_max=stamina_max,
-            stamina_recover=float(raw_stamina.get("recover_per_slot", 0.0)),
+            stamina_recover=float(
+                raw_stamina.get("recover_per_slot", 0.0)
+            ),
             exhausted=bool(raw.get("exhausted", False)),
-            stress=_clamp(float(raw.get("stress", 0.0)), 0.0, 10.0),
+            stress=_clamp(
+                float(raw.get("stress", 0.0)),
+                0.0,
+                10.0,
+            ),
             vitality=str(raw.get("vitality", "alive")),
             downed_since=raw.get("downed_since"),
             zone=entry,
@@ -199,9 +249,109 @@ class Subject:
                 else None
             ),
             ally_value=float(raw.get("ally_value", 0.0)),
-            objective_claimant=bool(raw.get("objective_claimant", True)),
+            objective_claimant=bool(
+                raw.get("objective_claimant", True)
+            ),
             initial_relations=initial_relations,
         )
+
+    def update_belief(
+        self,
+        fact_id: str,
+        value: str,
+        confidence: float,
+        *,
+        refute: bool = False,
+    ) -> dict[str, Any]:
+        confidence = round(_clamp(float(confidence), 0.0, 1.0), 4)
+        current = self.beliefs.get(fact_id)
+        before = (
+            {
+                "value": current.value,
+                "confidence": current.confidence,
+            }
+            if current is not None
+            else None
+        )
+
+        if refute:
+            if current is None or current.value != value:
+                outcome = "unchanged"
+            else:
+                current.confidence = round(
+                    _clamp(
+                        current.confidence * (1.0 - confidence),
+                        0.0,
+                        1.0,
+                    ),
+                    4,
+                )
+                outcome = "refuted"
+        elif current is None:
+            self.beliefs[fact_id] = Belief(
+                value=value,
+                confidence=confidence,
+            )
+            outcome = "adopted"
+        elif current.value == value:
+            current.confidence = round(
+                max(current.confidence, confidence),
+                4,
+            )
+            outcome = "reinforced"
+        elif confidence > (
+            current.confidence
+            * (1.0 + self.traits["stubbornness"])
+        ):
+            self.beliefs[fact_id] = Belief(
+                value=value,
+                confidence=confidence,
+            )
+            outcome = "adopted"
+        else:
+            outcome = "rejected"
+
+        updated = self.beliefs.get(fact_id)
+        after = (
+            {
+                "value": updated.value,
+                "confidence": updated.confidence,
+            }
+            if updated is not None
+            else None
+        )
+        return {
+            "fact": fact_id,
+            "value": value,
+            "confidence": confidence,
+            "outcome": outcome,
+            "before": before,
+            "after": after,
+        }
+
+    def apply_evidence(
+        self,
+        fact_id: str,
+        world: World,
+    ) -> list[dict[str, Any]]:
+        definition = world.facts.get(fact_id)
+        if definition is None:
+            return []
+
+        updates: list[dict[str, Any]] = []
+        for key, refute in (("implies", False), ("refutes", True)):
+            raw_update = definition.get(key)
+            if not isinstance(raw_update, dict):
+                continue
+            update = self.update_belief(
+                str(raw_update["fact"]),
+                str(raw_update["value"]),
+                float(raw_update.get("confidence", 0.5)),
+                refute=refute,
+            )
+            update["evidence"] = fact_id
+            updates.append(update)
+        return updates
 
     def change_stamina(self, amount: float) -> float:
         before = self.stamina
@@ -327,7 +477,7 @@ class Subject:
             item: world.holder(item)
             for item in sorted(world.objectives)
         }
-        return {
+        snapshot: dict[str, Any] = {
             "ability": {
                 "base": round(self.base, 4),
                 "modifiers": modifiers,
@@ -366,3 +516,12 @@ class Subject:
             "stress": round(self.stress, 4),
             "stamina": round(self.stamina, 4),
         }
+        if self.beliefs:
+            snapshot["valued_beliefs"] = {
+                fact_id: {
+                    "value": value.value,
+                    "confidence": round(value.confidence, 4),
+                }
+                for fact_id, value in sorted(self.beliefs.items())
+            }
+        return snapshot

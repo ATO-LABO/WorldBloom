@@ -7,6 +7,7 @@ import json
 import random
 import tempfile
 import unittest
+import yaml
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -14,7 +15,12 @@ from typing import Any
 from engine.actions import Action, candidates
 from engine.predicate import compile_predicate
 from engine.sim import Simulation
-from engine.subject import Modifier, Subject
+from engine.subject import (
+    Belief,
+    BeliefAbout,
+    Modifier,
+    Subject,
+)
 from engine.verbs import VerbEngine
 from engine.vitality import down, tick
 from engine.world import World
@@ -124,15 +130,22 @@ class EngineTests(unittest.TestCase):
         self.assertFalse(momotaro.has_item("船"))
         self.assertNotIn("船", details["loot"])
 
-    def test_hostile_permission_reduces_give_and_share_weights(self) -> None:
+    def test_hostile_permission_reduces_give_and_share_weights(
+        self,
+    ) -> None:
         world, subjects = load_fixture()
         momotaro = subjects["桃太郎"]
         dog = subjects["犬"]
         dog.zone = momotaro.zone
         simulation_state = SimpleNamespace(day=1, turn=1)
 
-        def selected_weights(affinity: float) -> dict[tuple[Any, ...], float]:
-            current = world.relations.stance(momotaro.id, dog.id)
+        def selected_weights(
+            affinity: float,
+        ) -> dict[tuple[Any, ...], float]:
+            current = world.relations.stance(
+                momotaro.id,
+                dog.id,
+            )
             world.relations.change(
                 momotaro.id,
                 dog.id,
@@ -145,13 +158,21 @@ class EngineTests(unittest.TestCase):
                     world,
                     simulation_state,
                 )
-                if action.verb in {"give_item", "share_knowledge"}
+                if action.verb
+                in {"give_item", "share_knowledge"}
                 and action.meta.get("target") == dog.id
             }
 
         neutral = selected_weights(0.0)
         hostile = selected_weights(-0.5)
-        restricted = world.permission_restricted_weight
+        give_permission = world.permission(
+            "give_item",
+            "hostile",
+        )
+        share_permission = world.permission(
+            "share_knowledge",
+            "hostile",
+        )
 
         give_key = ("give_item", "犬", "きびだんご")
         share_key = ("share_knowledge", "犬", "雑談")
@@ -161,11 +182,11 @@ class EngineTests(unittest.TestCase):
         self.assertIn(share_key, hostile)
         self.assertAlmostEqual(
             hostile[give_key],
-            neutral[give_key] * restricted,
+            neutral[give_key] * give_permission,
         )
         self.assertAlmostEqual(
             hostile[share_key],
-            neutral[share_key] * restricted,
+            neutral[share_key] * share_permission,
         )
 
     def test_compile_predicate_rejects_unknown_import(self) -> None:
@@ -230,14 +251,15 @@ class EngineTests(unittest.TestCase):
             and action.args == ("鬼", "金棒")
         ]
         self.assertEqual(len(neutralize_actions), 1)
-        self.assertEqual(
-            neutralize_actions[0].meta,
-            {
-                "target": "鬼",
-                "source": "金棒",
-                "stance_sign": -1,
-                "risk": "risky",
-            },
+        expected_meta = {
+            "target": "鬼",
+            "source": "金棒",
+            "stance_sign": -1,
+            "risk": "risky",
+        }
+        self.assertTrue(
+            expected_meta.items()
+            <= neutralize_actions[0].meta.items()
         )
 
         result, details, markers = engine.execute(
@@ -318,9 +340,80 @@ class EngineTests(unittest.TestCase):
                 if seed == 153:
                     self.assertEqual(
                         normalized_layers_hash(first),
-                        "3e95ce8034428ba63fa833f39f6e87ff"
-                        "daeb9a8bae42af464ee421ddeaae958e",
+                        "01a64e4ded85208370cd34bb42c19eb8"
+                        "04e8532b77802e95415e5005453827e0",
                     )
+
+    def test_phase0_opt_in_removal_restores_old_seed_hash(
+        self,
+    ) -> None:
+        raw_world = yaml.safe_load(
+            WORLD_PATH.read_text(encoding="utf-8")
+        )
+        raw_world.pop("gapengine", None)
+        raw_world.pop("phase1", None)
+
+        valued_facts = {
+            str(fact["id"])
+            for fact in raw_world.get("facts", [])
+            if fact.get("values") is not None
+        }
+        raw_world["facts"] = [
+            fact
+            for fact in raw_world.get("facts", [])
+            if str(fact["id"]) not in valued_facts
+            and not any(
+                isinstance(fact.get(key), dict)
+                and str(fact[key].get("fact")) in valued_facts
+                for key in ("implies", "refutes")
+            )
+        ]
+        raw_world["truth"] = {
+            str(fact_id): value
+            for fact_id, value in (
+                raw_world.get("truth", {}) or {}
+            ).items()
+            if str(fact_id) not in valued_facts
+        }
+
+        world = World(raw_world, WORLD_PATH)
+        subjects = {
+            subject.id: subject
+            for subject in (
+                Subject.from_yaml(path)
+                for path in sorted(
+                    SUBJECTS_DIR.glob("*.yaml")
+                )
+            )
+        }
+        phase1_verbs = {
+            "confront",
+            "mislead",
+            "sabotage",
+            "sacrifice",
+            "negotiate",
+            "concede",
+            "pledge",
+            "persuade",
+        }
+        for subject in subjects.values():
+            subject.verbs.difference_update(phase1_verbs)
+            for fact_id in sorted(valued_facts):
+                subject.beliefs.pop(fact_id, None)
+        world.bind_subjects(subjects)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Simulation(
+                153,
+                world,
+                subjects,
+                Path(temporary),
+            ).run()
+            self.assertEqual(
+                normalized_layers_hash(path),
+                "3e95ce8034428ba63fa833f39f6e87ff"
+                "daeb9a8bae42af464ee421ddeaae958e",
+            )
 
     def test_vitality_down_revive_ally_speedup_and_lethal(self) -> None:
         world, subjects = load_fixture()
@@ -634,6 +727,677 @@ class EngineTests(unittest.TestCase):
         vector = snapshots[0]["vector"]
         self.assertEqual(len(vector), 11)
         self.assertTrue(all(0.0 <= value <= 1.0 for value in vector))
+
+    def test_valued_fact_evidence_hearsay_and_mislead(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        dog = subjects["犬"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        dog.zone = "鬼ヶ島"
+
+        engine = VerbEngine(world, FixedRandom([]))
+        result, details, markers = engine.execute(
+            momotaro,
+            Action("investigate", ("鬼ヶ島",)),
+            turn=1,
+            day=1,
+        )
+
+        self.assertEqual(result, "investigated")
+        self.assertIn("金棒の由来", details["learned"])
+        self.assertEqual(
+            momotaro.beliefs["oni_weakness"].value,
+            "金棒",
+        )
+        self.assertEqual(
+            momotaro.beliefs["oni_weakness"].confidence,
+            0.8,
+        )
+        learned_markers = [
+            marker
+            for marker in markers
+            if marker["verb"] == "learn_fact"
+            and marker["details"]["fact"] == "金棒の由来"
+        ]
+        self.assertEqual(len(learned_markers), 1)
+        self.assertEqual(
+            learned_markers[0]["details"]["beliefs"][0]["outcome"],
+            "adopted",
+        )
+
+        result, details, markers = engine.execute(
+            momotaro,
+            Action(
+                "share_knowledge",
+                ("犬", "oni_weakness"),
+            ),
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "shared")
+        self.assertEqual(details["value"], "金棒")
+        self.assertAlmostEqual(details["confidence"], 0.46)
+        self.assertEqual(dog.beliefs["oni_weakness"].value, "金棒")
+        self.assertAlmostEqual(
+            dog.beliefs["oni_weakness"].confidence,
+            0.46,
+        )
+        self.assertEqual(
+            [marker["verb"] for marker in markers],
+            ["learn_fact"],
+        )
+
+        mislead_actions = [
+            action
+            for action, _ in candidates(
+                momotaro,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "mislead"
+            and action.meta.get("belief_kind") == "valued_fact"
+            and action.meta.get("target") == "犬"
+        ]
+        self.assertEqual(
+            {
+                action.meta["value"]
+                for action in mislead_actions
+            },
+            {"火", "塩"},
+        )
+
+        before = dog.beliefs["oni_weakness"].confidence
+        result, details, _ = engine.execute(
+            momotaro,
+            next(
+                action
+                for action in mislead_actions
+                if action.meta["value"] == "火"
+            ),
+            turn=3,
+            day=1,
+        )
+        self.assertIn(result, {"misled", "ignored"})
+        self.assertFalse(details["accurate"])
+        if result == "misled":
+            self.assertLessEqual(
+                dog.beliefs["oni_weakness"].confidence,
+                before,
+            )
+
+        oni_belief = oni.beliefs_about["桃太郎"]
+        oni_belief.base_estimate = 20.0
+        current_affinity = world.relations.stance(
+            "鬼",
+            "桃太郎",
+        )
+        world.relations.change(
+            "鬼",
+            "桃太郎",
+            affinity=0.2 - current_affinity,
+        )
+        result, details, _ = engine.execute(
+            momotaro,
+            Action(
+                "mislead",
+                ("鬼", "桃太郎", 30.0),
+                {
+                    "target": "鬼",
+                    "about": "桃太郎",
+                    "value": 30.0,
+                    "belief_kind": "strength",
+                },
+            ),
+            turn=4,
+            day=1,
+        )
+        self.assertEqual(result, "misled")
+        self.assertFalse(details["accurate"])
+
+    def test_confront_correct_and_misjudged(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+
+        world.facts["culprit"] = {
+            "id": "culprit",
+            "values": ["犬", "鬼"],
+            "act_threshold": 0.6,
+        }
+        world.truth["culprit"] = "鬼"
+        momotaro.beliefs["culprit"] = Belief(
+            value="鬼",
+            confidence=0.8,
+        )
+
+        confront_actions = [
+            action
+            for action, _ in candidates(
+                momotaro,
+                world,
+                SimpleNamespace(day=1, turn=1),
+            )
+            if action.verb == "confront"
+        ]
+        self.assertEqual(len(confront_actions), 1)
+        self.assertEqual(confront_actions[0].args, ("鬼", "culprit"))
+
+        engine = VerbEngine(world, FixedRandom([]))
+        before = world.relations.stance("鬼", "桃太郎")
+        result, details, markers = engine.execute(
+            momotaro,
+            confront_actions[0],
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "exposed")
+        self.assertTrue(details["correct"])
+        self.assertAlmostEqual(
+            world.relations.stance("鬼", "桃太郎"),
+            before - 0.4,
+        )
+        self.assertEqual(
+            [marker["verb"] for marker in markers],
+            ["exposure"],
+        )
+
+        wrong_world, wrong_subjects = load_fixture()
+        wrong_actor = wrong_subjects["桃太郎"]
+        wrong_target = wrong_subjects["犬"]
+        wrong_actor.zone = "道中"
+        wrong_target.zone = "道中"
+        wrong_world.facts["culprit"] = {
+            "id": "culprit",
+            "values": ["犬", "鬼"],
+            "act_threshold": 0.6,
+        }
+        wrong_world.truth["culprit"] = "鬼"
+        wrong_actor.beliefs["culprit"] = Belief(
+            value="犬",
+            confidence=0.8,
+        )
+
+        wrong_engine = VerbEngine(
+            wrong_world,
+            FixedRandom([]),
+        )
+        result, details, markers = wrong_engine.execute(
+            wrong_actor,
+            Action("confront", ("犬", "culprit")),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "misjudged")
+        self.assertFalse(details["correct"])
+        self.assertEqual(wrong_actor.reputation, -0.1)
+        self.assertEqual(
+            wrong_actor.beliefs["culprit"].confidence,
+            0.4,
+        )
+        self.assertEqual(
+            [marker["verb"] for marker in markers],
+            ["misjudged"],
+        )
+
+    def test_prerequisite_permission_and_open_weight_total(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        dog = subjects["犬"]
+        oni = subjects["鬼"]
+        momotaro.zone = "道中"
+        dog.zone = "道中"
+        oni.zone = "道中"
+        momotaro.verbs = {"sabotage", "fight"}
+
+        world.action_graph["edges"] = [
+            {
+                "from": "observe",
+                "to": "sabotage",
+                "requires": "observed",
+            }
+        ]
+        world.action_permissions = {
+            "sabotage": {
+                "hostile": "allow",
+                "neutral": "restricted",
+                "ally": "deny",
+            },
+            "fight": {
+                "hostile": "allow",
+                "neutral": "restricted",
+                "ally": "deny",
+            },
+        }
+
+        world.relations.change(
+            "桃太郎",
+            "犬",
+            affinity=0.8,
+        )
+        dog_belief = momotaro.beliefs_about.setdefault(
+            "犬",
+            BeliefAbout(
+                base_estimate=world.default_strength_prior
+            ),
+        )
+        dog_belief.identity_seen = True
+
+        before_observe = candidates(
+            momotaro,
+            world,
+            SimpleNamespace(day=1, turn=1),
+        )
+        sabotage_targets = {
+            action.meta["target"]
+            for action, _ in before_observe
+            if action.verb == "sabotage"
+        }
+        self.assertNotIn("犬", sabotage_targets)
+        self.assertNotIn("鬼", sabotage_targets)
+
+        direct_result, direct_details, _ = VerbEngine(
+            world,
+            FixedRandom([]),
+        ).execute(
+            momotaro,
+            Action("sabotage", ("犬",)),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(direct_result, "invalid")
+        self.assertEqual(
+            direct_details["reason"],
+            "permission_denied",
+        )
+
+        momotaro.beliefs_about["鬼"].identity_seen = True
+        after_observe = candidates(
+            momotaro,
+            world,
+            SimpleNamespace(day=1, turn=1),
+        )
+        sabotage_targets = {
+            action.meta["target"]
+            for action, _ in after_observe
+            if action.verb == "sabotage"
+        }
+        self.assertIn("鬼", sabotage_targets)
+
+        fight_weights = [
+            weight
+            for action, weight in after_observe
+            if action.verb == "fight"
+        ]
+        base_weight = (
+            0.1 + momotaro.traits["stubbornness"] * 0.4
+        ) * (2.0 * momotaro.traits["temper"])
+        self.assertAlmostEqual(
+            sum(fight_weights),
+            base_weight * (1.0 + world.open_bonus),
+        )
+
+    def test_sabotage_and_both_sacrifice_kinds(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.beliefs_about["鬼"].identity_seen = True
+
+        engine = VerbEngine(world, FixedRandom([]))
+        before_base = oni.base
+        before_stress = oni.stress
+        result, details, _ = engine.execute(
+            momotaro,
+            Action("sabotage", ("鬼",)),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "sabotaged")
+        self.assertEqual(details["base_before"], before_base)
+        self.assertEqual(oni.base, before_base - 6.0)
+        self.assertEqual(oni.stress, before_stress + 1.0)
+
+        oni.remove_item("金棒", 1)
+        momotaro.add_item("金棒", 1)
+        momotaro.verbs = {"sacrifice"}
+        asset_actions = [
+            action
+            for action, _ in candidates(
+                momotaro,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "sacrifice"
+            and action.args == ("asset",)
+        ]
+        self.assertEqual(len(asset_actions), 1)
+        before_base = momotaro.base
+        result, details, _ = engine.execute(
+            momotaro,
+            asset_actions[0],
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "sacrificed")
+        self.assertEqual(details["kind"], "asset")
+        self.assertFalse(momotaro.has_item("金棒"))
+        self.assertEqual(momotaro.base, before_base + 8.0)
+
+        bond_world, bond_subjects = load_fixture()
+        bond_actor = bond_subjects["桃太郎"]
+        dog = bond_subjects["犬"]
+        bond_actor.zone = "道中"
+        dog.zone = "道中"
+        bond_actor.verbs = {"sacrifice"}
+        bond_world.relations.change(
+            "犬",
+            "桃太郎",
+            affinity=0.6,
+        )
+        bond_actions = [
+            action
+            for action, _ in candidates(
+                bond_actor,
+                bond_world,
+                SimpleNamespace(day=1, turn=1),
+            )
+            if action.verb == "sacrifice"
+            and action.args == ("bond",)
+        ]
+        self.assertEqual(len(bond_actions), 1)
+
+        before_affinity = bond_world.relations.stance(
+            "犬",
+            "桃太郎",
+        )
+        bond_actor.stress = 5.0
+        result, details, _ = VerbEngine(
+            bond_world,
+            FixedRandom([]),
+        ).execute(
+            bond_actor,
+            bond_actions[0],
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "sacrificed")
+        self.assertEqual(details["kind"], "bond")
+        self.assertAlmostEqual(
+            bond_world.relations.stance("犬", "桃太郎"),
+            before_affinity - 0.5,
+        )
+        self.assertIn("決意", bond_actor.phase)
+        self.assertEqual(bond_actor.stress, 2.0)
+
+    def test_negotiate_concede_goodwill_and_trade(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        world.relations.change(
+            "鬼",
+            "桃太郎",
+            affinity=1.0,
+        )
+
+        engine = VerbEngine(world, FixedRandom([]))
+        result, details, _ = engine.execute(
+            momotaro,
+            Action("negotiate", ("鬼",)),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "offered")
+        self.assertEqual(details["objective"], "鬼ヶ島の宝物")
+
+        concede_actions = [
+            action
+            for action, _ in candidates(
+                oni,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "concede"
+        ]
+        self.assertEqual(len(concede_actions), 1)
+        self.assertEqual(
+            concede_actions[0].meta["mode"],
+            "goodwill",
+        )
+        result, details, _ = engine.execute(
+            oni,
+            concede_actions[0],
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "conceded")
+        self.assertEqual(details["mode"], "goodwill")
+        self.assertTrue(momotaro.has_item("鬼ヶ島の宝物"))
+        self.assertFalse(oni.has_item("鬼ヶ島の宝物"))
+
+        trade_world, trade_subjects = load_fixture()
+        trade_actor = trade_subjects["桃太郎"]
+        trade_holder = trade_subjects["鬼"]
+        trade_actor.zone = "鬼ヶ島"
+        trade_holder.remove_item("金棒", 1)
+        trade_actor.add_item("金棒", 1)
+
+        trade_engine = VerbEngine(
+            trade_world,
+            FixedRandom([]),
+        )
+        result, _, _ = trade_engine.execute(
+            trade_actor,
+            Action("negotiate", ("鬼",)),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "offered")
+
+        trade_actions = [
+            action
+            for action, _ in candidates(
+                trade_holder,
+                trade_world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "concede"
+        ]
+        self.assertEqual(len(trade_actions), 1)
+        self.assertEqual(
+            trade_actions[0].meta["mode"],
+            "trade",
+        )
+        result, details, _ = trade_engine.execute(
+            trade_holder,
+            trade_actions[0],
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "conceded")
+        self.assertEqual(details["mode"], "trade")
+        self.assertEqual(details["assets"], {"金棒": 1})
+        self.assertTrue(trade_actor.has_item("鬼ヶ島の宝物"))
+        self.assertTrue(trade_holder.has_item("金棒"))
+        self.assertFalse(trade_actor.has_item("金棒"))
+
+    def test_pledge_then_fight_records_betrayal(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        dog = subjects["犬"]
+        momotaro.zone = "道中"
+        dog.zone = "道中"
+        world.relations.change(
+            "桃太郎",
+            "犬",
+            affinity=0.5,
+        )
+        world.relations.change(
+            "犬",
+            "桃太郎",
+            affinity=0.5,
+        )
+
+        engine = VerbEngine(world, FixedRandom([0.0]))
+        result, _, _ = engine.execute(
+            momotaro,
+            Action("pledge", ("犬",)),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "pledged")
+        self.assertTrue(world.is_pledged("桃太郎", "犬"))
+        self.assertIn("誓約:犬", momotaro.phase)
+        self.assertIn("誓約:桃太郎", dog.phase)
+
+        momotaro.base = 200.0
+        result, details, markers = engine.execute(
+            momotaro,
+            Action(
+                "fight",
+                ("犬",),
+                {
+                    "target": "犬",
+                    "betrayal": True,
+                    "subtype": "betray",
+                },
+            ),
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "won")
+        self.assertEqual(details["subtype"], "betray")
+        self.assertEqual(momotaro.reputation, -0.5)
+        betrayal = [
+            marker
+            for marker in markers
+            if marker["verb"] == "betrayal"
+        ]
+        self.assertEqual(len(betrayal), 1)
+        self.assertEqual(
+            betrayal[0]["details"]["subtype"],
+            "betray",
+        )
+        self.assertEqual(
+            world.pledges[
+                world.pledge_key("桃太郎", "犬")
+            ]["broken_by"],
+            "桃太郎",
+        )
+
+    def test_world_rejects_subject_zone_id_collision(self) -> None:
+        world = World.from_yaml(WORLD_PATH)
+        subjects = {
+            subject.id: subject
+            for subject in (
+                Subject.from_yaml(path)
+                for path in sorted(
+                    SUBJECTS_DIR.glob("*.yaml")
+                )
+            )
+        }
+        world.zones["犬"] = {"name": "犬"}
+        with self.assertRaisesRegex(
+            ValueError,
+            "collide with zone names",
+        ):
+            world.bind_subjects(subjects)
+
+    def test_action_graph_override_path(self) -> None:
+        explicit = (
+            ROOT
+            / "templates"
+            / "momotaro"
+            / "action_graph.yaml"
+        )
+        world = World.from_yaml(
+            WORLD_PATH,
+            action_graph_path=explicit,
+        )
+        self.assertTrue(world.action_graph_enabled)
+        self.assertEqual(
+            Path(world.action_graph["_source"]),
+            explicit.resolve(),
+        )
+
+    def test_objective_change_captures_bystander_delta(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        dog = subjects["犬"]
+
+        world.days = 1
+        world.slots = ("朝",)
+        world.daily_events = ()
+        world.daily_event_chance = 0.0
+        world.scheduled_events = ()
+
+        for subject in subjects.values():
+            subject.vitality = "dead"
+        for subject in (momotaro, oni, dog):
+            subject.vitality = "alive"
+            subject.zone = "鬼ヶ島"
+
+        with tempfile.TemporaryDirectory() as temporary:
+            simulation = Simulation(
+                17,
+                world,
+                subjects,
+                Path(temporary),
+            )
+            # Simulation() re-binds the relation matrix from the subjects'
+            # initial relations, so the goodwill stance must be set after
+            # construction (Claude-side fix of the delivered test's ordering).
+            current = simulation.world.relations.stance("鬼", "桃太郎")
+            simulation.world.relations.change(
+                "鬼",
+                "桃太郎",
+                affinity=0.5 - current,
+            )
+            simulation.world.offers[("桃太郎", "鬼")] = {
+                "turn": 1,
+                "objective": "鬼ヶ島の宝物",
+                "assets": {},
+            }
+
+            def fixed_action(
+                subject: Subject,
+            ) -> tuple[Action, float | None]:
+                if subject.id == "鬼":
+                    return (
+                        Action(
+                            "concede",
+                            ("桃太郎",),
+                            {
+                                "target": "桃太郎",
+                                "objective": "鬼ヶ島の宝物",
+                                "mode": "goodwill",
+                            },
+                        ),
+                        1.0,
+                    )
+                return Action("rest"), 1.0
+
+            simulation.choose_action = fixed_action
+            path = simulation.run()
+            rows = read_rows(path)
+
+        concede = next(
+            row
+            for row in rows
+            if row["kind"] == "decision"
+            and row["subject"] == "鬼"
+            and row["verb"] == "concede"
+        )
+        self.assertEqual(concede["result"], "conceded")
+        self.assertEqual(
+            concede["delta"]["targets"]["犬"]["objective"],
+            {"鬼ヶ島の宝物": "桃太郎"},
+        )
 
 
 if __name__ == "__main__":

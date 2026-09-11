@@ -10,6 +10,7 @@ from typing import Any, TYPE_CHECKING
 import yaml
 
 from engine.predicate import (
+    PREDICATE_NAMES,
     Namespace,
     Predicate,
     compile_predicate,
@@ -17,29 +18,72 @@ from engine.predicate import (
 )
 from engine.relations import Relations
 
+
+def _load_action_graph(
+    definition: dict[str, Any],
+    source: Path,
+    action_graph_path: str | Path | None = None,
+) -> tuple[dict[str, Any], bool]:
+    raw_path: str | Path | None = action_graph_path
+    if raw_path is None:
+        raw_gapengine = definition.get("gapengine")
+        if raw_gapengine is None:
+            return {"nodes": [], "edges": []}, False
+        if not isinstance(raw_gapengine, dict):
+            raise ValueError("world.gapengine must be a mapping")
+        raw_path = raw_gapengine.get("action_graph")
+
+    if raw_path is None:
+        return {"nodes": [], "edges": []}, False
+    if not isinstance(raw_path, (str, Path)) or not str(raw_path):
+        raise ValueError(
+            "world.gapengine.action_graph must be a path"
+        )
+
+    configured = Path(raw_path)
+    project_root = Path(__file__).resolve().parents[1]
+    if configured.is_absolute():
+        candidates = [configured]
+    else:
+        candidates = [
+            source.parent / configured,
+            project_root / configured,
+        ]
+
+    checked: list[Path] = []
+    graph_path: Path | None = None
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in checked:
+            continue
+        checked.append(resolved)
+        if resolved.is_file():
+            graph_path = resolved
+            break
+
+    if graph_path is None:
+        attempted = ", ".join(str(path) for path in checked)
+        raise ValueError(
+            f"Action graph does not exist; tried: {attempted}"
+        )
+
+    raw_graph = yaml.safe_load(
+        graph_path.read_text(encoding="utf-8")
+    )
+    if not isinstance(raw_graph, dict):
+        raise ValueError(
+            f"Action graph must contain a mapping: {graph_path}"
+        )
+    graph = dict(raw_graph)
+    graph["nodes"] = list(graph.get("nodes", []) or [])
+    graph["edges"] = list(graph.get("edges", []) or [])
+    graph["_source"] = str(graph_path)
+    return graph, True
+
 if TYPE_CHECKING:
     from engine.subject import Subject
 
 
-_PREDICATE_NAMES = {
-    "stance",
-    "bonds",
-    "awareness",
-    "holds",
-    "holder",
-    "zone",
-    "present",
-    "vitality",
-    "known",
-    "knows_modifier",
-    "strength",
-    "believed_strength",
-    "hostile_present",
-    "turn",
-    "day",
-    "phase",
-    "self",
-}
 
 
 @dataclass(frozen=True)
@@ -61,7 +105,13 @@ class PathInfo:
 class World:
     """Validated immutable definitions plus simulation-owned shared state."""
 
-    def __init__(self, definition: dict[str, Any], source: Path) -> None:
+    def __init__(
+        self,
+        definition: dict[str, Any],
+        source: Path,
+        *,
+        action_graph_path: str | Path | None = None,
+    ) -> None:
         self.source = source
         self.name = str(definition["name"])
         time = definition.get("time", {})
@@ -79,7 +129,10 @@ class World:
             raise ValueError("World zone names must be unique")
         self.zones = {
             str(zone["name"]): dict(zone)
-            for zone in sorted(raw_zones, key=lambda value: str(value["name"]))
+            for zone in sorted(
+                raw_zones,
+                key=lambda value: str(value["name"]),
+            )
         }
 
         self.routes: dict[str, tuple[Route, ...]] = {}
@@ -91,31 +144,44 @@ class World:
                 destination = str(raw_route["to"])
                 if destination not in self.zones:
                     raise ValueError(
-                        f"Unknown route destination: {origin}->{destination}"
+                        f"Unknown route destination: "
+                        f"{origin}->{destination}"
                     )
                 cost = float(raw_route.get("cost", 1.0))
                 if cost <= 0:
                     raise ValueError(
-                        f"Route cost must be positive: {origin}->{destination}"
+                        f"Route cost must be positive: "
+                        f"{origin}->{destination}"
                     )
                 routes.append(
                     Route(
                         origin=str(origin),
                         destination=destination,
                         cost=cost,
-                        requires_item=raw_route.get("requires_item"),
+                        requires_item=raw_route.get(
+                            "requires_item"
+                        ),
                     )
                 )
             self.routes[str(origin)] = tuple(
-                sorted(routes, key=lambda route: route.destination)
+                sorted(
+                    routes,
+                    key=lambda route: route.destination,
+                )
             )
 
         self.movement = {
             "action_weight": float(
-                definition.get("movement", {}).get("action_weight", 1.0)
+                definition.get("movement", {}).get(
+                    "action_weight",
+                    1.0,
+                )
             ),
             "hop_decay": float(
-                definition.get("movement", {}).get("hop_decay", 1.0)
+                definition.get("movement", {}).get(
+                    "hop_decay",
+                    1.0,
+                )
             ),
             "destination_weights": {
                 str(key): float(value)
@@ -128,36 +194,115 @@ class World:
         }
         self.stamina = {
             "default_max": float(
-                definition.get("stamina", {}).get("default_max", 10.0)
+                definition.get("stamina", {}).get(
+                    "default_max",
+                    10.0,
+                )
             ),
             "default_recover_per_slot": float(
-                definition.get("stamina", {})
-                .get("default_recover_per_slot", 1.0)
+                definition.get("stamina", {}).get(
+                    "default_recover_per_slot",
+                    1.0,
+                )
             ),
             "exhausted_ratio": float(
-                definition.get("stamina", {}).get("exhausted_ratio", 0.2)
+                definition.get("stamina", {}).get(
+                    "exhausted_ratio",
+                    0.2,
+                )
             ),
         }
         self.companionship = {
             "threshold": float(
-                definition.get("companionship", {}).get("threshold", 0.6)
+                definition.get("companionship", {}).get(
+                    "threshold",
+                    0.6,
+                )
             ),
             "weight": float(
-                definition.get("companionship", {}).get("weight", 1.0)
+                definition.get("companionship", {}).get(
+                    "weight",
+                    1.0,
+                )
             ),
         }
-        self.permission_restricted_weight = float(
-            definition.get("permission", {}).get(
-                "restricted_weight",
-                0.15,
+
+        self.action_graph, self.action_graph_enabled = (
+            _load_action_graph(
+                definition,
+                source,
+                action_graph_path,
             )
         )
+        raw_permission = (
+            self.action_graph.get("permission", {}) or {}
+        )
+        if not isinstance(raw_permission, dict):
+            raise ValueError(
+                "action_graph.permission must be a mapping"
+            )
+        self.action_permissions = {
+            str(verb): {
+                str(role): str(level)
+                for role, level in sorted((roles or {}).items())
+            }
+            for verb, roles in sorted(raw_permission.items())
+            if isinstance(roles, dict)
+        }
+        self.permission_restricted_weight = float(
+            self.action_graph.get(
+                "restricted_weight",
+                definition.get("permission", {}).get(
+                    "restricted_weight",
+                    0.15,
+                ),
+            )
+        )
+        if not 0.0 <= self.permission_restricted_weight <= 1.0:
+            raise ValueError(
+                "restricted_weight must be within [0, 1]"
+            )
+
+        raw_phase1 = definition.get("phase1", {}) or {}
+        if not isinstance(raw_phase1, dict):
+            raise ValueError("world.phase1 must be a mapping")
+        self.open_bonus = float(
+            raw_phase1.get("open_bonus", 0.5)
+        )
+        if self.open_bonus < 0.0:
+            raise ValueError(
+                "phase1.open_bonus must not be negative"
+            )
+        self.negotiate_threshold = float(
+            raw_phase1.get("negotiate_threshold", 0.3)
+        )
+        raw_rewards = (
+            raw_phase1.get("sacrifice_rewards", {}) or {}
+        )
+        if not isinstance(raw_rewards, dict):
+            raise ValueError(
+                "phase1.sacrifice_rewards must be a mapping"
+            )
+        self.sacrifice_rewards = {
+            "asset_base": float(
+                raw_rewards.get("asset_base", 8.0)
+            ),
+            "bond_stress": float(
+                raw_rewards.get("bond_stress", -3.0)
+            ),
+            "bond_phase": str(
+                raw_rewards.get("bond_phase", "決意")
+            ),
+        }
+
         self.awareness_per_encounter = float(
             definition.get("awareness_per_encounter", 0.0)
         )
         self.pulls = {
             str(key): float(value)
-            for key, value in sorted((definition.get("pulls", {}) or {}).items())
+            for key, value in sorted(
+                (definition.get("pulls", {}) or {}).items()
+            )
         }
 
         raw_items = definition.get("items", [])
@@ -166,7 +311,10 @@ class World:
             raise ValueError("World item names must be unique")
         self.items = {
             str(item["name"]): dict(item)
-            for item in sorted(raw_items, key=lambda value: str(value["name"]))
+            for item in sorted(
+                raw_items,
+                key=lambda value: str(value["name"]),
+            )
         }
         self.recipes = {
             name: dict(item["made_from"])
@@ -180,49 +328,91 @@ class World:
             raise ValueError("World fact ids must be unique")
         self.facts = {
             str(fact["id"]): dict(fact)
-            for fact in sorted(raw_facts, key=lambda value: str(value["id"]))
+            for fact in sorted(
+                raw_facts,
+                key=lambda value: str(value["id"]),
+            )
+        }
+
+        raw_truth = definition.get("truth", {}) or {}
+        if not isinstance(raw_truth, dict):
+            raise ValueError("world.truth must be a mapping")
+        self.truth = {
+            str(fact_id): str(value)
+            for fact_id, value in sorted(raw_truth.items())
         }
 
         self.default_strength_prior = float(
             definition.get("default_strength_prior", 50.0)
         )
         self.contest = {
-            "tau": float(definition.get("contest", {}).get("tau", 10.0)),
-            "epsilon": float(definition.get("contest", {}).get("epsilon", 5.0)),
+            "tau": float(
+                definition.get("contest", {}).get(
+                    "tau",
+                    10.0,
+                )
+            ),
+            "epsilon": float(
+                definition.get("contest", {}).get(
+                    "epsilon",
+                    5.0,
+                )
+            ),
         }
         if self.contest["tau"] <= 0:
             raise ValueError("contest.tau must be positive")
 
         self.vitality = {
             "revive_after": int(
-                definition.get("vitality", {}).get("revive_after", 4)
+                definition.get("vitality", {}).get(
+                    "revive_after",
+                    4,
+                )
             ),
             "ally_speedup": int(
-                definition.get("vitality", {}).get("ally_speedup", 1)
+                definition.get("vitality", {}).get(
+                    "ally_speedup",
+                    1,
+                )
             ),
             "revive_base_penalty": float(
-                definition.get("vitality", {})
-                .get("revive_base_penalty", 2.0)
+                definition.get("vitality", {}).get(
+                    "revive_base_penalty",
+                    2.0,
+                )
             ),
             "lethal_exempt": {
                 str(value)
-                for value in definition.get("vitality", {}).get(
-                    "lethal_exempt", []
-                )
+                for value in definition.get(
+                    "vitality",
+                    {},
+                ).get("lethal_exempt", [])
             },
         }
         self.grief = {
-            "stress": float(definition.get("grief", {}).get("stress", 1.0)),
+            "stress": float(
+                definition.get("grief", {}).get(
+                    "stress",
+                    1.0,
+                )
+            ),
             "affinity_to_killer": float(
-                definition.get("grief", {}).get("affinity_to_killer", -0.6)
+                definition.get("grief", {}).get(
+                    "affinity_to_killer",
+                    -0.6,
+                )
             ),
         }
 
         self.thresholds: list[dict[str, Any]] = []
-        for raw_threshold in definition.get("thresholds", []) or []:
+        for raw_threshold in (
+            definition.get("thresholds", []) or []
+        ):
             threshold = dict(raw_threshold)
             threshold["id"] = str(threshold["id"])
-            threshold["predicate_source"] = str(threshold["when"])
+            threshold["predicate_source"] = str(
+                threshold["when"]
+            )
             threshold["predicate"] = compile_predicate_syntax(
                 threshold["predicate_source"]
             )
@@ -239,8 +429,13 @@ class World:
                     set(source_when) != {"agent", "goal"}
                     or source_when["goal"] != "attained"
                 ):
-                    raise ValueError(f"Unsupported ending sugar: {source_when!r}")
-                ending["sugar_agent"] = str(source_when["agent"])
+                    raise ValueError(
+                        f"Unsupported ending sugar: "
+                        f"{source_when!r}"
+                    )
+                ending["sugar_agent"] = str(
+                    source_when["agent"]
+                )
                 ending["predicate_source"] = None
                 ending["predicate"] = None
             else:
@@ -254,11 +449,19 @@ class World:
         if self.target_ending not in {
             ending["id"] for ending in self.endings
         }:
-            raise ValueError(f"Unknown target ending: {self.target_ending}")
+            raise ValueError(
+                f"Unknown target ending: {self.target_ending}"
+            )
 
         self.scheduled_events = tuple(
             sorted(
-                (dict(event) for event in definition.get("scheduled_events", [])),
+                (
+                    dict(event)
+                    for event in definition.get(
+                        "scheduled_events",
+                        [],
+                    )
+                ),
                 key=lambda event: (
                     int(event.get("day", 0)),
                     str(event.get("slot", "")),
@@ -268,10 +471,18 @@ class World:
         )
         raw_daily = definition.get("daily_events")
         if raw_daily:
-            self.daily_event_chance = float(raw_daily.get("chance", 0.0))
+            self.daily_event_chance = float(
+                raw_daily.get("chance", 0.0)
+            )
             self.daily_events = tuple(
                 sorted(
-                    (dict(event) for event in raw_daily.get("events", [])),
+                    (
+                        dict(event)
+                        for event in raw_daily.get(
+                            "events",
+                            [],
+                        )
+                    ),
                     key=lambda event: str(event["id"]),
                 )
             )
@@ -284,18 +495,39 @@ class World:
         self.objectives: dict[str, dict[str, Any]] = {}
         self.delivered: dict[str, str] = {}
         self.pending_effects: list[dict[str, Any]] = []
+        self.offers: dict[
+            tuple[str, str],
+            dict[str, Any],
+        ] = {}
+        self.pledges: dict[
+            tuple[str, str],
+            dict[str, Any],
+        ] = {}
 
         self._validate_item_references()
         self._validate_recipe_cycles()
         self._validate_fact_sources()
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> World:
+    def from_yaml(
+        cls,
+        path: str | Path,
+        *,
+        action_graph_path: str | Path | None = None,
+    ) -> World:
         source = Path(path)
-        raw = yaml.safe_load(source.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(
+            source.read_text(encoding="utf-8")
+        )
         if not isinstance(raw, dict):
-            raise ValueError(f"World YAML must contain a mapping: {source}")
-        return cls(raw, source)
+            raise ValueError(
+                f"World YAML must contain a mapping: {source}"
+            )
+        return cls(
+            raw,
+            source,
+            action_graph_path=action_graph_path,
+        )
 
     def _validate_item_references(self) -> None:
         for origin in sorted(self.routes):
@@ -352,14 +584,126 @@ class World:
 
     def _validate_fact_sources(self) -> None:
         for fact, definition in sorted(self.facts.items()):
+            raw_values = definition.get("values")
+            if raw_values is not None:
+                if (
+                    not isinstance(raw_values, list)
+                    or not raw_values
+                    or len(raw_values)
+                    != len({str(value) for value in raw_values})
+                ):
+                    raise ValueError(
+                        f"Valued fact requires unique values: {fact}"
+                    )
+                definition["values"] = [
+                    str(value) for value in raw_values
+                ]
+                if definition.get("sources"):
+                    raise ValueError(
+                        f"Valued fact cannot have direct sources: {fact}"
+                    )
+
             for source in definition.get("sources", []) or []:
                 zone = source.get("zone")
                 if zone is not None and zone not in self.zones:
-                    raise ValueError(f"Unknown fact source zone: {fact}:{zone}")
+                    raise ValueError(
+                        f"Unknown fact source zone: {fact}:{zone}"
+                    )
+
+            for relation in ("implies", "refutes"):
+                raw_update = definition.get(relation)
+                if raw_update is None:
+                    continue
+                if not isinstance(raw_update, dict):
+                    raise ValueError(
+                        f"Fact {relation} must be a mapping: {fact}"
+                    )
+                target_fact = str(raw_update.get("fact", ""))
+                target = self.facts.get(target_fact)
+                if target is None:
+                    raise ValueError(
+                        f"Unknown {relation} fact: "
+                        f"{fact}:{target_fact}"
+                    )
+                allowed = {
+                    str(value)
+                    for value in target.get("values", []) or []
+                }
+                if not allowed:
+                    raise ValueError(
+                        f"{relation} target is not a valued fact: "
+                        f"{fact}:{target_fact}"
+                    )
+                value = str(raw_update.get("value", ""))
+                if value not in allowed:
+                    raise ValueError(
+                        f"Unknown {relation} value: "
+                        f"{fact}:{target_fact}:{value}"
+                    )
+                confidence = float(
+                    raw_update.get("confidence", 0.5)
+                )
+                if not 0.0 <= confidence <= 1.0:
+                    raise ValueError(
+                        f"{relation} confidence must be within [0, 1]: "
+                        f"{fact}"
+                    )
+
+        for fact_id, value in sorted(self.truth.items()):
+            definition = self.facts.get(fact_id)
+            if definition is None:
+                raise ValueError(f"Unknown truth fact: {fact_id}")
+            allowed = {
+                str(candidate)
+                for candidate in definition.get("values", []) or []
+            }
+            if value not in allowed:
+                raise ValueError(
+                    f"Truth is not an allowed fact value: "
+                    f"{fact_id}:{value}"
+                )
+
+        allowed_requirements = {
+            "known_modifier",
+            "observed",
+            "pledged",
+        }
+        for raw_edge in self.action_graph.get("edges", []) or []:
+            if not isinstance(raw_edge, dict):
+                raise ValueError("Action graph edge must be a mapping")
+            source = raw_edge.get("from")
+            destination = raw_edge.get("to")
+            requirement = raw_edge.get("requires")
+            if not isinstance(source, str) or not source:
+                raise ValueError("Action graph edge requires from")
+            if not isinstance(destination, str) or not destination:
+                raise ValueError("Action graph edge requires to")
+            if requirement not in allowed_requirements:
+                raise ValueError(
+                    f"Unknown action prerequisite: {requirement}"
+                )
+
+        allowed_levels = {"allow", "restricted", "deny"}
+        allowed_roles = {"hostile", "neutral", "ally", "self"}
+        for verb, roles in sorted(self.action_permissions.items()):
+            unknown_roles = set(roles) - allowed_roles
+            if unknown_roles:
+                raise ValueError(
+                    f"Unknown permission roles for {verb}: "
+                    f"{sorted(unknown_roles)}"
+                )
+            unknown_levels = set(roles.values()) - allowed_levels
+            if unknown_levels:
+                raise ValueError(
+                    f"Unknown permission levels for {verb}: "
+                    f"{sorted(unknown_levels)}"
+                )
 
     def bind_subjects(self, subjects: dict[str, Subject]) -> None:
         self.delivered.clear()
         self.pending_effects.clear()
+        self.offers.clear()
+        self.pledges.clear()
 
         if set(subjects) != {subject.id for subject in subjects.values()}:
             raise ValueError("Subject dictionary keys must match Subject.id")
@@ -370,6 +714,18 @@ class World:
             raise ValueError(
                 "Subject ids collide with item names: "
                 f"{sorted(item_collisions)}"
+            )
+        fact_collisions = subject_ids & set(self.facts)
+        if fact_collisions:
+            raise ValueError(
+                "Subject ids collide with fact ids: "
+                f"{sorted(fact_collisions)}"
+            )
+        zone_collisions = subject_ids & set(self.zones)
+        if zone_collisions:
+            raise ValueError(
+                "Subject ids collide with zone names: "
+                f"{sorted(zone_collisions)}"
             )
         fact_collisions = subject_ids & set(self.facts)
         if fact_collisions:
@@ -416,6 +772,37 @@ class World:
                 if fact not in self.facts:
                     raise ValueError(
                         f"Unknown subject fact: {subject.id}:{fact}"
+                    )
+                if self.facts[fact].get("values") is not None:
+                    raise ValueError(
+                        f"Valued fact cannot be boolean knowledge: "
+                        f"{subject.id}:{fact}"
+                    )
+            for fact_id, belief in sorted(subject.beliefs.items()):
+                definition = self.facts.get(fact_id)
+                if definition is None:
+                    raise ValueError(
+                        f"Unknown subject belief: "
+                        f"{subject.id}:{fact_id}"
+                    )
+                allowed = {
+                    str(value)
+                    for value in definition.get("values", []) or []
+                }
+                if not allowed:
+                    raise ValueError(
+                        f"Subject belief is not a valued fact: "
+                        f"{subject.id}:{fact_id}"
+                    )
+                if belief.value not in allowed:
+                    raise ValueError(
+                        f"Unknown subject belief value: "
+                        f"{subject.id}:{fact_id}:{belief.value}"
+                    )
+                if not 0.0 <= belief.confidence <= 1.0:
+                    raise ValueError(
+                        f"Subject belief confidence must be within "
+                        f"[0, 1]: {subject.id}:{fact_id}"
                     )
             if (
                 subject.goal.target is not None
@@ -468,7 +855,7 @@ class World:
         self.objectives = objectives
 
         predicate_names = (
-            set(_PREDICATE_NAMES)
+            set(PREDICATE_NAMES)
             | set(self.subjects)
             | set(self.items)
             | set(self.facts)
@@ -520,6 +907,92 @@ class World:
                 source,
                 predicate_names,
             )
+
+    def target_role(
+        self,
+        actor: Subject,
+        target: Subject,
+    ) -> str:
+        if actor.id == target.id:
+            return "self"
+        if (
+            self.relations.stance(actor.id, target.id)
+            >= self.companionship["threshold"]
+        ):
+            return "ally"
+        if (
+            self.relations.stance(actor.id, target.id) < -0.2
+            or target.id in actor.goal.obstacles
+        ):
+            return "hostile"
+        return "neutral"
+
+    def permission(
+        self,
+        verb: str,
+        role: str,
+    ) -> float:
+        if not self.action_graph_enabled:
+            return 1.0
+        level = self.action_permissions.get(verb, {}).get(
+            role,
+            "allow",
+        )
+        if level == "allow":
+            return 1.0
+        if level == "restricted":
+            return self.permission_restricted_weight
+        if level == "deny":
+            return 0.0
+        raise ValueError(f"Unknown permission level: {verb}:{role}")
+
+    @staticmethod
+    def pledge_key(first: str, second: str) -> tuple[str, str]:
+        return tuple(sorted((first, second)))
+
+    def is_pledged(self, first: str, second: str) -> bool:
+        return self.pledge_key(first, second) in self.pledges
+
+    def prerequisite_ok(
+        self,
+        verb: str,
+        actor: Subject,
+        target: Subject | None,
+        *,
+        source: str | None = None,
+    ) -> bool:
+        if not self.action_graph_enabled:
+            return True
+
+        relevant = [
+            edge
+            for edge in self.action_graph.get("edges", []) or []
+            if str(edge.get("to", "")) == verb
+        ]
+        for edge in relevant:
+            requirement = str(edge["requires"])
+            if target is None:
+                return False
+            if requirement == "known_modifier":
+                belief = actor.beliefs_about.get(target.id)
+                if (
+                    source is None
+                    or belief is None
+                    or source not in belief.known_modifiers
+                ):
+                    return False
+            elif requirement == "observed":
+                belief = actor.beliefs_about.get(target.id)
+                if belief is None or not (
+                    belief.identity_seen or belief.known_modifiers
+                ):
+                    return False
+            elif requirement == "pledged":
+                if not self.is_pledged(actor.id, target.id):
+                    return False
+            else:
+                return False
+        return True
 
     def holder(self, item: str) -> str | None:
         if item in self.delivered:
