@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -36,6 +37,38 @@ class GenerationResult:
 
 class GenerationError(RuntimeError):
     """One recoverable LLM generation failure."""
+
+
+def _validate_response(text: str) -> str:
+    """Reject empty output and short clarification requests."""
+
+    cleaned = text.strip()
+    if not cleaned:
+        raise GenerationError("clarification_request")
+
+    lines = [
+        line.strip()
+        for line in cleaned.splitlines()
+        if line.strip()
+    ]
+    clarification_phrases = (
+        "教えてください",
+        "確認させてください",
+    )
+    looks_like_clarification = (
+        1 <= len(lines) <= 3
+        and (
+            any(
+                phrase in cleaned
+                for phrase in clarification_phrases
+            )
+            or cleaned.endswith(("?", "？"))
+        )
+    )
+    if looks_like_clarification:
+        raise GenerationError("clarification_request")
+
+    return cleaned
 
 
 def _as_mapping(value: Any) -> Mapping[str, Any]:
@@ -246,6 +279,9 @@ def build_synopsis_prompt(
     scene_text = "\n".join(_scene_lines(scenes, detailed=False))
 
     return (
+        "あなたは物語のあらすじ作家です。質問や確認を返さず、"
+        "以下の情報だけから指定の文字数であらすじ本文のみを"
+        "出力してください。\n\n"
         "# WorldBloom あらすじ作成依頼\n\n"
         "以下はシミュレーションから抽出した物語上の事実です。"
         "記号的な設定名を列挙せず、出来事の因果が伝わる自然な日本語に"
@@ -263,8 +299,10 @@ def build_synopsis_prompt(
         "- 200〜300字の日本語のあらすじを一段落で書く。\n"
         "- 固定された結末を明かす。\n"
         "- 導入の説明より、道中の転機、選択、逆転を中心にする。\n"
-        "- ログにない人物、勝敗、所持品、因果を追加しない。\n"
-        "- 見出し、箇条書き、前置きは出力しない。\n"
+        "- ログにない人物、勝敗、所持品、因果を追加しない。\n\n"
+        "## 出力形式\n"
+        "あらすじ本文のみを出力する。見出し、箇条書き、前置き、"
+        "質問、確認は出力しない。\n"
     )
 
 
@@ -287,6 +325,9 @@ def build_narration_prompt(
     )
 
     return (
+        "あなたは物語の本文作家です。質問や確認を返さず、"
+        "以下の情報だけから指定の文字数で物語本文のみを"
+        "出力してください。\n\n"
         "# WorldBloom 本文作成依頼\n\n"
         "以下は人間が選定したシミュレーション結果の事実骨格です。"
         "事実の順序と結果を保ちながら、因果、情景、会話、心理を補って"
@@ -306,9 +347,10 @@ def build_narration_prompt(
         "- 露見では、隠していた側と知った側の心理変化を描く。\n"
         "- 裏切りでは、先行する関係や誓いを踏まえて心理を描く。\n"
         "- 状態値を数値のまま本文に書かず、行動や情景へ翻訳する。\n"
-        "- ログにない主要事件、勝敗、所持者交代、結末を追加しない。\n"
-        "- タイトルを1行目にMarkdown見出しで書き、その後に本文を書く。\n"
-        "- 制作上の説明や前置きは出力しない。\n"
+        "- ログにない主要事件、勝敗、所持者交代、結末を追加しない。\n\n"
+        "## 出力形式\n"
+        "物語本文のみを出力する。タイトル、見出し、制作上の説明、"
+        "前置き、質問、確認は出力しない。\n"
     )
 
 
@@ -355,12 +397,29 @@ def _windows_kwargs() -> dict[str, Any]:
 
 def _run_cli(
     command: Sequence[str],
+    prompt: str,
     *,
     timeout: int,
 ) -> str:
+    project_root = Path(__file__).resolve().parents[1]
+    temporary_path = Path(
+        tempfile.mkdtemp(prefix="worldbloom-llm-")
+    ).resolve()
+
+    if (
+        temporary_path == project_root
+        or project_root in temporary_path.parents
+    ):
+        shutil.rmtree(temporary_path, ignore_errors=True)
+        raise GenerationError(
+            "temporary CLI directory is inside the project"
+        )
+
     try:
         result = subprocess.run(
             list(command),
+            input=prompt,
+            cwd=temporary_path,
             capture_output=True,
             encoding="utf-8",
             errors="replace",
@@ -369,15 +428,15 @@ def _run_cli(
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise GenerationError(str(error)) from error
+    finally:
+        shutil.rmtree(temporary_path, ignore_errors=True)
+
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()
         raise GenerationError(
             detail[-1000:] or f"CLI exited with {result.returncode}"
         )
-    text = result.stdout.strip()
-    if not text:
-        raise GenerationError("CLI returned no text")
-    return text
+    return result.stdout
 
 
 def _post_json(
@@ -453,13 +512,20 @@ def generate_text(
         command = shutil.which(executable)
         if command is None:
             raise GenerationError("claude CLI was not found")
-        arguments = [command, "-p", prompt]
+
+        arguments = [command, "-p"]
         model = str(config.get("model", "")).strip()
         if model:
             arguments.extend(["--model", model])
+
+        text = _run_cli(
+            arguments,
+            prompt,
+            timeout=timeout,
+        )
         return GenerationResult(
             status="ok",
-            text=_run_cli(arguments, timeout=timeout),
+            text=_validate_response(text),
         )
 
     if backend == "codex-cli":
@@ -467,14 +533,27 @@ def generate_text(
         command = shutil.which(executable)
         if command is None:
             raise GenerationError("codex CLI was not found")
-        arguments = [command, "exec"]
+
+        arguments = [
+            command,
+            "exec",
+            "--skip-git-repo-check",
+            "-s",
+            "read-only",
+        ]
         model = str(config.get("model", "")).strip()
         if model:
             arguments.extend(["-m", model])
-        arguments.append(prompt)
+        arguments.append("-")
+
+        text = _run_cli(
+            arguments,
+            prompt,
+            timeout=timeout,
+        )
         return GenerationResult(
             status="ok",
-            text=_run_cli(arguments, timeout=timeout),
+            text=_validate_response(text),
         )
 
     if backend == "anthropic":
@@ -505,10 +584,10 @@ def generate_text(
             if isinstance(part, Mapping)
             and part.get("type") == "text"
         ]
-        text = "".join(parts).strip()
-        if not text:
-            raise GenerationError("Anthropic returned no text")
-        return GenerationResult(status="ok", text=text)
+        return GenerationResult(
+            status="ok",
+            text=_validate_response("".join(parts)),
+        )
 
     model = str(config.get("model", "gpt-5.6"))
     response = _post_json(
@@ -532,7 +611,7 @@ def generate_text(
                 and content.get("type") == "output_text"
             ):
                 parts.append(str(content.get("text", "")))
-    text = "".join(parts).strip()
-    if not text:
-        raise GenerationError("OpenAI returned no text")
-    return GenerationResult(status="ok", text=text)
+    return GenerationResult(
+        status="ok",
+        text=_validate_response("".join(parts)),
+    )
