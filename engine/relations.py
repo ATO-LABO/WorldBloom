@@ -107,7 +107,10 @@ class Relations:
             else None
         )
         affinity_upper = (
-            min(1.0, float(cap))
+            max(
+                current["affinity"],
+                min(1.0, float(cap)),
+            )
             if cap is not None
             else 1.0
         )

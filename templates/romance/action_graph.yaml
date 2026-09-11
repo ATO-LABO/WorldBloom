@@ -1,7 +1,7 @@
 genre: romance
 
 nodes:
-  - {verb: investigate, category: I, subtype: understand_history, risk: neutral, sign: 0, when: gather, genres: [romance]}
+  - {verb: investigate, category: I, subtype: understand_history, risk: neutral, sign: 0, genres: [romance]}
   - {verb: neutralize, category: I, subtype: lower_defense, risk: risky, sign: 1, genres: [romance]}
 
   - {verb: observe, category: II, subtype: perceive_true_feelings, risk: neutral, sign: 0, genres: [romance]}
@@ -16,7 +16,7 @@ nodes:
   - {verb: grand_gesture, category: III, subtype: grand_gesture, risk: risky, sign: 1, genres: [romance]}
 
   - {verb: confront, category: IV, subtype: expose_rumor, risk: risky, sign: -1, genres: [romance]}
-  - {verb: move, category: IV, subtype: seek_encounter, risk: neutral, sign: 0, genres: [romance]}
+  - {verb: move, category: null, subtype: seek_encounter, risk: neutral, sign: 0, genres: [romance]}
   - {verb: rest, category: null, subtype: reflect, risk: neutral, sign: 0, genres: [romance]}
 
   - {verb: fight, category: I, subtype: physical_violence, risk: risky, sign: -1, genres: [adventure, detective]}
@@ -25,7 +25,6 @@ nodes:
 edges:
   - {from: observe, to: neutralize, requires: known_modifier}
   - {from: observe, to: confront, requires: observed}
-  - {from: pledge, to: betray, requires: pledged}
 
 permission:
   fight: {hostile: deny, neutral: deny, ally: deny}

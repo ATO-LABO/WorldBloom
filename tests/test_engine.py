@@ -2998,6 +2998,116 @@ class Phase4EngineTests(unittest.TestCase):
             resolver("桃太郎", "鬼")
         )
 
+    def test_affinity_above_cap_can_decrease_without_snapback(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+
+        world.relations.change(
+            actor.id,
+            "鬼",
+            affinity=1.3,
+        )
+        self.assertEqual(
+            world.relations.stance(actor.id, "鬼"),
+            0.8,
+        )
+
+        actor.modifiers.append(
+            Modifier(
+                id="test:late-affinity-cap",
+                source="警戒",
+                value=0.0,
+                kind="test",
+                affinity_cap=0.2,
+                affinity_cap_targets=("鬼",),
+            )
+        )
+
+        delta = world.relations.change(
+            actor.id,
+            "鬼",
+            affinity=-0.1,
+        )
+
+        self.assertEqual(delta["affinity"], -0.1)
+        self.assertEqual(
+            world.relations.stance(actor.id, "鬼"),
+            0.7,
+        )
+
+    def test_multiple_affinity_caps_use_smallest_value(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        actor.modifiers.extend(
+            [
+                Modifier(
+                    id="test:cap-high",
+                    source="迷い",
+                    value=0.0,
+                    kind="test",
+                    affinity_cap=0.5,
+                    affinity_cap_targets=("鬼",),
+                ),
+                Modifier(
+                    id="test:cap-low",
+                    source="警戒",
+                    value=0.0,
+                    kind="test",
+                    affinity_cap=0.3,
+                    affinity_cap_targets=("鬼",),
+                ),
+            ]
+        )
+
+        world.relations.change(
+            actor.id,
+            "鬼",
+            affinity=1.0,
+        )
+
+        self.assertEqual(
+            world.relations.stance(actor.id, "鬼"),
+            0.3,
+        )
+
+    def test_affinity_cap_does_not_limit_lower_bound_or_awareness(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        actor.modifiers.append(
+            Modifier(
+                id="test:upper-only-cap",
+                source="警戒",
+                value=0.0,
+                kind="test",
+                affinity_cap=0.2,
+                affinity_cap_targets=("鬼",),
+            )
+        )
+
+        delta = world.relations.change(
+            actor.id,
+            "鬼",
+            affinity=-1.0,
+            awareness=1.0,
+        )
+
+        self.assertEqual(
+            world.relations.stance(actor.id, "鬼"),
+            -1.0,
+        )
+        self.assertEqual(
+            world.relations.awareness(actor.id, "鬼"),
+            1.0,
+        )
+        self.assertEqual(delta["affinity"], -0.5)
+        self.assertEqual(delta["awareness"], 0.4)
+
     def _load_subjects(self) -> dict[str, Subject]:
         return {
             subject.id: subject

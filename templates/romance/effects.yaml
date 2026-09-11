@@ -20,9 +20,9 @@
       source: 噂
   payoff:
     condition: "present(C)"
-    description: Cの優位を支えた噂の誇張が露見し、表面的な優位が失われる
+    description: Cの優位を支えた噂の誇張が露見し、Bを縛っていた噂の影響が消える
     effect:
       neutralize:
-        target: target
+        target: B
         source: 噂
     mode: auto
