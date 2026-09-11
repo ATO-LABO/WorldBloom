@@ -138,12 +138,15 @@ class DetectiveTemplateTests(unittest.TestCase):
                 "evidence_02_muddy_footprint",
             },
         )
+        # Decoys resolve to the two innocents of this seed, never the culprit,
+        # so every truth faces the same two false leads.
         self.assertEqual(
             {
                 definition["implies"]["value"]
                 for definition in decoys.values()
             },
-            {"容疑者甲", "容疑者乙"},
+            set(world.facts["culprit"]["values"])
+            - {world.truth["culprit"]},
         )
 
         culprit_implies = [
@@ -156,12 +159,15 @@ class DetectiveTemplateTests(unittest.TestCase):
             and definition["implies"]["fact"]
             == "culprit"
         ]
+        # No evidence implies the culprit directly: the only positive leads
+        # point at the two innocents, so the truth is reached by elimination.
         self.assertEqual(
             {
                 update["value"]
                 for update in culprit_implies
             },
-            {"容疑者甲", "容疑者乙"},
+            set(world.facts["culprit"]["values"])
+            - {world.truth["culprit"]},
         )
 
         innocence_refutations = {
