@@ -1,0 +1,194 @@
+name: 白椿館の密室
+
+time:
+  days: 8
+  slots: [朝, 昼, 夕方, 夜]
+
+protagonist: 探偵
+antagonist: 容疑者甲
+
+zones:
+  - name: 玄関広間
+    note: 来客が集まり、各室へ通じる捜査の起点
+  - name: 書斎
+    note: 被害者が発見され、赤い糸屑と蝋が残された現場
+  - name: 食堂
+    note: 容疑者と証人が事件前に顔を合わせた部屋
+  - name: 温室
+    note: 雨に濡れた足跡が残るガラス張りの庭
+  - name: 客室
+    note: 証言と時刻表を照合して事件を再構成する部屋
+
+routes:
+  玄関広間:
+    - {to: 書斎}
+    - {to: 食堂}
+    - {to: 温室}
+  書斎:
+    - {to: 玄関広間}
+    - {to: 客室}
+  食堂:
+    - {to: 玄関広間}
+    - {to: 客室}
+  温室:
+    - {to: 玄関広間}
+    - {to: 客室}
+  客室:
+    - {to: 書斎}
+    - {to: 食堂}
+    - {to: 温室}
+
+movement:
+  action_weight: 0.6
+  hop_decay: 0.7
+  destination_weights:
+    玄関広間: 1.0
+    書斎: 1.3
+    食堂: 1.0
+    温室: 1.3
+    客室: 1.1
+
+stamina:
+  default_max: 10
+  default_recover_per_slot: 1.0
+  exhausted_ratio: 0.2
+
+companionship:
+  threshold: 0.6
+  weight: 2.0
+
+permission:
+  restricted_weight: 0.15
+
+gapengine:
+  action_graph: templates/detective/action_graph.yaml
+  effects: templates/detective/effects.yaml
+
+awareness_per_encounter: 0.12
+
+pulls:
+  gather: 1.2
+  pursue: 0.8
+  pursue_from_day: 3
+
+items: []
+
+facts:
+  - id: culprit
+    label: 白椿館の事件の真犯人は{value}だ
+    values: [容疑者甲, 容疑者乙, 容疑者丙]
+    secrecy: 0.35
+    share_min_affinity: -0.5
+    act_threshold: 0.70
+
+  - id: weapon
+    label: 犯行に用いられた手段は{value}だ
+    values: [燭台, ペーパーナイフ, 彫像]
+    secrecy: 0.25
+    share_min_affinity: -0.5
+
+  - id: evidence_01_red_thread
+    label: 書斎の窓辺に容疑者甲の上着と同じ赤い糸屑が落ちていた
+    secrecy: 0.10
+    share_min_affinity: -0.5
+    decoy: true
+    sources:
+      - {type: investigate, zone: 書斎, count: 1}
+    implies:
+      fact: culprit
+      value: 容疑者甲
+      confidence: 0.78
+
+  - id: evidence_02_muddy_footprint
+    label: 温室から容疑者乙の靴型に似た濡れた足跡が続いていた
+    secrecy: 0.10
+    share_min_affinity: -0.5
+    decoy: true
+    sources:
+      - {type: investigate, zone: 温室, count: 1}
+    implies:
+      fact: culprit
+      value: 容疑者乙
+      confidence: 0.78
+
+  - id: evidence_03_candlestick_wax
+    label: 傷口のそばに書斎の燭台と同じ白い蝋が付着していた
+    secrecy: 0.15
+    share_min_affinity: -0.5
+    sources:
+      - {type: investigate, zone: 書斎, count: 1}
+    implies:
+      fact: weapon
+      value: 燭台
+      confidence: 0.72
+
+  - id: evidence_04_first_alibi
+    label: 証人壱の記録は事件時刻に容疑者甲が食堂にいたことを裏づける
+    secret_of: 証人壱
+    secrecy: 0.20
+    share_min_affinity: -0.5
+    sources:
+      - {type: investigate, agent: 証人壱, count: 2}
+    refutes:
+      fact: culprit
+      value: 容疑者甲
+      confidence: 0.75
+
+  - id: evidence_05_second_alibi
+    label: 証人弐の時計と配膳記録は容疑者乙の温室滞在時刻と矛盾する
+    secret_of: 証人弐
+    secrecy: 0.20
+    share_min_affinity: -0.5
+    sources:
+      - {type: investigate, agent: 証人弐, count: 2}
+    refutes:
+      fact: culprit
+      value: 容疑者乙
+      confidence: 0.75
+
+  - id: evidence_06_reconstruction
+    label: 客室の時刻表を照合すると容疑者丙だけが書斎へ戻れる空白を持つ
+    secrecy: 0.25
+    share_min_affinity: -0.5
+    sources:
+      - {type: investigate, zone: 客室, count: 2}
+    implies:
+      fact: culprit
+      value: 容疑者丙
+      confidence: 0.72
+    refutes:
+      fact: weapon
+      value: 彫像
+      confidence: 0.65
+
+truth:
+  culprit:
+    candidates:
+      容疑者甲: 1
+      容疑者乙: 1
+      容疑者丙: 1
+    known_by: ["$truth"]
+  weapon: 燭台
+
+default_strength_prior: 50
+
+contest:
+  tau: 10.0
+  epsilon: 5.0
+
+vitality:
+  revive_after: 4
+  ally_speedup: 1
+  revive_base_penalty: 2
+  lethal_exempt: []
+
+grief:
+  stress: 0.8
+  affinity_to_killer: -0.4
+
+ending:
+  - id: solved
+    when: "confront_success(探偵, culprit)"
+    label: 探偵は証拠を組み直し、白椿館の真犯人を指摘した
+
+target_ending: solved

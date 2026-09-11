@@ -1,0 +1,76 @@
+id: 証人壱
+
+traits:
+  social: 0.72
+  stubbornness: 0.35
+  curiosity: 0.50
+  diligence: 0.68
+  temper: 0.20
+
+base: 28
+modifiers: []
+
+beliefs_about:
+  探偵:
+    known_modifiers: []
+    base_estimate: 72
+    identity_seen: true
+    observe_progress: 0.0
+  容疑者甲:
+    known_modifiers: [アリバイ]
+    base_estimate: 45
+    identity_seen: true
+    observe_progress: 0.0
+  容疑者乙:
+    known_modifiers: []
+    base_estimate: 70
+    identity_seen: true
+    observe_progress: 0.0
+  容疑者丙:
+    known_modifiers: []
+    base_estimate: 70
+    identity_seen: true
+    observe_progress: 0.0
+
+beliefs: {}
+knowledge: [evidence_04_first_alibi]
+inventory: {}
+reputation: 0.10
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - observe
+  - share_knowledge
+  - persuade
+  - rest
+
+identity:
+  "true": 食堂の配膳記録から容疑者甲の時刻を証言できる使用人
+  displayed: 証人壱
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: null
+
+relations:
+  探偵: {affinity: 0.25, awareness: 0.70}
+  容疑者甲: {affinity: 0.05, awareness: 0.65}
+  容疑者乙: {affinity: 0.05, awareness: 0.55}
+  容疑者丙: {affinity: 0.05, awareness: 0.55}
+  証人弐: {affinity: 0.20, awareness: 0.60}
+
+stamina:
+  max: 10
+  recover_per_slot: 1.3
+
+range:
+  zones: [食堂, 玄関広間, 客室]
+  entry: 食堂
+
+companions: []
+ally_value: 0
+objective_claimant: false
