@@ -1,0 +1,168 @@
+"""Template-driven deterministic action classification."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Mapping, Sequence, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from engine.actions import Action
+    from engine.subject import Subject
+    from engine.world import World
+
+
+@dataclass(frozen=True)
+class Classification:
+    category: str | None
+    subtype: str
+    risk_class: str
+    stance_sign: int
+    target_role: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "category": self.category,
+            "subtype": self.subtype,
+            "risk_class": self.risk_class,
+            "stance_sign": self.stance_sign,
+            "target_role": self.target_role,
+        }
+
+
+def _node_matches(node: Mapping[str, Any], action: Action) -> bool:
+    condition = node.get("when")
+    if condition is None:
+        return True
+    if condition == "gather":
+        return bool(action.meta.get("gather", False))
+    if condition == "crossing":
+        return bool(action.meta.get("crossing", False))
+    return False
+
+
+def _target_id(action: Action) -> str | None:
+    target = action.meta.get("target")
+    if isinstance(target, str):
+        return target
+    if action.verb in {
+        "fight",
+        "give_item",
+        "neutralize",
+        "observe",
+        "rescue",
+        "share_knowledge",
+    }:
+        if action.args and isinstance(action.args[0], str):
+            return action.args[0]
+    return None
+
+
+def _is_hostile(
+    subject: Subject,
+    target_id: str,
+    world: World,
+) -> bool:
+    return (
+        world.relations.stance(subject.id, target_id) < -0.2
+        or target_id in subject.goal.obstacles
+    )
+
+
+def _target_role(
+    action: Action,
+    subject: Subject,
+    world: World,
+) -> str:
+    target_id = _target_id(action)
+    if target_id is None or target_id not in world.subjects:
+        return "none"
+    if target_id == subject.id:
+        return "self"
+
+    affinity = world.relations.stance(subject.id, target_id)
+    if affinity >= world.companionship["threshold"]:
+        return "ally"
+    if _is_hostile(subject, target_id, world):
+        return "hostile"
+    return "neutral"
+
+
+def _hostile_present(
+    subject: Subject,
+    world: World,
+    present: Sequence[Subject],
+) -> bool:
+    return any(
+        peer.id != subject.id
+        and peer.vitality != "dead"
+        and _is_hostile(subject, peer.id, world)
+        for peer in present
+    )
+
+
+def _hostile_at_destination(
+    action: Action,
+    subject: Subject,
+    world: World,
+) -> bool:
+    destination = action.meta.get("dest")
+    if not isinstance(destination, str) or destination not in world.zones:
+        return False
+    return any(
+        peer.id != subject.id
+        and _is_hostile(subject, peer.id, world)
+        for peer in world.present_subjects(destination)
+    )
+
+
+def classify(
+    action: Action,
+    subject: Subject,
+    world: World,
+    present: Sequence[Subject],
+    cfg: Mapping[str, Any],
+) -> Classification:
+    selected: Mapping[str, Any] | None = None
+    for node in cfg.get("nodes", []) or []:
+        if node.get("verb") != action.verb:
+            continue
+        if _node_matches(node, action):
+            selected = node
+            break
+
+    if selected is None:
+        category: str | None = None
+        subtype = action.verb
+        risk = "neutral"
+        sign = 0
+    else:
+        raw_category = selected.get("category")
+        category = (
+            str(raw_category) if raw_category is not None else None
+        )
+        subtype = str(selected.get("subtype", action.verb))
+        risk = str(selected.get("risk", "neutral"))
+        sign = int(selected.get("sign", 0))
+
+    if action.verb == "fight" and action.meta.get("outmatched", False):
+        risk = "risky"
+    elif action.verb == "move" and _hostile_at_destination(
+        action,
+        subject,
+        world,
+    ):
+        risk = "risky"
+    elif action.verb in {"rest", "withdraw", "guard"}:
+        risk = (
+            "safe_under_threat"
+            if _hostile_present(subject, world, present)
+            else "neutral"
+        )
+
+    return Classification(
+        category=category,
+        subtype=subtype,
+        risk_class=risk,
+        stance_sign=sign,
+        target_role=_target_role(action, subject, world),
+    )

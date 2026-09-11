@@ -1,0 +1,37 @@
+weight: 1.0
+entries:
+  - ctx:
+      phase: []
+      hostile_present: false
+      objective: hostile
+      vitality: alive
+      stance: hostile
+    act: {category: III, verb: give_item, role: neutral}
+    n: 6
+
+  - ctx:
+      phase: [出発]
+      hostile_present: false
+      objective: hostile
+      vitality: alive
+      stance: hostile
+    act: {category: I, verb: craft, role: none}
+    n: 4
+
+  - ctx:
+      phase: [出発, 越境]
+      hostile_present: true
+      objective: hostile
+      vitality: alive
+      stance: hostile
+    act: {category: I, verb: fight, role: hostile}
+    n: 8
+
+  - ctx:
+      phase: [出発, 越境]
+      hostile_present: false
+      objective: self
+      vitality: alive
+      stance: hostile
+    act: {category: null, verb: move, role: none}
+    n: 6
