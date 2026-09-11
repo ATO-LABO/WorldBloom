@@ -6,6 +6,15 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 from engine.contest import believed_strength, strength
+from engine.phase2 import (
+    available_verbs,
+    dedicated_plant_options,
+    disguise_options,
+    grand_gesture_asset,
+    grand_gesture_fact,
+    ready_chosen_effects,
+    trial_options,
+)
 
 if TYPE_CHECKING:
     from engine.subject import Subject
@@ -29,10 +38,7 @@ def _present(subject: Subject, world: World) -> list[Subject]:
 
 
 def _is_hostile(actor: Subject, target: Subject, world: World) -> bool:
-    return (
-        world.relations.stance(actor.id, target.id) < -0.2
-        or target.id in actor.goal.obstacles
-    )
+    return world.target_role(actor, target) == "hostile"
 
 
 def _hostiles(
@@ -860,12 +866,7 @@ def _share_candidates(
                 single_weight * permission,
             )
         )
-    return _normalize_opened(
-        result,
-        subject,
-        world,
-        single_weight,
-    )
+    return result
 
 
 def _material_products(item: str, world: World) -> list[str]:
@@ -948,12 +949,7 @@ def _give_candidates(
                     ),
                 )
             )
-    return _normalize_opened(
-        result,
-        subject,
-        world,
-        single_weight,
-    )
+    return result
 
 
 def _persuade_candidates(
@@ -1349,6 +1345,219 @@ def _guard_candidates(
     ]
 
 
+def _plant_candidates(
+    subject: Subject,
+    world: World,
+    sim: Any,
+) -> list[tuple[Action, float]]:
+    if "plant" not in subject.verbs:
+        return []
+
+    weight = 0.15 + subject.traits["curiosity"] * 0.3
+    return [
+        (
+            Action(
+                "plant",
+                (str(effect["id"]),),
+                {
+                    "effect_id": str(effect["id"]),
+                    "target": subject.id,
+                },
+            ),
+            weight,
+        )
+        for effect in dedicated_plant_options(
+            world,
+            subject,
+            turn=int(sim.turn),
+            day=int(sim.day),
+        )
+    ]
+
+
+def _payoff_candidates(
+    subject: Subject,
+    world: World,
+    sim: Any,
+) -> list[tuple[Action, float]]:
+    if "payoff" not in subject.verbs:
+        return []
+
+    weight = 0.3 + subject.traits["stubbornness"] * 0.3
+    return [
+        (
+            Action(
+                "payoff",
+                (str(pending["library_id"]),),
+                {
+                    "effect_id": str(pending["id"]),
+                    "library_id": str(pending["library_id"]),
+                    "target": str(pending["target"]),
+                },
+            ),
+            weight,
+        )
+        for pending in ready_chosen_effects(
+            world,
+            subject,
+            turn=int(sim.turn),
+            day=int(sim.day),
+        )
+    ]
+
+
+def _disguise_candidates(
+    subject: Subject,
+    world: World,
+    sim: Any,
+) -> list[tuple[Action, float]]:
+    if "disguise" not in subject.verbs:
+        return []
+
+    weight = (
+        0.1
+        + (1.0 - subject.traits["social"]) * 0.3
+    )
+    return [
+        (
+            Action(
+                "disguise",
+                (str(disguise["as"]),),
+                {
+                    "disguise_id": str(disguise["id"]),
+                    "displayed": str(disguise["as"]),
+                },
+            ),
+            weight,
+        )
+        for disguise in disguise_options(
+            world,
+            subject,
+            turn=int(sim.turn),
+            day=int(sim.day),
+        )
+    ]
+
+
+def _grand_gesture_candidates(
+    subject: Subject,
+    world: World,
+    present: list[Subject],
+) -> list[tuple[Action, float]]:
+    if "grand_gesture" not in subject.verbs:
+        return []
+
+    item = grand_gesture_asset(world, subject)
+    if item is None:
+        return []
+
+    single_weight = 0.05 + subject.traits["social"] * 0.2
+    result: list[tuple[Action, float]] = []
+    for target in _living_targets(subject, present):
+        fact = grand_gesture_fact(
+            world,
+            subject,
+            target,
+        )
+        if fact is None:
+            continue
+
+        permission = _permission_weight(
+            subject,
+            target,
+            "grand_gesture",
+            world,
+        )
+        if permission <= 0.0:
+            continue
+
+        result.append(
+            (
+                Action(
+                    "grand_gesture",
+                    (target.id,),
+                    {
+                        "target": target.id,
+                        "fact": fact,
+                        "item": item,
+                        "risk": "risky",
+                        "stance_sign": 1,
+                    },
+                ),
+                single_weight * permission,
+            )
+        )
+
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        single_weight,
+    )
+
+
+def _trial_candidates(
+    subject: Subject,
+    world: World,
+) -> list[tuple[Action, float]]:
+    if "trial" not in subject.verbs:
+        return []
+
+    weight = 0.2 + subject.traits["diligence"] * 0.3
+    return [
+        (
+            Action(
+                "trial",
+                (str(trial["giver"]),),
+                {
+                    "target": str(trial["giver"]),
+                    "trial_id": str(trial["id"]),
+                    "stance_sign": 1,
+                },
+            ),
+            weight,
+        )
+        for trial in trial_options(world, subject)
+        if world.permission(
+            "trial",
+            world.target_role(
+                subject,
+                world.subjects[str(trial["giver"])],
+            ),
+        )
+        > 0.0
+    ]
+
+
+def _donate_candidates(
+    subject: Subject,
+    world: World,
+) -> list[tuple[Action, float]]:
+    if (
+        "donate" not in subject.verbs
+        or subject.goal.target is None
+        or subject.goal.deliver_to is None
+        or subject.zone != subject.goal.deliver_to
+        or not subject.has_item(subject.goal.target)
+    ):
+        return []
+
+    return [
+        (
+            Action(
+                "donate",
+                (subject.goal.target,),
+                {
+                    "item": subject.goal.target,
+                    "zone": subject.goal.deliver_to,
+                    "stance_sign": 1,
+                },
+            ),
+            0.25 + subject.traits["social"] * 0.5,
+        )
+    ]
+
+
 def candidates(
     subject: Subject,
     world: World,
@@ -1363,6 +1572,12 @@ def candidates(
 
     present = _present(subject, world)
     hostile_targets = _hostiles(subject, world, present)
+    allowed_verbs = available_verbs(
+        world,
+        subject,
+        turn=int(sim.turn),
+        day=int(sim.day),
+    )
     weighted: list[tuple[Action, float]] = []
     weighted.extend(_movement_candidates(subject, world, sim, present))
 
@@ -1418,12 +1633,25 @@ def candidates(
         )
     )
     weighted.extend(_guard_candidates(subject, world))
+    weighted.extend(_plant_candidates(subject, world, sim))
+    weighted.extend(_payoff_candidates(subject, world, sim))
+    weighted.extend(_disguise_candidates(subject, world, sim))
+    weighted.extend(
+        _grand_gesture_candidates(
+            subject,
+            world,
+            present,
+        )
+    )
+    weighted.extend(_trial_candidates(subject, world))
+    weighted.extend(_donate_candidates(subject, world))
 
     return sorted(
         (
             (action, float(weight))
             for action, weight in weighted
             if weight > 0.0
+            and action.verb in allowed_verbs
         ),
         key=_action_key,
     )

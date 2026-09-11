@@ -350,8 +350,8 @@ class EngineTests(unittest.TestCase):
                 if seed == 153:
                     self.assertEqual(
                         normalized_layers_hash(first),
-                        "47feb16ff157bccf3e3cb9b5bd4fe448"
-                        "883bbfb6e5ff1eb6c32dcabd3a178edd",
+                        "d6c13d81b772a3f080a61c2171c911f1"
+                        "eb159f4b6254ed0dfa07fee7a682e660",
                     )
 
     def test_phase0_opt_in_removal_restores_old_seed_hash(
