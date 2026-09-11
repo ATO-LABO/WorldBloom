@@ -90,3 +90,10 @@ Phase 1 で新たに乱数を消費する箇所: **なし**（confront の真偽
 - **D3（engine）**: §1〜§3 の engine 側（facts の values/implies/refutes、beliefs 更新、confront/mislead/neutralize/sabotage/sacrifice/negotiate/concede/persuade/pledge、行動グラフ読み込み、対象開放と正規化、offers/pledges、イベント）、`projects/momotaro` の更新（鬼に concede、valued fact の例を 1 つ: `oni_weakness: values: [金棒, 火, 塩]` と証拠 2 件）、`tests/test_engine.py` の追加。
 - **D4（gapengine）**: §4 と `templates/momotaro/action_graph.yaml` の edges/permission、`tests/test_gapengine.py` の追加。
 - D4 後に本番実験（N=100・G=20・K=3）で合格条件 1〜4 を判定。
+
+## 7. D4 に同梱する Phase 0 の残指摘（2026-09-11、D2b 再レビュー後の設計役判断）
+- C-5 `--keep reached` は到達 0 の世代で layers.jsonl を全消去する → **その世代の shaped 最上位個体の全シードのランを残す**（証跡用）。
+- C-6 `Policy.reweight` の無変調条件は `annotate_only or (genome.is_neutral() and not rules)`（Phase 2 の修飾ルールが中立遺伝子で黙って無効化されないように）。
+- C-7 `random_baseline.py` の `descriptor_distribution` は到達ランのみ → 全ラン分布 `all_descriptor_distribution` を併記。
+- C-8 `random_baseline.py` に `--seed-base` を追加。
+- C-9 `--seed-base` の負値を argparse で拒否。prune 後の空 seed ディレクトリは削除する。
