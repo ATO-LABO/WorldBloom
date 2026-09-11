@@ -18,6 +18,11 @@ from engine.log import (
     relation_diff,
 )
 from engine.subject import Subject
+from engine.phase2 import (
+    apply_effect,
+    dangling_effect_count,
+    ready_auto_effects,
+)
 from engine.verbs import VerbEngine
 from engine.vitality import tick
 from engine.world import World
@@ -722,6 +727,35 @@ class Simulation:
                     )
                 )
 
+    def _resolve_auto_effects(
+        self,
+        writer: LayersWriter,
+    ) -> None:
+        for pending in ready_auto_effects(
+            self.world,
+            turn=self.turn,
+            day=self.day,
+        ):
+            before = self._capture()
+            details = apply_effect(
+                self.world,
+                pending,
+                turn=self.turn,
+            )
+            after = self._capture()
+            writer.write(
+                self._event_row(
+                    verb="payoff",
+                    subject=str(pending["planted_by"]),
+                    delta=self._delta(
+                        str(pending["planted_by"]),
+                        before,
+                        after,
+                    ),
+                    details=details,
+                )
+            )
+
     def _ending(self) -> dict[str, Any] | None:
         protagonist = self.subjects[self.world.protagonist]
         present = self._present_for(protagonist)
@@ -760,6 +794,15 @@ class Simulation:
                 delivered[item] = zone
 
         after = self._capture()
+        details: dict[str, Any] = {
+            "label": ending.get("label"),
+            "delivered": delivered,
+        }
+        if self.world.effect_library:
+            details["dangling_effects"] = (
+                dangling_effect_count(self.world)
+            )
+
         writer.write(
             self._event_row(
                 verb="ending",
@@ -769,11 +812,29 @@ class Simulation:
                     before,
                     after,
                 ),
-                details={
-                    "label": ending.get("label"),
-                    "delivered": delivered,
-                },
+                details=details,
                 event_id=str(ending["id"]),
+            )
+        )
+
+    def _write_time_limit(
+        self,
+        writer: LayersWriter,
+    ) -> None:
+        writer.write(
+            self._event_row(
+                verb="ending",
+                subject=self.world.protagonist,
+                delta={},
+                details={
+                    "label": "time_limit",
+                    "delivered": {},
+                    "dangling_effects": (
+                        dangling_effect_count(self.world)
+                    ),
+                },
+                result="expired",
+                event_id="time_limit",
             )
         )
 
@@ -792,9 +853,14 @@ class Simulation:
             >= self.world.companionship["threshold"]
         ):
             return 0.66
+
+        perceived_holder = self.world.perceived_name(
+            subject.id,
+            holder,
+        )
         if (
             self.world.relations.stance(subject.id, holder) < -0.2
-            or holder in subject.goal.obstacles
+            or perceived_holder in subject.goal.obstacles
         ):
             return 0.0
         return 0.33
@@ -972,6 +1038,7 @@ class Simulation:
                     self._tick_vitality(writer)
                     self._recover_stamina()
                     self._evaluate_thresholds(writer)
+                    self._resolve_auto_effects(writer)
 
                     ending = self._ending()
                     if ending is not None:
@@ -979,5 +1046,8 @@ class Simulation:
                         return path
 
                 self._write_snapshot(writer)
+
+            if self.world.effect_library:
+                self._write_time_limit(writer)
 
         return path

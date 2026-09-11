@@ -1503,30 +1503,33 @@ def _trial_candidates(
     if "trial" not in subject.verbs:
         return []
 
-    weight = 0.2 + subject.traits["diligence"] * 0.3
-    return [
-        (
-            Action(
-                "trial",
-                (str(trial["giver"]),),
-                {
-                    "target": str(trial["giver"]),
-                    "trial_id": str(trial["id"]),
-                    "stance_sign": 1,
-                },
-            ),
-            weight,
-        )
-        for trial in trial_options(world, subject)
-        if world.permission(
+    single_weight = 0.2 + subject.traits["diligence"] * 0.3
+    result: list[tuple[Action, float]] = []
+    for trial in trial_options(world, subject):
+        giver = world.subjects[str(trial["giver"])]
+        permission = _permission_weight(
+            subject,
+            giver,
             "trial",
-            world.target_role(
-                subject,
-                world.subjects[str(trial["giver"])],
-            ),
+            world,
         )
-        > 0.0
-    ]
+        if permission <= 0.0:
+            continue
+        result.append(
+            (
+                Action(
+                    "trial",
+                    (giver.id,),
+                    {
+                        "target": giver.id,
+                        "trial_id": str(trial["id"]),
+                        "stance_sign": 1,
+                    },
+                ),
+                single_weight * permission,
+            )
+        )
+    return result
 
 
 def _donate_candidates(

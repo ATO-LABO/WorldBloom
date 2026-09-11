@@ -58,6 +58,7 @@ permission:
 
 gapengine:
   action_graph: templates/momotaro/action_graph.yaml
+  effects: templates/momotaro/effects.yaml
 
 phase1:
   open_bonus: 0.5
@@ -66,6 +67,55 @@ phase1:
     asset_base: 8
     bond_stress: -3
     bond_phase: 決意
+
+disguises:
+  - id: momotaro_merchant
+    subject: 桃太郎
+    as: 旅の商人
+    when: "zone(self) == '海'"
+
+trials:
+  - id: elder_shipbuilding_trial
+    giver: おじいさん
+    requires:
+      stance: 0.4
+      item: きびだんご
+    grants:
+      fact: 造船術
+
+phase_rules:
+  - id: after_crossing
+    when: "'越境' in phase"
+    enable:
+      - move
+      - investigate
+      - observe
+      - neutralize
+      - sabotage
+      - sacrifice
+      - mislead
+      - confront
+      - share_knowledge
+      - give_item
+      - persuade
+      - pledge
+      - negotiate
+      - concede
+      - craft
+      - fight
+      - train
+      - rescue
+      - rest
+      - withdraw
+      - guard
+      - plant
+      - payoff
+      - disguise
+      - grand_gesture
+      - trial
+      - donate
+    disable:
+      - train
 
 awareness_per_encounter: 0.15
 
@@ -170,6 +220,7 @@ facts:
 
   - id: 金棒の由来
     label: 鬼の力は金棒に支えられている
+    secret_of: 鬼
     secrecy: 0.3
     share_min_affinity: 0.0
     sources:
@@ -216,6 +267,10 @@ ending:
       agent: 桃太郎
       goal: attained
     label: 鬼退治を果たし、宝を村へ持ち帰った
+
+  - id: homecoming_shared
+    when: "holder(鬼ヶ島の宝物) == '村'"
+    label: 宝を村へ還元し、皆で喜びを分かち合った
 
 target_ending: homecoming
 

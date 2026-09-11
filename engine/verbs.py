@@ -8,6 +8,18 @@ from typing import Any, TYPE_CHECKING
 from engine import vitality
 from engine.actions import Action
 from engine.contest import resolve, strength
+from engine.phase2 import (
+    apply_effect,
+    dedicated_plant_options,
+    disguise_options,
+    expose_identity,
+    grand_gesture_asset,
+    grand_gesture_fact,
+    mark_trial_completed,
+    plant_from_action,
+    ready_chosen_effects,
+    trial_options,
+)
 from engine.subject import BeliefAbout
 
 if TYPE_CHECKING:
@@ -53,6 +65,12 @@ class VerbEngine:
             "rescue": self._rescue,
             "withdraw": self._withdraw,
             "guard": self._guard,
+            "plant": self._plant,
+            "payoff": self._payoff,
+            "disguise": self._disguise,
+            "grand_gesture": self._grand_gesture,
+            "trial": self._trial,
+            "donate": self._donate,
         }
         handler = handlers.get(action.verb)
         if handler is None:
@@ -93,7 +111,23 @@ class VerbEngine:
                         [],
                     )
 
-        return handler(actor, action, turn=turn, day=day)
+        result, details, markers = handler(
+            actor,
+            action,
+            turn=turn,
+            day=day,
+        )
+        markers.extend(
+            plant_from_action(
+                self.world,
+                actor,
+                action,
+                result,
+                details,
+                turn=turn,
+            )
+        )
+        return result, details, markers
 
     def _present(self, actor: Subject) -> list[Subject]:
         return self.world.present_subjects(actor.zone)
@@ -417,9 +451,27 @@ class VerbEngine:
 
             previous_estimate = belief.base_estimate
             misled_by = belief.misled_by
+            identity_exposed = expose_identity(
+                self.world,
+                actor,
+                target,
+            )
             belief.base_estimate = target.base
-            belief.identity_seen = True
             belief.observe_progress = 0.0
+
+            if identity_exposed:
+                markers.append(
+                    {
+                        "verb": "exposure",
+                        "subject": actor.id,
+                        "details": {
+                            "target": target.id,
+                            "displayed": target.identity_displayed,
+                            "actual": target.id,
+                            "source": "observe",
+                        },
+                    }
+                )
 
             if misled_by is not None:
                 exposed_estimate = previous_estimate
@@ -798,7 +850,12 @@ class VerbEngine:
             return "invalid", {"reason": "truth_unavailable"}, []
         correct = truth == belief.value
         markers: list[dict[str, Any]] = []
+        identity_observers: list[str] = []
+
         if correct:
+            if expose_identity(self.world, actor, target):
+                identity_observers.append(actor.id)
+
             self.world.relations.change(
                 target.id,
                 actor.id,
@@ -808,12 +865,19 @@ class VerbEngine:
             for witness in self._present(actor):
                 if witness.id in {actor.id, target.id}:
                     continue
+                if expose_identity(
+                    self.world,
+                    witness,
+                    target,
+                ):
+                    identity_observers.append(witness.id)
                 self.world.relations.change(
                     witness.id,
                     target.id,
                     awareness=0.2,
                 )
                 witnesses.append(witness.id)
+
             markers.append(
                 {
                     "verb": "exposure",
@@ -823,6 +887,9 @@ class VerbEngine:
                         "fact": fact_id,
                         "value": belief.value,
                         "witnesses": sorted(witnesses),
+                        "identity_observers": sorted(
+                            identity_observers
+                        ),
                     },
                 }
             )
@@ -862,6 +929,9 @@ class VerbEngine:
                 "value": belief.value,
                 "confidence": belief.confidence,
                 "correct": correct,
+                "identity_observers": sorted(
+                    identity_observers
+                ),
             },
             markers,
         )
@@ -1351,13 +1421,40 @@ class VerbEngine:
 
         hostile_at_start = (
             self.world.relations.stance(actor.id, target.id) < -0.2
-            or target.id in actor.goal.obstacles
+            or self.world.perceived_name(
+                actor.id,
+                target.id,
+            )
+            in actor.goal.obstacles
         )
         markers = self._betrayal(
             actor,
             target,
             verb="fight",
         )
+
+        for observer, revealed in (
+            (actor, target),
+            (target, actor),
+        ):
+            if not expose_identity(
+                self.world,
+                observer,
+                revealed,
+            ):
+                continue
+            markers.append(
+                {
+                    "verb": "exposure",
+                    "subject": observer.id,
+                    "details": {
+                        "target": revealed.id,
+                        "displayed": revealed.identity_displayed,
+                        "actual": revealed.id,
+                        "source": "fight",
+                    },
+                }
+            )
 
         present = self._present(actor)
         winner, loser, probability, roll = resolve(
@@ -1525,3 +1622,330 @@ class VerbEngine:
         if not guarded:
             return "invalid", {"reason": "objective_unavailable"}, []
         return "guarded", {"items": guarded}, []
+
+    def _plant(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        effect_id = action.meta.get("effect_id")
+        if not isinstance(effect_id, str):
+            return "invalid", {"reason": "effect_unspecified"}, []
+
+        available = {
+            str(effect["id"])
+            for effect in dedicated_plant_options(
+                self.world,
+                actor,
+                turn=turn,
+                day=day,
+            )
+        }
+        if effect_id not in available:
+            return (
+                "invalid",
+                {
+                    "reason": "effect_unavailable",
+                    "effect_id": effect_id,
+                },
+                [],
+            )
+
+        return (
+            "planted",
+            {
+                "effect_id": effect_id,
+                "target": actor.id,
+            },
+            [],
+        )
+
+    def _payoff(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        pending_id = action.meta.get("effect_id")
+        if not isinstance(pending_id, str):
+            return "invalid", {"reason": "effect_unspecified"}, []
+
+        ready = {
+            str(pending["id"]): pending
+            for pending in ready_chosen_effects(
+                self.world,
+                actor,
+                turn=turn,
+                day=day,
+            )
+        }
+        pending = ready.get(pending_id)
+        if pending is None:
+            return (
+                "invalid",
+                {
+                    "reason": "effect_unavailable",
+                    "effect_id": pending_id,
+                },
+                [],
+            )
+
+        details = apply_effect(
+            self.world,
+            pending,
+            turn=turn,
+        )
+        return (
+            "paid_off",
+            details,
+            [
+                {
+                    "verb": "payoff",
+                    "subject": actor.id,
+                    "details": details,
+                }
+            ],
+        )
+
+    def _disguise(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        disguise_id = action.meta.get("disguise_id")
+        displayed = action.meta.get("displayed")
+        if (
+            not isinstance(disguise_id, str)
+            or not isinstance(displayed, str)
+        ):
+            return "invalid", {"reason": "disguise_unspecified"}, []
+
+        available = {
+            str(disguise["id"]): disguise
+            for disguise in disguise_options(
+                self.world,
+                actor,
+                turn=turn,
+                day=day,
+            )
+        }
+        disguise = available.get(disguise_id)
+        if (
+            disguise is None
+            or str(disguise["as"]) != displayed
+        ):
+            return "invalid", {"reason": "disguise_unavailable"}, []
+
+        unaware: list[str] = []
+        for observer in sorted(
+            self._present(actor),
+            key=lambda value: value.id,
+        ):
+            if observer.id == actor.id:
+                continue
+            if (
+                self.world.relations.awareness(
+                    observer.id,
+                    actor.id,
+                )
+                >= 0.5
+            ):
+                continue
+            belief = observer.beliefs_about.setdefault(
+                actor.id,
+                BeliefAbout(
+                    base_estimate=self.world.default_strength_prior
+                ),
+            )
+            belief.identity_seen = False
+            unaware.append(observer.id)
+
+        before = actor.identity_displayed
+        actor.identity_displayed = displayed
+        return (
+            "disguised",
+            {
+                "before": before,
+                "displayed": displayed,
+                "unaware": unaware,
+            },
+            [],
+        )
+
+    def _grand_gesture(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        target = self._target(actor, action)
+        if target is None:
+            return "invalid", {"reason": "target_not_present"}, []
+
+        fact = grand_gesture_fact(
+            self.world,
+            actor,
+            target,
+        )
+        if fact is None:
+            return "invalid", {"reason": "wound_unknown"}, []
+
+        item = grand_gesture_asset(self.world, actor)
+        if item is None or not actor.remove_item(item, 1):
+            return "invalid", {"reason": "asset_unavailable"}, []
+
+        present = sorted(
+            self._present(actor),
+            key=lambda value: value.id,
+        )
+        allies = [
+            witness
+            for witness in present
+            if witness.id != actor.id
+            and self.world.target_role(actor, witness) == "ally"
+        ]
+        for ally in allies:
+            self.world.relations.change(
+                actor.id,
+                ally.id,
+                affinity=-0.2,
+            )
+
+        self.world.relations.change(
+            target.id,
+            actor.id,
+            affinity=0.6,
+        )
+
+        witnesses: list[str] = []
+        for witness in present:
+            if witness.id == actor.id:
+                continue
+            self.world.relations.change(
+                witness.id,
+                actor.id,
+                awareness=0.3,
+            )
+            witnesses.append(witness.id)
+
+        actor.reputation = round(
+            actor.reputation + 0.1,
+            4,
+        )
+        return (
+            "grand_gesture",
+            {
+                "target": target.id,
+                "fact": fact,
+                "item": item,
+                "allies": [ally.id for ally in allies],
+                "witnesses": witnesses,
+            },
+            [],
+        )
+
+    def _trial(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        trial_id = action.meta.get("trial_id")
+        if not isinstance(trial_id, str):
+            return "invalid", {"reason": "trial_unspecified"}, []
+
+        available = {
+            str(trial["id"]): trial
+            for trial in trial_options(self.world, actor)
+        }
+        trial = available.get(trial_id)
+        if trial is None:
+            return "invalid", {"reason": "trial_unavailable"}, []
+
+        giver = self.world.subjects[str(trial["giver"])]
+        grants = trial["grants"]
+        granted: dict[str, str] = {}
+
+        granted_fact = grants.get("fact")
+        if granted_fact is not None:
+            fact = str(granted_fact)
+            actor.knowledge.add(fact)
+            actor.apply_evidence(fact, self.world)
+            granted["fact"] = fact
+
+        granted_item = grants.get("item")
+        if granted_item is not None:
+            item = str(granted_item)
+            actor.add_item(item, 1)
+            granted["item"] = item
+
+        self.world.relations.change(
+            actor.id,
+            giver.id,
+            affinity=0.1,
+        )
+        self.world.relations.change(
+            giver.id,
+            actor.id,
+            affinity=0.1,
+        )
+        mark_trial_completed(actor, trial)
+        return (
+            "trial_completed",
+            {
+                "trial_id": trial_id,
+                "giver": giver.id,
+                "granted": granted,
+            },
+            [],
+        )
+
+    def _donate(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        item = action.meta.get("item")
+        zone = action.meta.get("zone")
+        if (
+            not isinstance(item, str)
+            or not isinstance(zone, str)
+            or actor.goal.target != item
+            or actor.goal.deliver_to != zone
+            or actor.zone != zone
+        ):
+            return "invalid", {"reason": "delivery_unavailable"}, []
+        if item in self.world.delivered:
+            return "invalid", {"reason": "already_delivered"}, []
+        if not actor.remove_item(item, 1):
+            return "invalid", {"reason": "item_unavailable"}, []
+
+        self.world.delivered[item] = zone
+        actor.reputation = round(
+            actor.reputation + 0.5,
+            4,
+        )
+        return (
+            "donated",
+            {
+                "item": item,
+                "zone": zone,
+                "holder": zone,
+            },
+            [],
+        )

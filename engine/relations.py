@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Any
 
@@ -17,7 +17,10 @@ class Relations:
     def __init__(
         self,
         values: Mapping[str, Mapping[str, Mapping[str, float]]] | None = None,
+        *,
+        target_resolver: Callable[[str, str], str] | None = None,
     ) -> None:
+        self._target_resolver = target_resolver
         self._values: dict[str, dict[str, dict[str, float]]] = {}
         for observer in sorted(values or {}):
             targets = values[observer]
@@ -36,7 +39,12 @@ class Relations:
                 }
 
     def relation(self, observer: str, target: str) -> dict[str, float]:
-        relation = self._values.get(observer, {}).get(target)
+        resolved = (
+            self._target_resolver(observer, target)
+            if self._target_resolver is not None
+            else target
+        )
+        relation = self._values.get(observer, {}).get(resolved)
         if relation is None:
             return {"affinity": 0.0, "awareness": 0.0}
         return dict(relation)
@@ -65,6 +73,11 @@ class Relations:
         affinity: float = 0.0,
         awareness: float = 0.0,
     ) -> dict[str, float]:
+        resolved = (
+            self._target_resolver(observer, target)
+            if self._target_resolver is not None
+            else target
+        )
         current = self.relation(observer, target)
         updated = {
             "affinity": round(
@@ -76,7 +89,7 @@ class Relations:
                 4,
             ),
         }
-        self._values.setdefault(observer, {})[target] = updated
+        self._values.setdefault(observer, {})[resolved] = updated
         return {
             "affinity": round(updated["affinity"] - current["affinity"], 4),
             "awareness": round(updated["awareness"] - current["awareness"], 4),
@@ -107,4 +120,13 @@ class Relations:
         return rows
 
     def copy(self) -> Relations:
-        return Relations(deepcopy(self._values))
+        return Relations(
+            deepcopy(self._values),
+            target_resolver=self._target_resolver,
+        )
+
+    def discard(self, observer: str, target: str) -> None:
+        targets = self._values.get(observer)
+        if targets is None:
+            return
+        targets.pop(target, None)
