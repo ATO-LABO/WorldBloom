@@ -838,22 +838,31 @@ class VerbEngine:
             for fact_id, belief in sorted(actor.beliefs.items())
         }
 
+        derived_facts = {
+            fact_id
+            for fact_id, belief in actor.beliefs.items()
+            if belief.derived
+        }
         evidence = [
             fact_id
             for fact_id in sorted(actor.knowledge)
             if any(
-                isinstance(self.world.facts.get(fact_id, {}).get(key), dict)
+                isinstance(update, dict)
+                and str(update.get("fact")) in derived_facts
                 for key in ("implies", "refutes")
+                for update in [self.world.facts.get(fact_id, {}).get(key)]
             )
         ]
-        affected = {
+        recomputed_facts = {
             str(update["fact"])
             for fact_id in evidence
             for key in ("implies", "refutes")
             for update in [self.world.facts[fact_id].get(key)]
             if isinstance(update, dict)
+            and str(update["fact"]) in derived_facts
         }
-        for fact_id in sorted(affected):
+
+        for fact_id in sorted(recomputed_facts):
             actor.beliefs.pop(fact_id, None)
         for fact_id in evidence:
             actor.apply_evidence(fact_id, self.world)

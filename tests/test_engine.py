@@ -3047,7 +3047,7 @@ class Phase4EngineTests(unittest.TestCase):
                 "猿": 1.0,
                 "犬": 1.0,
             },
-            "known_by": ["鬼"],
+            "known_by": ["$truth"],
         }
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -3092,24 +3092,30 @@ class Phase4EngineTests(unittest.TestCase):
             first_world.drawn_truth,
             second_world.drawn_truth,
         )
+
+        selected = first_world.truth["treasure_thief"]
         self.assertEqual(
-            first_world.truth["treasure_thief"],
+            selected,
             first_world.drawn_truth["treasure_thief"],
         )
-        self.assertIn(
-            first_world.truth["treasure_thief"],
-            {"鬼", "猿", "犬"},
-        )
+        self.assertIn(selected, {"鬼", "猿", "犬"})
         self.assertEqual(
             first_simulation._header()["truth"],
             first_world.drawn_truth,
         )
-        self.assertEqual(
-            first_simulation.subjects["鬼"].beliefs[
-                "treasure_thief"
-            ].value,
-            first_world.truth["treasure_thief"],
-        )
+
+        for subject_id in ("鬼", "猿", "犬"):
+            belief = first_simulation.subjects[
+                subject_id
+            ].beliefs.get("treasure_thief")
+            if subject_id == selected:
+                self.assertIsNotNone(belief)
+                assert belief is not None
+                self.assertEqual(belief.value, selected)
+                self.assertEqual(belief.confidence, 1.0)
+                self.assertFalse(belief.derived)
+            else:
+                self.assertIsNone(belief)
 
     def test_rethink_requires_stagnation_and_replays_evidence(
         self,
@@ -3117,17 +3123,45 @@ class Phase4EngineTests(unittest.TestCase):
         world, subjects = load_fixture()
         actor = subjects["桃太郎"]
         actor.verbs.add("rethink")
+        actor.knowledge = {"金棒の由来"}
         actor.beliefs = {
             "treasure_thief": Belief(
                 value="猿",
-                confidence=0.2,
+                confidence=0.7,
             ),
-            "oni_weakness": Belief(
-                value="火",
-                confidence=0.2,
+            "not_valued": Belief(
+                value="既知",
+                confidence=1.0,
             ),
         }
-        actor.knowledge = {"elder_testimony"}
+        world.facts["not_valued"] = {
+            "id": "not_valued",
+            "label": "値を列挙しない事実",
+        }
+
+        stalled_simulation = SimpleNamespace(
+            day=1,
+            turn=5,
+            _last_fact_turn={actor.id: 2},
+        )
+        self.assertEqual(
+            [
+                action
+                for action, _ in candidates(
+                    actor,
+                    world,
+                    stalled_simulation,
+                )
+                if action.verb == "rethink"
+            ],
+            [],
+        )
+
+        actor.beliefs["oni_weakness"] = Belief(
+            value="火",
+            confidence=0.2,
+            derived=True,
+        )
 
         recent_simulation = SimpleNamespace(
             day=1,
@@ -3147,11 +3181,6 @@ class Phase4EngineTests(unittest.TestCase):
             [],
         )
 
-        stalled_simulation = SimpleNamespace(
-            day=1,
-            turn=5,
-            _last_fact_turn={actor.id: 2},
-        )
         rethink_actions = [
             (action, weight)
             for action, weight in candidates(
@@ -3170,7 +3199,7 @@ class Phase4EngineTests(unittest.TestCase):
         )
         self.assertEqual(
             action.meta["evidence"],
-            ["elder_testimony"],
+            ["金棒の由来"],
         )
 
         result, details, markers = VerbEngine(
@@ -3190,15 +3219,38 @@ class Phase4EngineTests(unittest.TestCase):
         )
         self.assertEqual(
             details["after"]["treasure_thief"]["value"],
-            "鬼",
+            "猿",
         )
         self.assertEqual(
-            actor.beliefs["oni_weakness"].value,
+            actor.beliefs["treasure_thief"].confidence,
+            0.7,
+        )
+        self.assertFalse(
+            actor.beliefs["treasure_thief"].derived
+        )
+        self.assertEqual(
+            details["before"]["oni_weakness"]["value"],
             "火",
+        )
+        self.assertEqual(
+            details["after"]["oni_weakness"]["value"],
+            "金棒",
+        )
+        self.assertTrue(
+            actor.beliefs["oni_weakness"].derived
         )
         self.assertEqual(
             [marker["verb"] for marker in markers],
             ["rethink"],
+        )
+
+        snapshot = actor.layer_snapshot(
+            world,
+            world.present_subjects(actor.zone),
+        )
+        self.assertNotIn(
+            "derived",
+            snapshot["valued_beliefs"]["oni_weakness"],
         )
 
 
