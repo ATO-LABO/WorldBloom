@@ -26,7 +26,7 @@
 - 適用時にコードを勝手に改良しない（測定対象は Codex のコード品質）。バグに気づいたら差し戻すか記録に残す
 
 ## Notion定型
-- 正本（構想）: 「WorldBloom(StorySim×GA)」ページID `3d8e21ef1cac800293b9c7b109d9df8f`（ProjectLists 配下）。子ページ「基本設計」「詳細設計」を持ち、関連タスク DB（`collection://d3448ca3-45cd-41f7-9fa4-8cb3b769a329`）は親ページに置く
+- 正本（構想）: 「WorldBloom(StorySim×GA)」ページID `3d8e21ef1cac800293b9c7b109d9df8f`（ProjectLists 配下）。子ページ「📐 基本設計」ID `3d8e21ef1cac81db841cef966a6e96f1`・「📘 詳細設計」ID `3d8e21ef1cac81489541ef2c12fa6098` を持ち、関連タスク DB（`collection://d3448ca3-45cd-41f7-9fa4-8cb3b769a329`）は親ページに置く
 - Notion ページの新規作成・hub 構成変更・既存ページの書き直し時は Claude-Ops-Kit の `reference/notion-page-design.md` を参照する
 
 # プロジェクト補足
