@@ -18,7 +18,7 @@ beliefs_about:
     observe_progress: 0.0
 
 knowledge: [造船術]
-inventory: {きびだんご: 3}
+inventory: {きびだんご: 3, 勾玉: 1}
 reputation: 0.0
 phase: []
 

@@ -371,7 +371,11 @@ class VerbEngine:
         turn: int,
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
-        target = self._target(actor, action)
+        target = self._target(
+            actor,
+            action,
+            allow_downed=True,
+        )
         if target is None:
             return "invalid", {"reason": "target_not_present"}, []
 
@@ -391,6 +395,7 @@ class VerbEngine:
         revealed: list[str] = []
         markers: list[dict[str, Any]] = []
         exposed_estimate: float | None = None
+
         if belief.observe_progress >= 1.0:
             hidden_sources = sorted(
                 {
@@ -411,14 +416,14 @@ class VerbEngine:
                 revealed.append(source)
 
             previous_estimate = belief.base_estimate
+            misled_by = belief.misled_by
             belief.base_estimate = target.base
             belief.identity_seen = True
             belief.observe_progress = 0.0
-            if (
-                self.world.action_graph_enabled
-                and previous_estimate != target.base
-            ):
+
+            if misled_by is not None:
                 exposed_estimate = previous_estimate
+                belief.misled_by = None
                 markers.append(
                     {
                         "verb": "exposure",
@@ -428,6 +433,7 @@ class VerbEngine:
                             "about": target.id,
                             "reported": previous_estimate,
                             "actual": target.base,
+                            "misled_by": misled_by,
                             "source": "observe",
                         },
                     }
@@ -716,6 +722,7 @@ class VerbEngine:
                 before + (value - before) * trust,
                 4,
             )
+            belief.misled_by = actor.id
             return (
                 "misled",
                 {
@@ -733,6 +740,7 @@ class VerbEngine:
         definition = self.world.facts.get(about)
         if definition is None or not definition.get("values"):
             return "invalid", {"reason": "unknown_valued_fact"}, []
+
         value = str(reported)
         if value not in {
             str(candidate)

@@ -39,6 +39,7 @@ class BeliefAbout:
     base_estimate: float = 50.0
     identity_seen: bool = False
     observe_progress: float = 0.0
+    misled_by: str | None = None
 @dataclass
 class Belief:
     value: str
@@ -136,6 +137,7 @@ class Subject:
         beliefs_about: dict[str, BeliefAbout] = {}
         for target in sorted(raw.get("beliefs_about", {})):
             belief = raw["beliefs_about"][target] or {}
+            raw_misled_by = belief.get("misled_by")
             beliefs_about[str(target)] = BeliefAbout(
                 known_modifiers={
                     str(value) for value in belief.get("known_modifiers", [])
@@ -144,6 +146,11 @@ class Subject:
                 identity_seen=bool(belief.get("identity_seen", False)),
                 observe_progress=float(
                     belief.get("observe_progress", 0.0)
+                ),
+                misled_by=(
+                    str(raw_misled_by)
+                    if raw_misled_by is not None
+                    else None
                 ),
             )
 
@@ -470,6 +477,11 @@ class Subject:
                 "known_modifiers": sorted(value.known_modifiers),
                 "base_estimate": round(value.base_estimate, 4),
                 "identity_seen": value.identity_seen,
+                **(
+                    {"misled_by": value.misled_by}
+                    if value.misled_by is not None
+                    else {}
+                ),
             }
             for target, value in sorted(self.beliefs_about.items())
         }

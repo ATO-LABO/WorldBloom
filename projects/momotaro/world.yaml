@@ -110,6 +110,14 @@ items:
       lethal: true
       lethal_chance: 0.5
 
+  - name: 勾玉
+    lootable: true
+    modifier:
+      id: item:勾玉
+      value: 5
+      kind: item
+      visible: true
+
   - name: 船
     made_from:
       木材: 2
@@ -136,6 +144,30 @@ facts:
     share_min_affinity: 0.0
     act_threshold: 0.6
 
+  - id: treasure_thief
+    label: 宝を奪ったのは{value}だ
+    values: [鬼, 猿, 犬]
+    secrecy: 1.0
+    act_threshold: 0.5
+
+  - id: elder_testimony
+    label: おじいさんは宝を奪ったのは鬼だと証言した
+    sources:
+      - {type: investigate, agent: おじいさん, count: 2}
+    implies:
+      fact: treasure_thief
+      value: 鬼
+      confidence: 0.5
+
+  - id: road_gossip
+    label: 道中では猿が宝を奪ったと噂されている
+    sources:
+      - {type: investigate, zone: 道中, count: 2}
+    implies:
+      fact: treasure_thief
+      value: 猿
+      confidence: 0.4
+
   - id: 金棒の由来
     label: 鬼の力は金棒に支えられている
     secrecy: 0.3
@@ -160,6 +192,7 @@ facts:
 
 truth:
   oni_weakness: 金棒
+  treasure_thief: 鬼
 
 default_strength_prior: 50
 

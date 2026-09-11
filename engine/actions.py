@@ -79,10 +79,22 @@ def _normalize_opened(
     world: World,
     single_weight: float,
 ) -> list[tuple[Action, float]]:
+    """Normalize an opened single-target verb, then apply permission.
+
+    Candidate weights supplied by callers are ``prior * permission``.
+    Permission is divided out when calculating the prior denominator so a
+    restricted target reduces the resulting verb mass instead of causing the
+    remaining candidates to absorb that mass.
+    """
+
     if not world.action_graph_enabled or not weighted:
         return weighted
 
-    normalization_total = 0.0
+    candidates_with_priors: list[
+        tuple[Action, float, float]
+    ] = []
+    prior_total = 0.0
+
     for action, weight in weighted:
         permission = 1.0
         target_id = action.meta.get("target")
@@ -93,23 +105,30 @@ def _normalize_opened(
                 action.verb,
                 world,
             )
-        if permission > 0.0:
-            normalization_total += (
-                max(0.0, float(weight)) / permission
-            )
+        if permission <= 0.0:
+            continue
 
-    if normalization_total <= 0.0:
+        prior = max(0.0, float(weight)) / permission
+        if prior <= 0.0:
+            continue
+        candidates_with_priors.append(
+            (action, prior, permission)
+        )
+        prior_total += prior
+
+    if prior_total <= 0.0:
         return []
 
-    target_total = max(
+    mass = max(
         0.0,
         float(single_weight) * (1.0 + world.open_bonus),
     )
-    scale = target_total / normalization_total
     return [
-        (action, float(weight) * scale)
-        for action, weight in weighted
-        if weight > 0.0
+        (
+            action,
+            mass * prior / prior_total * permission,
+        )
+        for action, prior, permission in candidates_with_priors
     ]
 
 
@@ -368,21 +387,39 @@ def _observe_candidates(
 ) -> list[tuple[Action, float]]:
     if "observe" not in subject.verbs:
         return []
+
     result: list[tuple[Action, float]] = []
+    single_weight = 0.3 + subject.traits["curiosity"] * 0.6
     for target in sorted(present, key=lambda value: value.id):
         if target.id == subject.id or target.vitality == "dead":
             continue
+
+        permission = _permission_weight(
+            subject,
+            target,
+            "observe",
+            world,
+        )
+        if permission <= 0.0:
+            continue
+
         belief = subject.beliefs_about.get(target.id)
         known = belief.known_modifiers if belief is not None else set()
-        identity_seen = belief.identity_seen if belief is not None else False
+        identity_seen = (
+            belief.identity_seen if belief is not None else False
+        )
+        misled_by = (
+            belief.misled_by if belief is not None else None
+        )
         hidden = any(
             modifier.active
             and not modifier.visible
             and modifier.source not in known
             for modifier in target.all_modifiers(world, present)
         )
-        if not hidden and identity_seen:
+        if not hidden and identity_seen and misled_by is None:
             continue
+
         result.append(
             (
                 Action(
@@ -390,7 +427,7 @@ def _observe_candidates(
                     (target.id,),
                     {"target": target.id},
                 ),
-                0.3 + subject.traits["curiosity"] * 0.6,
+                single_weight * permission,
             )
         )
     return result
@@ -672,6 +709,8 @@ def _confront_candidates(
         for target in _living_targets(subject, present)
     }
     result: list[tuple[Action, float]] = []
+    single_weights: list[float] = []
+
     for fact_id, belief in sorted(subject.beliefs.items()):
         definition = world.facts.get(fact_id, {})
         if not definition.get("values"):
@@ -680,6 +719,22 @@ def _confront_candidates(
         target = present_by_id.get(belief.value)
         if target is None or belief.confidence < threshold:
             continue
+
+        permission = _permission_weight(
+            subject,
+            target,
+            "confront",
+            world,
+        )
+        if permission <= 0.0:
+            continue
+
+        single_weight = (
+            0.15
+            + belief.confidence * 1.2
+            + subject.traits["temper"] * 0.3
+        )
+        single_weights.append(single_weight)
         result.append(
             (
                 Action(
@@ -694,14 +749,16 @@ def _confront_candidates(
                         "stance_sign": -1,
                     },
                 ),
-                (
-                    0.15
-                    + belief.confidence * 1.2
-                    + subject.traits["temper"] * 0.3
-                ),
+                permission,
             )
         )
-    return result
+
+    return _normalize_opened(
+        result,
+        subject,
+        world,
+        max(single_weights, default=0.0),
+    )
 
 
 def _share_candidates(
@@ -948,6 +1005,9 @@ def _pledge_candidates(
         return []
 
     result: list[tuple[Action, float]] = []
+    single_weight = (
+        0.1 + subject.traits["stubbornness"] * 0.3
+    )
     for target in _living_targets(subject, present):
         if world.is_pledged(subject.id, target.id):
             continue
@@ -956,6 +1016,16 @@ def _pledge_candidates(
             or world.relations.stance(target.id, subject.id) < 0.4
         ):
             continue
+
+        permission = _permission_weight(
+            subject,
+            target,
+            "pledge",
+            world,
+        )
+        if permission <= 0.0:
+            continue
+
         result.append(
             (
                 Action(
@@ -966,10 +1036,7 @@ def _pledge_candidates(
                         "stance_sign": 1,
                     },
                 ),
-                (
-                    0.1
-                    + subject.traits["stubbornness"] * 0.3
-                ),
+                single_weight * permission,
             )
         )
     return result
@@ -1002,6 +1069,15 @@ def _negotiate_candidates(
     if holder is None:
         return []
 
+    permission = _permission_weight(
+        subject,
+        holder,
+        "negotiate",
+        world,
+    )
+    if permission <= 0.0:
+        return []
+
     return [
         (
             Action(
@@ -1013,7 +1089,11 @@ def _negotiate_candidates(
                     "stance_sign": 1,
                 },
             ),
-            0.2 + subject.traits["social"] * 0.5,
+            (
+                0.2
+                + subject.traits["social"] * 0.5
+            )
+            * permission,
         )
     ]
 
@@ -1037,6 +1117,16 @@ def _concede_candidates(
         if holder_id != subject.id or claimant_id not in present_ids:
             continue
         claimant = world.subjects[claimant_id]
+
+        permission = _permission_weight(
+            subject,
+            claimant,
+            "concede",
+            world,
+        )
+        if permission <= 0.0:
+            continue
+
         objective = str(offer.get("objective", ""))
         if (
             not objective
@@ -1060,6 +1150,7 @@ def _concede_candidates(
         )
         if stance < world.negotiate_threshold and not attractive:
             continue
+
         mode = "trade" if attractive else "goodwill"
         result.append(
             (
@@ -1078,7 +1169,8 @@ def _concede_candidates(
                     0.1
                     + subject.traits["social"] * 0.4
                     + max(0.0, stance) * 0.6
-                ),
+                )
+                * permission,
             )
         )
     return result
@@ -1139,14 +1231,6 @@ def _fight_candidates(
             world,
             present,
         )
-        weight = single_weight * permission
-        if world.action_graph_enabled and subject.policy is None:
-            advantage = (actor_strength - perceived) / max(
-                1.0,
-                abs(actor_strength),
-            )
-            weight *= min(1.5, max(0.5, 1.0 + advantage))
-
         meta = {
             "target": target.id,
             "outmatched": perceived >= actor_strength,
@@ -1156,7 +1240,7 @@ def _fight_candidates(
         result.append(
             (
                 Action("fight", (target.id,), meta),
-                weight,
+                single_weight * permission,
             )
         )
     return _normalize_opened(
@@ -1180,7 +1264,6 @@ def _train_candidates(
         )
     ]
 
-
 def _rescue_candidates(
     subject: Subject,
     world: World,
@@ -1188,6 +1271,7 @@ def _rescue_candidates(
 ) -> list[tuple[Action, float]]:
     if "rescue" not in subject.verbs:
         return []
+
     result: list[tuple[Action, float]] = []
     for target in sorted(present, key=lambda value: value.id):
         if target.id == subject.id or target.vitality != "downed":
@@ -1195,10 +1279,29 @@ def _rescue_candidates(
         affinity = world.relations.stance(subject.id, target.id)
         if affinity < 0.3:
             continue
+
+        permission = _permission_weight(
+            subject,
+            target,
+            "rescue",
+            world,
+        )
+        if permission <= 0.0:
+            continue
+
         result.append(
             (
-                Action("rescue", (target.id,), {"target": target.id}),
-                0.3 + subject.traits["social"] + affinity,
+                Action(
+                    "rescue",
+                    (target.id,),
+                    {"target": target.id},
+                ),
+                (
+                    0.3
+                    + subject.traits["social"]
+                    + affinity
+                )
+                * permission,
             )
         )
     return result
