@@ -1,0 +1,174 @@
+name: 桃太郎
+
+time:
+  days: 16
+  slots: [朝, 昼, 夕方, 夜]
+
+protagonist: 桃太郎
+antagonist: 鬼
+
+zones:
+  - name: 村
+    note: おじいさんとおばあさんが暮らす旅の起点
+  - name: 道中
+    note: 桃太郎が犬・猿・キジと出会う道
+  - name: 森
+    note: 船を作る木材が採れる林
+  - name: 海
+    note: 鬼ヶ島へ渡る船を組み立てる海辺
+  - name: 鬼ヶ島
+    note: 鬼が宝物を守る固定の島
+
+routes:
+  村:
+    - {to: 道中}
+  道中:
+    - {to: 村}
+    - {to: 森}
+    - {to: 海}
+  森:
+    - {to: 道中}
+  海:
+    - {to: 道中}
+    - {to: 鬼ヶ島, cost: 4, requires_item: 船}
+  鬼ヶ島:
+    - {to: 海, cost: 4, requires_item: 船}
+
+movement:
+  action_weight: 2.5
+  hop_decay: 0.6
+  destination_weights:
+    村: 1.0
+    道中: 2.2
+    森: 1.5
+    海: 1.2
+    鬼ヶ島: 0.8
+
+stamina:
+  default_max: 10
+  default_recover_per_slot: 1.0
+  exhausted_ratio: 0.2
+
+companionship:
+  threshold: 0.6
+  weight: 2.0
+
+awareness_per_encounter: 0.15
+
+pulls:
+  pursue: 1.5
+  pursue_from_day: 4
+  deliver: 3.0
+  gather: 2.0
+  craft: 3.0
+
+thresholds:
+  - id: 出発
+    when: "zone(self) != '村'"
+  - id: 越境
+    when: "zone(self) == '鬼ヶ島'"
+
+items:
+  - name: きびだんご
+    give:
+      receiver_affinity: 0.5
+      giver_affinity: 0.1
+
+  - name: 木材
+    sources:
+      - {type: investigate, zone: 森, count: 1, max: 2}
+
+  - name: 縄
+    sources:
+      - {type: investigate, zone: 村, count: 2, max: 2}
+
+  - name: 鬼ヶ島の宝物
+    lootable: true
+    objective: true
+
+  - name: 金棒
+    lootable: true
+    modifier:
+      id: item:金棒
+      value: 40
+      kind: item
+      visible: false
+      lethal: true
+      lethal_chance: 0.5
+
+  - name: 船
+    made_from:
+      木材: 2
+      縄: 1
+    requires:
+      knowledge: 造船術
+    craft_zone: 海
+    lootable: true
+    vehicle: true
+    access:
+      mode: owner
+      allow: [companions]
+
+facts:
+  - id: 造船術
+    label: 船の組み方を知っている
+    secrecy: 0.2
+    share_min_affinity: 0.3
+
+default_strength_prior: 50
+
+contest:
+  tau: 10.0
+  epsilon: 5.0
+
+vitality:
+  revive_after: 4
+  ally_speedup: 1
+  revive_base_penalty: 2
+  lethal_exempt: []
+
+grief:
+  stress: 1.0
+  affinity_to_killer: -0.6
+
+ending:
+  - id: homecoming
+    when:
+      agent: 桃太郎
+      goal: attained
+    label: 鬼退治を果たし、宝を村へ持ち帰った
+
+target_ending: homecoming
+
+scheduled_events:
+  - id: departure_day
+    day: 1
+    slot: 朝
+    targets: [桃太郎]
+    label: 旅立ちの朝
+    grants_item: {name: 縄, count: 1}
+    move_to: 道中
+    stress_delta: 0.3
+
+daily_events:
+  chance: 0.35
+  events:
+    - id: warm_kibidango
+      label: おばあさんのきびだんごで元気づいた
+      weight: 3
+      stress_delta: -0.4
+
+    - id: mountain_view
+      label: 峠から遠い山々を眺めた
+      weight: 2
+      stress_delta: -0.3
+
+    - id: steep_path
+      label: 険しい山道に足を取られた
+      weight: 2
+      stress_delta: 0.5
+
+    - id: sudden_storm
+      label: 突然の嵐に見舞われた
+      weight: 1
+      stress_delta: 0.7
