@@ -81,8 +81,39 @@ def _load_action_graph(
         raise ValueError(
             f"Action graph must contain a mapping: {graph_path}"
         )
+
+    nodes = list(raw_graph.get("nodes", []) or [])
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            raise ValueError(
+                f"Action graph node at index {index} must be a mapping"
+            )
+        raw_genres = node.get("genres")
+        if raw_genres is None:
+            continue
+        if isinstance(raw_genres, str):
+            if not raw_genres:
+                raise ValueError(
+                    f"Action node genres must contain non-empty strings: "
+                    f"{index}"
+                )
+            continue
+        if isinstance(raw_genres, (list, tuple, set)):
+            if any(
+                not isinstance(value, str) or not value
+                for value in raw_genres
+            ):
+                raise ValueError(
+                    f"Action node genres must contain non-empty strings: "
+                    f"{index}"
+                )
+            continue
+        raise ValueError(
+            f"Action node genres must be a string or sequence: {index}"
+        )
+
     graph = dict(raw_graph)
-    graph["nodes"] = list(graph.get("nodes", []) or [])
+    graph["nodes"] = nodes
     graph["edges"] = list(graph.get("edges", []) or [])
     graph["_source"] = str(graph_path)
     return graph, True
@@ -724,14 +755,25 @@ class World:
             if raw_genres is None:
                 return True
             if isinstance(raw_genres, str):
+                if not raw_genres:
+                    raise ValueError(
+                        "Action node genres must contain non-empty strings"
+                    )
                 node_genres = {raw_genres}
             elif isinstance(raw_genres, (list, tuple, set)):
-                node_genres = {str(value) for value in raw_genres}
+                if any(
+                    not isinstance(value, str) or not value
+                    for value in raw_genres
+                ):
+                    raise ValueError(
+                        "Action node genres must contain non-empty strings"
+                    )
+                node_genres = set(raw_genres)
             else:
                 raise ValueError(
-                    f"Action node genres must be a string or sequence: {verb}"
+                    "Action node genres must be a string or sequence"
                 )
-            if self.genres & node_genres:
+            if self.genres.intersection(node_genres):
                 return True
         return False
 
@@ -1146,6 +1188,7 @@ class World:
                     f"{sorted(unknown_cap_targets)}"
                 )
 
+        resolved_fact_owners: dict[str, set[str]] = {}
         for fact, definition in sorted(
             self.facts.items()
         ):
@@ -1169,22 +1212,38 @@ class World:
                     f"or sequence: {fact}"
                 )
 
-            owners = list(definition_known_by)
+            owner_tokens = list(definition_known_by)
             secret_of = definition.get("secret_of")
             if secret_of is not None:
-                owners.append(str(secret_of))
-            owners.extend(
+                owner_tokens.append(str(secret_of))
+            owner_tokens.extend(
                 self.truth_known_by.get(fact, ())
             )
 
-            unknown_owners = sorted(
-                set(owners) - subject_ids
-            )
-            if unknown_owners:
-                raise ValueError(
-                    f"Unknown fact owner subject: "
-                    f"{fact}:{unknown_owners}"
-                )
+            owners: set[str] = set()
+            for token in owner_tokens:
+                if token == "$truth":
+                    if definition.get("values") is None:
+                        raise ValueError(
+                            f"$truth owner requires a valued fact: {fact}"
+                        )
+                    selected = self.truth.get(fact)
+                    if selected is None:
+                        raise ValueError(
+                            f"Truth must be resolved before binding "
+                            f"$truth owner: {fact}"
+                        )
+                    owner = str(selected)
+                else:
+                    owner = str(token)
+
+                if owner not in subject_ids:
+                    raise ValueError(
+                        f"Unknown fact owner subject: "
+                        f"{fact}:{owner}"
+                    )
+                owners.add(owner)
+            resolved_fact_owners[fact] = owners
 
             for source in (
                 definition.get("sources", []) or []
@@ -1213,57 +1272,15 @@ class World:
             if not definition.get("values"):
                 continue
 
-            raw_known_by = definition.get(
-                "known_by",
-                (),
-            )
-            if isinstance(raw_known_by, str):
-                known_by = {raw_known_by}
-            else:
-                known_by = {
-                    str(value)
-                    for value in raw_known_by or ()
-                }
-            known_by.update(
-                self.truth_known_by.get(fact_id, ())
-            )
-
-            secret_of = definition.get("secret_of")
-            if secret_of is not None:
-                known_by.add(str(secret_of))
-
-            for subject_id in sorted(known_by):
+            for subject_id in sorted(
+                resolved_fact_owners.get(fact_id, set())
+            ):
                 self.subjects[
                     subject_id
                 ].beliefs[fact_id] = Belief(
                     value=truth,
                     confidence=1.0,
                 )
-            if (
-                secret_of is not None
-                and str(secret_of) not in subjects
-            ):
-                raise ValueError(
-                    f"Unknown fact secret_of subject: "
-                    f"{fact}:{secret_of}"
-                )
-            for source in (
-                definition.get("sources", []) or []
-            ):
-                agent = source.get("agent")
-                if (
-                    agent is not None
-                    and agent not in subjects
-                ):
-                    raise ValueError(
-                        f"Unknown fact source agent: "
-                        f"{fact}:{agent}"
-                    )
-
-        self.subjects = {
-            subject_id: subjects[subject_id]
-            for subject_id in sorted(subjects)
-        }
 
         def affinity_cap_resolver(
             observer: str,

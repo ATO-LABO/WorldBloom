@@ -1128,6 +1128,8 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             "seeds": seeds,
             "target_ending": world_model.target_ending,
         }
+        if meta_evolution:
+            summary_payload["meta_evolution"] = True
         if coevolve:
             summary_payload.update(
                 {

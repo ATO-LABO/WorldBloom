@@ -35,24 +35,34 @@ def _node_matches(
     genres: frozenset[str],
 ) -> bool:
     raw_genres = node.get("genres")
-    if genres and raw_genres is not None:
-        if isinstance(raw_genres, str):
-            node_genres = {raw_genres}
-        elif isinstance(raw_genres, (list, tuple, set)):
-            if any(
-                not isinstance(value, str) or not value
-                for value in raw_genres
-            ):
-                raise ValueError(
-                    "Action node genres must contain non-empty strings"
-                )
-            node_genres = set(raw_genres)
-        else:
+    if raw_genres is None:
+        node_genres: set[str] | None = None
+    elif isinstance(raw_genres, str):
+        if not raw_genres:
             raise ValueError(
-                "Action node genres must be a string or sequence"
+                "Action node genres must contain non-empty strings"
             )
-        if not genres.intersection(node_genres):
-            return False
+        node_genres = {raw_genres}
+    elif isinstance(raw_genres, (list, tuple, set)):
+        if any(
+            not isinstance(value, str) or not value
+            for value in raw_genres
+        ):
+            raise ValueError(
+                "Action node genres must contain non-empty strings"
+            )
+        node_genres = set(raw_genres)
+    else:
+        raise ValueError(
+            "Action node genres must be a string or sequence"
+        )
+
+    if (
+        genres
+        and node_genres is not None
+        and not genres.intersection(node_genres)
+    ):
+        return False
 
     condition = node.get("when")
     if condition is None:

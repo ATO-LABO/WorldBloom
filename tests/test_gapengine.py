@@ -1977,6 +1977,49 @@ class Phase4GapEngineTests(unittest.TestCase):
             [],
         )
 
+        raw_world = yaml.safe_load(
+            (PROJECT / "world.yaml").read_text(encoding="utf-8")
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            world_path = root / "world.yaml"
+            graph_path = root / "action_graph.yaml"
+            world_path.write_text(
+                yaml.safe_dump(
+                    raw_world,
+                    allow_unicode=True,
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+                newline="\n",
+            )
+
+            for invalid_genres in ([1], [""]):
+                with self.subTest(genres=invalid_genres):
+                    graph_path.write_text(
+                        yaml.safe_dump(
+                            {
+                                "genre": "romance",
+                                "nodes": [
+                                    {
+                                        "verb": "train",
+                                        "genres": invalid_genres,
+                                    }
+                                ],
+                                "edges": [],
+                            },
+                            allow_unicode=True,
+                            sort_keys=False,
+                        ),
+                        encoding="utf-8",
+                        newline="\n",
+                    )
+                    with self.assertRaises(ValueError):
+                        World.from_yaml(
+                            world_path,
+                            action_graph_path=graph_path,
+                        )
+
     def test_generic_shaped_preserves_momotaro_delivery_score(
         self,
     ) -> None:
@@ -2038,6 +2081,13 @@ class Phase4GapEngineTests(unittest.TestCase):
                     "out": root / "explicit-off",
                 }
             )
+            evolve(
+                {
+                    **common,
+                    "meta_evolution": True,
+                    "out": root / "enabled",
+                }
+            )
 
             self.assertEqual(
                 (
@@ -2050,6 +2100,41 @@ class Phase4GapEngineTests(unittest.TestCase):
                     / "explicit-off"
                     / "archive.json"
                 ).read_bytes(),
+            )
+
+            legacy_summary = json.loads(
+                (
+                    root
+                    / "legacy"
+                    / "summary.json"
+                ).read_text(encoding="utf-8")
+            )
+            disabled_summary = json.loads(
+                (
+                    root
+                    / "explicit-off"
+                    / "summary.json"
+                ).read_text(encoding="utf-8")
+            )
+            enabled_summary = json.loads(
+                (
+                    root
+                    / "enabled"
+                    / "summary.json"
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertNotIn(
+                "meta_evolution",
+                legacy_summary,
+            )
+            self.assertNotIn(
+                "meta_evolution",
+                disabled_summary,
+            )
+            self.assertIs(
+                enabled_summary["meta_evolution"],
+                True,
             )
 
     def test_meta_evolution_cli_flag(self) -> None:

@@ -781,7 +781,13 @@ def _rethink_candidates(
 ) -> list[tuple[Action, float]]:
     if "rethink" not in subject.verbs:
         return []
-    if len(subject.beliefs) < 2:
+
+    valued_beliefs = {
+        fact_id
+        for fact_id in subject.beliefs
+        if world.facts.get(fact_id, {}).get("values") is not None
+    }
+    if len(valued_beliefs) < 2:
         return []
 
     last_fact_turn = int(
@@ -790,12 +796,19 @@ def _rethink_candidates(
     if int(sim.turn) - last_fact_turn < world.rethink_stagnation_slots:
         return []
 
+    derived_facts = {
+        fact_id
+        for fact_id, belief in subject.beliefs.items()
+        if belief.derived
+    }
     evidence = [
         fact_id
         for fact_id in sorted(subject.knowledge)
         if any(
-            isinstance(world.facts.get(fact_id, {}).get(key), dict)
+            isinstance(update, dict)
+            and str(update.get("fact")) in derived_facts
             for key in ("implies", "refutes")
+            for update in [world.facts.get(fact_id, {}).get(key)]
         )
     ]
     if not evidence:

@@ -46,6 +46,7 @@ class BeliefAbout:
 class Belief:
     value: str
     confidence: float
+    derived: bool = False
 
 
 @dataclass
@@ -348,6 +349,7 @@ class Subject:
         confidence: float,
         *,
         refute: bool = False,
+        derived: bool = False,
     ) -> dict[str, Any]:
         confidence = round(_clamp(float(confidence), 0.0, 1.0), 4)
         current = self.beliefs.get(fact_id)
@@ -377,6 +379,7 @@ class Subject:
             self.beliefs[fact_id] = Belief(
                 value=value,
                 confidence=confidence,
+                derived=derived,
             )
             outcome = "adopted"
         elif current.value == value:
@@ -392,12 +395,19 @@ class Subject:
             self.beliefs[fact_id] = Belief(
                 value=value,
                 confidence=confidence,
+                derived=derived,
             )
             outcome = "adopted"
         else:
             outcome = "rejected"
 
         updated = self.beliefs.get(fact_id)
+        if (
+            updated is not None
+            and outcome in {"adopted", "reinforced", "refuted"}
+        ):
+            updated.derived = bool(derived)
+
         after = (
             {
                 "value": updated.value,
@@ -434,6 +444,7 @@ class Subject:
                 str(raw_update["value"]),
                 float(raw_update.get("confidence", 0.5)),
                 refute=refute,
+                derived=True,
             )
             update["evidence"] = fact_id
             updates.append(update)

@@ -61,3 +61,25 @@
 - **決定: 能力層の修飾子が関係層を縛る汎用機構 `affinity_cap` を engine に追加する**。`Modifier.affinity_cap: float | None`（既定 None）と `affinity_cap_targets: tuple[str, ...]`（空なら全対象）。主体が active な cap 付き modifier を持つ間、その主体を observer とする affinity は `Relations.change` と初期 bind で上限に clamp される。`neutralize` 等で `active=False` になると上限は消える。実装は `Relations(affinity_cap_resolver=...)`（`target_resolver` と同じ流儀）、`World.bind_subjects` が subjects の active modifier から解決関数を渡す。乱数不使用、cap を持つ modifier が無い世界（桃太郎）では従来と完全に同じ結果（固定ハッシュ不変）。
 - 恋愛テンプレートでは B の `防衛` に `affinity_cap: 0.35` を付け、`observe → neutralize(B, '防衛')` を経ないと B→A が 0.6 に届かないようにする（構想の主経路が必須になる）。初期値は無作為 30 シードの到達率が概ね 10〜30% になるよう調整する（0% では GA が学習できず、100% では選択圧が無い）。
 - rules.yaml の述語で修飾子名は文字列リテラル（`'防衛'`）で書く（初回納品は裸の名前で `Unknown predicate name` になった）。
+
+## 7. D11 実測（2026-09-11、コミット 1701d15）
+
+| 項目 | affinity_cap 導入前（初回納品） | 導入後（1701d15） |
+|---|---|---|
+| 無作為 30 シード（方針なし）の `mutual` 到達 | 30/30（中央値 5 ターン） | **4/30**（到達ターン 17 / 24 / 25 / 32） |
+| 到達ランの `neutralize(B, 防衛)` | 0/30 | 4/4（全到達ランが observe→neutralize→「昔の約束」payoff→mutual） |
+| 桃太郎の小規模 evolve byte-match（ce11ed7 比、engine_hash 除く） | — | 83/83 一致 |
+| テスト | — | 86 件通過 |
+
+設計上の主経路が必須になり、無作為到達率は狙い（10〜30%）の範囲に入った。本番実験（N=100・G=20・K=3、`runs\exp6-romance`）の結果は後述。
+
+### 恋愛テンプレート本番実験（exp6、コミット 1701d15 の固定ワークツリー、`runs\exp6-romance`、N=100・G=20・K=3・`--keep reached`）
+
+| 項目 | 結果 |
+|---|---|
+| 到達率（母集団 100×3 シード） | 第 0 世代 23%（69/300）→ 第 10 世代 52% → 第 19 世代 47% |
+| アーカイブ占有マス | **8 / 12**（II×2・III×3・IV×3。I は未占有） |
+| アーカイブ相異度 | 0.65 |
+| エリート品質 | 0.33〜0.43 |
+
+合格条件 1（`mutual` に到達するエリートが ≥3 マス）✓。到達エリートの主導カテゴリが II（観察・再考）・III（対話・誓約）・IV（噂への対峙）に分かれ、同じ結末に至る経路の多様性が得られた。
