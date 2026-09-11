@@ -1,4 +1,4 @@
-"""Deterministic layers.jsonl rows and layer diffs for plan §3.9."""
+"""Deterministic layers.jsonl for plan §3.9; day-start rows use slot null."""
 
 from __future__ import annotations
 
@@ -139,7 +139,6 @@ class LayersWriter:
             row,
             ensure_ascii=False,
             sort_keys=True,
-            separators=(",", ":"),
         )
         self._handle.write(serialized)
         self._handle.write("\n")

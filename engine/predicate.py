@@ -28,32 +28,37 @@ def _invalid(node: ast.AST) -> ValueError:
     return ValueError(f"Unsupported predicate syntax: {type(node).__name__}")
 
 
-def _validate(node: ast.AST) -> None:
+def _validate(
+    node: ast.AST,
+    allowed_names: set[str] | None,
+) -> None:
     if isinstance(node, ast.Expression):
-        _validate(node.body)
+        _validate(node.body, allowed_names)
         return
     if isinstance(node, ast.BoolOp):
         if not isinstance(node.op, (ast.And, ast.Or)) or len(node.values) < 2:
             raise _invalid(node)
         for value in node.values:
-            _validate(value)
+            _validate(value, allowed_names)
         return
     if isinstance(node, ast.UnaryOp):
         if not isinstance(node.op, ast.Not):
             raise _invalid(node)
-        _validate(node.operand)
+        _validate(node.operand, allowed_names)
         return
     if isinstance(node, ast.Compare):
-        _validate(node.left)
+        _validate(node.left, allowed_names)
         if not node.comparators or len(node.ops) != len(node.comparators):
             raise _invalid(node)
         for operator in node.ops:
             if type(operator) not in _ALLOWED_COMPARISONS:
                 raise _invalid(operator)
         for comparator in node.comparators:
-            _validate(comparator)
+            _validate(comparator, allowed_names)
         return
     if isinstance(node, ast.Name):
+        if allowed_names is not None and node.id not in allowed_names:
+            raise ValueError(f"Unknown predicate name: {node.id}")
         return
     if isinstance(node, ast.Constant):
         if not isinstance(node.value, (str, int, float, bool, type(None))):
@@ -62,14 +67,21 @@ def _validate(node: ast.AST) -> None:
     if isinstance(node, ast.Call):
         if not isinstance(node.func, ast.Name) or node.keywords:
             raise _invalid(node)
+        if (
+            allowed_names is not None
+            and node.func.id not in allowed_names
+        ):
+            raise ValueError(
+                f"Unknown predicate function: {node.func.id}"
+            )
         for argument in node.args:
-            _validate(argument)
+            _validate(argument, allowed_names)
         return
     if isinstance(node, (ast.Set, ast.Tuple, ast.List)):
         for element in node.elts:
             if not isinstance(element, ast.Constant):
                 raise _invalid(element)
-            _validate(element)
+            _validate(element, allowed_names)
         return
     raise _invalid(node)
 
@@ -151,7 +163,10 @@ class Predicate:
         return bool(_evaluate(self.tree, ns))
 
 
-def compile_predicate(src: str) -> Predicate:
+def compile_predicate(
+    src: str,
+    allowed_names: set[str] | None = None,
+) -> Predicate:
     """Compile and validate a predicate without using eval."""
 
     if not isinstance(src, str) or not src.strip():
@@ -162,5 +177,8 @@ def compile_predicate(src: str) -> Predicate:
         raise ValueError(f"Invalid predicate syntax: {src!r}") from exc
     if not isinstance(parsed, ast.Expression):
         raise ValueError("Predicate must be an expression")
-    _validate(parsed)
+    _validate(
+        parsed,
+        set(allowed_names) if allowed_names is not None else None,
+    )
     return Predicate(source=src, tree=parsed)

@@ -1,4 +1,4 @@
-"""Execution of Phase 0 and D1b verbs from implementation plan §3.6."""
+"""Execution of the 13 Phase 0 and D1b verbs from implementation plan §3.6."""
 
 from __future__ import annotations
 
@@ -544,12 +544,21 @@ class VerbEngine:
             present,
             self.rng,
         )
+        lethal_modifiers = [
+            modifier
+            for modifier in winner.all_modifiers(self.world, present)
+            if modifier.active and modifier.lethal
+        ]
 
         transferred: dict[str, int] = {}
         for item in sorted(tuple(loser.inventory)):
             definition = self.world.items[item]
             count = loser.inventory.get(item, 0)
-            if count <= 0 or not definition.get("lootable", False):
+            if (
+                count <= 0
+                or not definition.get("lootable", False)
+                or definition.get("vehicle", False)
+            ):
                 continue
             loser.remove_item(item, count)
             winner.add_item(item, count)
@@ -568,11 +577,6 @@ class VerbEngine:
         loser.change_stress(1.2)
         markers = vitality.down(loser, self.world, turn)
 
-        lethal_modifiers = [
-            modifier
-            for modifier in winner.all_modifiers(self.world, present)
-            if modifier.active and modifier.lethal
-        ]
         lethal_roll: float | None = None
         lethal_chance: float | None = None
         if (
