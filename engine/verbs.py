@@ -838,34 +838,146 @@ class VerbEngine:
             for fact_id, belief in sorted(actor.beliefs.items())
         }
 
-        derived_facts = {
-            fact_id
-            for fact_id, belief in actor.beliefs.items()
-            if belief.derived
-        }
+        def evidence_order(fact_id: str) -> tuple[int, float, str]:
+            definition = self.world.facts.get(fact_id, {})
+            refutes = definition.get("refutes")
+            if isinstance(refutes, dict):
+                return (
+                    0,
+                    -float(refutes.get("confidence", 0.5)),
+                    fact_id,
+                )
+            implies = definition.get("implies")
+            if isinstance(implies, dict):
+                return (
+                    1,
+                    -float(implies.get("confidence", 0.5)),
+                    fact_id,
+                )
+            return (2, 0.0, fact_id)
+
         evidence = [
             fact_id
-            for fact_id in sorted(actor.knowledge)
+            for fact_id in actor.knowledge
             if any(
-                isinstance(update, dict)
-                and str(update.get("fact")) in derived_facts
-                for key in ("implies", "refutes")
-                for update in [self.world.facts.get(fact_id, {}).get(key)]
+                isinstance(
+                    self.world.facts.get(fact_id, {}).get(
+                        relation
+                    ),
+                    dict,
+                )
+                for relation in ("implies", "refutes")
             )
         ]
-        recomputed_facts = {
+        evidence.sort(key=evidence_order)
+
+        touched_facts = {
             str(update["fact"])
-            for fact_id in evidence
-            for key in ("implies", "refutes")
-            for update in [self.world.facts[fact_id].get(key)]
+            for evidence_id in evidence
+            for relation in ("refutes", "implies")
+            for update in [
+                self.world.facts[
+                    evidence_id
+                ].get(relation)
+            ]
             if isinstance(update, dict)
-            and str(update["fact"]) in derived_facts
         }
+        protected_facts = {
+            fact_id
+            for fact_id in touched_facts
+            if actor.id
+            in getattr(
+                self.world,
+                "fact_owners",
+                {},
+            ).get(fact_id, frozenset())
+        }
+        recomputed_facts = (
+            touched_facts - protected_facts
+        )
 
         for fact_id in sorted(recomputed_facts):
             actor.beliefs.pop(fact_id, None)
-        for fact_id in evidence:
-            actor.apply_evidence(fact_id, self.world)
+
+        refutations: dict[
+            str,
+            dict[str, float],
+        ] = {}
+        for evidence_id in evidence:
+            definition = self.world.facts[evidence_id]
+            for relation, refute in (
+                ("refutes", True),
+                ("implies", False),
+            ):
+                update = definition.get(relation)
+                if not isinstance(update, dict):
+                    continue
+
+                fact_id = str(update["fact"])
+                if fact_id in protected_facts:
+                    continue
+
+                value = str(update["value"])
+                confidence = float(
+                    update.get("confidence", 0.5)
+                )
+                if refute:
+                    values = refutations.setdefault(
+                        fact_id,
+                        {},
+                    )
+                    values[value] = max(
+                        confidence,
+                        values.get(value, 0.0),
+                    )
+                    continue
+
+                if value in refutations.get(fact_id, {}):
+                    continue
+
+                actor.update_belief(
+                    fact_id,
+                    value,
+                    confidence,
+                    derived=True,
+                )
+
+        for fact_id, excluded in sorted(
+            refutations.items()
+        ):
+            definition = self.world.facts.get(
+                fact_id,
+                {},
+            )
+            candidates = sorted(
+                str(value)
+                for value in (
+                    definition.get("values", []) or []
+                )
+            )
+            remaining = [
+                value
+                for value in candidates
+                if value not in excluded
+            ]
+            if (
+                len(remaining) != 1
+                or len(excluded)
+                != len(candidates) - 1
+            ):
+                continue
+
+            confidence = min(
+                excluded[value]
+                for value in candidates
+                if value != remaining[0]
+            )
+            actor.update_belief(
+                fact_id,
+                remaining[0],
+                confidence,
+                derived=True,
+            )
 
         after = {
             fact_id: {
@@ -879,6 +991,7 @@ class VerbEngine:
             "before": before,
             "after": after,
             "evidence": evidence,
+            "protected_facts": sorted(protected_facts),
         }
         markers = (
             [

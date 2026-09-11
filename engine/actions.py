@@ -782,36 +782,43 @@ def _rethink_candidates(
     if "rethink" not in subject.verbs:
         return []
 
-    valued_beliefs = {
+    def evidence_order(fact_id: str) -> tuple[int, float, str]:
+        definition = world.facts.get(fact_id, {})
+        refutes = definition.get("refutes")
+        if isinstance(refutes, dict):
+            return (
+                0,
+                -float(refutes.get("confidence", 0.5)),
+                fact_id,
+            )
+        implies = definition.get("implies")
+        if isinstance(implies, dict):
+            return (
+                1,
+                -float(implies.get("confidence", 0.5)),
+                fact_id,
+            )
+        return (2, 0.0, fact_id)
+
+    evidence = [
         fact_id
-        for fact_id in subject.beliefs
-        if world.facts.get(fact_id, {}).get("values") is not None
-    }
-    if len(valued_beliefs) < 2:
+        for fact_id in subject.knowledge
+        if any(
+            isinstance(
+                world.facts.get(fact_id, {}).get(relation),
+                dict,
+            )
+            for relation in ("implies", "refutes")
+        )
+    ]
+    if len(evidence) < 2:
         return []
+    evidence.sort(key=evidence_order)
 
     last_fact_turn = int(
         getattr(sim, "_last_fact_turn", {}).get(subject.id, 0)
     )
     if int(sim.turn) - last_fact_turn < world.rethink_stagnation_slots:
-        return []
-
-    derived_facts = {
-        fact_id
-        for fact_id, belief in subject.beliefs.items()
-        if belief.derived
-    }
-    evidence = [
-        fact_id
-        for fact_id in sorted(subject.knowledge)
-        if any(
-            isinstance(update, dict)
-            and str(update.get("fact")) in derived_facts
-            for key in ("implies", "refutes")
-            for update in [world.facts.get(fact_id, {}).get(key)]
-        )
-    ]
-    if not evidence:
         return []
 
     return [

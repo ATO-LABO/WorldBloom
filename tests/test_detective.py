@@ -106,9 +106,17 @@ class DetectiveTemplateTests(unittest.TestCase):
             world.facts["weapon"]["values"],
             ["燭台", "ペーパーナイフ", "彫像"],
         )
-        self.assertEqual(
+        self.assertIn(
             world.truth["weapon"],
-            "燭台",
+            {"燭台", "ペーパーナイフ", "彫像"},
+        )
+        self.assertEqual(
+            world.facts["culprit"]["share_min_affinity"],
+            0.6,
+        )
+        self.assertEqual(
+            world.facts["weapon"]["share_min_affinity"],
+            0.6,
         )
 
         evidence = {
@@ -138,6 +146,37 @@ class DetectiveTemplateTests(unittest.TestCase):
             {"容疑者甲", "容疑者乙"},
         )
 
+        culprit_implies = [
+            definition["implies"]
+            for definition in evidence.values()
+            if isinstance(
+                definition.get("implies"),
+                dict,
+            )
+            and definition["implies"]["fact"]
+            == "culprit"
+        ]
+        self.assertEqual(
+            {
+                update["value"]
+                for update in culprit_implies
+            },
+            {"容疑者甲", "容疑者乙"},
+        )
+
+        innocence_refutations = {
+            evidence["evidence_04_first_alibi"][
+                "refutes"
+            ]["value"],
+            evidence["evidence_05_second_alibi"][
+                "refutes"
+            ]["value"],
+        }
+        self.assertEqual(
+            innocence_refutations,
+            SUSPECTS - {world.truth["culprit"]},
+        )
+
         weapon_evidence = {
             fact_id
             for fact_id, definition in evidence.items()
@@ -148,9 +187,12 @@ class DetectiveTemplateTests(unittest.TestCase):
                 for relation in ("implies", "refutes")
             )
         }
-        self.assertGreaterEqual(
-            len(weapon_evidence),
-            2,
+        self.assertEqual(
+            weapon_evidence,
+            {
+                "evidence_03_weapon_trace",
+                "evidence_06_weapon_exclusion",
+            },
         )
 
         for suspect_id in sorted(SUSPECTS):
@@ -189,31 +231,107 @@ class DetectiveTemplateTests(unittest.TestCase):
     def test_truth_draw_covers_all_suspects_in_thirty_seeds(
         self,
     ) -> None:
-        distribution = {
+        culprit_distribution = {
             suspect_id: 0
             for suspect_id in SUSPECTS
         }
+        weapons = {
+            "燭台",
+            "ペーパーナイフ",
+            "彫像",
+        }
+        weapon_distribution = {
+            weapon: 0
+            for weapon in weapons
+        }
 
         for seed in range(30):
-            world = World.from_yaml(
+            unbound = World.from_yaml(
                 PROJECT / "world.yaml",
                 action_graph_path=(
                     TEMPLATE / "action_graph.yaml"
                 ),
             )
-            drawn = world.resolve_truth(seed)
-            selected = drawn["culprit"]
-            self.assertIn(selected, SUSPECTS)
-            distribution[selected] += 1
+            self.assertEqual(
+                unbound.facts[
+                    "evidence_04_first_alibi"
+                ]["refutes"]["value"],
+                "$innocent:1",
+            )
+            self.assertEqual(
+                unbound.facts[
+                    "evidence_05_second_alibi"
+                ]["refutes"]["value"],
+                "$innocent:2",
+            )
+            self.assertEqual(
+                unbound.facts[
+                    "evidence_03_weapon_trace"
+                ]["implies"]["value"],
+                "$truth",
+            )
+
+            drawn = unbound.resolve_truth(seed)
+            subjects = load_subjects()
+            unbound.bind_subjects(subjects)
+
+            culprit = drawn["culprit"]
+            weapon = drawn["weapon"]
+            self.assertIn(culprit, SUSPECTS)
+            self.assertIn(weapon, weapons)
+            culprit_distribution[culprit] += 1
+            weapon_distribution[weapon] += 1
+
+            innocent_suspects = sorted(
+                SUSPECTS - {culprit}
+            )
+            self.assertEqual(
+                unbound.facts[
+                    "evidence_04_first_alibi"
+                ]["refutes"]["value"],
+                innocent_suspects[0],
+            )
+            self.assertEqual(
+                unbound.facts[
+                    "evidence_05_second_alibi"
+                ]["refutes"]["value"],
+                innocent_suspects[1],
+            )
+
+            innocent_weapons = sorted(
+                weapons - {weapon}
+            )
+            self.assertEqual(
+                unbound.facts[
+                    "evidence_03_weapon_trace"
+                ]["implies"]["value"],
+                weapon,
+            )
+            self.assertEqual(
+                unbound.facts[
+                    "evidence_06_weapon_exclusion"
+                ]["refutes"]["value"],
+                innocent_weapons[0],
+            )
 
         self.assertEqual(
-            sum(distribution.values()),
+            sum(culprit_distribution.values()),
+            30,
+        )
+        self.assertEqual(
+            sum(weapon_distribution.values()),
             30,
         )
         self.assertTrue(
             all(
                 count > 0
-                for count in distribution.values()
+                for count in culprit_distribution.values()
+            )
+        )
+        self.assertTrue(
+            all(
+                count > 0
+                for count in weapon_distribution.values()
             )
         )
 
@@ -303,36 +421,38 @@ class DetectiveTemplateTests(unittest.TestCase):
     def test_decoy_misjudgment_rethink_and_correct_confront(
         self,
     ) -> None:
-        selected_seed: int | None = None
-        for seed in range(100):
-            probe = World.from_yaml(
-                PROJECT / "world.yaml",
-                action_graph_path=(
-                    TEMPLATE / "action_graph.yaml"
-                ),
-            )
-            if (
-                probe.resolve_truth(seed)["culprit"]
-                == "容疑者丙"
-            ):
-                selected_seed = seed
-                break
-
-        self.assertIsNotNone(selected_seed)
-        assert selected_seed is not None
-
-        world, subjects = load_case(
-            selected_seed
-        )
+        world, subjects = load_case(0)
         detective = subjects["探偵"]
-        suspect_a = subjects["容疑者甲"]
-        suspect_c = subjects["容疑者丙"]
-        suspect_a.zone = detective.zone
+        truth = world.truth["culprit"]
+
+        decoys = [
+            (
+                fact_id,
+                str(definition["implies"]["value"]),
+            )
+            for fact_id, definition in sorted(
+                world.facts.items()
+            )
+            if definition.get("decoy", False)
+            and isinstance(
+                definition.get("implies"),
+                dict,
+            )
+            and definition["implies"]["fact"]
+            == "culprit"
+            and definition["implies"]["value"]
+            != truth
+        ]
+        self.assertTrue(decoys)
+        decoy_id, wrong_suspect_id = decoys[0]
+
+        wrong_suspect = subjects[wrong_suspect_id]
+        true_suspect = subjects[truth]
+        wrong_suspect.zone = detective.zone
 
         for evidence_id in (
-            "evidence_01_red_thread",
-            "evidence_03_candlestick_wax",
-            "evidence_06_reconstruction",
+            decoy_id,
+            "evidence_03_weapon_trace",
         ):
             detective.knowledge.add(evidence_id)
             detective.apply_evidence(
@@ -342,14 +462,14 @@ class DetectiveTemplateTests(unittest.TestCase):
 
         self.assertEqual(
             detective.beliefs["culprit"].value,
-            "容疑者甲",
+            wrong_suspect_id,
         )
         self.assertTrue(
             detective.beliefs["culprit"].derived
         )
         self.assertEqual(
             detective.beliefs["weapon"].value,
-            "燭台",
+            world.truth["weapon"],
         )
         self.assertTrue(
             detective.beliefs["weapon"].derived
@@ -399,7 +519,7 @@ class DetectiveTemplateTests(unittest.TestCase):
             )
 
         observe_target(
-            suspect_a,
+            wrong_suspect,
             first_turn=3,
             day=1,
         )
@@ -409,7 +529,10 @@ class DetectiveTemplateTests(unittest.TestCase):
                 detective,
                 Action(
                     "confront",
-                    ("容疑者甲", "culprit"),
+                    (
+                        wrong_suspect_id,
+                        "culprit",
+                    ),
                 ),
                 turn=5,
                 day=2,
@@ -423,13 +546,15 @@ class DetectiveTemplateTests(unittest.TestCase):
             ["misjudged"],
         )
 
-        detective.knowledge.add(
-            "evidence_04_first_alibi"
-        )
-        detective.apply_evidence(
+        for evidence_id in (
             "evidence_04_first_alibi",
-            world,
-        )
+            "evidence_05_second_alibi",
+        ):
+            detective.knowledge.add(evidence_id)
+            detective.apply_evidence(
+                evidence_id,
+                world,
+            )
 
         rethink_actions = [
             action
@@ -450,6 +575,13 @@ class DetectiveTemplateTests(unittest.TestCase):
             len(rethink_actions),
             1,
         )
+        self.assertEqual(
+            rethink_actions[0].meta["evidence"][:2],
+            [
+                "evidence_04_first_alibi",
+                "evidence_05_second_alibi",
+            ],
+        )
 
         result, details, markers = (
             verb_engine.execute(
@@ -463,24 +595,32 @@ class DetectiveTemplateTests(unittest.TestCase):
         self.assertEqual(result, "rethought")
         self.assertEqual(
             details["before"]["culprit"]["value"],
-            "容疑者甲",
+            wrong_suspect_id,
         )
         self.assertEqual(
             details["after"]["culprit"]["value"],
-            "容疑者丙",
+            truth,
+        )
+        self.assertGreaterEqual(
+            details["after"]["culprit"]["confidence"],
+            world.facts["culprit"]["act_threshold"],
         )
         self.assertEqual(
             details["after"]["weapon"]["value"],
-            "燭台",
+            world.truth["weapon"],
+        )
+        self.assertEqual(
+            details["protected_facts"],
+            [],
         )
         self.assertEqual(
             [marker["verb"] for marker in markers],
             ["rethink"],
         )
 
-        suspect_c.zone = detective.zone
+        true_suspect.zone = detective.zone
         observe_target(
-            suspect_c,
+            true_suspect,
             first_turn=10,
             day=3,
         )
@@ -489,7 +629,7 @@ class DetectiveTemplateTests(unittest.TestCase):
             detective,
             Action(
                 "confront",
-                ("容疑者丙", "culprit"),
+                (truth, "culprit"),
             ),
             turn=12,
             day=3,

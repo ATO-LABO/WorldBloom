@@ -128,3 +128,4 @@
 - **rethink の再設計**（Fable 項目 3）: 保持証拠が触れる valued 信念を派生・非派生を問わず再導出し、保護は真相所有者の直接知（confidence 1.0）のみ。再走査順は refutes → implies、confidence 降順、fact id。候補ゲートは「証拠 2 件以上」（`weapon` 埋め草の解消）。
 - **受理**: 汎用 shaped の二系統（deliver＝従来式）は互換分岐として確定。`affinity_cap` は ally modifier の逆向きの層間作用として正当、「上昇のみ阻止」も妥当。恋愛で rethink 不発は受理。`old_promise` の 2 行は決定行＋派生イベント行で重複ではない。
 - **未解決の論点へ**: `_mislead_candidates` が全主体で `world.truth` を参照する漏洩（Phase 1 由来、golden を変えるため系列境界で）／裏切り判定を verb 固定から分類器の `stance_sign` へ（恋愛の neutralize sign +1 と不整合）／`confront_success` 型結末は shaped に勾配が無い（確信度マージンの導入）／cap 専用 modifier（value 0）の関係層への移設／探偵の能力層（証拠力 base・アリバイ）が結末に効かない／恋愛で A→B が雑談で飽和する。
+- D12 差し戻し 2 回目の実測（`$truth`/`$innocent` 証拠・rethink 再設計・`share_min_affinity: 0.6`）: 95 テスト通過。無作為 30 シード: `solved` **5/30**、真相分布 11/10/9、有効 confront 10 件中正解 **5 件（50%）**、真犯人の自白 **0 件**、misjudged 5 回・rethink 12 回。推理が真相と相関するようになった（修正前は正解率 25%・自白 6 件）。

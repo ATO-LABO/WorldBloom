@@ -3227,6 +3227,41 @@ class Phase4EngineTests(unittest.TestCase):
             else:
                 self.assertIsNone(belief)
 
+        owner = first_simulation.subjects[selected]
+        owner.knowledge.update(
+            {
+                "elder_testimony",
+                "road_gossip",
+            }
+        )
+        result, details, markers = VerbEngine(
+            first_world,
+            FixedRandom([]),
+        ).execute(
+            owner,
+            Action("rethink"),
+            turn=5,
+            day=1,
+        )
+
+        self.assertEqual(result, "unchanged")
+        self.assertEqual(markers, [])
+        self.assertEqual(
+            details["protected_facts"],
+            ["treasure_thief"],
+        )
+        self.assertEqual(
+            owner.beliefs["treasure_thief"].value,
+            selected,
+        )
+        self.assertEqual(
+            owner.beliefs["treasure_thief"].confidence,
+            1.0,
+        )
+        self.assertFalse(
+            owner.beliefs["treasure_thief"].derived
+        )
+
     def test_rethink_requires_stagnation_and_replays_evidence(
         self,
     ) -> None:
@@ -3238,6 +3273,11 @@ class Phase4EngineTests(unittest.TestCase):
             "treasure_thief": Belief(
                 value="猿",
                 confidence=0.7,
+            ),
+            "oni_weakness": Belief(
+                value="火",
+                confidence=0.2,
+                derived=False,
             ),
             "not_valued": Belief(
                 value="既知",
@@ -3267,11 +3307,7 @@ class Phase4EngineTests(unittest.TestCase):
             [],
         )
 
-        actor.beliefs["oni_weakness"] = Belief(
-            value="火",
-            confidence=0.2,
-            derived=True,
-        )
+        actor.knowledge.add("耐火の痕跡")
 
         recent_simulation = SimpleNamespace(
             day=1,
@@ -3309,7 +3345,10 @@ class Phase4EngineTests(unittest.TestCase):
         )
         self.assertEqual(
             action.meta["evidence"],
-            ["金棒の由来"],
+            [
+                "耐火の痕跡",
+                "金棒の由来",
+            ],
         )
 
         result, details, markers = VerbEngine(
@@ -3345,6 +3384,10 @@ class Phase4EngineTests(unittest.TestCase):
         self.assertEqual(
             details["after"]["oni_weakness"]["value"],
             "金棒",
+        )
+        self.assertEqual(
+            details["after"]["oni_weakness"]["confidence"],
+            0.8,
         )
         self.assertTrue(
             actor.beliefs["oni_weakness"].derived
