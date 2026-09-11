@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Run outputs live in C:\Projects\WorldBloom-local (never in the repo)
+runs/
+*.parquet
+
+# Snapshot backups taken before applying external-AI deliveries
+_backup_before_*/
+
+# Claude Code session state
+.claude/scheduled_tasks.lock
+
+# LLM settings (API keys)
+settings.json
