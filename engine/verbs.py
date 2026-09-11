@@ -1,4 +1,4 @@
-"""Execution of the thirteen Phase 0 verbs from implementation plan §3.6."""
+"""Execution of Phase 0 and D1b verbs from implementation plan §3.6."""
 
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ class VerbEngine:
             "rest": self._rest,
             "investigate": self._investigate,
             "observe": self._observe,
+            "neutralize": self._neutralize,
             "share_knowledge": self._share_knowledge,
             "give_item": self._give_item,
             "craft": self._craft,
@@ -268,16 +269,19 @@ class VerbEngine:
         )
         revealed: list[str] = []
         if belief.observe_progress >= 1.0:
-            hidden = sorted(
-                modifier.id
-                for modifier in target.all_modifiers(self.world, present)
-                if modifier.active
-                and not modifier.visible
-                and modifier.id not in belief.known_modifiers
+            hidden_sources = sorted(
+                {
+                    modifier.source
+                    for modifier in target.all_modifiers(self.world, present)
+                    if modifier.active
+                    and not modifier.visible
+                    and modifier.source not in belief.known_modifiers
+                }
             )
-            if hidden:
-                belief.known_modifiers.add(hidden[0])
-                revealed.append(hidden[0])
+            if hidden_sources:
+                source = hidden_sources[0]
+                belief.known_modifiers.add(source)
+                revealed.append(source)
             belief.base_estimate = target.base
             belief.identity_seen = True
             belief.observe_progress = 0.0
@@ -288,6 +292,88 @@ class VerbEngine:
                 "target": target.id,
                 "revealed": revealed,
                 "identity_seen": belief.identity_seen,
+            },
+            [],
+        )
+
+    def _neutralize(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        target = self._target(actor, action, allow_downed=True)
+        source = str(action.args[1])
+        if target is None:
+            return "invalid", {"reason": "target_not_present"}, []
+
+        belief = actor.beliefs_about.get(target.id)
+        if belief is None or source not in belief.known_modifiers:
+            return (
+                "invalid",
+                {
+                    "reason": "modifier_unknown",
+                    "target": target.id,
+                    "source": source,
+                },
+                [],
+            )
+
+        present = self._present(actor)
+        matching = sorted(
+            (
+                modifier
+                for modifier in target.all_modifiers(self.world, present)
+                if modifier.active and modifier.source == source
+            ),
+            key=lambda modifier: (modifier.id, modifier.kind),
+        )
+        if not matching:
+            return (
+                "invalid",
+                {
+                    "reason": "modifier_inactive",
+                    "target": target.id,
+                    "source": source,
+                },
+                [],
+            )
+
+        for modifier in matching:
+            modifier.active = False
+            if not any(
+                existing is modifier for existing in target.modifiers
+            ):
+                target.modifiers.append(modifier)
+        target.modifiers.sort(key=lambda modifier: modifier.id)
+
+        transferred = False
+        if any(modifier.kind == "item" for modifier in matching):
+            item = self.world.items.get(source)
+            if (
+                item is not None
+                and item.get("lootable", False)
+                and target.remove_item(source, 1)
+            ):
+                actor.add_item(source, 1)
+                transferred = True
+
+        self.world.relations.change(
+            target.id,
+            actor.id,
+            affinity=-0.2,
+            awareness=0.3,
+        )
+        return (
+            "neutralized",
+            {
+                "neutralized": {
+                    "target": target.id,
+                    "source": source,
+                    "transferred": transferred,
+                }
             },
             [],
         )

@@ -56,6 +56,123 @@ def read_rows(path: Path) -> list[dict[str, Any]]:
 
 
 class EngineTests(unittest.TestCase):
+    def test_observe_then_neutralize_transfers_item_modifier(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        simulation_state = SimpleNamespace(day=4, turn=1)
+
+        before_observe = candidates(
+            momotaro,
+            world,
+            simulation_state,
+        )
+        self.assertEqual(
+            [
+                action
+                for action, _ in before_observe
+                if action.verb == "neutralize"
+            ],
+            [],
+        )
+
+        engine = VerbEngine(world, random.Random(1))
+        observe = Action("observe", ("鬼",))
+        engine.execute(
+            momotaro,
+            observe,
+            turn=1,
+            day=4,
+        )
+        result, details, _ = engine.execute(
+            momotaro,
+            observe,
+            turn=2,
+            day=4,
+        )
+        self.assertEqual(result, "observed")
+        self.assertEqual(details["revealed"], ["金棒"])
+        self.assertIn(
+            "金棒",
+            momotaro.beliefs_about["鬼"].known_modifiers,
+        )
+        self.assertNotIn(
+            "item:金棒",
+            momotaro.beliefs_about["鬼"].known_modifiers,
+        )
+
+        after_observe = candidates(
+            momotaro,
+            world,
+            SimpleNamespace(day=4, turn=2),
+        )
+        neutralize_actions = [
+            action
+            for action, _ in after_observe
+            if action.verb == "neutralize"
+            and action.args == ("鬼", "金棒")
+        ]
+        self.assertEqual(len(neutralize_actions), 1)
+        self.assertEqual(
+            neutralize_actions[0].meta,
+            {
+                "target": "鬼",
+                "source": "金棒",
+                "stance_sign": -1,
+                "risk": "risky",
+            },
+        )
+
+        result, details, markers = engine.execute(
+            momotaro,
+            neutralize_actions[0],
+            turn=2,
+            day=4,
+        )
+        self.assertEqual(result, "neutralized")
+        self.assertEqual(
+            details["neutralized"],
+            {
+                "target": "鬼",
+                "source": "金棒",
+                "transferred": True,
+            },
+        )
+        self.assertEqual(markers, [])
+        self.assertFalse(oni.has_item("金棒"))
+        self.assertTrue(momotaro.has_item("金棒"))
+
+        oni_modifiers = [
+            modifier
+            for modifier in oni.all_modifiers(
+                world,
+                world.present_subjects("鬼ヶ島"),
+            )
+            if modifier.source == "金棒"
+        ]
+        self.assertEqual(len(oni_modifiers), 1)
+        self.assertFalse(oni_modifiers[0].active)
+
+        momotaro_modifiers = [
+            modifier
+            for modifier in momotaro.all_modifiers(
+                world,
+                world.present_subjects("鬼ヶ島"),
+            )
+            if modifier.source == "金棒"
+        ]
+        self.assertEqual(len(momotaro_modifiers), 1)
+        self.assertTrue(momotaro_modifiers[0].active)
+        self.assertEqual(
+            world.relations.stance("鬼", "桃太郎"),
+            -0.7,
+        )
+        self.assertEqual(
+            world.relations.awareness("鬼", "桃太郎"),
+            0.9,
+        )
+
     def test_same_seed_is_byte_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

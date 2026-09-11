@@ -242,30 +242,44 @@ class Subject:
         present: list[Subject],
     ) -> list[Modifier]:
         derived: list[Modifier] = []
+        disabled_derived = {
+            (modifier.source, modifier.kind)
+            for modifier in self.modifiers
+            if not modifier.active
+        }
+
         for item in sorted(self.inventory):
             if self.inventory[item] <= 0:
                 continue
             definition = world.items.get(item, {})
             raw_modifier = definition.get("modifier")
-            if raw_modifier:
-                derived.append(
-                    Modifier(
-                        id=str(raw_modifier.get("id", f"item:{item}")),
-                        source=item,
-                        value=float(raw_modifier.get("value", 0.0)),
-                        kind=str(raw_modifier.get("kind", "item")),
-                        visible=bool(raw_modifier.get("visible", True)),
-                        active=bool(raw_modifier.get("active", True)),
-                        lethal=bool(raw_modifier.get("lethal", False)),
-                        lethal_chance=float(raw_modifier.get("lethal_chance", 0.0)),
-                    )
+            if not raw_modifier:
+                continue
+            kind = str(raw_modifier.get("kind", "item"))
+            if (item, kind) in disabled_derived:
+                continue
+            derived.append(
+                Modifier(
+                    id=str(raw_modifier.get("id", f"item:{item}")),
+                    source=item,
+                    value=float(raw_modifier.get("value", 0.0)),
+                    kind=kind,
+                    visible=bool(raw_modifier.get("visible", True)),
+                    active=bool(raw_modifier.get("active", True)),
+                    lethal=bool(raw_modifier.get("lethal", False)),
+                    lethal_chance=float(
+                        raw_modifier.get("lethal_chance", 0.0)
+                    ),
                 )
+            )
 
         threshold = world.companionship["threshold"]
         for peer in sorted(present, key=lambda subject: subject.id):
             if peer.id == self.id or peer.vitality not in {"alive", "revived"}:
                 continue
             if world.relations.stance(peer.id, self.id) < threshold:
+                continue
+            if (peer.id, "ally") in disabled_derived:
                 continue
             derived.append(
                 Modifier(

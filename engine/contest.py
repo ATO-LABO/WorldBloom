@@ -54,7 +54,7 @@ def believed_strength(
         modifier.value
         for modifier in target.all_modifiers(world, present)
         if modifier.active
-        and (modifier.visible or modifier.id in known_modifiers)
+        and (modifier.visible or modifier.source in known_modifiers)
     )
     return round(base_estimate + modifier_total, 6)
 
