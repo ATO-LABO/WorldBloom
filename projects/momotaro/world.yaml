@@ -162,6 +162,7 @@ items:
 
   - name: 勾玉
     lootable: true
+    keepsake: true
     modifier:
       id: item:勾玉
       value: 5
