@@ -52,6 +52,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Coevolve a separate antagonist population and archive.",
     )
     parser.add_argument(
+        "--meta-evolution",
+        action="store_true",
+        help=(
+            "Evolve per-rule enable bits in addition to the nine "
+            "scalar genes."
+        ),
+    )
+    parser.add_argument(
         "--target-ending",
         action="extend",
         nargs="+",
@@ -71,6 +79,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "ga_seed": args.ga_seed,
             "generations": args.generations,
             "keep": args.keep,
+            "meta_evolution": args.meta_evolution,
             "out": args.out,
             "population": args.population,
             "processes": args.processes,

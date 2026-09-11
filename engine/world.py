@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import heapq
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
@@ -240,6 +241,31 @@ class World:
                 action_graph_path,
             )
         )
+        raw_genre = self.action_graph.get("genre")
+        if raw_genre is None:
+            self.genres = frozenset()
+        elif isinstance(raw_genre, str):
+            if not raw_genre:
+                raise ValueError("action_graph.genre must not be empty")
+            self.genres = frozenset((raw_genre,))
+        elif isinstance(raw_genre, (list, tuple, set)):
+            if any(
+                not isinstance(value, str) or not value
+                for value in raw_genre
+            ):
+                raise ValueError(
+                    "action_graph.genre entries must be non-empty strings"
+                )
+            self.genres = frozenset(raw_genre)
+        else:
+            raise ValueError(
+                "action_graph.genre must be a string or sequence"
+            )
+
+        self.rethink_stagnation_slots = max(
+            1,
+            int(self.action_graph.get("rethink_stagnation_slots", 3)),
+        )
         raw_permission = (
             self.action_graph.get("permission", {}) or {}
         )
@@ -343,10 +369,70 @@ class World:
         raw_truth = definition.get("truth", {}) or {}
         if not isinstance(raw_truth, dict):
             raise ValueError("world.truth must be a mapping")
-        self.truth = {
-            str(fact_id): str(value)
-            for fact_id, value in sorted(raw_truth.items())
-        }
+
+        self.truth: dict[str, str] = {}
+        self.truth_candidates: dict[
+            str,
+            tuple[tuple[str, float], ...],
+        ] = {}
+        self.truth_known_by: dict[str, tuple[str, ...]] = {}
+        self.drawn_truth: dict[str, str] = {}
+
+        for raw_fact_id, raw_value in sorted(
+            raw_truth.items(),
+            key=lambda pair: str(pair[0]),
+        ):
+            fact_id = str(raw_fact_id)
+            if not isinstance(raw_value, dict):
+                self.truth[fact_id] = str(raw_value)
+                continue
+
+            raw_candidates = raw_value.get("candidates")
+            if not isinstance(raw_candidates, dict) or not raw_candidates:
+                raise ValueError(
+                    f"Truth candidates must be a non-empty mapping: {fact_id}"
+                )
+
+            candidates: list[tuple[str, float]] = []
+            for candidate, raw_weight in sorted(
+                raw_candidates.items(),
+                key=lambda pair: str(pair[0]),
+            ):
+                if (
+                    not isinstance(raw_weight, (int, float))
+                    or isinstance(raw_weight, bool)
+                ):
+                    raise ValueError(
+                        f"Truth candidate weight must be numeric: "
+                        f"{fact_id}:{candidate}"
+                    )
+                weight = float(raw_weight)
+                if weight < 0.0:
+                    raise ValueError(
+                        f"Truth candidate weight must not be negative: "
+                        f"{fact_id}:{candidate}"
+                    )
+                candidates.append((str(candidate), weight))
+            if sum(weight for _, weight in candidates) <= 0.0:
+                raise ValueError(
+                    f"Truth candidate weights must contain a positive value: "
+                    f"{fact_id}"
+                )
+
+            raw_known_by = raw_value.get("known_by", ())
+            if isinstance(raw_known_by, str):
+                known_by = (raw_known_by,)
+            elif isinstance(raw_known_by, (list, tuple, set)):
+                known_by = tuple(
+                    sorted(str(value) for value in raw_known_by)
+                )
+            else:
+                raise ValueError(
+                    f"Truth known_by must be a string or sequence: {fact_id}"
+                )
+
+            self.truth_candidates[fact_id] = tuple(candidates)
+            self.truth_known_by[fact_id] = known_by
 
         self.default_strength_prior = float(
             definition.get("default_strength_prior", 50.0)
@@ -514,6 +600,7 @@ class World:
         self.subjects: dict[str, Subject] = {}
         self.objectives: dict[str, dict[str, Any]] = {}
         self.delivered: dict[str, str] = {}
+        self.confront_successes: set[tuple[str, str]] = set()
         self.pending_effects: list[dict[str, Any]] = []
         configure_phase2(self, definition, source)
         self.offers: dict[
@@ -549,6 +636,20 @@ class World:
             source,
             action_graph_path=action_graph_path,
         )
+
+    def resolve_truth(self, seed: int) -> dict[str, str]:
+        """Resolve configured truth choices without touching the main RNG."""
+
+        self.drawn_truth = {}
+        for fact_id in sorted(self.truth_candidates):
+            candidates = self.truth_candidates[fact_id]
+            values = [value for value, _ in candidates]
+            weights = [weight for _, weight in candidates]
+            rng = random.Random(f"{int(seed)}:{fact_id}")
+            selected = rng.choices(values, weights=weights, k=1)[0]
+            self.truth[fact_id] = selected
+            self.drawn_truth[fact_id] = selected
+        return dict(self.drawn_truth)
 
     def set_target_ending(
         self,
@@ -591,6 +692,48 @@ class World:
             )
 
         self.target_ending = stored
+
+    def target_endings(self) -> tuple[dict[str, Any], ...]:
+        target_ids = (
+            {self.target_ending}
+            if isinstance(self.target_ending, str)
+            else set(self.target_ending)
+        )
+        return tuple(
+            ending
+            for ending in self.endings
+            if str(ending["id"]) in target_ids
+        )
+
+    def genre_allows(self, verb: str) -> bool:
+        """Apply node genre tags only when the template declares a genre."""
+
+        if not self.genres:
+            return True
+
+        nodes = [
+            node
+            for node in self.action_graph.get("nodes", []) or []
+            if isinstance(node, dict) and node.get("verb") == verb
+        ]
+        if not nodes:
+            return True
+
+        for node in nodes:
+            raw_genres = node.get("genres")
+            if raw_genres is None:
+                return True
+            if isinstance(raw_genres, str):
+                node_genres = {raw_genres}
+            elif isinstance(raw_genres, (list, tuple, set)):
+                node_genres = {str(value) for value in raw_genres}
+            else:
+                raise ValueError(
+                    f"Action node genres must be a string or sequence: {verb}"
+                )
+            if self.genres & node_genres:
+                return True
+        return False
 
     def _validate_item_references(self) -> None:
         for origin in sorted(self.routes):
@@ -764,6 +907,7 @@ class World:
 
     def bind_subjects(self, subjects: dict[str, Subject]) -> None:
         self.delivered.clear()
+        self.confront_successes.clear()
         self.pending_effects.clear()
         self.offers.clear()
         self.pledges.clear()
@@ -893,7 +1037,69 @@ class World:
             relation_values[subject.id] = subject.initial_relations
 
         for fact, definition in sorted(self.facts.items()):
+            raw_known_by = definition.get("known_by", ())
+            if isinstance(raw_known_by, str):
+                definition_known_by = (raw_known_by,)
+            elif isinstance(raw_known_by, (list, tuple, set)):
+                definition_known_by = tuple(
+                    str(value) for value in raw_known_by
+                )
+            else:
+                raise ValueError(
+                    f"Fact known_by must be a string or sequence: {fact}"
+                )
+
+            owners = list(definition_known_by)
             secret_of = definition.get("secret_of")
+            if secret_of is not None:
+                owners.append(str(secret_of))
+            owners.extend(self.truth_known_by.get(fact, ()))
+
+            unknown_owners = sorted(set(owners) - subject_ids)
+            if unknown_owners:
+                raise ValueError(
+                    f"Unknown fact owner subject: "
+                    f"{fact}:{unknown_owners}"
+                )
+
+            for source in definition.get("sources", []) or []:
+                agent = source.get("agent")
+                if agent is not None and agent not in subjects:
+                    raise ValueError(
+                        f"Unknown fact source agent: {fact}:{agent}"
+                    )
+
+        self.subjects = {
+            subject_id: subjects[subject_id]
+            for subject_id in sorted(subjects)
+        }
+
+        from engine.subject import Belief
+
+        for fact_id, truth in sorted(self.truth.items()):
+            definition = self.facts.get(fact_id, {})
+            if not definition.get("values"):
+                continue
+
+            raw_known_by = definition.get("known_by", ())
+            if isinstance(raw_known_by, str):
+                known_by = {raw_known_by}
+            else:
+                known_by = {
+                    str(value)
+                    for value in raw_known_by or ()
+                }
+            known_by.update(self.truth_known_by.get(fact_id, ()))
+
+            secret_of = definition.get("secret_of")
+            if secret_of is not None:
+                known_by.add(str(secret_of))
+
+            for subject_id in sorted(known_by):
+                self.subjects[subject_id].beliefs[fact_id] = Belief(
+                    value=truth,
+                    confidence=1.0,
+                )
             if (
                 secret_of is not None
                 and str(secret_of) not in subjects
@@ -1315,6 +1521,10 @@ class World:
                     present,
                 ),
                 "hostile_present": hostile_present,
+                "confront_success": (
+                    lambda actor, fact: (actor, fact)
+                    in self.confront_successes
+                ),
             }
         )
         if bindings:

@@ -27,6 +27,7 @@ PREDICATE_NAMES = frozenset(
         "strength",
         "believed_strength",
         "hostile_present",
+        "confront_success",
         "turn",
         "day",
         "phase",
@@ -198,6 +199,26 @@ class Predicate:
 
     def evaluate(self, ns: Namespace) -> bool:
         return bool(_evaluate(self.tree, ns))
+
+
+def conjuncts(pred: Predicate) -> list[Predicate]:
+    """Return the recursively flattened top-level AND operands."""
+
+    def flatten(node: ast.expr) -> list[ast.expr]:
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
+            result: list[ast.expr] = []
+            for value in node.values:
+                result.extend(flatten(value))
+            return result
+        return [node]
+
+    return [
+        Predicate(
+            source=ast.unparse(node),
+            tree=ast.Expression(body=node),
+        )
+        for node in flatten(pred.tree.body)
+    ]
 
 
 def _parse_predicate(src: str) -> ast.Expression:

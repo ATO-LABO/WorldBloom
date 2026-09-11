@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
-from typing import Any, Mapping
+from dataclasses import dataclass, field
+from typing import Any, Iterable, Mapping
 
 
 CATEGORIES = ("I", "II", "III", "IV", "V", "VI")
@@ -22,18 +22,32 @@ class Genome:
     risk_tolerance: float
     stance_shift_bias: float
     novelty_drive: float
+    rule_bits: dict[str, bool] = field(default_factory=dict)
 
     @classmethod
-    def neutral(cls) -> Genome:
+    def neutral(
+        cls,
+        *,
+        rule_ids: Iterable[str] = (),
+    ) -> Genome:
         return cls(
             category_weight={category: 0.5 for category in CATEGORIES},
             risk_tolerance=0.5,
             stance_shift_bias=0.0,
             novelty_drive=0.0,
+            rule_bits={
+                rule_id: True
+                for rule_id in sorted(set(map(str, rule_ids)))
+            },
         )
 
     @classmethod
-    def random(cls, rng: random.Random) -> Genome:
+    def random(
+        cls,
+        rng: random.Random,
+        *,
+        rule_ids: Iterable[str] = (),
+    ) -> Genome:
         return cls(
             category_weight={
                 category: rng.uniform(CATEGORY_MIN, CATEGORY_MAX)
@@ -42,6 +56,10 @@ class Genome:
             risk_tolerance=rng.uniform(0.0, 1.0),
             stance_shift_bias=rng.uniform(-1.0, 1.0),
             novelty_drive=rng.uniform(0.0, 1.0),
+            rule_bits={
+                rule_id: True
+                for rule_id in sorted(set(map(str, rule_ids)))
+            },
         )
 
     @classmethod
@@ -51,6 +69,9 @@ class Genome:
         second: Genome,
         rng: random.Random,
     ) -> Genome:
+        rule_ids = sorted(
+            set(first.rule_bits) | set(second.rule_bits)
+        )
         return cls(
             category_weight={
                 category: (
@@ -75,6 +96,14 @@ class Genome:
                 if rng.random() < 0.5
                 else second.novelty_drive
             ),
+            rule_bits={
+                rule_id: (
+                    first.rule_bits.get(rule_id, True)
+                    if rng.random() < 0.5
+                    else second.rule_bits.get(rule_id, True)
+                )
+                for rule_id in rule_ids
+            },
         )
 
     @classmethod
@@ -85,6 +114,7 @@ class Genome:
         *,
         p: float = 0.3,
         sigma: Mapping[str, float] | None = None,
+        rule_p: float = 0.1,
     ) -> Genome:
         deviations = {
             "cw": 0.1,
@@ -116,11 +146,19 @@ class Genome:
         if rng.random() < p:
             novelty += rng.gauss(0.0, deviations["novelty"])
 
+        rule_bits: dict[str, bool] = {}
+        for rule_id in sorted(genome.rule_bits):
+            enabled = genome.rule_bits[rule_id]
+            if rng.random() < rule_p:
+                enabled = not enabled
+            rule_bits[rule_id] = enabled
+
         return cls(
             category_weight=category_weight,
             risk_tolerance=risk,
             stance_shift_bias=bias,
             novelty_drive=novelty,
+            rule_bits=rule_bits,
         ).clip()
 
     def clip(self) -> Genome:
@@ -134,12 +172,17 @@ class Genome:
                 for category in CATEGORIES
             },
             risk_tolerance=_clip(self.risk_tolerance, 0.0, 1.0),
-            stance_shift_bias=_clip(self.stance_shift_bias, -1.0, 1.0),
+            stance_shift_bias=_clip(
+                self.stance_shift_bias,
+                -1.0,
+                1.0,
+            ),
             novelty_drive=_clip(self.novelty_drive, 0.0, 1.0),
+            rule_bits=dict(sorted(self.rule_bits.items())),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result: dict[str, Any] = {
             "category_weight": {
                 category: float(self.category_weight[category])
                 for category in CATEGORIES
@@ -148,6 +191,9 @@ class Genome:
             "risk_tolerance": float(self.risk_tolerance),
             "stance_shift_bias": float(self.stance_shift_bias),
         }
+        if self.rule_bits:
+            result["rule_bits"] = dict(sorted(self.rule_bits.items()))
+        return result
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> Genome:
@@ -159,6 +205,18 @@ class Genome:
         ]
         if missing:
             raise ValueError(f"Genome is missing categories: {missing}")
+
+        raw_rule_bits = raw.get("rule_bits", {})
+        if not isinstance(raw_rule_bits, Mapping):
+            raise ValueError("Genome.rule_bits must be a mapping")
+        if any(
+            not isinstance(enabled, bool)
+            for enabled in raw_rule_bits.values()
+        ):
+            raise ValueError(
+                "Genome.rule_bits values must be booleans"
+            )
+
         return cls(
             category_weight={
                 category: float(weights[category])
@@ -167,6 +225,13 @@ class Genome:
             risk_tolerance=float(raw["risk_tolerance"]),
             stance_shift_bias=float(raw["stance_shift_bias"]),
             novelty_drive=float(raw["novelty_drive"]),
+            rule_bits={
+                str(rule_id): enabled
+                for rule_id, enabled in sorted(
+                    raw_rule_bits.items(),
+                    key=lambda pair: str(pair[0]),
+                )
+            },
         ).clip()
 
     def is_neutral(self, tolerance: float = 1e-9) -> bool:
@@ -186,4 +251,5 @@ class Genome:
             <= tolerance
             and abs(self.novelty_drive - neutral.novelty_drive)
             <= tolerance
+            and all(self.rule_bits.values())
         )

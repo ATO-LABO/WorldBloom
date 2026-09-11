@@ -774,6 +774,49 @@ def _confront_candidates(
     )
 
 
+def _rethink_candidates(
+    subject: Subject,
+    world: World,
+    sim: Any,
+) -> list[tuple[Action, float]]:
+    if "rethink" not in subject.verbs:
+        return []
+    if len(subject.beliefs) < 2:
+        return []
+
+    last_fact_turn = int(
+        getattr(sim, "_last_fact_turn", {}).get(subject.id, 0)
+    )
+    if int(sim.turn) - last_fact_turn < world.rethink_stagnation_slots:
+        return []
+
+    evidence = [
+        fact_id
+        for fact_id in sorted(subject.knowledge)
+        if any(
+            isinstance(world.facts.get(fact_id, {}).get(key), dict)
+            for key in ("implies", "refutes")
+        )
+    ]
+    if not evidence:
+        return []
+
+    return [
+        (
+            Action(
+                "rethink",
+                meta={
+                    "evidence": evidence,
+                    "risk": "neutral",
+                    "stance_sign": 0,
+                    "subtype": "rethink",
+                },
+            ),
+            0.1 + subject.traits["curiosity"] * 0.4,
+        )
+    ]
+
+
 def _share_candidates(
     subject: Subject,
     world: World,
@@ -1637,6 +1680,7 @@ def candidates(
     weighted.extend(_sabotage_candidates(subject, world, present))
     weighted.extend(_sacrifice_candidates(subject, world))
     weighted.extend(_mislead_candidates(subject, world, present))
+    weighted.extend(_rethink_candidates(subject, world, sim))
     weighted.extend(_confront_candidates(subject, world, present))
     weighted.extend(_share_candidates(subject, world, present))
     weighted.extend(_give_candidates(subject, world, present))
@@ -1676,6 +1720,7 @@ def candidates(
             for action, weight in weighted
             if weight > 0.0
             and action.verb in allowed_verbs
+            and world.genre_allows(action.verb)
         ),
         key=_action_key,
     )

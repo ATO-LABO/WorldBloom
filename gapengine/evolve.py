@@ -61,6 +61,34 @@ def _load_yaml(path: Path, default: Any) -> Any:
     return default if value is None else value
 
 
+def _rule_ids(
+    rules: Iterable[Mapping[str, Any]],
+) -> tuple[str, ...]:
+    identifiers: list[str] = []
+    for index, rule in enumerate(rules):
+        if not isinstance(rule, Mapping):
+            raise ValueError(
+                f"Policy rule at index {index} must be a mapping"
+            )
+        rule_id = rule.get("id")
+        if not isinstance(rule_id, str) or not rule_id:
+            raise ValueError(
+                f"Policy rule id is required at index {index}"
+            )
+        identifiers.append(rule_id)
+
+    if len(identifiers) != len(set(identifiers)):
+        duplicates = sorted(
+            rule_id
+            for rule_id in set(identifiers)
+            if identifiers.count(rule_id) > 1
+        )
+        raise ValueError(
+            f"Policy rule ids must be unique: {duplicates}"
+        )
+    return tuple(sorted(identifiers))
+
+
 def _world_meta(
     world: World,
     *,
@@ -480,12 +508,22 @@ def _next_population(
     archive: Archive,
     previous: list[dict[str, Any]],
     rng: random.Random,
+    *,
+    rule_ids: tuple[str, ...] = (),
 ) -> list[tuple[Genome, list[str]]]:
     pool = _parent_pool(archive, previous)
     population: list[tuple[Genome, list[str]]] = []
     for _ in range(size):
         if not pool or rng.random() < 0.1:
-            population.append((Genome.random(rng), []))
+            population.append(
+                (
+                    Genome.random(
+                        rng,
+                        rule_ids=rule_ids,
+                    ),
+                    [],
+                )
+            )
             continue
         first, second = _choose_parents(pool, rng)
         child = Genome.crossover(first[0], second[0], rng)
@@ -604,6 +642,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
     processes = int(cfg.get("processes", 1))
     keep = str(cfg.get("keep", "reached"))
     coevolve = bool(cfg.get("coevolve", False))
+    meta_evolution = bool(cfg.get("meta_evolution", False))
     if generations < 1 or population_size < 1 or seed_count < 1:
         raise ValueError(
             "generations, population, and seeds must be positive"
@@ -635,6 +674,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
         )
     )
     rules = list(_load_yaml(template_dir / "rules.yaml", []))
+    rule_ids = _rule_ids(rules) if meta_evolution else ()
     canon = load_canon(template_dir / "canon.yaml")
 
     world_model = World.from_yaml(
@@ -672,12 +712,24 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
     previous_results: list[dict[str, Any]] = []
     previous_antagonist_results: list[dict[str, Any]] = []
     population = [
-        (Genome.random(ga_rng), [])
+        (
+            Genome.random(
+                ga_rng,
+                rule_ids=rule_ids,
+            ),
+            [],
+        )
         for _ in range(population_size)
     ]
     antagonist_population = (
         [
-            (Genome.random(ga_rng), [])
+            (
+                Genome.random(
+                    ga_rng,
+                    rule_ids=rule_ids,
+                ),
+                [],
+            )
             for _ in range(population_size)
         ]
         if coevolve
@@ -728,6 +780,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                 archive,
                 previous_results,
                 ga_rng,
+                rule_ids=rule_ids,
             )
             if coevolve:
                 assert antagonist_archive is not None
@@ -736,6 +789,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                     antagonist_archive,
                     previous_antagonist_results,
                     ga_rng,
+                    rule_ids=rule_ids,
                 )
 
         _json_write(

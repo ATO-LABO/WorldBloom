@@ -137,6 +137,7 @@ def _adjust_genome(
         risk_tolerance=risk_tolerance,
         stance_shift_bias=stance_shift_bias,
         novelty_drive=novelty_drive,
+        rule_bits=dict(genome.rule_bits),
     ).clip()
 
 
@@ -174,7 +175,11 @@ class Policy:
     ) -> None:
         self.genome = genome
         self.precedent = precedent
-        self.rules = _compile_rules(rules)
+        self.rules = tuple(
+            rule
+            for rule in _compile_rules(rules)
+            if genome.rule_bits.get(str(rule["id"]), True)
+        )
         self.lam = min(1.0, max(0.0, float(lam)))
         self.eps = max(0.0, float(eps))
         self.self_table = self_table or PrecedentTable()

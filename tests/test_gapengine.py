@@ -31,6 +31,7 @@ from gapengine.qd import (
     antagonist_quality,
     quality,
     reached,
+    shaped,
 )
 from scripts.evolve import build_parser as build_evolve_parser
 from scripts.random_baseline import (
@@ -1768,6 +1769,352 @@ class D6bGapEngineTests(unittest.TestCase):
         self.assertAlmostEqual(
             by_verb["persuade"]["m_cat"],
             1.0,
+        )
+
+
+class Phase4GapEngineTests(unittest.TestCase):
+    def test_rule_bits_off_preserves_legacy_genome_encoding_and_rng(
+        self,
+    ) -> None:
+        self.assertNotIn(
+            "rule_bits",
+            Genome.neutral().to_dict(),
+        )
+
+        legacy_rng = random.Random(91)
+        disabled_rng = random.Random(91)
+        legacy = [
+            Genome.random(legacy_rng).to_dict()
+            for _ in range(8)
+        ]
+        disabled = [
+            Genome.random(
+                disabled_rng,
+                rule_ids=(),
+            ).to_dict()
+            for _ in range(8)
+        ]
+
+        self.assertEqual(legacy, disabled)
+        self.assertEqual(
+            legacy_rng.getstate(),
+            disabled_rng.getstate(),
+        )
+        self.assertTrue(
+            all("rule_bits" not in genome for genome in disabled)
+        )
+
+    def test_disabled_rule_bit_prevents_policy_adjustment(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        present = world.present_subjects(actor.zone)
+        rules = [
+            {
+                "id": "boost_train",
+                "scope": "turn",
+                "when": "True",
+                "adjust": {
+                    "category_weight.I": 0.4,
+                },
+            }
+        ]
+        cfg = {
+            "nodes": [
+                {
+                    "verb": "train",
+                    "category": "I",
+                    "subtype": "self_strengthen",
+                    "risk": "neutral",
+                    "sign": 0,
+                }
+            ],
+            "edges": [],
+        }
+        encoded = Genome.neutral(
+            rule_ids=("boost_train",),
+        ).to_dict()
+        encoded["rule_bits"] = {"boost_train": False}
+        genome = Genome.from_dict(encoded)
+        policy = Policy(
+            genome,
+            precedent=None,
+            rules=rules,
+            cfg=cfg,
+        )
+        action = Action("train")
+
+        output = policy.reweight(
+            actor,
+            world,
+            present,
+            [(action, 1.0)],
+            turn=1,
+            day=1,
+        )
+
+        self.assertEqual(policy.rules, ())
+        self.assertEqual(len(output), 1)
+        self.assertAlmostEqual(output[0][1], 1.0)
+        self.assertEqual(
+            action.meta["policy"]["effective_genome"][
+                "category_weight"
+            ]["I"],
+            0.5,
+        )
+        self.assertEqual(
+            action.meta["policy"]["effective_genome"][
+                "rule_bits"
+            ],
+            {"boost_train": False},
+        )
+
+    def test_meta_evolution_crossover_and_mutation_are_deterministic(
+        self,
+    ) -> None:
+        rule_ids = ("after_crossing", "hostile_lean")
+        first = Genome.neutral(rule_ids=rule_ids)
+        second_raw = first.to_dict()
+        second_raw["rule_bits"] = {
+            "after_crossing": False,
+            "hostile_lean": False,
+        }
+        second = Genome.from_dict(second_raw)
+
+        def produce() -> tuple[dict[str, Any], object]:
+            rng = random.Random(117)
+            child = Genome.crossover(
+                first,
+                second,
+                rng,
+            )
+            mutated = Genome.mutate(
+                child,
+                rng,
+                p=0.3,
+                rule_p=0.1,
+            )
+            return mutated.to_dict(), rng.getstate()
+
+        first_result, first_state = produce()
+        second_result, second_state = produce()
+
+        self.assertEqual(first_result, second_result)
+        self.assertEqual(first_state, second_state)
+        self.assertEqual(
+            set(first_result["rule_bits"]),
+            set(rule_ids),
+        )
+
+        flipped = Genome.mutate(
+            first,
+            random.Random(5),
+            p=0.0,
+            rule_p=1.0,
+        )
+        self.assertEqual(
+            flipped.rule_bits,
+            {
+                "after_crossing": False,
+                "hostile_lean": False,
+            },
+        )
+
+    def test_genre_tags_prune_classification_and_candidates(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        actor.verbs = {"train"}
+        world.genres = frozenset({"romance"})
+        cfg = {
+            "nodes": [
+                {
+                    "verb": "train",
+                    "category": "I",
+                    "subtype": "detective_training",
+                    "genres": ["detective"],
+                },
+                {
+                    "verb": "train",
+                    "category": "III",
+                    "subtype": "romance_training",
+                    "genres": ["romance"],
+                },
+            ],
+            "edges": [],
+        }
+
+        classification = classify(
+            Action("train"),
+            actor,
+            world,
+            world.present_subjects(actor.zone),
+            cfg,
+        )
+        self.assertEqual(classification.category, "III")
+        self.assertEqual(
+            classification.subtype,
+            "romance_training",
+        )
+
+        world.action_graph = {
+            "nodes": [
+                {
+                    "verb": "train",
+                    "genres": ["detective"],
+                }
+            ],
+            "edges": [],
+        }
+        self.assertEqual(
+            candidates(
+                actor,
+                world,
+                SimpleNamespace(day=1, turn=1),
+            ),
+            [],
+        )
+
+    def test_generic_shaped_preserves_momotaro_delivery_score(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        protagonist = subjects["桃太郎"]
+        holder = subjects["鬼"]
+        rows: list[dict[str, Any]] = [
+            {
+                "kind": "header",
+                "protagonist": protagonist.id,
+            }
+        ]
+
+        self.assertEqual(shaped(rows, world), 0.3)
+
+        holder.remove_item("鬼ヶ島の宝物", 1)
+        protagonist.add_item("鬼ヶ島の宝物", 1)
+        protagonist.zone = "道中"
+        self.assertEqual(shaped(rows, world), 0.6)
+
+        protagonist.zone = "村"
+        rows.append(
+            {
+                "kind": "event",
+                "verb": "ending",
+                "id": "homecoming",
+            }
+        )
+        self.assertEqual(shaped(rows, world), 1.0)
+
+    def test_meta_evolution_off_archive_is_byte_identical(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = {
+                "ga_seed": 29,
+                "generations": 2,
+                "keep": "all",
+                "population": 5,
+                "processes": 1,
+                "project": project,
+                "seed_base": 31,
+                "seeds": 1,
+                "template": TEMPLATE,
+            }
+
+            evolve(
+                {
+                    **common,
+                    "out": root / "legacy",
+                }
+            )
+            evolve(
+                {
+                    **common,
+                    "meta_evolution": False,
+                    "out": root / "explicit-off",
+                }
+            )
+
+            self.assertEqual(
+                (
+                    root
+                    / "legacy"
+                    / "archive.json"
+                ).read_bytes(),
+                (
+                    root
+                    / "explicit-off"
+                    / "archive.json"
+                ).read_bytes(),
+            )
+
+    def test_meta_evolution_cli_flag(self) -> None:
+        required = [
+            "--project",
+            str(PROJECT),
+            "--template",
+            str(TEMPLATE),
+            "--out",
+            "unused",
+        ]
+
+        default_args = build_evolve_parser().parse_args(required)
+        enabled_args = build_evolve_parser().parse_args(
+            [*required, "--meta-evolution"]
+        )
+
+        self.assertFalse(default_args.meta_evolution)
+        self.assertTrue(enabled_args.meta_evolution)
+
+
+    def test_rethink_belief_reversal_increases_quality(
+        self,
+    ) -> None:
+        base_rows: list[dict[str, Any]] = [
+            {
+                "kind": "header",
+                "protagonist": "桃太郎",
+            }
+        ]
+        rethink_rows = [
+            *base_rows,
+            {
+                "kind": "event",
+                "verb": "rethink",
+                "subject": "桃太郎",
+                "details": {
+                    "before": {
+                        "treasure_thief": {
+                            "value": "猿",
+                            "confidence": 0.4,
+                        },
+                        "oni_weakness": {
+                            "value": "火",
+                            "confidence": 0.2,
+                        },
+                    },
+                    "after": {
+                        "treasure_thief": {
+                            "value": "鬼",
+                            "confidence": 0.5,
+                        },
+                        "oni_weakness": {
+                            "value": "火",
+                            "confidence": 0.8,
+                        },
+                    },
+                },
+            },
+        ]
+        world_meta = {"protagonist": "桃太郎"}
+
+        self.assertGreater(
+            quality(rethink_rows, world_meta),
+            quality(base_rows, world_meta),
         )
 
 

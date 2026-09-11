@@ -52,6 +52,7 @@ class VerbEngine:
             "sabotage": self._sabotage,
             "sacrifice": self._sacrifice,
             "mislead": self._mislead,
+            "rethink": self._rethink,
             "confront": self._confront,
             "share_knowledge": self._share_knowledge,
             "give_item": self._give_item,
@@ -821,6 +822,72 @@ class VerbEngine:
             [],
         )
 
+    def _rethink(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        before = {
+            fact_id: {
+                "value": belief.value,
+                "confidence": belief.confidence,
+            }
+            for fact_id, belief in sorted(actor.beliefs.items())
+        }
+
+        evidence = [
+            fact_id
+            for fact_id in sorted(actor.knowledge)
+            if any(
+                isinstance(self.world.facts.get(fact_id, {}).get(key), dict)
+                for key in ("implies", "refutes")
+            )
+        ]
+        affected = {
+            str(update["fact"])
+            for fact_id in evidence
+            for key in ("implies", "refutes")
+            for update in [self.world.facts[fact_id].get(key)]
+            if isinstance(update, dict)
+        }
+        for fact_id in sorted(affected):
+            actor.beliefs.pop(fact_id, None)
+        for fact_id in evidence:
+            actor.apply_evidence(fact_id, self.world)
+
+        after = {
+            fact_id: {
+                "value": belief.value,
+                "confidence": belief.confidence,
+            }
+            for fact_id, belief in sorted(actor.beliefs.items())
+        }
+        changed = before != after
+        details = {
+            "before": before,
+            "after": after,
+            "evidence": evidence,
+        }
+        markers = (
+            [
+                {
+                    "verb": "rethink",
+                    "subject": actor.id,
+                    "details": details,
+                }
+            ]
+            if changed
+            else []
+        )
+        return (
+            "rethought" if changed else "unchanged",
+            details,
+            markers,
+        )
+
 
     def _confront(
         self,
@@ -854,6 +921,7 @@ class VerbEngine:
         identity_observers: list[str] = []
 
         if correct:
+            self.world.confront_successes.add((actor.id, fact_id))
             if (
                 target.identity_displayed != target.id
                 and expose_identity(

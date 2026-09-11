@@ -91,6 +91,7 @@ class Simulation:
         self.turn = 0
         self.day = 0
         self.slot: str | None = None
+        self._last_fact_turn: dict[str, int] = {}
         self._previous_snapshot_layers: dict[str, Any] | None = None
 
         for subject_id in sorted(self.subjects):
@@ -108,6 +109,7 @@ class Simulation:
                 else None
             )
 
+        self.world.resolve_truth(self.seed)
         self.world.bind_subjects(self.subjects)
         self.verb_engine = VerbEngine(self.world, self.rng)
 
@@ -184,20 +186,15 @@ class Simulation:
             }
 
         if action.verb in {
-            "share_knowledge",
-            "give_item",
-            "neutralize",
-            "sabotage",
-            "mislead",
-            "confront",
-            "persuade",
-            "pledge",
-            "negotiate",
-            "concede",
+            "rest",
+            "investigate",
+            "observe",
+            "rethink",
+            "craft",
+            "train",
+            "withdraw",
+            "guard",
         }:
-            target = action.meta.get("target")
-            if isinstance(target, str) and target in self.subjects:
-                return {subject.id, target}
             return {subject.id}
 
         if action.verb == "sacrifice":
@@ -295,7 +292,7 @@ class Simulation:
         return None
 
     def _header(self) -> dict[str, Any]:
-        return {
+        header = {
             "kind": "header",
             "seed": self.seed,
             "world": self.world.name,
@@ -305,6 +302,9 @@ class Simulation:
             "precedent_hash": self._precedent_hash(),
             "engine_hash": self._engine_hash(),
         }
+        if self.world.drawn_truth:
+            header["truth"] = _plain(self.world.drawn_truth)
+        return header
 
     def _event_row(
         self,
@@ -345,6 +345,10 @@ class Simulation:
         markers: list[dict[str, Any]],
     ) -> None:
         for marker in markers:
+            if marker.get("verb") == "learn_fact":
+                subject_id = marker.get("subject")
+                if isinstance(subject_id, str):
+                    self._last_fact_turn[subject_id] = self.turn
             writer.write(
                 self._event_row(
                     verb=str(marker["verb"]),
