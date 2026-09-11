@@ -88,7 +88,7 @@ facts:
     share_min_affinity: 0.6
 
   - id: evidence_01_red_thread
-    label: 書斎の窓辺に容疑者甲の上着と同じ赤い糸屑が落ちていた
+    label: 書斎の窓辺に一人の容疑者の上着と同じ赤い糸屑が落ちていた
     secrecy: 0.10
     share_min_affinity: -0.5
     decoy: true
@@ -96,11 +96,11 @@ facts:
       - {type: investigate, zone: 書斎, count: 1}
     implies:
       fact: culprit
-      value: 容疑者甲
-      confidence: 0.78
+      value: "$innocent:1"
+      confidence: 0.72
 
   - id: evidence_02_muddy_footprint
-    label: 温室から容疑者乙の靴型に似た濡れた足跡が続いていた
+    label: 温室からもう一人の容疑者の靴型に似た濡れた足跡が続いていた
     secrecy: 0.10
     share_min_affinity: -0.5
     decoy: true
@@ -108,8 +108,8 @@ facts:
       - {type: investigate, zone: 温室, count: 1}
     implies:
       fact: culprit
-      value: 容疑者乙
-      confidence: 0.78
+      value: "$innocent:2"
+      confidence: 0.72
 
   - id: evidence_03_weapon_trace
     label: 傷口と現場の痕跡を照合すると犯行手段を特定できる
