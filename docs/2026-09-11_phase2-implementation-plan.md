@@ -88,3 +88,17 @@
 - effect payload の必須キーは読み込み時に検証。effect 語彙 4 種の実行経路はテストで通す。`time_limit` 行は Phase 2 設定のいずれかがあれば書く。`aborted` 行にも `dangling_effects`。
 - gapengine 側（D6b）: obstacles 照合を perceived_name 化（C-7）、`target_ending` リスト対応。
 - リポジトリ衛生: コミット 7d69a09 に D5 第3便の actions.py 変更が混入している（import 不能）。D5 の実差分は b9b035f 基準。履歴は書き換えない。
+
+## 9. Phase 2 本番実験（2026-09-11、コミット 4c199c3 の固定ワークツリー、`runs\exp4`）
+
+| 項目 | 結果 |
+|---|---|
+| 無作為 300 シード（annotate_only、seed-base 1000） | 到達 1/300、全ラン分布 I 17 / II 1 / III 276 / V 6 |
+| evolve N=100・G=20・K=3・`--keep reached` | 到達率 0.3〜2.7%、占有 6/18 マス（I×2・III×3・V×1）、アーカイブ相異度 0.77、平均品質 0.19〜0.32（未回収伏線の減点で低め） |
+| 合格条件 1（chosen 伏線の回収時機が個体間で異なる） | ✓ campfire_oath: turn 28 / 37 / 58、oni_gap: 42 / 53、forest_shortcut: 11（エリート間で分布） |
+| 合格条件 2（未回収伏線を持つ個体が淘汰される） | △ 各エリートの `dangling_effects` は 5〜8 件で減点は効いている。同マスでの置換事例は未検証（レビュー役に依頼） |
+| 合格条件 3（変装→露見のランが高 volatility マス） | △ エリートに disguise 4・exposure 3。V\|high との対応は未検証 |
+| 合格条件 4（rules が effective_genome に反映） | ✓ D6 レビューで 3 規則の発火を実測 |
+| donate / homecoming_shared | エリートで decision:donate 0、`homecoming_shared` 発火 0。exp4 は D6b（variant 結末）適用前のため到達扱いにもならない。次回実験で再確認 |
+
+所見: Phase 1（到達 2%・8 マス）と同程度の到達率で、伏線・身分の機構が物語に現れ始めた。品質は未回収伏線の減点で全体に低く、伏線の数（5 本）に対して 16 日では回収機会が不足している可能性がある（`max_days` の延長か chosen 伏線の条件緩和を Phase 3 の実験で検討）。
