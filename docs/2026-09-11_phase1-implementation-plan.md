@@ -97,3 +97,9 @@ Phase 1 で新たに乱数を消費する箇所: **なし**（confront の真偽
 - C-7 `random_baseline.py` の `descriptor_distribution` は到達ランのみ → 全ラン分布 `all_descriptor_distribution` を併記。
 - C-8 `random_baseline.py` に `--seed-base` を追加。
 - C-9 `--seed-base` の負値を argparse で拒否。prune 後の空 seed ディレクトリは削除する。
+
+## 8. D3 適用後の設計判断（2026-09-11、設計役）
+- **permission テーブル（桃太郎）**: 敵対者への `give_item` / `share_knowledge` は `restricted`（§3.1 の表の `allow` を訂正。きびだんごで鬼を味方化する都合主義を抑える。懐柔は `persuade` / `negotiate` で行う）。permission セクションに無い verb/role は allow、action_graph 自体が無ければ Phase 0 どおり `restricted_weight`。
+- **action_graph のパス解決**: world.yaml のディレクトリ相対 → プロジェクトルート相対 → 絶対パスの順。`Simulation` に `action_graph_path` の上書き引数を用意し、evolve / random_baseline は `--template` の action_graph.yaml を明示的に渡す（D4）。
+- **固定ハッシュ**: 桃太郎 fixture は Phase 1 に opt-in したため seed 153 の固定ハッシュを更新する。あわせて「Phase 1 の設定を外した世界」が Phase 0 の旧ハッシュ `3e95ce80…` を再現するテストを追加し、opt-in の約束を検証する。
+- Phase 0 レビューの持ち越し（B-1 全主体 capture、C-1 `_PREDICATE_NAMES` 一本化、C-2 zone 名との衝突検査、C-5 lru_cache）は D3b に同梱。
