@@ -62,7 +62,7 @@ class Simulation:
         self.rng = random.Random(self.seed)
         self.turn = 0
         self.day = 0
-        self.slot = ""
+        self.slot: str | None = None
         self._previous_snapshot_layers: dict[str, Any] | None = None
 
         for subject_id in sorted(self.subjects):
@@ -214,6 +214,13 @@ class Simulation:
         result: str = "applied",
         event_id: str | None = None,
     ) -> dict[str, Any]:
+        if not delta:
+            delta = {
+                "actor": {},
+                "targets": {},
+                "relations": [],
+                "objective": None,
+            }
         row: dict[str, Any] = {
             "kind": "event",
             "turn": self.turn,
@@ -616,17 +623,35 @@ class Simulation:
         writer: LayersWriter,
         ending: dict[str, Any],
     ) -> None:
+        protagonist = self.subjects[self.world.protagonist]
+        before = self._capture()
+
+        delivered: dict[str, str] = {}
+        if (
+            protagonist.goal.target is not None
+            and protagonist.goal.deliver_to is not None
+            and protagonist.has_item(protagonist.goal.target)
+            and protagonist.zone == protagonist.goal.deliver_to
+        ):
+            item = protagonist.goal.target
+            zone = protagonist.goal.deliver_to
+            self.world.delivered[item] = zone
+            delivered[item] = zone
+
+        after = self._capture()
         writer.write(
             self._event_row(
                 verb="ending",
                 subject=self.world.protagonist,
-                delta={
-                    "actor": {},
-                    "targets": {},
-                    "relations": [],
-                    "objective": None,
+                delta=self._delta(
+                    self.world.protagonist,
+                    before,
+                    after,
+                ),
+                details={
+                    "label": ending.get("label"),
+                    "delivered": delivered,
                 },
-                details={"label": ending.get("label")},
                 event_id=str(ending["id"]),
             )
         )
@@ -732,13 +757,15 @@ class Simulation:
 
             for day in range(1, self.world.days + 1):
                 self.day = day
-                self.slot = "日初"
+                self.turn += 1
+                self.slot = None
                 self._apply_scheduled(writer, slot=None)
                 self._apply_daily(writer)
 
-                for slot in self.world.slots:
+                for slot_index, slot in enumerate(self.world.slots):
                     self.slot = slot
-                    self.turn += 1
+                    if slot_index > 0:
+                        self.turn += 1
                     self._apply_scheduled(writer, slot=slot)
                     self._record_encounters(writer)
 

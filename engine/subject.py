@@ -350,7 +350,17 @@ class Subject:
                 "displayed": self.identity_displayed,
             },
             "objective": objective,
-            "pending": [],
+            "pending": [
+                {
+                    key: effect[key]
+                    for key in sorted(effect)
+                }
+                for effect in sorted(
+                    world.pending_effects,
+                    key=lambda value: str(value.get("id", "")),
+                )
+                if effect.get("planted_by") == self.id
+            ],
             "vitality": self.vitality,
             "zone": self.zone,
             "stress": round(self.stress, 4),

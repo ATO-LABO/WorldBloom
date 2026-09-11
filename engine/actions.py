@@ -55,6 +55,15 @@ def _missing_recipe_materials(
 ) -> set[str]:
     missing: set[str] = set()
     for product in sorted(world.recipes):
+        if subject.has_item(product):
+            continue
+        definition = world.items[product]
+        required_fact = (definition.get("requires") or {}).get("knowledge")
+        if (
+            required_fact is not None
+            and required_fact not in subject.knowledge
+        ):
+            continue
         recipe = world.recipes[product]
         for material, required in sorted(recipe.items()):
             if subject.inventory.get(material, 0) < int(required):
@@ -132,15 +141,21 @@ def _movement_candidates(
     craft_zones = _craft_ready_destinations(subject, world)
 
     companion_destination: str | None = None
+    reachable_zones = set(paths)
     companions = [
         peer
         for peer in world.subjects.values()
         if peer.id != subject.id
         and peer.vitality != "dead"
+        and peer.zone in reachable_zones
         and world.relations.stance(subject.id, peer.id)
         >= world.companionship["threshold"]
     ]
     if companions:
+        companion_destination = sorted(
+            companions,
+            key=lambda peer: peer.id,
+        )[0].zone
         companion_destination = sorted(companions, key=lambda peer: peer.id)[0].zone
 
     for destination, path in sorted(paths.items()):
@@ -341,6 +356,11 @@ def _share_candidates(
         if target.id == subject.id or target.vitality == "dead":
             continue
         affinity = world.relations.stance(subject.id, target.id)
+        permission = (
+            world.permission_restricted_weight
+            if _is_hostile(subject, target, world)
+            else 1.0
+        )
         for fact in sorted(subject.knowledge - target.knowledge):
             definition = world.facts[fact]
             minimum = float(definition.get("share_min_affinity", 0.0))
@@ -354,7 +374,7 @@ def _share_candidates(
                         (target.id, fact),
                         {"target": target.id, "fact": fact},
                     ),
-                    (0.2 + social) * (1.0 - secrecy),
+                    (0.2 + social) * (1.0 - secrecy) * permission,
                 )
             )
         result.append(
@@ -364,7 +384,7 @@ def _share_candidates(
                     (target.id, "雑談"),
                     {"target": target.id, "topic": "雑談"},
                 ),
-                0.2 + social,
+                (0.2 + social) * permission,
             )
         )
     return result
@@ -396,6 +416,11 @@ def _give_candidates(
     for target in sorted(present, key=lambda value: value.id):
         if target.id == subject.id or target.vitality == "dead":
             continue
+        permission = (
+            world.permission_restricted_weight
+            if _is_hostile(subject, target, world)
+            else 1.0
+        )
         for item in sorted(subject.inventory):
             if subject.inventory[item] <= 0 or item in excluded:
                 continue
@@ -420,7 +445,11 @@ def _give_candidates(
                         (target.id, item),
                         {"target": target.id, "item": item},
                     ),
-                    (0.25 + subject.traits["social"]) * multiplier,
+                    (
+                        (0.25 + subject.traits["social"])
+                        * multiplier
+                        * permission
+                    ),
                 )
             )
     return result

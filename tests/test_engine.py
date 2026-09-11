@@ -176,24 +176,28 @@ class EngineTests(unittest.TestCase):
     def test_same_seed_is_byte_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            for seed in (1, 153, 999):
+                world_a, subjects_a = load_fixture()
+                first = Simulation(
+                    seed,
+                    world_a,
+                    subjects_a,
+                    root / f"seed-{seed}-first",
+                ).run()
 
-            world_a, subjects_a = load_fixture()
-            first = Simulation(
-                153,
-                world_a,
-                subjects_a,
-                root / "first",
-            ).run()
+                world_b, subjects_b = load_fixture()
+                second = Simulation(
+                    seed,
+                    world_b,
+                    subjects_b,
+                    root / f"seed-{seed}-second",
+                ).run()
 
-            world_b, subjects_b = load_fixture()
-            second = Simulation(
-                153,
-                world_b,
-                subjects_b,
-                root / "second",
-            ).run()
-
-            self.assertEqual(first.read_bytes(), second.read_bytes())
+                self.assertEqual(
+                    first.read_bytes(),
+                    second.read_bytes(),
+                    f"seed {seed} was not byte deterministic",
+                )
 
     def test_vitality_down_revive_ally_speedup_and_lethal(self) -> None:
         world, subjects = load_fixture()
@@ -329,20 +333,12 @@ class EngineTests(unittest.TestCase):
         world.slots = ("朝",)
         world.daily_events = ()
         world.daily_event_chance = 0.0
-        world.scheduled_events = (
-            {
-                "id": "test_homecoming",
-                "day": 1,
-                "slot": "朝",
-                "targets": ["桃太郎"],
-                "label": "桃太郎が村へ着いた",
-                "move_to": "村",
-            },
-        )
+        world.scheduled_events = ()
 
         momotaro = subjects["桃太郎"]
         momotaro.zone = "道中"
-        momotaro.verbs = {"rest"}
+        momotaro.range_zones = {"村", "道中"}
+        momotaro.verbs = {"move"}
         subjects["鬼"].remove_item("鬼ヶ島の宝物", 1)
         momotaro.add_item("鬼ヶ島の宝物", 1)
         for subject_id, subject in subjects.items():
@@ -358,17 +354,31 @@ class EngineTests(unittest.TestCase):
             ).run()
             rows = read_rows(path)
 
-        ending_indices = [
-            index
-            for index, row in enumerate(rows)
-            if row["kind"] == "event"
-            and row["verb"] == "ending"
-            and row["id"] == "homecoming"
+        protagonist_moves = [
+            row
+            for row in rows
+            if row["kind"] == "decision"
+            and row["subject"] == "桃太郎"
+            and row["verb"] == "move"
         ]
-        self.assertEqual(ending_indices, [len(rows) - 1])
+        self.assertEqual(len(protagonist_moves), 1)
+        self.assertEqual(protagonist_moves[0]["args"], ["村"])
+
+        self.assertEqual(rows[-1]["kind"], "event")
+        self.assertEqual(rows[-1]["verb"], "ending")
+        self.assertEqual(rows[-1]["id"], "homecoming")
         self.assertEqual(rows[-1]["turn"], 1)
         self.assertEqual(rows[-1]["day"], 1)
         self.assertEqual(rows[-1]["slot"], "朝")
+        self.assertEqual(
+            rows[-1]["details"]["delivered"],
+            {"鬼ヶ島の宝物": "村"},
+        )
+        self.assertEqual(
+            rows[-1]["delta"]["objective"],
+            {"鬼ヶ島の宝物": "村"},
+        )
+        self.assertEqual(world.holder("鬼ヶ島の宝物"), "村")
 
     def test_requires_item_and_recipe_prerequisites(self) -> None:
         world, subjects = load_fixture()
@@ -455,11 +465,34 @@ class EngineTests(unittest.TestCase):
                 subjects,
                 Path(temporary),
             ).run()
-            rows = read_rows(path)
+            raw_lines = path.read_text(encoding="utf-8").splitlines()
+            rows = [json.loads(line) for line in raw_lines]
 
         self.assertTrue(rows)
         self.assertEqual(rows[0]["kind"], "header")
         self.assertTrue(all("kind" in row for row in rows))
+
+        for raw_line, row in zip(raw_lines, rows, strict=True):
+            self.assertEqual(
+                raw_line,
+                json.dumps(
+                    row,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                ),
+            )
+
+        logged_actions = [
+            row
+            for row in rows
+            if row["kind"] in {"event", "decision"}
+        ]
+        self.assertTrue(logged_actions)
+        for row in logged_actions:
+            self.assertEqual(
+                set(row["delta"]),
+                {"actor", "targets", "relations", "objective"},
+            )
 
         decisions = [
             row for row in rows if row["kind"] == "decision"
@@ -467,7 +500,6 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(decisions)
         for row in decisions:
             self.assertIn("effective", row)
-            self.assertIn("delta", row)
             self.assertIn("policy", row)
             self.assertIn("classification", row)
 

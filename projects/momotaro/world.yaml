@@ -53,6 +53,9 @@ companionship:
   threshold: 0.6
   weight: 2.0
 
+permission:
+  restricted_weight: 0.15
+
 awareness_per_encounter: 0.15
 
 pulls:

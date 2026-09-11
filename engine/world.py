@@ -16,6 +16,27 @@ if TYPE_CHECKING:
     from engine.subject import Subject
 
 
+_PREDICATE_NAMES = {
+    "stance",
+    "bonds",
+    "awareness",
+    "holds",
+    "holder",
+    "zone",
+    "present",
+    "vitality",
+    "known",
+    "knows_modifier",
+    "strength",
+    "believed_strength",
+    "hostile_present",
+    "turn",
+    "day",
+    "phase",
+    "self",
+}
+
+
 @dataclass(frozen=True)
 class Route:
     origin: str
@@ -120,6 +141,12 @@ class World:
                 definition.get("companionship", {}).get("weight", 1.0)
             ),
         }
+        self.permission_restricted_weight = float(
+            definition.get("permission", {}).get(
+                "restricted_weight",
+                0.15,
+            )
+        )
         self.awareness_per_encounter = float(
             definition.get("awareness_per_encounter", 0.0)
         )
@@ -186,11 +213,23 @@ class World:
             ),
         }
 
+        predicate_names = (
+            set(_PREDICATE_NAMES)
+            | set(self.zones)
+            | set(self.items)
+            | set(self.facts)
+            | {self.protagonist, self.antagonist}
+        )
+
         self.thresholds: list[dict[str, Any]] = []
         for raw_threshold in definition.get("thresholds", []) or []:
             threshold = dict(raw_threshold)
             threshold["id"] = str(threshold["id"])
-            threshold["predicate"] = compile_predicate(str(threshold["when"]))
+            threshold["predicate_source"] = str(threshold["when"])
+            threshold["predicate"] = compile_predicate(
+                threshold["predicate_source"],
+                predicate_names,
+            )
             self.thresholds.append(threshold)
         self.thresholds.sort(key=lambda value: value["id"])
 
@@ -206,9 +245,14 @@ class World:
                 ):
                     raise ValueError(f"Unsupported ending sugar: {source_when!r}")
                 ending["sugar_agent"] = str(source_when["agent"])
+                ending["predicate_source"] = None
                 ending["predicate"] = None
             else:
-                ending["predicate"] = compile_predicate(str(source_when))
+                ending["predicate_source"] = str(source_when)
+                ending["predicate"] = compile_predicate(
+                    ending["predicate_source"],
+                    predicate_names,
+                )
             self.endings.append(ending)
         self.endings.sort(key=lambda value: value["id"])
         self.target_ending = str(definition["target_ending"])
@@ -243,6 +287,8 @@ class World:
         self.relations = Relations()
         self.subjects: dict[str, Subject] = {}
         self.objectives: dict[str, dict[str, Any]] = {}
+        self.delivered: dict[str, str] = {}
+        self.pending_effects: list[dict[str, Any]] = []
 
         self._validate_item_references()
         self._validate_recipe_cycles()
@@ -408,7 +454,44 @@ class World:
             objectives[item] = {"claimants": claimants}
         self.objectives = objectives
 
+        predicate_names = (
+            set(_PREDICATE_NAMES)
+            | set(self.subjects)
+            | set(self.items)
+            | set(self.facts)
+            | set(self.zones)
+        )
+        for ending in self.endings:
+            sugar_agent = ending.get("sugar_agent")
+            if sugar_agent is not None:
+                if sugar_agent not in self.subjects:
+                    raise ValueError(
+                        f"Unknown ending agent: {sugar_agent}"
+                    )
+                goal = self.subjects[sugar_agent].goal
+                if goal.target is None or goal.deliver_to is None:
+                    raise ValueError(
+                        f"Ending goal is not deliverable: {sugar_agent}"
+                    )
+                source = (
+                    f"holds({sugar_agent}, {goal.target}) "
+                    f"and zone({sugar_agent}) == {goal.deliver_to!r}"
+                )
+                ending["when"] = source
+                ending["predicate_source"] = source
+            source = ending.get("predicate_source")
+            if not isinstance(source, str):
+                raise ValueError(
+                    f"Ending predicate is unresolved: {ending['id']}"
+                )
+            ending["predicate"] = compile_predicate(
+                source,
+                predicate_names,
+            )
+
     def holder(self, item: str) -> str | None:
+        if item in self.delivered:
+            return self.delivered[item]
         holders = sorted(
             subject.id
             for subject in self.subjects.values()
@@ -638,16 +721,11 @@ class World:
         turn: int,
         day: int,
     ) -> bool:
-        sugar_agent = ending.get("sugar_agent")
-        if sugar_agent is not None:
-            actor = self.subjects[sugar_agent]
-            return (
-                actor.goal.target is not None
-                and actor.goal.deliver_to is not None
-                and actor.has_item(actor.goal.target)
-                and actor.zone == actor.goal.deliver_to
+        predicate: Predicate | None = ending.get("predicate")
+        if predicate is None:
+            raise ValueError(
+                f"Ending predicate is unresolved: {ending['id']}"
             )
-        predicate: Predicate = ending["predicate"]
         namespace = self.namespace(
             subject,
             present,
