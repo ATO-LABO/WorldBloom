@@ -1,0 +1,28 @@
+- id: old_promise
+  plant:
+    verb: neutralize
+    to_role: [neutral, ally]
+  payoff:
+    condition: "present(B)"
+    description: 防衛の奥にあった昔の約束を思い出し、BがAの誠意を受け止める
+    effect:
+      stance:
+        a: target
+        b: planter
+        delta: 0.45
+    mode: chosen
+
+- id: rival_rumor_exposed
+  plant:
+    verb: observe
+    reveals:
+      target: C
+      source: 噂
+  payoff:
+    condition: "present(C)"
+    description: Cの優位を支えた噂の誇張が露見し、表面的な優位が失われる
+    effect:
+      neutralize:
+        target: target
+        source: 噂
+    mode: auto

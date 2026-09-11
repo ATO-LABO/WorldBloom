@@ -849,6 +849,51 @@ def apply_effect(
         modifier_id = str(
             body.get("id", f"effect:{pending['id']}")
         )
+
+        raw_affinity_cap = body.get("affinity_cap")
+        affinity_cap = (
+            float(raw_affinity_cap)
+            if raw_affinity_cap is not None
+            else None
+        )
+        if (
+            affinity_cap is not None
+            and not -1.0 <= affinity_cap <= 1.0
+        ):
+            raise ValueError(
+                f"Effect modifier affinity_cap must be within "
+                f"[-1, 1]: {pending['id']}"
+            )
+
+        raw_cap_targets = (
+            body.get("affinity_cap_targets", ()) or ()
+        )
+        if isinstance(raw_cap_targets, str):
+            raw_target_values = (raw_cap_targets,)
+        elif isinstance(raw_cap_targets, (list, tuple, set)):
+            raw_target_values = tuple(raw_cap_targets)
+        else:
+            raise ValueError(
+                f"Effect modifier affinity_cap_targets must be "
+                f"a string or sequence: {pending['id']}"
+            )
+        affinity_cap_targets = tuple(
+            sorted(
+                {
+                    _effect_reference(pending, value)
+                    for value in raw_target_values
+                }
+            )
+        )
+        unknown_cap_targets = (
+            set(affinity_cap_targets) - set(world.subjects)
+        )
+        if unknown_cap_targets:
+            raise ValueError(
+                f"Unknown effect modifier affinity cap targets: "
+                f"{pending['id']}:{sorted(unknown_cap_targets)}"
+            )
+
         if not any(
             modifier.id == modifier_id
             for modifier in target.modifiers
@@ -859,11 +904,21 @@ def apply_effect(
                     source=source,
                     value=float(body["value"]),
                     kind=str(body["kind"]),
-                    visible=bool(body.get("visible", True)),
-                    active=bool(body.get("active", True)),
-                    lethal=bool(body.get("lethal", False)),
+                    visible=bool(
+                        body.get("visible", True)
+                    ),
+                    active=bool(
+                        body.get("active", True)
+                    ),
+                    lethal=bool(
+                        body.get("lethal", False)
+                    ),
                     lethal_chance=float(
                         body.get("lethal_chance", 0.0)
+                    ),
+                    affinity_cap=affinity_cap,
+                    affinity_cap_targets=(
+                        affinity_cap_targets
                     ),
                 )
             )
@@ -896,9 +951,13 @@ def apply_effect(
                     world,
                     present,
                 )
-                if modifier.active and modifier.source == source
+                if modifier.active
+                and modifier.source == source
             ),
-            key=lambda modifier: (modifier.id, modifier.kind),
+            key=lambda modifier: (
+                modifier.id,
+                modifier.kind,
+            ),
         )
         for modifier in matching:
             modifier.active = False
@@ -919,8 +978,14 @@ def apply_effect(
         )
 
     elif kind == "stance":
-        observer = _effect_reference(pending, body["a"])
-        target = _effect_reference(pending, body["b"])
+        observer = _effect_reference(
+            pending,
+            body["a"],
+        )
+        target = _effect_reference(
+            pending,
+            body["b"],
+        )
         delta = float(body["delta"])
         world.relations.change(
             observer,
@@ -966,7 +1031,10 @@ def apply_effect(
                 "target": target_id,
                 "verb": verb,
                 "source": (
-                    _effect_reference(pending, body["source"])
+                    _effect_reference(
+                        pending,
+                        body["source"],
+                    )
                     if body.get("source") is not None
                     else None
                 ),

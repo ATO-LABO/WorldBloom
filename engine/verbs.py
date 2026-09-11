@@ -888,7 +888,6 @@ class VerbEngine:
             markers,
         )
 
-
     def _confront(
         self,
         actor: Subject,

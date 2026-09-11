@@ -1,0 +1,71 @@
+id: A
+
+traits:
+  social: 0.72
+  stubbornness: 0.58
+  curiosity: 0.74
+  diligence: 0.62
+  temper: 0.28
+
+base: 50
+modifiers: []
+
+beliefs_about:
+  B:
+    known_modifiers: []
+    base_estimate: 50
+    identity_seen: false
+    observe_progress: 0.0
+  C:
+    known_modifiers: []
+    base_estimate: 90
+    identity_seen: false
+    observe_progress: 0.0
+
+beliefs: {}
+knowledge: [昔の約束]
+inventory: {花束: 1, 手紙: 1}
+reputation: 0.0
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - observe
+  - neutralize
+  - confront
+  - share_knowledge
+  - give_item
+  - persuade
+  - pledge
+  - rest
+  - payoff
+  - grand_gesture
+
+identity:
+  "true": Bへの気持ちをまだ言葉にできない主人公
+  displayed: A
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: [C]
+  outcome: mutual
+
+relations:
+  B: {affinity: 0.45, awareness: 0.75}
+  C: {affinity: -0.45, awareness: 0.70}
+  D: {affinity: 0.68, awareness: 0.90}
+  E: {affinity: 0.10, awareness: 0.30}
+
+stamina:
+  max: 13
+  recover_per_slot: 1.5
+
+range:
+  zones: [学校, カフェ, 公園, Bの家, 駅]
+  entry: 学校
+
+companions: []
+ally_value: 0
+objective_claimant: true

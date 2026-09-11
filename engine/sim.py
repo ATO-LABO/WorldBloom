@@ -186,15 +186,20 @@ class Simulation:
             }
 
         if action.verb in {
-            "rest",
-            "investigate",
-            "observe",
-            "rethink",
-            "craft",
-            "train",
-            "withdraw",
-            "guard",
+            "share_knowledge",
+            "give_item",
+            "neutralize",
+            "sabotage",
+            "mislead",
+            "confront",
+            "persuade",
+            "pledge",
+            "negotiate",
+            "concede",
         }:
+            target = action.meta.get("target")
+            if isinstance(target, str) and target in self.subjects:
+                return {subject.id, target}
             return {subject.id}
 
         if action.verb == "sacrifice":
@@ -207,6 +212,7 @@ class Simulation:
             "rest",
             "investigate",
             "observe",
+            "rethink",
             "craft",
             "train",
             "withdraw",

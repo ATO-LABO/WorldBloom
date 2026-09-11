@@ -31,6 +31,8 @@ class Modifier:
     active: bool = True
     lethal: bool = False
     lethal_chance: float = 0.0
+    affinity_cap: float | None = None
+    affinity_cap_targets: tuple[str, ...] = ()
 
 
 @dataclass
@@ -94,7 +96,9 @@ class Subject:
         source = Path(path)
         raw = yaml.safe_load(source.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
-            raise ValueError(f"Subject YAML must contain a mapping: {source}")
+            raise ValueError(
+                f"Subject YAML must contain a mapping: {source}"
+            )
 
         subject_id = raw.get("id")
         if not isinstance(subject_id, str) or not subject_id:
@@ -111,7 +115,9 @@ class Subject:
         if not isinstance(raw_traits, dict) or not required_traits.issubset(
             raw_traits
         ):
-            raise ValueError(f"Subject {subject_id} is missing required traits")
+            raise ValueError(
+                f"Subject {subject_id} is missing required traits"
+            )
         traits = {
             name: float(raw_traits[name])
             for name in sorted(required_traits)
@@ -119,6 +125,36 @@ class Subject:
 
         modifiers: list[Modifier] = []
         for raw_modifier in raw.get("modifiers", []) or []:
+            raw_affinity_cap = raw_modifier.get("affinity_cap")
+            affinity_cap = (
+                float(raw_affinity_cap)
+                if raw_affinity_cap is not None
+                else None
+            )
+            if (
+                affinity_cap is not None
+                and not -1.0 <= affinity_cap <= 1.0
+            ):
+                raise ValueError(
+                    f"Modifier affinity_cap must be within [-1, 1]: "
+                    f"{subject_id}:{raw_modifier.get('id')}"
+                )
+
+            raw_cap_targets = (
+                raw_modifier.get("affinity_cap_targets", ()) or ()
+            )
+            if isinstance(raw_cap_targets, str):
+                cap_targets = (raw_cap_targets,)
+            elif isinstance(raw_cap_targets, (list, tuple, set)):
+                cap_targets = tuple(
+                    sorted({str(value) for value in raw_cap_targets})
+                )
+            else:
+                raise ValueError(
+                    f"Modifier affinity_cap_targets must be a string "
+                    f"or sequence: {subject_id}:{raw_modifier.get('id')}"
+                )
+
             modifiers.append(
                 Modifier(
                     id=str(raw_modifier["id"]),
@@ -131,6 +167,8 @@ class Subject:
                     lethal_chance=float(
                         raw_modifier.get("lethal_chance", 0.0)
                     ),
+                    affinity_cap=affinity_cap,
+                    affinity_cap_targets=cap_targets,
                 )
             )
 
@@ -140,10 +178,15 @@ class Subject:
             raw_misled_by = belief.get("misled_by")
             beliefs_about[str(target)] = BeliefAbout(
                 known_modifiers={
-                    str(value) for value in belief.get("known_modifiers", [])
+                    str(value)
+                    for value in belief.get("known_modifiers", [])
                 },
-                base_estimate=float(belief.get("base_estimate", 50.0)),
-                identity_seen=bool(belief.get("identity_seen", False)),
+                base_estimate=float(
+                    belief.get("base_estimate", 50.0)
+                ),
+                identity_seen=bool(
+                    belief.get("identity_seen", False)
+                ),
                 observe_progress=float(
                     belief.get("observe_progress", 0.0)
                 ),
@@ -167,7 +210,9 @@ class Subject:
                     f"Subject belief must be a mapping: "
                     f"{subject_id}:{fact_id}"
                 )
-            confidence = float(raw_belief.get("confidence", 0.0))
+            confidence = float(
+                raw_belief.get("confidence", 0.0)
+            )
             if not 0.0 <= confidence <= 1.0:
                 raise ValueError(
                     f"Subject belief confidence must be within [0, 1]: "
@@ -183,7 +228,8 @@ class Subject:
             target=raw_goal.get("target"),
             deliver_to=raw_goal.get("deliver_to"),
             obstacles=sorted(
-                str(value) for value in raw_goal.get("obstacles", [])
+                str(value)
+                for value in raw_goal.get("obstacles", [])
             ),
             outcome=raw_goal.get("outcome"),
         )
@@ -191,19 +237,33 @@ class Subject:
         raw_identity = raw.get("identity", {}) or {}
         raw_stamina = raw.get("stamina", {}) or {}
         stamina_max = float(raw_stamina.get("max", 0.0))
-        stamina = float(raw_stamina.get("current", stamina_max))
+        stamina = float(
+            raw_stamina.get("current", stamina_max)
+        )
         raw_range = raw.get("range", {}) or {}
-        range_zones = {str(value) for value in raw_range.get("zones", [])}
+        range_zones = {
+            str(value)
+            for value in raw_range.get("zones", [])
+        }
         entry = raw_range.get("entry")
         if not isinstance(entry, str) or not entry:
-            raise ValueError(f"Subject {subject_id} requires range.entry")
+            raise ValueError(
+                f"Subject {subject_id} requires range.entry"
+            )
 
-        initial_relations: dict[str, dict[str, float]] = {}
+        initial_relations: dict[
+            str,
+            dict[str, float],
+        ] = {}
         for target in sorted(raw.get("relations", {})):
             relation = raw["relations"][target] or {}
             initial_relations[str(target)] = {
-                "affinity": float(relation.get("affinity", 0.0)),
-                "awareness": float(relation.get("awareness", 0.0)),
+                "affinity": float(
+                    relation.get("affinity", 0.0)
+                ),
+                "awareness": float(
+                    relation.get("awareness", 0.0)
+                ),
             }
 
         inventory = {
@@ -221,15 +281,29 @@ class Subject:
             id=subject_id,
             traits=traits,
             base=float(raw.get("base", 0.0)),
-            modifiers=sorted(modifiers, key=lambda modifier: modifier.id),
+            modifiers=sorted(
+                modifiers,
+                key=lambda modifier: modifier.id,
+            ),
             beliefs_about=beliefs_about,
             beliefs=beliefs,
-            knowledge={str(value) for value in raw.get("knowledge", [])},
+            knowledge={
+                str(value)
+                for value in raw.get("knowledge", [])
+            },
             inventory=inventory,
             reputation=float(raw.get("reputation", 0.0)),
-            phase={str(value) for value in raw.get("phase", [])},
-            verbs={str(value) for value in raw.get("verbs", [])},
-            identity_true=str(raw_identity.get("true", subject_id)),
+            phase={
+                str(value)
+                for value in raw.get("phase", [])
+            },
+            verbs={
+                str(value)
+                for value in raw.get("verbs", [])
+            },
+            identity_true=str(
+                raw_identity.get("true", subject_id)
+            ),
             identity_displayed=str(
                 raw_identity.get("displayed", subject_id)
             ),
@@ -249,9 +323,14 @@ class Subject:
             downed_since=raw.get("downed_since"),
             zone=entry,
             range_zones=range_zones,
-            range_exclude=list(raw_range.get("exclude", []) or []),
+            range_exclude=list(
+                raw_range.get("exclude", []) or []
+            ),
             companions=(
-                [str(value) for value in raw["companions"]]
+                [
+                    str(value)
+                    for value in raw["companions"]
+                ]
                 if raw.get("companions") is not None
                 else None
             ),
@@ -415,26 +494,69 @@ class Subject:
             kind = str(raw_modifier.get("kind", "item"))
             if (item, kind) in disabled_derived:
                 continue
+
+            raw_affinity_cap = raw_modifier.get("affinity_cap")
+            affinity_cap = (
+                float(raw_affinity_cap)
+                if raw_affinity_cap is not None
+                else None
+            )
+            raw_cap_targets = (
+                raw_modifier.get("affinity_cap_targets", ()) or ()
+            )
+            if isinstance(raw_cap_targets, str):
+                cap_targets = (raw_cap_targets,)
+            elif isinstance(raw_cap_targets, (list, tuple, set)):
+                cap_targets = tuple(
+                    sorted({str(value) for value in raw_cap_targets})
+                )
+            else:
+                raise ValueError(
+                    f"Item modifier affinity_cap_targets must be "
+                    f"a string or sequence: {item}"
+                )
+
             derived.append(
                 Modifier(
-                    id=str(raw_modifier.get("id", f"item:{item}")),
+                    id=str(
+                        raw_modifier.get("id", f"item:{item}")
+                    ),
                     source=item,
-                    value=float(raw_modifier.get("value", 0.0)),
+                    value=float(
+                        raw_modifier.get("value", 0.0)
+                    ),
                     kind=kind,
-                    visible=bool(raw_modifier.get("visible", True)),
-                    active=bool(raw_modifier.get("active", True)),
-                    lethal=bool(raw_modifier.get("lethal", False)),
+                    visible=bool(
+                        raw_modifier.get("visible", True)
+                    ),
+                    active=bool(
+                        raw_modifier.get("active", True)
+                    ),
+                    lethal=bool(
+                        raw_modifier.get("lethal", False)
+                    ),
                     lethal_chance=float(
                         raw_modifier.get("lethal_chance", 0.0)
                     ),
+                    affinity_cap=affinity_cap,
+                    affinity_cap_targets=cap_targets,
                 )
             )
 
         threshold = world.companionship["threshold"]
-        for peer in sorted(present, key=lambda subject: subject.id):
-            if peer.id == self.id or peer.vitality not in {"alive", "revived"}:
+        for peer in sorted(
+            present,
+            key=lambda subject: subject.id,
+        ):
+            if (
+                peer.id == self.id
+                or peer.vitality not in {"alive", "revived"}
+            ):
                 continue
-            if world.relations.stance(peer.id, self.id) < threshold:
+            if (
+                world.relations.stance(peer.id, self.id)
+                < threshold
+            ):
                 continue
             if (peer.id, "ally") in disabled_derived:
                 continue
@@ -446,7 +568,10 @@ class Subject:
                     kind="ally",
                 )
             )
-        return sorted(derived, key=lambda modifier: modifier.id)
+        return sorted(
+            derived,
+            key=lambda modifier: modifier.id,
+        )
 
     def all_modifiers(
         self,

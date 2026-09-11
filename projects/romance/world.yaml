@@ -1,0 +1,133 @@
+name: 放課後の約束
+
+time:
+  days: 10
+  slots: [朝, 昼, 放課後, 夜]
+
+protagonist: A
+antagonist: C
+
+zones:
+  - name: 学校
+    note: AとBが日常的に顔を合わせる物語の中心
+  - name: カフェ
+    note: Cの噂が広まりやすい社交の場
+  - name: 公園
+    note: AとBが昔の約束を交わした場所
+  - name: Bの家
+    note: Bと親Eが暮らす私的な場所
+  - name: 駅
+    note: 学校・公園・Bの家を結ぶ人の行き交う場所
+
+routes:
+  学校:
+    - {to: カフェ}
+    - {to: 公園}
+    - {to: 駅}
+  カフェ:
+    - {to: 学校}
+    - {to: 公園}
+  公園:
+    - {to: 学校}
+    - {to: カフェ}
+    - {to: 駅}
+  Bの家:
+    - {to: 駅}
+  駅:
+    - {to: 学校}
+    - {to: 公園}
+    - {to: Bの家}
+
+movement:
+  action_weight: 0.35
+  hop_decay: 0.7
+  destination_weights:
+    学校: 2.0
+    カフェ: 1.1
+    公園: 1.6
+    Bの家: 0.8
+    駅: 1.2
+
+stamina:
+  default_max: 10
+  default_recover_per_slot: 1.0
+  exhausted_ratio: 0.2
+
+companionship:
+  threshold: 0.6
+  weight: 2.0
+
+permission:
+  restricted_weight: 0.15
+
+gapengine:
+  action_graph: templates/romance/action_graph.yaml
+  effects: templates/romance/effects.yaml
+
+awareness_per_encounter: 0.12
+
+pulls:
+  pursue: 1.2
+  pursue_from_day: 3
+  gather: 0.8
+
+items:
+  - name: 花束
+    give:
+      receiver_affinity: 0.30
+      giver_affinity: 0.08
+
+  - name: 手紙
+    give:
+      receiver_affinity: 0.24
+      giver_affinity: 0.06
+
+facts:
+  - id: 昔の約束
+    label: AとBは公園で、互いに本心を話す約束をした
+    secret_of: B
+    secrecy: 0.25
+    share_min_affinity: 0.0
+    sources:
+      - {type: investigate, zone: 公園, count: 2}
+
+  - id: Bの好きな場所
+    label: Bは静かな公園を大切にしている
+    secret_of: B
+    secrecy: 0.15
+    share_min_affinity: 0.0
+    sources:
+      - {type: investigate, agent: B, count: 2}
+
+  - id: 噂の出所
+    label: Cの優位を支えている噂には誇張がある
+    secret_of: C
+    secrecy: 0.35
+    share_min_affinity: 0.0
+    sources:
+      - {type: investigate, zone: カフェ, count: 2}
+
+truth: {}
+
+default_strength_prior: 50
+
+contest:
+  tau: 10.0
+  epsilon: 5.0
+
+vitality:
+  revive_after: 4
+  ally_speedup: 1
+  revive_base_penalty: 2
+  lethal_exempt: []
+
+grief:
+  stress: 0.8
+  affinity_to_killer: -0.4
+
+ending:
+  - id: mutual
+    when: "stance(A, B) >= 0.6 and stance(B, A) >= 0.6"
+    label: AとBは互いの本心を受け止め、同じ気持ちを確かめた
+
+target_ending: mutual
