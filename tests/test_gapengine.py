@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -50,6 +51,54 @@ def read_rows(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def make_reaching_project(root: Path) -> Path:
+    project = root / "project"
+    shutil.copytree(PROJECT, project)
+
+    world_path = project / "world.yaml"
+    world_raw = yaml.safe_load(world_path.read_text(encoding="utf-8"))
+    world_raw["time"] = {"days": 1, "slots": ["朝"]}
+    world_raw["daily_events"] = None
+    world_raw["scheduled_events"] = [
+        {
+            "id": "test_guaranteed_homecoming",
+            "day": 1,
+            "slot": "朝",
+            "targets": ["桃太郎"],
+            "label": "決定性テスト用の帰還",
+            "grants_item": {"name": "鬼ヶ島の宝物", "count": 1},
+            "move_to": "村",
+        }
+    ]
+    world_path.write_text(
+        yaml.safe_dump(
+            world_raw,
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    momotaro_path = project / "subjects" / "03_momotaro.yaml"
+    momotaro_raw = yaml.safe_load(
+        momotaro_path.read_text(encoding="utf-8")
+    )
+    # train is an effective, categorised (I) decision; rest alone yields
+    # category=None and the archive would reject every run (Claude-side fix).
+    momotaro_raw["verbs"] = ["train", "rest"]
+    momotaro_path.write_text(
+        yaml.safe_dump(
+            momotaro_raw,
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return project
+
+
 def without_policy_fields(
     rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -68,6 +117,11 @@ class GapEngineTests(unittest.TestCase):
     def test_neutral_genome_matches_policy_none(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
+            action_cfg = yaml.safe_load(
+                (TEMPLATE / "action_graph.yaml").read_text(
+                    encoding="utf-8"
+                )
+            )
 
             world_plain, subjects_plain = load_fixture()
             world_plain.days = 2
@@ -90,13 +144,35 @@ class GapEngineTests(unittest.TestCase):
                     world_neutral.protagonist: Policy(
                         Genome.neutral(),
                         None,
+                        cfg=action_cfg,
                     )
                 },
             ).run()
 
+            plain_rows = read_rows(plain_path)
+            neutral_rows = read_rows(neutral_path)
             self.assertEqual(
-                without_policy_fields(read_rows(plain_path)),
-                without_policy_fields(read_rows(neutral_path)),
+                without_policy_fields(plain_rows),
+                without_policy_fields(neutral_rows),
+            )
+
+            protagonist_decisions = [
+                row
+                for row in neutral_rows
+                if row.get("kind") == "decision"
+                and row.get("subject") == world_neutral.protagonist
+            ]
+            self.assertTrue(protagonist_decisions)
+            self.assertTrue(
+                all(
+                    row["classification"] is not None
+                    and row["policy"] is not None
+                    and row["policy"]["m_cat"] == 1.0
+                    and row["policy"]["m_risk"] == 1.0
+                    and row["policy"]["m_stance"] == 1.0
+                    and row["policy"]["m_nov"] == 1.0
+                    for row in protagonist_decisions
+                )
             )
 
     def test_genome_operations_stay_in_range(self) -> None:
@@ -307,23 +383,58 @@ class GapEngineTests(unittest.TestCase):
     def test_small_evolve_is_byte_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            project = make_reaching_project(root)
             common = {
                 "ga_seed": 1,
                 "generations": 2,
+                "keep": "all",
                 "population": 6,
-                "processes": 1,
-                "project": PROJECT,
+                "project": project,
+                "seed_base": 11,
                 "seeds": 1,
                 "template": TEMPLATE,
             }
 
-            evolve({**common, "out": root / "first"})
-            evolve({**common, "out": root / "second"})
-
-            self.assertEqual(
-                (root / "first" / "archive.json").read_bytes(),
-                (root / "second" / "archive.json").read_bytes(),
+            serial = evolve(
+                {
+                    **common,
+                    "out": root / "serial",
+                    "processes": 1,
+                }
             )
+            parallel = evolve(
+                {
+                    **common,
+                    "out": root / "parallel",
+                    "processes": 2,
+                }
+            )
+
+            self.assertGreaterEqual(len(serial.cells), 1)
+            self.assertGreaterEqual(len(parallel.cells), 1)
+            self.assertEqual(
+                (root / "serial" / "archive.json").read_bytes(),
+                (root / "parallel" / "archive.json").read_bytes(),
+            )
+            self.assertEqual(
+                (root / "serial" / "summary.json").read_bytes(),
+                (root / "parallel" / "summary.json").read_bytes(),
+            )
+            for generation in range(2):
+                self.assertEqual(
+                    (
+                        root
+                        / "serial"
+                        / f"g{generation}"
+                        / "results.json"
+                    ).read_bytes(),
+                    (
+                        root
+                        / "parallel"
+                        / f"g{generation}"
+                        / "results.json"
+                    ).read_bytes(),
+                )
 
 
 if __name__ == "__main__":
