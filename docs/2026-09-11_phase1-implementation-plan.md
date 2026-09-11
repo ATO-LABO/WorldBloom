@@ -115,3 +115,16 @@ Phase 1 で新たに乱数を消費する箇所: **なし**（confront の真偽
 - **C-3**: `observe` は downed の相手にも可（候補と実行を一致）。
 - **B-1**: `bind_subjects` の fact 衝突チェックの重複を削除。
 - テスト: `test_hostile_permission_reduces_give_and_share_weights` は permission を明示注入した world で総量が下がること（と比が permission に一致すること）を検証する形に書き換える。
+
+## 10. Phase 1 本番実験（2026-09-11、D3c＋D4b、`C:\Projects\WorldBloom-local\runs\exp2`）
+
+| 項目 | 結果 |
+|---|---|
+| 無作為 300 シード（annotate_only、seed-base 1000） | 到達 5/300、到達ランの相異度 0.81、全ラン分布 I 35 / II 1 / III 251 / V 13 |
+| evolve N=100・G=20・K=3・`--keep reached` | 到達率 0.3%→2%（最大 2%）、占有 8/18 マス（I×3・III×3・V×2）、アーカイブ相異度 0.82、平均品質 0.43〜0.53、出力 23MB |
+| 合格条件 1（observe→neutralize→逆転） | ✓ III\|high・I\|high・I\|mid・V\|mid のエリートで neutralize 後に勝利 |
+| 合格条件 2（前提違反 0） | レビュー役の走査待ち |
+| 合格条件 3（fight 経由と negotiate 経由の両方） | ✓ III\|low: 桃太郎 negotiate（turn 33）→ 鬼 concede（turn 34）で宝を譲渡し到達。他マスは fight/neutralize 経由 |
+| 合格条件 4（裏切り・懐柔の出現） | 裏切り ✓ III\|high: pledge（turn 25, 35）→ fight（turn 54）で betrayal。懐柔（低 stance への give_item→ally_gained）は分布未確認 |
+
+所見: 対象開放により世界が厳しくなり（鬼の先制・味方同士の衝突）、到達率は Phase 0 の 6% から 2% に低下。アーカイブの充填は遅いが、ルートの多様性（相異度）は上がった。到達率の改善は Phase 3 以前に「世代数の増加」または「permission の再調整（fight の neutral/ally を deny 寄りに）」で対応可能。
