@@ -26,6 +26,7 @@ verbs:
   - move
   - investigate
   - observe
+  - neutralize
   - share_knowledge
   - give_item
   - craft

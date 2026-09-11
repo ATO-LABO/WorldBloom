@@ -265,7 +265,7 @@ def _observe_candidates(
         hidden = any(
             modifier.active
             and not modifier.visible
-            and modifier.id not in known
+            and modifier.source not in known
             for modifier in target.all_modifiers(world, present)
         )
         if not hidden and identity_seen:
@@ -280,6 +280,51 @@ def _observe_candidates(
                 0.3 + subject.traits["curiosity"] * 0.6,
             )
         )
+    return result
+
+
+def _neutralize_candidates(
+    subject: Subject,
+    world: World,
+    present: list[Subject],
+) -> list[tuple[Action, float]]:
+    if "neutralize" not in subject.verbs:
+        return []
+
+    result: list[tuple[Action, float]] = []
+    weight = (
+        0.2
+        + subject.traits["curiosity"] * 0.4
+        + subject.traits["stubbornness"] * 0.3
+    )
+    for target in sorted(present, key=lambda value: value.id):
+        if target.id == subject.id or target.vitality == "dead":
+            continue
+        belief = subject.beliefs_about.get(target.id)
+        if belief is None:
+            continue
+        active_sources = {
+            modifier.source
+            for modifier in target.all_modifiers(world, present)
+            if modifier.active
+            and modifier.source in belief.known_modifiers
+        }
+        for source in sorted(active_sources):
+            result.append(
+                (
+                    Action(
+                        "neutralize",
+                        (target.id, source),
+                        {
+                            "target": target.id,
+                            "source": source,
+                            "stance_sign": -1,
+                            "risk": "risky",
+                        },
+                    ),
+                    weight,
+                )
+            )
     return result
 
 
@@ -527,6 +572,7 @@ def candidates(
 
     weighted.extend(_investigate_candidates(subject, world))
     weighted.extend(_observe_candidates(subject, world, present))
+    weighted.extend(_neutralize_candidates(subject, world, present))
     weighted.extend(_share_candidates(subject, world, present))
     weighted.extend(_give_candidates(subject, world, present))
     weighted.extend(_craft_candidates(subject, world))
