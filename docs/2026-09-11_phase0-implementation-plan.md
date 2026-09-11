@@ -385,3 +385,14 @@ volatility_bins: [low, mid, high]       # 三分位
 7. 同席の awareness 更新は 1 スロット 1 本の `event` 行（`verb: encounters`、`delta.relations` に全ペア）。差分が無ければ書かない。
 8. 状態変化は適用した場所の行に 1 回だけ記録: `decision` 行の `delta` は execute 前後の総差分（派生効果を含む）、execute 内の派生 `event` 行はマーカー（`delta: {}`）、execute 外（tick の revive・閾値再評価・encounters・scheduled/daily・ending）は各 `event` 行の `delta`。
 9. 補足: 主人公と敵役が同席するスロットの主人公 `decision` 行 `details` に `strength_diff` と `believed_diff` を書く。`engine_hash` は `engine/*.py` を名前順に連結した sha256 先頭 12 桁。
+
+## 8. Codex D2 からの質問への回答（2026-09-11、設計役）
+
+1. K シードの集約: 入場条件は 1 シード以上の到達。模範ラン＝到達シードのうち quality 最大（同点は seed 小）。セル・quality は模範ランのみ、挿入は 1 セル。`reach_rate = 到達/K` をメタデータに。`shaped` は全 K シード平均（親選択専用）。volatility 閾値の凍結は世代 0 の全個体・全シードの三分位。
+2. タイブレーク: quality 同点 → reach_rate 高い方。それも同点 → 既存維持。
+3. `shaped(rows, world)` は Phase 0 では桃太郎型: `0.4×holds(主人公, 目的物) + 0.3×(1 − hops(最終ゾーン→deliver_to)/max_hops) + 0.3×到達`。汎用の述語充足割合は Phase 4。
+4. 多様性指標: 世代ごとは「その世代で到達した全個体の模範ラン」、最終値は「最終アーカイブの exemplar 全部」、baseline は「到達した無作為ラン全部」。系列＝主人公の effective decision の `(category, verb, target_role)` 列、正規化レーベンシュタインのペアワイズ平均。母集団 ≤1 なら null。
+
+## 9. Phase 0 への前倒し（2026-09-11、実走の結果を受けて）
+
+30 シードの実走で結末到達 0/30（桃太郎 50＋味方 40 vs 鬼 80＋隠し金棒 40。差分ゲームの仕様どおり力押しでは勝てない）。GA ループの検証には到達ランが要るため、Phase 1 予定の **`neutralize(target, source)`（弱体化・間接）を D1b として Phase 0 に前倒し**（候補条件 `known_modifiers ∋ source`、効果 `active=False`＋lootable なら道具を actor の inventory へ移す＝付け替え）。あわせて桃太郎テンプレートに `vitality.lethal_exempt: [桃太郎]`（設計書 §10.4 のジャンルの約束事）を設定。
