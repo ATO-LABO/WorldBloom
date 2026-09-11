@@ -45,11 +45,18 @@ def _target_id(action: Action) -> str | None:
     if isinstance(target, str):
         return target
     if action.verb in {
+        "concede",
+        "confront",
         "fight",
         "give_item",
+        "mislead",
+        "negotiate",
         "neutralize",
         "observe",
+        "persuade",
+        "pledge",
         "rescue",
+        "sabotage",
         "share_knowledge",
     }:
         if action.args and isinstance(action.args[0], str):
@@ -144,7 +151,22 @@ def classify(
         risk = str(selected.get("risk", "neutral"))
         sign = int(selected.get("sign", 0))
 
-    if action.verb == "fight" and action.meta.get("outmatched", False):
+    meta_subtype = action.meta.get("subtype")
+    if isinstance(meta_subtype, str) and meta_subtype:
+        subtype = meta_subtype
+    elif bool(action.meta.get("betrayal", False)):
+        subtype = "betray"
+
+    if "under_threat" in action.meta:
+        under_threat = bool(action.meta["under_threat"])
+        if action.verb == "fight" and under_threat:
+            risk = "risky"
+        elif action.verb in {"rest", "withdraw", "guard"}:
+            risk = "safe_under_threat" if under_threat else "neutral"
+    elif action.verb == "fight" and action.meta.get(
+        "outmatched",
+        False,
+    ):
         risk = "risky"
     elif action.verb == "move" and _hostile_at_destination(
         action,

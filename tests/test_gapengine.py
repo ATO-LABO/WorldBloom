@@ -13,16 +13,28 @@ from typing import Any
 
 import yaml
 
-from engine.actions import Action
+from engine.actions import Action, candidates
 from engine.sim import Simulation
-from engine.subject import Subject
+from engine.subject import BeliefAbout, Subject
+from engine.verbs import VerbEngine
 from engine.world import World
 from gapengine.classify import classify
-from gapengine.evolve import evolve
+from gapengine.evolve import _prune_layers, evolve
 from gapengine.genome import CATEGORIES, Genome
 from gapengine.policy import Policy
 from gapengine.precedent import PrecedentTable
-from gapengine.qd import Archive, Descriptor, Elite
+from gapengine.qd import (
+    Archive,
+    Descriptor,
+    Elite,
+    _completed_prerequisite_chains,
+    quality,
+)
+from scripts.evolve import build_parser as build_evolve_parser
+from scripts.random_baseline import (
+    build_parser as build_baseline_parser,
+    main as baseline_main,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -437,6 +449,535 @@ class GapEngineTests(unittest.TestCase):
                         / "results.json"
                     ).read_bytes(),
                 )
+
+
+class Phase1GapEngineTests(unittest.TestCase):
+    def test_phase1_classification_and_meta_priority(self) -> None:
+        world, subjects = load_fixture()
+        cfg = yaml.safe_load(
+            (TEMPLATE / "action_graph.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        actor = subjects["桃太郎"]
+        actor.zone = "鬼ヶ島"
+        subjects["鬼"].zone = "鬼ヶ島"
+        present = world.present_subjects("鬼ヶ島")
+
+        cases = [
+            (
+                Action(
+                    "sabotage",
+                    ("鬼",),
+                    {"target": "鬼"},
+                ),
+                ("I", "weaken_direct", "risky", -1),
+            ),
+            (
+                Action("sacrifice", ("asset",)),
+                ("I", "sacrifice", "risky", 0),
+            ),
+            (
+                Action(
+                    "mislead",
+                    ("鬼", "桃太郎", 30.0),
+                    {"target": "鬼"},
+                ),
+                ("II", "mislead", "neutral", -1),
+            ),
+            (
+                Action(
+                    "confront",
+                    ("鬼", "oni_weakness"),
+                    {"target": "鬼"},
+                ),
+                ("II", "exposure", "risky", -1),
+            ),
+            (
+                Action(
+                    "negotiate",
+                    ("鬼",),
+                    {"target": "鬼"},
+                ),
+                ("III", "negotiate", "neutral", 1),
+            ),
+            (
+                Action(
+                    "concede",
+                    ("桃太郎",),
+                    {"target": "桃太郎"},
+                ),
+                ("VI", "reward", "neutral", 1),
+            ),
+            (
+                Action(
+                    "persuade",
+                    ("鬼",),
+                    {"target": "鬼"},
+                ),
+                ("III", "persuade", "neutral", 1),
+            ),
+            (
+                Action(
+                    "pledge",
+                    ("鬼",),
+                    {"target": "鬼"},
+                ),
+                ("III", "pledge", "neutral", 1),
+            ),
+        ]
+
+        for action, expected in cases:
+            classified = classify(
+                action,
+                actor,
+                world,
+                present,
+                cfg,
+            )
+            self.assertEqual(
+                (
+                    classified.category,
+                    classified.subtype,
+                    classified.risk_class,
+                    classified.stance_sign,
+                ),
+                expected,
+            )
+
+        betrayal = classify(
+            Action(
+                "fight",
+                ("鬼",),
+                {
+                    "target": "鬼",
+                    "betrayal": True,
+                    "subtype": "betray",
+                    "under_threat": False,
+                },
+            ),
+            actor,
+            world,
+            present,
+            cfg,
+        )
+        self.assertEqual(betrayal.subtype, "betray")
+
+        safe = classify(
+            Action("rest", meta={"under_threat": False}),
+            actor,
+            world,
+            present,
+            cfg,
+        )
+        self.assertEqual(safe.risk_class, "neutral")
+
+    def test_action_graph_prerequisite_and_permission_deny(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        target = subjects["鬼"]
+        actor.zone = "鬼ヶ島"
+        actor.verbs = {"neutralize"}
+
+        before = candidates(
+            actor,
+            world,
+            SimpleNamespace(day=1, turn=1),
+        )
+        self.assertFalse(
+            any(action.verb == "neutralize" for action, _ in before)
+        )
+
+        actor.beliefs_about.setdefault(
+            "鬼",
+            BeliefAbout(
+                base_estimate=world.default_strength_prior
+            ),
+        ).known_modifiers.add("金棒")
+        allowed = candidates(
+            actor,
+            world,
+            SimpleNamespace(day=1, turn=1),
+        )
+        self.assertTrue(
+            any(
+                action.verb == "neutralize"
+                and action.args == ("鬼", "金棒")
+                for action, _ in allowed
+            )
+        )
+
+        world.relations.change(
+            actor.id,
+            target.id,
+            affinity=2.0,
+        )
+        self.assertEqual(
+            world.target_role(actor, target),
+            "ally",
+        )
+        self.assertEqual(
+            world.permission("neutralize", "ally"),
+            0.0,
+        )
+        denied = candidates(
+            actor,
+            world,
+            SimpleNamespace(day=1, turn=1),
+        )
+        self.assertFalse(
+            any(action.verb == "neutralize" for action, _ in denied)
+        )
+
+    def test_completed_chains_and_dramatic_turns_raise_quality(
+        self,
+    ) -> None:
+        base_rows: list[dict[str, Any]] = [
+            {
+                "kind": "header",
+                "protagonist": "桃太郎",
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "observe",
+                "args": ["鬼"],
+                "result": "observed",
+                "delta": {},
+                "details": {},
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "pledge",
+                "args": ["犬"],
+                "result": "pledged",
+                "delta": {},
+                "details": {},
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "negotiate",
+                "args": ["鬼"],
+                "result": "offered",
+                "delta": {},
+                "details": {},
+            },
+        ]
+        completed_rows = [
+            *base_rows,
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "neutralize",
+                "args": ["鬼", "金棒"],
+                "result": "neutralized",
+                "delta": {},
+                "details": {},
+            },
+            {
+                "kind": "event",
+                "subject": "桃太郎",
+                "verb": "betrayal",
+                "args": [],
+                "result": "applied",
+                "delta": {},
+                "details": {"target": "犬"},
+            },
+            {
+                "kind": "decision",
+                "subject": "鬼",
+                "verb": "concede",
+                "args": ["桃太郎"],
+                "result": "conceded",
+                "delta": {
+                    "objective": {
+                        "鬼ヶ島の宝物": "桃太郎",
+                    }
+                },
+                "details": {"mode": "goodwill"},
+            },
+        ]
+
+        self.assertEqual(
+            _completed_prerequisite_chains(completed_rows),
+            3,
+        )
+        meta = {"protagonist": "桃太郎"}
+        self.assertGreater(
+            quality(completed_rows, meta),
+            quality(base_rows, meta),
+        )
+
+    def _concede_details(self, trade: bool) -> dict[str, Any]:
+        world, subjects = load_fixture()
+        claimant = subjects["桃太郎"]
+        holder = subjects["鬼"]
+        claimant.zone = "鬼ヶ島"
+
+        if trade:
+            holder.remove_item("金棒", 1)
+            claimant.add_item("金棒", 1)
+        else:
+            world.relations.change(
+                holder.id,
+                claimant.id,
+                affinity=1.0,
+            )
+
+        engine = VerbEngine(world, random.Random(1))
+        result, _, _ = engine.execute(
+            claimant,
+            Action("negotiate", (holder.id,)),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "offered")
+
+        concede = next(
+            action
+            for action, _ in candidates(
+                holder,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "concede"
+        )
+        result, details, _ = engine.execute(
+            holder,
+            concede,
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "conceded")
+        return details
+
+    def test_concede_goodwill_and_trade_modes(self) -> None:
+        goodwill = self._concede_details(trade=False)
+        trade = self._concede_details(trade=True)
+
+        self.assertEqual(goodwill["mode"], "goodwill")
+        self.assertEqual(goodwill["assets"], {})
+        self.assertEqual(trade["mode"], "trade")
+        self.assertEqual(trade["assets"], {"金棒": 1})
+
+    def test_betrayal_reduces_reputation(self) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        target = subjects["犬"]
+        actor.zone = "道中"
+        target.zone = "道中"
+        world.relations.change(
+            actor.id,
+            target.id,
+            affinity=2.0,
+        )
+        world.relations.change(
+            target.id,
+            actor.id,
+            affinity=2.0,
+        )
+        actor.beliefs_about.setdefault(
+            target.id,
+            BeliefAbout(
+                base_estimate=world.default_strength_prior
+            ),
+        ).identity_seen = True
+
+        engine = VerbEngine(world, random.Random(1))
+        result, _, _ = engine.execute(
+            actor,
+            Action("pledge", (target.id,)),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "pledged")
+
+        sabotage = next(
+            action
+            for action, _ in candidates(
+                actor,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "sabotage"
+            and action.meta.get("target") == target.id
+        )
+        action_cfg = yaml.safe_load(
+            (TEMPLATE / "action_graph.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        classification = classify(
+            sabotage,
+            actor,
+            world,
+            world.present_subjects(actor.zone),
+            action_cfg,
+        )
+        self.assertTrue(sabotage.meta["betrayal"])
+        self.assertEqual(
+            classification.subtype,
+            "betray",
+        )
+
+        before = actor.reputation
+        result, _, markers = engine.execute(
+            actor,
+            sabotage,
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "sabotaged")
+        self.assertEqual(actor.reputation, before - 0.5)
+        self.assertEqual(
+            [marker["verb"] for marker in markers],
+            ["betrayal"],
+        )
+
+    def test_neutral_rules_do_not_force_annotation_only(self) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        present = world.present_subjects(actor.zone)
+
+        plain_weighted = [(Action("train"), 1.0)]
+        plain_policy = Policy(
+            Genome.neutral(),
+            precedent=None,
+            cfg={"nodes": [], "edges": []},
+        )
+        self.assertIs(
+            plain_policy.reweight(
+                actor,
+                world,
+                present,
+                plain_weighted,
+            ),
+            plain_weighted,
+        )
+
+        ruled_weighted = [(Action("train"), 1.0)]
+        ruled_policy = Policy(
+            Genome.neutral(),
+            precedent=None,
+            rules=({"id": "future-rule"},),
+            cfg={"nodes": [], "edges": []},
+        )
+        ruled_output = ruled_policy.reweight(
+            actor,
+            world,
+            present,
+            ruled_weighted,
+        )
+        self.assertIsNot(ruled_output, ruled_weighted)
+        self.assertIn(
+            "classification",
+            ruled_output[0][0].meta,
+        )
+
+    def test_keep_reached_retains_shaped_best_on_zero_reach(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            out_dir = Path(temporary)
+            results: list[dict[str, Any]] = []
+            for index, shaped_value in ((0, 0.2), (1, 0.8)):
+                runs: list[dict[str, Any]] = []
+                for seed in (3, 4):
+                    relative = (
+                        f"g0/ind-{index}/seed-{seed}/layers.jsonl"
+                    )
+                    layer_path = out_dir / relative
+                    layer_path.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                    layer_path.write_text(
+                        "{}\n",
+                        encoding="utf-8",
+                    )
+                    runs.append(
+                        {
+                            "layers_path": relative,
+                            "reached": False,
+                        }
+                    )
+                results.append(
+                    {
+                        "index": index,
+                        "runs": runs,
+                        "shaped": shaped_value,
+                    }
+                )
+
+            _prune_layers(results, out_dir, "reached")
+
+            for seed in (3, 4):
+                self.assertTrue(
+                    (
+                        out_dir
+                        / f"g0/ind-1/seed-{seed}/layers.jsonl"
+                    ).is_file()
+                )
+                self.assertFalse(
+                    (out_dir / f"g0/ind-0/seed-{seed}").exists()
+                )
+
+    def test_seed_base_parsers_reject_negative_values(self) -> None:
+        required = [
+            "--project",
+            str(PROJECT),
+            "--template",
+            str(TEMPLATE),
+            "--out",
+            "unused",
+            "--seed-base",
+            "-1",
+        ]
+        with self.assertRaises(SystemExit):
+            build_evolve_parser().parse_args(required)
+        with self.assertRaises(SystemExit):
+            build_baseline_parser().parse_args(required)
+
+    def test_random_baseline_reports_all_distribution_and_seed_base(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            result = baseline_main(
+                [
+                    "--project",
+                    str(PROJECT),
+                    "--template",
+                    str(TEMPLATE),
+                    "--out",
+                    str(output),
+                    "--seeds",
+                    "1",
+                    "--seed-base",
+                    "7",
+                ]
+            )
+            self.assertEqual(result, 0)
+
+            summary = json.loads(
+                (output / "summary.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(summary["seed_base"], 7)
+            self.assertEqual(summary["runs"][0]["seed"], 7)
+            self.assertEqual(
+                sum(
+                    summary[
+                        "all_descriptor_distribution"
+                    ].values()
+                ),
+                1,
+            )
 
 
 if __name__ == "__main__":

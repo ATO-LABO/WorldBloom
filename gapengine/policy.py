@@ -111,7 +111,10 @@ class Policy:
             for action, _, classification in classified
         }
         self_history = self._history_table(subject)
-        annotation_only = self.annotate_only or self.genome.is_neutral()
+        annotation_only = (
+            self.annotate_only
+            or (self.genome.is_neutral() and not self.rules)
+        )
 
         active = self._active_categories()
         category_mean = sum(
@@ -146,7 +149,9 @@ class Policy:
                 if classification.risk_class == "risky":
                     m_risk = self.genome.risk_tolerance / 0.5
                 elif classification.risk_class == "safe_under_threat":
-                    m_risk = (1.0 - self.genome.risk_tolerance) / 0.5
+                    m_risk = (
+                        1.0 - self.genome.risk_tolerance
+                    ) / 0.5
                 else:
                     m_risk = 1.0
 

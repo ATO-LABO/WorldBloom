@@ -5,13 +5,35 @@ nodes:
   - {verb: investigate, category: II, subtype: scout, risk: neutral, sign: 0}
   - {verb: observe, category: II, subtype: observe, risk: neutral, sign: 0}
   - {verb: fight, category: I, subtype: weaken_direct, risk: risky, sign: -1}
+  - {verb: sabotage, category: I, subtype: weaken_direct, risk: risky, sign: -1}
   - {verb: neutralize, category: I, subtype: weaken_indirect, risk: risky, sign: -1}
+  - {verb: sacrifice, category: I, subtype: sacrifice, risk: risky, sign: 0}
+  - {verb: mislead, category: II, subtype: mislead, risk: neutral, sign: -1}
+  - {verb: confront, category: II, subtype: exposure, risk: risky, sign: -1}
   - {verb: share_knowledge, category: III, subtype: persuade, risk: neutral, sign: 1}
   - {verb: give_item, category: III, subtype: gift, risk: neutral, sign: 1}
+  - {verb: persuade, category: III, subtype: persuade, risk: neutral, sign: 1}
+  - {verb: pledge, category: III, subtype: pledge, risk: neutral, sign: 1}
+  - {verb: negotiate, category: III, subtype: negotiate, risk: neutral, sign: 1}
   - {verb: rescue, category: III, subtype: rescue, risk: neutral, sign: 1}
   - {verb: move, category: V, subtype: crossing, risk: risky, sign: 0, when: crossing}
   - {verb: move, category: null, subtype: move, risk: neutral, sign: 0}
   - {verb: rest, category: V, subtype: stall, risk: safe_under_threat, sign: 0}
   - {verb: withdraw, category: V, subtype: stall, risk: safe_under_threat, sign: 0}
   - {verb: guard, category: null, subtype: guard, risk: neutral, sign: 0}
-edges: []
+  - {verb: concede, category: VI, subtype: reward, risk: neutral, sign: 1}
+
+edges:
+  - {from: observe, to: neutralize, requires: known_modifier}
+  - {from: observe, to: sabotage, requires: observed}
+  - {from: pledge, to: betray, requires: pledged}
+
+permission:
+  fight: {hostile: allow, neutral: restricted, ally: restricted}
+  neutralize: {hostile: allow, neutral: restricted, ally: deny}
+  sabotage: {hostile: allow, neutral: restricted, ally: restricted}
+  give_item: {hostile: restricted, neutral: allow, ally: allow}
+  share_knowledge: {hostile: restricted, neutral: allow, ally: allow}
+  mislead: {hostile: allow, neutral: restricted, ally: restricted}
+
+restricted_weight: 0.15
