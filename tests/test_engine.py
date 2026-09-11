@@ -18,7 +18,7 @@ from engine.phase2 import (
     apply_effect,
     configure_phase2,
 )
-from engine.predicate import compile_predicate
+from engine.predicate import compile_predicate, conjuncts
 from engine.sim import Simulation
 from engine.subject import (
     Belief,
@@ -2882,6 +2882,211 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(
             rows[-1]["details"]["dangling_effects"],
             1,
+        )
+
+
+class Phase4EngineTests(unittest.TestCase):
+    def _load_subjects(self) -> dict[str, Subject]:
+        return {
+            subject.id: subject
+            for subject in (
+                Subject.from_yaml(path)
+                for path in sorted(SUBJECTS_DIR.glob("*.yaml"))
+            )
+        }
+
+    def test_conjuncts_recursively_flattens_top_level_and(
+        self,
+    ) -> None:
+        predicate = compile_predicate(
+            "holds(桃太郎, 鬼ヶ島の宝物) "
+            "and (zone(桃太郎) == '村' "
+            "and stance(桃太郎, 犬) >= 0.6)",
+            {
+                "holds",
+                "zone",
+                "stance",
+                "桃太郎",
+                "鬼ヶ島の宝物",
+                "犬",
+            },
+        )
+
+        parts = conjuncts(predicate)
+
+        self.assertEqual(len(parts), 3)
+        self.assertTrue(
+            all(" and " not in part.source for part in parts)
+        )
+        self.assertEqual(
+            [part.source.split("(", 1)[0] for part in parts],
+            ["holds", "zone", "stance"],
+        )
+
+    def test_truth_draw_is_deterministic_and_uses_no_main_rng(
+        self,
+    ) -> None:
+        raw_world = yaml.safe_load(
+            WORLD_PATH.read_text(encoding="utf-8")
+        )
+        raw_world["truth"]["treasure_thief"] = {
+            "candidates": {
+                "鬼": 3.0,
+                "猿": 1.0,
+                "犬": 1.0,
+            },
+            "known_by": ["鬼"],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            world_path = root / "world.yaml"
+            world_path.write_text(
+                yaml.safe_dump(
+                    raw_world,
+                    allow_unicode=True,
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+                newline="\n",
+            )
+
+            seed = 73
+            first_world = World.from_yaml(world_path)
+            first_simulation = Simulation(
+                seed,
+                first_world,
+                self._load_subjects(),
+                root / "first",
+            )
+            second_world = World.from_yaml(world_path)
+            second_simulation = Simulation(
+                seed,
+                second_world,
+                self._load_subjects(),
+                root / "second",
+            )
+
+        expected_state = random.Random(seed).getstate()
+        self.assertEqual(
+            first_simulation.rng.getstate(),
+            expected_state,
+        )
+        self.assertEqual(
+            second_simulation.rng.getstate(),
+            expected_state,
+        )
+        self.assertEqual(
+            first_world.drawn_truth,
+            second_world.drawn_truth,
+        )
+        self.assertEqual(
+            first_world.truth["treasure_thief"],
+            first_world.drawn_truth["treasure_thief"],
+        )
+        self.assertIn(
+            first_world.truth["treasure_thief"],
+            {"鬼", "猿", "犬"},
+        )
+        self.assertEqual(
+            first_simulation._header()["truth"],
+            first_world.drawn_truth,
+        )
+        self.assertEqual(
+            first_simulation.subjects["鬼"].beliefs[
+                "treasure_thief"
+            ].value,
+            first_world.truth["treasure_thief"],
+        )
+
+    def test_rethink_requires_stagnation_and_replays_evidence(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        actor.verbs.add("rethink")
+        actor.beliefs = {
+            "treasure_thief": Belief(
+                value="猿",
+                confidence=0.2,
+            ),
+            "oni_weakness": Belief(
+                value="火",
+                confidence=0.2,
+            ),
+        }
+        actor.knowledge = {"elder_testimony"}
+
+        recent_simulation = SimpleNamespace(
+            day=1,
+            turn=4,
+            _last_fact_turn={actor.id: 2},
+        )
+        self.assertEqual(
+            [
+                action
+                for action, _ in candidates(
+                    actor,
+                    world,
+                    recent_simulation,
+                )
+                if action.verb == "rethink"
+            ],
+            [],
+        )
+
+        stalled_simulation = SimpleNamespace(
+            day=1,
+            turn=5,
+            _last_fact_turn={actor.id: 2},
+        )
+        rethink_actions = [
+            (action, weight)
+            for action, weight in candidates(
+                actor,
+                world,
+                stalled_simulation,
+            )
+            if action.verb == "rethink"
+        ]
+
+        self.assertEqual(len(rethink_actions), 1)
+        action, weight = rethink_actions[0]
+        self.assertAlmostEqual(
+            weight,
+            0.1 + actor.traits["curiosity"] * 0.4,
+        )
+        self.assertEqual(
+            action.meta["evidence"],
+            ["elder_testimony"],
+        )
+
+        result, details, markers = VerbEngine(
+            world,
+            FixedRandom([]),
+        ).execute(
+            actor,
+            action,
+            turn=5,
+            day=1,
+        )
+
+        self.assertEqual(result, "rethought")
+        self.assertEqual(
+            details["before"]["treasure_thief"]["value"],
+            "猿",
+        )
+        self.assertEqual(
+            details["after"]["treasure_thief"]["value"],
+            "鬼",
+        )
+        self.assertEqual(
+            actor.beliefs["oni_weakness"].value,
+            "火",
+        )
+        self.assertEqual(
+            [marker["verb"] for marker in markers],
+            ["rethink"],
         )
 
 

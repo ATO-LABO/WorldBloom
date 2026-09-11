@@ -29,7 +29,31 @@ class Classification:
         }
 
 
-def _node_matches(node: Mapping[str, Any], action: Action) -> bool:
+def _node_matches(
+    node: Mapping[str, Any],
+    action: Action,
+    genres: frozenset[str],
+) -> bool:
+    raw_genres = node.get("genres")
+    if genres and raw_genres is not None:
+        if isinstance(raw_genres, str):
+            node_genres = {raw_genres}
+        elif isinstance(raw_genres, (list, tuple, set)):
+            if any(
+                not isinstance(value, str) or not value
+                for value in raw_genres
+            ):
+                raise ValueError(
+                    "Action node genres must contain non-empty strings"
+                )
+            node_genres = set(raw_genres)
+        else:
+            raise ValueError(
+                "Action node genres must be a string or sequence"
+            )
+        if not genres.intersection(node_genres):
+            return False
+
     condition = node.get("when")
     if condition is None:
         return True
@@ -125,10 +149,11 @@ def classify(
     cfg: Mapping[str, Any],
 ) -> Classification:
     selected: Mapping[str, Any] | None = None
+    genres = getattr(world, "genres", frozenset())
     for node in cfg.get("nodes", []) or []:
         if node.get("verb") != action.verb:
             continue
-        if _node_matches(node, action):
+        if _node_matches(node, action, genres):
             selected = node
             break
 

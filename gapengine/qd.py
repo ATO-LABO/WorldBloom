@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import statistics
 from collections import Counter, deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence, TYPE_CHECKING
+from engine.predicate import Namespace, Predicate, conjuncts
 
 from gapengine.genome import Genome
 
@@ -398,6 +400,29 @@ def quality(
                 and row.get("result") != "invalid"
             ):
                 dramatic_turns += 1
+            if (
+                row.get("kind") == "event"
+                and row.get("verb") == "rethink"
+                and row.get("subject") == protagonist
+            ):
+                before = details.get("before")
+                after = details.get("after")
+                if isinstance(before, Mapping) and isinstance(after, Mapping):
+                    for fact_id in sorted(set(before) | set(after)):
+                        before_belief = before.get(fact_id)
+                        after_belief = after.get(fact_id)
+                        before_value = (
+                            before_belief.get("value")
+                            if isinstance(before_belief, Mapping)
+                            else None
+                        )
+                        after_value = (
+                            after_belief.get("value")
+                            if isinstance(after_belief, Mapping)
+                            else None
+                        )
+                        if before_value != after_value:
+                            dramatic_turns += 1
             if "strength_diff" in details:
                 strength_diffs.append(
                     float(details["strength_diff"])
@@ -546,37 +571,248 @@ def _maximum_hops(world: World) -> int:
     return maximum
 
 
+def _clamp_unit(value: float) -> float:
+    return min(1.0, max(0.0, float(value)))
+
+
+def _predicate_value(
+    node: ast.expr,
+    namespace: Namespace,
+) -> Any:
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name):
+        return namespace[node.id]
+    raise ValueError(
+        f"Unsupported shaped predicate value: {type(node).__name__}"
+    )
+
+
+def _call_arguments(
+    node: ast.Call,
+    namespace: Namespace,
+) -> tuple[Any, ...]:
+    return tuple(
+        _predicate_value(argument, namespace)
+        for argument in node.args
+    )
+
+
+def _zone_proximity(
+    world: World,
+    subject_id: str,
+    destination: str,
+) -> float:
+    subject = world.subjects.get(subject_id)
+    if subject is None or destination not in world.zones:
+        return 0.0
+    hops = _shortest_hops(
+        world,
+        subject.zone,
+        destination,
+    )
+    if hops is None:
+        return 0.0
+    return _clamp_unit(
+        1.0 - hops / _maximum_hops(world)
+    )
+
+
+def _stance_proximity(
+    world: World,
+    observer: str,
+    target: str,
+    threshold: float,
+) -> float:
+    if observer not in world.subjects or target not in world.subjects:
+        return 0.0
+    stance = world.relations.stance(observer, target)
+    if stance >= threshold:
+        return 1.0
+    denominator = threshold + 1.0
+    if denominator <= 0.0:
+        return 0.0
+    return _clamp_unit((stance + 1.0) / denominator)
+
+
+def _conjunct_distance(
+    predicate: Predicate,
+    namespace: Namespace,
+    world: World,
+) -> float | None:
+    if predicate.evaluate(namespace):
+        return 1.0
+
+    node = predicate.tree.body
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        if node.func.id in {
+            "holds",
+            "known",
+            "knows_modifier",
+            "confront_success",
+        }:
+            return 0.0
+        return None
+
+    if (
+        not isinstance(node, ast.Compare)
+        or len(node.ops) != 1
+        or len(node.comparators) != 1
+        or not isinstance(node.left, ast.Call)
+        or not isinstance(node.left.func, ast.Name)
+    ):
+        return None
+
+    function = node.left.func.id
+    comparator = node.comparators[0]
+    try:
+        arguments = _call_arguments(node.left, namespace)
+        expected = _predicate_value(comparator, namespace)
+    except (KeyError, ValueError):
+        return None
+
+    if (
+        function == "zone"
+        and isinstance(node.ops[0], ast.Eq)
+        and len(arguments) == 1
+    ):
+        return _zone_proximity(
+            world,
+            str(arguments[0]),
+            str(expected),
+        )
+
+    if (
+        function == "stance"
+        and isinstance(node.ops[0], (ast.Gt, ast.GtE))
+        and len(arguments) == 2
+        and isinstance(expected, (int, float))
+        and not isinstance(expected, bool)
+    ):
+        return _stance_proximity(
+            world,
+            str(arguments[0]),
+            str(arguments[1]),
+            float(expected),
+        )
+
+    if function in {
+        "holds",
+        "known",
+        "knows_modifier",
+        "confront_success",
+    }:
+        return 0.0
+
+    return None
+
+
+def _generic_ending_score(
+    rows: Sequence[Mapping[str, Any]],
+    world: World,
+    ending: Mapping[str, Any],
+    namespace: Namespace,
+) -> float:
+    ending_id = str(ending["id"])
+    predicate = ending.get("predicate")
+    if not isinstance(predicate, Predicate):
+        return float(reached(rows, ending_id))
+
+    parts = conjuncts(predicate)
+    if not parts:
+        return float(reached(rows, ending_id))
+
+    distances: list[float] = []
+    for part in parts:
+        distance = _conjunct_distance(
+            part,
+            namespace,
+            world,
+        )
+        if distance is None:
+            distance = float(reached(rows, ending_id))
+        distances.append(distance)
+    return sum(distances) / len(distances)
+
+
+def _delivery_ending_score(
+    rows: Sequence[Mapping[str, Any]],
+    world: World,
+    delivery: Mapping[str, Any],
+) -> float:
+    subject_id = str(delivery["subject"])
+    item = str(delivery["item"])
+    destination = str(delivery["zone"])
+    subject = world.subjects.get(subject_id)
+
+    has_objective = (
+        1.0
+        if subject is not None and subject.has_item(item)
+        else 0.0
+    )
+    proximity = _zone_proximity(
+        world,
+        subject_id,
+        destination,
+    )
+    is_reached = reached(rows, world.target_ending)
+    return (
+        0.4 * has_objective
+        + 0.3 * proximity
+        + 0.3 * float(is_reached)
+    )
+
+
 def shaped(
     rows: Sequence[Mapping[str, Any]],
     world: World,
 ) -> float:
     protagonist = world.subjects[world.protagonist]
-    objective = protagonist.goal.target
-    destination = protagonist.goal.deliver_to
-    has_objective = (
-        1.0
-        if objective is not None and protagonist.has_item(objective)
-        else 0.0
+    final_turn = max(
+        (
+            int(row.get("turn", 0) or 0)
+            for row in rows
+        ),
+        default=0,
     )
-    is_reached = reached(rows, world.target_ending)
-
-    if destination is None:
-        proximity = 0.0
-    else:
-        hops = _shortest_hops(world, protagonist.zone, destination)
-        maximum = _maximum_hops(world)
-        proximity = (
-            0.0
-            if hops is None
-            else max(0.0, 1.0 - hops / maximum)
-        )
-
-    return round(
-        0.4 * has_objective
-        + 0.3 * proximity
-        + 0.3 * float(is_reached),
-        12,
+    final_day = max(
+        (
+            int(row.get("day", 0) or 0)
+            for row in rows
+        ),
+        default=0,
     )
+    namespace = world.namespace(
+        protagonist,
+        world.present_subjects(protagonist.zone),
+        turn=final_turn,
+        day=final_day,
+    )
+
+    scores: list[float] = []
+    for ending in world.target_endings():
+        delivery = ending.get("deliver")
+        if isinstance(delivery, Mapping):
+            scores.append(
+                _delivery_ending_score(
+                    rows,
+                    world,
+                    delivery,
+                )
+            )
+        else:
+            scores.append(
+                _generic_ending_score(
+                    rows,
+                    world,
+                    ending,
+                    namespace,
+                )
+            )
+
+    if not scores:
+        return float(reached(rows, world.target_ending))
+    return round(max(scores), 12)
 
 
 def effective_sequence(
