@@ -831,6 +831,16 @@ class World:
             visit(item)
 
     def _validate_fact_sources(self) -> None:
+        truth_tokens = {
+            "$truth",
+            "$innocent:1",
+            "$innocent:2",
+        }
+        self.fact_truth_tokens: dict[
+            tuple[str, str],
+            str,
+        ] = {}
+
         for fact, definition in sorted(self.facts.items()):
             raw_values = definition.get("values")
             if raw_values is not None:
@@ -866,6 +876,7 @@ class World:
                     raise ValueError(
                         f"Fact {relation} must be a mapping: {fact}"
                     )
+
                 target_fact = str(raw_update.get("fact", ""))
                 target = self.facts.get(target_fact)
                 if target is None:
@@ -873,6 +884,7 @@ class World:
                         f"Unknown {relation} fact: "
                         f"{fact}:{target_fact}"
                     )
+
                 allowed = {
                     str(value)
                     for value in target.get("values", []) or []
@@ -882,12 +894,42 @@ class World:
                         f"{relation} target is not a valued fact: "
                         f"{fact}:{target_fact}"
                     )
+
                 value = str(raw_update.get("value", ""))
-                if value not in allowed:
+                if value in truth_tokens:
+                    if (
+                        target_fact not in self.truth
+                        and target_fact
+                        not in self.truth_candidates
+                    ):
+                        raise ValueError(
+                            f"Truth-relative {relation} requires "
+                            f"configured truth: "
+                            f"{fact}:{target_fact}:{value}"
+                        )
+                    if (
+                        value.startswith("$innocent:")
+                        and target_fact
+                        not in self.truth_candidates
+                    ):
+                        raise ValueError(
+                            f"{value} requires candidate truth: "
+                            f"{fact}:{target_fact}"
+                        )
+                    self.fact_truth_tokens[
+                        (fact, relation)
+                    ] = value
+                elif value.startswith("$"):
+                    raise ValueError(
+                        f"Unknown truth-relative value: "
+                        f"{fact}:{target_fact}:{value}"
+                    )
+                elif value not in allowed:
                     raise ValueError(
                         f"Unknown {relation} value: "
                         f"{fact}:{target_fact}:{value}"
                     )
+
                 confidence = float(
                     raw_update.get("confidence", 0.5)
                 )
@@ -909,6 +951,34 @@ class World:
                 raise ValueError(
                     f"Truth is not an allowed fact value: "
                     f"{fact_id}:{value}"
+                )
+
+        for fact_id, candidates in sorted(
+            self.truth_candidates.items()
+        ):
+            definition = self.facts.get(fact_id)
+            if definition is None:
+                raise ValueError(
+                    f"Unknown truth fact: {fact_id}"
+                )
+            allowed = {
+                str(candidate)
+                for candidate in definition.get("values", []) or []
+            }
+            if not allowed:
+                raise ValueError(
+                    f"Candidate truth requires a valued fact: "
+                    f"{fact_id}"
+                )
+            unknown = {
+                value
+                for value, _ in candidates
+                if value not in allowed
+            }
+            if unknown:
+                raise ValueError(
+                    f"Truth candidates are not allowed fact values: "
+                    f"{fact_id}:{sorted(unknown)}"
                 )
 
         allowed_requirements = {
@@ -956,6 +1026,71 @@ class World:
         self.pending_effects.clear()
         self.offers.clear()
         self.pledges.clear()
+
+        for (
+            evidence_id,
+            relation,
+        ), token in sorted(
+            self.fact_truth_tokens.items()
+        ):
+            definition = self.facts[evidence_id]
+            raw_update = definition.get(relation)
+            if not isinstance(raw_update, dict):
+                raise ValueError(
+                    f"Fact {relation} is unresolved: "
+                    f"{evidence_id}"
+                )
+
+            update = dict(raw_update)
+            target_fact = str(update["fact"])
+            truth = self.truth.get(target_fact)
+            if truth is None:
+                raise ValueError(
+                    f"Truth must be resolved before binding "
+                    f"evidence token: "
+                    f"{evidence_id}:{target_fact}:{token}"
+                )
+
+            if token == "$truth":
+                resolved_value = truth
+            else:
+                candidates = sorted(
+                    value
+                    for value, _ in self.truth_candidates.get(
+                        target_fact,
+                        (),
+                    )
+                )
+                innocents = [
+                    value
+                    for value in candidates
+                    if value != truth
+                ]
+                innocent_index = int(
+                    token.removeprefix("$innocent:")
+                ) - 1
+                if not 0 <= innocent_index < len(innocents):
+                    raise ValueError(
+                        f"Truth-relative value is unavailable: "
+                        f"{evidence_id}:{target_fact}:{token}"
+                    )
+                resolved_value = innocents[innocent_index]
+
+            allowed = {
+                str(value)
+                for value in self.facts[
+                    target_fact
+                ].get("values", []) or []
+            }
+            if resolved_value not in allowed:
+                raise ValueError(
+                    f"Resolved truth-relative value is not allowed: "
+                    f"{evidence_id}:{target_fact}:"
+                    f"{resolved_value}"
+                )
+
+            update["value"] = resolved_value
+            definition[relation] = update
 
         if (
             set(subjects)
@@ -1258,6 +1393,12 @@ class World:
                         f"{fact}:{agent}"
                     )
 
+        self.fact_owners = {
+            fact_id: frozenset(owners)
+            for fact_id, owners in sorted(
+                resolved_fact_owners.items()
+            )
+        }
         self.subjects = {
             subject_id: subjects[subject_id]
             for subject_id in sorted(subjects)
