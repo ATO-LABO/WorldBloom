@@ -4,6 +4,12 @@ nodes:
   - {verb: investigate, category: I, subtype: gather, risk: neutral, sign: 0, when: gather}
   - {verb: investigate, category: II, subtype: scout, risk: neutral, sign: 0}
   - {verb: observe, category: II, subtype: observe, risk: neutral, sign: 0}
+  - {verb: plant, category: II, subtype: plant, risk: neutral, sign: 0}
+  - {verb: payoff, category: II, subtype: payoff, risk: neutral, sign: 0}
+  - {verb: disguise, category: IV, subtype: disguise, risk: neutral, sign: 0}
+  - {verb: grand_gesture, category: III, subtype: grand_gesture, risk: risky, sign: 1}
+  - {verb: trial, category: III, subtype: trial, risk: neutral, sign: 0}
+  - {verb: donate, category: VI, subtype: donate, risk: neutral, sign: 1}
   - {verb: fight, category: I, subtype: weaken_direct, risk: risky, sign: -1}
   - {verb: sabotage, category: I, subtype: weaken_direct, risk: risky, sign: -1}
   - {verb: neutralize, category: I, subtype: weaken_indirect, risk: risky, sign: -1}

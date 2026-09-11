@@ -561,6 +561,8 @@ class Simulation:
                 self.world,
                 self._present_for(subject),
                 weighted,
+                turn=self.turn,
+                day=self.day,
             )
 
         if not weighted:

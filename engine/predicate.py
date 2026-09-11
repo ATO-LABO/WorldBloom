@@ -67,6 +67,14 @@ def _validate(
             _validate(value, allowed_names)
         return
     if isinstance(node, ast.UnaryOp):
+        if isinstance(node.op, (ast.USub, ast.UAdd)):
+            # signed numeric literal such as -0.3 (Claude-side grammar fix:
+            # the plan's own rule examples use negative thresholds)
+            if not (isinstance(node.operand, ast.Constant)
+                    and isinstance(node.operand.value, (int, float))
+                    and not isinstance(node.operand.value, bool)):
+                raise _invalid(node)
+            return
         if not isinstance(node.op, ast.Not):
             raise _invalid(node)
         _validate(node.operand, allowed_names)
@@ -147,6 +155,10 @@ def _evaluate(node: ast.AST, namespace: Mapping[str, Any]) -> Any:
                 return True
         return False
     if isinstance(node, ast.UnaryOp):
+        if isinstance(node.op, ast.USub):
+            return -_evaluate(node.operand, namespace)
+        if isinstance(node.op, ast.UAdd):
+            return +_evaluate(node.operand, namespace)
         return not bool(_evaluate(node.operand, namespace))
     if isinstance(node, ast.Compare):
         left = _evaluate(node.left, namespace)

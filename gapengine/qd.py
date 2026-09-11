@@ -232,10 +232,16 @@ def _repetition_penalty(
 def _completed_prerequisite_chains(
     rows: Sequence[Mapping[str, Any]],
 ) -> int:
+    protagonist = _protagonist(rows)
+    if protagonist is None:
+        return 0
+
     observed: set[tuple[str, str]] = set()
+    completed_observations: set[tuple[str, str]] = set()
     pledged: set[frozenset[str]] = set()
     negotiated: set[tuple[str, str]] = set()
     completed_pledges: set[frozenset[str]] = set()
+    completed_negotiations: set[tuple[str, str]] = set()
     completed = 0
 
     for row in rows:
@@ -251,20 +257,34 @@ def _completed_prerequisite_chains(
                 continue
             target = _decision_target(row)
 
-            if verb == "observe":
+            if verb == "observe" and subject == protagonist:
                 observed.add((subject, target))
-            elif verb == "neutralize":
-                if (subject, target) in observed:
+            elif verb == "neutralize" and subject == protagonist:
+                pair = (subject, target)
+                if (
+                    pair in observed
+                    and pair not in completed_observations
+                ):
                     completed += 1
-            elif verb == "pledge":
+                    completed_observations.add(pair)
+            elif verb == "pledge" and subject == protagonist:
                 pledged.add(frozenset((subject, target)))
-            elif verb == "negotiate":
+            elif verb == "negotiate" and subject == protagonist:
                 negotiated.add((subject, target))
-            elif verb == "concede":
-                if (target, subject) in negotiated:
+            elif verb == "concede" and target == protagonist:
+                pair = (target, subject)
+                if (
+                    pair in negotiated
+                    and pair not in completed_negotiations
+                ):
                     completed += 1
+                    completed_negotiations.add(pair)
 
-        elif kind == "event" and verb == "betrayal":
+        elif (
+            kind == "event"
+            and verb == "betrayal"
+            and subject == protagonist
+        ):
             target = details.get("target")
             if not isinstance(target, str):
                 continue
@@ -274,6 +294,23 @@ def _completed_prerequisite_chains(
                 completed_pledges.add(pair)
 
     return completed
+
+
+def _dangling_effects(
+    rows: Sequence[Mapping[str, Any]],
+) -> int:
+    for row in reversed(rows):
+        details = row.get("details")
+        if isinstance(details, Mapping):
+            value = details.get("dangling_effects")
+            if value is not None:
+                return max(0, int(value))
+
+        value = row.get("dangling_effects")
+        if value is not None:
+            return max(0, int(value))
+
+    return 0
 
 
 def quality(
@@ -325,7 +362,7 @@ def quality(
 
         if (
             row.get("kind") == "event"
-            and row.get("verb") == "betrayal"
+            and row.get("verb") in {"betrayal", "exposure"}
         ):
             dramatic_turns += 1
 
@@ -345,6 +382,12 @@ def quality(
 
         details = row.get("details")
         if isinstance(details, Mapping):
+            if (
+                row.get("kind") == "event"
+                and row.get("verb") == "payoff"
+                and details.get("mode") == "chosen"
+            ):
+                dramatic_turns += 1
             if (
                 row.get("kind") == "decision"
                 and row.get("verb") == "concede"
@@ -377,6 +420,7 @@ def quality(
         )
         score -= (stalls / len(protagonist_decisions)) * 0.3
 
+    score -= 0.05 * _dangling_effects(rows)
     return round(min(1.0, max(0.0, score)), 12)
 
 

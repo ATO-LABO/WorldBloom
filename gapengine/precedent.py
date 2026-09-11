@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from engine.world import World
 
 
-ContextKey = tuple[tuple[str, ...], bool, str, str, str]
+ContextKey = tuple[tuple[str, ...], bool, str, str, str, bool]
 ActionKey = tuple[str, str, str]
 
 
@@ -79,6 +79,7 @@ def ctx_key(
         objective_state,
         subject.vitality,
         stance_bucket,
+        subject.identity_displayed != subject.id,  # same notion of 'disguised' as engine.phase2 (Claude-side fix)
     )
 
 
@@ -94,7 +95,10 @@ def act_key(
 
 
 def normalize_ctx(value: Any) -> ContextKey:
-    if not isinstance(value, (list, tuple)) or len(value) != 5:
+    if (
+        not isinstance(value, (list, tuple))
+        or len(value) not in {5, 6}
+    ):
         raise ValueError(f"Invalid precedent context: {value!r}")
     phase = value[0]
     if not isinstance(phase, (list, tuple)):
@@ -105,6 +109,7 @@ def normalize_ctx(value: Any) -> ContextKey:
         str(value[2]),
         str(value[3]),
         str(value[4]),
+        bool(value[5]) if len(value) == 6 else False,
     )
 
 
@@ -115,24 +120,40 @@ def normalize_act(value: Any) -> ActionKey:
 
 
 def _ctx_text(context: ContextKey) -> str:
+    normalized = normalize_ctx(context)
     phase = json.dumps(
-        list(context[0]),
+        list(normalized[0]),
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    hostile = "true" if context[1] else "false"
+    hostile = "true" if normalized[1] else "false"
+    disguised = "true" if normalized[5] else "false"
     return "|".join(
-        (phase, hostile, context[2], context[3], context[4])
+        (
+            phase,
+            hostile,
+            normalized[2],
+            normalized[3],
+            normalized[4],
+            disguised,
+        )
     )
 
 
 def _parse_ctx(value: str) -> ContextKey:
     parts = value.split("|")
-    if len(parts) != 5:
+    if len(parts) not in {5, 6}:
         raise ValueError(f"Invalid serialized context: {value!r}")
     phase = json.loads(parts[0])
     return normalize_ctx(
-        (phase, parts[1] == "true", parts[2], parts[3], parts[4])
+        (
+            phase,
+            parts[1] == "true",
+            parts[2],
+            parts[3],
+            parts[4],
+            parts[5] == "true" if len(parts) == 6 else False,
+        )
     )
 
 
@@ -288,6 +309,7 @@ def load_canon(path: str | Path) -> PrecedentTable:
             str(raw_context.get("objective", "none")),
             str(raw_context.get("vitality", "alive")),
             str(raw_context.get("stance", "neutral")),
+            bool(raw_context.get("disguised", False)),
         )
         action: ActionKey = (
             (
