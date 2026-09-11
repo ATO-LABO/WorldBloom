@@ -12,25 +12,27 @@ class Namespace(dict[str, Any]):
     """Dictionary-like namespace exposed to predicates."""
 
 
-_PREDICATE_NAMES = {
-    "stance",
-    "bonds",
-    "awareness",
-    "holds",
-    "holder",
-    "zone",
-    "present",
-    "vitality",
-    "known",
-    "knows_modifier",
-    "strength",
-    "believed_strength",
-    "hostile_present",
-    "turn",
-    "day",
-    "phase",
-    "self",
-}
+PREDICATE_NAMES = frozenset(
+    {
+        "stance",
+        "bonds",
+        "awareness",
+        "holds",
+        "holder",
+        "zone",
+        "present",
+        "vitality",
+        "known",
+        "knows_modifier",
+        "strength",
+        "believed_strength",
+        "hostile_present",
+        "turn",
+        "day",
+        "phase",
+        "self",
+    }
+)
 
 
 _ALLOWED_COMPARISONS: dict[type[ast.cmpop], str] = {
@@ -214,7 +216,7 @@ def compile_predicate(
 
     parsed = _parse_predicate(src)
     names = (
-        set(_PREDICATE_NAMES)
+        set(PREDICATE_NAMES)
         if allowed_names is None
         else set(allowed_names)
     )

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import random
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, is_dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -48,19 +47,17 @@ def _plain(value: Any) -> Any:
 
 @lru_cache(maxsize=1)
 def _engine_source_hash(engine_dir: Path) -> str:
-    """Hash engine sources in name order while reading files concurrently."""
+    """Hash engine sources in deterministic name order."""
 
     paths = tuple(
-        sorted(engine_dir.glob("*.py"), key=lambda value: value.name)
+        sorted(
+            engine_dir.glob("*.py"),
+            key=lambda value: value.name,
+        )
     )
     digest = hashlib.sha256()
-    if not paths:
-        return digest.hexdigest()[:12]
-
-    with ThreadPoolExecutor(max_workers=min(8, len(paths))) as executor:
-        contents = executor.map(Path.read_bytes, paths)
-        for content in contents:
-            digest.update(content)
+    for path in paths:
+        digest.update(path.read_bytes())
     return digest.hexdigest()[:12]
 
 
@@ -156,8 +153,8 @@ class Simulation:
         """Return subjects whose layer snapshots can change synchronously."""
 
         all_subjects = set(self.subjects)
-        if action.verb == "fight":
-            # Loot, down/death, grief, and co-presence modifiers can be global.
+        if action.verb == "fight" or action.meta.get("betrayal", False):
+            # Fight loot/vitality and betrayal witnesses can change globally.
             return all_subjects
 
         if action.verb == "move":
@@ -168,21 +165,36 @@ class Simulation:
             return {
                 peer.id
                 for peer in self.subjects.values()
-                if peer.id == subject.id or peer.zone in affected_zones
+                if peer.id == subject.id
+                or peer.zone in affected_zones
             }
 
         if action.verb == "rescue":
             return {
                 peer.id
                 for peer in self.subjects.values()
-                if peer.id == subject.id or peer.zone == subject.zone
+                if peer.id == subject.id
+                or peer.zone == subject.zone
             }
 
         if action.verb in {
             "share_knowledge",
             "give_item",
             "neutralize",
+            "sabotage",
+            "mislead",
+            "confront",
+            "persuade",
+            "pledge",
+            "negotiate",
+            "concede",
         }:
+            target = action.meta.get("target")
+            if isinstance(target, str) and target in self.subjects:
+                return {subject.id, target}
+            return {subject.id}
+
+        if action.verb == "sacrifice":
             target = action.meta.get("target")
             if isinstance(target, str) and target in self.subjects:
                 return {subject.id, target}
@@ -353,7 +365,19 @@ class Simulation:
                     int(grant.get("count", 1)),
                 )
             if grant_fact is not None:
-                target.knowledge.add(str(grant_fact))
+                fact_id = str(grant_fact)
+                definition = self.world.facts.get(fact_id)
+                if definition is None:
+                    raise ValueError(
+                        f"Unknown event fact: {fact_id}"
+                    )
+                if definition.get("values") is not None:
+                    raise ValueError(
+                        f"Event cannot directly grant valued fact: "
+                        f"{fact_id}"
+                    )
+                target.knowledge.add(fact_id)
+                target.apply_evidence(fact_id, self.world)
             if move_to is not None:
                 destination = str(move_to)
                 if destination not in self.world.zones:
@@ -871,21 +895,59 @@ class Simulation:
                         if subject.vitality == "dead":
                             continue
 
-                        action, probability = self.choose_action(subject)
+                        action, probability = self.choose_action(
+                            subject
+                        )
                         capture_ids = self._action_capture_ids(
                             subject,
                             action,
                         )
                         before = self._capture(capture_ids)
-                        result, details, markers = self.verb_engine.execute(
-                            subject,
-                            action,
-                            turn=self.turn,
-                            day=self.day,
+                        result, details, markers = (
+                            self.verb_engine.execute(
+                                subject,
+                                action,
+                                turn=self.turn,
+                                day=self.day,
+                            )
                         )
-                        details.update(self._strength_details(subject))
+                        details.update(
+                            self._strength_details(subject)
+                        )
                         after = self._capture(capture_ids)
-                        delta = self._delta(subject.id, before, after)
+
+                        if (
+                            before[2] != after[2]
+                            and capture_ids != set(self.subjects)
+                        ):
+                            after_all = self._capture()
+                            before_layers = dict(before[0])
+                            missing = (
+                                set(self.subjects)
+                                - set(before_layers)
+                            )
+                            for missing_id in sorted(missing):
+                                reconstructed = dict(
+                                    after_all[0][missing_id]
+                                )
+                                reconstructed["objective"] = dict(
+                                    before[2]
+                                )
+                                before_layers[missing_id] = (
+                                    reconstructed
+                                )
+                            before = (
+                                before_layers,
+                                before[1],
+                                before[2],
+                            )
+                            after = after_all
+
+                        delta = self._delta(
+                            subject.id,
+                            before,
+                            after,
+                        )
                         writer.write(
                             self._decision_row(
                                 subject,
@@ -899,7 +961,9 @@ class Simulation:
                         self._write_markers(writer, markers)
 
                         if (
-                            self.subjects[self.world.protagonist].vitality
+                            self.subjects[
+                                self.world.protagonist
+                            ].vitality
                             == "dead"
                         ):
                             self._write_aborted(writer)

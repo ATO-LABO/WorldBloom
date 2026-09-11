@@ -56,6 +56,17 @@ companionship:
 permission:
   restricted_weight: 0.15
 
+gapengine:
+  action_graph: templates/momotaro/action_graph.yaml
+
+phase1:
+  open_bonus: 0.5
+  negotiate_threshold: 0.3
+  sacrifice_rewards:
+    asset_base: 8
+    bond_stress: -3
+    bond_phase: 決意
+
 awareness_per_encounter: 0.15
 
 pulls:
@@ -117,6 +128,38 @@ facts:
     label: 船の組み方を知っている
     secrecy: 0.2
     share_min_affinity: 0.3
+
+  - id: oni_weakness
+    label: 鬼の力の要は{value}だ
+    values: [金棒, 火, 塩]
+    secrecy: 0.4
+    share_min_affinity: 0.0
+    act_threshold: 0.6
+
+  - id: 金棒の由来
+    label: 鬼の力は金棒に支えられている
+    secrecy: 0.3
+    share_min_affinity: 0.0
+    sources:
+      - {type: investigate, zone: 鬼ヶ島, count: 1}
+    implies:
+      fact: oni_weakness
+      value: 金棒
+      confidence: 0.8
+
+  - id: 耐火の痕跡
+    label: 鬼は火を恐れていない
+    secrecy: 0.2
+    share_min_affinity: 0.0
+    sources:
+      - {type: investigate, agent: 鬼, count: 2}
+    refutes:
+      fact: oni_weakness
+      value: 火
+      confidence: 0.7
+
+truth:
+  oni_weakness: 金棒
 
 default_strength_prior: 50
 

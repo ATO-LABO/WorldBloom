@@ -28,6 +28,7 @@ phase: []
 verbs:
   - guard
   - fight
+  - concede
   - rest
 
 identity:

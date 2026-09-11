@@ -27,8 +27,15 @@ verbs:
   - investigate
   - observe
   - neutralize
+  - sabotage
+  - sacrifice
+  - mislead
+  - confront
   - share_knowledge
   - give_item
+  - persuade
+  - pledge
+  - negotiate
   - craft
   - fight
   - train
