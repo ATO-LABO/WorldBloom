@@ -2037,7 +2037,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(result, "grand_gesture")
         self.assertEqual(details["fact"], "金棒の由来")
         self.assertEqual(details["item"], "きびだんご")  # keepsake 勾玉 is never offered
-        self.assertFalse(momotaro.has_item("勾玉"))
+        self.assertTrue(momotaro.has_item("勾玉"))  # keepsake is retained; きびだんご was spent
         self.assertAlmostEqual(
             gesture_world.relations.stance(
                 oni.id,
