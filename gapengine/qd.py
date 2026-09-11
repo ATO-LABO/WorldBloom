@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Descriptor:
-    category: str
+    category: str | None
     volatility: float
     volatility_bin: str | None = None
 
@@ -60,7 +60,11 @@ class Elite:
             genome=Genome.from_dict(raw["genome"]),
             quality=float(raw["quality"]),
             descriptor=Descriptor(
-                category=str(descriptor_raw["category"]),
+                category=(
+                    str(descriptor_raw["category"])
+                    if descriptor_raw.get("category") is not None
+                    else None
+                ),
                 volatility=float(descriptor_raw["volatility"]),
                 volatility_bin=(
                     str(descriptor_raw["volatility_bin"])
@@ -149,10 +153,17 @@ def descriptor(
         if category is not None and str(category) in categories:
             counts[str(category)] += 1
 
-    leading = max(
-        categories,
-        key=lambda category: (counts[category], -categories.index(category)),
-    )
+    leading: str | None
+    if counts:
+        leading = max(
+            categories,
+            key=lambda category: (
+                counts[category],
+                -categories.index(category),
+            ),
+        )
+    else:
+        leading = None
 
     vectors = [
         [float(value) for value in row["vector"]]
@@ -491,10 +502,14 @@ class Archive:
         return value
 
     def insert(self, elite: Elite) -> bool:
+        category = elite.descriptor.category
         volatility_bin = elite.descriptor.volatility_bin
+        if category is None:
+            return False
         if volatility_bin is None:
             raise ValueError("Elite descriptor has no volatility bin")
-        cell = (elite.descriptor.category, volatility_bin)
+
+        cell = (category, volatility_bin)
         existing = self.cells.get(cell)
         if existing is not None:
             if elite.quality < existing.quality:

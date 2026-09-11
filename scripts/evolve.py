@@ -25,8 +25,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--generations", type=int, default=20)
     parser.add_argument("--population", type=int, default=100)
     parser.add_argument("--seeds", type=int, default=3)
+    parser.add_argument("--seed-base", type=int, default=0)
     parser.add_argument("--ga-seed", type=int, default=1)
     parser.add_argument("--processes", type=int, default=1)
+    parser.add_argument(
+        "--keep",
+        choices=("all", "reached", "exemplar"),
+        default="reached",
+    )
     return parser
 
 
@@ -36,10 +42,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         {
             "ga_seed": args.ga_seed,
             "generations": args.generations,
+            "keep": args.keep,
             "out": args.out,
             "population": args.population,
             "processes": args.processes,
             "project": args.project,
+            "seed_base": args.seed_base,
             "seeds": args.seeds,
             "template": args.template,
         }

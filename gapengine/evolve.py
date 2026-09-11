@@ -165,9 +165,12 @@ def _best_reached(
 def _cell_for_run(
     run: Mapping[str, Any],
     archive: Archive,
-) -> tuple[str, str]:
+) -> tuple[str, str] | None:
+    category = run.get("category")
+    if category is None:
+        return None
     return (
-        str(run["category"]),
+        str(category),
         archive.bin_for(float(run["volatility"])),
     )
 
@@ -177,11 +180,15 @@ def _result_summary(
     archive: Archive,
 ) -> dict[str, Any]:
     best = _best_reached(result)
+    cell = _cell_for_run(best, archive) if best is not None else None
     return {
-        "cell": (
-            list(_cell_for_run(best, archive))
+        "cell": list(cell) if cell is not None else None,
+        "classification_status": (
+            "unclassified"
+            if best is not None and best.get("category") is None
+            else "classified"
             if best is not None
-            else None
+            else "not_reached"
         ),
         "genome": result["genome"],
         "index": int(result["index"]),
@@ -201,8 +208,9 @@ def _insert_result(
     generation: int,
 ) -> bool:
     best = _best_reached(result)
-    if best is None:
+    if best is None or best.get("category") is None:
         return False
+
     reach_rate = (
         sum(bool(run["reached"]) for run in result["runs"])
         / len(result["runs"])
@@ -327,6 +335,42 @@ def _archive_dissimilarity(
     return sequence_dissimilarity(sequences)
 
 
+def _prune_layers(
+    results: list[dict[str, Any]],
+    out_dir: Path,
+    keep: str,
+) -> None:
+    if keep == "all":
+        return
+
+    retained: set[str] = set()
+    if keep == "reached":
+        retained.update(
+            str(run["layers_path"])
+            for result in results
+            for run in result["runs"]
+            if bool(run["reached"])
+        )
+    elif keep == "exemplar":
+        for result in results:
+            exemplar = _best_reached(result)
+            if exemplar is not None:
+                retained.add(str(exemplar["layers_path"]))
+    else:
+        raise ValueError(
+            "keep must be one of: all, reached, exemplar"
+        )
+
+    for result in results:
+        for run in result["runs"]:
+            relative_path = str(run["layers_path"])
+            if relative_path in retained:
+                continue
+            layer_path = out_dir / relative_path
+            if layer_path.exists():
+                layer_path.unlink()
+
+
 def evolve(cfg: Mapping[str, Any]) -> Archive:
     project_dir = Path(str(cfg["project"])).resolve()
     template_dir = Path(str(cfg["template"])).resolve()
@@ -337,12 +381,18 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
     generations = int(cfg.get("generations", 20))
     population_size = int(cfg.get("population", 100))
     seed_count = int(cfg.get("seeds", 3))
+    seed_base = int(cfg.get("seed_base", 0))
     ga_seed = int(cfg.get("ga_seed", 1))
     processes = int(cfg.get("processes", 1))
+    keep = str(cfg.get("keep", "reached"))
     if generations < 1 or population_size < 1 or seed_count < 1:
         raise ValueError("generations, population, and seeds must be positive")
+    if processes < 1:
+        raise ValueError("processes must be positive")
+    if keep not in {"all", "reached", "exemplar"}:
+        raise ValueError("keep must be one of: all, reached, exemplar")
 
-    seeds = list(range(seed_count))
+    seeds = list(range(seed_base, seed_base + seed_count))
     ga_rng = random.Random(ga_seed)
     action_cfg = dict(
         _load_yaml(template_dir / "action_graph.yaml", {"nodes": [], "edges": []})
@@ -472,12 +522,13 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             if archive.cells
             else None
         )
+        archive_dissimilarity = _archive_dissimilarity(
+            archive,
+            out_dir,
+        )
         summaries.append(
             {
-                "archive_dissimilarity": _archive_dissimilarity(
-                    archive,
-                    out_dir,
-                ),
+                "archive_dissimilarity": archive_dissimilarity,
                 "average_archive_quality": average_quality,
                 "generation": generation,
                 "generation_dissimilarity": generation_dissimilarity,
@@ -485,14 +536,18 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                 "reach_rate": reached_runs / total_runs,
             }
         )
+
+        _prune_layers(raw_results, out_dir, keep)
+
         _json_write(
             out_dir / "summary.json",
             {
-                "final_archive_dissimilarity": _archive_dissimilarity(
-                    archive,
-                    out_dir,
-                ),
+                "final_archive_dissimilarity": archive_dissimilarity,
                 "generations": summaries,
+                "keep": keep,
+                "seed_base": seed_base,
+                "seed_count": seed_count,
+                "seeds": seeds,
             },
         )
         previous_results = generation_results

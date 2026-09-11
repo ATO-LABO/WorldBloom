@@ -19,6 +19,8 @@ if str(ROOT) not in sys.path:
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.world import World
+from gapengine.genome import Genome
+from gapengine.policy import Policy
 from gapengine.qd import (
     descriptor,
     effective_sequence,
@@ -73,6 +75,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     qd_cfg = yaml.safe_load(
         (template / "qd.yaml").read_text(encoding="utf-8")
     )
+    action_cfg = yaml.safe_load(
+        (template / "action_graph.yaml").read_text(encoding="utf-8")
+    )
     results: list[dict[str, Any]] = []
     reached_sequences: list[list[tuple[str, str, str]]] = []
     distribution: Counter[str] = Counter()
@@ -80,22 +85,35 @@ def main(argv: Sequence[str] | None = None) -> int:
     for seed in range(args.seeds):
         world = World.from_yaml(project / "world.yaml")
         subjects = _load_subjects(project / "subjects")
+        policy = Policy(
+            Genome.neutral(),
+            precedent=None,
+            cfg=action_cfg,
+            annotate_only=True,
+        )
         layer_path = Simulation(
             seed,
             world,
             subjects,
             output / f"seed-{seed}",
-            policies=None,
+            policies={world.protagonist: policy},
         ).run()
         rows = read_rows(layer_path)
         run_descriptor = descriptor(rows, qd_cfg)
         did_reach = reached(rows, world.target_ending)
         if did_reach:
             reached_sequences.append(effective_sequence(rows))
-            distribution[run_descriptor.category] += 1
+            distribution[
+                run_descriptor.category or "unclassified"
+            ] += 1
         results.append(
             {
                 "category": run_descriptor.category,
+                "classification_status": (
+                    "classified"
+                    if run_descriptor.category is not None
+                    else "unclassified"
+                ),
                 "layers_path": layer_path.relative_to(output).as_posix(),
                 "reached": did_reach,
                 "seed": seed,
