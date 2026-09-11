@@ -546,3 +546,6 @@ C:\Projects\WorldBloom-local\runs\<experiment>\g<N>\ind-<i>\seed-<s>\layers.json
 - 恋愛で A→B が雑談で飽和する（affinity 増分 vs θ のスケール）。関係層の抵抗の設計。
 - NPC には Policy が無い（`--coevolve` の敵役のみ）。rules.yaml は主人公専用。NPC 既定 Policy の導入は保留。
 - `_delivery_ending_score` の到達判定が個別 ending ではなく target 全体（deliver 結末が複数ある世界での混線）。
+- `rethink` は「真相所有者以外の非派生な直接知」も破棄する。自白や伝聞で真相を教わった探偵が、手元の証拠が足りないまま rethink すると誤った結論に戻りうる（`share_min_affinity` で残した「心を開かせれば漏れる」経路と衝突する）。保護の範囲を「証拠で否定されない直接知」まで広げるか検討。
+- 真相所有者の保護判定は実装では `world.fact_owners` のメンバシップで行っている（設計上の記述は「confidence 1.0・`derived=False`」）。`apply_evidence` が `reinforced` になると `derived` が True に化けるため、実装の述語の方が堅牢だが、保護範囲は `known_by`/`secret_of` の保有者全般に広がる。どちらを正とするか確定させる。
+- 消去（`refutes`）は残った候補の確信度を押し上げない（結論の確信度は反証側の confidence に等しい）。「2 人を消したから残りが確実」という推論の強さを表現できていない。
