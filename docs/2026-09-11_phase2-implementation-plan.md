@@ -78,3 +78,13 @@
 - **D5（engine）**: §1〜§4 の engine 側（pending_effects、plant/payoff、disguise/perceived_name/exposure、grand_gesture/trial/donate、phase_rules、`world.delivered` の一般化）、桃太郎テンプレートの effects.yaml / disguises / trials / phase_rules / ending 追加、tests。
 - **D6（gapengine）**: §5、rules.yaml の適用、tests。
 - D6 後に本番実験で合格条件 1〜4 を判定。
+
+## 8. D5 レビュー後の設計判断（2026-09-11、設計役）→ D5c / D6b
+- **donate は「還元の誓い」**: 目的物を所持していればどのゾーンでも候補に立ち、効果は `phase` に `還元` を追加＋reputation +0.3（目的物はそのまま）。`homecoming_shared` の述語は `holds(桃太郎, 宝物) and zone == 村 and '還元' in phase` とし、ending リストで `homecoming` より前に置く（両方真なら YAML 順で先の結末が発火）。
+- **variant 結末**: gapengine の `target_ending` はリストも受け付け（`[homecoming, homecoming_shared]`）、いずれかの id で到達扱い（D6b）。桃太郎の既定は両方。
+- **fixture**: `village_promise` の `when` は `zone(planter) == '道中' and day <= 2`。`trial` の giver は猿（道中）、grants は fact `猿の知恵`。chosen 伏線を 2 本追加（`campfire_oath`、`forest_shortcut`）。
+- **phase_rules**: `enable` が空のルールは allowlist に寄与しない（denylist のみ）。
+- **confront の正規化**: M は `mean(single_weight_i) × (1 + open_bonus)`。
+- effect payload の必須キーは読み込み時に検証。effect 語彙 4 種の実行経路はテストで通す。`time_limit` 行は Phase 2 設定のいずれかがあれば書く。`aborted` 行にも `dangling_effects`。
+- gapengine 側（D6b）: obstacles 照合を perceived_name 化（C-7）、`target_ending` リスト対応。
+- リポジトリ衛生: コミット 7d69a09 に D5 第3便の actions.py 変更が混入している（import 不能）。D5 の実差分は b9b035f 基準。履歴は書き換えない。
