@@ -125,7 +125,7 @@ vitality:
   revive_after: 4
   ally_speedup: 1
   revive_base_penalty: 2
-  lethal_exempt: []
+  lethal_exempt: [桃太郎]
 
 grief:
   stress: 1.0
