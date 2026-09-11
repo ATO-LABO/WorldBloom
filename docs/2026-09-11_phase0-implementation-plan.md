@@ -371,3 +371,17 @@ volatility_bins: [low, mid, high]       # 三分位
 - **D1（engine）**: §2・§3 と `projects/momotaro/*`、`tests/test_engine.py`。合格: テスト 1〜5 が通る、`python -c "from engine.sim import ..."` で 3 シードを走らせて `layers.jsonl` が出る。
 - **D2（gapengine）**: §4 と `templates/momotaro/*`、`scripts/*`、`tests/test_gapengine.py`。合格: テスト 6〜10 が通る、`scripts/evolve.py` が N=20・G=3・K=2 で完走し `archive.json` に ≥2 マス入る。
 - D2 完了後に本番実験（N=100・G=20・K=3）と `random_baseline.py` を回し、設計書 §16 Phase 0 の合格条件 ③〜⑦ を判定する。
+
+---
+
+## 7. Codex からの質問への回答（2026-09-11、設計役。計画の補足として有効）
+
+1. Policy は分類設定を自分で保持する。`Simulation.__init__(…, policies: dict[str, Policy] | None)`。sim は `policy.reweight(subject, world, present, weighted)` と抽選後の `policy.record(subject, action)` を呼ぶ（duck typing）。
+2. 関係行列は `World.relations` が所有し、`Simulation.__init__` で各 Subject YAML から初期化する。
+3. `Subject.objective_claimant: bool = True` を追加（犬猿キジは false）。
+4. `scheduled_events[].slot` はスロット開始時に適用し、対象主体は同スロットで通常行動する。`daily_events` は日の初めに生存主体ごと id 順で `rng.random() < chance` → 当たれば `rng.choices` で 1 件。設定が無ければ乱数不消費。§3.8 の乱数消費箇所にこの 2 回を追加。
+5. `exhausted` は体力消費直後に `stamina < max × exhausted_ratio` で True、スロット末回復後に `≥` で False。
+6. dead の `zone` は最終地点を保持。同席判定は `vitality != "dead"` の主体のみ。
+7. 同席の awareness 更新は 1 スロット 1 本の `event` 行（`verb: encounters`、`delta.relations` に全ペア）。差分が無ければ書かない。
+8. 状態変化は適用した場所の行に 1 回だけ記録: `decision` 行の `delta` は execute 前後の総差分（派生効果を含む）、execute 内の派生 `event` 行はマーカー（`delta: {}`）、execute 外（tick の revive・閾値再評価・encounters・scheduled/daily・ending）は各 `event` 行の `delta`。
+9. 補足: 主人公と敵役が同席するスロットの主人公 `decision` 行 `details` に `strength_diff` と `believed_diff` を書く。`engine_hash` は `engine/*.py` を名前順に連結した sha256 先頭 12 桁。
