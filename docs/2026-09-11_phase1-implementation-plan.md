@@ -103,3 +103,15 @@ Phase 1 で新たに乱数を消費する箇所: **なし**（confront の真偽
 - **action_graph のパス解決**: world.yaml のディレクトリ相対 → プロジェクトルート相対 → 絶対パスの順。`Simulation` に `action_graph_path` の上書き引数を用意し、evolve / random_baseline は `--template` の action_graph.yaml を明示的に渡す（D4）。
 - **固定ハッシュ**: 桃太郎 fixture は Phase 1 に opt-in したため seed 153 の固定ハッシュを更新する。あわせて「Phase 1 の設定を外した世界」が Phase 0 の旧ハッシュ `3e95ce80…` を再現するテストを追加し、opt-in の約束を検証する。
 - Phase 0 レビューの持ち越し（B-1 全主体 capture、C-1 `_PREDICATE_NAMES` 一本化、C-2 zone 名との衝突検査、C-5 lru_cache）は D3b に同梱。
+
+## 9. D3 レビュー後の設計判断（2026-09-11、設計役）→ D3c
+- **正規化と permission の関係（A-1/C-2 の訂正）**: 同一 verb の候補重みは `w_i = M × prior_i / Σ_j prior_j × permission_i`。`M` は Phase 0 でその verb が単一候補だった verb（fight / neutralize / sabotage / mislead / persuade / confront）では `基礎重み_single × (1 + open_bonus)`、Phase 0 で既に多対象だった verb（give_item / share_knowledge）では **Phase 0 の候補ごとの基礎重みをそのまま使い正規化しない**（permission だけ掛ける）。これで候補間の比は `prior × permission` を保ち、restricted は総量を減らす。
+- **exposure（A-2）**: `BeliefAbout` に `misled_by: str | None` を持たせ、mislead で書かれた推定が observe で真値に戻ったときだけ `exposure` を出す（初回 observe では出さない）。
+- **confront が発火できる fixture（A-3）**: 桃太郎に valued fact `treasure_thief`（values: [鬼, 猿, 犬]、truth: 鬼）と証拠 2 件（村での聞き込み → implies 鬼 0.5、道中の噂 → implies 猿 0.4（decoy））を追加。`oni_weakness` はそのまま残す。
+- **concede が発火できる fixture（A-4）**: 桃太郎の初期所持に `勾玉`（modifier +5、visible、lootable、鬼が持たない）を追加して trade 経路を開く。goodwill 経路は persuade / give_item（restricted）で鬼→桃太郎の stance を上げれば到達可能（GA の stance_shift_bias に委ねる）。
+- **A-5**: persuade も正規化対象に含める（上記 M の規則で扱う）。
+- **A-6**: pledge / negotiate / concede / confront / rescue / observe も候補生成時に `permission()` を参照し、deny なら列挙しない。
+- **C-1**: 対象開放は action_graph の有無で切り替える現行のままとし、桃太郎テンプレートの permission（D4 で追加済み: fight の neutral/ally は restricted）で抑止する。
+- **C-3**: `observe` は downed の相手にも可（候補と実行を一致）。
+- **B-1**: `bind_subjects` の fact 衝突チェックの重複を削除。
+- テスト: `test_hostile_permission_reduces_give_and_share_weights` は permission を明示注入した world で総量が下がること（と比が permission に一致すること）を検証する形に書き換える。
