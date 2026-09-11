@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import random
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, is_dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from engine.actions import Action, candidates
 from engine.contest import believed_strength, strength
-from engine.log import LayersWriter, delta_effective, make_delta
+from engine.log import (
+    LayersWriter,
+    delta_effective,
+    make_delta,
+    relation_diff,
+)
 from engine.subject import Subject
 from engine.verbs import VerbEngine
 from engine.vitality import tick
@@ -37,6 +44,24 @@ def _plain(value: Any) -> Any:
     if isinstance(value, set):
         return [_plain(item) for item in sorted(value, key=str)]
     return value
+
+
+@lru_cache(maxsize=1)
+def _engine_source_hash(engine_dir: Path) -> str:
+    """Hash engine sources in name order while reading files concurrently."""
+
+    paths = tuple(
+        sorted(engine_dir.glob("*.py"), key=lambda value: value.name)
+    )
+    digest = hashlib.sha256()
+    if not paths:
+        return digest.hexdigest()[:12]
+
+    with ThreadPoolExecutor(max_workers=min(8, len(paths))) as executor:
+        contents = executor.map(Path.read_bytes, paths)
+        for content in contents:
+            digest.update(content)
+    return digest.hexdigest()[:12]
 
 
 class Simulation:
@@ -86,13 +111,21 @@ class Simulation:
     def _present_for(self, subject: Subject) -> list[Subject]:
         return self.world.present_subjects(subject.zone)
 
-    def _layer_snapshots(self) -> dict[str, dict[str, Any]]:
+    def _layer_snapshots(
+        self,
+        subject_ids: set[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        selected = (
+            sorted(self.subjects)
+            if subject_ids is None
+            else sorted(subject_ids)
+        )
         return {
-            subject_id: subject.layer_snapshot(
+            subject_id: self.subjects[subject_id].layer_snapshot(
                 self.world,
-                self._present_for(subject),
+                self._present_for(self.subjects[subject_id]),
             )
-            for subject_id, subject in self.subjects.items()
+            for subject_id in selected
         }
 
     def _objective_snapshot(self) -> dict[str, str | None]:
@@ -103,16 +136,71 @@ class Simulation:
 
     def _capture(
         self,
+        subject_ids: set[str] | None = None,
     ) -> tuple[
         dict[str, dict[str, Any]],
         dict[str, dict[str, dict[str, float]]],
         dict[str, str | None],
     ]:
         return (
-            self._layer_snapshots(),
+            self._layer_snapshots(subject_ids),
             self.world.relations.snapshot(),
             self._objective_snapshot(),
         )
+
+    def _action_capture_ids(
+        self,
+        subject: Subject,
+        action: Action,
+    ) -> set[str]:
+        """Return subjects whose layer snapshots can change synchronously."""
+
+        all_subjects = set(self.subjects)
+        if action.verb == "fight":
+            # Loot, down/death, grief, and co-presence modifiers can be global.
+            return all_subjects
+
+        if action.verb == "move":
+            destination = action.meta.get("dest")
+            if not isinstance(destination, str):
+                return all_subjects
+            affected_zones = {subject.zone, destination}
+            return {
+                peer.id
+                for peer in self.subjects.values()
+                if peer.id == subject.id or peer.zone in affected_zones
+            }
+
+        if action.verb == "rescue":
+            return {
+                peer.id
+                for peer in self.subjects.values()
+                if peer.id == subject.id or peer.zone == subject.zone
+            }
+
+        if action.verb in {
+            "share_knowledge",
+            "give_item",
+            "neutralize",
+        }:
+            target = action.meta.get("target")
+            if isinstance(target, str) and target in self.subjects:
+                return {subject.id, target}
+            return {subject.id}
+
+        if action.verb in {
+            "rest",
+            "investigate",
+            "observe",
+            "craft",
+            "train",
+            "withdraw",
+            "guard",
+        }:
+            return {subject.id}
+
+        # Unknown future verbs retain the conservative full-capture behavior.
+        return all_subjects
 
     def _delta(
         self,
@@ -139,11 +227,7 @@ class Simulation:
         )
 
     def _engine_hash(self) -> str:
-        digest = hashlib.sha256()
-        engine_dir = Path(__file__).resolve().parent
-        for path in sorted(engine_dir.glob("*.py"), key=lambda value: value.name):
-            digest.update(path.read_bytes())
-        return digest.hexdigest()[:12]
+        return _engine_source_hash(Path(__file__).resolve().parent)
 
     def _protagonist_policy(self) -> Any | None:
         return self.subjects[self.world.protagonist].policy
@@ -350,7 +434,7 @@ class Simulation:
             )
 
     def _record_encounters(self, writer: LayersWriter) -> None:
-        before = self._capture()
+        before_relations = self.world.relations.snapshot()
         pairs: list[dict[str, str]] = []
         for zone in sorted(self.world.zones):
             subjects = self.world.present_subjects(zone)
@@ -374,15 +458,25 @@ class Simulation:
                             "zone": zone,
                         }
                     )
-        after = self._capture()
-        delta = self._delta(None, before, after)
-        if not delta["relations"]:
+
+        after_relations = self.world.relations.snapshot()
+        changed_relations = relation_diff(
+            before_relations,
+            after_relations,
+        )
+        if not changed_relations:
             return
+
         writer.write(
             self._event_row(
                 verb="encounters",
                 subject=None,
-                delta=delta,
+                delta={
+                    "actor": {},
+                    "targets": {},
+                    "relations": changed_relations,
+                    "objective": None,
+                },
                 details={"pairs": pairs},
             )
         )
@@ -623,28 +717,31 @@ class Simulation:
         writer: LayersWriter,
         ending: dict[str, Any],
     ) -> None:
-        protagonist = self.subjects[self.world.protagonist]
         before = self._capture()
-
+        event_subject = self.world.protagonist
         delivered: dict[str, str] = {}
-        if (
-            protagonist.goal.target is not None
-            and protagonist.goal.deliver_to is not None
-            and protagonist.has_item(protagonist.goal.target)
-            and protagonist.zone == protagonist.goal.deliver_to
-        ):
-            item = protagonist.goal.target
-            zone = protagonist.goal.deliver_to
-            self.world.delivered[item] = zone
-            delivered[item] = zone
+
+        delivery = ending.get("deliver")
+        if isinstance(delivery, dict):
+            subject_id = str(delivery["subject"])
+            item = str(delivery["item"])
+            zone = str(delivery["zone"])
+            delivery_subject = self.subjects[subject_id]
+            event_subject = subject_id
+            if (
+                delivery_subject.has_item(item)
+                and delivery_subject.zone == zone
+            ):
+                self.world.delivered[item] = zone
+                delivered[item] = zone
 
         after = self._capture()
         writer.write(
             self._event_row(
                 verb="ending",
-                subject=self.world.protagonist,
+                subject=event_subject,
                 delta=self._delta(
-                    self.world.protagonist,
+                    event_subject,
                     before,
                     after,
                 ),
@@ -775,7 +872,11 @@ class Simulation:
                             continue
 
                         action, probability = self.choose_action(subject)
-                        before = self._capture()
+                        capture_ids = self._action_capture_ids(
+                            subject,
+                            action,
+                        )
+                        before = self._capture(capture_ids)
                         result, details, markers = self.verb_engine.execute(
                             subject,
                             action,
@@ -783,7 +884,7 @@ class Simulation:
                             day=self.day,
                         )
                         details.update(self._strength_details(subject))
-                        after = self._capture()
+                        after = self._capture(capture_ids)
                         delta = self._delta(subject.id, before, after)
                         writer.write(
                             self._decision_row(

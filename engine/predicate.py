@@ -12,6 +12,27 @@ class Namespace(dict[str, Any]):
     """Dictionary-like namespace exposed to predicates."""
 
 
+_PREDICATE_NAMES = {
+    "stance",
+    "bonds",
+    "awareness",
+    "holds",
+    "holder",
+    "zone",
+    "present",
+    "vitality",
+    "known",
+    "knows_modifier",
+    "strength",
+    "believed_strength",
+    "hostile_present",
+    "turn",
+    "day",
+    "phase",
+    "self",
+}
+
+
 _ALLOWED_COMPARISONS: dict[type[ast.cmpop], str] = {
     ast.Eq: "eq",
     ast.NotEq: "ne",
@@ -163,11 +184,8 @@ class Predicate:
         return bool(_evaluate(self.tree, ns))
 
 
-def compile_predicate(
-    src: str,
-    allowed_names: set[str] | None = None,
-) -> Predicate:
-    """Compile and validate a predicate without using eval."""
+def _parse_predicate(src: str) -> ast.Expression:
+    """Parse a predicate and reject syntax outside the whitelist."""
 
     if not isinstance(src, str) or not src.strip():
         raise ValueError("Predicate source must be a non-empty string")
@@ -177,8 +195,28 @@ def compile_predicate(
         raise ValueError(f"Invalid predicate syntax: {src!r}") from exc
     if not isinstance(parsed, ast.Expression):
         raise ValueError("Predicate must be an expression")
-    _validate(
-        parsed,
-        set(allowed_names) if allowed_names is not None else None,
+    return parsed
+
+
+def compile_predicate_syntax(src: str) -> Predicate:
+    """Compile a predicate while validating syntax but deferring names."""
+
+    parsed = _parse_predicate(src)
+    _validate(parsed, None)
+    return Predicate(source=src, tree=parsed)
+
+
+def compile_predicate(
+    src: str,
+    allowed_names: set[str] | None = None,
+) -> Predicate:
+    """Compile a predicate with default-deny name validation."""
+
+    parsed = _parse_predicate(src)
+    names = (
+        set(_PREDICATE_NAMES)
+        if allowed_names is None
+        else set(allowed_names)
     )
+    _validate(parsed, names)
     return Predicate(source=src, tree=parsed)
