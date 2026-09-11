@@ -22,7 +22,7 @@ from gapengine.classify import classify
 from gapengine.evolve import _prune_layers, evolve
 from gapengine.genome import CATEGORIES, Genome
 from gapengine.policy import Policy
-from gapengine.precedent import PrecedentTable
+from gapengine.precedent import PrecedentTable, ctx_key
 from gapengine.qd import (
     Archive,
     Descriptor,
@@ -870,7 +870,14 @@ class Phase1GapEngineTests(unittest.TestCase):
         ruled_policy = Policy(
             Genome.neutral(),
             precedent=None,
-            rules=({"id": "future-rule"},),
+            rules=(
+                {
+                    "id": "future-rule",
+                    "scope": "turn",
+                    "when": "False",
+                    "adjust": {},
+                },
+            ),
             cfg={"nodes": [], "edges": []},
         )
         ruled_output = ruled_policy.reweight(
@@ -985,6 +992,348 @@ class Phase1GapEngineTests(unittest.TestCase):
                 ),
                 1,
             )
+
+
+class Phase2GapEngineTests(unittest.TestCase):
+    def test_phase2_classification_table(self) -> None:
+        world, subjects = load_fixture()
+        cfg = yaml.safe_load(
+            (TEMPLATE / "action_graph.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        actor = subjects["桃太郎"]
+        actor.zone = "鬼ヶ島"
+        subjects["鬼"].zone = "鬼ヶ島"
+        present = world.present_subjects(actor.zone)
+
+        cases = [
+            (
+                Action(
+                    "plant",
+                    ("village_promise",),
+                    {
+                        "effect_id": "village_promise",
+                        "target": actor.id,
+                    },
+                ),
+                ("II", "plant", "neutral", 0),
+            ),
+            (
+                Action(
+                    "payoff",
+                    ("oni_gap",),
+                    {
+                        "effect_id": "oni_gap:鬼",
+                        "target": "鬼",
+                    },
+                ),
+                ("II", "payoff", "neutral", 0),
+            ),
+            (
+                Action(
+                    "disguise",
+                    ("旅の商人",),
+                    {
+                        "disguise_id": "momotaro_merchant",
+                        "displayed": "旅の商人",
+                    },
+                ),
+                ("IV", "disguise", "neutral", 0),
+            ),
+            (
+                Action(
+                    "grand_gesture",
+                    ("鬼",),
+                    {"target": "鬼"},
+                ),
+                ("III", "grand_gesture", "risky", 1),
+            ),
+            (
+                Action(
+                    "trial",
+                    ("おじいさん",),
+                    {"target": "おじいさん"},
+                ),
+                ("III", "trial", "neutral", 0),
+            ),
+            (
+                Action(
+                    "donate",
+                    ("鬼ヶ島の宝物",),
+                    {
+                        "item": "鬼ヶ島の宝物",
+                        "zone": "村",
+                    },
+                ),
+                ("VI", "donate", "neutral", 1),
+            ),
+        ]
+
+        for action, expected in cases:
+            classification = classify(
+                action,
+                actor,
+                world,
+                present,
+                cfg,
+            )
+            self.assertEqual(
+                (
+                    classification.category,
+                    classification.subtype,
+                    classification.risk_class,
+                    classification.stance_sign,
+                ),
+                expected,
+            )
+
+    def test_rules_record_turn_and_candidate_effective_genome(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        target = subjects["鬼"]
+        actor.zone = "鬼ヶ島"
+        target.zone = "鬼ヶ島"
+        actor.phase.add("越境")
+
+        cfg = yaml.safe_load(
+            (TEMPLATE / "action_graph.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        rules = yaml.safe_load(
+            (TEMPLATE / "rules.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        policy = Policy(
+            Genome.neutral(),
+            precedent=None,
+            rules=rules,
+            cfg=cfg,
+        )
+        train = Action("train")
+        fight = Action(
+            "fight",
+            (target.id,),
+            {
+                "target": target.id,
+                "under_threat": True,
+            },
+        )
+
+        output = policy.reweight(
+            actor,
+            world,
+            world.present_subjects(actor.zone),
+            [(train, 1.0), (fight, 1.0)],
+            turn=7,
+            day=2,
+        )
+        by_verb = {
+            action.verb: action.meta["policy"]["effective_genome"]
+            for action, _ in output
+        }
+
+        self.assertEqual(
+            by_verb["train"]["risk_tolerance"],
+            0.7,
+        )
+        self.assertEqual(
+            by_verb["train"]["category_weight"]["I"],
+            0.5,
+        )
+        self.assertAlmostEqual(  # float sum of adjustments (Claude-side test fix)
+            by_verb["fight"]["risk_tolerance"],
+            0.8,
+        )
+        self.assertEqual(
+            by_verb["fight"]["category_weight"]["I"],
+            0.7,
+        )
+
+        ally = subjects["犬"]
+        world.relations.change(
+            actor.id,
+            ally.id,
+            affinity=1.0,
+        )
+        ally.vitality = "downed"
+        ruled = Action("persuade", (target.id,), {"target": target.id})
+        policy.reweight(
+            actor,
+            world,
+            world.present_subjects(actor.zone),
+            [(ruled, 1.0)],
+            turn=8,
+            day=2,
+        )
+        effective = ruled.meta["policy"]["effective_genome"]
+        self.assertEqual(
+            effective["category_weight"]["III"],
+            0.8,
+        )
+
+    def test_precedent_context_records_disguise_and_reads_old_keys(
+        self,
+    ) -> None:
+        old_context = (
+            ("出発",),
+            False,
+            "hostile",
+            "alive",
+            "hostile",
+        )
+        action = ("I", "fight", "hostile")
+        old_table = PrecedentTable()
+        old_table.add(old_context, action, 4)
+
+        restored = PrecedentTable.from_json(old_table.to_json())
+        normalized_old = (
+            ("出発",),
+            False,
+            "hostile",
+            "alive",
+            "hostile",
+            False,
+        )
+        self.assertIn(normalized_old, restored.counts)
+
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        present = world.present_subjects(actor.zone)
+        visible_context = ctx_key(actor, world, present)
+        self.assertFalse(visible_context[5])
+
+        actor.identity_displayed = "旅の商人"
+        disguised_context = ctx_key(actor, world, present)
+        self.assertTrue(disguised_context[5])
+        self.assertNotEqual(visible_context, disguised_context)
+
+    def test_quality_penalizes_dangling_and_rewards_phase2_turns(
+        self,
+    ) -> None:
+        shared = [
+            {
+                "kind": "header",
+                "protagonist": "桃太郎",
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "observe",
+                "args": ["鬼"],
+                "result": "observed",
+                "delta": {
+                    "objective": {
+                        "鬼ヶ島の宝物": "鬼",
+                        "きびだんご": "犬",
+                    }
+                },
+                "details": {},
+            },
+        ]
+        settled = [
+            *shared,
+            {
+                "kind": "event",
+                "subject": "桃太郎",
+                "verb": "ending",
+                "details": {"dangling_effects": 0},
+            },
+        ]
+        dangling = [
+            *shared,
+            {
+                "kind": "event",
+                "subject": "桃太郎",
+                "verb": "ending",
+                "details": {"dangling_effects": 1},
+            },
+        ]
+        dramatic = [
+            *shared,
+            {
+                "kind": "event",
+                "subject": "鬼",
+                "verb": "exposure",
+                "details": {},
+            },
+            {
+                "kind": "event",
+                "subject": "桃太郎",
+                "verb": "payoff",
+                "details": {"mode": "chosen"},
+            },
+            {
+                "kind": "event",
+                "subject": "桃太郎",
+                "verb": "ending",
+                "details": {"dangling_effects": 0},
+            },
+        ]
+        meta = {"protagonist": "桃太郎"}
+
+        self.assertAlmostEqual(
+            quality(settled, meta) - quality(dangling, meta),
+            0.05,
+        )
+        self.assertGreater(
+            quality(dramatic, meta),
+            quality(settled, meta),
+        )
+
+    def test_prerequisite_chains_dedupe_and_use_protagonist(
+        self,
+    ) -> None:
+        rows = [
+            {
+                "kind": "header",
+                "protagonist": "桃太郎",
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "observe",
+                "args": ["鬼"],
+                "result": "observed",
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "neutralize",
+                "args": ["鬼", "金棒"],
+                "result": "neutralized",
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "neutralize",
+                "args": ["鬼", "金棒"],
+                "result": "neutralized",
+            },
+            {
+                "kind": "decision",
+                "subject": "犬",
+                "verb": "observe",
+                "args": ["鬼"],
+                "result": "observed",
+            },
+            {
+                "kind": "decision",
+                "subject": "犬",
+                "verb": "neutralize",
+                "args": ["鬼", "金棒"],
+                "result": "neutralized",
+            },
+        ]
+
+        self.assertEqual(
+            _completed_prerequisite_chains(rows),
+            1,
+        )
 
 
 if __name__ == "__main__":

@@ -1,1 +1,21 @@
-[]
+- id: hostile_lean
+  scope: candidate
+  when: "stance(self, target) < -0.3"
+  adjust:
+    category_weight.I: 0.2
+    risk_tolerance: 0.1
+  description: 敵対相手にはより攻撃的に
+
+- id: after_crossing
+  scope: turn
+  when: "'越境' in phase"
+  adjust:
+    risk_tolerance: 0.2
+  description: 戸口を越えた後は大胆になる
+
+- id: when_downed_ally
+  scope: turn
+  when: "(stance(self, 犬) >= 0.6 and vitality(犬) == 'downed') or (stance(self, 猿) >= 0.6 and vitality(猿) == 'downed') or (stance(self, キジ) >= 0.6 and vitality(キジ) == 'downed')"
+  adjust:
+    category_weight.III: 0.3
+  description: 倒れた仲間がいるときは関係的行動を重視する
