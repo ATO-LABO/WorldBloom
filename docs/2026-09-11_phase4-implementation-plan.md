@@ -90,3 +90,32 @@
 - **作り直し（差し戻し 3 回目）**: C（ライバル）に阻害チャネルが無かったため、「Cの噂」を **B が持つ cap 付き modifier**（`affinity_cap: 0.5`、対象 A）に改め、C を observe して噂を暴く auto 伏線の payoff で解除する。これで `防衛` と `噂` の 2 つの cap 解除が `mutual` の必要条件になる。C には B へ働きかける規則を与えて競争相手として機能させる。`move` は `category: null`（IV は「噂への対峙」）。`investigate` の `when: gather` を外し縦軸 I を到達可能にする。
 - **engine の意味変更**: `affinity_cap` は「上昇を止める」上限とする（上限 = `max(cap, 現在値)`。ラン途中で cap が有効化されても既存値を一気に落とさない）。桃太郎（cap なし）は不変。
 - D11 差し戻し 3 回目の実測: 90 テスト通過、桃太郎 byte-match 83/83、無作為 30 シードの `mutual` 到達 **2/30**（両到達ランとも「Cの噂の露見」と「防衛の neutralize → 昔の約束」の両方を経由）。狙い 10〜30% をやや下回るが、合格判定は本番実験（exp7）で行う。
+
+### 恋愛テンプレート本番実験（exp7、作り直し版 0b67e7c、`runs\exp7-romance`、N=100・G=20・K=3・`--keep reached`）
+
+| 項目 | 結果 |
+|---|---|
+| 到達率 | 第 0 世代 7%（21/300）→ 第 5 世代 32% → 第 15 世代 37% → 第 19 世代 33% |
+| アーカイブ占有マス | **6 / 12**（II×3・III×3。I・IV は未占有） |
+| アーカイブ相異度 | 0.64 |
+| エリート品質 | 0.43〜0.50 |
+
+合格条件 1（`mutual` 到達エリート ≥3 マス）✓。2 つの cap（防衛・噂）を要求する作り直し版でも GA は第 5 世代までに到達率を 4〜5 倍に上げた。縦軸 I（investigate）と IV（噂への対峙）は到達エリートの主導カテゴリにはならなかった（既知の制限として記録）。
+- exp7 のエリート経路: 6 件中 5 件が「C を observe → 噂の露見（auto payoff）→ B を observe → neutralize 防衛 → 昔の約束 payoff → mutual」。1 件（III|low）は噂の露見を経ず、B の `噂` modifier を `neutralize` で直接解除する別経路（cap 付き modifier は observe で知れば neutralize できるため。設計上許容）。`old_promise` の payoff 行が同一ターンに 2 行出る点は要確認（Opus レビューへ）。
+
+### 探偵テンプレート本番実験（exp8、コミット a21a97c、`runs\exp8-detective`、N=100・G=20・K=3・`--keep reached`）
+
+| 項目 | 結果 |
+|---|---|
+| 無作為 30 シード（方針なし） | `solved` 3/30、真相分布 甲 11 / 乙 10 / 丙 9、misjudged 9 回・rethink 15 回 |
+| 到達率 | 第 0 世代 22%（67/300）→ 第 10 世代 31% → 第 19 世代 32% |
+| アーカイブ占有マス | **9 / 12**（I×3・III×3・IV×3。II は未占有） |
+| アーカイブ相異度 | 0.64 |
+| エリート品質 | 0.41〜0.57 |
+| 「decoy で misjudged → rethink で culprit 反転 → 正解 confront → solved」 | **IV|mid のエリートで成立**（turn 22 誤認 → 26 rethink 不変 → 31 rethink で反転 → 32 正解 confront）。misjudged 無しの rethink 反転→正解も 3 件（IV|high・IV|low・I|low） |
+
+合格条件 2（`solved` 到達エリート ≥3 マス、かつ誤認後に立て直すエリート ≥1）✓。真相がシードごとに異なる世界でも、GA は証拠収集→信念収束→正解 confront の経路を学習した。
+
+## 9. Phase 4 合格判定（2026-09-11）
+1. 恋愛: exp6（8 マス）・exp7（6 マス）✓　2. 探偵: exp8（9 マス、誤認→rethink→正解 1 件以上）✓　3. 桃太郎不変: 各コミットで固定ハッシュ 2 本・小規模 evolve の byte-match 83/83（engine_hash 除く）✓　4. メタ進化 ON/OFF: `--meta-evolution` で `rule_bits` が母集団に乗り、OFF は archive.json バイト一致 ✓。
+設計書 §16 の全フェーズ完了。保留（サブプロット差分トラック、QD 軸の追加、メタ進化の本格導入、恋愛での rethink 実証、deliver 結末の個別到達判定、縦軸 I/IV が恋愛で未占有）は設計書「未解決の論点」へ。
