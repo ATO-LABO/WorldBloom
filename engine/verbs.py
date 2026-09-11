@@ -6,7 +6,7 @@ import random
 from typing import Any, TYPE_CHECKING
 
 from engine import vitality
-from engine.actions import Action
+from engine.actions import Action, evidence_replay_order
 from engine.contest import resolve, strength
 from engine.phase2 import (
     apply_effect,
@@ -838,24 +838,6 @@ class VerbEngine:
             for fact_id, belief in sorted(actor.beliefs.items())
         }
 
-        def evidence_order(fact_id: str) -> tuple[int, float, str]:
-            definition = self.world.facts.get(fact_id, {})
-            refutes = definition.get("refutes")
-            if isinstance(refutes, dict):
-                return (
-                    0,
-                    -float(refutes.get("confidence", 0.5)),
-                    fact_id,
-                )
-            implies = definition.get("implies")
-            if isinstance(implies, dict):
-                return (
-                    1,
-                    -float(implies.get("confidence", 0.5)),
-                    fact_id,
-                )
-            return (2, 0.0, fact_id)
-
         evidence = [
             fact_id
             for fact_id in actor.knowledge
@@ -869,7 +851,11 @@ class VerbEngine:
                 for relation in ("implies", "refutes")
             )
         ]
-        evidence.sort(key=evidence_order)
+        evidence.sort(
+            key=lambda fact_id: evidence_replay_order(
+                self.world, fact_id
+            )
+        )
 
         touched_facts = {
             str(update["fact"])

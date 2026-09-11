@@ -774,6 +774,28 @@ def _confront_candidates(
     )
 
 
+def evidence_replay_order(
+    world: World,
+    fact_id: str,
+) -> tuple[int, float, str]:
+    """Rethink replay order: refutes first, then implies, confidence desc, id.
+
+    Shared by the rethink candidate gate and VerbEngine._rethink so the
+    order recorded in the action meta always matches the order replayed.
+    """
+
+    definition = world.facts.get(fact_id, {})
+    for rank, relation in ((0, "refutes"), (1, "implies")):
+        update = definition.get(relation)
+        if isinstance(update, dict):
+            return (
+                rank,
+                -float(update.get("confidence", 0.5)),
+                fact_id,
+            )
+    return (2, 0.0, fact_id)
+
+
 def _rethink_candidates(
     subject: Subject,
     world: World,
@@ -781,24 +803,6 @@ def _rethink_candidates(
 ) -> list[tuple[Action, float]]:
     if "rethink" not in subject.verbs:
         return []
-
-    def evidence_order(fact_id: str) -> tuple[int, float, str]:
-        definition = world.facts.get(fact_id, {})
-        refutes = definition.get("refutes")
-        if isinstance(refutes, dict):
-            return (
-                0,
-                -float(refutes.get("confidence", 0.5)),
-                fact_id,
-            )
-        implies = definition.get("implies")
-        if isinstance(implies, dict):
-            return (
-                1,
-                -float(implies.get("confidence", 0.5)),
-                fact_id,
-            )
-        return (2, 0.0, fact_id)
 
     evidence = [
         fact_id
@@ -813,7 +817,9 @@ def _rethink_candidates(
     ]
     if len(evidence) < 2:
         return []
-    evidence.sort(key=evidence_order)
+    evidence.sort(
+        key=lambda fact_id: evidence_replay_order(world, fact_id)
+    )
 
     last_fact_turn = int(
         getattr(sim, "_last_fact_turn", {}).get(subject.id, 0)
