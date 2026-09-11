@@ -431,8 +431,8 @@ def antagonist_quality(
     rows: Sequence[Mapping[str, Any]],
     world_meta: Mapping[str, Any],
 ) -> float:
-    target_ending = str(world_meta.get("target_ending", ""))
-    if not target_ending or not reached(rows, target_ending):
+    target_ending = world_meta.get("target_ending")
+    if target_ending is None or not reached(rows, target_ending):
         return 0.0
 
     turns = max(
@@ -490,12 +490,23 @@ def antagonist_quality(
 
 def reached(
     rows: Sequence[Mapping[str, Any]],
-    target_ending: str,
+    target_ending: str | Sequence[str],
 ) -> bool:
+    target_ids = (
+        {target_ending}
+        if isinstance(target_ending, str)
+        else {
+            str(value)
+            for value in target_ending
+        }
+    )
+    if not target_ids:
+        return False
+
     return any(
         row.get("kind") == "event"
         and row.get("verb") == "ending"
-        and row.get("id") == target_ending
+        and row.get("id") in target_ids
         for row in rows
     )
 

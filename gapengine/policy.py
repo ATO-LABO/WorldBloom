@@ -267,7 +267,15 @@ class Policy:
             if rule["scope"] == "turn"
             and rule["predicate"].evaluate(turn_namespace)
         ]
+        turn_genome = _adjust_genome(
+            self.genome,
+            turn_adjustments,
+        )
         active = self._active_categories()
+        category_mean = sum(
+            turn_genome.category_weight[category]
+            for category in active
+        ) / len(active)
 
         output: list[tuple[Action, float]] = []
         for action, weight, classification in classified:
@@ -307,11 +315,6 @@ class Policy:
                 m_stance = 1.0
                 m_nov = 1.0
             else:
-                category_mean = sum(
-                    effective_genome.category_weight[category]
-                    for category in active
-                ) / len(active)
-
                 if classification.category is None:
                     m_cat = 1.0
                 else:

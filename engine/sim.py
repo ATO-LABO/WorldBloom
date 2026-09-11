@@ -769,7 +769,16 @@ class Simulation:
     def _ending(self) -> dict[str, Any] | None:
         protagonist = self.subjects[self.world.protagonist]
         present = self._present_for(protagonist)
+        configured = self.world.target_ending
+        target_ids = (
+            {configured}
+            if isinstance(configured, str)
+            else set(configured)
+        )
+
         for ending in self.world.endings:
+            if str(ending["id"]) not in target_ids:
+                continue
             if self.world.ending_reached(
                 ending,
                 protagonist,

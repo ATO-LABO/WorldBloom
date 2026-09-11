@@ -471,13 +471,7 @@ class World:
                     ending["predicate_source"]
                 )
             self.endings.append(ending)
-        self.target_ending = str(definition["target_ending"])
-        if self.target_ending not in {
-            ending["id"] for ending in self.endings
-        }:
-            raise ValueError(
-                f"Unknown target ending: {self.target_ending}"
-            )
+        self.set_target_ending(definition["target_ending"])
 
         self.scheduled_events = tuple(
             sorted(
@@ -555,6 +549,48 @@ class World:
             source,
             action_graph_path=action_graph_path,
         )
+
+    def set_target_ending(
+        self,
+        value: str | list[str] | tuple[str, ...],
+    ) -> None:
+        if isinstance(value, str):
+            if not value:
+                raise ValueError("Target ending must not be empty")
+            targets = (value,)
+            stored: str | tuple[str, ...] = value
+        elif isinstance(value, (list, tuple)):
+            if not value:
+                raise ValueError("Target ending list must not be empty")
+            if any(
+                not isinstance(target, str) or not target
+                for target in value
+            ):
+                raise ValueError(
+                    "Target ending entries must be non-empty strings"
+                )
+            targets = tuple(value)
+            if len(targets) != len(set(targets)):
+                raise ValueError("Target endings must be unique")
+            stored = targets
+        else:
+            raise ValueError(
+                "target_ending must be a string or sequence of strings"
+            )
+
+        known = {
+            str(ending["id"])
+            for ending in self.endings
+        }
+        unknown = [
+            target for target in targets if target not in known
+        ]
+        if unknown:
+            raise ValueError(
+                f"Unknown target ending: {unknown}"
+            )
+
+        self.target_ending = stored
 
     def _validate_item_references(self) -> None:
         for origin in sorted(self.routes):

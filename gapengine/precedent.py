@@ -27,10 +27,10 @@ def _is_hostile(
     target_id: str,
     world: World,
 ) -> bool:
-    return (
-        world.relations.stance(subject.id, target_id) < -0.2
-        or target_id in subject.goal.obstacles
-    )
+    target = world.subjects.get(target_id)
+    if target is None:
+        return False
+    return world.target_role(subject, target) == "hostile"
 
 
 def ctx_key(

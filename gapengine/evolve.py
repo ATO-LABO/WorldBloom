@@ -108,6 +108,7 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         else None
     )
     rules = list(job.get("rules", []))
+    target_ending_override = job.get("target_ending")
     qd_cfg = dict(job["qd_cfg"])
     precedent = (
         PrecedentTable.from_json(str(job["precedent_json"]))
@@ -133,6 +134,8 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             world_path,
             action_graph_path=action_graph_path,
         )
+        if target_ending_override is not None:
+            world.set_target_ending(target_ending_override)
         subjects = _load_subjects(subjects_dir)
         seed_dir = out_dir / f"seed-{seed}"
 
@@ -638,6 +641,9 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
         world_path,
         action_graph_path=action_graph_path,
     )
+    target_ending_override = cfg.get("target_ending")
+    if target_ending_override is not None:
+        world_model.set_target_ending(target_ending_override)
     protagonist = world_model.protagonist
     antagonist = world_model.antagonist
 
@@ -803,6 +809,8 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             }
             for index, (genome, parents) in enumerate(population)
         ]
+        for job in jobs:
+            job["target_ending"] = world_model.target_ending
         raw_results = _evaluate_jobs(jobs, processes)
 
         if archive.volatility_thresholds is None:
@@ -890,6 +898,8 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                     antagonist_population
                 )
             ]
+            for job in antagonist_jobs:
+                job["target_ending"] = world_model.target_ending
             antagonist_raw_results = _evaluate_jobs(
                 antagonist_jobs,
                 processes,
@@ -1062,6 +1072,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             "seed_base": seed_base,
             "seed_count": seed_count,
             "seeds": seeds,
+            "target_ending": world_model.target_ending,
         }
         if coevolve:
             summary_payload.update(

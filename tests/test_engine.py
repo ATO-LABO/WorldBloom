@@ -2194,7 +2194,7 @@ class EngineTests(unittest.TestCase):
         )
         self.assertEqual(
             donate_world.target_ending,
-            "homecoming",
+            ("homecoming", "homecoming_shared"),
         )
 
     def test_phase_rules_apply_enable_and_disable(
