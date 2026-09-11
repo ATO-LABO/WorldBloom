@@ -11,8 +11,8 @@ nodes:
   - {verb: persuade, category: III, subtype: press_witness, risk: neutral, sign: 1, genres: [detective]}
   - {verb: mislead, category: III, subtype: false_testimony, risk: neutral, sign: -1, genres: [detective]}
 
-  - {verb: observe, category: IV, subtype: tail_suspect, risk: neutral, sign: 0, genres: [detective]}
-  - {verb: move, category: IV, subtype: infiltrate_room, risk: neutral, sign: 0, genres: [detective]}
+  - {verb: observe, category: II, subtype: tail_suspect, risk: neutral, sign: 0, genres: [detective]}
+  - {verb: move, category: null, subtype: infiltrate_room, risk: neutral, sign: 0, genres: [detective]}
 
   - {verb: rest, category: null, subtype: review_notes, risk: neutral, sign: 0, genres: [detective]}
 
