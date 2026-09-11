@@ -362,6 +362,9 @@ class EngineTests(unittest.TestCase):
         )
         raw_world.pop("gapengine", None)
         raw_world.pop("phase1", None)
+        raw_world.pop("disguises", None)
+        raw_world.pop("trials", None)
+        raw_world.pop("phase_rules", None)
 
         phase1_items = {"勾玉"}
         raw_world["items"] = [
@@ -412,9 +415,16 @@ class EngineTests(unittest.TestCase):
             "concede",
             "pledge",
             "persuade",
+            "plant",
+            "payoff",
+            "disguise",
+            "grand_gesture",
+            "trial",
+            "donate",
         }
         for subject in subjects.values():
             subject.verbs.difference_update(phase1_verbs)
+            subject.initial_relations.pop("旅の商人", None)
             for item in sorted(phase1_items):
                 subject.inventory.pop(item, None)
             for fact_id in sorted(valued_facts):
@@ -1642,6 +1652,525 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(
             concede["delta"]["targets"]["犬"]["objective"],
             {"鬼ヶ島の宝物": "桃太郎"},
+        )
+
+
+    def test_auto_effect_plants_and_pays_off_at_slot_end(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        world.days = 1
+        world.slots = ("朝",)
+        world.daily_events = ()
+        world.daily_event_chance = 0.0
+        world.scheduled_events = ()
+
+        momotaro = subjects["桃太郎"]
+        dog = subjects["犬"]
+        oni = subjects["鬼"]
+        for subject in subjects.values():
+            subject.vitality = "dead"
+        for subject in (momotaro, dog, oni):
+            subject.vitality = "alive"
+            subject.zone = "道中"
+
+        momotaro.verbs = {"give_item"}
+        dog.verbs = {"rest"}
+        oni.verbs = {"rest"}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            simulation = Simulation(
+                101,
+                world,
+                subjects,
+                Path(temporary),
+            )
+
+            def fixed_action(
+                subject: Subject,
+            ) -> tuple[Action, float | None]:
+                if subject.id == momotaro.id:
+                    return (
+                        Action(
+                            "give_item",
+                            (dog.id, "きびだんご"),
+                            {
+                                "target": dog.id,
+                                "item": "きびだんご",
+                                "stance_sign": 1,
+                            },
+                        ),
+                        1.0,
+                    )
+                return Action("rest"), 1.0
+
+            simulation.choose_action = fixed_action
+            path = simulation.run()
+            rows = read_rows(path)
+
+        planted = [
+            row
+            for row in rows
+            if row["kind"] == "event"
+            and row["verb"] == "planted"
+            and row["details"]["library_id"]
+            == "kibidango_loyalty"
+        ]
+        self.assertEqual(len(planted), 1)
+
+        payoffs = [
+            row
+            for row in rows
+            if row["kind"] == "event"
+            and row["verb"] == "payoff"
+            and row["details"]["library_id"]
+            == "kibidango_loyalty"
+        ]
+        self.assertEqual(len(payoffs), 1)
+        self.assertEqual(payoffs[0]["details"]["mode"], "auto")
+
+        pending = next(
+            effect
+            for effect in world.pending_effects
+            if effect["library_id"] == "kibidango_loyalty"
+        )
+        self.assertTrue(pending["resolved"])
+        self.assertEqual(pending["resolved_turn"], 1)
+        loyalty = [
+            modifier
+            for modifier in momotaro.modifiers
+            if modifier.kind == "loyal"
+        ]
+        self.assertEqual(len(loyalty), 1)
+        self.assertEqual(loyalty[0].source, dog.id)
+        self.assertEqual(loyalty[0].value, 10.0)
+
+    def test_chosen_effect_candidate_payoff_and_dangling_record(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        oni.zone = "鬼ヶ島"
+
+        engine = VerbEngine(world, FixedRandom([]))
+        observe = Action(
+            "observe",
+            (oni.id,),
+            {"target": oni.id},
+        )
+        first_result, _, _ = engine.execute(
+            momotaro,
+            observe,
+            turn=1,
+            day=1,
+        )
+        second_result, _, second_markers = engine.execute(
+            momotaro,
+            observe,
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(first_result, "observed")
+        self.assertEqual(second_result, "observed")
+        self.assertTrue(
+            any(
+                marker["verb"] == "planted"
+                and marker["details"]["library_id"] == "oni_gap"
+                for marker in second_markers
+            )
+        )
+
+        pending = next(
+            effect
+            for effect in world.pending_effects
+            if effect["library_id"] == "oni_gap"
+        )
+        self.assertFalse(pending["resolved"])
+        payoff_actions = [
+            action
+            for action, _ in candidates(
+                momotaro,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "payoff"
+        ]
+        self.assertEqual(len(payoff_actions), 1)
+        self.assertEqual(
+            payoff_actions[0].args,
+            ("oni_gap",),
+        )
+
+        result, details, markers = engine.execute(
+            momotaro,
+            payoff_actions[0],
+            turn=3,
+            day=1,
+        )
+        self.assertEqual(result, "paid_off")
+        self.assertEqual(details["mode"], "chosen")
+        self.assertTrue(pending["resolved"])
+        self.assertEqual(pending["resolved_turn"], 3)
+        self.assertTrue(
+            any(
+                marker["verb"] == "payoff"
+                and marker["details"]["mode"] == "chosen"
+                for marker in markers
+            )
+        )
+        insights = [
+            modifier
+            for modifier in momotaro.modifiers
+            if modifier.kind == "insight"
+        ]
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].source, "見切り")
+        self.assertEqual(insights[0].value, 15.0)
+
+        dangling_world, dangling_subjects = load_fixture()
+        dangling_world.days = 1
+        dangling_world.slots = ("朝",)
+        dangling_world.daily_events = ()
+        dangling_world.daily_event_chance = 0.0
+        dangling_world.scheduled_events = ()
+
+        dangling_momotaro = dangling_subjects["桃太郎"]
+        dangling_oni = dangling_subjects["鬼"]
+        dangling_momotaro.zone = "鬼ヶ島"
+        dangling_oni.zone = "鬼ヶ島"
+        for subject in dangling_subjects.values():
+            if subject.id not in {
+                dangling_momotaro.id,
+                dangling_oni.id,
+            }:
+                subject.vitality = "dead"
+        dangling_momotaro.verbs = {"rest"}
+        dangling_oni.verbs = {"rest"}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            simulation = Simulation(
+                102,
+                dangling_world,
+                dangling_subjects,
+                Path(temporary),
+            )
+            observe = Action(
+                "observe",
+                (dangling_oni.id,),
+                {"target": dangling_oni.id},
+            )
+            simulation.verb_engine.execute(
+                dangling_momotaro,
+                observe,
+                turn=0,
+                day=0,
+            )
+            simulation.verb_engine.execute(
+                dangling_momotaro,
+                observe,
+                turn=0,
+                day=0,
+            )
+            path = simulation.run()
+            rows = read_rows(path)
+
+        self.assertEqual(rows[-1]["verb"], "ending")
+        self.assertEqual(rows[-1]["id"], "time_limit")
+        self.assertEqual(rows[-1]["result"], "expired")
+        self.assertEqual(
+            rows[-1]["details"]["dangling_effects"],
+            1,
+        )
+
+    def test_disguise_then_observe_exposes_true_relation(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "海"
+        oni.zone = "海"
+
+        disguise_actions = [
+            action
+            for action, _ in candidates(
+                momotaro,
+                world,
+                SimpleNamespace(day=1, turn=1),
+            )
+            if action.verb == "disguise"
+        ]
+        self.assertEqual(len(disguise_actions), 1)
+
+        engine = VerbEngine(world, FixedRandom([]))
+        result, details, _ = engine.execute(
+            momotaro,
+            disguise_actions[0],
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "disguised")
+        self.assertEqual(details["displayed"], "旅の商人")
+        self.assertEqual(
+            world.perceived_name(oni.id, momotaro.id),
+            "旅の商人",
+        )
+        self.assertEqual(
+            world.relations.stance(oni.id, momotaro.id),
+            0.0,
+        )
+
+        observe = Action(
+            "observe",
+            (momotaro.id,),
+            {"target": momotaro.id},
+        )
+        engine.execute(
+            oni,
+            observe,
+            turn=2,
+            day=1,
+        )
+        _, _, markers = engine.execute(
+            oni,
+            observe,
+            turn=3,
+            day=1,
+        )
+
+        self.assertTrue(
+            any(
+                marker["verb"] == "exposure"
+                and marker["details"].get("source") == "observe"
+                for marker in markers
+            )
+        )
+        self.assertEqual(
+            world.perceived_name(oni.id, momotaro.id),
+            momotaro.id,
+        )
+        self.assertTrue(
+            oni.beliefs_about[momotaro.id].identity_seen
+        )
+        self.assertEqual(
+            world.relations.stance(oni.id, momotaro.id),
+            -0.5,
+        )
+        relation_targets = {
+            row["target"]
+            for row in world.relations.flat_rows()
+            if row["observer"] == oni.id
+        }
+        self.assertNotIn("旅の商人", relation_targets)
+
+    def test_grand_gesture_trial_and_donate(
+        self,
+    ) -> None:
+        gesture_world, gesture_subjects = load_fixture()
+        momotaro = gesture_subjects["桃太郎"]
+        oni = gesture_subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        oni.zone = "鬼ヶ島"
+        momotaro.knowledge.add("金棒の由来")
+
+        gesture_actions = [
+            action
+            for action, _ in candidates(
+                momotaro,
+                gesture_world,
+                SimpleNamespace(day=1, turn=1),
+            )
+            if action.verb == "grand_gesture"
+        ]
+        self.assertEqual(len(gesture_actions), 1)
+        self.assertEqual(
+            gesture_actions[0].meta["item"],
+            "勾玉",
+        )
+        before_stance = gesture_world.relations.stance(
+            oni.id,
+            momotaro.id,
+        )
+        result, details, _ = VerbEngine(
+            gesture_world,
+            FixedRandom([]),
+        ).execute(
+            momotaro,
+            gesture_actions[0],
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "grand_gesture")
+        self.assertEqual(details["fact"], "金棒の由来")
+        self.assertEqual(details["item"], "勾玉")
+        self.assertFalse(momotaro.has_item("勾玉"))
+        self.assertAlmostEqual(
+            gesture_world.relations.stance(
+                oni.id,
+                momotaro.id,
+            ),
+            min(1.0, before_stance + 0.6),
+        )
+        self.assertEqual(momotaro.reputation, 0.1)
+
+        trial_world, trial_subjects = load_fixture()
+        trial_actor = trial_subjects["桃太郎"]
+        grandfather = trial_subjects["おじいさん"]
+        trial_actor.zone = "村"
+        grandfather.zone = "村"
+
+        trial_actions = [
+            action
+            for action, _ in candidates(
+                trial_actor,
+                trial_world,
+                SimpleNamespace(day=1, turn=1),
+            )
+            if action.verb == "trial"
+        ]
+        self.assertEqual(len(trial_actions), 1)
+        self.assertTrue(trial_actor.has_item("きびだんご"))
+        before_affinity = trial_world.relations.stance(
+            grandfather.id,
+            trial_actor.id,
+        )
+        result, details, _ = VerbEngine(
+            trial_world,
+            FixedRandom([]),
+        ).execute(
+            trial_actor,
+            trial_actions[0],
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "trial_completed")
+        self.assertEqual(
+            details["granted"],
+            {"fact": "造船術"},
+        )
+        self.assertIn("造船術", trial_actor.knowledge)
+        self.assertTrue(
+            any(
+                phase.startswith("trial:")
+                for phase in trial_actor.phase
+            )
+        )
+        self.assertAlmostEqual(
+            trial_world.relations.stance(
+                grandfather.id,
+                trial_actor.id,
+            ),
+            min(1.0, before_affinity + 0.1),
+        )
+        self.assertEqual(
+            [
+                action
+                for action, _ in candidates(
+                    trial_actor,
+                    trial_world,
+                    SimpleNamespace(day=1, turn=2),
+                )
+                if action.verb == "trial"
+            ],
+            [],
+        )
+
+        donate_world, donate_subjects = load_fixture()
+        donor = donate_subjects["桃太郎"]
+        holder = donate_subjects["鬼"]
+        holder.remove_item("鬼ヶ島の宝物", 1)
+        donor.add_item("鬼ヶ島の宝物", 1)
+        donor.zone = "村"
+
+        donate_actions = [
+            action
+            for action, _ in candidates(
+                donor,
+                donate_world,
+                SimpleNamespace(day=1, turn=1),
+            )
+            if action.verb == "donate"
+        ]
+        self.assertEqual(len(donate_actions), 1)
+        result, details, _ = VerbEngine(
+            donate_world,
+            FixedRandom([]),
+        ).execute(
+            donor,
+            donate_actions[0],
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "donated")
+        self.assertEqual(details["holder"], "村")
+        self.assertFalse(donor.has_item("鬼ヶ島の宝物"))
+        self.assertEqual(
+            donate_world.holder("鬼ヶ島の宝物"),
+            "村",
+        )
+        self.assertEqual(donor.reputation, 0.5)
+
+        shared = next(
+            ending
+            for ending in donate_world.endings
+            if ending["id"] == "homecoming_shared"
+        )
+        self.assertTrue(
+            donate_world.ending_reached(
+                shared,
+                donor,
+                donate_world.present_subjects("村"),
+                turn=1,
+                day=1,
+            )
+        )
+        self.assertEqual(
+            donate_world.target_ending,
+            "homecoming",
+        )
+
+    def test_phase_rules_apply_enable_and_disable(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "村"
+        momotaro.phase.add("越境")
+        momotaro.verbs = {
+            "rest",
+            "train",
+            "observe",
+        }
+
+        rule = next(
+            rule
+            for rule in world.phase_rules
+            if rule["id"] == "after_crossing"
+        )
+        rule["enable"] = ["rest", "train"]
+        rule["disable"] = ["train"]
+
+        phase_candidates = candidates(
+            momotaro,
+            world,
+            SimpleNamespace(day=1, turn=2),
+        )
+        self.assertEqual(
+            {action.verb for action, _ in phase_candidates},
+            {"rest"},
+        )
+
+        momotaro.phase.remove("越境")
+        unruled_candidates = candidates(
+            momotaro,
+            world,
+            SimpleNamespace(day=1, turn=3),
+        )
+        self.assertIn(
+            "train",
+            {action.verb for action, _ in unruled_candidates},
         )
 
 

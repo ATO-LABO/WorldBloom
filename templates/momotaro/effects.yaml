@@ -1,1 +1,45 @@
-[]
+- id: kibidango_loyalty
+  plant:
+    verb: give_item
+    item: きびだんご
+    to_role: [neutral, ally]
+  payoff:
+    condition: "stance(target, planter) >= 0.5 and hostile_present(planter)"
+    description: きびだんごの恩に報いる仲間の奮戦
+    effect:
+      modifier:
+        target: planter
+        source: "$target"
+        value: 10
+        kind: loyal
+    mode: auto
+
+- id: oni_gap
+  plant:
+    verb: observe
+    reveals:
+      target: 鬼
+      source: 金棒
+  payoff:
+    condition: "present(鬼) and vitality(planter) != 'downed'"
+    description: 金棒の隙を見切って仲間に合図を送る
+    effect:
+      modifier:
+        target: planter
+        source: 見切り
+        value: 15
+        kind: insight
+    mode: chosen
+
+- id: village_promise
+  plant:
+    verb: plant
+    when: "zone(planter) == '村'"
+  payoff:
+    condition: "holds(planter, 鬼ヶ島の宝物) and zone(planter) == '村'"
+    description: 旅立ちの朝に交わした約束を果たす
+    effect:
+      reputation:
+        target: planter
+        delta: 0.3
+    mode: chosen

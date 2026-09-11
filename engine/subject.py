@@ -514,7 +514,12 @@ class Subject:
             "objective": objective,
             "pending": [
                 {
-                    key: effect[key]
+                    key: (
+                        effect[key].source
+                        if key == "condition"
+                        and hasattr(effect[key], "source")
+                        else effect[key]
+                    )
                     for key in sorted(effect)
                 }
                 for effect in sorted(

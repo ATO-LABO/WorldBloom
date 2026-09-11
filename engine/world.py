@@ -17,6 +17,12 @@ from engine.predicate import (
     compile_predicate_syntax,
 )
 from engine.relations import Relations
+from engine.phase2 import (
+    bind_phase2,
+    configure_phase2,
+    disguise_aliases,
+    perceived_name as phase2_perceived_name,
+)
 
 
 def _load_action_graph(
@@ -495,6 +501,7 @@ class World:
         self.objectives: dict[str, dict[str, Any]] = {}
         self.delivered: dict[str, str] = {}
         self.pending_effects: list[dict[str, Any]] = []
+        configure_phase2(self, definition, source)
         self.offers: dict[
             tuple[str, str],
             dict[str, Any],
@@ -734,6 +741,7 @@ class World:
             raise ValueError(f"Unknown antagonist: {self.antagonist}")
 
         relation_values: dict[str, dict[str, dict[str, float]]] = {}
+        relation_aliases = disguise_aliases(self)
         for subject_id in sorted(subjects):
             subject = subjects[subject_id]
             if subject.zone not in self.zones:
@@ -819,22 +827,39 @@ class World:
                         f"Unknown goal obstacle: {subject.id}:{obstacle}"
                     )
             for target in sorted(subject.initial_relations):
-                if target not in subjects:
+                if (
+                    target not in subjects
+                    and target not in relation_aliases
+                ):
                     raise ValueError(
                         f"Unknown relation target: {subject.id}:{target}"
                     )
             relation_values[subject.id] = subject.initial_relations
 
         for fact, definition in sorted(self.facts.items()):
+            secret_of = definition.get("secret_of")
+            if (
+                secret_of is not None
+                and str(secret_of) not in subjects
+            ):
+                raise ValueError(
+                    f"Unknown fact secret_of subject: "
+                    f"{fact}:{secret_of}"
+                )
             for source in definition.get("sources", []) or []:
                 agent = source.get("agent")
                 if agent is not None and agent not in subjects:
-                    raise ValueError(f"Unknown fact source agent: {fact}:{agent}")
+                    raise ValueError(
+                        f"Unknown fact source agent: {fact}:{agent}"
+                    )
 
         self.subjects = {
             subject_id: subjects[subject_id] for subject_id in sorted(subjects)
         }
-        self.relations = Relations(relation_values)
+        self.relations = Relations(
+            relation_values,
+            target_resolver=self.perceived_name,
+        )
 
         objectives: dict[str, dict[str, Any]] = {}
         for item, definition in sorted(self.items.items()):
@@ -854,7 +879,9 @@ class World:
             | set(self.items)
             | set(self.facts)
             | set(self.zones)
+            | relation_aliases
         )
+        bind_phase2(self, predicate_names)
 
         for threshold in self.thresholds:
             source = threshold.get("predicate_source")
@@ -902,6 +929,17 @@ class World:
                 predicate_names,
             )
 
+    def perceived_name(
+        self,
+        observer: str,
+        target: str,
+    ) -> str:
+        return phase2_perceived_name(
+            self,
+            observer,
+            target,
+        )
+
     def target_role(
         self,
         actor: Subject,
@@ -909,6 +947,11 @@ class World:
     ) -> str:
         if actor.id == target.id:
             return "self"
+
+        perceived = self.perceived_name(
+            actor.id,
+            target.id,
+        )
         if (
             self.relations.stance(actor.id, target.id)
             >= self.companionship["threshold"]
@@ -916,7 +959,7 @@ class World:
             return "ally"
         if (
             self.relations.stance(actor.id, target.id) < -0.2
-            or target.id in actor.goal.obstacles
+            or perceived in actor.goal.obstacles
         ):
             return "hostile"
         return "neutral"
@@ -1111,6 +1154,7 @@ class World:
         turn: int,
         day: int,
         zone_override: str | None = None,
+        bindings: dict[str, Any] | None = None,
     ) -> Namespace:
         from engine.contest import believed_strength, strength
 
@@ -1133,9 +1177,13 @@ class World:
             for other in present:
                 if other.id == actor.id or other.vitality == "dead":
                     continue
+                perceived = self.perceived_name(
+                    actor.id,
+                    other.id,
+                )
                 if (
                     self.relations.stance(actor.id, other.id) < -0.2
-                    or other.id in actor.goal.obstacles
+                    or perceived in actor.goal.obstacles
                 ):
                     return True
             return False
@@ -1146,6 +1194,7 @@ class World:
             | set(self.items)
             | set(self.facts)
             | set(self.zones)
+            | disguise_aliases(self)
         )
         for identifier in sorted(identifiers):
             namespace[identifier] = identifier
@@ -1183,6 +1232,13 @@ class World:
                 "hostile_present": hostile_present,
             }
         )
+        if bindings:
+            namespace.update(
+                {
+                    str(name): value
+                    for name, value in sorted(bindings.items())
+                }
+            )
         return namespace
 
     def crossed_thresholds(

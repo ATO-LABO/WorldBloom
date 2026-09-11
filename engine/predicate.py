@@ -31,6 +31,8 @@ PREDICATE_NAMES = frozenset(
         "day",
         "phase",
         "self",
+        "target",
+        "planter",
     }
 )
 

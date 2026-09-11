@@ -42,6 +42,12 @@ verbs:
   - rescue
   - rest
   - withdraw
+  - plant
+  - payoff
+  - disguise
+  - grand_gesture
+  - trial
+  - donate
 
 identity:
   "true": 桃から生まれた者

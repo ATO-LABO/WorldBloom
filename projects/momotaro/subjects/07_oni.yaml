@@ -43,6 +43,7 @@ goal:
 
 relations:
   桃太郎: {affinity: -0.50, awareness: 0.60}
+  旅の商人: {affinity: 0.0, awareness: 0.0}
   犬: {affinity: -0.30, awareness: 0.30}
   猿: {affinity: -0.30, awareness: 0.30}
   キジ: {affinity: -0.30, awareness: 0.30}
