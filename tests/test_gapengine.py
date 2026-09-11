@@ -84,8 +84,10 @@ def make_reaching_project(root: Path) -> Path:
     momotaro_raw = yaml.safe_load(
         momotaro_path.read_text(encoding="utf-8")
     )
-    # train is an effective, categorised (I) decision; rest alone yields
-    # category=None and the archive would reject every run (Claude-side fix).
+    # train is an effective, categorised (I) decision. rest is categorised (V)
+    # but never effective (it changes no layer), so a rest-only run has no
+    # countable decision, descriptor() returns category=None and the archive
+    # rejects every run (Claude-side fix).
     momotaro_raw["verbs"] = ["train", "rest"]
     momotaro_path.write_text(
         yaml.safe_dump(
