@@ -51,6 +51,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Coevolve a separate antagonist population and archive.",
     )
+    parser.add_argument(
+        "--target-ending",
+        action="extend",
+        nargs="+",
+        default=None,
+        help=(
+            "Override target ending ids; any listed ending counts as reached."
+        ),
+    )
     return parser
 
 
@@ -68,6 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "project": args.project,
             "seed_base": args.seed_base,
             "seeds": args.seeds,
+            "target_ending": args.target_ending,
             "template": args.template,
         }
     )

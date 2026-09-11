@@ -30,6 +30,7 @@ from gapengine.qd import (
     _completed_prerequisite_chains,
     antagonist_quality,
     quality,
+    reached,
 )
 from scripts.evolve import build_parser as build_evolve_parser
 from scripts.random_baseline import (
@@ -1527,6 +1528,247 @@ class Phase3GapEngineTests(unittest.TestCase):
                     "antagonist_genome",
                     elite.exemplar,
                 )
+
+
+class D6bGapEngineTests(unittest.TestCase):
+    def test_variant_endings_and_string_backward_compatibility(
+        self,
+    ) -> None:
+        shared_rows = [
+            {
+                "kind": "header",
+                "protagonist": "桃太郎",
+            },
+            {
+                "kind": "event",
+                "verb": "ending",
+                "id": "homecoming_shared",
+                "turn": 5,
+            },
+        ]
+
+        self.assertTrue(
+            reached(
+                shared_rows,
+                ["homecoming", "homecoming_shared"],
+            )
+        )
+        self.assertTrue(
+            reached(shared_rows, "homecoming_shared")
+        )
+        self.assertFalse(
+            reached(shared_rows, "homecoming")
+        )
+
+        world, _ = load_fixture()
+        self.assertEqual(
+            world.target_ending,
+            ("homecoming", "homecoming_shared"),
+        )
+
+        raw = yaml.safe_load(
+            (PROJECT / "world.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        raw["target_ending"] = "homecoming"
+        legacy_world = World(
+            raw,
+            PROJECT / "world.yaml",
+        )
+        self.assertEqual(
+            legacy_world.target_ending,
+            "homecoming",
+        )
+
+        variant_meta = {
+            "max_turns": 10,
+            "protagonist": "桃太郎",
+            "target_ending": [
+                "homecoming",
+                "homecoming_shared",
+            ],
+            "vol_high": 1.0,
+        }
+        self.assertGreater(
+            antagonist_quality(shared_rows, variant_meta),
+            0.0,
+        )
+
+    def test_target_ending_cli_accepts_multiple_values(
+        self,
+    ) -> None:
+        common = [
+            "--project",
+            str(PROJECT),
+            "--template",
+            str(TEMPLATE),
+            "--out",
+            "unused",
+            "--target-ending",
+            "homecoming",
+            "homecoming_shared",
+        ]
+        evolve_args = build_evolve_parser().parse_args(common)
+        baseline_args = build_baseline_parser().parse_args(common)
+
+        expected = ["homecoming", "homecoming_shared"]
+        self.assertEqual(evolve_args.target_ending, expected)
+        self.assertEqual(baseline_args.target_ending, expected)
+
+    def test_disguised_obstacle_is_not_hostile_until_exposed(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        observer = subjects["鬼"]
+        target = subjects["桃太郎"]
+
+        observer.zone = "海"
+        target.zone = "海"
+        for subject in subjects.values():
+            if subject.id not in {observer.id, target.id}:
+                subject.vitality = "dead"
+
+        target.identity_displayed = "旅の商人"
+        belief = observer.beliefs_about[target.id]
+        belief.identity_seen = False
+        present = world.present_subjects("海")
+        cfg = yaml.safe_load(
+            (TEMPLATE / "action_graph.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        fight = Action(
+            "fight",
+            (target.id,),
+            {
+                "target": target.id,
+                "under_threat": False,
+            },
+        )
+
+        hidden = classify(
+            fight,
+            observer,
+            world,
+            present,
+            cfg,
+        )
+        hidden_context = ctx_key(observer, world, present)
+
+        self.assertEqual(
+            world.perceived_name(observer.id, target.id),
+            "旅の商人",
+        )
+        self.assertEqual(hidden.target_role, "neutral")
+        self.assertFalse(hidden_context[1])
+
+        belief.identity_seen = True
+        exposed = classify(
+            fight,
+            observer,
+            world,
+            present,
+            cfg,
+        )
+        exposed_context = ctx_key(observer, world, present)
+
+        self.assertEqual(
+            world.perceived_name(observer.id, target.id),
+            target.id,
+        )
+        self.assertEqual(exposed.target_role, "hostile")
+        self.assertTrue(exposed_context[1])
+
+    def test_candidate_category_adjustment_uses_turn_denominator(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        actor = subjects["桃太郎"]
+        target = subjects["鬼"]
+        actor.zone = "鬼ヶ島"
+        target.zone = "鬼ヶ島"
+        present = world.present_subjects(actor.zone)
+
+        cfg = {
+            "nodes": [
+                {
+                    "verb": "fight",
+                    "category": "I",
+                    "subtype": "fight",
+                    "risk": "risky",
+                    "sign": -1,
+                },
+                {
+                    "verb": "persuade",
+                    "category": "III",
+                    "subtype": "persuade",
+                    "risk": "neutral",
+                    "sign": 1,
+                },
+            ],
+            "edges": [],
+        }
+        rules = [
+            {
+                "id": "hostile_lean",
+                "scope": "candidate",
+                "when": "stance(self, target) < -0.3",
+                "adjust": {
+                    "category_weight.I": 0.2,
+                },
+            }
+        ]
+        policy = Policy(
+            Genome.neutral(),
+            precedent=None,
+            rules=rules,
+            cfg=cfg,
+        )
+        fight = Action(
+            "fight",
+            (target.id,),
+            {"target": target.id},
+        )
+        persuade = Action(
+            "persuade",
+            (target.id,),
+            {"target": target.id},
+        )
+
+        output = policy.reweight(
+            actor,
+            world,
+            present,
+            [(fight, 1.0), (persuade, 1.0)],
+            turn=1,
+            day=1,
+        )
+        by_verb = {
+            action.verb: action.meta["policy"]
+            for action, _ in output
+        }
+
+        self.assertEqual(
+            by_verb["fight"]["effective_genome"][
+                "category_weight"
+            ]["I"],
+            0.7,
+        )
+        self.assertEqual(
+            by_verb["persuade"]["effective_genome"][
+                "category_weight"
+            ]["I"],
+            0.7,
+        )
+        self.assertAlmostEqual(
+            by_verb["fight"]["m_cat"],
+            1.4,
+        )
+        self.assertAlmostEqual(
+            by_verb["persuade"]["m_cat"],
+            1.0,
+        )
 
 
 if __name__ == "__main__":

@@ -264,7 +264,7 @@ ending:
       goal: attained
     label: 鬼退治を果たし、宝を村へ持ち帰った
 
-target_ending: homecoming
+target_ending: [homecoming, homecoming_shared]
 
 scheduled_events:
   - id: departure_day

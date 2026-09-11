@@ -74,6 +74,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=non_negative_int,
         default=0,
     )
+    parser.add_argument(
+        "--target-ending",
+        action="extend",
+        nargs="+",
+        default=None,
+        help=(
+            "Override target ending ids; any listed ending counts as reached."
+        ),
+    )
     return parser
 
 
@@ -96,6 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     reached_sequences: list[list[tuple[str, str, str]]] = []
     distribution: Counter[str] = Counter()
     all_distribution: Counter[str] = Counter()
+    configured_target_ending: str | tuple[str, ...] | None = None
 
     for seed in range(
         args.seed_base,
@@ -105,6 +115,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             project / "world.yaml",
             action_graph_path=action_graph_path,
         )
+        if args.target_ending is not None:
+            world.set_target_ending(args.target_ending)
+        configured_target_ending = world.target_ending
+
         subjects = _load_subjects(project / "subjects")
         policy = Policy(
             Genome.neutral(),
@@ -158,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "seed_base": args.seed_base,
         "seeds": args.seeds,
         "success_rate": len(reached_sequences) / args.seeds,
+        "target_ending": configured_target_ending,
     }
     destination = output / "summary.json"
     _write_json(destination, summary)
