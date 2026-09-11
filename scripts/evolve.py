@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from gapengine.evolve import evolve
+from gapengine.qd import Archive
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -45,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("all", "reached", "exemplar"),
         default="reached",
     )
+    parser.add_argument(
+        "--coevolve",
+        action="store_true",
+        help="Coevolve a separate antagonist population and archive.",
+    )
     return parser
 
 
@@ -52,6 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     archive = evolve(
         {
+            "coevolve": args.coevolve,
             "ga_seed": args.ga_seed,
             "generations": args.generations,
             "keep": args.keep,
@@ -64,10 +71,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             "template": args.template,
         }
     )
-    print(
+    message = (
         f"archive={args.out / 'archive.json'} "
         f"cells={len(archive.cells)}"
     )
+    if args.coevolve:
+        antagonist_archive = Archive.load(
+            args.out / "archive_antagonist.json"
+        )
+        message += (
+            f" antagonist_archive="
+            f"{args.out / 'archive_antagonist.json'} "
+            f"antagonist_cells={len(antagonist_archive.cells)}"
+        )
+    print(message)
     return 0
 
 

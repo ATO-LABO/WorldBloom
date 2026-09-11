@@ -14,7 +14,10 @@ from typing import Any
 
 from engine.actions import Action, candidates
 from engine.contest import believed_strength, strength
-from engine.phase2 import apply_effect
+from engine.phase2 import (
+    apply_effect,
+    configure_phase2,
+)
 from engine.predicate import compile_predicate
 from engine.sim import Simulation
 from engine.subject import (
@@ -352,8 +355,8 @@ class EngineTests(unittest.TestCase):
                 if seed == 153:
                     self.assertEqual(
                         normalized_layers_hash(first),
-                        "d169178df3ca57f59db48939c7a4bfbb"
-                        "67d102c591403d6993c61abfaf41d5a9",
+                        "5201253ed64f807e0255089ef754c0a1"
+                        "7f8e2f5dcaaf5673bb4a8c2813b629f4",
                     )
 
     def test_phase0_opt_in_removal_restores_old_seed_hash(
@@ -442,8 +445,11 @@ class EngineTests(unittest.TestCase):
             ).run()
             self.assertEqual(
                 normalized_layers_hash(path),
-                "3e95ce8034428ba63fa833f39f6e87ff"
-                "daeb9a8bae42af464ee421ddeaae958e",
+                # Phase-0 golden lineage: 3e95ce80...958e until the layer-vector identity
+                # dimension was corrected to `displayed != id` (D6 review A-1). Forcing that
+                # dimension back to 1.0 reproduces the old value exactly (verified).
+                "29477d28196692e2551dd83f1dd24742"
+                "eafacc63acf68d507b3def5133a1f498",
             )
 
     def test_vitality_down_revive_ally_speedup_and_lethal(self) -> None:
@@ -2014,9 +2020,6 @@ class EngineTests(unittest.TestCase):
             if action.verb == "grand_gesture"
         ]
         self.assertEqual(len(gesture_actions), 1)
-        # 勾玉 became a keepsake in D5b (never given, sacrificed or offered
-        # as a gesture), so the gesture asset is the remaining きびだんご
-        # (Claude-side test adjustment).
         self.assertEqual(
             gesture_actions[0].meta["item"],
             "きびだんご",
@@ -2036,8 +2039,8 @@ class EngineTests(unittest.TestCase):
         )
         self.assertEqual(result, "grand_gesture")
         self.assertEqual(details["fact"], "金棒の由来")
-        self.assertEqual(details["item"], "きびだんご")  # keepsake 勾玉 is never offered
-        self.assertTrue(momotaro.has_item("勾玉"))  # keepsake is retained; きびだんご was spent
+        self.assertEqual(details["item"], "きびだんご")
+        self.assertTrue(momotaro.has_item("勾玉"))
         self.assertAlmostEqual(
             gesture_world.relations.stance(
                 oni.id,
@@ -2049,23 +2052,45 @@ class EngineTests(unittest.TestCase):
 
         trial_world, trial_subjects = load_fixture()
         trial_actor = trial_subjects["桃太郎"]
-        grandfather = trial_subjects["おじいさん"]
-        trial_actor.zone = "村"
-        grandfather.zone = "村"
+        monkey = trial_subjects["猿"]
+        trial_actor.zone = "道中"
+        monkey.zone = "道中"
+
+        result, _, _ = VerbEngine(
+            trial_world,
+            FixedRandom([]),
+        ).execute(
+            trial_actor,
+            Action(
+                "give_item",
+                (monkey.id, "きびだんご"),
+                {
+                    "target": monkey.id,
+                    "item": "きびだんご",
+                    "stance_sign": 1,
+                },
+            ),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "given")
 
         trial_actions = [
             action
             for action, _ in candidates(
                 trial_actor,
                 trial_world,
-                SimpleNamespace(day=1, turn=1),
+                SimpleNamespace(day=1, turn=2),
             )
             if action.verb == "trial"
         ]
         self.assertEqual(len(trial_actions), 1)
-        self.assertTrue(trial_actor.has_item("きびだんご"))
+        self.assertEqual(
+            trial_actions[0].meta["target"],
+            monkey.id,
+        )
         before_affinity = trial_world.relations.stance(
-            grandfather.id,
+            monkey.id,
             trial_actor.id,
         )
         result, details, _ = VerbEngine(
@@ -2074,24 +2099,18 @@ class EngineTests(unittest.TestCase):
         ).execute(
             trial_actor,
             trial_actions[0],
-            turn=1,
+            turn=2,
             day=1,
         )
         self.assertEqual(result, "trial_completed")
         self.assertEqual(
             details["granted"],
-            {"fact": "造船術"},
+            {"fact": "猿の知恵"},
         )
-        self.assertIn("造船術", trial_actor.knowledge)
-        self.assertTrue(
-            any(
-                phase.startswith("trial:")
-                for phase in trial_actor.phase
-            )
-        )
+        self.assertIn("猿の知恵", trial_actor.knowledge)
         self.assertAlmostEqual(
             trial_world.relations.stance(
-                grandfather.id,
+                monkey.id,
                 trial_actor.id,
             ),
             min(1.0, before_affinity + 0.1),
@@ -2102,7 +2121,7 @@ class EngineTests(unittest.TestCase):
                 for action, _ in candidates(
                     trial_actor,
                     trial_world,
-                    SimpleNamespace(day=1, turn=2),
+                    SimpleNamespace(day=1, turn=3),
                 )
                 if action.verb == "trial"
             ],
@@ -2114,7 +2133,7 @@ class EngineTests(unittest.TestCase):
         holder = donate_subjects["鬼"]
         holder.remove_item("鬼ヶ島の宝物", 1)
         donor.add_item("鬼ヶ島の宝物", 1)
-        donor.zone = "村"
+        donor.zone = "鬼ヶ島"
 
         donate_actions = [
             action
@@ -2136,27 +2155,42 @@ class EngineTests(unittest.TestCase):
             day=1,
         )
         self.assertEqual(result, "donated")
-        self.assertEqual(details["holder"], "村")
-        self.assertFalse(donor.has_item("鬼ヶ島の宝物"))
+        self.assertEqual(details["phase"], "還元")
+        self.assertEqual(details["holder"], donor.id)
+        self.assertTrue(donor.has_item("鬼ヶ島の宝物"))
+        self.assertIn("還元", donor.phase)
+        self.assertEqual(donor.reputation, 0.3)
+
+        donor.zone = "村"
+        donate_world.days = 1
+        donate_world.slots = ("朝",)
+        donate_world.daily_events = ()
+        donate_world.daily_event_chance = 0.0
+        donate_world.scheduled_events = ()
+        for subject in donate_subjects.values():
+            if subject.id != donor.id:
+                subject.vitality = "dead"
+        donor.verbs = {"rest"}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            simulation = Simulation(
+                104,
+                donate_world,
+                donate_subjects,
+                Path(temporary),
+            )
+            path = simulation.run()
+            rows = read_rows(path)
+
+        self.assertEqual(rows[-1]["verb"], "ending")
+        self.assertEqual(rows[-1]["id"], "homecoming_shared")
+        self.assertEqual(
+            rows[-1]["details"]["delivered"],
+            {"鬼ヶ島の宝物": "村"},
+        )
         self.assertEqual(
             donate_world.holder("鬼ヶ島の宝物"),
             "村",
-        )
-        self.assertEqual(donor.reputation, 0.5)
-
-        shared = next(
-            ending
-            for ending in donate_world.endings
-            if ending["id"] == "homecoming_shared"
-        )
-        self.assertTrue(
-            donate_world.ending_reached(
-                shared,
-                donor,
-                donate_world.present_subjects("村"),
-                turn=1,
-                day=1,
-            )
         )
         self.assertEqual(
             donate_world.target_ending,
@@ -2173,7 +2207,6 @@ class EngineTests(unittest.TestCase):
         momotaro.verbs = {
             "rest",
             "train",
-            "observe",
         }
 
         rule = next(
@@ -2181,8 +2214,8 @@ class EngineTests(unittest.TestCase):
             for rule in world.phase_rules
             if rule["id"] == "after_crossing"
         )
-        rule["enable"] = ["rest", "train"]
-        rule["disable"] = ["train"]
+        self.assertEqual(rule["enable"], [])
+        self.assertEqual(rule["disable"], ["train"])
 
         phase_candidates = candidates(
             momotaro,
@@ -2460,7 +2493,11 @@ class EngineTests(unittest.TestCase):
         )
         self.assertAlmostEqual(
             sum(confront_weights.values()),
-            (low + high) * (1.0 + world.open_bonus),
+            (
+                (low + high)
+                / 2.0
+                * (1.0 + world.open_bonus)
+            ),
         )
 
     def test_non_betrayal_meta_omits_subtype(
@@ -2485,6 +2522,360 @@ class EngineTests(unittest.TestCase):
         )
         self.assertFalse(action.meta["betrayal"])
         self.assertNotIn("subtype", action.meta)
+
+
+    def test_phase2_fixture_plant_paths_are_reachable(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        dog = subjects["犬"]
+
+        momotaro.zone = "道中"
+        promise_actions = [
+            action
+            for action, _ in candidates(
+                momotaro,
+                world,
+                SimpleNamespace(day=1, turn=1),
+            )
+            if action.verb == "plant"
+            and action.meta.get("effect_id")
+            == "village_promise"
+        ]
+        self.assertEqual(len(promise_actions), 1)
+
+        momotaro.zone = "森"
+        result, _, markers = VerbEngine(
+            world,
+            FixedRandom([]),
+        ).execute(
+            momotaro,
+            Action(
+                "investigate",
+                ("森",),
+                {
+                    "target": "森",
+                    "gather": False,
+                },
+            ),
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "investigated")
+        self.assertTrue(
+            any(
+                marker["verb"] == "planted"
+                and marker["details"]["library_id"]
+                == "forest_shortcut"
+                for marker in markers
+            )
+        )
+
+        momotaro.zone = "道中"
+        dog.zone = "道中"
+        result, _, markers = VerbEngine(
+            world,
+            FixedRandom([]),
+        ).execute(
+            momotaro,
+            Action(
+                "share_knowledge",
+                (dog.id, "雑談"),
+                {
+                    "target": dog.id,
+                    "topic": "雑談",
+                    "stance_sign": 1,
+                },
+            ),
+            turn=3,
+            day=1,
+        )
+        self.assertEqual(result, "shared")
+        self.assertTrue(
+            any(
+                marker["verb"] == "planted"
+                and marker["details"]["library_id"]
+                == "campfire_oath"
+                for marker in markers
+            )
+        )
+
+        chosen_ids = {
+            effect["library_id"]
+            for effect in world.pending_effects
+            if effect["mode"] == "chosen"
+        }
+        self.assertTrue(
+            {
+                "campfire_oath",
+                "forest_shortcut",
+            }
+            <= chosen_ids
+        )
+
+    def test_effect_payload_required_keys_are_validated(
+        self,
+    ) -> None:
+        required = {
+            "modifier": {
+                "target": "planter",
+                "source": "test",
+                "value": 1,
+                "kind": "test",
+            },
+            "neutralize": {
+                "target": "target",
+                "source": "test",
+            },
+            "stance": {
+                "a": "planter",
+                "b": "target",
+                "delta": 0.1,
+            },
+            "reputation": {
+                "target": "planter",
+                "delta": 0.1,
+            },
+            "enable_verb": {
+                "verb": "rest",
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for kind, complete in sorted(required.items()):
+                missing_key = sorted(complete)[0]
+                body = {
+                    key: value
+                    for key, value in complete.items()
+                    if key != missing_key
+                }
+                effect_path = root / f"{kind}.yaml"
+                effect_path.write_text(
+                    yaml.safe_dump(
+                        [
+                            {
+                                "id": f"missing_{kind}",
+                                "plant": {"verb": "plant"},
+                                "payoff": {
+                                    "condition": "turn >= 0",
+                                    "description": "invalid",
+                                    "effect": {kind: body},
+                                    "mode": "auto",
+                                },
+                            }
+                        ],
+                        allow_unicode=True,
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
+                world, _ = load_fixture()
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "missing required keys",
+                ):
+                    configure_phase2(
+                        world,
+                        {
+                            "gapengine": {
+                                "effects": str(effect_path)
+                            }
+                        },
+                        WORLD_PATH,
+                    )
+
+    def test_all_effect_payload_kinds_execute(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        planter = subjects["桃太郎"]
+        target = subjects["鬼"]
+        planter.zone = "鬼ヶ島"
+        target.zone = "鬼ヶ島"
+
+        def pending(
+            effect_id: str,
+            payload: dict[str, Any],
+        ) -> dict[str, Any]:
+            return {
+                "id": effect_id,
+                "library_id": "payload_test",
+                "planted_by": planter.id,
+                "planted_turn": 1,
+                "target": target.id,
+                "condition": compile_predicate("turn >= 0"),
+                "description": "payload test",
+                "effect": payload,
+                "mode": "auto",
+                "resolved": False,
+                "resolved_turn": None,
+            }
+
+        neutralized = pending(
+            "neutralize",
+            {
+                "neutralize": {
+                    "target": "target",
+                    "source": "金棒",
+                }
+            },
+        )
+        details = apply_effect(
+            world,
+            neutralized,
+            turn=2,
+        )
+        self.assertEqual(details["applied"]["kind"], "neutralize")
+        self.assertGreaterEqual(details["applied"]["count"], 1)
+        self.assertTrue(
+            any(
+                modifier.source == "金棒"
+                and not modifier.active
+                for modifier in target.modifiers
+            )
+        )
+
+        before_stance = world.relations.stance(
+            planter.id,
+            target.id,
+        )
+        stance_effect = pending(
+            "stance",
+            {
+                "stance": {
+                    "a": "planter",
+                    "b": "target",
+                    "delta": 0.2,
+                }
+            },
+        )
+        apply_effect(
+            world,
+            stance_effect,
+            turn=3,
+        )
+        self.assertAlmostEqual(
+            world.relations.stance(
+                planter.id,
+                target.id,
+            ),
+            min(1.0, before_stance + 0.2),
+        )
+
+        before_reputation = planter.reputation
+        reputation_effect = pending(
+            "reputation",
+            {
+                "reputation": {
+                    "target": "planter",
+                    "delta": 0.25,
+                }
+            },
+        )
+        apply_effect(
+            world,
+            reputation_effect,
+            turn=4,
+        )
+        self.assertEqual(
+            planter.reputation,
+            round(before_reputation + 0.25, 4),
+        )
+
+        planter.verbs.discard("guard")
+        enable_effect = pending(
+            "enable",
+            {
+                "enable_verb": {
+                    "verb": "guard",
+                }
+            },
+        )
+        apply_effect(
+            world,
+            enable_effect,
+            turn=5,
+        )
+        self.assertIn("guard", planter.verbs)
+
+    def test_time_limit_uses_any_phase2_configuration(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        world.effect_library = {}
+        world.days = 1
+        world.slots = ("朝",)
+        world.daily_events = ()
+        world.daily_event_chance = 0.0
+        world.scheduled_events = ()
+
+        protagonist = subjects["桃太郎"]
+        protagonist.verbs = {"rest"}
+        for subject in subjects.values():
+            if subject.id != protagonist.id:
+                subject.vitality = "dead"
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Simulation(
+                105,
+                world,
+                subjects,
+                Path(temporary),
+            ).run()
+            rows = read_rows(path)
+
+        self.assertTrue(world.disguises)
+        self.assertEqual(rows[-1]["id"], "time_limit")
+        self.assertEqual(
+            rows[-1]["details"]["dangling_effects"],
+            0,
+        )
+
+    def test_aborted_records_dangling_chosen_effects(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "layers.jsonl"
+            simulation = Simulation(
+                106,
+                world,
+                subjects,
+                Path(temporary),
+            )
+            simulation.world.pending_effects.append(
+                {
+                    "id": "dangling:test",
+                    "library_id": "dangling",
+                    "planted_by": "桃太郎",
+                    "planted_turn": 1,
+                    "target": "鬼",
+                    "condition": compile_predicate("turn >= 0"),
+                    "description": "dangling test",
+                    "effect": {
+                        "reputation": {
+                            "target": "planter",
+                            "delta": 0.1,
+                        }
+                    },
+                    "mode": "chosen",
+                    "resolved": False,
+                    "resolved_turn": None,
+                }
+            )
+            from engine.log import LayersWriter
+
+            with LayersWriter(path) as writer:
+                simulation._write_aborted(writer)
+            rows = read_rows(path)
+
+        self.assertEqual(rows[-1]["verb"], "aborted")
+        self.assertEqual(
+            rows[-1]["details"]["dangling_effects"],
+            1,
+        )
 
 
 if __name__ == "__main__":

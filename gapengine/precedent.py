@@ -65,7 +65,12 @@ def ctx_key(
         else:
             objective_state = "other"
 
-    stance = world.relations.stance(subject.id, world.antagonist)
+    counterpart = (
+        world.protagonist
+        if subject.id == world.antagonist
+        else world.antagonist
+    )
+    stance = world.relations.stance(subject.id, counterpart)
     if stance < -0.3:
         stance_bucket = "hostile"
     elif stance > 0.3:
@@ -79,7 +84,7 @@ def ctx_key(
         objective_state,
         subject.vitality,
         stance_bucket,
-        subject.identity_displayed != subject.id,  # same notion of 'disguised' as engine.phase2 (Claude-side fix)
+        subject.identity_displayed != subject.id,
     )
 
 

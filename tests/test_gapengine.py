@@ -28,6 +28,7 @@ from gapengine.qd import (
     Descriptor,
     Elite,
     _completed_prerequisite_chains,
+    antagonist_quality,
     quality,
 )
 from scripts.evolve import build_parser as build_evolve_parser
@@ -1334,6 +1335,198 @@ class Phase2GapEngineTests(unittest.TestCase):
             _completed_prerequisite_chains(rows),
             1,
         )
+
+
+class Phase3GapEngineTests(unittest.TestCase):
+    def test_antagonist_quality_is_non_zero_sum_and_reach_gated(
+        self,
+    ) -> None:
+        rows = [
+            {
+                "kind": "header",
+                "protagonist": "桃太郎",
+            },
+            {
+                "kind": "decision",
+                "turn": 2,
+                "subject": "桃太郎",
+                "details": {"strength_diff": -1.0},
+            },
+            {
+                "kind": "decision",
+                "turn": 4,
+                "subject": "桃太郎",
+                "details": {"strength_diff": 1.0},
+            },
+            {
+                "kind": "decision",
+                "turn": 5,
+                "subject": "桃太郎",
+                "details": {"strength_diff": -1.0},
+            },
+            {
+                "kind": "event",
+                "turn": 5,
+                "verb": "ending",
+                "id": "homecoming",
+            },
+        ]
+        meta = {
+            "max_turns": 10,
+            "protagonist": "桃太郎",
+            "target_ending": "homecoming",
+            "vol_high": 1.0,
+        }
+        self.assertEqual(antagonist_quality(rows, meta), 0.5)
+
+        unreachable = [
+            row
+            for row in rows
+            if row.get("verb") != "ending"
+        ]
+        self.assertEqual(
+            antagonist_quality(unreachable, meta),
+            0.0,
+        )
+
+    def test_coevolve_parser_flag(self) -> None:
+        args = build_evolve_parser().parse_args(
+            [
+                "--project",
+                str(PROJECT),
+                "--template",
+                str(TEMPLATE),
+                "--out",
+                "unused",
+                "--coevolve",
+            ]
+        )
+        self.assertTrue(args.coevolve)
+
+    def test_small_coevolve_is_byte_deterministic(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+
+            antagonist_path = (
+                project / "subjects" / "07_oni.yaml"
+            )
+            antagonist_raw = yaml.safe_load(
+                antagonist_path.read_text(encoding="utf-8")
+            )
+            antagonist_raw["verbs"] = ["train"]
+            antagonist_path.write_text(
+                yaml.safe_dump(
+                    antagonist_raw,
+                    allow_unicode=True,
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+                newline="\n",
+            )
+
+            common = {
+                "coevolve": True,
+                "ga_seed": 7,
+                "generations": 2,
+                "keep": "all",
+                "population": 4,
+                "project": project,
+                "seed_base": 21,
+                "seeds": 1,
+                "template": TEMPLATE,
+            }
+            serial = evolve(
+                {
+                    **common,
+                    "out": root / "serial",
+                    "processes": 1,
+                }
+            )
+            parallel = evolve(
+                {
+                    **common,
+                    "out": root / "parallel",
+                    "processes": 2,
+                }
+            )
+            serial_antagonist = Archive.load(
+                root / "serial" / "archive_antagonist.json"
+            )
+            parallel_antagonist = Archive.load(
+                root / "parallel" / "archive_antagonist.json"
+            )
+
+            self.assertGreaterEqual(len(serial.cells), 1)
+            self.assertGreaterEqual(len(parallel.cells), 1)
+            self.assertGreaterEqual(
+                len(serial_antagonist.cells),
+                1,
+            )
+            self.assertGreaterEqual(
+                len(parallel_antagonist.cells),
+                1,
+            )
+
+            comparable = [
+                "archive.json",
+                "archive_antagonist.json",
+                "summary.json",
+            ]
+            for relative_path in comparable:
+                self.assertEqual(
+                    (root / "serial" / relative_path).read_bytes(),
+                    (root / "parallel" / relative_path).read_bytes(),
+                )
+
+            for generation in range(2):
+                for filename in (
+                    "population.json",
+                    "population.antagonist.json",
+                    "precedent.json",
+                    "precedent.antagonist.json",
+                    "results.json",
+                    "results.antagonist.json",
+                ):
+                    self.assertEqual(
+                        (
+                            root
+                            / "serial"
+                            / f"g{generation}"
+                            / filename
+                        ).read_bytes(),
+                        (
+                            root
+                            / "parallel"
+                            / f"g{generation}"
+                            / filename
+                        ).read_bytes(),
+                    )
+
+            antagonist_header = read_rows(
+                root
+                / "serial"
+                / "g0"
+                / "antagonist"
+                / "ind-0"
+                / "seed-21"
+                / "layers.jsonl"
+            )[0]
+            self.assertIsNotNone(antagonist_header["genome"])
+            self.assertIsNotNone(
+                antagonist_header["antagonist_genome"]
+            )
+
+            protagonist_elite = next(iter(serial.cells.values()))
+            antagonist_elite = next(
+                iter(serial_antagonist.cells.values())
+            )
+            for elite in (protagonist_elite, antagonist_elite):
+                self.assertIn("genome", elite.exemplar)
+                self.assertIn(
+                    "antagonist_genome",
+                    elite.exemplar,
+                )
 
 
 if __name__ == "__main__":

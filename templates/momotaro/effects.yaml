@@ -31,10 +31,41 @@
         kind: insight
     mode: chosen
 
+- id: campfire_oath
+  plant:
+    verb: share_knowledge
+    topic: 雑談
+    to_role: [ally, neutral]
+  payoff:
+    condition: "hostile_present(planter) and vitality(planter) != 'downed'"
+    description: 焚き火で交わした約束に仲間が応える
+    effect:
+      modifier:
+        target: planter
+        source: "$target"
+        value: 8
+        kind: oath
+    mode: chosen
+
+- id: forest_shortcut
+  plant:
+    verb: investigate
+    zone: 森
+  payoff:
+    condition: "zone(planter) == '海'"
+    description: 森で見つけた抜け道の記憶が海で役に立つ
+    effect:
+      modifier:
+        target: planter
+        source: 森の抜け道
+        value: 5
+        kind: insight
+    mode: chosen
+
 - id: village_promise
   plant:
     verb: plant
-    when: "zone(planter) == '村'"
+    when: "zone(planter) == '道中' and day <= 2"
   payoff:
     condition: "holds(planter, 鬼ヶ島の宝物) and zone(planter) == '村'"
     description: 旅立ちの朝に交わした約束を果たす

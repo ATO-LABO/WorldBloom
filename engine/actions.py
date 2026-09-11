@@ -761,11 +761,16 @@ def _confront_candidates(
             )
         )
 
+    mean_weight = (
+        sum(single_weights) / len(single_weights)
+        if single_weights
+        else 0.0
+    )
     return _normalize_opened(
         result,
         subject,
         world,
-        sum(single_weights),
+        mean_weight,
     )
 
 
@@ -1556,9 +1561,8 @@ def _donate_candidates(
     if (
         "donate" not in subject.verbs
         or subject.goal.target is None
-        or subject.goal.deliver_to is None
-        or subject.zone != subject.goal.deliver_to
         or not subject.has_item(subject.goal.target)
+        or "還元" in subject.phase
     ):
         return []
 
@@ -1569,11 +1573,11 @@ def _donate_candidates(
                 (subject.goal.target,),
                 {
                     "item": subject.goal.target,
-                    "zone": subject.goal.deliver_to,
+                    "phase": "還元",
                     "stance_sign": 1,
                 },
             ),
-            0.25 + subject.traits["social"] * 0.5,
+            0.1 + subject.traits["social"] * 0.3,
         )
     ]
 

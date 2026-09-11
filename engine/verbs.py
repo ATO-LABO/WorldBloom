@@ -1935,31 +1935,27 @@ class VerbEngine:
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         item = action.meta.get("item")
-        zone = action.meta.get("zone")
         if (
             not isinstance(item, str)
-            or not isinstance(zone, str)
             or actor.goal.target != item
-            or actor.goal.deliver_to != zone
-            or actor.zone != zone
+            or not actor.has_item(item)
         ):
-            return "invalid", {"reason": "delivery_unavailable"}, []
-        if item in self.world.delivered:
-            return "invalid", {"reason": "already_delivered"}, []
-        if not actor.remove_item(item, 1):
-            return "invalid", {"reason": "item_unavailable"}, []
+            return "invalid", {"reason": "objective_unavailable"}, []
+        if "還元" in actor.phase:
+            return "invalid", {"reason": "already_pledged"}, []
 
-        self.world.delivered[item] = zone
+        actor.phase.add("還元")
         actor.reputation = round(
-            actor.reputation + 0.5,
+            actor.reputation + 0.3,
             4,
         )
         return (
             "donated",
             {
                 "item": item,
-                "zone": zone,
-                "holder": zone,
+                "phase": "還元",
+                "reputation_delta": 0.3,
+                "holder": actor.id,
             },
             [],
         )

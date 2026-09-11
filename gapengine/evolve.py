@@ -20,6 +20,7 @@ from gapengine.qd import (
     Archive,
     Descriptor,
     Elite,
+    antagonist_quality,
     descriptor,
     effective_sequence,
     quality,
@@ -60,23 +61,46 @@ def _load_yaml(path: Path, default: Any) -> Any:
     return default if value is None else value
 
 
-def _world_meta(world: World) -> dict[str, Any]:
-    return {
+def _world_meta(
+    world: World,
+    *,
+    vol_high: float | None = None,
+) -> dict[str, Any]:
+    value = {
         "antagonist": world.antagonist,
+        "max_turns": world.days * len(world.slots),
         "protagonist": world.protagonist,
         "target_ending": world.target_ending,
     }
+    if vol_high is not None:
+        value["vol_high"] = float(vol_high)
+    return value
 
 
 def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
-    genome = Genome.from_dict(job["genome"])
+    raw_genome = job.get("genome")
+    genome = (
+        Genome.from_dict(raw_genome)
+        if raw_genome is not None
+        else None
+    )
+    raw_antagonist_genome = job.get("antagonist_genome")
+    antagonist_genome = (
+        Genome.from_dict(raw_antagonist_genome)
+        if raw_antagonist_genome is not None
+        else None
+    )
     seeds = [int(value) for value in job["seeds"]]
     world_path = Path(str(job["world_path"]))
     subjects_dir = Path(str(job["subjects_dir"]))
     out_dir = Path(str(job["out_dir"]))
     logical_root = Path(str(job["logical_root"]))
     protagonist = str(job["protagonist"])
+    antagonist = str(job["antagonist"])
     action_cfg = dict(job["action_cfg"])
+    antagonist_action_cfg = dict(
+        job.get("antagonist_action_cfg", action_cfg)
+    )
     raw_action_graph_path = job.get("action_graph_path")
     action_graph_path = (
         Path(str(raw_action_graph_path))
@@ -90,6 +114,18 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         if job.get("precedent_json") is not None
         else None
     )
+    antagonist_precedent = (
+        PrecedentTable.from_json(
+            str(job["antagonist_precedent_json"])
+        )
+        if job.get("antagonist_precedent_json") is not None
+        else None
+    )
+    vol_high = (
+        float(job["vol_high"])
+        if job.get("vol_high") is not None
+        else None
+    )
 
     runs: list[dict[str, Any]] = []
     for seed in seeds:
@@ -99,43 +135,98 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         )
         subjects = _load_subjects(subjects_dir)
         seed_dir = out_dir / f"seed-{seed}"
-        policy = Policy(
-            genome,
-            precedent,
-            rules,
-            cfg=action_cfg,
-        )
+
+        policies: dict[str, Policy] = {}
+        if genome is not None:
+            policies[protagonist] = Policy(
+                genome,
+                precedent,
+                rules,
+                cfg=action_cfg,
+            )
+        if antagonist_genome is not None:
+            policies[antagonist] = Policy(
+                antagonist_genome,
+                antagonist_precedent,
+                rules,
+                cfg=antagonist_action_cfg,
+            )
+
         layer_path = Simulation(
             seed,
             world,
             subjects,
             seed_dir,
-            policies={protagonist: policy},
+            policies=policies or None,
             precedent=precedent,
         ).run()
         rows = read_rows(layer_path)
+
+        if antagonist_genome is not None:
+            rows[0]["antagonist_genome"] = antagonist_genome.to_dict()
+            layer_path.write_text(
+                "".join(
+                    json.dumps(
+                        row,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                    for row in rows
+                ),
+                encoding="utf-8",
+                newline="\n",
+            )
+
         run_descriptor = descriptor(rows, qd_cfg)
+        is_reached = reached(rows, world.target_ending)
         header = rows[0]
         relative_path = layer_path.relative_to(logical_root).as_posix()
-        runs.append(
-            {
-                "category": run_descriptor.category,
-                "effective_sequence": [
-                    list(value) for value in effective_sequence(rows)
-                ],
-                "engine_hash": header.get("engine_hash"),
-                "layers_path": relative_path,
-                "precedent_hash": header.get("precedent_hash"),
-                "quality": quality(rows, _world_meta(world)),
-                "reached": reached(rows, world.target_ending),
-                "seed": seed,
-                "shaped": shaped(rows, world),
-                "volatility": run_descriptor.volatility,
-            }
-        )
+        run_result: dict[str, Any] = {
+            "category": run_descriptor.category,
+            "effective_sequence": [
+                list(value) for value in effective_sequence(rows)
+            ],
+            "engine_hash": header.get("engine_hash"),
+            "layers_path": relative_path,
+            "precedent_hash": header.get("precedent_hash"),
+            "quality": quality(rows, _world_meta(world)),
+            "reached": is_reached,
+            "seed": seed,
+            "shaped": shaped(rows, world),
+            "volatility": run_descriptor.volatility,
+        }
 
-    return {
-        "genome": genome.to_dict(),
+        if antagonist_genome is not None:
+            antagonist_descriptor = descriptor(
+                rows,
+                qd_cfg,
+                subject=antagonist,
+            )
+            run_result.update(
+                {
+                    "antagonist_category": (
+                        antagonist_descriptor.category
+                    ),
+                    "antagonist_effective_sequence": [
+                        list(value)
+                        for value in effective_sequence(
+                            rows,
+                            subject=antagonist,
+                        )
+                    ],
+                    "antagonist_quality": antagonist_quality(
+                        rows,
+                        _world_meta(world, vol_high=vol_high),
+                    ),
+                }
+            )
+
+        runs.append(run_result)
+
+    result: dict[str, Any] = {
+        "genome": genome.to_dict() if genome is not None else None,
         "index": int(job["index"]),
         "parents": list(job.get("parents", [])),
         "runs": runs,
@@ -144,6 +235,17 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             12,
         ),
     }
+    if antagonist_genome is not None:
+        result["antagonist_genome"] = antagonist_genome.to_dict()
+        result["antagonist_shaped"] = round(
+            sum(
+                float(run["antagonist_quality"])
+                for run in runs
+            )
+            / len(runs),
+            12,
+        )
+    return result
 
 
 def _evaluate_jobs(
@@ -159,7 +261,14 @@ def _evaluate_jobs(
 
 def _best_reached(
     result: Mapping[str, Any],
+    *,
+    role: str = "protagonist",
 ) -> Mapping[str, Any] | None:
+    quality_key = (
+        "antagonist_quality"
+        if role == "antagonist"
+        else "quality"
+    )
     candidates = [
         run for run in result["runs"] if bool(run["reached"])
     ]
@@ -167,15 +276,25 @@ def _best_reached(
         return None
     return sorted(
         candidates,
-        key=lambda run: (-float(run["quality"]), int(run["seed"])),
+        key=lambda run: (
+            -float(run[quality_key]),
+            int(run["seed"]),
+        ),
     )[0]
 
 
 def _cell_for_run(
     run: Mapping[str, Any],
     archive: Archive,
+    *,
+    role: str = "protagonist",
 ) -> tuple[str, str] | None:
-    category = run.get("category")
+    category_key = (
+        "antagonist_category"
+        if role == "antagonist"
+        else "category"
+    )
+    category = run.get(category_key)
     if category is None:
         return None
     return (
@@ -187,19 +306,40 @@ def _cell_for_run(
 def _result_summary(
     result: Mapping[str, Any],
     archive: Archive,
+    *,
+    role: str = "protagonist",
 ) -> dict[str, Any]:
-    best = _best_reached(result)
-    cell = _cell_for_run(best, archive) if best is not None else None
-    return {
+    best = _best_reached(result, role=role)
+    cell = (
+        _cell_for_run(best, archive, role=role)
+        if best is not None
+        else None
+    )
+    category_key = (
+        "antagonist_category"
+        if role == "antagonist"
+        else "category"
+    )
+    genome_key = (
+        "antagonist_genome"
+        if role == "antagonist"
+        else "genome"
+    )
+    shaped_key = (
+        "antagonist_shaped"
+        if role == "antagonist"
+        else "shaped"
+    )
+    summary = {
         "cell": list(cell) if cell is not None else None,
         "classification_status": (
             "unclassified"
-            if best is not None and best.get("category") is None
+            if best is not None and best.get(category_key) is None
             else "classified"
             if best is not None
             else "not_reached"
         ),
-        "genome": result["genome"],
+        "genome": result[genome_key],
         "index": int(result["index"]),
         "parents": list(result["parents"]),
         "reach_rate": (
@@ -207,17 +347,40 @@ def _result_summary(
             / len(result["runs"])
         ),
         "runs": list(result["runs"]),
-        "shaped": float(result["shaped"]),
+        "shaped": float(result[shaped_key]),
     }
+    if role == "antagonist":
+        summary["opponent_genome"] = result.get("genome")
+    elif "antagonist_genome" in result:
+        summary["opponent_genome"] = result["antagonist_genome"]
+    return summary
 
 
 def _insert_result(
     result: Mapping[str, Any],
     archive: Archive,
     generation: int,
+    *,
+    role: str = "protagonist",
+    include_matchup: bool = False,
 ) -> bool:
-    best = _best_reached(result)
-    if best is None or best.get("category") is None:
+    best = _best_reached(result, role=role)
+    category_key = (
+        "antagonist_category"
+        if role == "antagonist"
+        else "category"
+    )
+    quality_key = (
+        "antagonist_quality"
+        if role == "antagonist"
+        else "quality"
+    )
+    genome_key = (
+        "antagonist_genome"
+        if role == "antagonist"
+        else "genome"
+    )
+    if best is None or best.get(category_key) is None:
         return False
 
     reach_rate = (
@@ -225,21 +388,28 @@ def _insert_result(
         / len(result["runs"])
     )
     descriptor_value = Descriptor(
-        category=str(best["category"]),
+        category=str(best[category_key]),
         volatility=float(best["volatility"]),
         volatility_bin=archive.bin_for(float(best["volatility"])),
     )
+    exemplar: dict[str, Any] = {
+        "engine_hash": best.get("engine_hash"),
+        "layers_path": str(best["layers_path"]),
+        "precedent_hash": best.get("precedent_hash"),
+        "seed": int(best["seed"]),
+    }
+    if include_matchup:
+        exemplar["antagonist_genome"] = result.get(
+            "antagonist_genome"
+        )
+        exemplar["genome"] = result.get("genome")
+
     elite = Elite(
-        genome=Genome.from_dict(result["genome"]),
-        quality=float(best["quality"]),
+        genome=Genome.from_dict(result[genome_key]),
+        quality=float(best[quality_key]),
         descriptor=descriptor_value,
         reach_rate=reach_rate,
-        exemplar={
-            "engine_hash": best.get("engine_hash"),
-            "layers_path": str(best["layers_path"]),
-            "precedent_hash": best.get("precedent_hash"),
-            "seed": int(best["seed"]),
-        },
+        exemplar=exemplar,
         generation=generation,
         parents=tuple(str(value) for value in result["parents"]),
     )
@@ -334,10 +504,16 @@ def _archive_precedent_paths(
 def _archive_dissimilarity(
     archive: Archive,
     out_dir: Path,
+    *,
+    subject: str | None = None,
 ) -> float | None:
     sequences = [
         effective_sequence(
-            read_rows(out_dir / str(archive.cells[cell].exemplar["layers_path"]))
+            read_rows(
+                out_dir
+                / str(archive.cells[cell].exemplar["layers_path"])
+            ),
+            subject=subject,
         )
         for cell in sorted(archive.cells)
     ]
@@ -348,6 +524,8 @@ def _prune_layers(
     results: list[dict[str, Any]],
     out_dir: Path,
     keep: str,
+    *,
+    role: str = "protagonist",
 ) -> None:
     if keep == "all":
         return
@@ -361,10 +539,15 @@ def _prune_layers(
             if bool(run["reached"])
         )
         if not retained and results:
+            shaped_key = (
+                "antagonist_shaped"
+                if role == "antagonist"
+                else "shaped"
+            )
             shaped_best = sorted(
                 results,
                 key=lambda value: (
-                    -float(value["shaped"]),
+                    -float(value[shaped_key]),
                     int(value["index"]),
                 ),
             )[0]
@@ -374,7 +557,7 @@ def _prune_layers(
             )
     elif keep == "exemplar":
         for result in results:
-            exemplar = _best_reached(result)
+            exemplar = _best_reached(result, role=role)
             if exemplar is not None:
                 retained.add(str(exemplar["layers_path"]))
     else:
@@ -417,6 +600,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
     ga_seed = int(cfg.get("ga_seed", 1))
     processes = int(cfg.get("processes", 1))
     keep = str(cfg.get("keep", "reached"))
+    coevolve = bool(cfg.get("coevolve", False))
     if generations < 1 or population_size < 1 or seed_count < 1:
         raise ValueError(
             "generations, population, and seeds must be positive"
@@ -450,13 +634,49 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
     rules = list(_load_yaml(template_dir / "rules.yaml", []))
     canon = load_canon(template_dir / "canon.yaml")
 
+    world_model = World.from_yaml(
+        world_path,
+        action_graph_path=action_graph_path,
+    )
+    protagonist = world_model.protagonist
+    antagonist = world_model.antagonist
+
+    antagonist_action_cfg = action_cfg
+    antagonist_canon = PrecedentTable()
+    if coevolve:
+        antagonist_action_graph_path = (
+            template_dir / "action_graph.antagonist.yaml"
+        )
+        if antagonist_action_graph_path.is_file():
+            antagonist_action_cfg = dict(
+                _load_yaml(
+                    antagonist_action_graph_path,
+                    action_cfg,
+                )
+            )
+        antagonist_canon_path = (
+            template_dir / "canon.antagonist.yaml"
+        )
+        if antagonist_canon_path.is_file():
+            antagonist_canon = load_canon(antagonist_canon_path)
+
     archive = Archive()
+    antagonist_archive = Archive() if coevolve else None
     summaries: list[dict[str, Any]] = []
     previous_results: list[dict[str, Any]] = []
+    previous_antagonist_results: list[dict[str, Any]] = []
     population = [
         (Genome.random(ga_rng), [])
         for _ in range(population_size)
     ]
+    antagonist_population = (
+        [
+            (Genome.random(ga_rng), [])
+            for _ in range(population_size)
+        ]
+        if coevolve
+        else []
+    )
 
     for generation in range(generations):
         generation_dir = out_dir / f"g{generation}"
@@ -468,14 +688,33 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
         precedent = canon.merge(
             from_runs(
                 archive_runs,
-                protagonist=World.from_yaml(
-                    world_path,
-                    action_graph_path=action_graph_path,
-                ).protagonist,
+                protagonist=protagonist,
             )
         )
         precedent_path = generation_dir / "precedent.json"
         _json_write(precedent_path, json.loads(precedent.to_json()))
+
+        antagonist_precedent: PrecedentTable | None = None
+        if coevolve:
+            assert antagonist_archive is not None
+            antagonist_archive_runs = (
+                _archive_precedent_paths(
+                    antagonist_archive,
+                    out_dir,
+                )
+                if generation > 0
+                else []
+            )
+            antagonist_precedent = antagonist_canon.merge(
+                from_runs(
+                    antagonist_archive_runs,
+                    protagonist=antagonist,
+                )
+            )
+            _json_write(
+                generation_dir / "precedent.antagonist.json",
+                json.loads(antagonist_precedent.to_json()),
+            )
 
         if generation > 0:
             population = _next_population(
@@ -484,6 +723,14 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                 previous_results,
                 ga_rng,
             )
+            if coevolve:
+                assert antagonist_archive is not None
+                antagonist_population = _next_population(
+                    population_size,
+                    antagonist_archive,
+                    previous_antagonist_results,
+                    ga_rng,
+                )
 
         _json_write(
             generation_dir / "population.json",
@@ -496,17 +743,49 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                 for index, (genome, parents) in enumerate(population)
             ],
         )
+        if coevolve:
+            _json_write(
+                generation_dir / "population.antagonist.json",
+                [
+                    {
+                        "genome": genome.to_dict(),
+                        "index": index,
+                        "parents": parents,
+                    }
+                    for index, (genome, parents) in enumerate(
+                        antagonist_population
+                    )
+                ],
+            )
 
-        protagonist = World.from_yaml(
-            world_path,
-            action_graph_path=action_graph_path,
-        ).protagonist
+        antagonist_samples = (
+            [
+                antagonist_archive.cells[cell].genome
+                for cell in sorted(antagonist_archive.cells)
+            ]
+            if antagonist_archive is not None
+            else []
+        )
         jobs = [
             {
                 "action_cfg": action_cfg,
                 "action_graph_path": (
                     str(action_graph_path)
                     if action_graph_path is not None
+                    else None
+                ),
+                "antagonist": antagonist,
+                "antagonist_action_cfg": antagonist_action_cfg,
+                "antagonist_genome": (
+                    antagonist_samples[
+                        index % len(antagonist_samples)
+                    ].to_dict()
+                    if antagonist_samples
+                    else None
+                ),
+                "antagonist_precedent_json": (
+                    antagonist_precedent.to_json()
+                    if antagonist_precedent is not None
                     else None
                 ),
                 "genome": genome.to_dict(),
@@ -542,13 +821,115 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
         for result in generation_results:
             result["generation"] = generation
         for result in raw_results:
-            _insert_result(result, archive, generation)
+            _insert_result(
+                result,
+                archive,
+                generation,
+                include_matchup=coevolve,
+            )
 
         _json_write(
             generation_dir / "results.json",
             generation_results,
         )
         archive.save(out_dir / "archive.json")
+
+        antagonist_raw_results: list[dict[str, Any]] = []
+        antagonist_generation_results: list[dict[str, Any]] = []
+        if coevolve:
+            assert antagonist_archive is not None
+            assert antagonist_precedent is not None
+            protagonist_samples = [
+                archive.cells[cell].genome
+                for cell in sorted(archive.cells)
+            ]
+            vol_high = (
+                archive.volatility_thresholds["mid_max"]
+                if archive.volatility_thresholds is not None
+                else 0.0
+            )
+            antagonist_jobs = [
+                {
+                    "action_cfg": action_cfg,
+                    "action_graph_path": (
+                        str(action_graph_path)
+                        if action_graph_path is not None
+                        else None
+                    ),
+                    "antagonist": antagonist,
+                    "antagonist_action_cfg": antagonist_action_cfg,
+                    "antagonist_genome": genome.to_dict(),
+                    "antagonist_precedent_json": (
+                        antagonist_precedent.to_json()
+                    ),
+                    "genome": (
+                        protagonist_samples[
+                            index % len(protagonist_samples)
+                        ].to_dict()
+                        if protagonist_samples
+                        else None
+                    ),
+                    "index": index,
+                    "logical_root": str(out_dir),
+                    "out_dir": str(
+                        generation_dir
+                        / "antagonist"
+                        / f"ind-{index}"
+                    ),
+                    "parents": parents,
+                    "precedent_json": precedent.to_json(),
+                    "protagonist": protagonist,
+                    "qd_cfg": qd_cfg,
+                    "rules": rules,
+                    "seeds": seeds,
+                    "subjects_dir": str(subjects_dir),
+                    "vol_high": vol_high,
+                    "world_path": str(world_path),
+                }
+                for index, (genome, parents) in enumerate(
+                    antagonist_population
+                )
+            ]
+            antagonist_raw_results = _evaluate_jobs(
+                antagonist_jobs,
+                processes,
+            )
+
+            if antagonist_archive.volatility_thresholds is None:
+                antagonist_archive.freeze_thresholds(
+                    [
+                        float(run["volatility"])
+                        for result in antagonist_raw_results
+                        for run in result["runs"]
+                    ]
+                )
+
+            antagonist_generation_results = [
+                _result_summary(
+                    result,
+                    antagonist_archive,
+                    role="antagonist",
+                )
+                for result in antagonist_raw_results
+            ]
+            for result in antagonist_generation_results:
+                result["generation"] = generation
+            for result in antagonist_raw_results:
+                _insert_result(
+                    result,
+                    antagonist_archive,
+                    generation,
+                    role="antagonist",
+                    include_matchup=True,
+                )
+
+            _json_write(
+                generation_dir / "results.antagonist.json",
+                antagonist_generation_results,
+            )
+            antagonist_archive.save(
+                out_dir / "archive_antagonist.json"
+            )
 
         reached_best = [
             _best_reached(result) for result in raw_results
@@ -570,7 +951,9 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             for result in raw_results
             for run in result["runs"]
         )
-        total_runs = sum(len(result["runs"]) for result in raw_results)
+        total_runs = sum(
+            len(result["runs"]) for result in raw_results
+        )
         average_quality = (
             sum(elite.quality for elite in archive.cells.values())
             / len(archive.cells)
@@ -581,30 +964,120 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             archive,
             out_dir,
         )
-        summaries.append(
-            {
-                "archive_dissimilarity": archive_dissimilarity,
-                "average_archive_quality": average_quality,
-                "generation": generation,
-                "generation_dissimilarity": generation_dissimilarity,
-                "occupied_cells": len(archive.cells),
-                "reach_rate": reached_runs / total_runs,
-            }
-        )
+        generation_summary: dict[str, Any] = {
+            "archive_dissimilarity": archive_dissimilarity,
+            "average_archive_quality": average_quality,
+            "generation": generation,
+            "generation_dissimilarity": generation_dissimilarity,
+            "occupied_cells": len(archive.cells),
+            "reach_rate": reached_runs / total_runs,
+        }
+
+        antagonist_archive_dissimilarity: float | None = None
+        if coevolve:
+            assert antagonist_archive is not None
+            antagonist_best = [
+                _best_reached(result, role="antagonist")
+                for result in antagonist_raw_results
+            ]
+            antagonist_best = [
+                value
+                for value in antagonist_best
+                if value is not None
+            ]
+            antagonist_generation_dissimilarity = (
+                sequence_dissimilarity(
+                    [
+                        [
+                            tuple(str(part) for part in value)
+                            for value in run[
+                                "antagonist_effective_sequence"
+                            ]
+                        ]
+                        for run in antagonist_best
+                    ]
+                )
+            )
+            antagonist_reached_runs = sum(
+                bool(run["reached"])
+                for result in antagonist_raw_results
+                for run in result["runs"]
+            )
+            antagonist_total_runs = sum(
+                len(result["runs"])
+                for result in antagonist_raw_results
+            )
+            antagonist_average_quality = (
+                sum(
+                    elite.quality
+                    for elite in antagonist_archive.cells.values()
+                )
+                / len(antagonist_archive.cells)
+                if antagonist_archive.cells
+                else None
+            )
+            antagonist_archive_dissimilarity = (
+                _archive_dissimilarity(
+                    antagonist_archive,
+                    out_dir,
+                    subject=antagonist,
+                )
+            )
+            generation_summary.update(
+                {
+                    "antagonist_archive_dissimilarity": (
+                        antagonist_archive_dissimilarity
+                    ),
+                    "antagonist_average_archive_quality": (
+                        antagonist_average_quality
+                    ),
+                    "antagonist_generation_dissimilarity": (
+                        antagonist_generation_dissimilarity
+                    ),
+                    "antagonist_occupied_cells": len(
+                        antagonist_archive.cells
+                    ),
+                    "antagonist_reach_rate": (
+                        antagonist_reached_runs
+                        / antagonist_total_runs
+                    ),
+                }
+            )
+
+        summaries.append(generation_summary)
 
         _prune_layers(raw_results, out_dir, keep)
+        if coevolve:
+            _prune_layers(
+                antagonist_raw_results,
+                out_dir,
+                keep,
+                role="antagonist",
+            )
 
-        _json_write(
-            out_dir / "summary.json",
-            {
-                "final_archive_dissimilarity": archive_dissimilarity,
-                "generations": summaries,
-                "keep": keep,
-                "seed_base": seed_base,
-                "seed_count": seed_count,
-                "seeds": seeds,
-            },
-        )
+        summary_payload: dict[str, Any] = {
+            "final_archive_dissimilarity": archive_dissimilarity,
+            "generations": summaries,
+            "keep": keep,
+            "seed_base": seed_base,
+            "seed_count": seed_count,
+            "seeds": seeds,
+        }
+        if coevolve:
+            summary_payload.update(
+                {
+                    "coevolve": True,
+                    "final_antagonist_archive_dissimilarity": (
+                        antagonist_archive_dissimilarity
+                    ),
+                }
+            )
+        _json_write(out_dir / "summary.json", summary_payload)
+
         previous_results = generation_results
+        if coevolve:
+            previous_antagonist_results = (
+                antagonist_generation_results
+            )
 
     return archive

@@ -21,6 +21,7 @@ from engine.subject import Subject
 from engine.phase2 import (
     apply_effect,
     dangling_effect_count,
+    phase2_configured,
     ready_auto_effects,
 )
 from engine.verbs import VerbEngine
@@ -652,12 +653,19 @@ class Simulation:
         }
 
     def _write_aborted(self, writer: LayersWriter) -> None:
+        details: dict[str, Any] = {
+            "reason": "protagonist_dead"
+        }
+        if phase2_configured(self.world):
+            details["dangling_effects"] = (
+                dangling_effect_count(self.world)
+            )
         writer.write(
             self._event_row(
                 verb="aborted",
                 subject=self.world.protagonist,
                 delta={},
-                details={"reason": "protagonist_dead"},
+                details=details,
                 event_id="aborted",
             )
         )
@@ -913,7 +921,7 @@ class Simulation:
             subject.reputation,
             len(subject.phase) / max(1, len(self.world.thresholds)),
             belief_changed,
-            float(subject.identity_true != subject.identity_displayed),
+            float(subject.identity_displayed != subject.id),  # disguise active (same notion as phase2/ctx; Claude-side fix, D6 review A-1)
             self._objective_vector_value(subject),
             vitality_value / 3.0,
         ]
@@ -1049,7 +1057,7 @@ class Simulation:
 
                 self._write_snapshot(writer)
 
-            if self.world.effect_library:
+            if phase2_configured(self.world):
                 self._write_time_limit(writer)
 
         return path

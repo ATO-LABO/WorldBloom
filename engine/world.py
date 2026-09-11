@@ -429,6 +429,27 @@ class World:
         for raw_ending in definition.get("ending", []) or []:
             ending = dict(raw_ending)
             ending["id"] = str(ending["id"])
+            raw_delivery = ending.get("deliver")
+            if raw_delivery is not None:
+                if not isinstance(raw_delivery, dict):
+                    raise ValueError(
+                        f"Ending deliver must be a mapping: "
+                        f"{ending['id']}"
+                    )
+                if set(raw_delivery) != {
+                    "subject",
+                    "item",
+                    "zone",
+                }:
+                    raise ValueError(
+                        f"Ending deliver requires subject/item/zone: "
+                        f"{ending['id']}"
+                    )
+                ending["configured_deliver"] = {
+                    "subject": str(raw_delivery["subject"]),
+                    "item": str(raw_delivery["item"]),
+                    "zone": str(raw_delivery["zone"]),
+                }
             source_when = ending["when"]
             if isinstance(source_when, dict):
                 if (
@@ -450,7 +471,6 @@ class World:
                     ending["predicate_source"]
                 )
             self.endings.append(ending)
-        self.endings.sort(key=lambda value: value["id"])
         self.target_ending = str(definition["target_ending"])
         if self.target_ending not in {
             ending["id"] for ending in self.endings
@@ -897,6 +917,35 @@ class World:
         for ending in self.endings:
             ending.pop("deliver", None)
             sugar_agent = ending.get("sugar_agent")
+            configured_delivery = ending.get(
+                "configured_deliver"
+            )
+            if configured_delivery is not None:
+                subject_id = str(
+                    configured_delivery["subject"]
+                )
+                item = str(configured_delivery["item"])
+                zone = str(configured_delivery["zone"])
+                if subject_id not in self.subjects:
+                    raise ValueError(
+                        f"Unknown ending delivery subject: "
+                        f"{ending['id']}:{subject_id}"
+                    )
+                if item not in self.items:
+                    raise ValueError(
+                        f"Unknown ending delivery item: "
+                        f"{ending['id']}:{item}"
+                    )
+                if zone not in self.zones:
+                    raise ValueError(
+                        f"Unknown ending delivery zone: "
+                        f"{ending['id']}:{zone}"
+                    )
+                ending["deliver"] = {
+                    "subject": subject_id,
+                    "item": item,
+                    "zone": zone,
+                }
             if sugar_agent is not None:
                 if sugar_agent not in self.subjects:
                     raise ValueError(

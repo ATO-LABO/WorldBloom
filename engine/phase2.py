@@ -26,6 +26,16 @@ _EFFECT_KINDS = frozenset(
     }
 )
 
+_EFFECT_REQUIRED_KEYS = {
+    "modifier": frozenset(
+        {"target", "source", "value", "kind"}
+    ),
+    "neutralize": frozenset({"target", "source"}),
+    "stance": frozenset({"a", "b", "delta"}),
+    "reputation": frozenset({"target", "delta"}),
+    "enable_verb": frozenset({"verb"}),
+}
+
 
 def _as_sequence(
     value: Any,
@@ -176,6 +186,15 @@ def configure_phase2(
             raise ValueError(
                 f"Effect payload body must be a mapping: "
                 f"{effect_id}:{kind}"
+            )
+        missing = (
+            _EFFECT_REQUIRED_KEYS[kind]
+            - set(raw_payload[kind])
+        )
+        if missing:
+            raise ValueError(
+                f"Effect payload is missing required keys: "
+                f"{effect_id}:{kind}:{sorted(missing)}"
             )
 
         effect["plant"] = plant
@@ -653,6 +672,22 @@ def _matches_plant(
     ):
         return False
 
+    expected_zone = plant.get("zone")
+    if (
+        expected_zone is not None
+        and actor.zone != str(expected_zone)
+    ):
+        return False
+
+    expected_topic = plant.get("topic")
+    if expected_topic is not None:
+        actual_topic = details.get(
+            "topic",
+            action.meta.get("topic"),
+        )
+        if str(actual_topic) != str(expected_topic):
+            return False
+
     raw_roles = plant.get("to_role")
     if raw_roles is not None:
         roles = (
@@ -988,17 +1023,34 @@ def available_verbs(
     if not matching:
         return set(subject.verbs)
 
-    enabled = {
-        verb
+    enable_lists = [
+        set(rule["enable"])
         for rule in matching
-        for verb in rule["enable"]
-    }
+        if rule["enable"]
+    ]
     disabled = {
         verb
         for rule in matching
         for verb in rule["disable"]
     }
-    return (set(subject.verbs) & enabled) - disabled
+
+    available = set(subject.verbs)
+    if enable_lists:
+        enabled = set().union(*enable_lists)
+        available.intersection_update(enabled)
+    available.difference_update(disabled)
+    return available
+
+
+def phase2_configured(world: World) -> bool:
+    return any(
+        (
+            world.effect_library,
+            world.disguises,
+            world.trials,
+            world.phase_rules,
+        )
+    )
 
 
 def disguise_options(
