@@ -126,8 +126,11 @@ def _volatility_bin(
 def descriptor(
     rows: Sequence[Mapping[str, Any]],
     cfg: Mapping[str, Any],
+    *,
+    subject: str | None = None,
 ) -> Descriptor:
     protagonist = _protagonist(rows)
+    decision_subject = subject or protagonist
     categories = tuple(
         str(value)
         for value in cfg.get(
@@ -142,7 +145,7 @@ def descriptor(
     for row in rows:
         if (
             row.get("kind") != "decision"
-            or row.get("subject") != protagonist
+            or row.get("subject") != decision_subject
             or not row.get("effective", False)
         ):
             continue
@@ -424,6 +427,67 @@ def quality(
     return round(min(1.0, max(0.0, score)), 12)
 
 
+def antagonist_quality(
+    rows: Sequence[Mapping[str, Any]],
+    world_meta: Mapping[str, Any],
+) -> float:
+    target_ending = str(world_meta.get("target_ending", ""))
+    if not target_ending or not reached(rows, target_ending):
+        return 0.0
+
+    turns = max(
+        (
+            int(row.get("turn", 0) or 0)
+            for row in rows
+        ),
+        default=0,
+    )
+    max_turns = max(1, int(world_meta.get("max_turns", 1)))
+
+    protagonist = str(
+        world_meta.get("protagonist") or _protagonist(rows) or ""
+    )
+    vectors = [
+        [float(value) for value in row["vector"]]
+        for row in rows
+        if row.get("kind") == "snapshot"
+        and row.get("subject") == protagonist
+    ]
+    deltas = [
+        _l1(previous, current)
+        for previous, current in zip(vectors, vectors[1:])
+    ]
+    volatility = (
+        statistics.pvariance(deltas)
+        if len(deltas) >= 2
+        else 0.0
+    )
+    volatility = float(volatility)
+
+    vol_high = float(world_meta.get("vol_high", 1.0))
+    if vol_high > 0.0:
+        volatility_ratio = min(1.0, volatility / vol_high)
+    else:
+        volatility_ratio = float(volatility > 0.0)
+
+    strength_diffs: list[float] = []
+    for row in rows:
+        details = row.get("details")
+        if (
+            isinstance(details, Mapping)
+            and "strength_diff" in details
+        ):
+            strength_diffs.append(float(details["strength_diff"]))
+
+    reversals = _sign_flips(strength_diffs)
+    score = (
+        0.4 * min(1.0, turns / max_turns)
+        + 0.3 * volatility_ratio
+        + 0.3 * min(1.0, reversals / 2.0)
+    )
+    return round(min(1.0, max(0.0, score)), 12)
+
+
 def reached(
     rows: Sequence[Mapping[str, Any]],
     target_ending: str,
@@ -506,13 +570,15 @@ def shaped(
 
 def effective_sequence(
     rows: Sequence[Mapping[str, Any]],
+    *,
+    subject: str | None = None,
 ) -> list[tuple[str, str, str]]:
-    protagonist = _protagonist(rows)
+    decision_subject = subject or _protagonist(rows)
     sequence: list[tuple[str, str, str]] = []
     for row in rows:
         if (
             row.get("kind") != "decision"
-            or row.get("subject") != protagonist
+            or row.get("subject") != decision_subject
             or not row.get("effective", False)
         ):
             continue

@@ -75,34 +75,18 @@ disguises:
     when: "zone(self) == '海'"
 
 trials:
-  - id: elder_shipbuilding_trial
-    giver: おじいさん
+  - id: monkey_shortcut_trial
+    giver: 猿
     requires:
       stance: 0.4
       item: きびだんご
     grants:
-      fact: 造船術
+      fact: 猿の知恵
 
 phase_rules:
   - id: after_crossing
     when: "'越境' in phase"
-    enable:
-      - move
-      - investigate
-      - observe
-      - neutralize
-      - sabotage
-      - sacrifice
-      - mislead
-      - confront
-      - share_knowledge
-      - give_item
-      - persuade
-      - pledge
-      - negotiate
-      - concede
-      - craft
-      - fight
+    disable:
       - train
       - rescue
       - rest
@@ -188,6 +172,9 @@ facts:
     secrecy: 0.2
     share_min_affinity: 0.3
 
+  - id: 猿の知恵
+    label: 猿が知る鬼ヶ島の抜け道
+
   - id: oni_weakness
     label: 鬼の力の要は{value}だ
     values: [金棒, 火, 塩]
@@ -263,15 +250,19 @@ grief:
   affinity_to_killer: -0.6
 
 ending:
+  - id: homecoming_shared
+    when: "holds(桃太郎, 鬼ヶ島の宝物) and zone(桃太郎) == '村' and '還元' in phase"
+    label: 宝を村へ還元し、皆で喜びを分かち合った
+    deliver:
+      subject: 桃太郎
+      item: 鬼ヶ島の宝物
+      zone: 村
+
   - id: homecoming
     when:
       agent: 桃太郎
       goal: attained
     label: 鬼退治を果たし、宝を村へ持ち帰った
-
-  - id: homecoming_shared
-    when: "holder(鬼ヶ島の宝物) == '村'"
-    label: 宝を村へ還元し、皆で喜びを分かち合った
 
 target_ending: homecoming
 
