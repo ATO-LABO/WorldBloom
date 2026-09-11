@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "worldbloom-viewer",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "viewer/server.py",
+        "--runs",
+        "C:\\Projects\\WorldBloom-local\\runs",
+        "--port",
+        "5401"
+      ],
+      "port": 5401
+    }
+  ]
+}

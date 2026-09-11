@@ -16,6 +16,7 @@ TEMPLATE = ROOT / "templates" / "momotaro"
 from gapengine.genome import Genome
 from gapengine.qd import Archive, Descriptor, Elite
 from gapengine.scenes import extract_scenes
+import gapengine.synopsis as synopsis_module
 from gapengine.synopsis import (
     build_narration_prompt,
     build_synopsis_prompt,
@@ -286,6 +287,115 @@ class OutputStageTests(unittest.TestCase):
         ):
             self.assertNotIn(predicate, synopsis)
             self.assertNotIn(predicate, narration)
+
+    def test_cli_backends_pass_full_prompt_on_stdin_from_temp_cwd(
+        self,
+    ) -> None:
+        prompt = (
+            "あなたは物語のあらすじ作家です。\n"
+            "第1の転機です。\n"
+            "第2の転機です。\n"
+            "本文のみを出力してください。\n"
+        )
+        observed_cwds: list[Path] = []
+        observed_commands: list[list[str]] = []
+
+        def fake_run(
+            command: list[str],
+            **kwargs: object,
+        ) -> mock.Mock:
+            cwd = Path(str(kwargs["cwd"])).resolve()
+            observed_cwds.append(cwd)
+            observed_commands.append(list(command))
+
+            self.assertEqual(kwargs["input"], prompt)
+            self.assertEqual(kwargs["encoding"], "utf-8")
+            self.assertEqual(kwargs["errors"], "replace")
+            self.assertTrue(kwargs["capture_output"])
+            self.assertTrue(cwd.is_dir())
+            self.assertNotEqual(cwd, ROOT.resolve())
+            self.assertNotIn(ROOT.resolve(), cwd.parents)
+            self.assertFalse((cwd / "CLAUDE.md").exists())
+            self.assertFalse((cwd / ".git").exists())
+            self.assertNotIn(prompt, command)
+
+            return mock.Mock(
+                returncode=0,
+                stdout="桃太郎は旅に出て、鬼を退けて帰郷した。",
+                stderr="",
+            )
+
+        command_paths = {
+            "claude": "C:\\tools\\claude.CMD",
+            "codex": "C:\\tools\\codex.CMD",
+        }
+
+        with (
+            mock.patch(
+                "gapengine.synopsis.shutil.which",
+                side_effect=lambda command: command_paths[command],
+            ),
+            mock.patch(
+                "gapengine.synopsis.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            claude_result = synopsis_module.generate_text(
+                "claude-cli",
+                prompt,
+                settings_path=ROOT / "missing-settings.json",
+            )
+            codex_result = synopsis_module.generate_text(
+                "codex-cli",
+                prompt,
+                settings_path=ROOT / "missing-settings.json",
+            )
+
+        self.assertEqual(claude_result.status, "ok")
+        self.assertEqual(codex_result.status, "ok")
+        self.assertEqual(
+            observed_commands,
+            [
+                ["C:\\tools\\claude.CMD", "-p"],
+                [
+                    "C:\\tools\\codex.CMD",
+                    "exec",
+                    "--skip-git-repo-check",
+                    "-s",
+                    "read-only",
+                    "-",
+                ],
+            ],
+        )
+        self.assertEqual(len(observed_cwds), 2)
+        for cwd in observed_cwds:
+            self.assertFalse(cwd.exists())
+
+    def test_clarification_responses_are_rejected(
+        self,
+    ) -> None:
+        clarification_responses = (
+            "",
+            "もう少し具体的に教えてください。",
+            "要件を確認させてください。",
+            "どの物語を書けばよいですか?",
+            "一つ質問があります。\n主人公は誰ですか？",
+        )
+
+        for response in clarification_responses:
+            with self.subTest(response=response):
+                with self.assertRaisesRegex(
+                    synopsis_module.GenerationError,
+                    "^clarification_request$",
+                ):
+                    synopsis_module._validate_response(response)
+
+        self.assertEqual(
+            synopsis_module._validate_response(
+                "桃太郎は仲間と鬼ヶ島へ渡り、鬼を退けて宝を村へ持ち帰った。"
+            ),
+            "桃太郎は仲間と鬼ヶ島へ渡り、鬼を退けて宝を村へ持ち帰った。",
+        )
 
     def test_none_backend_generates_prompts_without_llm(
         self,
