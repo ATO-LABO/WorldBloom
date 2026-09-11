@@ -525,9 +525,9 @@ C:\Projects\WorldBloom-local\runs\<experiment>\g<N>\ind-<i>\seed-<s>\layers.json
 
 次の一手: Phase 0 の実装計画（ファイル単位の仕様と Codex への納品依頼プロンプト）を作成し、リポジトリを初期化する。
 
-## 18. Phase 4 で確定した設計判断と追加の未解決論点（2026-09-12 追記、設計役 Fable。経緯は Phase 4 計画書 §6〜§10）
+## 20. Phase 4 で確定した設計判断と追加の未解決論点（2026-09-12 追記、設計役 Fable。経緯は Phase 4 計画書 §6〜§10。設計書 §16 の全フェーズ完了）
 
-### 18.1 確定した設計判断
+### 20.1 確定した設計判断
 - **整形適応度の二系統**: `deliver` を持つ結末は従来式（0.4×所持＋0.3×距離＋0.3×到達）、それ以外は結末述語の連言肢平均（`holds`/`known`/`knows_modifier`/`confront_success` は 0/1、`zone` は最短 hop、`stance ≥ θ` は `(stance+1)/(θ+1)`）。複数 target は最大値。統一は実験系列の区切りで行う（§3.1 と同じ扱い）。
 - **真相のシード抽選**: `truth.<fact>.candidates` を `random.Random(f"{seed}:{fact_id}")` で抽選（主 rng 不消費）、header に記録。`known_by: ["$truth"]` は抽選結果の主体にのみ confidence 1.0 の直接信念を与える。証拠の `implies/refutes.value` には `$truth` / `$innocent:1` / `$innocent:2`（候補の名前順から真相を除いた 1・2 番目）を許し、bind 時に解決する。
 - **rethink（II-6）**: 候補は「verbs に含む・implies/refutes を持つ証拠を 2 件以上保持・新事実なしの停滞 N スロット」。効果は保持証拠が触れる valued 信念を再導出（refutes→implies、confidence 降順、fact id の順）、保護は真相所有者の直接知（confidence 1.0）のみ。quality には `rethink` で値が反転した fact 数を `dramatic_turns` として計上。
@@ -537,7 +537,7 @@ C:\Projects\WorldBloom-local\runs\<experiment>\g<N>\ind-<i>\seed-<s>\layers.json
 - **恋愛**: A→B は雑談で早期に飽和し、物語は「B が心を開く過程」。B の `防衛`（cap 0.35）と C の噂（B 側の cap 0.5、C を observe した auto 伏線で解除）の両方の解除が `mutual` の必要条件。C の `reputation:rumor` は露見後も残る。
 - **探偵**: mislead の permission は stance 役割ベース（全容疑者 hostile → allow）。真犯人の自白は `share_min_affinity: 0.6` で「心を開かせたときだけ」。
 
-### 18.2 未解決の論点（追加）
+### 20.2 未解決の論点（追加）
 - `_mislead_candidates` が全主体で `world.truth` を参照し真値を候補から除外する（Phase 1 由来）。無実の主体も真犯人を決して指さない漏洩。修正は桃太郎の golden を変えるため系列境界で。
 - 裏切り判定が verb 固定（neutralize/fight/…）で、テンプレートの `stance_sign` を見ない。恋愛の `neutralize`（sign +1）が誓約後に裏切り扱いになる。分類器の `stance_sign` ベースへ。
 - `confront_success` 型の結末は shaped に勾配が無い（0/1）。マージン（真相値への確信度）の導入を検討。
