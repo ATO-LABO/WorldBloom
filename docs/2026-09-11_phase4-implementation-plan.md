@@ -53,3 +53,11 @@
 - **D11**: §2 恋愛（world/subjects/templates、本番実験）。
 - **D12**: §3 探偵（同上）。
 - Phase 4 の完了をもって設計書 §16 の全フェーズ完了。残る保留（サブプロット差分トラック、QD 軸の追加、メタ進化の本格導入）は設計書の「未解決の論点」に戻す。
+
+## 6. D11 適用時の設計決定（2026-09-11、設計役 Fable）
+
+- **D10 の逸脱（Codex 自己申告、受理）**: `--target-ending` は D6b で実装済みのため変更なし。汎用 `shaped` は `deliver` を持つ結末に従来式（0.4×所持＋0.3×距離＋0.3×到達）を残し、それ以外の結末を連言肢平均で評価する。複数 target は各結末の最大値。桃太郎テンプレートには `genre`・`rethink` を追加しない（opt-in は D11/D12 の各テンプレートで行う）。`summary.json` に `meta_evolution` は書かない。`quality` の「信念の反転」計上は `rethink` イベントで値が変わった fact 数を `dramatic_turns` に加算する方式（最大寄与 1/7）。
+- **恋愛テンプレートの初回納品は結末が易しすぎた**: 方針なし無作為 30 シードで 30/30 が `mutual` に到達（中央値 5 ターン）、`neutralize` 0 回。B の不可視 modifier `防衛` が関係層に一切効いていなかった。
+- **決定: 能力層の修飾子が関係層を縛る汎用機構 `affinity_cap` を engine に追加する**。`Modifier.affinity_cap: float | None`（既定 None）と `affinity_cap_targets: tuple[str, ...]`（空なら全対象）。主体が active な cap 付き modifier を持つ間、その主体を observer とする affinity は `Relations.change` と初期 bind で上限に clamp される。`neutralize` 等で `active=False` になると上限は消える。実装は `Relations(affinity_cap_resolver=...)`（`target_resolver` と同じ流儀）、`World.bind_subjects` が subjects の active modifier から解決関数を渡す。乱数不使用、cap を持つ modifier が無い世界（桃太郎）では従来と完全に同じ結果（固定ハッシュ不変）。
+- 恋愛テンプレートでは B の `防衛` に `affinity_cap: 0.35` を付け、`observe → neutralize(B, '防衛')` を経ないと B→A が 0.6 に届かないようにする（構想の主経路が必須になる）。初期値は無作為 30 シードの到達率が概ね 10〜30% になるよう調整する（0% では GA が学習できず、100% では選択圧が無い）。
+- rules.yaml の述語で修飾子名は文字列リテラル（`'防衛'`）で書く（初回納品は裸の名前で `Unknown predicate name` になった）。

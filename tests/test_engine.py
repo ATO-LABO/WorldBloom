@@ -2886,6 +2886,118 @@ class EngineTests(unittest.TestCase):
 
 
 class Phase4EngineTests(unittest.TestCase):
+    def test_affinity_cap_clamps_initial_and_changed_affinity(
+        self,
+    ) -> None:
+        world = World.from_yaml(WORLD_PATH)
+        subjects = self._load_subjects()
+        actor = subjects["桃太郎"]
+        actor.initial_relations["鬼"]["affinity"] = 0.8
+        actor.modifiers.append(
+            Modifier(
+                id="test:affinity-cap",
+                source="警戒",
+                value=0.0,
+                kind="test",
+                affinity_cap=0.2,
+                affinity_cap_targets=("鬼",),
+            )
+        )
+
+        world.bind_subjects(subjects)
+
+        self.assertEqual(
+            world.relations.stance("桃太郎", "鬼"),
+            0.2,
+        )
+        delta = world.relations.change(
+            "桃太郎",
+            "鬼",
+            affinity=0.5,
+        )
+        self.assertEqual(delta["affinity"], 0.0)
+        self.assertEqual(
+            world.relations.stance("桃太郎", "鬼"),
+            0.2,
+        )
+
+    def test_affinity_cap_stops_after_modifier_is_inactive(
+        self,
+    ) -> None:
+        world = World.from_yaml(WORLD_PATH)
+        subjects = self._load_subjects()
+        modifier = Modifier(
+            id="test:temporary-affinity-cap",
+            source="警戒",
+            value=0.0,
+            kind="test",
+            affinity_cap=0.2,
+            affinity_cap_targets=("鬼",),
+        )
+        subjects["桃太郎"].modifiers.append(modifier)
+        world.bind_subjects(subjects)
+
+        world.relations.change(
+            "桃太郎",
+            "鬼",
+            affinity=1.0,
+        )
+        self.assertEqual(
+            world.relations.stance("桃太郎", "鬼"),
+            0.2,
+        )
+
+        modifier.active = False
+        world.relations.change(
+            "桃太郎",
+            "鬼",
+            affinity=0.4,
+        )
+        self.assertEqual(
+            world.relations.stance("桃太郎", "鬼"),
+            0.6,
+        )
+
+    def test_affinity_cap_targets_do_not_limit_other_targets(
+        self,
+    ) -> None:
+        world = World.from_yaml(WORLD_PATH)
+        subjects = self._load_subjects()
+        subjects["桃太郎"].modifiers.append(
+            Modifier(
+                id="test:targeted-affinity-cap",
+                source="警戒",
+                value=0.0,
+                kind="test",
+                affinity_cap=0.2,
+                affinity_cap_targets=("鬼",),
+            )
+        )
+        world.bind_subjects(subjects)
+
+        world.relations.change(
+            "桃太郎",
+            "犬",
+            affinity=1.0,
+        )
+
+        self.assertEqual(
+            world.relations.stance("桃太郎", "犬"),
+            1.0,
+        )
+
+    def test_momotaro_affinity_cap_resolver_returns_none(
+        self,
+    ) -> None:
+        world, _ = load_fixture()
+        resolver = world.relations._affinity_cap_resolver
+
+        self.assertIsNotNone(resolver)
+        assert resolver is not None
+        self.assertIsNone(
+            resolver("桃太郎", "鬼")
+        )
+
     def _load_subjects(self) -> dict[str, Subject]:
         return {
             subject.id: subject

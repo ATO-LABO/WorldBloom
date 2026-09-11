@@ -1,0 +1,69 @@
+id: E
+
+traits:
+  social: 0.48
+  stubbornness: 0.62
+  curiosity: 0.34
+  diligence: 0.76
+  temper: 0.30
+
+base: 40
+modifiers: []
+
+beliefs_about:
+  A:
+    known_modifiers: []
+    base_estimate: 50
+    identity_seen: false
+    observe_progress: 0.0
+  B:
+    known_modifiers: [防衛]
+    base_estimate: 80
+    identity_seen: true
+    observe_progress: 0.0
+  C:
+    known_modifiers: []
+    base_estimate: 90
+    identity_seen: false
+    observe_progress: 0.0
+
+beliefs: {}
+knowledge: [Bの好きな場所]
+inventory: {}
+reputation: 0.0
+phase: []
+
+verbs:
+  - move
+  - observe
+  - share_knowledge
+  - persuade
+  - rest
+
+identity:
+  "true": Bの過去の傷を案じ、慎重に二人を見守る親
+  displayed: E
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: null
+
+relations:
+  A: {affinity: 0.10, awareness: 0.35}
+  B: {affinity: 0.82, awareness: 1.0}
+  C: {affinity: 0.18, awareness: 0.40}
+  D: {affinity: 0.15, awareness: 0.30}
+
+stamina:
+  max: 9
+  recover_per_slot: 1.0
+
+range:
+  zones: [Bの家, 駅, 公園]
+  entry: Bの家
+
+companions: []
+ally_value: 0
+objective_claimant: false

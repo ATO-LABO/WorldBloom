@@ -2070,7 +2070,6 @@ class Phase4GapEngineTests(unittest.TestCase):
         self.assertFalse(default_args.meta_evolution)
         self.assertTrue(enabled_args.meta_evolution)
 
-
     def test_rethink_belief_reversal_increases_quality(
         self,
     ) -> None:

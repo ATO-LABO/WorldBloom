@@ -905,15 +905,26 @@ class World:
                     f"{sorted(unknown_levels)}"
                 )
 
-    def bind_subjects(self, subjects: dict[str, Subject]) -> None:
+    def bind_subjects(
+        self,
+        subjects: dict[str, Subject],
+    ) -> None:
         self.delivered.clear()
         self.confront_successes.clear()
         self.pending_effects.clear()
         self.offers.clear()
         self.pledges.clear()
 
-        if set(subjects) != {subject.id for subject in subjects.values()}:
-            raise ValueError("Subject dictionary keys must match Subject.id")
+        if (
+            set(subjects)
+            != {
+                subject.id
+                for subject in subjects.values()
+            }
+        ):
+            raise ValueError(
+                "Subject dictionary keys must match Subject.id"
+            )
 
         subject_ids = set(subjects)
         item_collisions = subject_ids & set(self.items)
@@ -936,51 +947,76 @@ class World:
             )
 
         if self.protagonist not in subjects:
-            raise ValueError(f"Unknown protagonist: {self.protagonist}")
+            raise ValueError(
+                f"Unknown protagonist: {self.protagonist}"
+            )
         if self.antagonist not in subjects:
-            raise ValueError(f"Unknown antagonist: {self.antagonist}")
+            raise ValueError(
+                f"Unknown antagonist: {self.antagonist}"
+            )
 
-        relation_values: dict[str, dict[str, dict[str, float]]] = {}
+        relation_values: dict[
+            str,
+            dict[str, dict[str, float]],
+        ] = {}
         relation_aliases = disguise_aliases(self)
         for subject_id in sorted(subjects):
             subject = subjects[subject_id]
             if subject.zone not in self.zones:
                 raise ValueError(
-                    f"Unknown subject entry zone: {subject.id}:{subject.zone}"
+                    f"Unknown subject entry zone: "
+                    f"{subject.id}:{subject.zone}"
                 )
-            unknown_range = subject.range_zones - set(self.zones)
+            unknown_range = (
+                subject.range_zones - set(self.zones)
+            )
             if unknown_range:
                 raise ValueError(
                     f"Unknown subject range zones: "
                     f"{subject.id}:{sorted(unknown_range)}"
                 )
             for exclusion in subject.range_exclude:
-                unknown = set(exclusion.get("zones", [])) - set(self.zones)
+                unknown = (
+                    set(exclusion.get("zones", []))
+                    - set(self.zones)
+                )
                 if unknown:
                     raise ValueError(
-                        f"Unknown excluded zones: {subject.id}:{sorted(unknown)}"
+                        f"Unknown excluded zones: "
+                        f"{subject.id}:{sorted(unknown)}"
                     )
                 item = exclusion.get("until_item")
-                if item is not None and item not in self.items:
+                if (
+                    item is not None
+                    and item not in self.items
+                ):
                     raise ValueError(
-                        f"Unknown exclusion item: {subject.id}:{item}"
+                        f"Unknown exclusion item: "
+                        f"{subject.id}:{item}"
                     )
             for item in sorted(subject.inventory):
                 if item not in self.items:
                     raise ValueError(
-                        f"Unknown inventory item: {subject.id}:{item}"
+                        f"Unknown inventory item: "
+                        f"{subject.id}:{item}"
                     )
             for fact in sorted(subject.knowledge):
                 if fact not in self.facts:
                     raise ValueError(
-                        f"Unknown subject fact: {subject.id}:{fact}"
+                        f"Unknown subject fact: "
+                        f"{subject.id}:{fact}"
                     )
-                if self.facts[fact].get("values") is not None:
+                if (
+                    self.facts[fact].get("values")
+                    is not None
+                ):
                     raise ValueError(
                         f"Valued fact cannot be boolean knowledge: "
                         f"{subject.id}:{fact}"
                     )
-            for fact_id, belief in sorted(subject.beliefs.items()):
+            for fact_id, belief in sorted(
+                subject.beliefs.items()
+            ):
                 definition = self.facts.get(fact_id)
                 if definition is None:
                     raise ValueError(
@@ -989,7 +1025,9 @@ class World:
                     )
                 allowed = {
                     str(value)
-                    for value in definition.get("values", []) or []
+                    for value in (
+                        definition.get("values", []) or []
+                    )
                 }
                 if not allowed:
                     raise ValueError(
@@ -999,74 +1037,166 @@ class World:
                 if belief.value not in allowed:
                     raise ValueError(
                         f"Unknown subject belief value: "
-                        f"{subject.id}:{fact_id}:{belief.value}"
+                        f"{subject.id}:{fact_id}:"
+                        f"{belief.value}"
                     )
                 if not 0.0 <= belief.confidence <= 1.0:
                     raise ValueError(
-                        f"Subject belief confidence must be within "
-                        f"[0, 1]: {subject.id}:{fact_id}"
+                        f"Subject belief confidence must be "
+                        f"within [0, 1]: "
+                        f"{subject.id}:{fact_id}"
                     )
             if (
                 subject.goal.target is not None
                 and subject.goal.target not in self.items
             ):
                 raise ValueError(
-                    f"Unknown goal target: {subject.id}:{subject.goal.target}"
+                    f"Unknown goal target: "
+                    f"{subject.id}:{subject.goal.target}"
                 )
             if (
                 subject.goal.deliver_to is not None
-                and subject.goal.deliver_to not in self.zones
+                and subject.goal.deliver_to
+                not in self.zones
             ):
                 raise ValueError(
                     f"Unknown delivery zone: "
-                    f"{subject.id}:{subject.goal.deliver_to}"
+                    f"{subject.id}:"
+                    f"{subject.goal.deliver_to}"
                 )
             for obstacle in subject.goal.obstacles:
                 if obstacle not in subjects:
                     raise ValueError(
-                        f"Unknown goal obstacle: {subject.id}:{obstacle}"
+                        f"Unknown goal obstacle: "
+                        f"{subject.id}:{obstacle}"
                     )
-            for target in sorted(subject.initial_relations):
+            for modifier in subject.modifiers:
+                unknown_cap_targets = (
+                    set(modifier.affinity_cap_targets)
+                    - subject_ids
+                )
+                if unknown_cap_targets:
+                    raise ValueError(
+                        f"Unknown modifier affinity cap targets: "
+                        f"{subject.id}:{modifier.id}:"
+                        f"{sorted(unknown_cap_targets)}"
+                    )
+            for target in sorted(
+                subject.initial_relations
+            ):
                 if (
                     target not in subjects
                     and target not in relation_aliases
                 ):
                     raise ValueError(
-                        f"Unknown relation target: {subject.id}:{target}"
+                        f"Unknown relation target: "
+                        f"{subject.id}:{target}"
                     )
-            relation_values[subject.id] = subject.initial_relations
+            relation_values[subject.id] = (
+                subject.initial_relations
+            )
 
-        for fact, definition in sorted(self.facts.items()):
-            raw_known_by = definition.get("known_by", ())
+        for item, definition in sorted(
+            self.items.items()
+        ):
+            raw_modifier = definition.get("modifier")
+            if not isinstance(raw_modifier, dict):
+                continue
+
+            raw_affinity_cap = raw_modifier.get(
+                "affinity_cap"
+            )
+            if raw_affinity_cap is not None:
+                affinity_cap = float(raw_affinity_cap)
+                if not -1.0 <= affinity_cap <= 1.0:
+                    raise ValueError(
+                        f"Item modifier affinity_cap must be "
+                        f"within [-1, 1]: {item}"
+                    )
+
+            raw_cap_targets = (
+                raw_modifier.get(
+                    "affinity_cap_targets",
+                    (),
+                )
+                or ()
+            )
+            if isinstance(raw_cap_targets, str):
+                cap_targets = {raw_cap_targets}
+            elif isinstance(
+                raw_cap_targets,
+                (list, tuple, set),
+            ):
+                cap_targets = {
+                    str(value)
+                    for value in raw_cap_targets
+                }
+            else:
+                raise ValueError(
+                    f"Item modifier affinity_cap_targets "
+                    f"must be a string or sequence: {item}"
+                )
+            unknown_cap_targets = (
+                cap_targets - subject_ids
+            )
+            if unknown_cap_targets:
+                raise ValueError(
+                    f"Unknown item modifier affinity cap "
+                    f"targets: {item}:"
+                    f"{sorted(unknown_cap_targets)}"
+                )
+
+        for fact, definition in sorted(
+            self.facts.items()
+        ):
+            raw_known_by = definition.get(
+                "known_by",
+                (),
+            )
             if isinstance(raw_known_by, str):
                 definition_known_by = (raw_known_by,)
-            elif isinstance(raw_known_by, (list, tuple, set)):
+            elif isinstance(
+                raw_known_by,
+                (list, tuple, set),
+            ):
                 definition_known_by = tuple(
-                    str(value) for value in raw_known_by
+                    str(value)
+                    for value in raw_known_by
                 )
             else:
                 raise ValueError(
-                    f"Fact known_by must be a string or sequence: {fact}"
+                    f"Fact known_by must be a string "
+                    f"or sequence: {fact}"
                 )
 
             owners = list(definition_known_by)
             secret_of = definition.get("secret_of")
             if secret_of is not None:
                 owners.append(str(secret_of))
-            owners.extend(self.truth_known_by.get(fact, ()))
+            owners.extend(
+                self.truth_known_by.get(fact, ())
+            )
 
-            unknown_owners = sorted(set(owners) - subject_ids)
+            unknown_owners = sorted(
+                set(owners) - subject_ids
+            )
             if unknown_owners:
                 raise ValueError(
                     f"Unknown fact owner subject: "
                     f"{fact}:{unknown_owners}"
                 )
 
-            for source in definition.get("sources", []) or []:
+            for source in (
+                definition.get("sources", []) or []
+            ):
                 agent = source.get("agent")
-                if agent is not None and agent not in subjects:
+                if (
+                    agent is not None
+                    and agent not in subjects
+                ):
                     raise ValueError(
-                        f"Unknown fact source agent: {fact}:{agent}"
+                        f"Unknown fact source agent: "
+                        f"{fact}:{agent}"
                     )
 
         self.subjects = {
@@ -1076,12 +1206,17 @@ class World:
 
         from engine.subject import Belief
 
-        for fact_id, truth in sorted(self.truth.items()):
+        for fact_id, truth in sorted(
+            self.truth.items()
+        ):
             definition = self.facts.get(fact_id, {})
             if not definition.get("values"):
                 continue
 
-            raw_known_by = definition.get("known_by", ())
+            raw_known_by = definition.get(
+                "known_by",
+                (),
+            )
             if isinstance(raw_known_by, str):
                 known_by = {raw_known_by}
             else:
@@ -1089,14 +1224,18 @@ class World:
                     str(value)
                     for value in raw_known_by or ()
                 }
-            known_by.update(self.truth_known_by.get(fact_id, ()))
+            known_by.update(
+                self.truth_known_by.get(fact_id, ())
+            )
 
             secret_of = definition.get("secret_of")
             if secret_of is not None:
                 known_by.add(str(secret_of))
 
             for subject_id in sorted(known_by):
-                self.subjects[subject_id].beliefs[fact_id] = Belief(
+                self.subjects[
+                    subject_id
+                ].beliefs[fact_id] = Belief(
                     value=truth,
                     confidence=1.0,
                 )
@@ -1108,31 +1247,80 @@ class World:
                     f"Unknown fact secret_of subject: "
                     f"{fact}:{secret_of}"
                 )
-            for source in definition.get("sources", []) or []:
+            for source in (
+                definition.get("sources", []) or []
+            ):
                 agent = source.get("agent")
-                if agent is not None and agent not in subjects:
+                if (
+                    agent is not None
+                    and agent not in subjects
+                ):
                     raise ValueError(
-                        f"Unknown fact source agent: {fact}:{agent}"
+                        f"Unknown fact source agent: "
+                        f"{fact}:{agent}"
                     )
 
         self.subjects = {
-            subject_id: subjects[subject_id] for subject_id in sorted(subjects)
+            subject_id: subjects[subject_id]
+            for subject_id in sorted(subjects)
         }
+
+        def affinity_cap_resolver(
+            observer: str,
+            target: str,
+        ) -> float | None:
+            subject = self.subjects.get(observer)
+            if subject is None:
+                return None
+
+            present = self.present_subjects(
+                subject.zone
+            )
+            caps = [
+                float(modifier.affinity_cap)
+                for modifier in subject.all_modifiers(
+                    self,
+                    present,
+                )
+                if modifier.active
+                and modifier.affinity_cap is not None
+                and (
+                    not modifier.affinity_cap_targets
+                    or target
+                    in modifier.affinity_cap_targets
+                )
+            ]
+            return min(caps) if caps else None
+
         self.relations = Relations(
             relation_values,
             target_resolver=self.perceived_name,
+            affinity_cap_resolver=(
+                affinity_cap_resolver
+            ),
         )
 
-        objectives: dict[str, dict[str, Any]] = {}
-        for item, definition in sorted(self.items.items()):
-            if not definition.get("objective", False):
+        objectives: dict[
+            str,
+            dict[str, Any],
+        ] = {}
+        for item, definition in sorted(
+            self.items.items()
+        ):
+            if not definition.get(
+                "objective",
+                False,
+            ):
                 continue
             claimants = sorted(
                 subject.id
                 for subject in self.subjects.values()
-                if subject.objective_claimant and subject.goal.target == item
+                if subject.objective_claimant
+                and subject.goal.target == item
             )
-            objectives[item] = {"claimants": claimants}
+            objectives[item] = {
+                "claimants": claimants
+            }
         self.objectives = objectives
 
         predicate_names = (
@@ -1146,14 +1334,19 @@ class World:
         bind_phase2(self, predicate_names)
 
         for threshold in self.thresholds:
-            source = threshold.get("predicate_source")
+            source = threshold.get(
+                "predicate_source"
+            )
             if not isinstance(source, str):
                 raise ValueError(
-                    f"Threshold predicate is unresolved: {threshold['id']}"
+                    f"Threshold predicate is unresolved: "
+                    f"{threshold['id']}"
                 )
-            threshold["predicate"] = compile_predicate(
-                source,
-                predicate_names,
+            threshold["predicate"] = (
+                compile_predicate(
+                    source,
+                    predicate_names,
+                )
             )
 
         for ending in self.endings:
@@ -1166,8 +1359,12 @@ class World:
                 subject_id = str(
                     configured_delivery["subject"]
                 )
-                item = str(configured_delivery["item"])
-                zone = str(configured_delivery["zone"])
+                item = str(
+                    configured_delivery["item"]
+                )
+                zone = str(
+                    configured_delivery["zone"]
+                )
                 if subject_id not in self.subjects:
                     raise ValueError(
                         f"Unknown ending delivery subject: "
@@ -1191,16 +1388,25 @@ class World:
             if sugar_agent is not None:
                 if sugar_agent not in self.subjects:
                     raise ValueError(
-                        f"Unknown ending agent: {sugar_agent}"
+                        f"Unknown ending agent: "
+                        f"{sugar_agent}"
                     )
-                goal = self.subjects[sugar_agent].goal
-                if goal.target is None or goal.deliver_to is None:
+                goal = self.subjects[
+                    sugar_agent
+                ].goal
+                if (
+                    goal.target is None
+                    or goal.deliver_to is None
+                ):
                     raise ValueError(
-                        f"Ending goal is not deliverable: {sugar_agent}"
+                        f"Ending goal is not deliverable: "
+                        f"{sugar_agent}"
                     )
                 source = (
-                    f"holds({sugar_agent}, {goal.target}) "
-                    f"and zone({sugar_agent}) == {goal.deliver_to!r}"
+                    f"holds({sugar_agent}, "
+                    f"{goal.target}) "
+                    f"and zone({sugar_agent}) "
+                    f"== {goal.deliver_to!r}"
                 )
                 ending["when"] = source
                 ending["predicate_source"] = source
@@ -1210,14 +1416,19 @@ class World:
                     "zone": goal.deliver_to,
                 }
 
-            source = ending.get("predicate_source")
+            source = ending.get(
+                "predicate_source"
+            )
             if not isinstance(source, str):
                 raise ValueError(
-                    f"Ending predicate is unresolved: {ending['id']}"
+                    f"Ending predicate is unresolved: "
+                    f"{ending['id']}"
                 )
-            ending["predicate"] = compile_predicate(
-                source,
-                predicate_names,
+            ending["predicate"] = (
+                compile_predicate(
+                    source,
+                    predicate_names,
+                )
             )
 
     def perceived_name(

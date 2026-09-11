@@ -1,0 +1,46 @@
+weight: 1.0
+entries:
+  - ctx:
+      phase: []
+      hostile_present: false
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: II, verb: observe, role: neutral}
+    n: 8
+
+  - ctx:
+      phase: []
+      hostile_present: false
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: I, verb: neutralize, role: neutral}
+    n: 6
+
+  - ctx:
+      phase: []
+      hostile_present: false
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: III, verb: persuade, role: neutral}
+    n: 7
+
+  - ctx:
+      phase: []
+      hostile_present: true
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: IV, verb: confront, role: hostile}
+    n: 4
+
+  - ctx:
+      phase: []
+      hostile_present: false
+      objective: none
+      vitality: alive
+      stance: hostile
+    act: {category: III, verb: pledge, role: ally}
+    n: 5

@@ -1,0 +1,43 @@
+genre: romance
+
+nodes:
+  - {verb: investigate, category: I, subtype: understand_history, risk: neutral, sign: 0, when: gather, genres: [romance]}
+  - {verb: neutralize, category: I, subtype: lower_defense, risk: risky, sign: 1, genres: [romance]}
+
+  - {verb: observe, category: II, subtype: perceive_true_feelings, risk: neutral, sign: 0, genres: [romance]}
+  - {verb: rethink, category: II, subtype: reconsider_feelings, risk: neutral, sign: 0, genres: [romance]}
+  - {verb: plant, category: II, subtype: plant_memory, risk: neutral, sign: 0, genres: [romance]}
+  - {verb: payoff, category: II, subtype: recall_promise, risk: neutral, sign: 1, genres: [romance]}
+
+  - {verb: share_knowledge, category: III, subtype: confide, risk: neutral, sign: 1, genres: [romance]}
+  - {verb: give_item, category: III, subtype: thoughtful_gift, risk: neutral, sign: 1, genres: [romance]}
+  - {verb: persuade, category: III, subtype: honest_appeal, risk: neutral, sign: 1, genres: [romance]}
+  - {verb: pledge, category: III, subtype: mutual_commitment, risk: neutral, sign: 1, genres: [romance]}
+  - {verb: grand_gesture, category: III, subtype: grand_gesture, risk: risky, sign: 1, genres: [romance]}
+
+  - {verb: confront, category: IV, subtype: expose_rumor, risk: risky, sign: -1, genres: [romance]}
+  - {verb: move, category: IV, subtype: seek_encounter, risk: neutral, sign: 0, genres: [romance]}
+  - {verb: rest, category: null, subtype: reflect, risk: neutral, sign: 0, genres: [romance]}
+
+  - {verb: fight, category: I, subtype: physical_violence, risk: risky, sign: -1, genres: [adventure, detective]}
+  - {verb: sabotage, category: I, subtype: destructive_sabotage, risk: risky, sign: -1, genres: [adventure, detective]}
+
+edges:
+  - {from: observe, to: neutralize, requires: known_modifier}
+  - {from: observe, to: confront, requires: observed}
+  - {from: pledge, to: betray, requires: pledged}
+
+permission:
+  fight: {hostile: deny, neutral: deny, ally: deny}
+  sabotage: {hostile: deny, neutral: deny, ally: deny}
+  observe: {hostile: allow, neutral: allow, ally: allow}
+  neutralize: {hostile: deny, neutral: allow, ally: restricted}
+  confront: {hostile: allow, neutral: restricted, ally: deny}
+  share_knowledge: {hostile: restricted, neutral: allow, ally: allow}
+  give_item: {hostile: restricted, neutral: allow, ally: allow}
+  persuade: {hostile: restricted, neutral: allow, ally: allow}
+  pledge: {hostile: deny, neutral: allow, ally: allow}
+  grand_gesture: {hostile: deny, neutral: allow, ally: allow}
+
+restricted_weight: 0.15
+rethink_stagnation_slots: 3

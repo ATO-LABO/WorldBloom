@@ -19,21 +19,43 @@ class Relations:
         values: Mapping[str, Mapping[str, Mapping[str, float]]] | None = None,
         *,
         target_resolver: Callable[[str, str], str] | None = None,
+        affinity_cap_resolver: (
+            Callable[[str, str], float | None] | None
+        ) = None,
     ) -> None:
         self._target_resolver = target_resolver
+        self._affinity_cap_resolver = affinity_cap_resolver
         self._values: dict[str, dict[str, dict[str, float]]] = {}
         for observer in sorted(values or {}):
             targets = values[observer]
             self._values[observer] = {}
             for target in sorted(targets):
                 relation = targets[target]
+                cap = (
+                    self._affinity_cap_resolver(observer, target)
+                    if self._affinity_cap_resolver is not None
+                    else None
+                )
+                affinity_upper = (
+                    min(1.0, float(cap))
+                    if cap is not None
+                    else 1.0
+                )
                 self._values[observer][target] = {
                     "affinity": round(
-                        _clamp(float(relation.get("affinity", 0.0)), -1.0, 1.0),
+                        _clamp(
+                            float(relation.get("affinity", 0.0)),
+                            -1.0,
+                            affinity_upper,
+                        ),
                         4,
                     ),
                     "awareness": round(
-                        _clamp(float(relation.get("awareness", 0.0)), 0.0, 1.0),
+                        _clamp(
+                            float(relation.get("awareness", 0.0)),
+                            0.0,
+                            1.0,
+                        ),
                         4,
                     ),
                 }
@@ -79,20 +101,44 @@ class Relations:
             else target
         )
         current = self.relation(observer, target)
+        cap = (
+            self._affinity_cap_resolver(observer, resolved)
+            if self._affinity_cap_resolver is not None
+            else None
+        )
+        affinity_upper = (
+            min(1.0, float(cap))
+            if cap is not None
+            else 1.0
+        )
         updated = {
             "affinity": round(
-                _clamp(current["affinity"] + float(affinity), -1.0, 1.0),
+                _clamp(
+                    current["affinity"] + float(affinity),
+                    -1.0,
+                    affinity_upper,
+                ),
                 4,
             ),
             "awareness": round(
-                _clamp(current["awareness"] + float(awareness), 0.0, 1.0),
+                _clamp(
+                    current["awareness"] + float(awareness),
+                    0.0,
+                    1.0,
+                ),
                 4,
             ),
         }
         self._values.setdefault(observer, {})[resolved] = updated
         return {
-            "affinity": round(updated["affinity"] - current["affinity"], 4),
-            "awareness": round(updated["awareness"] - current["awareness"], 4),
+            "affinity": round(
+                updated["affinity"] - current["affinity"],
+                4,
+            ),
+            "awareness": round(
+                updated["awareness"] - current["awareness"],
+                4,
+            ),
         }
 
     def snapshot(self) -> dict[str, dict[str, dict[str, float]]]:
@@ -123,6 +169,7 @@ class Relations:
         return Relations(
             deepcopy(self._values),
             target_resolver=self._target_resolver,
+            affinity_cap_resolver=self._affinity_cap_resolver,
         )
 
     def discard(self, observer: str, target: str) -> None:
