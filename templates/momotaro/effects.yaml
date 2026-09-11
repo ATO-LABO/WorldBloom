@@ -35,7 +35,7 @@
   plant:
     verb: share_knowledge
     topic: 雑談
-    to_role: [ally, neutral]
+    to_role: [ally]
   payoff:
     condition: "hostile_present(planter) and vitality(planter) != 'downed'"
     description: 焚き火で交わした約束に仲間が応える
