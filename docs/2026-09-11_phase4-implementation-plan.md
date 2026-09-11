@@ -129,3 +129,19 @@
 - **受理**: 汎用 shaped の二系統（deliver＝従来式）は互換分岐として確定。`affinity_cap` は ally modifier の逆向きの層間作用として正当、「上昇のみ阻止」も妥当。恋愛で rethink 不発は受理。`old_promise` の 2 行は決定行＋派生イベント行で重複ではない。
 - **未解決の論点へ**: `_mislead_candidates` が全主体で `world.truth` を参照する漏洩（Phase 1 由来、golden を変えるため系列境界で）／裏切り判定を verb 固定から分類器の `stance_sign` へ（恋愛の neutralize sign +1 と不整合）／`confront_success` 型結末は shaped に勾配が無い（確信度マージンの導入）／cap 専用 modifier（value 0）の関係層への移設／探偵の能力層（証拠力 base・アリバイ）が結末に効かない／恋愛で A→B が雑談で飽和する。
 - D12 差し戻し 2 回目の実測（`$truth`/`$innocent` 証拠・rethink 再設計・`share_min_affinity: 0.6`）: 95 テスト通過。無作為 30 シード: `solved` **5/30**、真相分布 11/10/9、有効 confront 10 件中正解 **5 件（50%）**、真犯人の自白 **0 件**、misjudged 5 回・rethink 12 回。推理が真相と相関するようになった（修正前は正解率 25%・自白 6 件）。
+
+### 探偵テンプレート本番実験（exp9b、コミット 0cb8c43＝差し戻し 2 回目適用後、`runs\exp9b-detective`、N=100・G=20・K=3・`--keep reached`、縦軸 I〜III）
+
+| 項目 | 結果 |
+|---|---|
+| 到達率 | 第 0 世代 25%（75/300）→ 第 5 世代 38% → 第 19 世代 **42%**（127/300） |
+| アーカイブ占有マス | **9 / 9（全マス）**（I・II・III × low/mid/high） |
+| アーカイブ相異度 | 0.66 |
+| エリート品質 | 0.54〜0.57 |
+| 「誤認 → rethink で culprit 反転 → 正解 confront → solved」 | **I\|mid**（t25 乙を誤認告発 → t29 rethink で 乙⇒甲 → t30 甲を正解告発）、**II\|high**（t16 誤認 → t20 rethink で誤信念を破棄 → t24 正解）の 2 マスで成立 |
+| 推理の健全性 | 証拠は真犯人を直接 implies せず（decoy 2 件は固定の甲・乙を指す／アリバイ 2 件が `$innocent:1`・`$innocent:2` を反証）、**消去法でのみ真犯人に到達**する。9 エリート中 7 件で rethink が誤信念（乙 または None）から真犯人へ反転している |
+
+合格条件 2（`solved` 到達エリート ≥3 マス、かつ誤認後に立て直すエリート ≥1）✓。修正前（exp8、証拠固定・縦軸 IV 混入）との差: 有効 confront 正解率 25%→50%、真犯人の自白 6 件→0 件、アーカイブは 9/12 マス（IV に move が混入）→ 9/9 マス（純粋な I〜III）。
+
+### Phase 4 合格判定（確定、2026-09-12）
+1. 恋愛 `mutual` 到達エリート ≥3 マス: exp7 で 6 マス ✓　2. 探偵 `solved` 到達エリート ≥3 マス＋誤認後の立て直し ≥1: exp9b で 9 マス・立て直し 2 マス ✓　3. 桃太郎の結果不変: 全コミットで固定ハッシュ 2 本通過・小規模 evolve の byte-match 83/83（engine_hash 除く）✓　4. メタ進化の ON/OFF: `--meta-evolution` で `rule_bits` が母集団に乗り、OFF は archive.json バイト一致 ✓。**設計書 §16 の全フェーズ完了。**
