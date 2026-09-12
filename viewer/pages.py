@@ -99,6 +99,28 @@ def _series_text(
     return f"{values[0]:.2f} → {values[-1]:.2f}"
 
 
+def _gate_text(values: Sequence[float]) -> str:
+    """The gate figure, without the arrow that reads as progress.
+
+    到達率 is the share of runs that reached the fixed ending. It admits a run
+    to the archive; it is not the thing the search maximises, so it is shown
+    as a plain current value rather than "start → end".
+    """
+
+    if not values:
+        return "—"
+    return f"{values[-1]:.0%}"
+
+
+def _dissimilarity_note(values: Sequence[float]) -> str:
+    if len(values) < 2 or values[-1] >= values[0]:
+        return ""
+    return (
+        '<span class="warn-note">初期より低下'
+        f"（{values[0]:.2f} から）</span>"
+    )
+
+
 def _experiment_card(meta: Mapping[str, Any]) -> str:
     name = str(meta["name"])
     href = f"/exp/{_url_segment(name)}"
@@ -110,7 +132,6 @@ def _experiment_card(meta: Mapping[str, Any]) -> str:
     truths = data._display(meta.get("truths")) if meta.get("truths") else "—"
     ending = data._display(meta.get("target_ending"))
     reach_values = meta.get("reach_series", [])
-    reach_text = _series_text(reach_values, percent=True)
     quality_values = meta.get("quality_series", [])
     quality_text = (
         f"{quality_values[-1]:.2f}"
@@ -133,10 +154,12 @@ def _experiment_card(meta: Mapping[str, Any]) -> str:
         f' · 真相 {_escape(truths)}'
         "</p>"
         '<div class="run-stats">'
-        f'<span class="reach">到達率 {_escape(reach_text)}</span>'
-        f'{sparkline(reach_values)}'
-        f'<span>占有 {_escape(meta["cells"])}/{_escape(meta["grid_size"])}</span>'
+        f'<span class="cells">占有 {_escape(meta["cells"])}'
+        f'/{_escape(meta["grid_size"])}</span>'
+        f'{sparkline(meta.get("occupied_series") or [])}'
+        f'<span>相異度 {_escape(_series_text(meta.get("dissimilarity_series") or []))}</span>'
         f'<span>q̄ {_escape(quality_text)}</span>'
+        f'<span class="reach">到達率 {_escape(_gate_text(reach_values))}</span>'
         "</div>"
         '<p class="outputs">'
         f'あらすじ {_escape(meta["synopsis_ok"])}/{_escape(meta["cells"])}'
@@ -384,15 +407,22 @@ def experiment_page(
     reach = meta["reach_series"]
     occupied = meta["occupied_series"]
     quality = meta["quality_series"]
+    dissimilarity = meta.get("dissimilarity_series") or []
     strip = (
         '<section class="card metric-strip">'
-        '<div><strong>到達率</strong>'
-        f'{sparkline(reach)}<span>{_escape(_series_text(reach, percent=True))}</span></div>'
-        '<div><strong>占有</strong>'
-        f'{sparkline(occupied)}<span>{_escape(meta["cells"])}/{_escape(meta["grid_size"])}</span></div>'
+        '<div><strong>占有マス</strong>'
+        f'{sparkline(occupied)}'
+        f'<span>{_escape(meta["cells"])}/{_escape(meta["grid_size"])}</span></div>'
+        '<div><strong>相異度</strong>'
+        f'{sparkline(dissimilarity)}'
+        f'<span>{_escape(_series_text(dissimilarity))}</span>'
+        f'{_dissimilarity_note(dissimilarity)}</div>'
         '<div><strong>q̄</strong>'
         f'{sparkline(quality)}<span>{_escape(_series_text(quality))}</span></div>'
-        f'<div><strong>相異度</strong><span>{_escape(meta.get("dissimilarity"))}</span></div>'
+        '<div class="gate"><strong>到達率</strong>'
+        f'<span>{_escape(_gate_text(reach))}</span>'
+        '<span class="gate-note">結末に届いたランの割合。'
+        'アーカイブに入るためのゲートで、高いほど良い指標ではない</span></div>'
         '<p class="strip-detail">'
         f'volatility 閾値 {_escape(_threshold_text(meta["thresholds"]))}'
         f' · 結末 {_escape(meta.get("target_ending"))}'

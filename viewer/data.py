@@ -528,6 +528,10 @@ def experiment_meta(
             generations_raw,
             "average_archive_quality",
         ),
+        "dissimilarity_series": _series(
+            generations_raw,
+            "archive_dissimilarity",
+        ),
         "dissimilarity": summary.get(
             "final_archive_dissimilarity"
         ),

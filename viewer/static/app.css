@@ -634,3 +634,27 @@ td {
     margin-bottom: 0.75rem;
   }
 }
+
+/* 到達率は結末に届いたランの割合で、アーカイブへの入場ゲート。
+   探索が最大化する指標ではないので、成果物（占有マス・相異度・品質）より
+   控えめに置き、上昇を称える見せ方をしない。 */
+.metric-strip .gate strong,
+.metric-strip .gate span {
+  color: var(--muted);
+}
+
+.gate-note {
+  font-size: 0.82em;
+  line-height: 1.45;
+  width: 100%;
+}
+
+.warn-note {
+  color: var(--warning);
+  font-size: 0.82em;
+  width: 100%;
+}
+
+.run-stats .reach {
+  color: var(--muted);
+}
