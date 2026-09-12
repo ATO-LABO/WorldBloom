@@ -658,3 +658,9 @@ td {
 .run-stats .reach {
   color: var(--muted);
 }
+
+/* 指標名にカーソルを載せると説明が出る。点線の下線でその場所を示す。 */
+.tip {
+  border-bottom: 1px dotted currentColor;
+  cursor: help;
+}
