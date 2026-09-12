@@ -240,14 +240,24 @@ def _threshold_text(thresholds: Mapping[str, Any]) -> str:
     )
 
 
-def _lead_category(genome: Mapping[str, Any]) -> str:
+def _lead_category(
+    genome: Mapping[str, Any],
+    categories: Sequence[str],
+) -> str:
+    """Return the strongest category that is active in this template."""
+
     weights = data._as_mapping(genome.get("category_weight"))
-    if not weights:
+    active = [
+        category
+        for category in categories
+        if category in weights
+    ]
+    if not active:
         return "—"
     return str(
         max(
-            sorted(weights),
-            key=lambda key: data._number(weights[key]),
+            sorted(active),
+            key=lambda category: data._number(weights[category]),
         )
     )
 
@@ -259,6 +269,7 @@ def _cell_markup(
     cell_key: str,
     elite: Mapping[str, Any],
     world_meta: Mapping[str, Any],
+    categories: Sequence[str],
     selected: set[str],
 ) -> str:
     synopsis, _ = data.synopsis_entry(
@@ -297,7 +308,7 @@ def _cell_markup(
         f'<dt>q</dt><dd>{data._number(elite.get("quality")):.4f}</dd>'
         f'<dt>到達</dt><dd>{data._number(elite.get("reach_rate")):.1%}</dd>'
         f'<dt>世代</dt><dd>g{int(data._number(elite.get("generation")))}</dd>'
-        f'<dt>主導</dt><dd>{_escape(_lead_category(genome))}</dd>'
+        f'<dt>主導</dt><dd>{_escape(_lead_category(genome, categories))}</dd>'
         "</dl>"
         f'<p class="hook">{_escape(hook) if hook else "場面情報なし"}</p>'
         "</td>"
@@ -338,6 +349,7 @@ def experiment_page(
                         cell_key,
                         elite,
                         meta["world_meta"],
+                        meta["categories"],
                         selected,
                     )
                 )
@@ -424,9 +436,18 @@ def layers_svg(
     bottom = 88
     plot_width = width - left - right
     plot_height = height - top - bottom
-    days = [int(point["day"]) for point in points]
-    minimum_day = min(days)
-    maximum_day = max(days)
+
+    point_days = [
+        int(data._number(point.get("day")))
+        for point in points
+    ]
+    marker_days = [
+        int(data._number(marker.get("day")))
+        for marker in markers
+    ]
+    domain_days = [*point_days, *marker_days]
+    minimum_day = min(domain_days)
+    maximum_day = max(domain_days)
 
     def x_for_day(day: int) -> float:
         if maximum_day == minimum_day:
@@ -456,7 +477,7 @@ def layers_svg(
     legend_width = plot_width / len(data.LAYER_SERIES)
     for index, (label, color) in enumerate(data.LAYER_SERIES):
         coordinates = " ".join(
-            f'{x_for_day(int(point["day"])):.2f},'
+            f'{x_for_day(int(data._number(point.get("day")))):.2f},'
             f'{y_for_value(float(point["values"][index])):.2f}'
             for point in points
         )
@@ -475,7 +496,7 @@ def layers_svg(
         )
 
     day_marks = []
-    for day in sorted(set(days)):
+    for day in sorted(set(domain_days)):
         x = x_for_day(day)
         day_marks.append(
             f'<g class="day-mark" data-day="{day}">'
@@ -492,15 +513,32 @@ def layers_svg(
         "revived": "▲",
         "ending": "●",
     }
-    marker_markup = []
+    markers_by_day: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
     for marker in markers:
-        day = int(data._number(marker.get("day")))
-        kind = str(marker.get("kind"))
-        marker_markup.append(
-            f'<text class="event-marker {kind}" '
-            f'x="{x_for_day(day):.2f}" y="{top+13}" '
-            f'text-anchor="middle">{marker_symbols.get(kind, "●")}</text>'
+        markers_by_day[
+            int(data._number(marker.get("day")))
+        ].append(marker)
+
+    marker_markup = []
+    for day in sorted(markers_by_day):
+        day_markers = markers_by_day[day]
+        count = len(day_markers)
+        spacing = min(
+            8.0,
+            16.0 / max(1, count - 1),
         )
+        for index, marker in enumerate(day_markers):
+            kind = str(marker.get("kind"))
+            turn = int(data._number(marker.get("turn")))
+            offset = (index - (count - 1) / 2.0) * spacing
+            x = x_for_day(day) + offset
+            marker_markup.append(
+                f'<text class="event-marker {kind}" '
+                f'data-marker="true" data-day="{day}" data-turn="{turn}" '
+                f'x="{x:.2f}" y="{top+13}" text-anchor="middle">'
+                f'<title>{_escape(kind)} T{turn}</title>'
+                f'{marker_symbols.get(kind, "●")}</text>'
+            )
 
     return (
         f'<svg class="layer-chart" viewBox="0 0 {width} {height}" '
@@ -522,16 +560,29 @@ def layers_svg(
     )
 
 
-def _genome_panel(genome: Mapping[str, Any]) -> str:
+def _genome_panel(
+    genome: Mapping[str, Any],
+    categories: Sequence[str],
+) -> str:
     weights = data._as_mapping(genome.get("category_weight"))
-    lead = _lead_category(genome)
+    active_categories = set(categories)
+    lead = _lead_category(genome, categories)
     bars = []
     for category in data.DEFAULT_CATEGORIES:
         value = data._number(weights.get(category))
-        lead_class = " lead" if category == lead else ""
+        classes = ["gene"]
+        suffix = ""
+        style = ""
+        if category == lead:
+            classes.append("lead")
+        if category not in active_categories:
+            classes.append("unused")
+            suffix = "（未使用）"
+            style = ' style="opacity:0.45"'
         bars.append(
-            f'<div class="gene{lead_class}">'
-            f'<span>{_escape(category)}</span>'
+            f'<div class="{" ".join(classes)}"{style}>'
+            f'<span>{_escape(category)}'
+            f'<small>{_escape(suffix)}</small></span>'
             '<span class="gene-track">'
             f'<span class="gene-fill" style="width:{max(0.0, min(1.0, value))*100:.2f}%"></span>'
             "</span>"
@@ -600,16 +651,6 @@ def _state_chips(
     )
 
 
-def _slot(value: Any) -> str:
-    labels = {
-        "morning": "朝",
-        "noon": "昼",
-        "afternoon": "夕方",
-        "evening": "夜",
-        "night": "夜",
-    }
-    text = "" if value is None else str(value)
-    return labels.get(text, text)
 
 
 def _timeline(view_model: Mapping[str, Any]) -> str:
@@ -635,6 +676,8 @@ def _timeline(view_model: Mapping[str, Any]) -> str:
                 f'<span class="tag">{_escape(reason)}</span>'
                 for reason in scene.get("reasons", [])
             )
+            if scene.get("turning"):
+                tags += '<span class="tag">転機</span>'
             delta = (
                 f'<span class="delta">Δ {data._number(scene.get("delta_l1")):.2f}</span>'
                 if data._number(scene.get("delta_l1")) > 0
@@ -650,25 +693,41 @@ def _timeline(view_model: Mapping[str, Any]) -> str:
                 npc = (
                     '<details class="npc">'
                     f"<summary>NPC の行動 ({len(npc_rows)})</summary>"
-                    + "".join(f"<p>{_escape(value)}</p>" for value in npc_rows)
+                    + "".join(
+                        f"<p>{_escape(value)}</p>"
+                        for value in npc_rows
+                    )
                     + "</details>"
                 )
             articles.append(
                 f'<article class="scene" data-turn="{turn}" data-day="{day}">'
-                f'<span class="turn">T{turn} {_escape(_slot(scene.get("slot")))}</span>'
+                f'<span class="turn">T{turn} {_escape(scene.get("slot"))}</span>'
                 f"{events}{details}"
                 f'<div class="scene-tags">{tags}{foreshadowing}{delta}</div>'
                 f"{npc}</article>"
             )
         sections.append(
             f'<section class="day" data-day="{day}">'
-            f"<h3>第{day}日 "
+            f'<h3>第{day}日 '
+            '<span class="muted">日終わり時点</span>'
             f'{_state_chips(state, view_model["world_meta"], view_model["protagonist"], view_model["antagonist"])}</h3>'
             + "".join(articles)
             + "</section>"
         )
+
+    omitted = int(
+        data._number(view_model.get("turning_omitted"))
+    )
+    omitted_note = (
+        '<p class="warning">'
+        f"ほか {omitted} 件の転機は「主人公の全決定」で"
+        "</p>"
+        if omitted > 0
+        else ""
+    )
     return (
         f'<section class="timeline" data-view="{_escape(view_model["view"])}">'
+        f"{omitted_note}"
         + "".join(sections)
         + "</section>"
     )
@@ -814,7 +873,7 @@ def cell_page(
         f'<dt>親</dt><dd>{_escape(parents)}</dd>'
         f'<dt>layers</dt><dd>{_escape(model["layers_path"])}</dd>'
         "</dl></section>"
-        f'{_genome_panel(model["genome"])}'
+        f'{_genome_panel(model["genome"], model["categories"])}'
         '<section class="card chart-card"><h2>7層の推移</h2>'
         '<p class="muted">x = 日。▼ downed、▲ revived、● ending。</p>'
         f'{layers_svg(model["layer_points"], model["markers"])}</section>'

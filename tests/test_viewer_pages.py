@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
 
-from test_viewer import _create_experiment
+from test_viewer import (
+    _create_experiment,
+    _fixture_rows,
+    _write_jsonl,
+)
 from viewer import data, pages, server
 
 
@@ -43,7 +48,7 @@ class ViewerPageTests(unittest.TestCase):
         )
         self.assertEqual(meta["world"], "桃太郎")
         self.assertEqual(meta["genre"], "momotaro")
-        self.assertEqual(meta["generations"], 1)
+        self.assertEqual(meta["generations"], 0)
         self.assertIsNone(meta["population"])
         self.assertEqual(meta["synopsis_ok"], 1)
         self.assertEqual(meta["story_ok"], 1)
@@ -157,6 +162,194 @@ class ViewerPageTests(unittest.TestCase):
             server.static_path("../server.py")
         with self.assertRaises(data.MissingResource):
             server.static_path("nope.css")
+
+    def test_layer_points_use_documented_vector_indices(self) -> None:
+        rows = [
+            {
+                "kind": "snapshot",
+                "day": 1,
+                "turn": 1,
+                "vector": [
+                    0.2,
+                    0.6,
+                    0.1,
+                    0.2,
+                    0.3,
+                    0.4,
+                    0.7,
+                    0.8,
+                    0.9,
+                    1.0,
+                    0.5,
+                ],
+                "layers": {
+                    "pending": ["a", "b"],
+                },
+            },
+            {
+                "kind": "snapshot",
+                "day": 2,
+                "turn": 2,
+                "vector": [
+                    0.4,
+                    0.8,
+                    0.2,
+                    0.4,
+                    0.6,
+                    0.8,
+                    0.3,
+                    0.1,
+                    0.5,
+                    0.7,
+                    1.0,
+                ],
+                "layers": {
+                    "pending": ["a"],
+                },
+            },
+        ]
+
+        points = data.layer_points(rows)
+
+        for actual, expected in zip(
+            points[0]["values"],
+            [0.4, 0.8, 0.25, 0.7, 0.9, 1.0, 1.0],
+            strict=True,
+        ):
+            self.assertAlmostEqual(actual, expected)
+        for actual, expected in zip(
+            points[1]["values"],
+            [0.6, 0.1, 0.5, 0.3, 0.5, 0.7, 0.5],
+            strict=True,
+        ):
+            self.assertAlmostEqual(actual, expected)
+
+    def test_layers_svg_keeps_and_separates_markers(self) -> None:
+        points = [
+            {
+                "day": 1,
+                "turn": 1,
+                "values": [0.0] * 7,
+            },
+            {
+                "day": 2,
+                "turn": 2,
+                "values": [1.0] * 7,
+            },
+        ]
+        markers = [
+            {"day": 4, "turn": 8, "kind": "downed"},
+            {"day": 4, "turn": 9, "kind": "revived"},
+            {"day": 4, "turn": 10, "kind": "ending"},
+        ]
+
+        rendered = pages.layers_svg(points, markers)
+
+        view_box = re.search(
+            r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"',
+            rendered,
+        )
+        self.assertIsNotNone(view_box)
+        width = float(view_box.group(1))
+        marker_x = [
+            float(value)
+            for value in re.findall(
+                r'data-marker="true"[^>]*x="([0-9.]+)"',
+                rendered,
+            )
+        ]
+        self.assertEqual(len(marker_x), len(markers))
+        self.assertTrue(
+            all(0.0 <= value <= width for value in marker_x)
+        )
+        self.assertEqual(len(set(marker_x)), len(markers))
+
+    def test_view_levels_are_cumulative_and_digest_keeps_turning_point(
+        self,
+    ) -> None:
+        layers_path = (
+            self.experiment
+            / "g0"
+            / "ind-0"
+            / "seed-7"
+            / "layers.jsonl"
+        )
+        rows = _fixture_rows()
+        rows.append(
+            {
+                "args": [],
+                "day": 2,
+                "delta": {
+                    "actor": {
+                        "valued_beliefs": {
+                            "culprit": None,
+                        }
+                    },
+                    "objective": None,
+                    "relations": [],
+                    "targets": {},
+                },
+                "details": {
+                    "before": {
+                        "culprit": {
+                            "value": "鬼",
+                            "confidence": 0.72,
+                        }
+                    },
+                    "after": {},
+                    "evidence": ["村の証言"],
+                },
+                "effective": True,
+                "kind": "decision",
+                "result": "rethought",
+                "slot": "朝",
+                "subject": "桃太郎",
+                "turn": 3,
+                "verb": "rethink",
+            }
+        )
+        _write_jsonl(layers_path, rows)
+
+        digest = data.cell_view(
+            self.repository,
+            self.experiment,
+            "III|high",
+            view="digest",
+        )
+        decisions = data.cell_view(
+            self.repository,
+            self.experiment,
+            "III|high",
+            view="decisions",
+        )
+        all_rows = data.cell_view(
+            self.repository,
+            self.experiment,
+            "III|high",
+            view="all",
+        )
+
+        self.assertLessEqual(
+            len(digest["scenes"]),
+            len(decisions["scenes"]),
+        )
+        self.assertLessEqual(
+            len(decisions["scenes"]),
+            len(all_rows["scenes"]),
+        )
+        self.assertEqual(
+            len(decisions["scenes"]),
+            len(all_rows["scenes"]),
+        )
+        rethink_scene = next(
+            scene
+            for scene in digest["scenes"]
+            if scene["turn"] == 3
+        )
+        self.assertTrue(rethink_scene["turning"])
+        self.assertTrue(
+            any("→" in detail for detail in rethink_scene["details"])
+        )
 
 
 if __name__ == "__main__":
