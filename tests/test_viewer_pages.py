@@ -163,6 +163,18 @@ class ViewerPageTests(unittest.TestCase):
         with self.assertRaises(data.MissingResource):
             server.static_path("nope.css")
 
+    def test_metric_labels_carry_help_text(self) -> None:
+        # Every metric name is explained on hover; the text lives in one place.
+        for key in ("cells", "dissimilarity", "quality", "reach"):
+            rendered = pages._tip(key, "ラベル")
+            self.assertIn('class="tip"', rendered)
+            self.assertIn("title=", rendered)
+            self.assertIn("ラベル", rendered)
+        self.assertIn(
+            "最大化する対象ではない",
+            pages.METRIC_HELP["reach"],
+        )
+
     def test_gate_figure_has_no_progress_arrow(self) -> None:
         # 到達率 admits a run to the archive; it is not what the search
         # maximises, so it must not be dressed as an improving KPI.

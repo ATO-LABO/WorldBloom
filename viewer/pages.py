@@ -99,6 +99,46 @@ def _series_text(
     return f"{values[0]:.2f} → {values[-1]:.2f}"
 
 
+METRIC_HELP = {
+    "cells": (
+        "占有マス: アーカイブが埋まった区画の数。"
+        "区画は「主導カテゴリ × 起伏の大きさ」で決まり、"
+        "1 区画につき最良のラン 1 本だけが残る。"
+        "多いほど、違う種類の物語が見つかっている。"
+    ),
+    "dissimilarity": (
+        "相異度: アーカイブに残ったラン同士が、"
+        "どれだけ違う経路を通ったかの平均。1 に近いほど多様。"
+        "到達率だけを追うと経路が似通って下がりやすい。"
+    ),
+    "quality": (
+        "q: 結末に届いたランの質。7 つの指標の平均で、"
+        "目的物の移動・関係の振れ幅・復帰・力関係の逆転・"
+        "新事実の獲得・信念の反転・前提を揃えた行動の連鎖を数え、"
+        "空振りの多さを減点する。q̄ はアーカイブ全体の平均。"
+    ),
+    "reach": (
+        "到達率: その世代の全ラン（個体数 × シード数）のうち、"
+        "あらかじめ固定した結末に届いた割合。"
+        "アーカイブに入るためのゲートであり、"
+        "探索が最大化する対象ではない。"
+    ),
+    "elite_reach": (
+        "到達: このエリートが評価されたシードのうち、"
+        "結末に届いた回数。世代ごとの到達率とは分母が違う。"
+    ),
+}
+
+
+def _tip(key: str, label: str) -> str:
+    """Label with its hover explanation."""
+
+    return (
+        f'<span class="tip" title="{_escape(METRIC_HELP[key])}">'
+        f"{label}</span>"
+    )
+
+
 def _gate_text(values: Sequence[float]) -> str:
     """The gate figure, without the arrow that reads as progress.
 
@@ -154,12 +194,14 @@ def _experiment_card(meta: Mapping[str, Any]) -> str:
         f' · 真相 {_escape(truths)}'
         "</p>"
         '<div class="run-stats">'
-        f'<span class="cells">占有 {_escape(meta["cells"])}'
+        f'<span class="cells">{_tip("cells", "占有")} {_escape(meta["cells"])}'
         f'/{_escape(meta["grid_size"])}</span>'
         f'{sparkline(meta.get("occupied_series") or [])}'
-        f'<span>相異度 {_escape(_series_text(meta.get("dissimilarity_series") or []))}</span>'
-        f'<span>q̄ {_escape(quality_text)}</span>'
-        f'<span class="reach">到達率 {_escape(_gate_text(reach_values))}</span>'
+        f'<span>{_tip("dissimilarity", "相異度")} '
+        f'{_escape(_series_text(meta.get("dissimilarity_series") or []))}</span>'
+        f'<span>{_tip("quality", "q̄")} {_escape(quality_text)}</span>'
+        f'<span class="reach">{_tip("reach", "到達率")} '
+        f'{_escape(_gate_text(reach_values))}</span>'
         "</div>"
         '<p class="outputs">'
         f'あらすじ {_escape(meta["synopsis_ok"])}/{_escape(meta["cells"])}'
@@ -345,8 +387,9 @@ def _cell_markup(
         f'aria-pressed="{pressed}" title="選定を切り替える">{star}</button>'
         "</div>"
         '<dl class="cell-metrics">'
-        f'<dt>q</dt><dd>{data._number(elite.get("quality")):.4f}</dd>'
-        f'<dt>到達</dt><dd>'
+        f'<dt>{_tip("quality", "q")}</dt>'
+        f'<dd>{data._number(elite.get("quality")):.4f}</dd>'
+        f'<dt>{_tip("elite_reach", "到達")}</dt><dd>'
         f'{_reached_seeds(data._number(elite.get("reach_rate")), seed_count)}'
         "</dd>"
         f'<dt>世代</dt><dd>g{int(data._number(elite.get("generation")))}</dd>'
@@ -410,19 +453,19 @@ def experiment_page(
     dissimilarity = meta.get("dissimilarity_series") or []
     strip = (
         '<section class="card metric-strip">'
-        '<div><strong>占有マス</strong>'
+        f'<div><strong>{_tip("cells", "占有マス")}</strong>'
         f'{sparkline(occupied)}'
         f'<span>{_escape(meta["cells"])}/{_escape(meta["grid_size"])}</span></div>'
-        '<div><strong>相異度</strong>'
+        f'<div><strong>{_tip("dissimilarity", "相異度")}</strong>'
         f'{sparkline(dissimilarity)}'
         f'<span>{_escape(_series_text(dissimilarity))}</span>'
         f'{_dissimilarity_note(dissimilarity)}</div>'
-        '<div><strong>q̄</strong>'
+        f'<div><strong>{_tip("quality", "q̄")}</strong>'
         f'{sparkline(quality)}<span>{_escape(_series_text(quality))}</span></div>'
-        '<div class="gate"><strong>到達率</strong>'
+        f'<div class="gate"><strong>{_tip("reach", "到達率")}</strong>'
         f'<span>{_escape(_gate_text(reach))}</span>'
-        '<span class="gate-note">結末に届いたランの割合。'
-        'アーカイブに入るためのゲートで、高いほど良い指標ではない</span></div>'
+        '<span class="gate-note">アーカイブへの入場ゲート。'
+        '上げる対象ではない</span></div>'
         '<p class="strip-detail">'
         f'volatility 閾値 {_escape(_threshold_text(meta["thresholds"]))}'
         f' · 結末 {_escape(meta.get("target_ending"))}'
@@ -916,8 +959,9 @@ def cell_page(
         f'data-endpoint="{endpoint}" data-cell="{_escape(cell_key)}"{checked}>'
         "<span>本文候補として選定する</span></label>"
         '<dl class="metric">'
-        f'<dt>q</dt><dd>{model["quality"]:.4f}</dd>'
-        f'<dt>到達</dt><dd>'
+        f'<dt>{_tip("quality", "q")}</dt>'
+        f'<dd>{model["quality"]:.4f}</dd>'
+        f'<dt>{_tip("elite_reach", "到達")}</dt><dd>'
         f'{_reached_seeds(model["reach_rate"], len(model.get("seeds") or []))}'
         "</dd>"
         f'<dt>世代</dt><dd>g{model["generation"]}</dd>'
