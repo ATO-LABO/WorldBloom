@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from gapengine.explanations import extract_explanation, is_turning_candidate
+from gapengine.reader_summary import load_reviewed
 from gapengine.qd import read_rows
 from gapengine.scenes import describe_row, extract_scenes
 from gapengine.synopsis import load_world_meta
@@ -1144,7 +1145,7 @@ def cell_view(
     )
 
     return {
-        "explanation": extract_explanation(resolved_layers, experiment=experiment.name, cell=cell_key),
+        "explanation": _with_reader(repository, experiment, extract_explanation(resolved_layers, experiment=experiment.name, cell=cell_key)),
         "experiment": experiment.name,
         "cell": cell_key,
         "quality": _number(elite.get("quality")),
@@ -1200,4 +1201,11 @@ def cell_explanation(repository, experiment, cell_key):
     path = repository.safe_path(experiment, relative)
     if not path.is_file():
         raise MissingResource("exemplar layers.jsonl not found")
-    return extract_explanation(path, experiment=experiment.name, cell=cell_key)
+    return _with_reader(repository, experiment, extract_explanation(path, experiment=experiment.name, cell=cell_key))
+
+
+def _with_reader(repository, experiment, explanation):
+    reader = load_reviewed(repository, experiment, explanation)
+    if reader is not None:
+        explanation["reader_summary"] = reader
+    return explanation

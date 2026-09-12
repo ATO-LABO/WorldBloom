@@ -701,3 +701,17 @@ td {
 .raw-lines pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: .5rem; border-bottom: 1px solid #334155; }
 .raw-lines pre:target { outline: 2px solid #55d6be; background: #193d3b; }
 .explanation-comparison pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 36rem; overflow: auto; }
+
+/* Optional, reviewed reader summary. */
+.reader-primary { max-width: 76rem; }
+.reader-story h2 { margin: .4rem 0 1rem; line-height: 1.6; }
+.reader-story .eyebrow { color: var(--muted, #64748b); font-size: .85rem; margin: 0; }
+.reader-prose { font-size: 1.1rem; line-height: 2.1; max-width: 48rem; overflow-wrap: anywhere; }
+.reader-label { font-size: .8rem; margin-top: 1.25rem; }
+.reader-evidence { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem; }
+.reader-evidence summary { cursor: pointer; }
+.reader-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30rem; overflow: auto; }
+
+.reader-short { background: var(--panel-2); border-left: 3px solid var(--accent-2); padding: .65rem .8rem; margin: .8rem 0; }
+.reader-short p { margin: .35rem 0 0; }
+.reader-short-label { color: var(--muted); font-size: .75rem; }
