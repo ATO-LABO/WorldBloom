@@ -11,6 +11,7 @@ from typing import Any
 
 from engine.actions import Action, candidates
 from engine.contest import believed_strength, strength
+from engine.decision_record import VERSION, RULE, record_distribution
 from engine.log import (
     LayersWriter,
     delta_effective,
@@ -78,6 +79,7 @@ class Simulation:
         out_dir: Path,
         policies: dict[str, Any] | None = None,
         precedent: Any | None = None,
+        record_explanations: bool = False,
     ) -> None:
         self.seed = int(seed)
         self.world = world
@@ -87,6 +89,8 @@ class Simulation:
         }
         self.out_dir = Path(out_dir)
         self.precedent = precedent
+        self.record_explanations = bool(record_explanations)
+        self._decision_context: dict[str, Any] | None = None
         self.rng = random.Random(self.seed)
         self.turn = 0
         self.day = 0
@@ -308,6 +312,8 @@ class Simulation:
             "precedent_hash": self._precedent_hash(),
             "engine_hash": self._engine_hash(),
         }
+        if self.record_explanations:
+            header["explanation_recording"] = {"version": VERSION, "rule": RULE, "cost_baseline_version": 1}
         if self.world.drawn_truth:
             header["truth"] = _plain(self.world.drawn_truth)
         return header
@@ -556,6 +562,11 @@ class Simulation:
         self,
         subject: Subject,
     ) -> tuple[Action, float | None]:
+        self._decision_context = None
+        if self.record_explanations:
+            self._decision_context = {"zone": subject.zone,
+                                      "present": [s.id for s in self._present_for(subject)],
+                                      "selection": record_distribution([], [], None, fallback="no_candidates")}
         weighted = candidates(subject, self.world, self)
         if not weighted:
             return Action("rest"), None
@@ -581,6 +592,9 @@ class Simulation:
         weights = [max(0.0, float(weight)) for _, weight in weighted]
         total = sum(weights)
         if total <= 0.0:
+            if self.record_explanations:
+                self._decision_context["selection"] = record_distribution(
+                    weighted, weights, None, fallback="non_positive_total")
             return Action("rest"), None
 
         index = self.rng.choices(
@@ -590,6 +604,8 @@ class Simulation:
         )[0]
         action = weighted[index][0]
         probability = weights[index] / total
+        if self.record_explanations:
+            self._decision_context["selection"] = record_distribution(weighted, weights, index)
 
         if policy is not None:
             record = getattr(policy, "record", None)
@@ -612,7 +628,7 @@ class Simulation:
     ) -> dict[str, Any]:
         policy_meta = action.meta.get("policy")
         classification = action.meta.get("classification")
-        return {
+        row = {
             "kind": "decision",
             "turn": self.turn,
             "day": self.day,
@@ -632,6 +648,10 @@ class Simulation:
             "delta": delta,
             "details": _plain(details),
         }
+
+        if self.record_explanations:
+            row["explanation"] = _plain(self._decision_context)
+        return row
 
     def _strength_details(self, subject: Subject) -> dict[str, float]:
         if subject.id != self.world.protagonist:
@@ -998,6 +1018,15 @@ class Simulation:
                             action,
                         )
                         before = self._capture(capture_ids)
+                        if self.record_explanations and self._decision_context is not None:
+                            # Reuse the execution snapshot, including unlogged passive recovery.
+                            # Keep cost accounting separate from the actor's knowledge.
+                            actor_before = before[0][subject.id]
+                            self._decision_context["cost_baseline"] = {
+                                "version": 1, "timing": "before_execute",
+                                "stamina": actor_before["stamina"],
+                                "resources": _plain(actor_before["resources"]),
+                            }
                         result, details, markers = (
                             self.verb_engine.execute(
                                 subject,

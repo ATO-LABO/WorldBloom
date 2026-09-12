@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from viewer import explanation_ui
+
 import html
 import json
 from collections import defaultdict
@@ -465,6 +467,9 @@ def _cell_markup(
         f'<dd>{_escape(_lead_category(genome, categories))}</dd>'
         "</dl>"
         f'<p class="hook">{_escape(hook) if hook else "場面情報なし"}</p>'
+        + explanation_ui.short(data.cell_explanation(repository, experiment, cell_key))
+        + f'<label><input type="checkbox" name="cell" value="{_escape(cell_key)}" form="compare-cells"> 四項目を比較</label>'
+        +
         "</td>"
     )
 
@@ -566,6 +571,7 @@ def experiment_page(
     )
 
     body = (
+        f'<form id="compare-cells" method="get" action="/exp/{_url_segment(experiment_name)}/compare"><p>格子から2〜4候補を選択して <button type="submit">四項目を比較</button></p></form>'
         '<p class="experiment-meta">'
         f'<span class="genre">{_escape(meta["genre"])}</span> '
         f'{_escape(meta["world"])} · '
@@ -843,7 +849,7 @@ def _timeline(view_model: Mapping[str, Any]) -> str:
                 for reason in scene.get("reasons", [])
             )
             if scene.get("turning"):
-                tags += '<span class="tag">転機</span>'
+                tags += '<span class="tag">転機候補</span>'
             delta = (
                 f'<span class="delta">Δ {data._number(scene.get("delta_l1")):.2f}</span>'
                 if data._number(scene.get("delta_l1")) > 0
@@ -886,7 +892,7 @@ def _timeline(view_model: Mapping[str, Any]) -> str:
     )
     omitted_note = (
         '<p class="warning">'
-        f"ほか {omitted} 件の転機は「主人公の全決定」で"
+        f"ほか {omitted} 件の転機候補は「主人公の全決定」で"
         "</p>"
         if omitted > 0
         else ""
@@ -1046,7 +1052,9 @@ def cell_page(
         f'<dt>{_tip("layers", "layers")}</dt>'
         f'<dd>{_escape(model["layers_path"])}</dd>'
         "</dl></section>"
-        f'{_genome_panel(model["genome"], model["categories"])}'
+        + '<section class="card"><h2>選択から後続へのつながり</h2>'
+        + explanation_ui.panel(model["explanation"]) + "</section>"
+        + f'{_genome_panel(model["genome"], model["categories"])}'
         '<section class="card chart-card"><h2>7層の推移</h2>'
         '<p class="muted">x = 日。▼ downed、▲ revived、● ending。</p>'
         f'{layers_svg(model["layer_points"], model["markers"])}</section>'
@@ -1054,6 +1062,10 @@ def cell_page(
         '<div class="section-heading"><h2>物語</h2>'
         f'<nav class="view-modes">{" ".join(mode_links)}</nav></div>'
         f'{_timeline(model)}</section>'
+        + '<section class="card"><h2>場面ごとの四項目</h2>'
+        + "".join(f'<details><summary>T{_escape(item["turn"])} {_escape(explanation_ui.action_text(item))}</summary>' + explanation_ui.panel(model["explanation"], item) + "</details>" for item in model["explanation"]["decisions"] if view == "all" or item["subject"] == model["protagonist"])
+        + "</section>"
+        +
         '<details class="raw">'
         '<summary>模範ランのターン列（生ログ）</summary>'
         f'{_raw_table(model["turn_rows"])}</details>'
@@ -1070,3 +1082,44 @@ def cell_page(
             (cell_key, cell_base),
         ],
     )
+
+
+def compare_page(repository, experiment_name, cells):
+    if not 2 <= len(cells) <= 4 or len(set(cells)) != len(cells):
+        raise data.BadRequest("比較する異なる候補を2〜4件選んでください")
+    experiment = repository.experiment(experiment_name)
+    explanations = [data.cell_explanation(repository, experiment, cell) for cell in cells]
+    same = len({x["trajectory_signature"] for x in explanations}) == 1
+    body = f'<p><a href="/exp/{_url_segment(experiment_name)}">← 格子で候補を選ぶ</a></p>'
+    body += '<p>主人公の行動・対象・結果の並びは同じ筋です。</p>' if same else '<p>主人公の行動・対象・結果の並びに差があります。物語品質の優劣は判定していません。</p>'
+    body += '<div class="explanation-comparison">'
+    for cell, explanation in zip(cells, explanations):
+        body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
+        body += explanation_ui.panel(explanation) + '</section>'
+    return document("四項目で比較", body + '</div>')
+
+
+def raw_page(repository, experiment_name, cell_key, line=None):
+    experiment = repository.experiment(experiment_name)
+    explanation = data.cell_explanation(repository, experiment, cell_key)
+    # The source path is obtained only through the repository containment check.
+    from pathlib import Path
+    raw = Path(explanation["source"]["layers_path"]).read_text(encoding="utf-8-sig")
+    body = f'<p><a href="{explanation_ui.base_url(explanation)}">← 四項目</a></p>'
+    body += f'<p>SHA-256: {_escape(explanation["source"]["sha256"])}</p><div class="raw-lines">'
+    lines = raw.splitlines()
+    if line is not None:
+        try:
+            line = int(line)
+        except (TypeError, ValueError) as error:
+            raise data.BadRequest("line must be a 1-based integer") from error
+        if not 1 <= line <= len(lines):
+            raise data.BadRequest("line is outside the source log")
+        first, last = max(1, line - 3), min(len(lines), line + 3)
+        body += f'<p>原ログ全{len(lines)}行のうちL{first}〜L{last}。<a href="{explanation_ui.base_url(explanation)}/raw">全文</a></p>'
+    else:
+        first, last = 1, len(lines)
+    for number in range(first, last + 1):
+        value = lines[number - 1]
+        body += f'<pre id="L{number}"><a href="?line={number}#L{number}">L{number}</a> {_escape(value)}</pre>'
+    return document(f"{cell_key} 原ログ", body + '</div>')

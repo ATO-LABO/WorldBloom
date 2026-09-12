@@ -145,6 +145,14 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 payload,
             )
             return
+        if len(parts) == 3 and parts[0] == "exp" and parts[2] == "compare":
+            query = parse_qs(urlsplit(self.path).query)
+            self._send_html(pages.compare_page(self.repository, parts[1], query.get("cell", [])))
+            return
+        if len(parts) == 5 and parts[0] == "exp" and parts[2] == "cell" and parts[4] == "raw":
+            query = parse_qs(urlsplit(self.path).query)
+            self._send_html(pages.raw_page(self.repository, parts[1], parts[3], query.get("line", [None])[0]))
+            return
         if len(parts) == 2 and parts[0] == "exp":
             self._send_html(
                 pages.experiment_page(

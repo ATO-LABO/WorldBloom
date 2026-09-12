@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from gapengine.explanations import extract_explanation, is_turning_candidate
 from gapengine.qd import read_rows
 from gapengine.scenes import describe_row, extract_scenes
 from gapengine.synopsis import load_world_meta
@@ -1004,48 +1005,10 @@ def cell_view(
                 [],
             ).append(row)
 
-    def belief_changed(row: Mapping[str, Any]) -> bool:
-        details = _as_mapping(row.get("details"))
-        plural = _as_list(details.get("beliefs"))
-        singular = details.get("belief")
-        beliefs = [
-            belief
-            for belief in plural
-            if isinstance(belief, Mapping)
-        ]
-        if isinstance(singular, Mapping):
-            beliefs.append(singular)
-        return any(
-            belief.get("before") != belief.get("after")
-            for belief in beliefs
-        )
-
-    def is_turning_row(row: Mapping[str, Any]) -> bool:
-        if row.get("subject") != protagonist:
-            return False
-        verb = str(row.get("verb", ""))
-        if verb == "rethink":
-            details = _as_mapping(row.get("details"))
-            return (
-                _as_mapping(details.get("before"))
-                != _as_mapping(details.get("after"))
-            )
-        if verb == "learn_fact":
-            return belief_changed(row)
-        return verb in {
-            "confront",
-            "exposure",
-            "betrayal",
-            "payoff",
-            "ending",
-            "downed",
-            "revived",
-        }
-
     turning_turns = {
         turn
         for turn, turn_rows in rows_by_turn.items()
-        if any(is_turning_row(row) for row in turn_rows)
+        if any(is_turning_candidate(row, protagonist) for row in turn_rows)
     }
 
     all_scenes = extract_scenes(
@@ -1181,6 +1144,7 @@ def cell_view(
     )
 
     return {
+        "explanation": extract_explanation(resolved_layers, experiment=experiment.name, cell=cell_key),
         "experiment": experiment.name,
         "cell": cell_key,
         "quality": _number(elite.get("quality")),
@@ -1223,3 +1187,17 @@ def cell_view(
         "story": story,
         "story_text": story_text,
     }
+
+
+def cell_explanation(repository, experiment, cell_key):
+    repository.validate_segment(cell_key)
+    elite = _as_mapping(repository.archive(experiment).get("cells")).get(cell_key)
+    if not isinstance(elite, Mapping):
+        raise MissingResource(f"cell not found: {cell_key}")
+    relative = _as_mapping(elite.get("exemplar")).get("layers_path")
+    if not isinstance(relative, str):
+        raise MissingResource("exemplar log not recorded")
+    path = repository.safe_path(experiment, relative)
+    if not path.is_file():
+        raise MissingResource("exemplar layers.jsonl not found")
+    return extract_explanation(path, experiment=experiment.name, cell=cell_key)
