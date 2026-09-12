@@ -68,6 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Override target ending ids; any listed ending counts as reached."
         ),
     )
+    parser.add_argument("--record-explanations", action=argparse.BooleanOptionalAction, default=True,
+                        help="Record bounded choice candidates for the explanation viewer (default: on).")
     return parser
 
 
@@ -75,6 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     archive = evolve(
         {
+            "record_explanations": args.record_explanations,
             "coevolve": args.coevolve,
             "ga_seed": args.ga_seed,
             "generations": args.generations,

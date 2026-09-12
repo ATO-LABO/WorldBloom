@@ -690,3 +690,14 @@ td {
 .grade-none {
   color: var(--muted);
 }
+
+/* Four-item explanations keep each choice and its evidence together. */
+.explanation-comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 1rem; align-items: start; }
+.four-items { display: grid; grid-template-columns: 1fr; gap: .4rem; }
+.four-items dt { font-weight: 700; margin-top: .7rem; }
+.four-items dd { margin: 0; overflow-wrap: anywhere; }
+.explain-short { font-size: .85rem; line-height: 1.6; }
+.causal-link { border-left: 3px solid #55d6be; padding-left: .8rem; overflow-wrap: anywhere; }
+.raw-lines pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: .5rem; border-bottom: 1px solid #334155; }
+.raw-lines pre:target { outline: 2px solid #55d6be; background: #193d3b; }
+.explanation-comparison pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 36rem; overflow: auto; }

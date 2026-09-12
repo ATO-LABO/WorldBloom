@@ -190,6 +190,7 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             seed_dir,
             policies=policies or None,
             precedent=precedent,
+            record_explanations=bool(job.get("record_explanations", False)),
         ).run()
         rows = read_rows(layer_path)
 
@@ -864,6 +865,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             for index, (genome, parents) in enumerate(population)
         ]
         for job in jobs:
+            job["record_explanations"] = bool(cfg.get("record_explanations", False))
             job["target_ending"] = world_model.target_ending
         raw_results = _evaluate_jobs(jobs, processes)
 
@@ -953,6 +955,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                 )
             ]
             for job in antagonist_jobs:
+                job["record_explanations"] = bool(cfg.get("record_explanations", False))
                 job["target_ending"] = world_model.target_ending
             antagonist_raw_results = _evaluate_jobs(
                 antagonist_jobs,
