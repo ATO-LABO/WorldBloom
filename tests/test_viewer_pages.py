@@ -163,6 +163,14 @@ class ViewerPageTests(unittest.TestCase):
         with self.assertRaises(data.MissingResource):
             server.static_path("nope.css")
 
+    def test_elite_reach_shown_as_seed_fraction(self) -> None:
+        # The generation figure keeps the name 到達率; an elite is only run on
+        # its own K seeds, so it reads as a fraction to avoid the confusion.
+        self.assertEqual(pages._reached_seeds(2 / 3, 3), "2/3 シード")
+        self.assertEqual(pages._reached_seeds(1.0, 3), "3/3 シード")
+        self.assertEqual(pages._reached_seeds(0.0, 3), "0/3 シード")
+        self.assertEqual(pages._reached_seeds(0.2, 0), "20.0%")
+
     def test_layer_points_use_documented_vector_indices(self) -> None:
         rows = [
             {

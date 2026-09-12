@@ -262,6 +262,22 @@ def _lead_category(
     )
 
 
+def _reached_seeds(
+    reach_rate: float,
+    seed_count: int,
+) -> str:
+    """Elite reach as "n/N シード".
+
+    The generation-level figure keeps the name 到達率 (share of all runs in a
+    generation). An elite is only ever evaluated on the K seeds of its own
+    job, so showing it as a percentage invited confusion with that share.
+    """
+
+    if seed_count <= 0:
+        return f"{reach_rate:.1%}"
+    return f"{round(reach_rate * seed_count)}/{seed_count} シード"
+
+
 def _cell_markup(
     repository: data.RunRepository,
     experiment: Any,
@@ -271,6 +287,7 @@ def _cell_markup(
     world_meta: Mapping[str, Any],
     categories: Sequence[str],
     selected: set[str],
+    seed_count: int,
 ) -> str:
     synopsis, _ = data.synopsis_entry(
         repository,
@@ -306,7 +323,9 @@ def _cell_markup(
         "</div>"
         '<dl class="cell-metrics">'
         f'<dt>q</dt><dd>{data._number(elite.get("quality")):.4f}</dd>'
-        f'<dt>到達</dt><dd>{data._number(elite.get("reach_rate")):.1%}</dd>'
+        f'<dt>到達</dt><dd>'
+        f'{_reached_seeds(data._number(elite.get("reach_rate")), seed_count)}'
+        "</dd>"
         f'<dt>世代</dt><dd>g{int(data._number(elite.get("generation")))}</dd>'
         f'<dt>主導</dt><dd>{_escape(_lead_category(genome, categories))}</dd>'
         "</dl>"
@@ -351,6 +370,7 @@ def experiment_page(
                         meta["world_meta"],
                         meta["categories"],
                         selected,
+                        len(meta.get("seeds") or []),
                     )
                 )
             else:
@@ -867,7 +887,9 @@ def cell_page(
         "<span>本文候補として選定する</span></label>"
         '<dl class="metric">'
         f'<dt>q</dt><dd>{model["quality"]:.4f}</dd>'
-        f'<dt>到達率</dt><dd>{model["reach_rate"]:.1%}</dd>'
+        f'<dt>到達</dt><dd>'
+        f'{_reached_seeds(model["reach_rate"], len(model.get("seeds") or []))}'
+        "</dd>"
         f'<dt>世代</dt><dd>g{model["generation"]}</dd>'
         f'<dt>seed</dt><dd>{_escape(model["seed"])}</dd>'
         f'<dt>親</dt><dd>{_escape(parents)}</dd>'
