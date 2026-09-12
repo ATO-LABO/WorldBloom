@@ -1186,6 +1186,7 @@ def cell_view(
         "parents": list(_as_list(elite.get("parents"))),
         "genome": dict(_as_mapping(elite.get("genome"))),
         "categories": list(meta["categories"]),
+        "seeds": list(meta.get("seeds") or []),
         "prev_cell": occupied[position - 1] if position else None,
         "next_cell": (
             occupied[position + 1]
