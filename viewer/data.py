@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,16 @@ if str(ROOT) not in sys.path:
 from gapengine.qd import read_rows
 from gapengine.scenes import describe_row, extract_scenes
 from gapengine.synopsis import load_world_meta
+
+
+@lru_cache(maxsize=None)
+def _cached_world_meta(
+    project_dir: Path,
+    template_dir: Path,
+) -> dict[str, Any]:
+    """Load each resolved world's descriptive metadata only once."""
+
+    return load_world_meta(project_dir, template_dir)
 
 
 DEFAULT_CATEGORIES = ("I", "II", "III", "IV", "V", "VI")
@@ -241,13 +252,17 @@ class RunRepository:
         return destination
 
 
+@lru_cache(maxsize=None)
 def _yaml_mapping(path: Path) -> Mapping[str, Any]:
+    """Read each immutable project/template YAML file only once."""
+
     if not path.is_file():
         return {}
     value = yaml.safe_load(path.read_text(encoding="utf-8"))
     return value if isinstance(value, Mapping) else {}
 
 
+@lru_cache(maxsize=None)
 def resolve_genre(
     world_name: str,
 ) -> tuple[str, Path, Path] | None:
@@ -308,7 +323,7 @@ def world_meta_for(
         genre, project_dir, template_dir = resolved
         return (
             genre,
-            load_world_meta(project_dir, template_dir),
+            dict(_cached_world_meta(project_dir, template_dir)),
         )
     return (
         None,
@@ -328,6 +343,8 @@ def _elite_header(
     experiment: Path,
     elite: Mapping[str, Any],
 ) -> dict[str, Any]:
+    """Read only as far as the first header row of an exemplar log."""
+
     exemplar = _as_mapping(elite.get("exemplar"))
     layers_path = exemplar.get("layers_path")
     if not isinstance(layers_path, str):
@@ -335,9 +352,17 @@ def _elite_header(
     path = repository.safe_path(experiment, layers_path)
     if not path.is_file():
         return {}
-    for row in read_rows(path):
-        if row.get("kind") == "header":
-            return dict(row)
+
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            value = json.loads(line)
+            if (
+                isinstance(value, Mapping)
+                and value.get("kind") == "header"
+            ):
+                return dict(value)
     return {}
 
 
@@ -482,7 +507,7 @@ def experiment_meta(
         "truths": sorted(truths),
         "engine_hash": engine_hash,
         "archive_mtime": stat.st_mtime,
-        "generations": _generation_count(experiment),
+        "generations": len(generations_raw),
         "population": population,
         "seeds": (
             list(summary["seeds"])
@@ -685,7 +710,7 @@ def detail_line(
     row: Mapping[str, Any],
     world_meta: Mapping[str, Any],
 ) -> str | None:
-    """Render viewer-only details for belief-changing events."""
+    """Render viewer-only details for actual belief changes."""
 
     verb = str(row.get("verb", ""))
     details = _as_mapping(row.get("details"))
@@ -711,7 +736,7 @@ def detail_line(
                 f"{_belief_text(old, world_meta)} → {new_text}"
             )
         if not rendered:
-            rendered.append("信念の変更なし")
+            return None
         evidence = [
             str(display_names.get(str(value), value))
             for value in _as_list(details.get("evidence"))
@@ -731,20 +756,29 @@ def detail_line(
             if confidence is not None
             else ""
         )
-        return f"指摘は{result}{suffix}"
+        return f"問い詰めた — 指摘は{result}{suffix}"
 
     if verb == "learn_fact":
-        rendered = []
-        for belief in _as_list(details.get("beliefs")):
+        raw_beliefs = _as_list(details.get("beliefs"))
+        singular = details.get("belief")
+        if isinstance(singular, Mapping):
+            raw_beliefs = [*raw_beliefs, singular]
+
+        rendered: list[str] = []
+        for belief in raw_beliefs:
             if not isinstance(belief, Mapping):
+                continue
+            before = belief.get("before")
+            after = belief.get("after")
+            if before == after:
                 continue
             fact = str(belief.get("fact", details.get("fact", "")))
             fact_name = str(display_names.get(fact, fact))
             outcome = str(belief.get("outcome", ""))
             rendered.append(
                 f"{fact_name}: "
-                f"{_belief_text(belief.get('before'), world_meta)}"
-                f" → {_belief_text(belief.get('after'), world_meta)}"
+                f"{_belief_text(before, world_meta)}"
+                f" → {_belief_text(after, world_meta)}"
                 f"（{outcome}）"
             )
         return "／".join(rendered) or None
@@ -915,6 +949,13 @@ def cell_view(
     if view not in {"digest", "decisions", "all"}:
         raise BadRequest("view must be digest, decisions, or all")
     repository.validate_segment(cell_key)
+    if (
+        cell_key.count("|") != 1
+        or not all(cell_key.split("|", 1))
+    ):
+        raise BadRequest(
+            "cell must have the form category|volatility_bin"
+        )
 
     archive = repository.archive(experiment)
     cells = _as_mapping(archive.get("cells"))
@@ -951,13 +992,6 @@ def cell_view(
         or ""
     )
 
-    scene_limit = len(rows) if view == "decisions" else 12
-    scenes = extract_scenes(
-        rows,
-        world_meta,
-        limit=max(1, scene_limit),
-    )
-
     rows_by_turn: dict[int, list[Mapping[str, Any]]] = {}
     for row in rows:
         if "turn" in row:
@@ -965,6 +999,104 @@ def cell_view(
                 int(_number(row.get("turn"))),
                 [],
             ).append(row)
+
+    def belief_changed(row: Mapping[str, Any]) -> bool:
+        details = _as_mapping(row.get("details"))
+        plural = _as_list(details.get("beliefs"))
+        singular = details.get("belief")
+        beliefs = [
+            belief
+            for belief in plural
+            if isinstance(belief, Mapping)
+        ]
+        if isinstance(singular, Mapping):
+            beliefs.append(singular)
+        return any(
+            belief.get("before") != belief.get("after")
+            for belief in beliefs
+        )
+
+    def is_turning_row(row: Mapping[str, Any]) -> bool:
+        if row.get("subject") != protagonist:
+            return False
+        verb = str(row.get("verb", ""))
+        if verb == "rethink":
+            details = _as_mapping(row.get("details"))
+            return (
+                _as_mapping(details.get("before"))
+                != _as_mapping(details.get("after"))
+            )
+        if verb == "learn_fact":
+            return belief_changed(row)
+        return verb in {
+            "confront",
+            "exposure",
+            "betrayal",
+            "payoff",
+            "ending",
+            "downed",
+            "revived",
+        }
+
+    turning_turns = {
+        turn
+        for turn, turn_rows in rows_by_turn.items()
+        if any(is_turning_row(row) for row in turn_rows)
+    }
+
+    all_scenes = extract_scenes(
+        rows,
+        world_meta,
+        limit=max(1, len(rows)),
+    )
+    for scene in all_scenes:
+        turn = int(scene["turn"])
+        turn_rows = rows_by_turn.get(turn, [])
+        scene["turning"] = turn in turning_turns
+        scene["verbs"] = list(
+            dict.fromkeys(
+                str(row.get("verb", ""))
+                for row in turn_rows
+                if row.get("subject") == protagonist
+                and row.get("verb")
+            )
+        )
+
+    turning_scenes = [
+        scene
+        for scene in all_scenes
+        if bool(scene.get("turning"))
+    ]
+    turning_omitted = max(0, len(turning_scenes) - 12)
+
+    if view == "digest":
+        selected_scenes = turning_scenes[:12]
+        selected_turns = {
+            int(scene["turn"])
+            for scene in selected_scenes
+        }
+        remaining = sorted(
+            (
+                scene
+                for scene in all_scenes
+                if int(scene["turn"]) not in selected_turns
+                and not bool(scene.get("turning"))
+            ),
+            key=lambda scene: (
+                -int(_number(scene.get("priority"))),
+                -float(_number(scene.get("delta_l1"))),
+                int(_number(scene.get("turn"))),
+            ),
+        )
+        selected_scenes.extend(
+            remaining[: max(0, 12 - len(selected_scenes))]
+        )
+        scenes = sorted(
+            selected_scenes,
+            key=lambda scene: int(_number(scene.get("turn"))),
+        )
+    else:
+        scenes = all_scenes
 
     for scene in scenes:
         details: list[str] = []
@@ -1027,7 +1159,12 @@ def cell_view(
         for bin_name in bins
         if f"{category}|{bin_name}" in cells
     ]
+    if cell_key not in occupied:
+        raise BadRequest(
+            "cell is not addressable on the archive axes"
+        )
     position = occupied.index(cell_key)
+
     synopsis, synopsis_backend = synopsis_entry(
         repository,
         experiment,
@@ -1048,6 +1185,7 @@ def cell_view(
         "seed": exemplar.get("seed"),
         "parents": list(_as_list(elite.get("parents"))),
         "genome": dict(_as_mapping(elite.get("genome"))),
+        "categories": list(meta["categories"]),
         "prev_cell": occupied[position - 1] if position else None,
         "next_cell": (
             occupied[position + 1]
@@ -1061,6 +1199,9 @@ def cell_view(
         "protagonist": protagonist,
         "antagonist": antagonist,
         "scenes": scenes,
+        "turning_omitted": (
+            turning_omitted if view == "digest" else 0
+        ),
         "npc_by_turn": npc_by_turn,
         "day_states": day_states,
         "layer_points": layer_points(rows),
