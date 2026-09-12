@@ -161,6 +161,30 @@ METRIC_HELP = {
         "アーカイブに入るためのゲートであり、"
         "探索が最大化する対象ではない。"
     ),
+    "tendency": (
+        "傾向: この個体の遺伝子がいちばん重みを置く行動カテゴリ。"
+        "このジャンルが使う軸の中から選ぶ。"
+        "格子の行（主導カテゴリ）は、そのランで実際に多く選ばれた"
+        "行動から決まる別の値なので、両者は一致しないことがある。"
+    ),
+    "generation": (
+        "世代: このマスの記録が最後に更新された世代。"
+        "アーカイブは質が上回ったときだけ入れ替わるので、"
+        "以後の世代ではこれを超える個体が現れていない。"
+    ),
+    "seed": (
+        "seed: この模範ランを生成した乱数の種。"
+        "同じ遺伝子でも種が違えば世界の初期条件が変わる"
+        "（探偵なら真犯人が変わる）。"
+    ),
+    "parents": (
+        "親: この個体を生んだ 2 つの個体。"
+        "アーカイブのマスから選ばれた場合は「マス名」で表される。"
+    ),
+    "layers": (
+        "layers: この模範ランの全ログの場所。"
+        "実験ディレクトリからの相対パス。"
+    ),
     "elite_reach": (
         "到達: このエリートが評価されたシードのうち、"
         "結末に届いた回数。世代ごとの到達率とは分母が違う。"
@@ -435,8 +459,10 @@ def _cell_markup(
         f'<dt>{_tip("elite_reach", "到達")}</dt><dd>'
         f'{_reached_seeds(data._number(elite.get("reach_rate")), seed_count)}'
         "</dd>"
-        f'<dt>世代</dt><dd>g{int(data._number(elite.get("generation")))}</dd>'
-        f'<dt>主導</dt><dd>{_escape(_lead_category(genome, categories))}</dd>'
+        f'<dt>{_tip("generation", "世代")}</dt>'
+        f'<dd>g{int(data._number(elite.get("generation")))}</dd>'
+        f'<dt>{_tip("tendency", "傾向")}</dt>'
+        f'<dd>{_escape(_lead_category(genome, categories))}</dd>'
         "</dl>"
         f'<p class="hook">{_escape(hook) if hook else "場面情報なし"}</p>'
         "</td>"
@@ -1011,10 +1037,14 @@ def cell_page(
         f'<dt>{_tip("elite_reach", "到達")}</dt><dd>'
         f'{_reached_seeds(model["reach_rate"], len(model.get("seeds") or []))}'
         "</dd>"
-        f'<dt>世代</dt><dd>g{model["generation"]}</dd>'
-        f'<dt>seed</dt><dd>{_escape(model["seed"])}</dd>'
-        f'<dt>親</dt><dd>{_escape(parents)}</dd>'
-        f'<dt>layers</dt><dd>{_escape(model["layers_path"])}</dd>'
+        f'<dt>{_tip("generation", "世代")}</dt>'
+        f'<dd>g{model["generation"]}</dd>'
+        f'<dt>{_tip("seed", "seed")}</dt>'
+        f'<dd>{_escape(model["seed"])}</dd>'
+        f'<dt>{_tip("parents", "親")}</dt>'
+        f'<dd>{_escape(parents)}</dd>'
+        f'<dt>{_tip("layers", "layers")}</dt>'
+        f'<dd>{_escape(model["layers_path"])}</dd>'
         "</dl></section>"
         f'{_genome_panel(model["genome"], model["categories"])}'
         '<section class="card chart-card"><h2>7層の推移</h2>'

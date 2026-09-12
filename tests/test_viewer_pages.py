@@ -163,6 +163,13 @@ class ViewerPageTests(unittest.TestCase):
         with self.assertRaises(data.MissingResource):
             server.static_path("nope.css")
 
+    def test_tendency_is_distinguished_from_the_grid_row(self) -> None:
+        # The row is the category the run actually chose most; the cell field
+        # is what the genome weights. Both were called 主導 before.
+        self.assertIn("傾向", pages.METRIC_HELP["tendency"])
+        self.assertIn("主導カテゴリ", pages.METRIC_HELP["tendency"])
+        self.assertIn("一致しない", pages.METRIC_HELP["tendency"])
+
     def test_grade_ramp_and_gate_exclusion(self) -> None:
         self.assertEqual(pages._grade(1.0), "grade-strong")
         self.assertEqual(pages._grade(0.67), "grade-good")
@@ -207,7 +214,18 @@ class ViewerPageTests(unittest.TestCase):
 
     def test_metric_labels_carry_help_text(self) -> None:
         # Every metric name is explained on hover; the text lives in one place.
-        for key in ("cells", "dissimilarity", "quality", "reach"):
+        for key in (
+            "cells",
+            "dissimilarity",
+            "quality",
+            "reach",
+            "tendency",
+            "generation",
+            "seed",
+            "parents",
+            "layers",
+            "elite_reach",
+        ):
             rendered = pages._tip(key, "ラベル")
             self.assertIn('class="tip"', rendered)
             self.assertIn("title=", rendered)
