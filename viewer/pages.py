@@ -99,6 +99,42 @@ def _series_text(
     return f"{values[0]:.2f} → {values[-1]:.2f}"
 
 
+def _grade(value: float | None) -> str:
+    """Colour class for a 0-1 metric where higher genuinely is better.
+
+    占有マス (n/N), 相異度 and q are all bounded at 1 by construction, so the
+    same ramp reads the same way across them. 到達率 is deliberately excluded:
+    it is the archive's entry gate, not a score, and a run of 100% would mean
+    the world is too easy rather than that the search did well.
+    """
+
+    if value is None:
+        return "grade-none"
+    if value >= 0.85:
+        return "grade-strong"
+    if value >= 0.65:
+        return "grade-good"
+    if value >= 0.45:
+        return "grade-fair"
+    if value >= 0.25:
+        return "grade-weak"
+    return "grade-poor"
+
+
+def _ratio(numerator: Any, denominator: Any) -> float | None:
+    try:
+        total = float(denominator)
+        if total <= 0:
+            return None
+        return float(numerator) / total
+    except (TypeError, ValueError):
+        return None
+
+
+def _last(values: Sequence[float]) -> float | None:
+    return values[-1] if values else None
+
+
 METRIC_HELP = {
     "cells": (
         "占有マス: アーカイブが埋まった区画の数。"
@@ -116,6 +152,8 @@ METRIC_HELP = {
         "目的物の移動・関係の振れ幅・復帰・力関係の逆転・"
         "新事実の獲得・信念の反転・前提を揃えた行動の連鎖を数え、"
         "空振りの多さを減点する。q̄ はアーカイブ全体の平均。"
+        "絶対尺度なので、世界の作りによって出る水準が違う"
+        "（未回収の伏線が多い世界は構造的に低く出る）。"
     ),
     "reach": (
         "到達率: その世代の全ラン（個体数 × シード数）のうち、"
@@ -194,12 +232,16 @@ def _experiment_card(meta: Mapping[str, Any]) -> str:
         f' · 真相 {_escape(truths)}'
         "</p>"
         '<div class="run-stats">'
-        f'<span class="cells">{_tip("cells", "占有")} {_escape(meta["cells"])}'
-        f'/{_escape(meta["grid_size"])}</span>'
+        f'<span class="cells">{_tip("cells", "占有")} '
+        f'<b class="{_grade(_ratio(meta["cells"], meta["grid_size"]))}">'
+        f'{_escape(meta["cells"])}/{_escape(meta["grid_size"])}</b></span>'
         f'{sparkline(meta.get("occupied_series") or [])}'
         f'<span>{_tip("dissimilarity", "相異度")} '
-        f'{_escape(_series_text(meta.get("dissimilarity_series") or []))}</span>'
-        f'<span>{_tip("quality", "q̄")} {_escape(quality_text)}</span>'
+        f'<b class="{_grade(_last(meta.get("dissimilarity_series") or []))}">'
+        f'{_escape(_series_text(meta.get("dissimilarity_series") or []))}</b></span>'
+        f'<span>{_tip("quality", "q̄")} '
+        f'<b class="{_grade(_last(meta.get("quality_series") or []))}">'
+        f'{_escape(quality_text)}</b></span>'
         f'<span class="reach">{_tip("reach", "到達率")} '
         f'{_escape(_gate_text(reach_values))}</span>'
         "</div>"
@@ -388,7 +430,8 @@ def _cell_markup(
         "</div>"
         '<dl class="cell-metrics">'
         f'<dt>{_tip("quality", "q")}</dt>'
-        f'<dd>{data._number(elite.get("quality")):.4f}</dd>'
+        f'<dd class="{_grade(data._number(elite.get("quality")))}">'
+        f'{data._number(elite.get("quality")):.4f}</dd>'
         f'<dt>{_tip("elite_reach", "到達")}</dt><dd>'
         f'{_reached_seeds(data._number(elite.get("reach_rate")), seed_count)}'
         "</dd>"
@@ -455,13 +498,17 @@ def experiment_page(
         '<section class="card metric-strip">'
         f'<div><strong>{_tip("cells", "占有マス")}</strong>'
         f'{sparkline(occupied)}'
-        f'<span>{_escape(meta["cells"])}/{_escape(meta["grid_size"])}</span></div>'
+        f'<span class="{_grade(_ratio(meta["cells"], meta["grid_size"]))}">'
+        f'{_escape(meta["cells"])}/{_escape(meta["grid_size"])}</span></div>'
         f'<div><strong>{_tip("dissimilarity", "相異度")}</strong>'
         f'{sparkline(dissimilarity)}'
-        f'<span>{_escape(_series_text(dissimilarity))}</span>'
+        f'<span class="{_grade(_last(dissimilarity))}">'
+        f'{_escape(_series_text(dissimilarity))}</span>'
         f'{_dissimilarity_note(dissimilarity)}</div>'
         f'<div><strong>{_tip("quality", "q̄")}</strong>'
-        f'{sparkline(quality)}<span>{_escape(_series_text(quality))}</span></div>'
+        f'{sparkline(quality)}'
+        f'<span class="{_grade(_last(quality))}">'
+        f'{_escape(_series_text(quality))}</span></div>'
         f'<div class="gate"><strong>{_tip("reach", "到達率")}</strong>'
         f'<span>{_escape(_gate_text(reach))}</span>'
         '<span class="gate-note">アーカイブへの入場ゲート。'
