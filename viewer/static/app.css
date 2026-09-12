@@ -664,3 +664,29 @@ td {
   border-bottom: 1px dotted currentColor;
   cursor: help;
 }
+
+/* 0-1 に収まり「高いほど良い」と言い切れる指標だけを色分けする。
+   到達率はゲートであって点数ではないため、意図的に対象外（--muted のまま）。 */
+.grade-strong {
+  color: var(--accent);
+}
+
+.grade-good {
+  color: var(--accent-2);
+}
+
+.grade-fair {
+  color: var(--text);
+}
+
+.grade-weak {
+  color: var(--warning);
+}
+
+.grade-poor {
+  color: var(--danger);
+}
+
+.grade-none {
+  color: var(--muted);
+}
