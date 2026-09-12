@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from viewer import explanation_ui
+from viewer import reader_ui
 
 import html
 import json
@@ -467,7 +468,7 @@ def _cell_markup(
         f'<dd>{_escape(_lead_category(genome, categories))}</dd>'
         "</dl>"
         f'<p class="hook">{_escape(hook) if hook else "場面情報なし"}</p>'
-        + explanation_ui.short(data.cell_explanation(repository, experiment, cell_key))
+        + reader_ui.short(data.cell_explanation(repository, experiment, cell_key))
         + f'<label><input type="checkbox" name="cell" value="{_escape(cell_key)}" form="compare-cells"> 四項目を比較</label>'
         +
         "</td>"
@@ -1052,8 +1053,9 @@ def cell_page(
         f'<dt>{_tip("layers", "layers")}</dt>'
         f'<dd>{_escape(model["layers_path"])}</dd>'
         "</dl></section>"
-        + '<section class="card"><h2>選択から後続へのつながり</h2>'
-        + explanation_ui.panel(model["explanation"]) + "</section>"
+        + ('' if model["explanation"].get("reader_summary") else
+           '<section class="card"><h2>選択から後続へのつながり</h2>'
+           + explanation_ui.panel(model["explanation"]) + '</section>')
         + f'{_genome_panel(model["genome"], model["categories"])}'
         '<section class="card chart-card"><h2>7層の推移</h2>'
         '<p class="muted">x = 日。▼ downed、▲ revived、● ending。</p>'
@@ -1074,6 +1076,8 @@ def cell_page(
         f'{_output_panel("本文", model["story"], model["story_text"])}'
         "</div>"
     )
+    if model["explanation"].get("reader_summary"):
+        body = '<section class="card reader-primary">' + reader_ui.panel(model["explanation"]) + "</section>" + body
     return document(
         f"{experiment_name} / {cell_key}",
         body,
@@ -1091,12 +1095,15 @@ def compare_page(repository, experiment_name, cells):
     explanations = [data.cell_explanation(repository, experiment, cell) for cell in cells]
     same = len({x["trajectory_signature"] for x in explanations}) == 1
     body = f'<p><a href="/exp/{_url_segment(experiment_name)}">← 格子で候補を選ぶ</a></p>'
+    body += '<p>それぞれの候補で、何が起きたかを読み比べられます。</p>'
+    body += '<details><summary>記録上の比較</summary>'
     body += '<p>主人公の行動・対象・結果の並びは同じ筋です。</p>' if same else '<p>主人公の行動・対象・結果の並びに差があります。物語品質の優劣は判定していません。</p>'
+    body += "</details>"
     body += '<div class="explanation-comparison">'
     for cell, explanation in zip(cells, explanations):
         body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
-        body += explanation_ui.panel(explanation) + '</section>'
-    return document("四項目で比較", body + '</div>')
+        body += reader_ui.panel(explanation) + '</section>'
+    return document("物語の展開を比較", body + '</div>')
 
 
 def raw_page(repository, experiment_name, cell_key, line=None):
