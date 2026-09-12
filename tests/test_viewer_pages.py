@@ -163,6 +163,17 @@ class ViewerPageTests(unittest.TestCase):
         with self.assertRaises(data.MissingResource):
             server.static_path("nope.css")
 
+    def test_gate_figure_has_no_progress_arrow(self) -> None:
+        # 到達率 admits a run to the archive; it is not what the search
+        # maximises, so it must not be dressed as an improving KPI.
+        self.assertEqual(pages._gate_text([0.06, 0.14, 0.20]), "20%")
+        self.assertEqual(pages._gate_text([]), "—")
+
+    def test_dissimilarity_note_only_when_it_fell(self) -> None:
+        self.assertIn("低下", pages._dissimilarity_note([0.76, 0.67]))
+        self.assertEqual(pages._dissimilarity_note([0.60, 0.67]), "")
+        self.assertEqual(pages._dissimilarity_note([0.67]), "")
+
     def test_elite_reach_shown_as_seed_fraction(self) -> None:
         # The generation figure keeps the name 到達率; an elite is only run on
         # its own K seeds, so it reads as a fraction to avoid the confusion.
