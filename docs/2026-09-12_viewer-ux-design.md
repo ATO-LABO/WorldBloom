@@ -272,3 +272,76 @@ viewer/
 - `gapengine/scenes.py` / `gapengine/synopsis.py` の変更（プロンプトのバイト安定性に関わる。状態チップの拡張が欲しくなったら別途設計役ゲート）
 - 過去の世代でセルから押し出されたエリートの閲覧（`results.json` に残ってはいるが、アーカイブの設計を変える話）
 - 同じ遺伝子の他シードの閲覧・選定（決定 5）
+
+## 9. 承認済みWorkbench契約とUI-002（2026-09-13）
+
+正本は [UI-001 設計契約 v1+r1](https://app.notion.com/p/3d9e21ef1cac81208910f78bb48c1509)、
+[設計再レビュー合格](https://app.notion.com/p/3dae21ef1cac8190b633e263b1565b3a)。
+この節は §4〜8 の旧計画と矛盾する場合に優先する。実装済みと設計受入済みを区別する。
+
+- 新導線は設定セット → GA実行・進捗 → 結果一覧 → Sifting → 上映生成・作品一覧。
+  stdlib HTTP、既存HTML/JS、既存URLを維持する。
+- GA起動を対象に追加。プロセス内辞書は永続ジョブ台帳へ変更し、
+  冪等request_id、停止・再接続・再起動照合を提供する（003/004）。
+  厳密な途中再開は対象外で、再実行は新run_id。
+- 過去世代・他seedの候補も不変candidate_idで扱う（004/005）。
+  既知ログSHAは剪定後も保持し、残存状態を分ける。旧selectionは互換投影を維持。
+  初期の選定・生成は終了済みrunに限定する。
+- 生成は明示modelと上限を必須にする。設定ファイル不在だけでprompt_onlyと判断しない。
+  UI用の型付きadapterと永続receiptを006で実装し、結果不明を自動再送しない。
+  生成と読者要約の承認は別経路。scenes/synopsisのコード・プロンプトを保持。
+- 開始・停止・エラー・戻り操作は1440/600pxとキーボードで受入する（007〜009）。
+- 実装担当と合格後のコミットはCodex、レビューは別Codexタスク。
+
+### UI-002のPythonサービス
+
+所有: execution/configs.py、execution/provenance.py、execution/__init__.py、
+tests/test_execution_configs.py。この節は承認設計の実装接続を記録する。
+UI-002はHTTPルート、起動・停止、画面を追加しない。
+
+ConfigStore(repo_root, control_root, runs_root)はrepo外に分離した管理・実行rootを受け取る。
+
+| 呼出し | 効果 |
+|---|---|
+| preview(spec, settings_path=...) | 固定用バイトを一時領域で検証して実効設定を返す。管理領域への保存・GA/LLM起動なし |
+| save(spec, config_id=..., settings_path=...) | 新しい不変設定版と入力manifestを保存 |
+| get(config_id) / list() | 完成版をhash検証して返す。不完全な.pending版は列挙しない |
+| duplicate(config_id, changes, new_id=...) | 元設定の固定入力を使って新しい版を作る。現在の原本へ切り替えない |
+| check_generation(config_id, settings_path=...) | 保存済みmodelを維持しつつ現在の実行ファイル・資格情報有無を再確認。認証の有効性は未確認 |
+| prepare_run(config_id, run_id=..., job_id=...) | 新しいrunへ入力と実行コードを固定しmanifest/argvを返す。プロセスは起動しない |
+| verify_run(run_id) | 起動直前・再接続時に固定入力・コード・configのhashとファイル集合を照合 |
+| legacy_settings(recorded_summary) | 保存された旧設定だけを返す。欠けた項目はnull、現行原本から補完しない |
+
+specはlabel/project_id/template_id/evolution/execution_limits/generationを持つ。
+GA値はCLI既定に一致させる。整数欄でbool・文字列・小数を拒否、説明記録は明示する。
+既存World/Subject/Simulationの初期化と固定テンプレートで事前検証する。
+必要canonと人物・結末を検査し、世界・人物の固定表示用データ、解決済み結末、
+評価予定数、省略ファイルの実効fallback、編集不可の突然変異確率をpreviewへ返す。
+画面はpreview.generationの保存時の可否を現在の可否として断定せず、
+生成確認時にcheck_generationを呼ぶ。available=trueでも認証有効性はunverified。
+
+設定版はcontrol/configs/<id>へ、runはruns/<id>へ保存。
+入力のworld/subjects/テンプレートとworld側action_graph・effects参照を閉包に含める。
+元worldの参照パスを固定コピー内の相対パスへ置換した場合、
+source_sha256/source_bytesと保存後sha256/bytes、変換理由をmanifestへ併記する。
+projects/templates以外への参照、リンク、任意path/command/資格情報の入力を拒否する。
+設定ファイル・認証値はコピーせず、LLM可否には許可した情報だけを返す。
+
+コード固定はengine/gapengine/scripts/executionのPythonソースとrequirements。
+manifestにHEAD、dirty、実ファイルSHA、Python/PyYAML版、全実効argv、種、時刻を記録する。
+準備済みargvは -I -B と固定runtimeのCLI入口を使い、multiprocessing子も同じruntimeを読む。
+Python実行バイナリ・インストール済み依存ライブラリそのものの配布は本カードの対象外。
+実行時のバージョンはmanifestへ記録し、003の起動で環境変更を検査する。
+
+保存はOSファイルロック＋同一ボリュームの非公開staging→完成seal→公開rename。
+既存IDは上書きせずconflict。不完全保存は履歴として公開しない。
+ConfigErrorはcode/field_errors/retryableを返す。003/007のHTTP接続で
+入力不正422、競合409、存在しないID404、OS権限/保存障害は適切なサーバーエラーへ変換する。
+wall_secondsは003/004が強制する。本サービスだけで時間停止を実施したとは扱わない。
+
+### 後続への受け渡し
+
+002→003→004→005の順で基盤を受け渡す。006が生成、007が操作画面、
+006/007後に008が上映画面、009が別担当の全導線受入。
+候補台帳・公開revision・選定revisionと生成要求の型・hash規則は承認契約§13/15、
+結果不明・保存障害・終端状態表は§14を正本とする。
