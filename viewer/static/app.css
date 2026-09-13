@@ -700,7 +700,7 @@ td {
 .causal-link { border-left: 3px solid #55d6be; padding-left: .8rem; overflow-wrap: anywhere; }
 .raw-lines pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: .5rem; border-bottom: 1px solid #334155; }
 .raw-lines pre:target { outline: 2px solid #55d6be; background: #193d3b; }
-.explanation-comparison pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 36rem; overflow: auto; }
+.explanation-dump { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 36rem; overflow: auto; }
 
 /* Optional, reviewed reader summary. */
 .reader-primary { max-width: 76rem; }

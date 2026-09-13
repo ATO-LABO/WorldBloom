@@ -144,5 +144,26 @@ class RecordingTests(unittest.TestCase):
                 self.assertEqual(outputs[0], outputs[1], genre)
 
 
+    def test_recorded_move_cost_reaches_extractor_as_confirmed_loss(self):
+        from gapengine.explanations import extract_explanation
+        world, subjects, _ = fixture("momotaro")
+        world.days = 3
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Simulation(0, world, subjects, Path(tmp), record_explanations=True).run()
+            rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+            moves = [d for d in extract_explanation(log)["decisions"] if d["verb"] == "move"
+                     and d["outcome"]["result"] != "invalid"]
+        self.assertTrue(moves)
+        for move in moves:
+            row = rows[move["line"] - 1]
+            baseline = row["explanation"]["cost_baseline"]
+            self.assertEqual((baseline["version"], baseline["timing"]), (1, "before_execute"))
+            self.assertEqual(move["cost"]["status"], "confirmed")
+            stamina = next(c for c in move["cost"]["items"] if c.get("path") == ["stamina"])
+            self.assertEqual(stamina["before"], baseline["stamina"])
+            self.assertLess(stamina["amount"], 0)
+            self.assertEqual(stamina["after"], row["delta"]["actor"]["stamina"])
+
+
 if __name__ == "__main__":
     unittest.main()
