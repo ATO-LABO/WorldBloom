@@ -101,11 +101,17 @@ class ReaderSummaryTests(unittest.TestCase):
     def test_reader_first_html_escaped_and_details_collapsed(self):
         summary = copy.deepcopy(self.summary)
         summary["title"]["text"] = "<script>alert(1)</script>"
+        summary["sentences"][0]["text"] = '<img src=x onerror="alert(2)">'
         self.explanation["reader_summary"] = {
             "summary": summary, "packet": self.packet, "model": "<model>", "reviewer": "editor"}
         html = reader_ui.panel(self.explanation)
         self.assertIn("&lt;script&gt;", html)
         self.assertNotIn("<script>", html)
+        self.assertIn("&lt;img", html)
+        self.assertNotIn("<img", html)
+        short = reader_ui.short(self.explanation)
+        self.assertIn("&lt;script&gt;", short)
+        self.assertNotIn("<script>", short)
         self.assertIn("&lt;model&gt;", html)
         self.assertNotIn("<model>", html)
         self.assertIn('<details class="reader-evidence">', html)
@@ -187,7 +193,7 @@ class ReaderSummaryTests(unittest.TestCase):
             row = decision(turn, "confront", ["B", "culprit"], subject=header["protagonist"])
             row.update(result=result, effective=False, day=1, slot="evening")
             if result == "invalid":
-                row["details"] = {"reason": "prerequisite_unsatisfied"}
+                row["details"] = {"reason": "prerequisite_unsatisfied" if turn % 2 == 0 else "target_not_present"}
             rows.append(row)
         ending = copy.deepcopy(original[4])
         ending["turn"] = len(results) + 2
@@ -270,7 +276,7 @@ class ReaderSummaryTests(unittest.TestCase):
     def test_no_summary_restores_core_panel_heading_and_navigation_order(self):
         document = pages.cell_page(self.repo, self.exp.name, "III|high", view="all")
         self.assertNotIn("要約はまだありません", document)
-        self.assertNotIn('class="reader-primary"', document)
+        self.assertNotIn('class="card reader-primary', document)
         self.assertLess(document.index('class="cell-navigation"'), document.index('class="card elite-summary"'))
         self.assertLess(document.index('class="card elite-summary"'), document.index("選択から後続へのつながり"))
         self.assertIn(explanation_ui.panel(self.explanation), document)
@@ -358,6 +364,31 @@ class ReaderSummaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "response size"):
             rs.parse_summary(valid_6000 + " ", self.packet)
 
+
+
+    def test_packet_cost_preserves_confirmed_loss_and_unknown_limits(self):
+        explanation = extract_explanation(self._linked_fixture(), experiment=self.exp.name, cell="III|high")
+        cost = next(f for f in rs.build_packet(explanation)["facts"] if f["kind"] == "immediate_cost_only")
+        self.assertEqual(cost["lines"], [3])
+        self.assertEqual(cost["value"], {
+            "status": "confirmed", "complete": True,
+            "text": "B → 桃太郎 の好意 -0.2", "items": ["B → 桃太郎 の好意 -0.2"],
+            "delayed": "unknown"})
+        explanation["representative"]["cost"].update(complete=False)
+        partial = next(f for f in rs.build_packet(explanation)["facts"] if f["kind"] == "immediate_cost_only")
+        self.assertFalse(partial["value"]["complete"])
+        self.assertEqual(partial["value"]["items"], ["B → 桃太郎 の好意 -0.2"])
+
+    def test_compare_without_summary_keeps_visible_trajectory_diagnostic(self):
+        self._linked_fixture()
+        doc = pages.compare_page(self.repo, self.exp.name, ["III|high", "I|low"])
+        self.assertIn("四項目で比較", doc)
+        self.assertNotIn("記録上の比較</summary>", doc)
+        self.assertIn("主人公の行動・対象・結果の並びは同じ筋です", doc)
+        self._publish_fixture("III|high")
+        doc = pages.compare_page(self.repo, self.exp.name, ["III|high", "I|low"])
+        self.assertIn("四項目で比較", doc)
+        self.assertIn("記録上の比較</summary>", doc)
 
 
 if __name__ == "__main__":

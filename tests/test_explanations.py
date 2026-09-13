@@ -162,5 +162,32 @@ class ExplanationTests(unittest.TestCase):
         merge_after(state,{"x":{"a":None,"b":.5}})
         self.assertEqual(state,{"x":{"b":.5}})
 
+    def test_inventory_partial_loss_and_resource_gains_have_opposite_direction(self):
+        before = {"resources": {"assets": {"きびだんご": 3}, "reputation": .2}}
+        rows = [header(), snapshot(before),
+                decision(1, "give_item", actor={"resources": {"assets": {"きびだんご": 2}}}),
+                decision(2, "rest", actor={"resources": {"assets": {"きびだんご": 4}, "reputation": .5}, "stamina": 8})]
+        rows[-1]["explanation"] = {"cost_baseline": {"version": 1, "timing": "before_execute", "stamina": 6,
+                                                    "resources": {"assets": {"きびだんご": 2}, "reputation": .2}}}
+        loss, gain = explain_rows(rows)["decisions"]
+        self.assertEqual(loss["cost"]["items"][0]["text"], "A の 所持品 きびだんご -1")
+        self.assertEqual(loss["cost"]["items"][0]["amount"], -1)
+        self.assertEqual(gain["cost"]["items"], [])
+        self.assertEqual(gain["cost"]["status"], "unknown")  # rest cost rules are not supported
+        self.assertFalse(gain["cost"]["complete"])
+        changes = {tuple(c["path"]): (c["before"], c["after"]) for c in gain["cost"]["changes"]}
+        self.assertEqual(changes, {("resources", "assets", "きびだんご"): (2, 4),
+                                   ("resources", "reputation"): (.2, .5), ("stamina",): (6, 8)})
+
+
+    def test_scalar_asset_loss_keeps_legacy_fallback_without_index_error(self):
+        rows = [header(), snapshot({"resources": {"assets": 3}}),
+                decision(1, "give_item", actor={"resources": {"assets": 2}})]
+        cost = explain_rows(rows)["decisions"][0]["cost"]
+        self.assertEqual(cost["items"][0]["path"], ["resources", "assets"])
+        self.assertEqual(cost["items"][0]["amount"], -1)
+        self.assertEqual(cost["items"][0]["text"], "A の resources.assets -1")
+
+
 if __name__ == "__main__":
     unittest.main()

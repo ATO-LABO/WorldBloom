@@ -6,7 +6,10 @@ from urllib.parse import quote
 LABELS = {"confirmed": "確認済み", "absent": "該当なし", "unknown": "不明"}
 VERBS = {"rethink":"再考", "confront":"告発", "neutralize":"無効化", "payoff":"伏線回収", "observe":"観察",
          "move":"移動", "investigate":"調査", "give_item":"譲渡", "rest":"休息", "train":"訓練", "fight":"対決",
-         "persuade":"説得", "pledge":"誓約", "mislead":"誘導", "grand_gesture":"大盤振る舞い", "share_knowledge":"情報共有"}
+         "persuade":"説得", "pledge":"誓約", "mislead":"誘導", "grand_gesture":"大盤振る舞い", "share_knowledge":"情報共有",
+         "concede":"譲歩", "craft":"作成", "disguise":"変装", "donate":"寄付",
+         "guard":"守り", "negotiate":"交渉", "plant":"伏線設置", "rescue":"救助",
+         "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退"}
 
 
 def e(value):
@@ -107,8 +110,7 @@ def panel(explanation, item=None, *, details=True):
     for link in turning.get("links", []):
         body += (f'<p class="causal-link">{e(link_text(link))} · '
                  f'{source_link(base,link["source"],"変更")} → {source_link(base,link["downstream"],"後続行動")}</p>')
-    if not details:
-        return body
+    # Keep recorded alternatives visible; details only controls JSON dumps.
     alternatives = choice["alternatives"]
     body += '<details><summary>候補・抽選条件（本人の根拠とは別）</summary>'
     if alternatives["status"] == "confirmed":
@@ -120,7 +122,12 @@ def panel(explanation, item=None, *, details=True):
         body += '</tbody></table></div>'
     else:
         body += f'<p>{e(alternatives["text"])}</p>'
-    body += f'<p>{e(item["system"]["text"])}</p><pre>{e(json.dumps(item["system"],ensure_ascii=False,indent=2))}</pre></details>'
+    body += f'<p>{e(item["system"]["text"])}</p>'
+    if details:
+        body += f'<pre class="explanation-dump">{e(json.dumps(item["system"],ensure_ascii=False,indent=2))}</pre>'
+    body += '</details>'
+    if not details:
+        return body
     body += '<details><summary>知識・状態変化・結果と出典の詳細</summary>'
-    body += f'<pre>{e(json.dumps({k:item[k] for k in ("grounds","cost","outcome","turning")},ensure_ascii=False,indent=2))}</pre></details>'
+    body += f'<pre class="explanation-dump">{e(json.dumps({k:item[k] for k in ("grounds","cost","outcome","turning")},ensure_ascii=False,indent=2))}</pre></details>'
     return body

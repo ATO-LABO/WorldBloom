@@ -381,6 +381,12 @@ class ViewerServerTests(unittest.TestCase):
                 self.assertIn("0.7500", grid)
                 self.assertIn("100.0%", grid)
 
+                for query in ("", "?cell=III%7Chigh"):
+                    with urllib.request.urlopen(base_url + "/exp/exp-viewer/compare" + query, timeout=2) as response:
+                        self.assertEqual(response.status, 200)
+                        self.assertEqual(response.headers.get_content_type(), "text/html")
+                        self.assertIn("異なる候補を2〜4件", response.read().decode("utf-8"))
+
                 cell = _wait_for_page(
                     base_url + "/exp/exp-viewer/cell/III%7Chigh"
                 )

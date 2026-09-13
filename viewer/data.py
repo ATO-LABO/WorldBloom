@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -1190,6 +1191,12 @@ def cell_view(
     }
 
 
+@lru_cache(maxsize=128)
+def _cached_explanation(path, mtime_ns, size, experiment_name, cell_key):
+    # Only extraction is cached; editorial approval is checked on every request.
+    return extract_explanation(path, experiment=experiment_name, cell=cell_key)
+
+
 def cell_explanation(repository, experiment, cell_key):
     repository.validate_segment(cell_key)
     elite = _as_mapping(repository.archive(experiment).get("cells")).get(cell_key)
@@ -1201,7 +1208,10 @@ def cell_explanation(repository, experiment, cell_key):
     path = repository.safe_path(experiment, relative)
     if not path.is_file():
         raise MissingResource("exemplar layers.jsonl not found")
-    return _with_reader(repository, experiment, extract_explanation(path, experiment=experiment.name, cell=cell_key))
+    stat = path.stat()
+    explanation = copy.deepcopy(_cached_explanation(
+        path, stat.st_mtime_ns, stat.st_size, experiment.name, cell_key))
+    return _with_reader(repository, experiment, explanation)
 
 
 def _with_reader(repository, experiment, explanation):

@@ -109,6 +109,8 @@ def _cost(row, before, source, before_sources):
             kind = "item" if path[:2] == ("resources", "assets") else "resource"
             amount = round(after - prior, 6)
             label = {("stamina",): "体力", ("resources", "reputation"): "評判"}.get(path, ".".join(path))
+            if kind == "item" and len(path) == 3:
+                label = f"所持品 {path[2]}"
             costs.append({"kind": kind, "owner": actor, "path": list(path), "before": prior, "after": after,
                           "before_source": prior_source,
                           "amount": amount, "text": f"{actor} の {label} {amount:+g}", "source": source})
