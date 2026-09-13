@@ -19,7 +19,7 @@ from execution import worker
 
 PUBLIC_FIELDS = frozenset({"schema_version", "job_id", "request_id", "kind", "config_id", "run_id",
     "state", "phase", "revision", "created_at", "updated_at", "started_at", "finished_at", "heartbeat",
-    "cancel_requested_at", "error", "exit_code", "progress", "reconciliation"})
+    "cancel_requested_at", "error", "exit_code", "progress", "reconciliation", "publication_revision"})
 
 
 class JobStore:
