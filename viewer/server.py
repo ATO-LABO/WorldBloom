@@ -17,7 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from viewer import data, pages
+from viewer import data, pages, job_api
+from execution.configs import ConfigStore
+from execution.jobs import JobStore
+from execution.provenance import ConfigError
 from viewer.data import (
     BadRequest,
     ForbiddenPath,
@@ -53,6 +56,14 @@ def static_path(name: str) -> Path:
 class ViewerServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def service_actions(self):
+        jobs = getattr(self, "job_store", None)
+        if jobs is not None:
+            try:
+                jobs.list()
+            except (ConfigError, OSError, ValueError):
+                pass
 
 
 class ViewerHandler(BaseHTTPRequestHandler):
@@ -133,6 +144,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
 
     def _dispatch_get(self) -> None:
         parts = self._parts()
+        if job_api.dispatch(self, parts, "GET"):
+            return
         if not parts:
             self._send_html(pages.index_page(self.repository))
             return
@@ -183,6 +196,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         try:
             self._dispatch_get()
+        except ConfigError as error:
+            job_api.send_error(self, error)
         except ForbiddenPath:
             self.send_error(HTTPStatus.FORBIDDEN.value)
         except MissingResource:
@@ -265,14 +280,22 @@ class ViewerHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             parts = self._parts()
+            if job_api.dispatch(self, parts, "POST"):
+                return
             if (
                 len(parts) == 3
                 and parts[0] == "exp"
                 and parts[2] == "selection"
             ):
+                job_api.boundary(self, client_header=False)
+                jobs = getattr(self.server, "job_store", None)
+                if jobs is not None:
+                    jobs.assert_run_idle(parts[1])
                 self._update_selection(parts[1])
                 return
             raise MissingResource("route not found")
+        except ConfigError as error:
+            job_api.send_error(self, error)
         except ForbiddenPath:
             self.send_error(HTTPStatus.FORBIDDEN.value)
         except MissingResource:
@@ -324,6 +347,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=5401,
     )
+    parser.add_argument("--control", type=Path, help="Enable persistent configuration/job APIs at this control root.")
+    parser.add_argument("--repo", type=Path, default=ROOT)
     return parser
 
 
@@ -338,6 +363,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ViewerHandler,
     )
     server.repository = repository
+    if args.control is not None:
+        if not job_api.loopback(args.host):
+            server.server_close()
+            raise ValueError("execution API requires a loopback host")
+        server.job_store = JobStore(ConfigStore(args.repo, args.control, args.runs))
+        server.settings_path = args.repo / "settings.json"
 
     host, port = server.server_address[:2]
     print(
