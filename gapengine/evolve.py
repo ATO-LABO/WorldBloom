@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import uuid
 import multiprocessing
 import random
 from pathlib import Path
@@ -32,18 +35,42 @@ from gapengine.qd import (
 
 
 def _json_write(path: Path, value: Any) -> None:
+    """Keep legacy bytes, but never expose a partially written JSON document."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            value,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    data = (json.dumps(value, ensure_ascii=False, sort_keys=True,
+                       separators=(",", ":")) + "\n").encode("utf-8")
+    temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
+    with temporary.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+class EvolutionCancelled(Exception):
+    """Cooperative stop at a seed, individual or generation boundary."""
+
+
+def _seed_event(job, seed, kind, run=None):
+    observation = job.get("observation")
+    if observation is None:
+        return
+    event_id = f"{observation['generation']}-{observation['role']}-{job['index']}-{seed}"
+    event = {"schema_version": 1, "event_id": event_id, "kind": kind,
+             "generation": observation["generation"], "role": observation["role"],
+             "individual_index": job["index"], "seed": seed}
+    if run is not None:
+        path = Path(job["logical_root"]) / run["layers_path"]
+        event.update(run=dict(run), source_log_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                     genome=job.get("genome"), antagonist_genome=job.get("antagonist_genome"),
+                     parents=list(job.get("parents", [])))
+    _json_write(Path(observation["events"]) / (event_id + "-" + kind + ".json"), event)
+
+
+def _seed_checkpoint(job):
+    observation = job.get("observation")
+    if observation is not None and Path(observation["cancel"]).exists():
+        raise EvolutionCancelled("cancel requested")
 
 
 def _load_subjects(directory: Path) -> dict[str, Subject]:
@@ -158,6 +185,8 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
 
     runs: list[dict[str, Any]] = []
     for seed in seeds:
+        _seed_checkpoint(job)
+        _seed_event(job, seed, "started")
         world = World.from_yaml(
             world_path,
             action_graph_path=action_graph_path,
@@ -256,6 +285,8 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             )
 
         runs.append(run_result)
+        _seed_event(job, seed, "completed", run_result)
+        _seed_checkpoint(job)
 
     result: dict[str, Any] = {
         "genome": genome.to_dict() if genome is not None else None,
@@ -280,15 +311,35 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _evaluate_jobs(
-    jobs: list[dict[str, Any]],
-    processes: int,
-) -> list[dict[str, Any]]:
+def _evaluate_jobs(jobs, processes, observer=None):
+    # imap yields index order. Seed progress may arrive out of order, but never
+    # participates in selection, threshold freezing, mutation or random draws.
+    def collected(result):
+        if observer is not None:
+            observer.individual_completed(result["index"])
+            observer.checkpoint()
+        return result
+
     if processes <= 1:
-        return [run_individual(job) for job in jobs]
+        results = []
+        for job in jobs:
+            if observer is not None:
+                observer.checkpoint()
+            results.append(collected(run_individual(job)))
+        return results
     context = multiprocessing.get_context("spawn")
     with context.Pool(processes=processes) as pool:
-        return list(pool.imap(run_individual, jobs))
+        iterator = pool.imap(run_individual, jobs)
+        results = []
+        while len(results) < len(jobs):
+            try:
+                result = iterator.next(timeout=0.1)
+            except multiprocessing.TimeoutError:
+                if observer is not None:
+                    observer.poll()
+                continue
+            results.append(collected(result))
+        return results
 
 
 def _best_reached(
@@ -568,6 +619,7 @@ def _prune_layers(
     keep: str,
     *,
     role: str = "protagonist",
+    observer=None,
 ) -> None:
     if keep == "all":
         return
@@ -615,12 +667,14 @@ def _prune_layers(
             layer_path = out_dir / relative_path
             if layer_path.exists():
                 layer_path.unlink()
+                if observer is not None:
+                    observer.pruned(relative_path)
             seed_dir = layer_path.parent
             if seed_dir.is_dir() and not any(seed_dir.iterdir()):
                 seed_dir.rmdir()
 
 
-def evolve(cfg: Mapping[str, Any]) -> Archive:
+def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     project_dir = Path(str(cfg["project"])).resolve()
     template_dir = Path(str(cfg["template"])).resolve()
     out_dir = Path(str(cfg["out"])).resolve()
@@ -657,6 +711,8 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             "keep must be one of: all, reached, exemplar"
         )
 
+    if observer is not None:
+        observer.checkpoint(phase="preparing")
     seeds = list(range(seed_base, seed_base + seed_count))
     ga_rng = random.Random(ga_seed)
     action_cfg = dict(
@@ -738,6 +794,8 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
     )
 
     for generation in range(generations):
+        if observer is not None:
+            observer.checkpoint(phase="preparing", generation=generation, role=None)
         generation_dir = out_dir / f"g{generation}"
         archive_runs = (
             _archive_precedent_paths(archive, out_dir)
@@ -867,7 +925,9 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
         for job in jobs:
             job["record_explanations"] = bool(cfg.get("record_explanations", False))
             job["target_ending"] = world_model.target_ending
-        raw_results = _evaluate_jobs(jobs, processes)
+        if observer is not None:
+            observer.bind(jobs, generation, "protagonist")
+        raw_results = _evaluate_jobs(jobs, processes, observer)
 
         if archive.volatility_thresholds is None:
             archive.freeze_thresholds(
@@ -896,7 +956,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             generation_dir / "results.json",
             generation_results,
         )
-        archive.save(out_dir / "archive.json")
+        _json_write(out_dir / "archive.json", archive.to_dict())
 
         antagonist_raw_results: list[dict[str, Any]] = []
         antagonist_generation_results: list[dict[str, Any]] = []
@@ -957,10 +1017,9 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
             for job in antagonist_jobs:
                 job["record_explanations"] = bool(cfg.get("record_explanations", False))
                 job["target_ending"] = world_model.target_ending
-            antagonist_raw_results = _evaluate_jobs(
-                antagonist_jobs,
-                processes,
-            )
+            if observer is not None:
+                observer.bind(antagonist_jobs, generation, "antagonist")
+            antagonist_raw_results = _evaluate_jobs(antagonist_jobs, processes, observer)
 
             if antagonist_archive.volatility_thresholds is None:
                 antagonist_archive.freeze_thresholds(
@@ -994,9 +1053,7 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                 generation_dir / "results.antagonist.json",
                 antagonist_generation_results,
             )
-            antagonist_archive.save(
-                out_dir / "archive_antagonist.json"
-            )
+            _json_write(out_dir / "archive_antagonist.json", antagonist_archive.to_dict())
 
         reached_best = [
             _best_reached(result) for result in raw_results
@@ -1113,13 +1170,16 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
 
         summaries.append(generation_summary)
 
-        _prune_layers(raw_results, out_dir, keep)
+        if observer is not None:
+            observer.checkpoint(phase="publishing")
+        _prune_layers(raw_results, out_dir, keep, observer=observer)
         if coevolve:
             _prune_layers(
                 antagonist_raw_results,
                 out_dir,
                 keep,
                 role="antagonist",
+                observer=observer,
             )
 
         summary_payload: dict[str, Any] = {
@@ -1143,6 +1203,8 @@ def evolve(cfg: Mapping[str, Any]) -> Archive:
                 }
             )
         _json_write(out_dir / "summary.json", summary_payload)
+        if observer is not None:
+            observer.publish(generation, archive, antagonist_archive, summary_payload)
 
         previous_results = generation_results
         if coevolve:

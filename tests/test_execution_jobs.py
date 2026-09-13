@@ -75,6 +75,7 @@ class JobTests(unittest.TestCase):
         self.temp.cleanup()
 
     def fixture(self, mode="success", delay=0.2):
+        (self.repo / "execution/evolution_worker.py").unlink(missing_ok=True)
         source = f'''import argparse, json, pathlib, subprocess, sys, time
 p=argparse.ArgumentParser();p.add_argument("--out");a,_=p.parse_known_args()
 out=pathlib.Path(a.out)
