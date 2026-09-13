@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from viewer import data, pages, job_api
+from viewer import data, pages, job_api, run_catalog
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution.provenance import ConfigError
@@ -144,6 +144,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
 
     def _dispatch_get(self) -> None:
         parts = self._parts()
+        if run_catalog.dispatch(self, parts, "GET"):
+            return
         if job_api.dispatch(self, parts, "GET"):
             return
         if not parts:
@@ -257,17 +259,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if not isinstance(selected_value, bool):
             raise BadRequest("selected must be a boolean")
 
-        selected = {
-            value
-            for value in self.repository.selection(experiment)
-            if value in valid_cells
-        }
-        if selected_value:
-            selected.add(cell)
-        else:
-            selected.discard(cell)
-
-        self.repository.write_selection(experiment, selected)
+        selected = self.repository.toggle_selection(experiment, cell, selected_value)
         self._send_json(
             HTTPStatus.OK,
             {
@@ -280,6 +272,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             parts = self._parts()
+            if run_catalog.dispatch(self, parts, "POST"):
+                return
             if job_api.dispatch(self, parts, "POST"):
                 return
             if (
@@ -369,6 +363,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("execution API requires a loopback host")
         server.job_store = JobStore(ConfigStore(args.repo, args.control, args.runs))
         server.settings_path = args.repo / "settings.json"
+        server.repository = RunRepository(args.runs, control_root=args.control, jobs=server.job_store)
 
     host, port = server.server_address[:2]
     print(

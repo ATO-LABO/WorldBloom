@@ -116,12 +116,42 @@ def _as_list(value: Any) -> list[Any]:
 class RunRepository:
     """Read experiment artifacts while enforcing the configured run root."""
 
-    def __init__(self, runs_root: Path) -> None:
+    def __init__(self, runs_root: Path, *, control_root=None, jobs=None) -> None:
         self.runs_root = runs_root.expanduser().resolve()
         if not self.runs_root.is_dir():
             raise ValueError(
                 f"--runs must be an existing directory: {self.runs_root}"
             )
+
+        self.catalog = None
+        self.selections = None
+        if control_root is not None:
+            from viewer.run_catalog import RunCatalog
+            from execution.selections import SelectionStore
+            self.catalog = RunCatalog(self.runs_root, control_root, jobs)
+            self.selections = SelectionStore(self.catalog)
+
+    def _catalog_id(self, experiment):
+        self.safe_path(experiment, "archive.json")
+        return self.catalog.register_legacy(experiment.name)
+
+    def history(self):
+        if self.catalog is None:
+            raise BadRequest("history requires a control root")
+        return self.catalog.history()
+
+    def toggle_selection(self, experiment, cell, selected):
+        if self.selections is not None:
+            return self.selections.toggle(self._catalog_id(experiment), cell, selected)
+        from execution.provenance import directory_lock
+        with directory_lock(experiment):
+            valid = set(self.archive(experiment)["cells"])
+            if cell not in valid or type(selected) is not bool:
+                raise BadRequest("invalid cell or selection")
+            values = self.selection(experiment) & valid
+            values.add(cell) if selected else values.discard(cell)
+            self._write_selection_legacy(experiment, values)
+            return values
 
     @staticmethod
     def validate_segment(value: str) -> str:
@@ -164,6 +194,8 @@ class RunRepository:
             raise MissingResource(f"experiment not found: {safe_name}")
         if not self.safe_path(candidate, "archive.json").is_file():
             raise MissingResource(f"archive not found: {safe_name}")
+        if self.catalog is not None and (candidate / "manifest.json").is_file() and not (candidate / "published/current.json").is_file():
+            raise MissingResource(f"published archive not found: {safe_name}")
         return candidate
 
     def experiments(self) -> list[tuple[str, Path]]:
@@ -185,10 +217,14 @@ class RunRepository:
                     continue
             except (OSError, ForbiddenPath):
                 continue
+            if self.catalog is not None and (resolved / "manifest.json").is_file() and not (resolved / "published/current.json").is_file():
+                continue
             experiments.append((candidate.name, resolved))
         return experiments
 
     def archive(self, experiment: Path) -> dict[str, Any]:
+        if self.catalog is not None and (experiment / "manifest.json").is_file():
+            return self.catalog.snapshot(self.catalog.run_id(experiment.name), observe=False)["archive"]
         raw = _read_json(self.safe_path(experiment, "archive.json"))
         if not isinstance(raw, dict):
             raise ValueError("archive root must be a JSON object")
@@ -198,6 +234,8 @@ class RunRepository:
         return raw
 
     def selection(self, experiment: Path) -> set[str]:
+        if self.selections is not None:
+            return self.selections.projected(self._catalog_id(experiment))
         path = self.safe_path(experiment, "selection.json")
         if not path.is_file():
             return set()
@@ -214,7 +252,27 @@ class RunRepository:
             )
         return set(selected)
 
-    def write_selection(
+    def write_selection(self, experiment, selected):
+        if self.selections is not None:
+            # Bulk compatibility callers also preserve all non-representative entries.
+            rid = self._catalog_id(experiment)
+            with self.selections._guard(rid):
+                snapshot = self.catalog.snapshot(rid)
+                previous = self.selections._read(rid) or self.selections._initial(rid, snapshot)
+                reps = self.catalog.representatives(snapshot)
+                if set(selected) - set(reps):
+                    raise BadRequest("invalid selected cells")
+                current = self.selections._projection(snapshot, previous)
+                changes = [{"candidate_id": cid, "state": "adopted" if cell in selected else "unclassified"}
+                           for cell, cid in reps.items() if (cell in selected) != (cell in current)]
+                if changes:
+                    self.selections._save(rid, changes, previous["revision"])
+            return self.safe_path(experiment, "selection.json")
+        from execution.provenance import directory_lock
+        with directory_lock(experiment):
+            return self._write_selection_legacy(experiment, selected)
+
+    def _write_selection_legacy(
         self,
         experiment: Path,
         selected: set[str],
@@ -444,7 +502,9 @@ def experiment_meta(
 
     summary_path = repository.safe_path(experiment, "summary.json")
     summary: Mapping[str, Any] = {}
-    if summary_path.is_file():
+    if repository.catalog is not None and (experiment / "manifest.json").is_file():
+        summary = repository.catalog.snapshot(repository.catalog.run_id(experiment.name), observe=False)["summary"]
+    elif summary_path.is_file():
         value = _read_json(summary_path)
         if isinstance(value, Mapping):
             summary = value
