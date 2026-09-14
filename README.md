@@ -36,3 +36,25 @@ tests/
 python scripts/evolve.py --project momotaro --generations 20 --population 100 --seeds 3 --out C:\Projects\WorldBloom-local\runs\exp1
 ```
 （Phase 0 完了後に確定）
+
+### ローカル Ollama をあらすじ・本文生成のバックエンドに使う
+
+```
+ollama pull qwen3.5:9b-q4_K_M
+```
+
+`settings.json` に接続先を設定する:
+
+```json
+{"output": {"ollama": {"model": "qwen3.5:9b-q4_K_M", "base_url": "http://localhost:11434",
+                        "think": false, "options": {"num_ctx": 16384, "num_predict": 4096}}}}
+```
+
+`options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は Qwen3.5 の思考トークンを抑えるため既定で `false`。
+
+`--backend ollama` を指定して実行する（API キー不要）。あらすじ化は `synopsize.py`、本文化は `narrate.py`:
+
+```
+python scripts/synopsize.py --archive <archive.json> --runs <runs_dir> --out <out.json> --backend ollama --project projects/<name> --template templates/<name>
+python scripts/narrate.py --archive <archive.json> --selection <selection.json> --out <stories_dir> --backend ollama --project projects/<name> --template templates/<name>
+```
