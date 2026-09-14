@@ -35,16 +35,12 @@ def _clip(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
 
 
 def _plain(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
     if is_dataclass(value):
         return _plain(asdict(value))
     if isinstance(value, dict):
-        return {
-            str(key): _plain(item)
-            for key, item in sorted(
-                value.items(),
-                key=lambda pair: str(pair[0]),
-            )
-        }
+        return {str(key): _plain(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
     if isinstance(value, set):

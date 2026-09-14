@@ -209,20 +209,30 @@ class PrecedentTable:
             Counter(),
         )[normalized_action] += amount
 
+    def p_normalized(
+        self,
+        normalized_context: ContextKey,
+        normalized_action: ActionKey,
+        normalized_candidates: frozenset[ActionKey],
+    ) -> float:
+        counter = self.counts.get(normalized_context, Counter())
+        alternatives = set(counter)
+        alternatives.update(normalized_candidates)
+        alternatives.add(normalized_action)
+        denominator = float(sum(counter.values())) + len(alternatives)
+        return (float(counter.get(normalized_action, 0.0)) + 1.0) / denominator
+
     def p(
         self,
         context: ContextKey,
         action: ActionKey,
         candidate_acts: set[ActionKey],
     ) -> float:
-        normalized_context = normalize_ctx(context)
-        normalized_action = normalize_act(action)
-        counter = self.counts.get(normalized_context, Counter())
-        alternatives = set(counter)
-        alternatives.update(normalize_act(value) for value in candidate_acts)
-        alternatives.add(normalized_action)
-        denominator = float(sum(counter.values())) + len(alternatives)
-        return (float(counter.get(normalized_action, 0.0)) + 1.0) / denominator
+        return self.p_normalized(
+            normalize_ctx(context),
+            normalize_act(action),
+            frozenset(normalize_act(value) for value in candidate_acts),
+        )
 
     def merge(
         self,

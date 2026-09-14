@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-import yaml
-
 from engine.predicate import (
     PREDICATE_NAMES,
     Namespace,
@@ -24,6 +22,7 @@ from engine.phase2 import (
     disguise_aliases,
     perceived_name as phase2_perceived_name,
 )
+from engine.yaml_cache import load_yaml
 
 
 def _load_action_graph(
@@ -74,9 +73,7 @@ def _load_action_graph(
             f"Action graph does not exist; tried: {attempted}"
         )
 
-    raw_graph = yaml.safe_load(
-        graph_path.read_text(encoding="utf-8")
-    )
+    raw_graph = load_yaml(graph_path)
     if not isinstance(raw_graph, dict):
         raise ValueError(
             f"Action graph must contain a mapping: {graph_path}"
@@ -655,9 +652,7 @@ class World:
         action_graph_path: str | Path | None = None,
     ) -> World:
         source = Path(path)
-        raw = yaml.safe_load(
-            source.read_text(encoding="utf-8")
-        )
+        raw = load_yaml(source)
         if not isinstance(raw, dict):
             raise ValueError(
                 f"World YAML must contain a mapping: {source}"

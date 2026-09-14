@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-import yaml
+from engine.yaml_cache import load_yaml
 
 if TYPE_CHECKING:
     from engine.world import World
@@ -95,7 +95,7 @@ class Subject:
     @classmethod
     def from_yaml(cls, path: str | Path) -> Subject:
         source = Path(path)
-        raw = yaml.safe_load(source.read_text(encoding="utf-8"))
+        raw = load_yaml(source)
         if not isinstance(raw, dict):
             raise ValueError(
                 f"Subject YAML must contain a mapping: {source}"
