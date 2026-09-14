@@ -194,30 +194,43 @@ def _overview_panel(world, subjects):
 def _characters_panel(world, world_yaml, subjects, store):
     svg = world_graph.relation_svg(subjects, protagonist=world["protagonist"], antagonist=world["antagonist"])
     table = world_graph.character_table(subjects, protagonist=world["protagonist"], antagonist=world["antagonist"])
-    canon = _genre_yaml(store.repo, world.get("genre"), "canon.yaml")
-    canon_html = (
-        world_graph.canon_table_html(canon) if isinstance(canon, dict)
-        else '<p class="muted">このジャンルに正典データがありません。</p>'
-    )
     effects = _genre_yaml(store.repo, world.get("genre"), "effects.yaml")
     readout_html = world_graph.character_readout_html(
         world_yaml, subjects, effects if isinstance(effects, list) else [],
+        protagonist=world["protagonist"], antagonist=world["antagonist"],
     )
     return (
         f'<p class="muted">人物数: {_escape(world["subjects"])}</p>'
         + svg + table
+        + '<p class="muted">表の行をクリックすると、その人物のパラメータ（9 指標）と'
+        "隠れた強化・秘密・伏線の読み下しが開きます。</p>"
         + '<p class="muted">線の色: 緑=好意 / 赤=敵意 / 灰=中立。'
         "太さ=好感度の強さ、濃さ=認知度。"
         "線にカーソルを合わせると双方向の値が出ます。</p>"
-        + "<h3>このジャンルの定番（正典）</h3>"
-        + '<p class="muted">GA が個体ごとにどれだけ外れた行動を取るかの基準にする、'
-        "状況→典型的な行動の集計です。時系列の筋書きではなく、GAはこれに従うほど有利にはなりません"
-        "（外れるほど新規性の評価が上がります）。</p>"
-        + canon_html
-        + "<h3>設定の読み下し</h3>"
-        + '<p class="muted">世界の数値がすでに何を意味しているかの一覧です（隠れた強化・秘密・伏線）。'
-        "生成された説明ではなく、world.yaml/subjects/effects.yaml の値とエンジンの計算式どおりに表示しています。</p>"
         + readout_html
+    )
+
+
+def _canon_panel(world, subjects, store):
+    # WB-UI-020: the genre's canon, phrased for the reader. The objective
+    # item is named after the protagonist's goal so "宝を敵が持っている"
+    # reads as this world's story rather than as a context key.
+    canon = _genre_yaml(store.repo, world.get("genre"), "canon.yaml")
+    protagonist = next((s for s in subjects if str(s.get("id")) == world["protagonist"]), None)
+    goal = (protagonist or {}).get("goal") or {}
+    objective = str(goal.get("target") or "目的の品") if isinstance(goal, dict) else "目的の品"
+    canon_html = (
+        world_graph.canon_table_html(canon, objective=objective) if isinstance(canon, dict)
+        else '<p class="muted">このジャンルに正典データがありません。</p>'
+    )
+    return (
+        "<h3>人間なら当然こう書く展開（GA はここから離れる）</h3>"
+        + '<p class="muted">このジャンルの定石です。ジャンルの canon.yaml に手書きされた'
+        "「この状況ならふつうこうする」の一覧で、GA の主人公は遺伝子 novelty_drive が高いほど、"
+        "ここに載っている行動を選びにくくなります。物語の筋書きではなく、"
+        "同じジャンルの世界ならどれも同じ内容です。"
+        "定石の強さは相対的な重みで、いちばん大きい行をいっぱいとして描きます。</p>"
+        + canon_html
     )
 
 
@@ -299,6 +312,7 @@ def render_world_detail(repository, world, store, job_store):
     panels = [
         ("概要", _overview_panel(world, subjects)),
         ("登場人物", _characters_panel(world, world_yaml, subjects, store)),
+        ("初期物語", _canon_panel(world, subjects, store)),
         ("場所", _places_panel(world_yaml)),
         ("期間", _period_panel(world_yaml)),
     ]

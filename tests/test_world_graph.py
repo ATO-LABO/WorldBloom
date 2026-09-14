@@ -115,8 +115,15 @@ class WorldGraphTests(unittest.TestCase):
         self.assertEqual(table.count("<tr>"), len(canon["entries"]) + 1)  # +1 header row
         # ctx.phase=[出発, 越境] + act.verb=fight should read as Japanese text,
         # not raw YAML tokens.
-        self.assertIn("出発・越境", table)
-        self.assertIn("戦った", table)
+        self.assertIn("出発・越境のあと、敵が目の前にいる、目的の品を敵が持っている", table)
+        self.assertIn("戦った（相手: 敵対相手）", table)
+        # WB-UI-020: vitality=alive is the default everywhere (dropped),
+        # stance=hostile is constant but not the default (footnote), and n
+        # is drawn relative to the largest row (8 -> 100%, 4 -> 50%).
+        self.assertIn("すべての行に共通: 主人公は敵と敵対している。", table)
+        self.assertNotIn("無事", table)
+        self.assertIn('style="width:100.0%"></span></span> <span class="muted">8</span>', table)
+        self.assertIn('style="width:50.0%"></span></span> <span class="muted">4</span>', table)
 
     def test_canon_table_html_empty(self) -> None:
         self.assertIn("正典データがありません", world_graph.canon_table_html({}))
@@ -142,6 +149,31 @@ class WorldGraphTests(unittest.TestCase):
         self.assertIn("桃太郎の当初の見積もり: 80（実際は123）", readout)
         self.assertIn("鬼の力は金棒に支えられている", readout)
         self.assertIn("金棒の隙を見切って仲間に合図を送る", readout)
+
+    def test_character_readout_html_draws_nine_stat_bars_per_subject(self) -> None:
+        # WB-UI-018: every subject gets a sheet with 9 bars, even one with
+        # nothing to read out (おじいさん has no modifiers/secrets/plants).
+        readout = world_graph.character_readout_html(
+            self._world_yaml(), self.subjects, [], protagonist="桃太郎", antagonist="鬼",
+        )
+        self.assertEqual(readout.count('class="character-sheet"'), 7)
+        self.assertEqual(readout.count('class="stat"'), 9 * 7)
+        # Each sheet is a <dialog> whose id matches the table row's data-sheet
+        # for the same subject (桃太郎 is subjects[2]).
+        self.assertEqual(readout.count('<dialog class="sheet-dialog" id="sheet-'), 7)
+        self.assertIn('id="sheet-2" aria-label="桃太郎のパラメータ"', readout)
+        table = world_graph.character_table(self.subjects, protagonist="桃太郎", antagonist="鬼")
+        self.assertIn('<tr data-sheet="sheet-2" tabindex="0"', table)
+        self.assertEqual(table.count("data-sheet="), 7)
+        self.assertIn('<h4>桃太郎 <span class="muted">主人公</span></h4>', readout)
+        self.assertIn('<h4>鬼 <span class="muted">敵役</span></h4>', readout)
+        self.assertIn("<h4>おじいさん</h4>", readout)
+        # traits are 0..1: 桃太郎 social 0.65 -> 65% wide; base is /100:
+        # 鬼 base 80 -> 80%; stamina is relative to the world max (14):
+        # キジ 10 -> 71.4%.
+        self.assertIn('width:65.0%"></span></span><span class="stat-value">0.65', readout)
+        self.assertIn('width:80.0%"></span></span><span class="stat-value">80<', readout)
+        self.assertIn('width:71.4%"></span></span><span class="stat-value">10（回復 2/時間帯）', readout)
 
     def test_character_readout_html_treats_missing_visible_as_true(self) -> None:
         # engine/subject.py and engine/world.py both default an omitted
@@ -203,7 +235,7 @@ class WorldGraphTests(unittest.TestCase):
         self.assertEqual(first, second)
 
     def test_character_readout_html_empty_inputs(self) -> None:
-        self.assertIn("読み下せる設定がありません", world_graph.character_readout_html({}, [], []))
+        self.assertIn("人物がいません", world_graph.character_readout_html({}, [], []))
 
     @staticmethod
     def _world_yaml():

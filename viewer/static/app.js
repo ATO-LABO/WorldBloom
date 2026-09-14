@@ -110,4 +110,32 @@
       () => highlightDay(element.dataset.day, false)
     );
   });
+
+  // WB-UI-018: character table rows open the matching stat-sheet <dialog>.
+  const openSheet = (row) => {
+    const dialog = document.getElementById(row.dataset.sheet);
+    if (dialog && typeof dialog.showModal === "function" && !dialog.open) {
+      dialog.showModal();
+    }
+  };
+
+  document.querySelectorAll("tr[data-sheet]").forEach((row) => {
+    row.addEventListener("click", () => openSheet(row));
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openSheet(row);
+      }
+    });
+  });
+
+  document.querySelectorAll("dialog.sheet-dialog").forEach((dialog) => {
+    dialog.addEventListener("click", (event) => {
+      // The dialog itself has no padding, so a click that lands on it (not
+      // on a descendant) is a backdrop click.
+      if (event.target === dialog || event.target.closest("[data-close-dialog]")) {
+        dialog.close();
+      }
+    });
+  });
 })();
