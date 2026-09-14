@@ -627,7 +627,10 @@ class OutputPagesTests(unittest.TestCase):
     def test_entry_status_vocabulary(self):
         for status, label in output_pages.ENTRY_STATUS_LABELS.items():
             with self.subTest(status=status):
-                self.assertIn(label, output_pages._entry_badge(status))
+                self.assertIn(
+                    label,
+                    workbench_pages.state_badge(status, labels=output_pages.ENTRY_STATUS_LABELS),
+                )
 
     def test_completion_vocabulary(self):
         for kind, label in output_pages.COMPLETION_LABELS.items():

@@ -772,6 +772,23 @@ class WorkbenchTests(unittest.TestCase):
             with self.subTest(state=state):
                 self.assertIn(label, workbench_pages.state_badge(state))
 
+    def test_sort_candidates_two_pass_stable_sort(self):
+        # Equal values arrive in reverse id order so the id tiebreak is exercised.
+        candidates = [
+            {"candidate_id": "cand-c", "quality": 0.5},
+            {"candidate_id": "cand-a", "quality": 0.9},
+            {"candidate_id": "cand-d", "quality": None},
+            {"candidate_id": "cand-b", "quality": 0.5},
+        ]
+        asc = workbench_pages.sort_candidates(candidates, "quality", "asc", None)
+        self.assertEqual(
+            [c["candidate_id"] for c in asc], ["cand-b", "cand-c", "cand-a", "cand-d"]
+        )
+        desc = workbench_pages.sort_candidates(candidates, "quality", "desc", None)
+        self.assertEqual(
+            [c["candidate_id"] for c in desc], ["cand-a", "cand-b", "cand-c", "cand-d"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

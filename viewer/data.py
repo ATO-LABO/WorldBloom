@@ -252,26 +252,6 @@ class RunRepository:
             )
         return set(selected)
 
-    def write_selection(self, experiment, selected):
-        if self.selections is not None:
-            # Bulk compatibility callers also preserve all non-representative entries.
-            rid = self._catalog_id(experiment)
-            with self.selections._guard(rid):
-                snapshot = self.catalog.snapshot(rid)
-                previous = self.selections._read(rid) or self.selections._initial(rid, snapshot)
-                reps = self.catalog.representatives(snapshot)
-                if set(selected) - set(reps):
-                    raise BadRequest("invalid selected cells")
-                current = self.selections._projection(snapshot, previous)
-                changes = [{"candidate_id": cid, "state": "adopted" if cell in selected else "unclassified"}
-                           for cell, cid in reps.items() if (cell in selected) != (cell in current)]
-                if changes:
-                    self.selections._save(rid, changes, previous["revision"])
-            return self.safe_path(experiment, "selection.json")
-        from execution.provenance import directory_lock
-        with directory_lock(experiment):
-            return self._write_selection_legacy(experiment, selected)
-
     def _write_selection_legacy(
         self,
         experiment: Path,

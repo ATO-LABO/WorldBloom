@@ -68,14 +68,6 @@ _STATUS_LABELS_JSON = json.dumps(ENTRY_STATUS_LABELS, ensure_ascii=False, sort_k
 _RETRY_TARGET_STATUSES = ("skipped_limit", "skipped_cancelled", "skipped_interrupted", "pending")
 
 
-def _entry_badge(status):
-    label = ENTRY_STATUS_LABELS.get(status, str(status))
-    return (
-        f'<span class="state-badge state-{_escape(status)}" data-field="state">'
-        f'<span data-field="state-label">{_escape(label)}</span></span>'
-    )
-
-
 # --------------------------------------------------------------------------
 # Shared read helpers
 # --------------------------------------------------------------------------
@@ -784,7 +776,7 @@ def _entry_article(entry, candidates_by_id, store, output_id, run_id, synopsis_r
         )
     parts = [
         f'<article id="entry-{_escape(cid)}" data-entry="{_escape(cid)}" data-status="{_escape(status)}">',
-        f"<h3>{label} {_entry_badge(status)}</h3>",
+        f"<h3>{label} {workbench_pages.state_badge(status, labels=ENTRY_STATUS_LABELS)}</h3>",
         f'<p><a href="/runs/{_url(run_id)}/candidates/{_url(cid)}/raw">候補の原ログ</a></p>',
         f'<p data-field="message">{_escape(entry.get("message") or "")}</p>',
     ]

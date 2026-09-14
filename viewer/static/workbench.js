@@ -347,13 +347,8 @@
     return Math.round((end - start) * 10) / 10;
   };
 
-  // §7: job states that never advance further (mirrors execution/worker.py's
-  // TERMINAL). A pure function so it can be exercised standalone (node -e)
-  // without the rest of the page.
-  const TERMINAL_JOB_STATES = new Set(["succeeded", "partial", "failed", "cancelled", "interrupted"]);
-
-  const etaText = (progress, elapsed, state) => {
-    if (TERMINAL_JOB_STATES.has(state)) {
+  const etaText = (progress, elapsed, state, terminalStates) => {
+    if (terminalStates.has(state)) {
       return "—";
     }
     progress = progress || {};
@@ -390,6 +385,7 @@
   const jobSnapshots = new WeakMap();
 
   const applyJob = (root, job, labels) => {
+    const terminalStates = new Set(parseJsonAttr(root.dataset.terminalStates, []));
     const stateLabels = labels.state;
     const phaseLabels = labels.phase;
 
@@ -428,7 +424,7 @@
         ? "—"
         : job.publication_revision
     );
-    setField(root, "eta", etaText(progress, elapsed, job.state));
+    setField(root, "eta", etaText(progress, elapsed, job.state, terminalStates));
 
     // §7: keep each rendered <progress> bar's value/max in step with polling
     // (the server only sets them on the initial render).

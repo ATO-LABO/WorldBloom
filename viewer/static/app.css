@@ -405,24 +405,8 @@ p {
   transform: translateY(-1px);
 }
 
-/* -------------------------------------------------------- run listing */
-/* Legacy per-run cards (pages._experiment_card); no longer linked from the
-   home dashboard but still exercised directly by tests, so kept styled. */
+/* -------------------------------------------------------- section headings */
 
-.run-group {
-  margin-bottom: 1.6rem;
-}
-
-.run-list {
-  display: grid;
-  gap: 0.8rem;
-}
-
-.run-card {
-  position: relative;
-}
-
-.card-heading,
 .cell-navigation,
 .section-heading,
 .cell-head {
@@ -432,13 +416,6 @@ p {
   justify-content: space-between;
 }
 
-.card-heading h3 {
-  margin: 0;
-}
-
-.date,
-.facts,
-.outputs,
 .experiment-meta {
   color: var(--muted);
 }
@@ -446,18 +423,6 @@ p {
 .genre {
   color: var(--accent);
   font-weight: 700;
-}
-
-.run-stats {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem 1.2rem;
-}
-
-.open {
-  margin: 0;
-  text-align: right;
 }
 
 .spark {
@@ -963,7 +928,6 @@ td {
     padding-inline: 0.75rem;
   }
 
-  .card-heading,
   .cell-navigation,
   .section-heading {
     align-items: flex-start;
@@ -1018,10 +982,6 @@ td {
   color: var(--warm);
   font-size: 0.82em;
   width: 100%;
-}
-
-.run-stats .reach {
-  color: var(--muted);
 }
 
 /* 指標名にカーソルを載せると説明が出る。点線の下線でその場所を示す。 */
