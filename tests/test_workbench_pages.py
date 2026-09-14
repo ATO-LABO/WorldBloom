@@ -368,13 +368,13 @@ class WorkbenchTests(unittest.TestCase):
         self.fake.add(_job("job-ok", "run-c", "succeeded"))
 
         # Home has no phase band at all (WB feedback: showing 4 phase tabs on
-        # the world-picker lobby invites clicking ahead by mistake) but keeps
-        # the world picker, pinned to the same world it would otherwise route to.
+        # the world-picker lobby invites clicking ahead by mistake) and no
+        # header world/run picker either (the body already is the world/genre
+        # hub, so a pinned-elsewhere picker up top would be redundant there).
         status, body, _ = self.get_status("/")
         self.assertEqual(status, 200, body)
         self.assertNotIn('<nav class="phase-band"', body)
-        self.assertIn('data-wb="world-picker"', body)
-        self.assertIn('<option value="romance" selected>', body)
+        self.assertNotIn('data-wb="world-picker"', body)
 
         for path in ("/configs", "/jobs", "/worlds/romance"):
             status, body, _ = self.get_status(path)

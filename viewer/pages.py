@@ -127,12 +127,16 @@ def _header_pickers(
     *,
     is_home: bool,
 ) -> str:
-    pickers = [_world_picker(world, worlds)]
-    if run is not None:
-        pickers.append(
-            '<span class="picker"><span class="picker-label">実験</span>'
-            f'<span class="picker-value">{_escape(run)}</span></span>'
-        )
+    # Home already shows the full world/genre hub in the body, so the header
+    # picker (world + run) would just be a redundant, pinned-elsewhere guess.
+    pickers = []
+    if not is_home:
+        pickers.append(_world_picker(world, worlds))
+        if run is not None:
+            pickers.append(
+                '<span class="picker"><span class="picker-label">実験</span>'
+                f'<span class="picker-value">{_escape(run)}</span></span>'
+            )
     # Home already *is* "home", so the header leads with the brand there;
     # every other page leads with the ⌂ home link instead of a redundant brand.
     leftmost = (
@@ -221,7 +225,9 @@ def document(
         "</head><body>"
         '<div class="app-shell">'
         '<header class="site-header">'
-        + _header_pickers(world, run, _library_worlds(job_store), is_home=is_home)
+        + _header_pickers(
+            world, run, () if is_home else _library_worlds(job_store), is_home=is_home,
+        )
         + (_phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
            if show_phase_band else "")
         + "</header>"
@@ -968,7 +974,6 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         worlds, genres = store.worlds(), store.genres()
     except (ValueError, OSError, KeyError, TypeError, AttributeError):
         worlds, genres = [], []
-    pin = data.pinned_target(job_store)
 
     groups, minor = data.grouped_experiments(repository)
     by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
@@ -984,7 +989,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
             '<p class="muted">各実験ディレクトリに '
             "<code>archive.json</code> が必要です。</p></section>",
             phase="world",
-            job_store=job_store, pin=pin, show_phase_band=False, is_home=True,
+            job_store=job_store, show_phase_band=False, is_home=True,
         )
 
     run_counts: dict[str, int] = defaultdict(int)
@@ -1028,7 +1033,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
     )
     return document(
         "世界を選ぶ", body, phase="world",
-        job_store=job_store, pin=pin, show_phase_band=False, is_home=True,
+        job_store=job_store, show_phase_band=False, is_home=True,
     )
 
 
