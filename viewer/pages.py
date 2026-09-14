@@ -124,6 +124,8 @@ def _header_pickers(
     world: Mapping[str, Any] | None,
     run: str | None,
     worlds: Sequence[Mapping[str, Any]],
+    *,
+    is_home: bool,
 ) -> str:
     pickers = [_world_picker(world, worlds)]
     if run is not None:
@@ -131,14 +133,21 @@ def _header_pickers(
             '<span class="picker"><span class="picker-label">実験</span>'
             f'<span class="picker-value">{_escape(run)}</span></span>'
         )
+    # Home already *is* "home", so the header leads with the brand there;
+    # every other page leads with the ⌂ home link instead of a redundant brand.
+    leftmost = (
+        '<a class="brand" href="/">WorldBloom</a>'
+        if is_home
+        else '<a class="home-cell" href="/">⌂ ホーム</a>'
+    )
     return (
         '<div class="header-pickers">'
-        '<a class="home-cell" href="/">⌂ ホーム</a>'
+        + leftmost
         + "".join(pickers)
         + '<span class="header-links">'
-        '<a href="/configs">設定</a><a href="/jobs">実行履歴</a>'
+        '<a href="/configs" title="設定" aria-label="設定">⚙</a>'
+        '<a href="/jobs" title="実行履歴" aria-label="実行履歴">📝</a>'
         "</span>"
-        '<a class="brand" href="/">WorldBloom</a>'
         "</div>"
     )
 
@@ -158,6 +167,7 @@ def document(
     job_store: Any = None,
     pin: Mapping[str, Any] | None = None,
     show_phase_band: bool = True,
+    is_home: bool = False,
 ) -> str:
     # pin (data.pinned_target()) fills in world/run/output_run for callers
     # that don't already know their own (Home, /configs, /jobs): the run is
@@ -211,11 +221,11 @@ def document(
         "</head><body>"
         '<div class="app-shell">'
         '<header class="site-header">'
-        + _header_pickers(world, run, _library_worlds(job_store))
+        + _header_pickers(world, run, _library_worlds(job_store), is_home=is_home)
         + (_phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
            if show_phase_band else "")
-        + f'<nav class="crumbs" aria-label="パンくず">{breadcrumb}</nav>'
-        "</header>"
+        + "</header>"
+        f'<nav class="crumbs" aria-label="パンくず">{breadcrumb}</nav>'
         f'<main class="page-shell"><h1>{_escape(title)}</h1>{lead_html}{body}</main>'
         '<div id="toast" role="status" aria-live="polite"></div>'
         "</div>"
@@ -974,7 +984,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
             '<p class="muted">各実験ディレクトリに '
             "<code>archive.json</code> が必要です。</p></section>",
             phase="world",
-            job_store=job_store, pin=pin, show_phase_band=False,
+            job_store=job_store, pin=pin, show_phase_band=False, is_home=True,
         )
 
     run_counts: dict[str, int] = defaultdict(int)
@@ -1016,7 +1026,10 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         )
         + "".join(legacy_sections)
     )
-    return document("世界を選ぶ", body, phase="world", job_store=job_store, pin=pin, show_phase_band=False)
+    return document(
+        "世界を選ぶ", body, phase="world",
+        job_store=job_store, pin=pin, show_phase_band=False, is_home=True,
+    )
 
 
 def _threshold_text(thresholds: Mapping[str, Any]) -> str:

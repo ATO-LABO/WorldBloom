@@ -16,6 +16,8 @@
   --danger: #8c3030;
   --danger-soft: #f8e3e3;
   --shadow: 0 8px 28px rgba(34, 45, 43, 0.08);
+  --shadow-hover: 0 14px 32px rgba(34, 45, 43, 0.14);
+  --stripe: rgba(36, 48, 42, 0.028);
   --radius-s: 6px;
   --radius-m: 10px;
   --radius-l: 14px;
@@ -39,6 +41,19 @@ html {
   background: var(--background);
   color: var(--text);
   font-family: var(--font-ui);
+  line-height: 1.6;
+}
+
+h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
 }
 
 body {
@@ -74,6 +89,9 @@ select {
 .site-header {
   display: flex;
   flex-direction: column;
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .header-pickers {
@@ -85,7 +103,7 @@ select {
   flex-wrap: wrap;
   gap: 1rem;
   min-height: 52px;
-  padding: 0.4rem max(1rem, calc((100vw - 1280px) / 2));
+  padding: 0.4rem 1rem;
 }
 
 .home-cell {
@@ -246,8 +264,9 @@ p {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
+  box-shadow: var(--shadow);
   margin: 0 0 1rem;
-  padding: 1rem;
+  padding: 1.25rem;
 }
 
 .target-card {
@@ -274,10 +293,13 @@ p {
   display: inline-block;
   padding: 0.35rem 0.75rem;
   text-decoration: none;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background-color 120ms ease;
 }
 
 .button:hover {
   border-color: var(--accent);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
 }
 
 .button.primary {
@@ -321,15 +343,18 @@ p {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
+  box-shadow: var(--shadow);
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
   padding: 0.85rem 1.1rem;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
 .progress-row:hover {
   border-color: var(--accent);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
 }
 
 .progress-label {
@@ -381,12 +406,14 @@ p {
   font-size: 0.85rem;
   padding: 0.35rem 0.7rem;
   text-decoration: none;
+  transition: transform 120ms ease, background-color 120ms ease, color 120ms ease;
   white-space: nowrap;
 }
 
 .progress-command:hover {
   background: var(--accent);
   color: #fff;
+  transform: translateY(-1px);
 }
 
 /* -------------------------------------------------------- run listing */
@@ -507,18 +534,36 @@ table {
 
 th,
 td {
-  border: 1px solid var(--line);
-  padding: 0.6rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.7rem 0.75rem;
   text-align: left;
   vertical-align: top;
 }
 
+.wb-table tbody tr:last-child td,
+.raw-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .wb-table thead th,
-.archive-grid thead th,
 .raw-table thead th {
   background: var(--accent-soft);
-  position: sticky;
-  top: 0;
+  border-bottom: 2px solid var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.archive-grid thead th {
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-bottom: 2px solid var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.wb-table tbody tr:nth-child(even):not(.detail-row),
+.raw-table tbody tr:nth-child(even) {
+  background: var(--stripe);
 }
 
 .wb-table tbody tr:hover,
@@ -537,6 +582,12 @@ td {
 
 .archive-grid td {
   min-width: 0;
+}
+
+.archive-grid th,
+.archive-grid td {
+  border: 1px solid var(--line);
+  padding: 0.6rem;
 }
 
 .archive-grid .empty {
@@ -806,8 +857,8 @@ td {
   border-radius: 999px;
   display: inline-block;
   font-size: 0.78rem;
-  font-weight: 500;
-  padding: 0.18rem 0.48rem;
+  font-weight: 600;
+  padding: 0.22rem 0.6rem;
 }
 
 .chip {
@@ -1191,7 +1242,7 @@ td {
   display: inline-block;
   font-size: 0.8rem;
   font-weight: 600;
-  padding: 0.18rem 0.6rem;
+  padding: 0.22rem 0.6rem;
 }
 
 .state-running,
@@ -1397,11 +1448,14 @@ details {
   font-weight: 700;
   padding: 0.2rem 0.6rem;
   text-decoration: none;
+  transition: transform 120ms ease, box-shadow 120ms ease;
   white-space: nowrap;
 }
 
 .next-cta:hover {
+  box-shadow: var(--shadow);
   text-decoration: underline;
+  transform: translateY(-1px);
 }
 
 /* §2.3: the header's secondary links, visually separated from .next-cta. */
@@ -1632,4 +1686,23 @@ details {
   display: flex;
   font-weight: 700;
   justify-content: center;
+}
+
+/* WB-EXPLAIN-canon: canon precedent table + per-character readout. */
+.canon-table {
+  margin: 0.6rem 0 1.2rem;
+}
+
+.character-readout .readout {
+  margin: 0.4rem 0;
+}
+
+.character-readout .readout summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.character-readout .readout ul {
+  margin: 0.3rem 0 0.8rem;
+  padding-left: 1.4rem;
 }
