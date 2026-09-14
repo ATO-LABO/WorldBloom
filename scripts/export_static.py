@@ -220,12 +220,13 @@ def render_index(experiments: list[Experiment]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WorldBloom</title>
+<title>WorldBloom ── 遺伝的アルゴリズム×LLM による結末固定型の物語生成エンジン</title>
 <style>{CSS}</style>
 </head>
 <body>
 <main>
 <h1>WorldBloom</h1>
+<p class="subtitle">遺伝的アルゴリズム×LLM による結末固定型の物語生成エンジン</p>
 <div class="lead">{lead}</div>
 {sections}
 </main>
