@@ -102,7 +102,9 @@ class ViewerPageTests(unittest.TestCase):
         self.assertIn("桃太郎", rendered)
         self.assertIn("<th>実験</th>", rendered)
         self.assertNotIn("exp-viewer", rendered)
-        self.assertIn('data-wb="world-picker"', rendered)
+        # Home already shows the full world/genre hub in the body, so the
+        # header's world/run picker (useful elsewhere) would be redundant here.
+        self.assertNotIn('data-wb="world-picker"', rendered)
         self.assertNotIn('<nav class="phase-band"', rendered)  # Home never shows the phase tabs
 
     def test_detail_lines(self) -> None:
