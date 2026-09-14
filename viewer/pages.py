@@ -160,7 +160,7 @@ def document(
     title: str,
     body: str,
     *,
-    crumbs: list[tuple[str, str]] = (),
+    crumbs: list[tuple[str, str]] = (),  # unused: breadcrumb nav was removed, kept for caller compatibility
     world: Mapping[str, Any] | None = None,
     run: str | None = None,
     output_run: str | None = None,
@@ -189,17 +189,6 @@ def document(
     # pages.py / output_pages.py), or leave it unset when there is none.
     if output_run is None and phases:
         output_run = phases.get("catalog_run_id")
-    crumb_items = [
-        '<a href="/">ホーム</a>'
-    ]
-    for label, href in crumbs:
-        crumb_items.append(
-            f'<a href="{html.escape(href, quote=True)}">'
-            f"{_escape(label)}</a>"
-        )
-    breadcrumb = " <span aria-hidden=\"true\">›</span> ".join(
-        crumb_items
-    )
     lead_html = ""
     if lead is not None or next_action is not None:
         lead_text = f"{_escape(lead)} " if lead is not None else ""
@@ -231,7 +220,6 @@ def document(
         + (_phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
            if show_phase_band else "")
         + "</header>"
-        f'<nav class="crumbs" aria-label="パンくず">{breadcrumb}</nav>'
         f'<main class="page-shell"><h1>{_escape(title)}</h1>{lead_html}{body}</main>'
         '<div id="toast" role="status" aria-live="polite"></div>'
         "</div>"
