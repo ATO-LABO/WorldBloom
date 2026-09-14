@@ -195,14 +195,14 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('<a class="brand" href="/">WorldBloom</a>', body)
         self.assertIn('<a class="home-cell" href="/">⌂ ホーム</a>', configs_body)
         self.assertNotIn('<a class="brand" href="/">WorldBloom</a>', configs_body)
-        for href, label, icon in (("/configs", "設定", "⚙"), ("/jobs", "実行履歴", "📝")):
+        for href, label, icon in (("/configs", "設定", "⚙"), ("/history", "実行履歴", "📝")):
             with self.subTest(href=href):
                 link = f'<a href="{href}" title="{label}" aria-label="{label}">{icon}</a>'
                 self.assertIn(link, body)
                 self.assertIn(link, configs_body)
 
         plain = self._start_server()
-        for path in ("/configs", "/jobs", "/selected"):
+        for path in ("/configs", "/jobs", "/history", "/selected"):
             with self.subTest(path=path):
                 status, body, _ = self.get_status(path, port=plain.server_port)
                 self.assertEqual(status, 200, body)
@@ -288,15 +288,16 @@ class WorkbenchTests(unittest.TestCase):
         )
         self.assertEqual(status, 404, payload)
 
-    def test_start_confirmation(self):
-        status, first, _ = self.get_status("/configs/cfg-test/start")
-        self.assertEqual(status, 200, first)
-        status, second, _ = self.get_status("/configs/cfg-test/start")
-        self.assertEqual(status, 200, second)
-        pattern = re.compile(r'data-request-id="([A-Za-z0-9][A-Za-z0-9_-]{0,95})"')
-        first_id = pattern.search(first).group(1)
-        second_id = pattern.search(second).group(1)
-        self.assertNotEqual(first_id, second_id)
+    def test_start_redirects_to_run_page(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            conn.request("GET", "/configs/cfg-test/start")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 302)
+            self.assertEqual(response.getheader("Location"), "/jobs?world=romance&config=cfg-test")
+            response.read()
+        finally:
+            conn.close()
         self.assertEqual(self.fake.submitted, [])
 
     # ------------------------------------------------------------- jobs
@@ -307,7 +308,7 @@ class WorkbenchTests(unittest.TestCase):
         self.fake.add(_job("job-ok", "run-c", "succeeded", publication_revision=1))
         self.fake.add(_job("job-unknown", "run-d", "running", reconciliation="unknown"))
 
-        status, body, _ = self.get_status("/jobs")
+        status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)
         running_at = body.index("<h2>進行中</h2>")
         history_at = body.index("<h2>履歴</h2>")
@@ -328,11 +329,11 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertIn("監視プロセスが消失しました", body)
         self.assertIn("同じ設定で新しく実行できます", body)
-        self.assertIn("/configs/cfg-test/start", body)
+        self.assertIn("/jobs?world=romance&amp;config=cfg-test", body)
 
         status, body, _ = self.get_status("/jobs/job-ok")
         self.assertEqual(status, 200, body)
-        self.assertIn("確定結果を見る", body)
+        self.assertIn("Sifting で候補を選ぶ", body)
         self.assertIn("/exp/run-c", body)
         self.assertIn("/runs/run-c/candidates", body)
 
@@ -387,11 +388,76 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn("target-card", body)
         self.assertNotIn("/configs/cfg-test/start", body)
         self.assertIn('<option value="momotaro" selected>', body)
+        # momotaro has no config of its own -> the idle prep card offers
+        # "新しく作る" instead of a start form.
+        self.assertNotIn('data-wb="start"', body)
+        self.assertIn("新しく作る", body)
 
         status, body, _ = self.get_status("/worlds/momotaro")
         self.assertEqual(status, 200, body)
         band = body[body.index('<nav class="phase-band"'):body.index("</nav>")]
         self.assertIn('href="/jobs?world=momotaro"', band)
+
+    # ----------------------------------------------------- run page (WB-UI-017)
+
+    def test_run_page_idle_shows_prep_and_empty_vessels(self):
+        status, body, _ = self.get_status("/jobs?world=romance")
+        self.assertEqual(status, 200, body)
+        self.assertIn('data-wb="start"', body)
+        self.assertIn('<select name="config"', body)
+        self.assertIn("この設定で GA を回す", body)
+        # romance's QD axes are I/II/III x low/mid/high -- 9 cells, all empty
+        # before any run has published.
+        self.assertEqual(body.count("qd-cell empty"), 9)
+        self.assertEqual(body.count("vbox ghost"), 3)
+        self.assertNotIn("<h2>履歴</h2>", body)
+
+    def test_run_page_blocked_by_other_world(self):
+        self.configs.save({
+            "label": "momo", "project_id": "momotaro", "template_id": "momotaro",
+            "generation": {"backend": "none"},
+            "evolution": {"generations": 1, "population": 1, "seeds": 1},
+        }, config_id="cfg-momo")
+        self.fake.add(_job("job-run", "run-a", "running"))  # romance's cfg-test
+
+        status, body, _ = self.get_status("/jobs?world=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn('data-wb="start"', body)
+        self.assertIn("実行中です", body)
+        self.assertIn("/jobs/job-run", body)
+
+    def test_run_page_running_has_bars_and_cancel(self):
+        self.fake.add(_job("job-run", "run-a", "running"))
+        status, body, _ = self.get_status("/jobs/job-run")
+        self.assertEqual(status, 200, body)
+        self.assertIn('data-poll="1"', body)
+        self.assertEqual(body.count("<progress"), 3)
+        self.assertIn('data-action="cancel"', body)
+        self.assertIn("data-revision=", body)
+
+    def test_run_page_done_reads_publication(self):
+        run_id = "run-handcrafted-done"
+        self._hand_published_run(run_id, "cfg-test", summary={
+            "generations": [
+                {"occupied_cells": 1, "average_archive_quality": 0.5,
+                 "reach_rate": 1.0, "archive_dissimilarity": 0.0},
+            ],
+        })
+        self.fake.add(_job("job-ok2", run_id, "succeeded", publication_revision=1))
+
+        status, body, _ = self.get_status("/jobs/job-ok2")
+        self.assertEqual(status, 200, body)
+        self.assertGreaterEqual(body.count("qd-cell f"), 1)
+        self.assertIn('<b data-field="metric_occupied">1</b>', body)
+        self.assertIn('class="exit on"', body)
+        self.assertIn('data-revision="1"', body)
+
+    def test_history_page_lists_tables(self):
+        status, body, _ = self.get_status("/history")
+        self.assertEqual(status, 200, body)
+        self.assertIn("<h2>進行中</h2>", body)
+        self.assertIn("<h2>履歴</h2>", body)
+        self.assertIn("<h2>生成ジョブ</h2>", body)
 
     def test_home_tabs_follow_pinned_world(self):
         self.fake.add(_job("job-ok", "run-c", "succeeded"))
@@ -487,7 +553,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, bogus_body)
         self.assertNotIn("aria-sort", bogus_body)
 
-    def _hand_published_run(self, run_id, config_id, *, cell_key="I|low"):
+    def _hand_published_run(self, run_id, config_id, *, cell_key="I|low", summary=None):
         """Build a genuine, non-legacy published run on disk: no GA, no
         subprocess, just the same file/hash shapes execution/evolution_worker.py's
         EvolutionObserver.publish() produces. A register_legacy()'d run's
@@ -518,7 +584,7 @@ class WorkbenchTests(unittest.TestCase):
         payloads = {
             "archive": {"cells": {cell_key: {"generation": 0, "quality": 0.5, "reach_rate": 1.0,
                                               "exemplar": {"seed": 0, "layers_path": layers_path}}}},
-            "summary": {},
+            "summary": {} if summary is None else summary,
             "candidates": {"schema_version": 1, "run_id": run_id, "revision": 1, "candidates": [candidate]},
         }
         files = {}
@@ -549,13 +615,17 @@ class WorkbenchTests(unittest.TestCase):
     def test_phase_and_error_vocabulary(self):
         for phase, label in workbench_pages.PHASE_LABELS.items():
             with self.subTest(phase=phase):
-                job = _job("job-phase", "run-phase", "running", phase=phase)
-                html = workbench_pages.render_job_page(job)
+                jid = f"job-phase-{phase}"
+                self.fake.add(_job(jid, f"run-phase-{phase}", "running", phase=phase))
+                status, html, _ = self.get_status(f"/jobs/{jid}")
+                self.assertEqual(status, 200, html)
                 self.assertIn(label, html)
         for code, (message, next_step) in workbench_pages.ERROR_MESSAGES.items():
             with self.subTest(code=code):
-                job = _job("job-error", "run-error", "failed", error={"code": code})
-                html = workbench_pages.render_job_page(job)
+                jid = f"job-error-{code}"
+                self.fake.add(_job(jid, f"run-error-{code}", "failed", error={"code": code}))
+                status, html, _ = self.get_status(f"/jobs/{jid}")
+                self.assertEqual(status, 200, html)
                 self.assertIn(message, html)
                 self.assertIn(next_step, html)
 
@@ -598,7 +668,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('<p class="page-lead">', body)
         self.assertIn('class="next-cta"', body)
 
-        status, body, _ = self.get_status("/jobs")
+        status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)
         self.assertIn('<p class="page-lead">', body)
         # No records yet -> the empty-jobs CTA from WB-UI-012 §2.3.
@@ -646,7 +716,7 @@ class WorkbenchTests(unittest.TestCase):
         rid = self.server.repository.catalog.register_legacy("exp-csp")
         paths = [
             "/", "/configs", "/configs/new", "/configs/new?from=cfg-test", "/configs/cfg-test",
-            "/configs/cfg-test/start", "/jobs", "/jobs/job-x", "/selected",
+            "/history", "/jobs", "/jobs/job-x", "/selected",
             f"/runs/{rid}/candidates",
         ]
         for path in paths:
@@ -669,14 +739,24 @@ class WorkbenchTests(unittest.TestCase):
         """UI-009 finding: a user-requested stop must not render "エラー: None"."""
         base = {"job_id": "job-stop", "phase": "evaluating", "error": None, "progress": {},
                 "config_id": "cfg-test", "run_id": "run-stop", "created_at": 1.0, "started_at": 2.0, "finished_at": 5.0}
-        html = workbench_pages.render_job_page({**base, "state": "cancelled"})
+
+        self.fake.add({**base, "state": "cancelled"})
+        status, html, _ = self.get_status("/jobs/job-stop")
+        self.assertEqual(status, 200, html)
         self.assertNotIn("エラー: None", html)
         self.assertIn("利用者の停止要求により停止しました", html)
         self.assertIn("同じ設定で新しく実行", html)
-        html = workbench_pages.render_job_page({**base, "state": "interrupted"})
+
+        self.fake.add({**base, "job_id": "job-stop2", "run_id": "run-stop2", "state": "interrupted"})
+        status, html, _ = self.get_status("/jobs/job-stop2")
+        self.assertEqual(status, 200, html)
         self.assertNotIn("エラー: None", html)
         self.assertIn("エラー情報がありません", html)
-        html = workbench_pages.render_job_page({**base, "state": "failed", "error": {"code": "wall_timeout"}})
+
+        self.fake.add({**base, "job_id": "job-stop3", "run_id": "run-stop3",
+                        "state": "failed", "error": {"code": "wall_timeout"}})
+        status, html, _ = self.get_status("/jobs/job-stop3")
+        self.assertEqual(status, 200, html)
         self.assertIn(workbench_pages.ERROR_MESSAGES["wall_timeout"][0], html)
 
     def test_job_page_has_eta_placeholder(self):

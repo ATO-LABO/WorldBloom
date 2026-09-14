@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from http import HTTPStatus
 import json
+import math
 import time
 import uuid
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -87,9 +88,9 @@ def state_badge(state):
     )
 
 
-def _dl(pairs):
+def _dl(pairs, *, cls="metric"):
     items = "".join(f"<dt>{_escape(label)}</dt><dd>{value}</dd>" for label, value in pairs)
-    return f'<dl class="metric">{items}</dl>'
+    return f'<dl class="{cls}">{items}</dl>'
 
 
 def _short_id(value):
@@ -409,39 +410,6 @@ def render_config_detail(config):
     )
 
 
-def render_start_confirm(config, request_id):
-    ev = config["evolution"]
-    preview = config["preview"]
-    ending_text = ", ".join(ev["target_ending"]) if ev.get("target_ending") else "世界の既定"
-    summary = _dl([
-        ("終了条件（世代数）", _escape(ev["generations"])),
-        ("個体数", _escape(ev["population"])),
-        ("seed数", _escape(ev["seeds"])),
-        ("seed_base", _escape(ev["seed_base"])),
-        ("ga_seed", _escape(ev["ga_seed"])),
-        ("processes", _escape(ev["processes"])),
-        ("保存方針", _escape(ev["keep"])),
-        ("共進化", _escape(ev["coevolve"])),
-        ("メタ進化", _escape(ev["meta_evolution"])),
-        ("説明記録", _escape(ev["record_explanations"])),
-        ("結末", _escape(ending_text)),
-        ("個体評価数（予定）", _escape(preview["planned_individual_evaluations"])),
-        ("seed評価数（予定）", _escape(preview["planned_seed_evaluations"])),
-        ("実行時間上限（秒）", _escape(config["execution_limits"]["wall_seconds"])),
-    ])
-    return (
-        f'<div data-wb="start" data-config-id="{_escape(config["config_id"])}" '
-        f'data-request-id="{_escape(request_id)}">'
-        f'<h2>{_escape(config["label"])} を実行</h2>'
-        + summary
-        + '<p class="muted">GA は LLM を呼び出しません。</p>'
-        + '<p class="form-error" data-form-error role="alert"></p>'
-        + '<form><button type="submit">この設定でGAを実行</button></form>'
-        + f'<p class="actions"><a href="/configs/{_url(config["config_id"])}">設定に戻る</a></p>'
-        + "</div>"
-    )
-
-
 # --------------------------------------------------------------------------
 # Jobs
 # --------------------------------------------------------------------------
@@ -469,29 +437,6 @@ def _job_row(record):
         f'<td class="wb-actions">{" ".join(actions)}</td>'
         "</tr>"
     )
-
-
-def _target_card(job, config):
-    world = _config_world(config)
-    label_link = f'<a href="/configs/{_url(config["config_id"])}">{_escape(config["label"])}</a>'
-    if job is not None:
-        verb = "を GA で処理中" if job.get("kind", "evolve") == "evolve" else "の作品を生成中"
-        heading = f'{_escape(world["name"])} {verb}'
-        rows = [("設定", label_link), ("状態", state_badge(job["state"]))]
-        cta = ("進捗を見る →", f'/jobs/{_url(job["job_id"])}') if job.get("job_id") else None
-    else:
-        heading = f'{_escape(world["name"])} を GA で処理します'
-        rows = [("設定", label_link)]
-        cta = ("この設定でGAを実行 →", f'/configs/{_url(config["config_id"])}/start')
-    cta_html = ""
-    if cta:
-        cta_label, cta_href = cta
-        cta_html = f'<p><a class="button primary" href="{cta_href}">{_escape(cta_label)}</a></p>'
-    return f'<section class="card target-card"><h2>{heading}</h2>{_dl(rows)}{cta_html}</section>'
-
-
-def render_current_target_section(pin):
-    return _target_card(pin["job"], pin["config"]) if pin else ""
 
 
 def render_jobs_list(records):
@@ -538,22 +483,37 @@ def _connection_warnings(reconciliation):
     ]
 
 
-def _job_shell(job, body_parts, *, extra_attrs=""):
-    """Common processing-page chrome shared by GA jobs (render_job_page) and
-    generation jobs (output_pages.render_generation_job): state badge, cancel
-    button and tail links. Only the kind-specific body (including where it
-    places _connection_warnings()) differs between the two. `extra_attrs` lets
-    a caller add its own data-* attributes to the root <section> (e.g. the
-    generation job page's data-entry-labels for translating counts in JS).
+def _job_shell_open(job, *, extra_attrs=""):
+    """The <section data-wb="job" ...> root tag shared by every processing
+    page (WB-UI-007/015 job polling attributes). Split out of _job_shell so
+    render_run_page (WB-UI-017) can wrap its own body in the same root
+    without also getting _job_shell's fixed state-badge/eta/cancel/tail-link
+    layout, which the run page places differently.
     """
     state = job.get("state")
     terminal = state in TERMINAL
-    parts = [
+    return (
         f'<section data-wb="job" data-job-id="{_escape(job.get("job_id"))}" data-poll="1" '
         f'data-terminal="{"true" if terminal else "false"}" '
         f'data-terminal-states="{_escape(TERMINAL_JSON)}" '
         f'data-state-labels="{_escape(STATE_LABELS_JSON)}" '
-        f'data-phase-labels="{_escape(PHASE_LABELS_JSON)}"{extra_attrs}>',
+        f'data-phase-labels="{_escape(PHASE_LABELS_JSON)}"{extra_attrs}>'
+    )
+
+
+def _job_shell(job, body_parts, *, extra_attrs=""):
+    """Common processing-page chrome shared by generation jobs
+    (output_pages.render_generation_job): state badge, cancel button and tail
+    links, wrapped in _job_shell_open's root. Only the kind-specific body
+    (including where it places _connection_warnings()) differs between
+    callers. `extra_attrs` lets a caller add its own data-* attributes to the
+    root <section> (e.g. the generation job page's data-entry-labels for
+    translating counts in JS).
+    """
+    state = job.get("state")
+    terminal = state in TERMINAL
+    parts = [
+        _job_shell_open(job, extra_attrs=extra_attrs),
         f'<p>{state_badge(state)} '
         f'<span data-field="updated-at" class="muted"></span> '
         f'<span data-field="delta" class="muted"></span></p>',
@@ -569,7 +529,7 @@ def _job_shell(job, body_parts, *, extra_attrs=""):
             f'<button type="button" data-action="cancel"{disabled}>{_escape(label)}</button>'
             '<span data-cancel-status></span>'
         )
-    tail_links = ['<a href="/jobs">実行履歴へ</a>']
+    tail_links = ['<a href="/history">実行履歴へ</a>']
     config_id = job.get("config_id")
     if config_id:
         tail_links.append(f'<a href="/configs/{_url(config_id)}">設定</a>')
@@ -578,47 +538,174 @@ def _job_shell(job, body_parts, *, extra_attrs=""):
     return "".join(parts)
 
 
-def render_job_page(job):
+# --------------------------------------------------------------------------
+# Run page (WB-UI-017): "設定 -> 実行 -> 生まれつつあるもの" in one screen.
+# render_run_page(view) is a pure function of the dict _run_view() builds;
+# every job_store/catalog lookup happens in _run_view/_live_map, never here.
+# --------------------------------------------------------------------------
+
+RUN_GLOSSARY_KEYS = (
+    "cells", "quality", "reach", "generation", "seed", "job_state", "phase", "publication_revision",
+)
+
+
+def _new_config_href(world):
+    href = f'/configs/new?project={_url(world["id"])}'
+    if world.get("genre"):
+        href += f'&template={_url(world["genre"])}'
+    return href
+
+
+def _run_config_picker(world, configs, selected):
+    selected_id = selected["config_id"] if selected else None
+    options = "".join(
+        f'<option value="{_escape(c["config_id"])}"{" selected" if c["config_id"] == selected_id else ""}>'
+        f'{_escape(c["label"])}</option>'
+        for c in configs
+    )
+    return (
+        '<form method="get" action="/jobs" data-wb="run-config">'
+        f'<input type="hidden" name="world" value="{_escape(world["id"])}">'
+        f'<select name="config">{options}</select>'
+        "<noscript><button type=\"submit\">切り替え</button></noscript>"
+        "</form>"
+    )
+
+
+def _config_aux_links(config, world):
+    return (
+        '<p class="actions">'
+        f'<a href="/configs/{_url(config["config_id"])}">編集</a>'
+        f'<a href="/configs/new?from={_url(config["config_id"])}">複製して調整</a>'
+        f'<a href="{_escape(_new_config_href(world))}">新しく作る →</a>'
+        "</p>"
+    )
+
+
+def _run_plan_dl(config, estimate):
+    ev = config["evolution"]
+    preview = config["preview"]
+    coevolve = "あり" if ev.get("coevolve") else "なし"
+    meta = "あり" if ev.get("meta_evolution") else "なし"
+    return _dl([
+        ("世代 × 個体 × seed",
+         f'{_escape(ev["generations"])} × {_escape(ev["population"])} × {_escape(ev["seeds"])}'),
+        ("評価する個体 / seed",
+         f'{_escape(preview["planned_individual_evaluations"])} / {_escape(preview["planned_seed_evaluations"])}'),
+        ("保存方針", _escape(ev["keep"])),
+        ("共進化 / メタ進化", f"{coevolve} / {meta}"),
+        ("所要時間の目安", estimate),
+    ], cls="run-plan")
+
+
+def _start_cta(config, request_id):
+    return (
+        f'<div data-wb="start" data-config-id="{_escape(config["config_id"])}" '
+        f'data-request-id="{_escape(request_id)}">'
+        '<p class="form-error" data-form-error role="alert"></p>'
+        '<form><button type="submit" class="button primary">この設定で GA を回す</button></form>'
+        "</div>"
+    )
+
+
+def _blocking_notice(blocking_job):
+    world_name = blocking_job.get("_blocking_world_name") or "他の世界"
+    job_id = blocking_job.get("job_id")
+    link = f' <a href="/jobs/{_url(job_id)}">進捗を見る →</a>' if job_id else ""
+    return f'<p class="warning">{_escape(world_name)} を実行中です。完了まで待ってください。{link}</p>'
+
+
+def _cancel_controls(job):
     state = job.get("state")
-    terminal = state in TERMINAL
-    progress = job.get("progress") or {}
-    parts = [
-        f'<p data-field="phase">{_escape(PHASE_LABELS.get(job.get("phase"), job.get("phase")))}</p>',
-    ]
-    parts.extend(_connection_warnings(job.get("reconciliation")))
-    total_generations = progress.get("total_generations")
-    completed_generations = progress.get("completed_generations")
-    if total_generations:
+    disabled = " disabled" if state == "stopping" else ""
+    label = "停止処理中（猶予後に強制終了）" if state == "stopping" else "停止"
+    return (
+        f'<button type="button" data-action="cancel"{disabled}>{_escape(label)}</button>'
+        '<span data-cancel-status></span>'
+    )
+
+
+def _run_terminal_message(job):
+    state = job.get("state")
+    if state in ("succeeded", "partial"):
+        return ""
+    code = (job.get("error") or {}).get("code")
+    if code is None and state == "cancelled":
+        # A user-requested stop is not an error; say so instead of "エラー: None".
+        return ('<p class="warning">利用者の停止要求により停止しました</p>'
+                '<p>同じ設定で新しく実行できます</p>')
+    message, next_step = ERROR_MESSAGES.get(
+        code, ("エラー情報がありません" if code is None else f"エラー: {code}", ""))
+    return f'<p class="error">{_escape(message)}</p><p>{_escape(next_step)}</p>'
+
+
+def _run_prep(view):
+    world, job, config, configs = view["world"], view["job"], view["config"], view["configs"]
+    parts = ["<h2>設定</h2>"]
+    if job is None:
+        parts.append('<span class="state-badge state-idle">待機中</span>')
+    else:
+        # updated-at/delta: the WB-UI-015 "最終更新 HH:MM:SS" + what-moved-since
+        # summary applyJob() already fills in on every poll; the run page keeps
+        # the same data-field targets next to the state badge.
         parts.append(
-            '<div class="progress-row"><label>完了世代 '
-            f'<span data-field="completed_generations">{_escape(completed_generations)}</span>/'
-            f'<span data-field="total_generations">{_escape(total_generations)}</span></label>'
-            f'<progress aria-label="完了世代" value="{int(completed_generations or 0)}" '
-            f'max="{int(total_generations)}"></progress></div>'
+            f'{state_badge(job["state"])} '
+            '<span data-field="updated-at" class="muted"></span> '
+            '<span data-field="delta" class="muted"></span>'
         )
-    total_individuals = progress.get("total_individuals")
-    completed_individuals = progress.get("completed_individuals")
-    parts.append(
-        '<div class="progress-row"><label>評価済み個体 '
-        f'<span data-field="completed_individuals">{_escape(completed_individuals)}</span>/'
-        f'<span data-field="total_individuals">{_escape(total_individuals)}</span></label>'
-        f'<progress aria-label="評価済み個体" value="{int(completed_individuals or 0)}" '
-        f'max="{int(total_individuals or 1)}"></progress></div>'
+    if not configs:
+        if job is not None:
+            parts.append("<p>このジョブの設定は削除されています。</p>")
+            return "".join(parts)
+        parts.append("<p>この世界の実行設定がまだありません。</p>")
+        parts.append(
+            f'<p><a class="button primary" href="{_escape(_new_config_href(world))}">新しく作る →</a></p>'
+        )
+        return "".join(parts)
+    if job is None:
+        parts.append(_run_config_picker(world, configs, config))
+        parts.append(_config_aux_links(config, world))
+        parts.append(_run_plan_dl(config, view["estimate"]))
+        if view["blocking_job"] is not None:
+            parts.append(_blocking_notice(view["blocking_job"]))
+        else:
+            parts.append(_start_cta(config, view["request_id"]))
+        parts.append('<p class="muted">GA は LLM を呼び出しません。</p>')
+    else:
+        parts.append(f'<p>設定: <a href="/configs/{_url(config["config_id"])}">{_escape(config["label"])}</a></p>')
+        parts.append(_run_plan_dl(config, view["estimate"]))
+        if job["state"] in RUNNING_STATES:
+            parts.append(_cancel_controls(job))
+            parts.append('<p class="muted">停止すると、閉じた世代までの結果は残ります。</p>')
+        else:
+            parts.append(_run_terminal_message(job))
+            retry_href = f'/jobs?world={_url(world["id"])}&config={_url(config["config_id"])}'
+            parts.append(
+                f'<p><a class="button" href="{_escape(retry_href)}">同じ設定でもう一度回す</a></p>'
+            )
+    return "".join(parts)
+
+
+def _pbar(label, completed_field, total_field, completed, total, *, aria):
+    max_value = int(total) if total else 1
+    value = int(completed or 0)
+    return (
+        '<div class="pbar">'
+        f'<label>{_escape(label)}</label>'
+        f'<progress aria-label="{_escape(aria)}" value="{value}" max="{max_value}"></progress>'
+        f'<span><span data-field="{completed_field}">{_escape(completed) if completed is not None else 0}</span>/'
+        f'<span data-field="{total_field}">{_escape(total) if total is not None else "—"}</span></span>'
+        "</div>"
     )
-    parts.append(
-        '<p>評価済みseed '
-        f'<span data-field="completed_seeds">{_escape(progress.get("completed_seeds"))}</span>/'
-        f'<span data-field="total_seeds">{_escape(progress.get("total_seeds"))}</span></p>'
-    )
+
+
+def _run_detail(job, progress):
+    terminal = job.get("state") in TERMINAL
+    parts = ['<details class="run-detail"><summary>詳細</summary>']
     active_seeds = progress.get("active_seeds")
     if active_seeds is not None:
         note = "未完了seedの記録（生存プロセス数ではない）" if terminal else "実行中seed数"
         parts.append(f'<p>{_escape(note)}: <span data-field="active_seeds">{len(active_seeds)}</span></p>')
-    elapsed = _elapsed_seconds(job, progress)
-    parts.append(
-        '<p>経過秒: '
-        f'<span data-field="elapsed_seconds">{_escape(elapsed) if elapsed is not None else ""}</span></p>'
-    )
     revision = job.get("publication_revision")
     parts.append(
         '<p>公開版: '
@@ -637,33 +724,421 @@ def render_job_page(job):
             '<div class="grid-wrap"><table class="wb-table"><thead><tr><th>役割</th><th>個体</th><th>seed</th></tr></thead>'
             f"<tbody>{rows}</tbody></table></div>"
         )
-    config_id = job.get("config_id")
-    run_id = job.get("run_id")
-    if state in ("failed", "cancelled", "interrupted"):
-        code = (job.get("error") or {}).get("code")
-        if code is None and state == "cancelled":
-            # A user-requested stop is not an error; say so instead of "エラー: None".
-            parts.append('<p class="warning">利用者の停止要求により停止しました</p>'
-                         '<p>同じ設定で新しく実行できます</p>')
-        else:
-            message, next_step = ERROR_MESSAGES.get(
-                code, ("エラー情報がありません" if code is None else f"エラー: {code}", ""))
-            parts.append(f'<p class="error">{_escape(message)}</p><p>{_escape(next_step)}</p>')
-        if config_id:
-            parts.append(f'<p><a href="/configs/{_url(config_id)}/start">同じ設定で新しく実行</a></p>')
-        if job.get("publication_revision") is not None:
-            parts.append(
-                '<p class="actions">'
-                f'<a href="/exp/{_url(run_id)}">途中まで確定した結果</a>'
-                f'<a href="/runs/{_url(run_id)}/candidates">候補一覧</a></p>'
-            )
-    if state in ("succeeded", "partial"):
-        parts.append(
-            '<p class="actions">'
-            f'<a href="/exp/{_url(run_id)}">確定結果を見る</a>'
-            f'<a href="/runs/{_url(run_id)}/candidates">候補一覧</a></p>'
+    parts.append("</details>")
+    return "".join(parts)
+
+
+def _run_vessel_progress(view):
+    job, config = view["job"], view["config"]
+    ghost = job is None
+    progress = (job.get("progress") or {}) if job is not None else {}
+    if job is None:
+        sub = "開始すると埋まります"
+    else:
+        elapsed = _elapsed_seconds(job, progress)
+        sub = (
+            '経過 <span data-field="elapsed_seconds">'
+            f'{_escape(elapsed) if elapsed is not None else ""}</span> 秒 · '
+            '完了予定 <span data-field="eta">—</span>'
         )
-    return _job_shell(job, parts)
+    parts = [f'<section class="vbox{" ghost" if ghost else ""}" data-vessel="progress">']
+    parts.append(f'<div class="vhead"><h2>進み具合</h2><span class="vhead-sub">{sub}</span></div>')
+    if job is not None:
+        parts.extend(_connection_warnings(job.get("reconciliation")))
+    planned_individual = config["preview"]["planned_individual_evaluations"] if config else None
+    planned_seed = config["preview"]["planned_seed_evaluations"] if config else None
+    gen_total = progress.get("total_generations") if job is not None else (
+        config["evolution"]["generations"] if config else None)
+    gen_completed = progress.get("completed_generations") if job is not None else 0
+    ind_total = progress.get("total_individuals") if job is not None else planned_individual
+    ind_completed = progress.get("completed_individuals") if job is not None else 0
+    seed_total = progress.get("total_seeds") if job is not None else planned_seed
+    seed_completed = progress.get("completed_seeds") if job is not None else 0
+    parts.append(_pbar("完了世代", "completed_generations", "total_generations",
+                        gen_completed, gen_total, aria="完了世代"))
+    parts.append(_pbar("評価済み個体", "completed_individuals", "total_individuals",
+                        ind_completed, ind_total, aria="評価済み個体"))
+    parts.append(_pbar("評価済みseed", "completed_seeds", "total_seeds",
+                        seed_completed, seed_total, aria="評価済みseed"))
+    phase_label = PHASE_LABELS.get(job.get("phase"), job.get("phase")) if job is not None else "—"
+    parts.append(f'<p class="run-phase">段階: <span data-field="phase">{_escape(phase_label)}</span></p>')
+    if job is not None:
+        parts.append(_run_detail(job, progress))
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def _qd_grade(quality):
+    if not isinstance(quality, (int, float)):
+        return "f1"
+    if quality >= 0.75:
+        return "f4"
+    if quality >= 0.5:
+        return "f3"
+    if quality >= 0.25:
+        return "f2"
+    return "f1"
+
+
+def _qd_table(categories, bins, live):
+    cells = (live or {}).get("cells") or {}
+    headings = "".join(f'<th scope="col">{_escape(b)}</th>' for b in bins)
+    rows = []
+    for category in categories:
+        columns = []
+        for bin_name in bins:
+            cell = cells.get(f"{category}|{bin_name}")
+            if cell is None:
+                columns.append('<td class="qd-cell empty"></td>')
+            else:
+                quality = cell.get("quality")
+                text = f"{quality:.2f}" if isinstance(quality, (int, float)) else "—"
+                new_cls = " new" if cell.get("new") else ""
+                columns.append(f'<td class="qd-cell {_qd_grade(quality)}{new_cls}">{_escape(text)}</td>')
+        rows.append(f'<tr><th scope="row">{_escape(category)}</th>{"".join(columns)}</tr>')
+    return (
+        '<div class="grid-wrap"><table class="qd-map" aria-label="QD 地図">'
+        f'<thead><tr><th scope="col"></th>{headings}</tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table></div>'
+        '<p class="qd-cap">縦: 行動カテゴリ · 横: 揺らぎ（volatility）。濃さ = そのマスの代表の質。</p>'
+    )
+
+
+def _qd_delta(occupied, quality, reach):
+    # occupied_cells is len(archive.cells) -- always an int, never dropped by
+    # _live_map.series(); quality/reach can be None on empty-archive generations.
+    n = len(occupied)
+    if n == 0:
+        return '<p class="qd-delta">世代が閉じるごとに 1 行ずつ増えます。</p>'
+    if n == 1:
+        occ = occupied[0] if occupied else 0
+        q = quality[0] if quality else 0.0
+        r = round((reach[0] if reach else 0.0) * 100)
+        return f'<p class="qd-delta">第 1 世代: 占有 {_escape(occ)} · q̄ {q:.2f} · 到達率 {r}%</p>'
+    occ_diff = occupied[-1] - occupied[-2] if len(occupied) >= 2 else 0
+    q_diff = quality[-1] - quality[-2] if len(quality) >= 2 else 0.0
+    reach_diff = round((reach[-1] - reach[-2]) * 100) if len(reach) >= 2 else 0
+    return (
+        f'<p class="qd-delta">第 {n} 世代: 占有 {occ_diff:+d} · '
+        f'q̄ {q_diff:+.2f} · 到達率 {reach_diff:+d}pt</p>'
+    )
+
+
+def _qd_metrics(live, grid_size):
+    series = (live or {}).get("series") or {}
+    occupied = series.get("occupied") or []
+    quality = series.get("quality") or []
+    reach = series.get("reach") or []
+    occ_text = _escape(occupied[-1]) if occupied else "—"
+    q_text = f"{quality[-1]:.2f}" if quality else "—"
+    reach_text = f"{round(reach[-1] * 100)}" if reach else "—"
+    tiles = (
+        '<div class="metrics">'
+        f'<div class="qd-metric">{pages.term("cells", "占有")} '
+        f'<b data-field="metric_occupied">{occ_text}</b><small>/ {grid_size}</small>'
+        f'{pages.sparkline(occupied)}</div>'
+        f'<div class="qd-metric">{pages.term("quality", "q̄")} '
+        f'<b data-field="metric_quality">{_escape(q_text)}</b>'
+        f'{pages.sparkline(quality)}</div>'
+        f'<div class="qd-metric">{pages.term("reach", "到達率")} '
+        f'<b data-field="metric_reach">{_escape(reach_text)}</b><small>%</small>'
+        f'{pages.sparkline(reach)}</div>'
+        "</div>"
+    )
+    return tiles + _qd_delta(occupied, quality, reach)
+
+
+def _run_vessel_map(view):
+    job, live = view["job"], view["live"]
+    categories, bins = view["axes"]
+    grid_size = len(categories) * len(bins)
+    revision = live["revision"] if live else None
+    if job is None:
+        sub = f"この設定が埋めうる {grid_size} マス"
+    elif revision is None:
+        sub = "まだ公開版はありません"
+    elif job["state"] not in TERMINAL:
+        sub = f"第 {revision} 世代までの公開版"
+    else:
+        sub = f"最終公開版 (revision {revision})"
+    parts = [f'<section class="vbox{" ghost" if job is None else ""}" data-vessel="map">']
+    parts.append(f'<div class="vhead"><h2>生まれつつあるもの</h2><span class="vhead-sub">{_escape(sub)}</span></div>')
+    parts.append(_qd_table(categories, bins, live))
+    parts.append(_qd_metrics(live, grid_size))
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def _exit_card(label, description, href):
+    if href:
+        return (
+            f'<a class="exit on" href="{href}"><strong>{_escape(label)}</strong>'
+            f'<span>{_escape(description)}</span></a>'
+        )
+    return f'<span class="exit off"><strong>{_escape(label)}</strong><span>{_escape(description)}</span></span>'
+
+
+def _run_vessel_exits(view):
+    job, run_name, live = view["job"], view["run_name"], view["live"]
+    state = job["state"] if job is not None else None
+    ready = state in ("succeeded", "partial") and run_name is not None
+    # A broken/unreadable publication hides the map, not the link to it.
+    partial_ok = (
+        not ready and job is not None and run_name is not None
+        and job.get("publication_revision") is not None
+    )
+    sifting_on = ready or partial_ok
+    if job is None:
+        sub = "実行が完了すると開きます"
+    elif ready:
+        sub = "次の工程へ"
+    elif partial_ok:
+        sub = "途中まで確定した結果があります"
+    else:
+        sub = "実行が完了すると開きます"
+    run_id = job.get("run_id") if job is not None else None
+    sifting_href = f"/exp/{_url(run_name)}" if sifting_on else None
+    stage_href = f"/outputs?run={_url(run_id)}" if ready and run_id else None
+    parts = [f'<section class="vbox{" ghost" if job is None else ""}" data-vessel="exits">']
+    parts.append(f'<div class="vhead"><h2>終わったら</h2><span class="vhead-sub">{_escape(sub)}</span></div>')
+    parts.append(_exit_card("3 Sifting で候補を選ぶ →", "公開版の候補を並べ、上映する個体を決める", sifting_href))
+    parts.append(_exit_card("4 上映を生成する →", "選んだ候補からあらすじ・本文を作る", stage_href))
+    if sifting_on and run_id:
+        parts.append(f'<p class="actions"><a href="/runs/{_url(run_id)}/candidates">候補一覧</a></p>')
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def render_run_page(view):
+    job = view["job"]
+    body = (
+        _run_sub(view)
+        + '<div class="run-layout">'
+        + f'<aside class="run-prep card">{_run_prep(view)}</aside>'
+        + '<div class="run-vessel">'
+        + _run_vessel_progress(view)
+        + _run_vessel_map(view)
+        + _run_vessel_exits(view)
+        + "</div></div>"
+        + pages.glossary(RUN_GLOSSARY_KEYS)
+    )
+    if job is not None:
+        revision = job.get("publication_revision")
+        extra_attrs = f' data-revision="{_escape(revision) if revision is not None else ""}"'
+        body = _job_shell_open(job, extra_attrs=extra_attrs) + body + "</section>"
+    return body
+
+
+def _run_sub(view):
+    world, config = view["world"], view["config"]
+    genre = world.get("genre") or "不明"
+    if config is not None:
+        ev = config["evolution"]
+        ending = ", ".join(ev["target_ending"]) if ev.get("target_ending") else "世界の既定"
+    else:
+        ending = "世界の既定"
+    return (
+        '<p class="run-sub">'
+        f'{_escape(genre)} · 結末: {_escape(ending)} '
+        f'<a class="history-link" href="/history">この世界の過去の実行 ({view["history_count"]}) →</a>'
+        "</p>"
+    )
+
+
+def _estimate(jobs, configs_by_id, world_id, config):
+    if config is None:
+        return "—"
+    candidates = [
+        j for j in jobs
+        if j.get("kind", "evolve") == "evolve"
+        and j.get("state") in ("succeeded", "partial")
+        and configs_by_id.get(j.get("config_id"), {}).get("project_id") == world_id
+        and (j.get("progress") or {}).get("elapsed_seconds") is not None
+        and (j.get("progress") or {}).get("total_seeds")
+    ]
+    if not candidates:
+        return "—"
+    latest = max(candidates, key=lambda j: j["created_at"])
+    progress = latest["progress"]
+    elapsed = progress["elapsed_seconds"]
+    total_seeds = progress["total_seeds"]
+    per_seed = elapsed / total_seeds
+    planned = config["preview"]["planned_seed_evaluations"]
+    seconds = per_seed * planned
+    text = f"約{round(seconds)}秒" if seconds < 60 else f"約{math.ceil(seconds / 60)}分"
+    return f'{text} <span class="muted">(前回 {elapsed:.0f}秒)</span>'
+
+
+def _live_map(handler, job):
+    if job is None or job.get("run_id") is None or job.get("publication_revision") is None:
+        return None
+    catalog = handler.repository.catalog
+    if catalog is None:
+        return None
+    try:
+        snapshot = catalog.snapshot(job["run_id"], observe=False)
+    except (ConfigError, FileNotFoundError, OSError, ValueError, KeyError, TypeError):
+        return None
+    archive_cells = (snapshot.get("archive") or {}).get("cells") or {}
+    generations = snapshot.get("summary", {}).get("generations") or []
+    revision = snapshot.get("revision")
+    latest_generation = revision - 1 if revision is not None else None
+    cells = {}
+    for key, elite in archive_cells.items():
+        if not isinstance(elite, dict):
+            continue
+        quality = elite.get("quality")
+        cells[key] = {
+            "quality": float(quality) if isinstance(quality, (int, float)) else None,
+            "new": elite.get("generation") == latest_generation,
+        }
+
+    def series(field):
+        return [g.get(field) for g in generations if isinstance(g, dict) and g.get(field) is not None]
+
+    return {
+        "revision": revision,
+        "cells": cells,
+        "series": {
+            "occupied": series("occupied_cells"),
+            "quality": series("average_archive_quality"),
+            "reach": series("reach_rate"),
+            "dissimilarity": series("archive_dissimilarity"),
+        },
+    }
+
+
+def _history_records(handler):
+    """catalog.history() once per request (it walks the runs directory); an
+    unavailable/broken catalog reads as an empty history."""
+    catalog = handler.repository.catalog
+    if catalog is None:
+        return []
+    try:
+        return catalog.history()
+    except (ConfigError, OSError, ValueError, KeyError, TypeError, AttributeError):
+        return []
+
+
+def _resolve_run_name(handler, catalog_run_id, *, records=None):
+    if catalog_run_id is None:
+        return None
+    if records is None:
+        records = _history_records(handler)
+    match = next((r for r in records if r["run_id"] == catalog_run_id), None)
+    return match["experiment_name"] if match is not None else None
+
+
+def _run_view(handler, *, world_id=None, config_id=None, job=None):
+    job_store = _job_store(handler)
+    if job_store is None:
+        return None
+    try:
+        configs = job_store.configs.list()
+        jobs = job_store.list()
+    except (ConfigError, OSError, ValueError, KeyError, TypeError):
+        configs, jobs = [], []
+    configs_by_id = {c["config_id"]: c for c in configs}
+
+    if job is not None:
+        owner = configs_by_id.get(job.get("config_id"))
+        world_id = owner["project_id"] if owner is not None else None
+        if world_id is None:
+            # The job's config was removed from control/configs: nothing to
+            # scope to, so show the job under an unnamed world (no picker, no
+            # "新しく作る" link into a world that does not exist).
+            world_id = ""
+
+    if world_id is None:
+        pin = data.pinned_target(job_store, configs=configs, jobs=jobs)
+        if pin is None:
+            return None
+        world_id = pin["world"]["id"]
+
+    library_match = next((w for w in pages._library_worlds(job_store) if w["id"] == world_id), None)
+    world = {
+        "id": world_id,
+        "name": (library_match["name"] if library_match else None) or world_id or "不明な世界",
+        "genre": library_match.get("genre") if library_match else None,
+    }
+
+    world_configs = sorted(
+        (c for c in configs if c["project_id"] == world_id),
+        key=lambda c: c["created_at"], reverse=True,
+    )
+
+    running_evolve = next(
+        (j for j in jobs
+         if j.get("state") in RUNNING_STATES and j.get("config_id") in configs_by_id
+         and j.get("kind", "evolve") == "evolve"
+         and configs_by_id[j["config_id"]]["project_id"] == world_id),
+        None,
+    )
+    if job is None:
+        job = running_evolve
+
+    blocking_job = None
+    if job is None:
+        blocking_job = next(
+            (j for j in jobs if j.get("state") in RUNNING_STATES and j.get("config_id") in configs_by_id),
+            None,
+        )
+        if blocking_job is not None:
+            b_config = configs_by_id.get(blocking_job.get("config_id"))
+            b_world_id = b_config["project_id"] if b_config else None
+            b_match = next((w for w in pages._library_worlds(job_store) if w["id"] == b_world_id), None)
+            blocking_job = dict(blocking_job)
+            blocking_job["_blocking_world_name"] = (b_match["name"] if b_match else None) or b_world_id or "他の世界"
+
+    if job is not None:
+        config = configs_by_id.get(job.get("config_id"))
+    elif config_id is not None and any(c["config_id"] == config_id for c in world_configs):
+        config = configs_by_id[config_id]
+    elif world_configs:
+        config = world_configs[0]
+    else:
+        config = None
+
+    records = _history_records(handler)
+    run_name = _resolve_run_name(handler, job.get("run_id"), records=records) if job is not None else None
+    live = _live_map(handler, job)
+
+    template_dir = None
+    if config is not None:
+        template_dir = job_store.configs.repo / "templates" / config["template_id"]
+    elif world.get("genre"):
+        template_dir = job_store.configs.repo / "templates" / world["genre"]
+    axes = data.qd_axes(template_dir)
+
+    estimate = _estimate(jobs, configs_by_id, world_id, config)
+
+    world_config_ids = {c["config_id"] for c in world_configs}
+    history_count = sum(1 for r in records if r.get("config_id") in world_config_ids)
+
+    request_id = None if job is not None else "req-" + uuid.uuid4().hex
+
+    return {
+        "world": world, "configs": world_configs, "config": config, "job": job,
+        "blocking_job": blocking_job, "run_name": run_name, "live": live, "axes": axes,
+        "estimate": estimate, "history_count": history_count, "request_id": request_id,
+    }
+
+
+def _run_lead(view):
+    job = view["job"]
+    if job is None:
+        return "設定を選んで実行します。右の器は、この設定で何が生まれるかの予告です。", None
+    state = job["state"]
+    if state in RUNNING_STATES:
+        generation = (job.get("progress") or {}).get("completed_generations") or 0
+        return f"第 {generation + 1} 世代を評価中です。世代が閉じるたびに右の地図が埋まります。", None
+    if state in ("succeeded", "partial"):
+        completed = (job.get("progress") or {}).get("completed_generations") or 0
+        lead = f"{completed} 世代が終わりました。生まれた候補を Sifting で選びます。"
+        run_name = view["run_name"]
+        next_action = ("Sifting へ →", f"/exp/{_url(run_name)}") if run_name else None
+        return lead, next_action
+    return "実行は途中で止まりました。", None
 
 
 # --------------------------------------------------------------------------
@@ -1016,15 +1491,6 @@ def _config_world(config):
     return {"id": config["project_id"], "name": config["preview"]["world_name"]}
 
 
-def _named_world(job_store, world_id):
-    """{id, name} for a world with no pinned config of its own (still needs
-    a header label -- see the /jobs?world= scoping in _jobs_list)."""
-    if not world_id:
-        return None
-    match = next((w for w in pages._library_worlds(job_store) if w["id"] == world_id), None)
-    return {"id": world_id, "name": (match["name"] if match else None) or world_id}
-
-
 def _configs_list(handler):
     job_store = _job_store(handler)
     if job_store is None:
@@ -1114,15 +1580,17 @@ def _configs_start(handler, cid):
         handler._send_html(_guidance_page(phase="world"))
         return
     config = job_store.configs.get(cid)
-    request_id = "req-" + uuid.uuid4().hex
-    label = config["label"]
-    handler._send_html(pages.document(
-        f"{label} を実行", render_start_confirm(config, request_id),
-        crumbs=[("実行設定", "/configs"), (label, f"/configs/{_url(cid)}"), ("実行確認", f"/configs/{_url(cid)}/start")],
-        phase="world", world=_config_world(config),
-        lead="実行内容を確認し、開始します。",
-        job_store=job_store, pin=data.pinned_target(job_store),
-    ))
+    # WB-UI-017: the confirmation page is gone -- /configs/<cid>/start now
+    # just redirects straight to the run screen (idle prep, or running/done
+    # if a job for this config already exists), with the config preselected.
+    location = f'/jobs?world={_url(config["project_id"])}&config={_url(cid)}'
+    handler.send_response(HTTPStatus.FOUND)
+    handler.send_header("Location", location)
+    handler.send_header("Content-Length", "0")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("Referrer-Policy", "no-referrer")
+    handler.end_headers()
 
 
 def _duplicate(handler, cid):
@@ -1157,7 +1625,7 @@ def _jobs_next_action(records):
     return "実行設定を作る →", "/configs/new"
 
 
-def _jobs_list(handler):
+def _history(handler):
     repository = handler.repository
     if repository.catalog is None:
         handler._send_html(_guidance_page(phase="run"))
@@ -1174,21 +1642,47 @@ def _jobs_list(handler):
     # No duplicate empty-state CTA here: _jobs_next_action() already covers
     # "records is empty" -> "実行設定を作る" via the page-level next_action
     # below (WB-UI-012 §2.3's "1 つだけ").
+    body = render_jobs_list(records) + output_pages.render_generation_jobs_section(generation_jobs)
+    body += pages.glossary(("job_state", "phase", "publication_revision", "config_id", "run"))
+    handler._send_html(pages.document(
+        "実行履歴", body, phase="run",
+        job_store=job_store, pin=data.pinned_target(job_store),
+        lead="実行中と過去のジョブを見ます。",
+        next_action=_jobs_next_action(records),
+    ))
+
+
+def _jobs_list(handler):
+    job_store = _job_store(handler)
+    if job_store is None:
+        handler._send_html(_guidance_page(phase="run"))
+        return
+    query = _query(handler)
     # ?world= arrives from a per-world page's "2 実行" tab (_phase_href) so
     # this scopes to *that* world instead of whichever world's config is
     # newest system-wide -- see data.pinned_target's world_id docstring.
-    world_id = _query(handler).get("world", [None])[0]
-    pin = data.pinned_target(job_store, world_id=world_id)
-    world = pin["world"] if pin else _named_world(job_store, world_id)
-    body = render_current_target_section(pin)
-    body += render_jobs_list(records) + output_pages.render_generation_jobs_section(generation_jobs)
-    body += pages.glossary(("job_state", "phase", "publication_revision", "config_id", "run"))
+    world_id = query.get("world", [None])[0] or None
+    config_id = query.get("config", [None])[0] or None
+    view = _run_view(handler, world_id=world_id, config_id=config_id)
+    if view is None:
+        handler._send_html(pages.document(
+            "実行", '<p class="muted">世界を選んでください。</p>',
+            phase="run", job_store=job_store,
+            lead="世界を選んでください。",
+            next_action=("ホームへ →", "/"),
+        ))
+        return
+    job = view["job"]
+    lead, next_action = _run_lead(view)
+    # Idle worlds have no run_name of their own (view["run_name"] mirrors the
+    # displayed job, and there is none yet) -- pin here only backs the header
+    # phase band's ③④ tabs, and document()'s own world-id check keeps it from
+    # leaking a different world's pinned run onto this page.
     handler._send_html(pages.document(
-        "実行履歴", body, crumbs=[("実行履歴", "/jobs")], phase="run",
-        world=world,
-        job_store=job_store, pin=pin,
-        lead="実行中と過去のジョブを見ます。",
-        next_action=_jobs_next_action(records),
+        f'{view["world"]["name"]} を GA で回す', render_run_page(view), phase="run",
+        world=view["world"], run=view["run_name"],
+        output_run=(job.get("run_id") if job is not None else None),
+        job_store=job_store, pin=data.pinned_target(job_store), lead=lead, next_action=next_action,
     ))
 
 
@@ -1201,39 +1695,34 @@ def _jobs_detail(handler, jid):
     if job.get("kind") in ("synopsize", "narrate"):
         from viewer import output_pages
         body = output_pages.render_generation_job(job)
-    else:
-        body = render_job_page(job)
-    # job["run_id"] is the catalog run_id (an evolve job's happens to equal
-    # the experiment folder name since it always creates a native, non-legacy
-    # run, but a synopsize/narrate job's does not for a legacy run). Resolve
-    # it to the folder name for the header/Sifting link; keep the catalog id
-    # for the 上映 link, which /outputs?run= matches against.
-    catalog_run_id = job.get("run_id")
-    # Unresolved stays None: a legacy catalog id in the 実験 picker would make
-    # the Sifting link /exp/legacy-... and 404.
-    run_name = None
-    if catalog_run_id is not None:
-        try:
-            match = next(
-                (r for r in handler.repository.catalog.history() if r["run_id"] == catalog_run_id),
-                None,
-            )
-        except (ConfigError, OSError, ValueError, KeyError, TypeError, AttributeError):
-            match = None
-        if match is not None:
-            run_name = match["experiment_name"]
-    state = job.get("state")
-    next_action = None
-    if state in ("succeeded", "partial") and run_name:
-        next_action = ("Sifting へ →", f"/exp/{_url(run_name)}")
-    elif state in ("failed", "cancelled", "interrupted") and job.get("config_id"):
-        next_action = ("実行設定へ →", f"/configs/{_url(job['config_id'])}")
+        # job["run_id"] is the catalog run_id (an evolve job's happens to
+        # equal the experiment folder name since it always creates a native,
+        # non-legacy run, but a synopsize/narrate job's does not for a legacy
+        # run). Resolve it to the folder name for the header/Sifting link;
+        # keep the catalog id for the 上映 link, which /outputs?run= matches
+        # against.
+        catalog_run_id = job.get("run_id")
+        run_name = _resolve_run_name(handler, catalog_run_id)
+        state = job.get("state")
+        next_action = None
+        if state in ("succeeded", "partial") and run_name:
+            next_action = ("Sifting へ →", f"/exp/{_url(run_name)}")
+        elif state in ("failed", "cancelled", "interrupted") and job.get("config_id"):
+            next_action = ("実行設定へ →", f"/configs/{_url(job['config_id'])}")
+        handler._send_html(pages.document(
+            f"処理: {jid}", body,
+            phase="run", run=run_name, output_run=catalog_run_id,
+            lead="実行の進み具合を見ます。完了したら候補を Sifting します。",
+            next_action=next_action,
+            job_store=job_store,
+        ))
+        return
+    view = _run_view(handler, job=job)
+    lead, next_action = _run_lead(view)
     handler._send_html(pages.document(
-        f"処理: {jid}", body, crumbs=[("実行履歴", "/jobs"), (jid, f"/jobs/{_url(jid)}")],
-        phase="run", run=run_name, output_run=catalog_run_id,
-        lead="実行の進み具合を見ます。完了したら候補を Sifting します。",
-        next_action=next_action,
-        job_store=job_store,
+        f'{view["world"]["name"]} を GA で回す', render_run_page(view), phase="run",
+        world=view["world"], run=view["run_name"], output_run=job.get("run_id"),
+        job_store=job_store, lead=lead, next_action=next_action,
     ))
 
 
@@ -1414,6 +1903,8 @@ def _resolve(parts, method):
         if len(parts) == 2:
             return _jobs_detail, (parts[1],)
         return None
+    if head == "history" and len(parts) == 1:
+        return _history, ()
     if head == "runs":
         if len(parts) == 3 and parts[2] == "candidates":
             return _candidates_list, (parts[1],)
