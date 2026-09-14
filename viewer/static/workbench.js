@@ -259,6 +259,44 @@
     return Math.round((end - start) * 10) / 10;
   };
 
+  // §7: job states that never advance further (mirrors execution/worker.py's
+  // TERMINAL). A pure function so it can be exercised standalone (node -e)
+  // without the rest of the page.
+  const TERMINAL_JOB_STATES = new Set(["succeeded", "partial", "failed", "cancelled", "interrupted"]);
+
+  const etaText = (progress, elapsed, state) => {
+    if (TERMINAL_JOB_STATES.has(state)) {
+      return "—";
+    }
+    progress = progress || {};
+    let completed = progress.completed_seeds;
+    let total = progress.total_seeds;
+    if (completed == null || total == null) {
+      completed = progress.completed_individuals;
+      total = progress.total_individuals;
+    }
+    if (completed == null || total == null) {
+      // Generation jobs (synopsize/narrate) use progress.completed/total.
+      completed = progress.completed;
+      total = progress.total;
+    }
+    if (
+      typeof completed !== "number" || typeof total !== "number" || typeof elapsed !== "number" ||
+      completed <= 0 || total <= completed
+    ) {
+      return "—";
+    }
+    const remainingSeconds = (elapsed * (total - completed)) / completed;
+    if (remainingSeconds < 60) {
+      return "残り1分未満";
+    }
+    const minutes = Math.round(remainingSeconds / 60);
+    const eta = new Date(Date.now() + remainingSeconds * 1000);
+    const hh = String(eta.getHours()).padStart(2, "0");
+    const mm = String(eta.getMinutes()).padStart(2, "0");
+    return `残り約${minutes}分（${hh}:${mm}頃）`;
+  };
+
   const applyJob = (root, job, labels) => {
     const stateLabels = labels.state;
     const phaseLabels = labels.phase;
@@ -278,17 +316,19 @@
       reconciliationEl.hidden = job.reconciliation !== "unknown";
     }
 
-    setText(root, "completed_generations", (job.progress || {}).completed_generations);
-    setText(root, "total_generations", (job.progress || {}).total_generations);
-    setText(root, "completed_individuals", (job.progress || {}).completed_individuals);
-    setText(root, "total_individuals", (job.progress || {}).total_individuals);
-    setText(root, "completed_seeds", (job.progress || {}).completed_seeds);
-    setText(root, "total_seeds", (job.progress || {}).total_seeds);
-    const activeSeeds = (job.progress || {}).active_seeds;
+    const progress = job.progress || {};
+    setText(root, "completed_generations", progress.completed_generations);
+    setText(root, "total_generations", progress.total_generations);
+    setText(root, "completed_individuals", progress.completed_individuals);
+    setText(root, "total_individuals", progress.total_individuals);
+    setText(root, "completed_seeds", progress.completed_seeds);
+    setText(root, "total_seeds", progress.total_seeds);
+    const activeSeeds = progress.active_seeds;
     if (activeSeeds) {
       setText(root, "active_seeds", activeSeeds.length);
     }
-    setText(root, "elapsed_seconds", elapsedSeconds(job));
+    const elapsed = elapsedSeconds(job);
+    setText(root, "elapsed_seconds", elapsed);
     setText(
       root,
       "publication_revision",
@@ -296,11 +336,25 @@
         ? "—"
         : job.publication_revision
     );
+    setText(root, "eta", etaText(progress, elapsed, job.state));
+
+    // §7: keep each rendered <progress> bar's value/max in step with polling
+    // (the server only sets them on the initial render).
+    const genProgress = root.querySelector('progress[aria-label="完了世代"]');
+    if (genProgress && progress.total_generations) {
+      genProgress.value = progress.completed_generations || 0;
+      genProgress.max = progress.total_generations;
+    }
+    const individualProgress = root.querySelector('progress[aria-label="評価済み個体"]');
+    if (individualProgress) {
+      individualProgress.value = progress.completed_individuals || 0;
+      individualProgress.max = progress.total_individuals || 1;
+    }
 
     // Generation jobs (synopsize/narrate) carry progress.completed/total and a
     // top-level counts map instead of the GA fields above (§3.2, WB-UI-008).
-    setText(root, "completed", (job.progress || {}).completed);
-    setText(root, "total", (job.progress || {}).total);
+    setText(root, "completed", progress.completed);
+    setText(root, "total", progress.total);
     const counts = job.counts || (job.progress || {}).counts;
     if (counts) {
       const countsEl = root.querySelector('[data-field="counts"]');
@@ -644,6 +698,180 @@
     });
   };
 
+  // WB-UI-010 Stage 2: the /worlds and /genres editor pages (§4 JS). Every
+  // save/create/validate call reuses api()/collectConfig()/applyErrors()
+  // above -- this only wires the extra DOM markup library_pages.py renders.
+  const initLibrary = () => {
+    const root = document.querySelector('[data-wb="library"]');
+    if (root) {
+      const kind = root.dataset.kind;
+      const owner = root.dataset.owner;
+
+      root.querySelectorAll('[data-action="save-file"]').forEach((button) => {
+        button.addEventListener("click", async () => {
+          const path = button.dataset.path;
+          const textarea = root.querySelector(`textarea[data-file="${CSS.escape(path)}"]`);
+          const statusEl = root.querySelector(`[data-save-status][data-for="${CSS.escape(path)}"]`);
+          const errorEl = root.querySelector(`[data-error-for="${CSS.escape(path)}"]`);
+          if (!textarea) {
+            return;
+          }
+          button.disabled = true;
+          if (errorEl) {
+            errorEl.textContent = "";
+          }
+          try {
+            const { status, json } = await api("POST", `/api/${kind}s/${encodeURIComponent(owner)}/files`, {
+              path,
+              content: textarea.value,
+            });
+            if (status === 200) {
+              if (statusEl) {
+                const now = new Date();
+                const hh = String(now.getHours()).padStart(2, "0");
+                const mm = String(now.getMinutes()).padStart(2, "0");
+                statusEl.textContent = `保存しました ${hh}:${mm}`;
+              }
+            } else if (errorEl) {
+              errorEl.textContent = (json && json.message) || `HTTP ${status}`;
+            }
+          } catch (error) {
+            if (errorEl) {
+              errorEl.textContent = "サーバーに接続できません";
+            }
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
+
+      const addSubject = root.querySelector('[data-action="add-subject"]');
+      if (addSubject) {
+        addSubject.addEventListener("click", async () => {
+          const nameInput = root.querySelector("[data-subject-name]");
+          const contentArea = root.querySelector("[data-subject-content]");
+          const statusEl = root.querySelector('[data-save-status][data-for="subjects-new"]');
+          const errorEl = root.querySelector('[data-error-for="subjects-new"]');
+          const name = (nameInput && nameInput.value.trim()) || "";
+          if (!name) {
+            if (errorEl) {
+              errorEl.textContent = "ファイル名を入力してください";
+            }
+            return;
+          }
+          addSubject.disabled = true;
+          try {
+            const { status, json } = await api("POST", `/api/worlds/${encodeURIComponent(owner)}/files`, {
+              path: `subjects/${name}.yaml`,
+              content: contentArea ? contentArea.value : "",
+            });
+            if (status === 200) {
+              window.location.reload();
+              return;
+            }
+            if (errorEl) {
+              errorEl.textContent = (json && json.message) || `HTTP ${status}`;
+            }
+          } catch (error) {
+            if (errorEl) {
+              errorEl.textContent = "サーバーに接続できません";
+            }
+          } finally {
+            addSubject.disabled = false;
+          }
+        });
+      }
+
+      const validateForm = root.querySelector('[data-action="validate"]');
+      if (validateForm) {
+        validateForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const select = validateForm.querySelector('[data-field="other_id"]');
+          const resultEl = validateForm.querySelector('[data-field="validation"]');
+          const otherKey = kind === "world" ? "template_id" : "project_id";
+          const button = validateForm.querySelector('button[type="submit"]');
+          if (button) {
+            button.disabled = true;
+          }
+          if (resultEl) {
+            resultEl.classList.remove("validation-error");
+          }
+          try {
+            const { status, json } = await api("POST", `/api/${kind}s/${encodeURIComponent(owner)}/validate`, {
+              [otherKey]: select ? select.value : "",
+            });
+            if (!resultEl) {
+              return;
+            }
+            resultEl.textContent = "";
+            if (status === 200 && json) {
+              const dl = document.createElement("dl");
+              const rows = [
+                ["世界名", json.world_name],
+                ["主人公", json.protagonist],
+                ["敵役", json.antagonist],
+                ["人物数", json.subjects],
+                ["結末", (json.target_endings || []).join(", ")],
+                ["省略ファイル",
+                  json.fallbacks && Object.keys(json.fallbacks).length
+                    ? Object.keys(json.fallbacks).join(", ")
+                    : "省略なし"],
+              ];
+              rows.forEach(([label, value]) => {
+                const dt = document.createElement("dt");
+                dt.textContent = label;
+                const dd = document.createElement("dd");
+                dd.textContent = value === undefined || value === null ? "" : String(value);
+                dl.append(dt, dd);
+              });
+              resultEl.append(dl);
+            } else {
+              resultEl.classList.add("validation-error");
+              const fieldErrors = (json && json.field_errors) || {};
+              const rest = Object.values(fieldErrors);
+              resultEl.textContent = [(json && json.message) || "", ...rest].filter(Boolean).join(" / ") || `HTTP ${status}`;
+            }
+          } catch (error) {
+            if (resultEl) {
+              resultEl.classList.add("validation-error");
+              resultEl.textContent = "サーバーに接続できません";
+            }
+          } finally {
+            if (button) {
+              button.disabled = false;
+            }
+          }
+        });
+      }
+    }
+
+    document.querySelectorAll('[data-wb="library-create"]').forEach((form) => {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const kind = form.dataset.kind;
+        const button = form.querySelector('button[type="submit"]');
+        if (button) {
+          button.disabled = true;
+        }
+        try {
+          const { status, json } = await api("POST", `/api/${kind}s`, collectConfig(form));
+          const idKey = kind === "world" ? "world_id" : "template_id";
+          if (status === 201 && json && json[idKey]) {
+            window.location.href = `/${kind}s/${encodeURIComponent(json[idKey])}`;
+            return;
+          }
+          applyErrors(form, json);
+        } catch (error) {
+          applyErrors(form, { message: "サーバーに接続できません" });
+        } finally {
+          if (button) {
+            button.disabled = false;
+          }
+        }
+      });
+    });
+  };
+
   initConfigForm();
   initStart();
   initJob();
@@ -651,4 +879,5 @@
   initOutput();
   initCandidates();
   initTray();
+  initLibrary();
 })();

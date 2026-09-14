@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from viewer import data, pages, job_api, run_catalog, workbench_pages, output_pages
+from viewer import data, pages, job_api, library_pages, run_catalog, workbench_pages, output_pages
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution.provenance import ConfigError
@@ -148,6 +148,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if output_pages.dispatch(self, parts, "GET"):
             return
         if workbench_pages.dispatch(self, parts, "GET"):
+            return
+        if library_pages.dispatch(self, parts, "GET"):
             return
         if run_catalog.dispatch(self, parts, "GET"):
             return
@@ -288,6 +290,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
             if output_pages.dispatch(self, parts, "POST"):
                 return
             if workbench_pages.dispatch(self, parts, "POST"):
+                return
+            if library_pages.dispatch(self, parts, "POST"):
                 return
             if run_catalog.dispatch(self, parts, "POST"):
                 return

@@ -383,6 +383,27 @@ class WorkbenchTests(unittest.TestCase):
         row = body[body.index(f'data-candidate-id="{cid}"'):]
         self.assertIn('<option value="adopted" selected>', row)
 
+    def test_candidates_sort_quality_desc_and_bogus_sort_ignored(self):
+        self._legacy_experiment("exp-sort")
+        catalog = self.server.repository.catalog
+        rid = catalog.register_legacy("exp-sort")
+
+        status, body, _ = self.get_status(f"/runs/{rid}/candidates?sort=quality&dir=desc")
+        self.assertEqual(status, 200, body)
+        self.assertIn('aria-sort="descending"', body)
+        # VI|high (q=0.7) must render before I|low (q=0.5) in descending order.
+        self.assertLess(body.index("VI|high"), body.index("I|low"))
+        self.assertLess(body.index("0.7000"), body.index("0.5000"))
+
+        status, asc_body, _ = self.get_status(f"/runs/{rid}/candidates?sort=quality&dir=asc")
+        self.assertEqual(status, 200, asc_body)
+        self.assertIn('aria-sort="ascending"', asc_body)
+        self.assertLess(asc_body.index("I|low"), asc_body.index("VI|high"))
+
+        status, bogus_body, _ = self.get_status(f"/runs/{rid}/candidates?sort=bogus")
+        self.assertEqual(status, 200, bogus_body)
+        self.assertNotIn("aria-sort", bogus_body)
+
     def _hand_published_run(self, run_id, config_id, *, cell_key="I|low"):
         """Build a genuine, non-legacy published run on disk: no GA, no
         subprocess, just the same file/hash shapes execution/evolution_worker.py's
@@ -542,6 +563,12 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("エラー情報がありません", html)
         html = workbench_pages.render_job_page({**base, "state": "failed", "error": {"code": "wall_timeout"}})
         self.assertIn(workbench_pages.ERROR_MESSAGES["wall_timeout"][0], html)
+
+    def test_job_page_has_eta_placeholder(self):
+        self.fake.add(_job("job-eta", "run-eta", "running"))
+        status, body, _ = self.get_status("/jobs/job-eta")
+        self.assertEqual(status, 200, body)
+        self.assertIn('<span data-field="eta">—</span>', body)
 
     def test_state_vocabulary(self):
         for state, label in workbench_pages.STATE_LABELS.items():
