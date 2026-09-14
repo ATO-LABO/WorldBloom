@@ -27,6 +27,40 @@ if TYPE_CHECKING:
     from engine.world import World
 
 
+HANDLED_VERBS = frozenset(
+    {
+        "move",
+        "rest",
+        "investigate",
+        "observe",
+        "neutralize",
+        "sabotage",
+        "sacrifice",
+        "mislead",
+        "rethink",
+        "confront",
+        "share_knowledge",
+        "give_item",
+        "persuade",
+        "pledge",
+        "negotiate",
+        "concede",
+        "craft",
+        "fight",
+        "train",
+        "rescue",
+        "withdraw",
+        "guard",
+        "plant",
+        "payoff",
+        "disguise",
+        "grand_gesture",
+        "trial",
+        "donate",
+    }
+)
+
+
 class VerbEngine:
     """Apply one selected action and return marker events."""
 
@@ -43,37 +77,11 @@ class VerbEngine:
         turn: int,
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
-        handlers = {
-            "move": self._move,
-            "rest": self._rest,
-            "investigate": self._investigate,
-            "observe": self._observe,
-            "neutralize": self._neutralize,
-            "sabotage": self._sabotage,
-            "sacrifice": self._sacrifice,
-            "mislead": self._mislead,
-            "rethink": self._rethink,
-            "confront": self._confront,
-            "share_knowledge": self._share_knowledge,
-            "give_item": self._give_item,
-            "persuade": self._persuade,
-            "pledge": self._pledge,
-            "negotiate": self._negotiate,
-            "concede": self._concede,
-            "craft": self._craft,
-            "fight": self._fight,
-            "train": self._train,
-            "rescue": self._rescue,
-            "withdraw": self._withdraw,
-            "guard": self._guard,
-            "plant": self._plant,
-            "payoff": self._payoff,
-            "disguise": self._disguise,
-            "grand_gesture": self._grand_gesture,
-            "trial": self._trial,
-            "donate": self._donate,
-        }
-        handler = handlers.get(action.verb)
+        handler = (
+            getattr(self, "_" + action.verb)
+            if action.verb in HANDLED_VERBS
+            else None
+        )
         if handler is None:
             return "invalid", {"reason": "unknown_verb"}, []
 

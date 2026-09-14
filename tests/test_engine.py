@@ -3445,5 +3445,27 @@ class YamlCacheTests(unittest.TestCase):
                 self.assertEqual(parse.call_count, 3)
 
 
+class RelationsSnapshotCacheTests(unittest.TestCase):
+    def test_snapshot_cache_invalidates_on_change_and_discard(self) -> None:
+        from engine.relations import Relations
+
+        relations = Relations(
+            {"a": {"b": {"affinity": 0.1, "awareness": 0.2}}}
+        )
+        first = relations.snapshot()
+        second = relations.snapshot()
+        self.assertIs(first, second)
+
+        relations.change("a", "b", affinity=0.1)
+        third = relations.snapshot()
+        self.assertIsNot(third, second)
+        self.assertEqual(third["a"]["b"]["affinity"], 0.2)
+
+        relations.discard("a", "b")
+        fourth = relations.snapshot()
+        self.assertIsNot(fourth, third)
+        self.assertNotIn("b", fourth.get("a", {}))
+
+
 if __name__ == "__main__":
     unittest.main()

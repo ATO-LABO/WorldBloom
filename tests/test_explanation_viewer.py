@@ -82,12 +82,9 @@ class ExplanationViewerTests(unittest.TestCase):
         expected = {"concede":"譲歩", "craft":"作成", "disguise":"変装", "donate":"寄付",
                     "guard":"守り", "negotiate":"交渉", "plant":"伏線設置", "rescue":"救助",
                     "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退"}
-        import ast, inspect, textwrap
-        from engine.verbs import VerbEngine
-        tree = ast.parse(textwrap.dedent(inspect.getsource(VerbEngine.execute)))
-        handlers = next(node.value for node in ast.walk(tree) if isinstance(node, ast.Assign)
-                        and any(isinstance(target, ast.Name) and target.id == "handlers" for target in node.targets))
-        self.assertEqual(set(VERBS), {key.value for key in handlers.keys})
+        from engine.verbs import HANDLED_VERBS, VerbEngine
+        self.assertEqual(set(VERBS), set(HANDLED_VERBS))
+        self.assertTrue(all(hasattr(VerbEngine, "_" + verb) for verb in HANDLED_VERBS))
         for verb, label in expected.items():
             self.assertEqual(verb_label(verb), label)
 

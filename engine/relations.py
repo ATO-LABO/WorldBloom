@@ -26,6 +26,8 @@ class Relations:
         self._target_resolver = target_resolver
         self._affinity_cap_resolver = affinity_cap_resolver
         self._values: dict[str, dict[str, dict[str, float]]] = {}
+        self._version = 0
+        self._snapshot_cache: tuple[int, dict] | None = None
         for observer in sorted(values or {}):
             targets = values[observer]
             self._values[observer] = {}
@@ -138,6 +140,7 @@ class Relations:
             ),
         }
         self._values.setdefault(observer, {})[resolved] = updated
+        self._version += 1
         return {
             "affinity": round(
                 updated["affinity"] - current["affinity"],
@@ -150,13 +153,18 @@ class Relations:
         }
 
     def snapshot(self) -> dict[str, dict[str, dict[str, float]]]:
-        return {
+        cached = self._snapshot_cache
+        if cached is not None and cached[0] == self._version:
+            return cached[1]
+        value = {
             observer: {
                 target: dict(self._values[observer][target])
                 for target in sorted(self._values[observer])
             }
             for observer in sorted(self._values)
         }
+        self._snapshot_cache = (self._version, value)
+        return value
 
     def flat_rows(self) -> list[dict[str, str | float]]:
         rows: list[dict[str, str | float]] = []
@@ -185,3 +193,4 @@ class Relations:
         if targets is None:
             return
         targets.pop(target, None)
+        self._version += 1
