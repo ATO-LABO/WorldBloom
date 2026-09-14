@@ -243,6 +243,83 @@
     }
   };
 
+  // WB-UI-015: per-root "did this field's text change since the last poll"
+  // tracking, so applyJob can flash only the fields that actually moved.
+  const previousFieldText = new WeakMap();
+
+  const setField = (root, field, value) => {
+    const el = root.querySelector(`[data-field="${field}"]`);
+    if (!el) {
+      return;
+    }
+    const text = value === undefined || value === null ? "" : String(value);
+    let store = previousFieldText.get(root);
+    if (!store) {
+      store = new Map();
+      previousFieldText.set(root, store);
+    }
+    const prev = store.get(field);
+    el.textContent = text;
+    if (prev !== undefined && prev !== text) {
+      el.classList.remove("changed");
+      void el.offsetWidth; // restart the animation even if it just played
+      el.classList.add("changed");
+    }
+    store.set(field, text);
+  };
+
+  // Removes the flash once its one-shot CSS animation (wb-flash, in app.css)
+  // finishes, instead of a timer that could race a fast re-trigger.
+  document.addEventListener("animationend", (event) => {
+    if (event.animationName === "wb-flash") {
+      event.target.classList.remove("changed");
+    }
+  });
+
+  // WB-UI-015: pure by design (no DOM, no closure state) so it can be
+  // exercised standalone via `node -e`. `kind` selects which fields of
+  // prev/next to diff: "ga" reads completed_generations/completed_individuals
+  // from progress-shaped objects, "generation" reads every key of a
+  // counts-shaped object. `labels` (optional) maps a field/status key to its
+  // display label, same fallback rule as applyJob's entryLabels lookup
+  // elsewhere in this file (label || key).
+  const DELTA_GA_FIELDS = [
+    ["completed_generations", "世代"],
+    ["completed_individuals", "評価済み"],
+  ];
+
+  const deltaText = (prev, next, kind, labels) => {
+    if (!prev || !next) {
+      return "";
+    }
+    labels = labels || {};
+    const parts = [];
+    if (kind === "ga") {
+      DELTA_GA_FIELDS.forEach(([field, fallbackLabel]) => {
+        const before = prev[field];
+        const after = next[field];
+        if (typeof before !== "number" || typeof after !== "number") {
+          return;
+        }
+        const diff = after - before;
+        if (diff !== 0) {
+          parts.push(`${labels[field] || fallbackLabel} ${diff > 0 ? "+" : ""}${diff}`);
+        }
+      });
+    } else if (kind === "generation") {
+      const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+      Array.from(keys)
+        .sort()
+        .forEach((key) => {
+          const diff = (next[key] || 0) - (prev[key] || 0);
+          if (diff !== 0) {
+            parts.push(`${labels[key] || key} ${diff > 0 ? "+" : ""}${diff}`);
+          }
+        });
+    }
+    return parts.join(" · ");
+  };
+
   // §3.6: elapsed seconds falls back to started_at (or created_at) through
   // finished_at (or "now") whenever the GA hasn't reported elapsed_seconds
   // itself yet (e.g. still queued/preparing).
@@ -297,6 +374,10 @@
     return `残り約${minutes}分（${hh}:${mm}頃）`;
   };
 
+  // WB-UI-015: per-root previous progress/counts snapshot, so applyJob can
+  // hand deltaText() a (prev, next) pair on every poll.
+  const jobSnapshots = new WeakMap();
+
   const applyJob = (root, job, labels) => {
     const stateLabels = labels.state;
     const phaseLabels = labels.phase;
@@ -309,7 +390,7 @@
         labelEl.textContent = stateLabels[job.state] || job.state;
       }
     }
-    setText(root, "phase", phaseLabels[job.phase] || job.phase || "—");
+    setField(root, "phase", phaseLabels[job.phase] || job.phase || "—");
 
     const reconciliationEl = root.querySelector('[data-field="reconciliation"]');
     if (reconciliationEl) {
@@ -317,26 +398,26 @@
     }
 
     const progress = job.progress || {};
-    setText(root, "completed_generations", progress.completed_generations);
-    setText(root, "total_generations", progress.total_generations);
-    setText(root, "completed_individuals", progress.completed_individuals);
-    setText(root, "total_individuals", progress.total_individuals);
-    setText(root, "completed_seeds", progress.completed_seeds);
-    setText(root, "total_seeds", progress.total_seeds);
+    setField(root, "completed_generations", progress.completed_generations);
+    setField(root, "total_generations", progress.total_generations);
+    setField(root, "completed_individuals", progress.completed_individuals);
+    setField(root, "total_individuals", progress.total_individuals);
+    setField(root, "completed_seeds", progress.completed_seeds);
+    setField(root, "total_seeds", progress.total_seeds);
     const activeSeeds = progress.active_seeds;
     if (activeSeeds) {
-      setText(root, "active_seeds", activeSeeds.length);
+      setField(root, "active_seeds", activeSeeds.length);
     }
     const elapsed = elapsedSeconds(job);
-    setText(root, "elapsed_seconds", elapsed);
-    setText(
+    setField(root, "elapsed_seconds", elapsed);
+    setField(
       root,
       "publication_revision",
       job.publication_revision === undefined || job.publication_revision === null
         ? "—"
         : job.publication_revision
     );
-    setText(root, "eta", etaText(progress, elapsed, job.state));
+    setField(root, "eta", etaText(progress, elapsed, job.state));
 
     // §7: keep each rendered <progress> bar's value/max in step with polling
     // (the server only sets them on the initial render).
@@ -353,20 +434,39 @@
 
     // Generation jobs (synopsize/narrate) carry progress.completed/total and a
     // top-level counts map instead of the GA fields above (§3.2, WB-UI-008).
-    setText(root, "completed", progress.completed);
-    setText(root, "total", progress.total);
+    setField(root, "completed", progress.completed);
+    setField(root, "total", progress.total);
+    // data-entry-labels carries ENTRY_STATUS_LABELS (server-rendered); an
+    // unmapped key falls back to itself, both here and in deltaText() below.
+    const entryLabels = parseJsonAttr(root.dataset.entryLabels, {});
     const counts = job.counts || (job.progress || {}).counts;
     if (counts) {
       const countsEl = root.querySelector('[data-field="counts"]');
       if (countsEl) {
-        // data-entry-labels carries ENTRY_STATUS_LABELS (server-rendered);
-        // an unmapped key falls back to itself.
-        const entryLabels = parseJsonAttr(root.dataset.entryLabels, {});
         countsEl.textContent = Object.keys(counts)
           .sort()
           .map((key) => `${entryLabels[key] || key} ${counts[key]}`)
           .join(" · ");
       }
+    }
+
+    // WB-UI-015: last-updated time (client clock, so it means "as of this
+    // poll" even across a stalled/reconnecting server) and a one-line summary
+    // of what moved since the previous poll.
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    setText(root, "updated-at", `最終更新 ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`);
+    const previous = jobSnapshots.get(root);
+    if (counts) {
+      setText(root, "delta", deltaText(previous, counts, "generation", entryLabels));
+      jobSnapshots.set(root, { ...counts });
+    } else {
+      const gaSnapshot = {
+        completed_generations: progress.completed_generations,
+        completed_individuals: progress.completed_individuals,
+      };
+      setText(root, "delta", deltaText(previous, gaSnapshot, "ga"));
+      jobSnapshots.set(root, gaSnapshot);
     }
   };
 
@@ -385,6 +485,9 @@
     let timer = null;
     let stopped = root.dataset.terminal === "true";
     const connectionNote = root.querySelector("[data-connection-status]");
+    // WB-UI-015: once a poll fails, remember when, so the next success can
+    // show "復帰（N秒ぶり）" exactly once instead of the usual delta.
+    let disconnectedAt = null;
 
     const cancelButton = root.querySelector('[data-action="cancel"]');
     const cancelStatus = root.querySelector("[data-cancel-status]");
@@ -431,6 +534,11 @@
             connectionNote.hidden = true;
           }
           applyJob(root, json, labels);
+          if (disconnectedAt !== null) {
+            const seconds = Math.round((Date.now() - disconnectedAt) / 1000);
+            setText(root, "delta", `復帰（${seconds}秒ぶり）`);
+            disconnectedAt = null;
+          }
           if (terminalStates.has(json.state)) {
             stopped = true;
             window.location.reload();
@@ -438,6 +546,9 @@
           }
         }
       } catch (error) {
+        if (disconnectedAt === null) {
+          disconnectedAt = Date.now();
+        }
         if (connectionNote) {
           connectionNote.hidden = false;
         }
@@ -872,6 +983,22 @@
     });
   };
 
+  // WB-UI-014: the "詳細" toggle on a candidate/output list row. Expanded
+  // state is not preserved across a reload.
+  const initRowToggles = () => {
+    document.querySelectorAll(".row-toggle").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = document.getElementById(button.getAttribute("aria-controls") || "");
+        if (!target) {
+          return;
+        }
+        const expanded = button.getAttribute("aria-expanded") === "true";
+        button.setAttribute("aria-expanded", String(!expanded));
+        target.hidden = expanded;
+      });
+    });
+  };
+
   initConfigForm();
   initStart();
   initJob();
@@ -880,4 +1007,5 @@
   initCandidates();
   initTray();
   initLibrary();
+  initRowToggles();
 })();

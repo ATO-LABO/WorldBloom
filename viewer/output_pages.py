@@ -196,7 +196,9 @@ def render_generation_jobs_section(jobs):
     return (
         "<section><h2>生成ジョブ</h2>"
         '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
-        "<th>状態</th><th>種別</th><th>run</th><th>操作</th>"
+        f'<th title="{_escape(pages.TERM_HELP["job_state"])}">状態</th>'
+        f'<th title="{_escape(pages.TERM_HELP["kind"])}">種別</th>'
+        f'<th title="{_escape(pages.TERM_HELP["run"])}">run</th><th>操作</th>'
         f"</tr></thead><tbody>{rows}</tbody></table></div></section>"
     )
 
@@ -246,6 +248,7 @@ def _generate_confirm(handler, run_id):
             '<p class="error">生成種別（kind）が不正です</p>'
             f'<p><a href="/runs/{_url(run_id)}/candidates">候補一覧に戻る</a></p>',
             phase="stage", run=run_name, output_run=run_id,
+            lead="生成内容を確認して開始します。",
         ))
         return
     mode = qval("mode") or "missing_or_failed"
@@ -341,6 +344,7 @@ def _generate_confirm(handler, run_id):
         "生成の確認", body,
         crumbs=[("候補一覧", f"/runs/{_url(run_id)}/candidates"), ("生成の確認", f"/runs/{_url(run_id)}/generate")],
         phase="stage", run=snapshot["experiment_name"], output_run=run_id,
+        lead="生成内容を確認して開始します。",
     ))
 
 
@@ -467,20 +471,30 @@ def _outputs_list(handler):
         history = []
     run_names = {r["run_id"]: r["experiment_name"] for r in history}
     run_experiment = run_names.get(run_filter) if run_filter else None
+    lead = "生成した作品を読みます。"
     try:
         outputs = job_store.outputs()
     except (ConfigError, OSError, ValueError, KeyError, TypeError, AttributeError):
         body = '<p class="error">作品一覧を読み込めません。保存記録が破損している可能性があります</p>'
         handler._send_html(pages.document(
             "作品一覧", body, crumbs=[("作品一覧", "/outputs")],
-            phase="stage", run=run_experiment, output_run=run_filter,
+            phase="stage", run=run_experiment, output_run=run_filter, lead=lead,
         ))
         return
     if run_filter:
         outputs = [o for o in outputs if (o.get("request") or {}).get("run_id") == run_filter]
+    # WB-UI-012 §2.2: no outputs yet -> point back at where generation
+    # happens (the run's candidate list when we know which run, else /jobs).
+    next_action = None
+    if not outputs:
+        next_action = (
+            ("候補一覧で生成する →", f"/runs/{_url(run_filter)}/candidates")
+            if run_filter else ("候補一覧で生成する →", "/jobs")
+        )
     handler._send_html(pages.document(
         "作品一覧", render_outputs_list(outputs, run_names), crumbs=[("作品一覧", "/outputs")],
         phase="stage", run=run_experiment, output_run=run_filter,
+        lead=lead, next_action=next_action,
     ))
 
 
@@ -491,10 +505,16 @@ def _reader_summary_note():
     )
 
 
+OUTPUTS_GLOSSARY_KEYS = (
+    "run", "output_id", "kind", "job_state", "counts", "selection_revision",
+    "backend_model", "targets", "config_id",
+)
+
+
 def render_outputs_list(outputs, run_names=None):
     run_names = run_names or {}
     if not outputs:
-        return "<p>生成した作品はまだありません。候補一覧から生成できます。</p>" + _reader_summary_note()
+        return "<p>生成した作品はまだありません。候補一覧から生成できます。</p>" + pages.glossary(OUTPUTS_GLOSSARY_KEYS) + _reader_summary_note()
     by_run = {}
     broken = []
     for output in outputs:
@@ -511,8 +531,7 @@ def render_outputs_list(outputs, run_names=None):
             f'<section class="card"><h2>run: {heading} '
             f'<a href="/runs/{_url(run_id)}/candidates">候補一覧</a></h2>'
             '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
-            "<th>output_id</th><th>種別</th><th>選定版</th><th>backend/model</th>"
-            "<th>対象数</th><th>状態</th><th>内訳</th><th>設定</th><th>操作</th>"
+            "<th>output_id</th><th>種別</th><th>状態</th><th>内訳</th><th>操作</th>"
             f"</tr></thead><tbody>{rows}</tbody></table></div></section>"
         )
     if broken:
@@ -525,7 +544,7 @@ def render_outputs_list(outputs, run_names=None):
             for o in broken
         )
         sections.append(f'<section class="card"><h2>読み取れない生成版</h2><ul>{items}</ul></section>')
-    return "".join(sections) + _reader_summary_note()
+    return "".join(sections) + pages.glossary(OUTPUTS_GLOSSARY_KEYS) + _reader_summary_note()
 
 
 def _output_row(output):
@@ -545,19 +564,32 @@ def _output_row(output):
         f"{ENTRY_STATUS_LABELS.get(status, status)} {n}" for status, n in sorted(counts.items())
     ) or "—"
     config_id = request.get("config_id")
-    return (
+    # WB-UI-014 §3.2: 選定版/backend-model/対象数/設定 move into a collapsed
+    # detail row; the list keeps only what Sifting scans at a glance.
+    detail_id = f"detail-{_escape(output_id)}"
+    row = (
         "<tr>"
         f'<td><a href="/outputs/{_url(output_id)}">{_escape(_short_id(output_id))}</a></td>'
         f'<td>{_escape(KIND_LABELS.get(request.get("kind"), request.get("kind")))}</td>'
-        f'<td>{_escape(request.get("selection_revision"))}</td>'
-        f'<td>{_escape(request.get("backend"))}/{_escape(request.get("model") or "—")}</td>'
-        f'<td>{_escape(total)}</td>'
         f'<td>{_escape(state_text)}</td>'
         f'<td>{_escape(counts_text)}</td>'
-        f'<td><a href="/configs/{_url(config_id)}">{_escape(config_id)}</a></td>'
-        f'<td class="wb-actions"><a href="/outputs/{_url(output_id)}">開く</a></td>'
-        "</tr>"
+        '<td class="wb-actions">'
+        f'<a href="/outputs/{_url(output_id)}">開く</a> '
+        f'<button type="button" class="row-toggle" aria-expanded="false" aria-controls="{detail_id}">詳細</button>'
+        "</td></tr>"
     )
+    detail = (
+        f'<tr id="{detail_id}" class="detail-row" hidden><td colspan="5">'
+        '<dl class="metric">'
+        f'<dt>{pages.term("selection_revision", "選定版")}</dt><dd>{_escape(request.get("selection_revision"))}</dd>'
+        f'<dt>{pages.term("backend_model", "backend/model")}</dt>'
+        f'<dd>{_escape(request.get("backend"))}/{_escape(request.get("model") or "—")}</dd>'
+        f'<dt>{pages.term("targets", "対象数")}</dt><dd>{_escape(total)}</dd>'
+        f'<dt>{pages.term("config_id", "設定")}</dt>'
+        f'<dd><a href="/configs/{_url(config_id)}">{_escape(config_id)}</a></dd>'
+        "</dl></td></tr>"
+    )
+    return row + detail
 
 
 # --------------------------------------------------------------------------
@@ -730,6 +762,8 @@ def _output_detail(handler, output_id):
         # above, None if it can't be resolved), while the 上映 link must keep
         # using the catalog id (that's what /outputs?run= matches against).
         phase="stage", run=experiment_name, output_run=run_id,
+        lead="生成結果を読み、必要なら再生成します。",
+        next_action=("作品一覧へ →", f"/outputs?run={_url(run_id)}"),
     ))
 
 

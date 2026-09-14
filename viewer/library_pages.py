@@ -84,7 +84,8 @@ def _genre_row(genre):
 def render_worlds_hub(worlds, genres):
     world_table = (
         '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
-        "<th>名前</th><th>ID</th><th>ジャンル</th><th>人物数</th><th>主人公/敵役</th><th>操作</th>"
+        f'<th>名前</th><th>ID</th><th title="{_escape(pages.TERM_HELP["genre"])}">ジャンル</th>'
+        "<th>人物数</th><th>主人公/敵役</th><th>操作</th>"
         f'</tr></thead><tbody>{"".join(_world_row(w) for w in worlds)}</tbody></table></div>'
     ) if worlds else "<p>世界がありません。</p>"
     genre_table = (
@@ -232,6 +233,8 @@ def _worlds_list(handler):
     handler._send_html(pages.document(
         "世界とジャンル", render_worlds_hub(store.worlds(), store.genres()),
         crumbs=[("世界", "/worlds")], phase="world",
+        lead="世界（地名・人物）とジャンル（行動の文法）を用意します。",
+        next_action=("実験を回す →", "/configs/new"),
     ))
 
 
@@ -273,10 +276,16 @@ def _worlds_detail(handler, world_id):
     template_content = contents[subject_files[0]] if subject_files else ""
     body = render_world_detail(world, files, contents, store.genres(), template_content)
     label = world["name"] or world_id
+    genre = world.get("genre")
+    run_href = f"/configs/new?project={_url(world_id)}"
+    if genre:
+        run_href += f"&template={_url(genre)}"
     handler._send_html(pages.document(
         f"世界: {label}", body,
         crumbs=[("世界", "/worlds"), (label, f"/worlds/{_url(world_id)}")],
         phase="world", world={"id": world_id, "name": label},
+        lead="この世界の設定を編集し、検証してから実験に使います。",
+        next_action=("この世界で実験を回す →", run_href),
     ))
 
 
@@ -313,6 +322,8 @@ def _genres_detail(handler, genre_id):
         f"ジャンル: {genre_id}", body,
         crumbs=[("世界", "/worlds"), (genre_id, f"/genres/{_url(genre_id)}")],
         phase="world",
+        lead="このジャンルの文法を編集し、世界を指定して検証します。",
+        next_action=("世界一覧へ →", "/worlds"),
     ))
 
 

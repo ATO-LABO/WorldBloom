@@ -489,6 +489,38 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("選定は保存できません", html)
         self.assertIn("disabled", html)
 
+    def test_candidates_table_is_nine_columns_with_detail_rows(self):
+        # WB-UI-014 §3.1: 9 list columns (選択/候補ID/セル/q/到達/採用可/選定状態/
+        # メモ/操作); 世代/個体/seed/役割/原記録/稿 move into a per-row detail
+        # toggle instead of being spread across the table.
+        self._legacy_experiment("exp-detail")
+        catalog = self.server.repository.catalog
+        rid = catalog.register_legacy("exp-detail")
+
+        status, body, _ = self.get_status(f"/runs/{rid}/candidates")
+        self.assertEqual(status, 200, body)
+        thead = body[body.index("<thead>"):body.index("</thead>")]
+        # "<thead>" itself contains "<th", so match the column tag precisely.
+        self.assertEqual(len(re.findall(r"<th[ >]", thead)), 9)
+        self.assertEqual(body.count('class="detail-row"'), 2)  # one per candidate
+        self.assertEqual(body.count('class="row-toggle"'), 2)
+        self.assertIn('aria-expanded="false"', body)
+        self.assertIn('aria-controls="detail-', body)
+        self.assertIn('<details class="glossary">', body)
+        self.assertIn('<p class="page-lead">', body)
+
+    def test_configs_and_jobs_pages_have_lead_and_next_cta(self):
+        status, body, _ = self.get_status("/configs")
+        self.assertEqual(status, 200, body)
+        self.assertIn('<p class="page-lead">', body)
+        self.assertIn('class="next-cta"', body)
+
+        status, body, _ = self.get_status("/jobs")
+        self.assertEqual(status, 200, body)
+        self.assertIn('<p class="page-lead">', body)
+        # No records yet -> the empty-jobs CTA from WB-UI-012 §2.3.
+        self.assertIn('class="next-cta" href="/configs/new">次: 実行設定を作る →</a>', body)
+
     def test_raw_log(self):
         self._legacy_experiment("exp-raw")
         catalog = self.server.repository.catalog
@@ -569,6 +601,8 @@ class WorkbenchTests(unittest.TestCase):
         status, body, _ = self.get_status("/jobs/job-eta")
         self.assertEqual(status, 200, body)
         self.assertIn('<span data-field="eta">—</span>', body)
+        self.assertIn('data-field="updated-at"', body)
+        self.assertIn('data-field="delta"', body)
 
     def test_state_vocabulary(self):
         for state, label in workbench_pages.STATE_LABELS.items():

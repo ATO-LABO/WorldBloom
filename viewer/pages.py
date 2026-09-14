@@ -77,8 +77,9 @@ def _phase_band(
             quote=True,
         )
         current = ' aria-current="step"' if phase == key else ""
+        title_attr = f' title="{_escape(TERM_HELP["sifting"])}"' if key == "sifting" else ""
         segments.append(
-            f'<a class="{" ".join(classes)}"{current} href="{href}">'
+            f'<a class="{" ".join(classes)}"{current}{title_attr} href="{href}">'
             f'<span class="seg-num">{number}</span>'
             f'<span class="seg-title">{_escape(label)}</span></a>'
         )
@@ -126,6 +127,8 @@ def document(
     output_run: str | None = None,
     phase: str | None = None,
     phases: Mapping[str, Any] | None = None,
+    lead: str | None = None,
+    next_action: tuple[str, str] | None = None,
 ) -> str:
     # Callers that already looked up phase_status() (experiment/cell/compare/
     # raw pages) get the stage link's catalog-id distinction for free; other
@@ -144,6 +147,19 @@ def document(
     breadcrumb = " <span aria-hidden=\"true\">›</span> ".join(
         crumb_items
     )
+    lead_html = ""
+    if lead is not None or next_action is not None:
+        lead_text = f"{_escape(lead)} " if lead is not None else ""
+        cta = ""
+        if next_action is not None:
+            next_label, next_href = next_action
+            # next_label already ends in "→" (the _progress_row/
+            # next_action_for convention this reuses) -- no second arrow here.
+            cta = (
+                f'<a class="next-cta" href="{html.escape(next_href, quote=True)}">'
+                f"次: {_escape(next_label)}</a>"
+            )
+        lead_html = f'<p class="page-lead">{lead_text}{cta}</p>'
     return (
         "<!doctype html>"
         '<html lang="ja"><head>'
@@ -160,7 +176,7 @@ def document(
         + _phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
         + f'<nav class="crumbs" aria-label="パンくず">{breadcrumb}</nav>'
         "</header>"
-        f'<main class="page-shell"><h1>{_escape(title)}</h1>{body}</main>'
+        f'<main class="page-shell"><h1>{_escape(title)}</h1>{lead_html}{body}</main>'
         '<div id="toast" role="status" aria-live="polite"></div>'
         "</div>"
         "</body></html>"
@@ -245,7 +261,7 @@ def _last(values: Sequence[float]) -> float | None:
     return values[-1] if values else None
 
 
-METRIC_HELP = {
+TERM_HELP = {
     "cells": (
         "占有マス: アーカイブが埋まった区画の数。"
         "区画は「主導カテゴリ × 起伏の大きさ」で決まり、"
@@ -299,15 +315,147 @@ METRIC_HELP = {
         "到達: このエリートが評価されたシードのうち、"
         "結末に届いた回数。世代ごとの到達率とは分母が違う。"
     ),
+    # WB-UI-013: general-purpose vocabulary for column headings, glossaries
+    # and lead text. Design-role-confirmed wording (see
+    # docs/2026-09-11_gapengine-detailed-design.md's companion plan, §1.2) --
+    # do not paraphrase. "generation"/"seed" above are deliberately left
+    # untouched (elite-specific wording); these new keys never collide with
+    # them.
+    "run": (
+        "実験（run）: 1 回の GA 実行。設定版 1 つから生まれ、"
+        "runs/<名前> に記録が残る。画面では実験名（フォルダ名）で表す。"
+    ),
+    "individual": (
+        "個体: 1 つの遺伝子（行動の重み付け）。"
+        "世代ごとに個体数ぶん評価される。"
+    ),
+    "candidate_generation": (
+        "世代: GA の反復回数。世代ごとに個体を評価し、格子（アーカイブ）を更新する。"
+    ),
+    "candidate_seed": (
+        "seed: 乱数の種。同じ遺伝子でも seed が違えば世界の初期条件が変わり、"
+        "別の経緯になる（探偵なら真犯人が変わる）。"
+    ),
+    "candidate_id": (
+        "候補ID: 実験・世代・個体・seed の組を一意に指す ID。"
+        "選定と生成はこの ID 単位で記録される。"
+    ),
+    "role": (
+        "役割: 候補が主人公側の遺伝子か敵役側か"
+        "（共進化のとき両方が生まれる）。旧実験は不明。"
+    ),
+    "cell": (
+        "セル: 格子の区画。行は主導カテゴリ"
+        "（そのランで実際に多く選ばれた行動の種類）、列は起伏（low/mid/high）。"
+        "区画ごとに最良の 1 本だけが残る。"
+    ),
+    "reached": (
+        "到達: あらかじめ固定した結末に届いたか。"
+        "届いたランだけがアーカイブと本文生成の対象になる。"
+    ),
+    "log": (
+        "原記録: GA が書いた全ログ（layers.jsonl）。"
+        "「あり」なら本文生成と原ログ閲覧ができる。"
+        "「剪定済み」は保存方針で削られた、「不在」は見つからない、"
+        "「不一致」はハッシュが合わない。"
+    ),
+    "screenable": (
+        "採用可: 本文生成に使える条件（到達済み かつ 原記録あり）を満たすか。"
+    ),
+    "state": (
+        "選定状態: Sifting での判断。採用（adopted）＝生成に進める、"
+        "保留（held）、除外（rejected）、未分類（unclassified）。"
+    ),
+    "note": (
+        "メモ: 選定の理由や気づきを残す自由記述。選定版に含まれる。"
+    ),
+    "draft": (
+        "稿: この候補から生成済みの本文の数"
+        "（あらすじ／上映それぞれの「本文あり」件数）。"
+    ),
+    "publication_revision": (
+        "公開版: 実験の記録（格子と候補）が確定した回数。"
+        "世代が確定するたびに増え、候補一覧はこの版から作られる。"
+    ),
+    "selection_revision": (
+        "選定版: 選定状態とメモを保存した回数。"
+        "他のタブで先に保存されていると版が進み、保存が拒否される（上書き防止）。"
+    ),
+    "sifting": (
+        "Sifting: 実験が残した候補をふるいにかけ、読む価値のあるものを採用する工程。"
+        "格子で吟味し、四項目で比較し、選定状態を付ける。"
+    ),
+    "config_id": (
+        "config_id: 実行設定の版 ID。設定は保存すると不変になり、"
+        "実験はどの版から生まれたかを記録する。"
+    ),
+    "output_id": (
+        "output_id: 生成した作品（あらすじ／上映の束）の ID。"
+        "1 回の生成ジョブに 1 つ。"
+    ),
+    "backend_model": (
+        "backend/model: 本文を生成した方式とモデル名"
+        "（例: ollama / qwen3.5:9b）。画面を開いただけでは生成しない。"
+    ),
+    "kind": (
+        "種別: あらすじ生成（synopsize）か上映生成（narrate、本文）か。"
+    ),
+    "phase": (
+        "段階: 実行中のジョブが今どこにいるか"
+        "（準備中／評価中／世代確定中／生成中）。"
+    ),
+    "job_state": (
+        "状態: ジョブの状態（待機中／実行中／停止処理中／完了／"
+        "一部完了／失敗／停止済み／中断）。"
+    ),
+    "counts": (
+        "内訳: 作品の中の候補ごとの結果の集計（本文あり／失敗／未開始 など）。"
+    ),
+    "targets": (
+        "対象数: その生成ジョブが本文を作ろうとした候補の数。"
+    ),
+    "genre": (
+        "ジャンル: 世界が使う文法の組（行動グラフ・正典・効果表・ルール・QD 軸）。"
+        "templates/<ジャンル> に置かれ、世界の設定ファイルから参照される。"
+    ),
+    "world": (
+        "世界: 地名・経路・日数と登場人物の初期状態の組。projects/<世界> に置かれる。"
+    ),
 }
+
+METRIC_HELP = TERM_HELP  # backward-compat alias; do not add new entries here
+
+
+def term(key: str, label: str | None = None) -> str:
+    """Label with its hover explanation, sourced from TERM_HELP.
+
+    ``label`` defaults to the term's own heading word (the text before the
+    first ": " in its TERM_HELP entry).
+    """
+
+    text = TERM_HELP[key]
+    if label is None:
+        label = text.split(": ", 1)[0]
+    return f'<span class="tip" title="{_escape(text)}">{label}</span>'
 
 
 def _tip(key: str, label: str) -> str:
-    """Label with its hover explanation."""
+    """Label with its hover explanation (thin wrapper around term())."""
 
+    return term(key, label)
+
+
+def glossary(keys: Sequence[str]) -> str:
+    """A <details> block defining just the terms this screen actually uses."""
+
+    parts = []
+    for key in keys:
+        heading, _, definition = TERM_HELP[key].partition(": ")
+        parts.append(f"<dt>{_escape(heading)}</dt><dd>{_escape(definition)}</dd>")
     return (
-        f'<span class="tip" title="{_escape(METRIC_HELP[key])}">'
-        f"{label}</span>"
+        '<details class="glossary"><summary>用語</summary><dl>'
+        + "".join(parts)
+        + "</dl></details>"
     )
 
 
@@ -447,12 +595,24 @@ _NEXT_LABELS = {
 }
 
 
-def _next_command(meta: Mapping[str, Any], phases: Mapping[str, Any]) -> tuple[str, str]:
-    run_name = str(meta["name"])
+def next_action_for(
+    run_name: str,
+    phases: Mapping[str, Any],
+    *,
+    catalog_run_id: str | None = None,
+) -> tuple[str, str]:
+    """The next-step label/href for a run, from phase_status()'s "next" field.
+
+    Shared by the home dashboard and every other screen that knows which run
+    it's showing (WB-UI-012 §2.1), so "next:" always agrees with the home
+    page for the same experiment. This is the only place that reads
+    phases["next"]; no new judgement is added here.
+    """
+
     # Outputs are stored under the catalog run_id (legacy runs' catalog id
     # differs from the experiment folder name), so /outputs?run= must use it
     # when known; fall back to the folder name only when there is no catalog.
-    output_run = str(phases.get("catalog_run_id") or run_name)
+    output_run = str(catalog_run_id or phases.get("catalog_run_id") or run_name)
     next_phase = phases.get("next")
     if next_phase is None:
         return "上映を読む →", f"/outputs?run={_url_segment(output_run)}"
@@ -464,6 +624,10 @@ def _next_command(meta: Mapping[str, Any], phases: Mapping[str, Any]) -> tuple[s
     if next_phase == "sifting":
         return _NEXT_LABELS["sifting"], f"/exp/{_url_segment(run_name)}"
     return _NEXT_LABELS["stage"], f"/outputs?run={_url_segment(output_run)}"
+
+
+def _next_command(meta: Mapping[str, Any], phases: Mapping[str, Any]) -> tuple[str, str]:
+    return next_action_for(str(meta["name"]), phases)
 
 
 _CIRCLED_DIGITS = ("①", "②", "③", "④")
@@ -967,6 +1131,7 @@ def experiment_page(
     )
     world = _experiment_world(meta, job_store)
     phases = data.phase_status(repository, experiment_name, job_store=job_store)
+    next_label, next_href = next_action_for(experiment_name, phases)
     return document(
         f"実験: {experiment_name}",
         body,
@@ -975,6 +1140,8 @@ def experiment_page(
         run=experiment_name,
         phase="sifting",
         phases=phases,
+        lead="格子で候補を吟味し、★で選定します。",
+        next_action=(next_label, next_href),
     )
 
 
@@ -1474,20 +1641,26 @@ def cell_page(
         run=experiment_name,
         phase="sifting",
         phases=phases,
+        lead="この候補の経緯を四項目で確かめます。",
+        next_action=("格子に戻る →", experiment_url),
     )
 
 
 def compare_page(repository, experiment_name, cells, *, job_store=None):
     experiment = repository.experiment(experiment_name)
     phases = data.phase_status(repository, experiment_name, job_store=job_store)
+    grid_href = f"/exp/{_url_segment(experiment_name)}"
+    lead = "候補を同じ四項目で並べて比べます。"
+    next_action = ("格子に戻る →", grid_href)
     if not 2 <= len(cells) <= 4 or len(set(cells)) != len(cells):
         return document("四項目で比較",
                         '<p role="alert">比較する異なる候補を2〜4件選んでください。</p>'
-                        + f'<p><a href="/exp/{_url_segment(experiment_name)}">← 格子で候補を選ぶ</a></p>',
-                        run=experiment_name, phase="sifting", phases=phases)
+                        + f'<p><a href="{grid_href}">← 格子で候補を選ぶ</a></p>',
+                        run=experiment_name, phase="sifting", phases=phases,
+                        lead=lead, next_action=next_action)
     explanations = [data.cell_explanation(repository, experiment, cell) for cell in cells]
     same = len({x["trajectory_signature"] for x in explanations}) == 1
-    body = f'<p><a href="/exp/{_url_segment(experiment_name)}">← 格子で候補を選ぶ</a></p>'
+    body = f'<p><a href="{grid_href}">← 格子で候補を選ぶ</a></p>'
     body += '<p>それぞれの候補で、何が起きたかを読み比べられます。</p>'
     has_reader = any(x.get("reader_summary") for x in explanations)
     if has_reader:
@@ -1499,7 +1672,8 @@ def compare_page(repository, experiment_name, cells, *, job_store=None):
     for cell, explanation in zip(cells, explanations):
         body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
         body += reader_ui.panel(explanation) + '</section>'
-    return document("四項目で比較", body + '</div>', run=experiment_name, phase="sifting", phases=phases)
+    return document("四項目で比較", body + '</div>', run=experiment_name, phase="sifting", phases=phases,
+                     lead=lead, next_action=next_action)
 
 
 def raw_page(repository, experiment_name, cell_key, line=None, *, job_store=None):
