@@ -559,63 +559,6 @@ def _dissimilarity_note(values: Sequence[float]) -> str:
     )
 
 
-def _experiment_card(meta: Mapping[str, Any]) -> str:
-    name = str(meta["name"])
-    href = f"/exp/{_url_segment(name)}"
-    date = datetime.fromtimestamp(
-        float(meta["archive_mtime"])
-    ).strftime("%Y-%m-%d %H:%M")
-    seeds = meta.get("seeds")
-    seed_count = len(seeds) if isinstance(seeds, list) else None
-    truths = data._display(meta.get("truths")) if meta.get("truths") else "—"
-    ending = data._display(meta.get("target_ending"))
-    reach_values = meta.get("reach_series", [])
-    quality_values = meta.get("quality_series", [])
-    quality_text = (
-        f"{quality_values[-1]:.2f}"
-        if quality_values
-        else "—"
-    )
-    return (
-        f'<article class="card run-card" data-experiment="{_escape(name)}">'
-        '<div class="card-heading">'
-        f'<h3><a href="{href}">{_escape(name)}</a></h3>'
-        f'<span class="date">{_escape(date)}</span>'
-        "</div>"
-        f'<p><span class="genre">{_escape(meta["genre"])} '
-        f'{_escape(meta["world"])}</span></p>'
-        '<p class="facts">'
-        f'{_escape(meta["generations"])}世代'
-        f' · {_escape(meta.get("population"))}個体'
-        f' · {_escape(seed_count)}シード'
-        f' · 結末 {_escape(ending)}'
-        f' · 真相 {_escape(truths)}'
-        "</p>"
-        '<div class="run-stats">'
-        f'<span class="cells">{_tip("cells", "占有")} '
-        f'<b class="{_grade(_ratio(meta["cells"], meta["grid_size"]))}">'
-        f'{_escape(meta["cells"])}/{_escape(meta["grid_size"])}</b></span>'
-        f'{sparkline(meta.get("occupied_series") or [])}'
-        f'<span>{_tip("dissimilarity", "相異度")} '
-        f'<b class="{_grade(_last(meta.get("dissimilarity_series") or []))}">'
-        f'{_escape(_series_text(meta.get("dissimilarity_series") or []))}</b></span>'
-        f'<span>{_tip("quality", "q̄")} '
-        f'<b class="{_grade(_last(meta.get("quality_series") or []))}">'
-        f'{_escape(quality_text)}</b></span>'
-        f'<span class="reach">{_tip("reach", "到達率")} '
-        f'{_escape(_gate_text(reach_values))}</span>'
-        "</div>"
-        '<p class="outputs">'
-        f'あらすじ {_escape(meta["synopsis_ok"])}/{_escape(meta["cells"])}'
-        f' · 選定 {_escape(meta["selected"])}'
-        f' · 本文 {_escape(meta["story_ok"])}'
-        f' · engine {_escape(str(meta["engine_hash"])[:12] or "—")}'
-        "</p>"
-        f'<p class="open"><a class="button" href="{href}">開く</a></p>'
-        "</article>"
-    )
-
-
 def _command_block(
     repository: data.RunRepository,
     meta: Mapping[str, Any],

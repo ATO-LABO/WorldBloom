@@ -23,7 +23,7 @@ from viewer import data, job_api, pages
 _escape = pages._escape
 _url = pages._url_segment
 
-RUNNING_STATES = frozenset({"queued", "running", "stopping"})
+RUNNING_STATES = data.RUNNING_JOB_STATES
 
 STATE_LABELS = {
     "queued": "待機中",
@@ -78,8 +78,8 @@ PHASE_LABELS_JSON = json.dumps(PHASE_LABELS, ensure_ascii=False, sort_keys=True)
 # Small render helpers
 # --------------------------------------------------------------------------
 
-def state_badge(state):
-    label = STATE_LABELS.get(state, str(state))
+def state_badge(state, labels=STATE_LABELS):
+    label = labels.get(state, str(state))
     # data-field="state" lives on this element itself (not a wrapping <p>) so
     # polling JS can swap both its className and its label span uniquely.
     return (
@@ -1176,26 +1176,6 @@ def _reached_text(value):
     return "不明"
 
 
-class _Desc:
-    """Wrap a value so tuple comparison sorts it in reverse.
-
-    Used only for the *present* half of a sort key (see sort_candidates): the
-    "value is None" half stays unwrapped so None always sorts last regardless
-    of direction, instead of jumping to the front under a naive reverse=True.
-    """
-
-    __slots__ = ("value",)
-
-    def __init__(self, value):
-        self.value = value
-
-    def __eq__(self, other):
-        return self.value == other.value
-
-    def __lt__(self, other):
-        return other.value < self.value
-
-
 def _sort_value(candidate, key, output_summary):
     if key == "draft":
         counts = (output_summary or {}).get(candidate["candidate_id"], {})
@@ -1209,12 +1189,14 @@ def _sort_value(candidate, key, output_summary):
 def sort_candidates(candidates, key, direction, output_summary):
     """Stable sort by one column; None sorts last, ties break by candidate_id."""
 
-    def sort_key(candidate):
-        value = _sort_value(candidate, key, output_summary)
-        wrapped = _Desc(value) if direction == "desc" and value is not None else value
-        return (value is None, wrapped, candidate["candidate_id"])
+    def value_of(candidate):
+        return _sort_value(candidate, key, output_summary)
 
-    return sorted(candidates, key=sort_key)
+    by_id = sorted(candidates, key=lambda candidate: candidate["candidate_id"])
+    present = [c for c in by_id if value_of(c) is not None]
+    missing = [c for c in by_id if value_of(c) is None]
+    present.sort(key=value_of, reverse=(direction == "desc"))
+    return present + missing
 
 
 def _sort_th(label, column, *, query, active_sort, active_dir, term_key=None):

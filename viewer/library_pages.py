@@ -15,7 +15,7 @@ import yaml
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from viewer import data, pages, job_api, world_graph
-from viewer.workbench_pages import _guidance_page, _query
+from viewer.workbench_pages import _guidance_page, _job_store, _query
 
 _escape = pages._escape
 _url = pages._url_segment
@@ -28,10 +28,6 @@ GENRE_FILE_LABELS = {
 
 NOTE = ('<p class="library-note">保存しても過去の実行設定と実験結果は変わりません'
         '（実行時に写しを取ります）。</p>')
-
-
-def _job_store(handler):
-    return getattr(handler.server, "job_store", None)
 
 
 # --------------------------------------------------------------------------

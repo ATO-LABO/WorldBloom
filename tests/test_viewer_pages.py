@@ -231,36 +231,6 @@ class ViewerPageTests(unittest.TestCase):
         self.assertIsNone(pages._ratio(1, 0))
         self.assertIsNone(pages._ratio("x", 9))
 
-    def test_reach_is_never_graded(self) -> None:
-        # Colouring the gate green at 100% would re-create the fixation the
-        # muted treatment exists to prevent.
-        markup = pages._experiment_card(
-            {
-                "name": "exp-x",
-                "genre": "探偵",
-                "world": "白椿館の密室",
-                "generations": 20,
-                "population": 100,
-                "seeds": [2, 3, 4],
-                "cells": 9,
-                "grid_size": 9,
-                "reach_series": [0.06, 1.0],
-                "occupied_series": [1, 9],
-                "quality_series": [0.49, 0.56],
-                "dissimilarity_series": [0.76, 0.67],
-                "synopsis_ok": 9,
-                "selected": 0,
-                "story_ok": 0,
-                "engine_hash": "b7f7c2d06d2d",
-                "archive_mtime": 1757000000.0,
-                "target_ending": "solved",
-                "truths": "甲/乙/丙",
-            }
-        )
-        reach = markup[markup.index("到達率") :]
-        reach = reach[: reach.index("</span>")]
-        self.assertNotIn("grade-", reach)
-
     def test_metric_labels_carry_help_text(self) -> None:
         # Every metric name is explained on hover; the text lives in one place.
         for key in (
