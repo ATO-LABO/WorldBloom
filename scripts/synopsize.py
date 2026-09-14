@@ -26,18 +26,14 @@ from gapengine.synopsis import (
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            value,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    from execution.provenance import write_bytes
+    raw = json.dumps(value, ensure_ascii=False, sort_keys=True,
+                     separators=(",", ":")) + "\n"
+    import os
+    import uuid
+    temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
+    write_bytes(temporary, raw.encode("utf-8"))
+    os.replace(temporary, path)
 
 
 def _safe_cell_name(cell: str) -> str:
@@ -72,6 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=ROOT / "settings.json",
     )
+    parser.add_argument("--cells", nargs="+", help="Only update these archive cell keys; preserve other entries.")
     parser.add_argument("--timeout", type=int, default=600)
     return parser
 
@@ -91,11 +88,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     archive = Archive.load(archive_path)
 
+    selected = None if args.cells is None else set(args.cells)
+    available = {"|".join(cell) for cell in archive.cells}
+    if selected is not None and selected - available:
+        raise ValueError("requested cells are not present in archive")
     entries: list[dict[str, Any]] = []
+    if selected is not None and output_path.exists():
+        previous = json.loads(output_path.read_text(encoding="utf-8"))
+        if not isinstance(previous, dict) or not isinstance(previous.get("entries"), list):
+            raise ValueError("existing synopses are invalid")
+        if previous.get("archive") != archive_path.as_posix():
+            raise ValueError("existing synopses belong to another archive")
+        entries = [entry for entry in previous["entries"] if entry.get("cell") not in selected]
+    payload = {"archive": archive_path.as_posix(), "backend": args.backend,
+               "entries": entries, "world": world_meta["name"]}
     reported_warnings: set[str] = set()
 
     for cell in sorted(archive.cells):
         cell_key = "|".join(cell)
+        if selected is not None and cell_key not in selected:
+            continue
         elite = archive.cells[cell]
         elite_payload = elite.to_dict()
         elite_payload["cell"] = cell_key
@@ -155,6 +167,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
         entries.append(entry)
+        entries.sort(key=lambda item: item["cell"])
+        _write_json(output_path, payload)
 
     payload = {
         "archive": archive_path.as_posix(),

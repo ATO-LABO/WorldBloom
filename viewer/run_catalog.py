@@ -315,7 +315,7 @@ class RunCatalog:
         records = {j["run_id"]: {"schema_version": 1, "run_id": j["run_id"],
             "experiment_name": j["run_id"], "legacy": False, "state": j["state"],
             "phase": j.get("phase"), "job_id": j["job_id"], "config_id": j.get("config_id"),
-            "publication_revision": j.get("publication_revision"), "settings": None} for j in jobs}
+            "publication_revision": j.get("publication_revision"), "settings": None} for j in jobs if j.get("kind", "evolve") == "evolve"}
         for root in sorted(self.runs.iterdir()):
             # prepare_run publishes .pending-* only after sealing the final run ID.
             # Until then, preparation/failure belongs to the job ledger, not this scan.

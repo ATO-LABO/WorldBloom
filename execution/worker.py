@@ -26,6 +26,7 @@ def kernel():
         raise OSError("Windows process containment is required")
     api = ctypes.WinDLL("kernel32", use_last_error=True)
     signatures = {
+        "OpenJobObjectW": (wt.HANDLE, [wt.DWORD, wt.BOOL, wt.LPCWSTR]),
         "OpenProcess": (wt.HANDLE, [wt.DWORD, wt.BOOL, wt.DWORD]),
         "CloseHandle": (wt.BOOL, [wt.HANDLE]),
         "GetProcessTimes": (wt.BOOL, [wt.HANDLE] + [ctypes.POINTER(wt.FILETIME)] * 4),
@@ -121,9 +122,9 @@ class BasicAccounting(ctypes.Structure):
 
 
 class ProcessTree:
-    def __init__(self, *, include_self=False):
+    def __init__(self, *, include_self=False, name=None):
         self.api = kernel()
-        self.handle = self.api.CreateJobObjectW(None, None)
+        self.handle = self.api.CreateJobObjectW(None, name)
         if not self.handle:
             raise ctypes.WinError(ctypes.get_last_error())
         limits = ExtendedLimits()
@@ -136,20 +137,21 @@ class ProcessTree:
             self.close()
             raise ctypes.WinError(ctypes.get_last_error())
 
-    def launch(self, argv, cwd):
+    def launch(self, argv, cwd, *, capture=False):
         # The fixed script cannot run (or spawn its children) before assignment.
         gate = ("import sys,runpy; p=sys.argv[1]; sys.argv=sys.argv[1:]; "
                 "token=sys.stdin.buffer.read(1); "
                 "sys.exit(125) if token!=b'1' else None; runpy.run_path(p,run_name='__main__')")
         child = subprocess.Popen([argv[0], "-I", "-B", "-c", gate, *argv[3:]],
-                                 cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                 cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         try:
             if not self.api.AssignProcessToJobObject(self.handle, int(child._handle)):
                 raise ctypes.WinError(ctypes.get_last_error())
             child.stdin.write(b"1")
             child.stdin.flush()
-            child.stdin.close()
+            if not capture:
+                child.stdin.close()
             return child
         except BaseException:
             child.kill()
@@ -180,6 +182,42 @@ class ProcessTree:
         if self.handle:
             self.api.CloseHandle(self.handle)
             self.handle = None
+
+
+def output_tree_stopped(job):
+    """Query the named lifetime group, including descendants after owner death."""
+    if not job.get("output_id"):
+        return True
+    api = kernel()
+    handle = api.OpenJobObjectW(4, False, "Local\\WorldBloom-" + job["nonce"])
+    if not handle:
+        return ctypes.get_last_error() == 2
+    try:
+        accounting = BasicAccounting()
+        if not api.QueryInformationJobObject(handle, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None):
+            return False
+        return accounting.active == 0
+    finally:
+        api.CloseHandle(handle)
+
+
+def finish_output(args, job, *, stopped=None, limit_hit=False):
+    # Called only after the owned execution tree is drained. This path performs
+    # receipt recovery only, and has no generation or credential resolution call.
+    output_root = Path(args.control) / "outputs" / job["output_id"]
+    if not output_root.is_dir():
+        return {}
+    # Recovery consumes the same frozen code as generation, even if the source
+    # checkout was edited while the job ran.
+    sys.path.insert(0, str(output_root / "runtime"))
+    from execution.output_store import OutputStore
+    from execution.generation import aggregate
+    outputs = OutputStore(args.control)
+    payload = outputs.recover(job["output_id"], owner_stopped=True,
+                              stopped=stopped or ("limit" if limit_hit else "interrupted"))
+    summary = aggregate(payload["entries"], stopped=stopped)
+    return {**summary, "progress": {"completed": len(payload["entries"]),
+        "total": len(payload["entries"]), "counts": summary["counts"]}}
 
 
 def read(path):
@@ -248,10 +286,15 @@ def prepare(args, job, folder):
         from execution.configs import ConfigStore
         configs = ConfigStore(args.repo, args.control, args.runs)
         request = read(folder / "request.json")
-        if request["kind"] != "evolve":
-            raise ValueError("handler unavailable")
-        manifest = configs.prepare_run(request["config_id"], run_id=job["run_id"], job_id=args.job)
-        configs.verify_run(job["run_id"])
+        if request["kind"] in ("synopsize", "narrate"):
+            from execution.output_requests import prepare as prepare_output
+            raw = (folder / "output-plan.json").read_bytes()
+            if hashlib.sha256(raw).hexdigest() != job["output_plan_sha256"]:
+                raise ValueError("output plan changed")
+            manifest = prepare_output(configs, job, json.loads(raw))
+        else:
+            manifest = configs.prepare_run(request["config_id"], run_id=job["run_id"], job_id=args.job)
+            configs.verify_run(job["run_id"])
         atomic(folder / "prepared.json", manifest)
         return 0
     except BaseException:
@@ -302,7 +345,8 @@ def main(argv=None):
         # Keep this outer handle until process exit. It contains the supervisor
         # and preparation subprocesses (including git), not just the GA child.
         # The inner tree can be closed before the terminal state is persisted.
-        lifetime_tree = ProcessTree(include_self=True)
+        lifetime_tree = ProcessTree(include_self=True,
+            name="Local\\WorldBloom-" + args.nonce if job.get("output_id") else None)
         tree = ProcessTree()
         identity = process_identity(os.getpid())
         receipt = {"nonce": args.nonce, "identity": identity, "entrypoint": str(entry),
@@ -328,29 +372,45 @@ def main(argv=None):
         cancelled = job.get("cancel_requested_at") is not None
         if cancelled or limit_hit or child.returncode:
             state = "cancelled" if cancelled else "failed"
-            change(jobs, folder, args.nonce, state=state, exit_code=child.returncode,
+            summary = finish_output(args, job, stopped="cancelled" if cancelled else "interrupted") if job.get("output_id") else {}
+            summary.pop("state", None)
+            change(jobs, folder, args.nonce, state=state, exit_code=child.returncode, **summary,
                    error=None if cancelled else {"code":"wall_timeout" if limit_hit else "preparation_failed"},
                    finished_at=time.time(), heartbeat=time.time())
             return 0 if cancelled else 1
         manifest = read(folder / "prepared.json")
         tree = ProcessTree()
-        run_root = Path(args.runs) / job["run_id"]
-        adapter = run_root / "runtime/execution/evolution_worker.py"
-        launch_argv = ([manifest["argv"][0], "-I", "-B", str(adapter), "--run", str(run_root),
-                        "--control", args.control, "--job", args.job]
-                       if adapter.is_file() else manifest["argv"])
+        if job.get("output_id"):
+            run_root = Path(args.control) / "outputs" / job["output_id"]
+            launch_argv = manifest["argv"]
+            handler = "output_worker"
+            phase = "generating"
+        else:
+            run_root = Path(args.runs) / job["run_id"]
+            adapter = run_root / "runtime/execution/evolution_worker.py"
+            launch_argv = ([manifest["argv"][0], "-I", "-B", str(adapter), "--run", str(run_root),
+                            "--control", args.control, "--job", args.job]
+                           if adapter.is_file() else manifest["argv"])
+            handler = "evolution_worker" if adapter.is_file() else "legacy_evolve_cli"
+            phase = "evaluating"
         atomic(folder / "launch.json", {"schema_version":1, "job_id":args.job,
                "run_id":job["run_id"], "argv":launch_argv,
-               "runtime_manifest_sha256":manifest["runtime_manifest_sha256"],
-               "handler":"evolution_worker" if adapter.is_file() else "legacy_evolve_cli"})
+               "runtime_manifest_sha256":manifest["runtime_manifest_sha256"], "handler":handler})
         child = tree.launch(launch_argv, run_root)
-        change(jobs, folder, args.nonce, phase="evaluating", child_identity=process_identity(child.pid))
+        change(jobs, folder, args.nonce, phase=phase, child_identity=process_identity(child.pid))
         job, limit_hit = watch(child, tree, jobs, folder, args.nonce, deadline)
         tree = None
         cancelled = job.get("cancel_requested_at") is not None
         state = "cancelled" if cancelled else "failed" if limit_hit or child.returncode else "succeeded"
-        change(jobs, folder, args.nonce, state=state, exit_code=child.returncode,
-               error={"code":"wall_timeout" if limit_hit else "process_failed"} if state == "failed" else None,
+        summary = {}
+        if job.get("output_id"):
+            summary = finish_output(args, job, stopped="cancelled" if cancelled else None, limit_hit=limit_hit)
+            if not summary:
+                raise ValueError("output result missing")
+            # The entry set decides the state (contract §14); a limit that left every entry ok is not an error.
+            state = summary.pop("state")
+        change(jobs, folder, args.nonce, state=state, exit_code=child.returncode, **summary,
+               error={"code":"wall_timeout"} if limit_hit and not cancelled and state != "succeeded" else ({"code":"process_failed"} if state == "failed" else None),
                finished_at=time.time(), heartbeat=time.time())
         return 0
     except BaseException as error:
@@ -362,7 +422,13 @@ def main(argv=None):
             except subprocess.TimeoutExpired:
                 pass
         try:
-            change(jobs, folder, args.nonce, state="failed", error={"code":"worker_failed", "exception_type":type(error).__name__}, finished_at=time.time())
+            latest = read_job(jobs, folder)
+            summary = finish_output(args, latest, stopped="cancelled" if latest.get("cancel_requested_at") else None) if latest.get("output_id") else {}
+            final_state = summary.pop("state", "failed")
+            if final_state == "succeeded":
+                final_state = "failed"
+            change(jobs, folder, args.nonce, state=final_state, **summary,
+                error={"code":"worker_failed", "exception_type":type(error).__name__}, finished_at=time.time())
         except BaseException:
             pass
         return 1
