@@ -244,31 +244,12 @@ def _goal_text(subject: Mapping[str, Any] | None) -> str:
 
 
 def world_summary(
-    world_yaml: Mapping[str, Any],
     subjects: Sequence[Mapping[str, Any]],
     *,
     protagonist: str | None,
     antagonist: str | None,
 ) -> str:
-    """Render the <dl> of read-only setting highlights above the graph."""
-
-    time_info = _mapping(world_yaml.get("time"))
-    days = time_info.get("days")
-    slots = time_info.get("slots")
-    if days and isinstance(slots, list) and slots:
-        period = f"{days}日 × {'/'.join(str(slot) for slot in slots)}"
-    else:
-        period = "—"
-
-    zone_text = []
-    for zone in world_yaml.get("zones") or []:
-        zone = _mapping(zone)
-        name = zone.get("name")
-        if not name:
-            continue
-        note = zone.get("note")
-        zone_text.append(f"{name}（{note}）" if note else str(name))
-    places = "、".join(zone_text) if zone_text else "—"
+    """Render the <dl> of protagonist/antagonist goals above the graph."""
 
     by_id = {str(subject.get("id")): subject for subject in subjects if subject.get("id")}
     protagonist_goal = _goal_text(by_id.get(protagonist) if protagonist else None)
@@ -276,9 +257,177 @@ def world_summary(
 
     return (
         '<dl class="world-summary">'
-        f"<dt>期間</dt><dd>{html.escape(period)}</dd>"
-        f"<dt>場所</dt><dd>{html.escape(places)}</dd>"
         f"<dt>主人公の目的</dt><dd>{html.escape(protagonist_goal)}</dd>"
         f"<dt>敵役の目的</dt><dd>{html.escape(antagonist_goal)}</dd>"
         "</dl>"
     )
+
+
+def zone_list_html(zones: Sequence[Mapping[str, Any]]) -> str:
+    """Render the plain name/note list of a world's zones."""
+
+    rows = []
+    for zone in zones or []:
+        zone = _mapping(zone)
+        name = zone.get("name")
+        if not name:
+            continue
+        note = zone.get("note")
+        rows.append(
+            f"<dt>{html.escape(str(name))}</dt><dd>{_esc(note)}</dd>"
+        )
+    if not rows:
+        return '<p class="muted">場所がありません。</p>'
+    return '<dl class="zone-list">' + "".join(rows) + "</dl>"
+
+
+def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> str:
+    """Render the zones and their `routes` adjacency as a relation-style graph.
+
+    Same circular layout and edge-dedup approach as relation_svg, but edges
+    carry no affinity -- a route either exists or it doesn't -- so every
+    edge is drawn the same way, with the hop's cost/requires_item (if any)
+    surfaced only in the hover title.
+    """
+
+    names = list(dict.fromkeys(
+        str(zone["name"]) for zone in zones if _mapping(zone).get("name")
+    ))
+    if not names:
+        return '<p class="muted">場所がありません。</p>'
+    name_set = set(names)
+
+    center_x, center_y, radius = 320.0, 200.0, 150.0
+    positions: dict[str, tuple[float, float]] = {}
+    count = len(names)
+    for index, name in enumerate(names):
+        if count == 1:
+            positions[name] = (center_x, center_y)
+            continue
+        angle = math.radians(-90.0 + 360.0 * index / count)
+        positions[name] = (
+            center_x + radius * math.cos(angle),
+            center_y + radius * math.sin(angle),
+        )
+
+    edges: dict[tuple[str, str], list[str]] = {}
+    for origin, hops in _mapping(routes).items():
+        origin = str(origin)
+        if origin not in name_set:
+            continue
+        for hop in hops or []:
+            hop = _mapping(hop)
+            target = str(hop.get("to"))
+            if target == origin or target not in name_set:
+                continue
+            detail = []
+            cost = hop.get("cost")
+            if cost is not None:
+                detail.append(f"移動コスト {cost}")
+            requires = hop.get("requires_item")
+            if requires:
+                detail.append(f"要: {requires}")
+            suffix = f"（{'・'.join(detail)}）" if detail else ""
+            pair = tuple(sorted((origin, target)))
+            edges.setdefault(pair, []).append(f"{origin}→{target}{suffix}")
+
+    edge_markup = []
+    for pair in sorted(edges):
+        (x1, y1), (x2, y2) = positions[pair[0]], positions[pair[1]]
+        title = " / ".join(edges[pair])
+        edge_markup.append(
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+            f'stroke="{_NEUTRAL}" stroke-width="2.0">'
+            f'<title>{html.escape(title)}</title></line>'
+        )
+
+    node_markup = []
+    for name in names:
+        x, y = positions[name]
+        node_markup.append(
+            '<g class="node">'
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="22" fill="{_DEFAULT_FILL}" '
+            f'stroke="{_DEFAULT_STROKE}"/>'
+            f'<text x="{x:.1f}" y="{y + 36:.1f}" text-anchor="middle">'
+            f"{html.escape(name)}</text></g>"
+        )
+
+    return (
+        '<svg class="relation-graph zone-graph" viewBox="0 0 640 400" '
+        'role="img" aria-label="場所のつながり">'
+        + "".join(edge_markup)
+        + "".join(node_markup)
+        + "</svg>"
+    )
+
+
+_SLOT_PALETTE = ("#c9a24a", "#2e6b4f", "#a86f1c", "#1d4a36", "#8c3030", "#66716d")
+
+
+def day_cycle_svg(slots: Sequence[Any]) -> str:
+    """Render one day's time slots as a ring, one wedge per slot in order.
+
+    Built with stroke-dasharray/-dashoffset on stacked concentric circles
+    (the standard zero-path-math donut-chart trick) instead of manual arc
+    paths, so it stays correct for any slot count without large-arc-flag
+    edge cases.
+    """
+
+    names = [str(slot) for slot in slots if str(slot)]
+    if not names:
+        return '<p class="muted">時間帯がありません。</p>'
+
+    center, radius = 120.0, 86.0
+    circumference = 2 * math.pi * radius
+    share = circumference / len(names)
+
+    segments = []
+    labels = []
+    for index, name in enumerate(names):
+        color = _SLOT_PALETTE[index % len(_SLOT_PALETTE)]
+        offset = share * index
+        segments.append(
+            f'<circle cx="{center}" cy="{center}" r="{radius}" fill="none" '
+            f'stroke="{color}" stroke-width="34" '
+            f'stroke-dasharray="{share:.2f} {circumference - share:.2f}" '
+            f'stroke-dashoffset="{-offset:.2f}"><title>{html.escape(name)}</title></circle>'
+        )
+        angle = math.radians(-90.0 + 360.0 * (index + 0.5) / len(names))
+        label_x = center + (radius + 34) * math.cos(angle)
+        label_y = center + (radius + 34) * math.sin(angle)
+        labels.append(
+            f'<text x="{label_x:.1f}" y="{label_y:.1f}" text-anchor="middle" '
+            f'dominant-baseline="middle">{html.escape(name)}</text>'
+        )
+
+    return (
+        '<svg class="day-cycle" viewBox="0 0 240 240" role="img" '
+        'aria-label="1日の時間帯の分け方">'
+        f'<g transform="rotate(-90 {center} {center})">' + "".join(segments) + "</g>"
+        + "".join(labels)
+        + "</svg>"
+    )
+
+
+_MAX_CALENDAR_DAYS = 366
+
+
+def calendar_grid_html(days: Any) -> str:
+    """Render a calendar-style grid of day cells, "1".."days" in order.
+
+    world.yaml's `time.days` is user-editable through this app's own file
+    editor, so a typo (e.g. an extra zero) must not blow up the DOM -- past
+    _MAX_CALENDAR_DAYS this falls back to plain text instead of one cell per
+    day.
+    """
+
+    count = int(_number(days))
+    if count <= 0:
+        return '<p class="muted">期間がありません。</p>'
+    if count > _MAX_CALENDAR_DAYS:
+        return f'<p class="muted">{count}日間（グリッド表示は{_MAX_CALENDAR_DAYS}日までです）。</p>'
+    cells = "".join(
+        f'<div class="calendar-day"><span>{day}</span></div>'
+        for day in range(1, count + 1)
+    )
+    return f'<div class="calendar-grid" role="img" aria-label="{count}日間の日程">{cells}</div>'

@@ -223,6 +223,19 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('id="experiments"', body)
         self.assertIn('<details class="editor-group">', body)
 
+    def test_world_detail_page_has_four_tabs(self):
+        # Regression guard for the world/genre/count/period tab split
+        # (WB-UI-017): checks the tab wiring itself, not just that each
+        # panel's content is present somewhere in the flat HTML.
+        status, body = self.get("/worlds/momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body.count('class="tab-input"'), 4)
+        for index, label in enumerate(["概要", "登場人物", "場所", "期間"]):
+            self.assertIn(f'<label class="tab-label" for="tab-world-{index}">{label}</label>', body)
+        self.assertIn('class="relation-graph zone-graph"', body)
+        self.assertIn('class="day-cycle"', body)
+        self.assertIn('class="calendar-grid"', body)
+
     def test_genre_detail_page(self):
         status, body = self.get("/genres/momotaro")
         self.assertEqual(status, 200, body)

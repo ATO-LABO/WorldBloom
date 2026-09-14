@@ -49,19 +49,70 @@ class WorldGraphTests(unittest.TestCase):
         # drop the self-reference and show only the other three.
         self.assertIn("猿、犬、キジ", table)
 
-    def test_world_summary_reports_period_places_and_goals(self) -> None:
-        import yaml
-
-        world_yaml = yaml.safe_load((MOMOTARO / "world.yaml").read_text(encoding="utf-8"))
+    def test_world_summary_reports_goals_only(self) -> None:
         summary = world_graph.world_summary(
-            world_yaml, self.subjects, protagonist="桃太郎", antagonist="鬼",
+            self.subjects, protagonist="桃太郎", antagonist="鬼",
         )
         self.assertIn('<dl class="world-summary">', summary)
-        self.assertIn("16日", summary)
-        self.assertIn("村", summary)
         self.assertIn("鬼ヶ島の宝物", summary)
         self.assertIn("→ 村へ", summary)
         self.assertIn("障害: 鬼", summary)
+        # period/places moved to zone_svg/day_cycle_svg/calendar_grid_html.
+        self.assertNotIn("16日", summary)
+        self.assertNotIn("<dt>場所</dt>", summary)
+
+    def test_zone_list_html_reports_name_and_note(self) -> None:
+        world_yaml = self._world_yaml()
+        listing = world_graph.zone_list_html(world_yaml["zones"])
+        self.assertIn("鬼ヶ島", listing)
+        self.assertIn("鬼が宝物を守る固定の島", listing)
+
+    def test_zone_svg_structure(self) -> None:
+        world_yaml = self._world_yaml()
+        svg = world_graph.zone_svg(world_yaml["zones"], world_yaml["routes"])
+        self.assertIn('<svg class="relation-graph zone-graph"', svg)
+        self.assertEqual(svg.count('class="node'), 5)
+        # 海<->鬼ヶ島 is the only routed pair carrying a cost/requires_item.
+        self.assertIn("要: 船", svg)
+
+    def test_zone_svg_is_deterministic(self) -> None:
+        world_yaml = self._world_yaml()
+        first = world_graph.zone_svg(world_yaml["zones"], world_yaml["routes"])
+        second = world_graph.zone_svg(world_yaml["zones"], world_yaml["routes"])
+        self.assertEqual(first, second)
+
+    def test_zone_svg_empty_zones(self) -> None:
+        self.assertIn("場所がありません", world_graph.zone_svg([], {}))
+
+    def test_day_cycle_svg_has_one_wedge_per_slot(self) -> None:
+        svg = world_graph.day_cycle_svg(["朝", "昼", "夕方", "夜"])
+        self.assertIn('<svg class="day-cycle"', svg)
+        self.assertEqual(svg.count("<circle"), 4)
+        self.assertIn("夕方", svg)
+
+    def test_day_cycle_svg_empty_slots(self) -> None:
+        self.assertIn("時間帯がありません", world_graph.day_cycle_svg([]))
+
+    def test_calendar_grid_html_has_one_cell_per_day(self) -> None:
+        grid = world_graph.calendar_grid_html(8)
+        self.assertEqual(grid.count("calendar-day"), 8)
+        self.assertIn(">8<", grid)
+
+    def test_calendar_grid_html_caps_absurd_day_counts(self) -> None:
+        # world.yaml's time.days is user-editable via this app's own file
+        # editor -- a typo'd extra zero must not render one div per day.
+        grid = world_graph.calendar_grid_html(100000)
+        self.assertNotIn("calendar-day", grid)
+        self.assertIn("100000", grid)
+
+    def test_calendar_grid_html_zero_days(self) -> None:
+        self.assertIn("期間がありません", world_graph.calendar_grid_html(0))
+
+    @staticmethod
+    def _world_yaml():
+        import yaml
+
+        return yaml.safe_load((MOMOTARO / "world.yaml").read_text(encoding="utf-8"))
 
 
 class CharacterTableEscapeTests(unittest.TestCase):
