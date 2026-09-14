@@ -317,10 +317,7 @@ def render_configs_list(configs):
         )
     # No .next-cta class here: the page-level next_action (set by the caller,
     # WB-UI-012 §2.2's "/configs" row) already is this same link.
-    return (
-        '<section class="card"><h2>実行設定</h2>' + table + "</section>"
-        + pages.glossary(("config_id", "genre"))
-    )
+    return '<section class="card"><h2>実行設定</h2>' + table + "</section>"
 
 
 def render_config_detail(config):
@@ -1036,8 +1033,11 @@ def _configs_list(handler):
     from execution.library import LibraryStore
     from viewer import library_pages  # deferred: library_pages imports this module
     configs = job_store.configs.list()
-    body = render_configs_list(configs) + library_pages.render_genres_section(
-        LibraryStore(job_store.configs.repo).genres())
+    body = (
+        render_configs_list(configs)
+        + library_pages.render_genres_section(LibraryStore(job_store.configs.repo).genres())
+        + pages.glossary(("config_id", "genre"))
+    )
     handler._send_html(pages.document(
         "設定", body,
         crumbs=[("設定", "/configs")], phase="world",
