@@ -428,18 +428,25 @@ def pinned_target(
     *,
     configs: Sequence[Mapping[str, Any]] | None = None,
     jobs: Sequence[Mapping[str, Any]] | None = None,
+    world_id: str | None = None,
 ) -> dict[str, Any] | None:
     """The one world the tool is currently about, plus that world's latest run.
 
     JobStore.submit() refuses a new job while any job is non-terminal, so at
     most one job runs at a time: its config's world is the pin. With nothing
     running, the most recently created config names the world (so /jobs can
-    say what would be processed before the first run). The run is the most
-    recent finished evolve job of that world -- an evolve job's run_id is also
-    its experiment folder name, so one value serves both /exp/<run> and
-    /outputs?run=<run>. Legacy runs (no job) never become the pinned run.
-    `configs`/`jobs` may be passed in by a caller that already listed them.
-    Returns None without --control or when no config exists.
+    say what would be processed before the first run) -- unless `world_id` is
+    given (the caller already knows which world they're asking about, e.g. a
+    per-world page's own "run" tab), in which case only that world's own
+    configs are considered, and None comes back if it has none: an idle
+    world with no config of its own must never borrow a different world's
+    "about to run" card just because that other world's config is newer. The
+    run is the most recent finished
+    evolve job of that world -- an evolve job's run_id is also its experiment
+    folder name, so one value serves both /exp/<run> and /outputs?run=<run>.
+    Legacy runs (no job) never become the pinned run. `configs`/`jobs` may be
+    passed in by a caller that already listed them. Returns None without
+    --control or when no config exists.
     """
     if job_store is None:
         return None
@@ -459,7 +466,12 @@ def pinned_target(
     if running is not None:
         config = configs_by_id[running["config_id"]]
     elif configs:
-        config = max(configs, key=lambda c: c["created_at"])
+        candidates = configs
+        if world_id is not None:
+            candidates = [c for c in configs if c["project_id"] == world_id]
+            if not candidates:
+                return None
+        config = max(candidates, key=lambda c: c["created_at"])
     else:
         return None
     world_id = config["project_id"]

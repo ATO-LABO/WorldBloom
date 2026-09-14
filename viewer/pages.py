@@ -46,7 +46,13 @@ def _phase_href(
         return "/"
     if key == "run":
         job_id = phases.get("job_id") if phases else None
-        return f"/jobs/{_url_segment(str(job_id))}" if job_id else "/jobs"
+        if job_id:
+            return f"/jobs/{_url_segment(str(job_id))}"
+        # Carry the world you're viewing along, so /jobs shows *its* target
+        # instead of falling back to whichever world's config is newest.
+        if world and world.get("id"):
+            return f"/jobs?world={_url_segment(str(world['id']))}"
+        return "/jobs"
     if key == "sifting":
         return f"/exp/{_url_segment(run)}" if run else "/selected"
     if key == "stage":
