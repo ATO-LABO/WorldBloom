@@ -1972,3 +1972,231 @@ details {
     grid-template-columns: 1fr;
   }
 }
+
+/* WB-UI-019: sectioned run-config form. */
+
+.cfg-form {
+  max-width: 880px;
+}
+
+.cfg-sec {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.75rem 2.5rem;
+  grid-template-columns: 200px minmax(0, 1fr);
+  padding: 1.5rem 0;
+}
+
+.cfg-sec-head h2 {
+  font-size: 1rem;
+  margin: 0 0 0.3rem;
+}
+
+.cfg-sec-head .desc {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.cfg-form .rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.cfg-form .cols {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.cfg-form .field > label,
+.cfg-form .field-label {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.cfg-form .key {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  margin-left: 0.4rem;
+}
+
+.cfg-form .hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.cfg-form input[type="text"],
+.cfg-form input[type="number"],
+.cfg-form select {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 0.5rem 0.65rem;
+  width: 100%;
+}
+
+.cfg-form input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  display: flex;
+}
+
+.unit input[type="number"] {
+  border-radius: var(--radius-s) 0 0 var(--radius-s);
+  text-align: right;
+}
+
+.unit span {
+  align-items: center;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  color: var(--accent-dark);
+  display: flex;
+  font-size: 0.85rem;
+  padding: 0 0.6rem;
+  white-space: nowrap;
+}
+
+.calc {
+  background: var(--accent-soft);
+  border-radius: var(--radius-s);
+  color: var(--accent-dark);
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+}
+
+.calc b {
+  font-variant-numeric: tabular-nums;
+}
+
+.choices {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.choice,
+.toggle {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  display: grid;
+  gap: 0.15rem 0.6rem;
+  grid-template-columns: auto 1fr;
+  padding: 0.65rem 0.8rem;
+}
+
+.choice:has(:checked),
+.toggle:has(:checked) {
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.choice input,
+.toggle input {
+  accent-color: var(--accent);
+  grid-row: span 2;
+  margin: 0.25rem 0 0;
+}
+
+.choice b,
+.toggle b {
+  font-size: 0.9rem;
+}
+
+.choice small,
+.toggle small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+details.cfg-adv {
+  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 1rem 0 0.5rem;
+}
+
+details.cfg-adv > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+details.cfg-adv > summary small {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+  margin-left: 0.5rem;
+}
+
+details.cfg-adv .cfg-sec {
+  border-top: 0;
+  padding: 1rem 0 0.5rem;
+}
+
+details.cfg-adv .cfg-sec h2 {
+  font-size: 0.9rem;
+}
+
+.form-actions {
+  align-items: center;
+  backdrop-filter: blur(6px);
+  background: rgba(255, 253, 248, 0.94);
+  border-top: 1px solid var(--line);
+  bottom: 0;
+  box-shadow: 0 -8px 28px rgba(34, 45, 43, 0.06);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  left: 0;
+  padding: 0.75rem 1.25rem;
+  position: fixed;
+  right: 0;
+  z-index: 4;
+}
+
+.form-summary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-right: auto;
+}
+
+.form-summary b {
+  color: var(--text);
+}
+
+.cfg-form .button-primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+}
+
+@media (max-width: 720px) {
+  .cfg-sec {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+}

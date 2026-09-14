@@ -148,53 +148,119 @@ def _job_store(handler):
 # Configuration form fields
 # --------------------------------------------------------------------------
 
-def _text_field(label, name, value, *, required=False):
+def _field_key(name):
+    """Internal name shown next to a field's Japanese label (mono, lower).
+
+    Strips the leading "evolution."/"generation." namespace prefix (kept for
+    execution_limits.* and bare names like "label") so the key matches what a
+    config JSON author would actually type under evolution:/generation:.
+    """
+    for prefix in ("evolution.", "generation."):
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return name
+
+
+def _key_span(name):
+    return f' <span class="key">{_escape(_field_key(name))}</span>'
+
+
+def _hint_html(hint):
+    return f'<p class="hint">{_escape(hint)}</p>' if hint else ""
+
+
+def _text_field(label, name, value, *, required=False, placeholder="", hint=""):
     req = " required" if required else ""
+    ph = f' placeholder="{_escape(placeholder)}"' if placeholder else ""
     return (
         '<div class="field">'
-        f'<label for="f-{_escape(name)}">{_escape(label)}</label>'
+        f'<label for="f-{_escape(name)}">{_escape(label)}{_key_span(name)}</label>'
         f'<input id="f-{_escape(name)}" type="text" name="{_escape(name)}" '
-        f'data-field="{_escape(name)}" value="{_escape(value)}"{req}>'
+        f'data-field="{_escape(name)}" value="{_escape(value)}"{req}{ph}>'
         f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        f'{_hint_html(hint)}'
         "</div>"
     )
 
 
-def _number_field(label, name, value):
-    return (
-        '<div class="field">'
-        f'<label for="f-{_escape(name)}">{_escape(label)}</label>'
+def _number_field(label, name, value, *, unit="", min_value=None, hint=""):
+    minattr = f' min="{_escape(min_value)}"' if min_value is not None else ""
+    input_html = (
         f'<input id="f-{_escape(name)}" type="number" step="1" name="{_escape(name)}" '
-        f'data-field="{_escape(name)}" value="{_escape(value)}">'
-        f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
-        "</div>"
+        f'data-field="{_escape(name)}" value="{_escape(value)}"{minattr}>'
     )
-
-
-def _select_field(label, name, options, selected):
-    opts = "".join(
-        f'<option value="{_escape(option)}"{" selected" if option == selected else ""}>{_escape(option)}</option>'
-        for option in options
-    )
+    if unit:
+        input_html = f'<div class="unit">{input_html}<span>{_escape(unit)}</span></div>'
     return (
         '<div class="field">'
-        f'<label for="f-{_escape(name)}">{_escape(label)}</label>'
-        f'<select id="f-{_escape(name)}" name="{_escape(name)}" data-field="{_escape(name)}">{opts}</select>'
+        f'<label for="f-{_escape(name)}">{_escape(label)}{_key_span(name)}</label>'
+        f'{input_html}'
         f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        f'{_hint_html(hint)}'
         "</div>"
     )
 
 
-def _checkbox_field(label, name, checked):
+def _select_field(label, name, options, selected, *, hint="", option_data=None):
+    option_data = option_data or {}
+    opts = []
+    for option in options:
+        extra = "".join(
+            f' data-{_escape(key)}="{_escape(val)}"' for key, val in (option_data.get(option) or {}).items()
+        )
+        sel = " selected" if option == selected else ""
+        opts.append(f'<option value="{_escape(option)}"{sel}{extra}>{_escape(option)}</option>')
+    return (
+        '<div class="field">'
+        f'<label for="f-{_escape(name)}">{_escape(label)}{_key_span(name)}</label>'
+        f'<select id="f-{_escape(name)}" name="{_escape(name)}" data-field="{_escape(name)}">{"".join(opts)}</select>'
+        f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        f'{_hint_html(hint)}'
+        "</div>"
+    )
+
+
+def _checkbox_field(label, name, checked, *, desc=""):
     chk = " checked" if checked else ""
     return (
         '<div class="field">'
-        f'<label for="f-{_escape(name)}">'
+        f'<label class="toggle" for="f-{_escape(name)}">'
         f'<input id="f-{_escape(name)}" type="checkbox" name="{_escape(name)}" '
-        f'data-field="{_escape(name)}"{chk}> {_escape(label)}</label>'
+        f'data-field="{_escape(name)}"{chk}><b>{_escape(label)}</b><small>{_escape(desc)}</small></label>'
         f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
         "</div>"
     )
+
+
+def _radio_field(label, name, options, selected):
+    choices = "".join(
+        '<label class="choice">'
+        f'<input type="radio" id="f-{_escape(name)}-{_escape(value)}" name="{_escape(name)}" '
+        f'value="{_escape(value)}" data-field="{_escape(name)}"{" checked" if value == selected else ""}>'
+        f'<b>{_escape(value)}</b><small>{_escape(desc)}</small></label>'
+        for value, desc in options
+    )
+    return (
+        '<div class="field">'
+        f'<span class="field-label">{_escape(label)}{_key_span(name)}</span>'
+        f'<div class="choices">{choices}</div>'
+        f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        "</div>"
+    )
+
+
+def _section(title, desc, body):
+    return (
+        f'<section class="cfg-sec"><div class="cfg-sec-head"><h2>{_escape(title)}</h2>'
+        f'<p class="desc">{_escape(desc)}</p></div><div class="cfg-sec-body">{body}</div></section>'
+    )
+
+
+def _as_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _initial_values(*, label, project_id, template_id, evolution, execution_limits, generation):
@@ -230,7 +296,7 @@ def _new_config_values():
     )
 
 
-def render_config_form(values, *, projects, templates, backends, parent_config_id=None):
+def render_config_form(values, *, projects, templates, backends, parent_config_id=None, world_genres=None):
     duplicate = parent_config_id is not None
     if duplicate:
         # No data-field here: project_id/template_id are fixed by the parent
@@ -244,44 +310,143 @@ def render_config_form(values, *, projects, templates, backends, parent_config_i
             f'<p class="muted">ジャンル: {_escape(values["template_id"])}（複製元と同じ）</p>'
         )
     else:
-        project_block = _select_field("世界", "project_id", projects, values["project_id"])
-        template_block = _select_field("ジャンル", "template_id", templates, values["template_id"])
-    fields = (
-        _text_field("設定名", "label", values["label"], required=True)
-        + project_block + template_block
-        + _number_field("世代数", "evolution.generations", values["evolution.generations"])
-        + _number_field("個体数", "evolution.population", values["evolution.population"])
-        + _number_field("seed数", "evolution.seeds", values["evolution.seeds"])
-        + _number_field("seed_base", "evolution.seed_base", values["evolution.seed_base"])
-        + _number_field("ga_seed", "evolution.ga_seed", values["evolution.ga_seed"])
-        + _number_field("processes", "evolution.processes", values["evolution.processes"])
-        + _select_field("保存方針", "evolution.keep", ("all", "reached", "exemplar"), values["evolution.keep"])
-        + _checkbox_field("共進化", "evolution.coevolve", values["evolution.coevolve"])
-        + _checkbox_field("メタ進化", "evolution.meta_evolution", values["evolution.meta_evolution"])
-        + _checkbox_field("説明記録", "evolution.record_explanations", values["evolution.record_explanations"])
-        + _text_field("結末（カンマ区切り。空なら世界の既定）", "evolution.target_ending", values["evolution.target_ending"])
-        + _number_field("実行時間上限（秒）", "execution_limits.wall_seconds", values["execution_limits.wall_seconds"])
-        + _select_field("生成方式", "generation.backend", backends, values["generation.backend"])
-        + _text_field("モデル（空なら未指定）", "generation.model", values["generation.model"])
-        + _number_field("max_calls", "generation.limits.max_calls", values["generation.limits.max_calls"])
-        + _number_field("call_timeout_seconds", "generation.limits.call_timeout_seconds",
-                         values["generation.limits.call_timeout_seconds"])
-        + _number_field("生成側 wall_seconds", "generation.limits.wall_seconds",
-                         values["generation.limits.wall_seconds"])
-        + _number_field("max_saved_response_bytes", "generation.limits.max_saved_response_bytes",
-                         values["generation.limits.max_saved_response_bytes"])
+        option_data = {world: {"genre": genre} for world, genre in (world_genres or {}).items() if genre}
+        project_block = _select_field("世界", "project_id", projects, values["project_id"], option_data=option_data)
+        template_block = _select_field(
+            "ジャンル", "template_id", templates, values["template_id"],
+            hint="世界を選ぶと、その世界の既定ジャンルに揃います。",
+        )
+
+    gens = _as_int(values["evolution.generations"])
+    population = _as_int(values["evolution.population"])
+    seeds = _as_int(values["evolution.seeds"])
+    per_gen = population * seeds
+    total = gens * population * seeds
+
+    section1 = _section(
+        "基本", "何の世界を、どの結末に向けて探索するか。",
+        '<div class="rows">'
+        + _text_field("設定名", "label", values["label"], required=True,
+                       placeholder="例: 桃太郎・鬼退治ルート 20世代")
+        + "</div>"
+        + f'<div class="cols">{project_block}{template_block}</div>'
+        + '<div class="rows">'
+        + _text_field(
+            "目指す結末", "evolution.target_ending", values["evolution.target_ending"],
+            placeholder="空なら世界の既定", hint="複数あるときはカンマ区切り。",
+        )
+        + "</div>",
     )
+
+    section2 = _section(
+        "探索の規模",
+        "1 世代 = 個体数 × seed 数のラン。世代を重ねるほど良い経緯が残りますが、時間も比例します。",
+        '<div class="cols">'
+        + _number_field("世代数", "evolution.generations", values["evolution.generations"], unit="世代", min_value=1)
+        + _number_field("個体数", "evolution.population", values["evolution.population"], unit="個体", min_value=1)
+        + _number_field(
+            "seed数", "evolution.seeds", values["evolution.seeds"], unit="通り", min_value=1,
+            hint="同じ遺伝子でも seed が違えば世界の初期条件が変わる。",
+        )
+        + "</div>"
+        + f'<p class="calc" data-calc>1 世代あたり <b data-per-gen>{per_gen:,}</b> ラン、'
+          f'全体で <b data-total>{total:,}</b> ラン。</p>'
+        + _radio_field(
+            "残すラン", "evolution.keep",
+            (
+                ("all", "全ランの層ログを残す。容量は最大。"),
+                ("reached", "結末に届いたランだけ残す（1 本も届かなければ最良個体のランを残す）。既定。"),
+                ("exemplar", "個体ごとに最良の到達ランを 1 本だけ残す。最小。"),
+            ),
+            values["evolution.keep"],
+        ),
+    )
+
+    section3 = _section(
+        "進化の設定", "探索の仕方を切り替えるスイッチ。",
+        '<div class="toggles">'
+        + _checkbox_field(
+            "共進化", "evolution.coevolve", values["evolution.coevolve"],
+            desc="敵役の個体群とアーカイブを別に持ち、主人公側と並行して進化させる。",
+        )
+        + _checkbox_field(
+            "メタ進化", "evolution.meta_evolution", values["evolution.meta_evolution"],
+            desc="9 つのスカラー遺伝子に加えて、ルールごとの有効／無効ビットも進化させる。",
+        )
+        + _checkbox_field(
+            "説明記録", "evolution.record_explanations", values["evolution.record_explanations"],
+            desc="各手番の「選択・根拠・代償・転機」を記録する。上映で使う。",
+        )
+        + "</div>",
+    )
+
+    section4 = _section(
+        "文章生成", "Sifting で経緯を文章にするときの生成先。",
+        '<div class="cols">'
+        + _select_field("生成方式", "generation.backend", backends, values["generation.backend"])
+        + _text_field("モデル", "generation.model", values["generation.model"], placeholder="空なら生成方式の既定")
+        + "</div>",
+    )
+
+    section5a = _section(
+        "乱数と並列", "同じ値なら同じ結果になります（決定論）。",
+        '<div class="cols">'
+        + _number_field("seed の開始値", "evolution.seed_base", values["evolution.seed_base"])
+        + _number_field("GA の乱数種", "evolution.ga_seed", values["evolution.ga_seed"])
+        + _number_field("並列プロセス数", "evolution.processes", values["evolution.processes"], min_value=1)
+        + "</div>",
+    )
+
+    section5b = _section(
+        "時間と回数の上限", "上限に達すると、その時点までの結果で打ち切ります。",
+        '<div class="cols">'
+        + _number_field(
+            "実行全体", "execution_limits.wall_seconds", values["execution_limits.wall_seconds"],
+            unit="秒", min_value=1,
+        )
+        + _number_field(
+            "生成全体", "generation.limits.wall_seconds", values["generation.limits.wall_seconds"],
+            unit="秒", min_value=1,
+        )
+        + _number_field(
+            "生成 1 回", "generation.limits.call_timeout_seconds", values["generation.limits.call_timeout_seconds"],
+            unit="秒", min_value=1,
+        )
+        + "</div>"
+        + '<div class="cols">'
+        + _number_field(
+            "生成の呼び出し回数", "generation.limits.max_calls", values["generation.limits.max_calls"],
+            unit="回", min_value=0,
+        )
+        + _number_field(
+            "応答の保存上限", "generation.limits.max_saved_response_bytes",
+            values["generation.limits.max_saved_response_bytes"], unit="bytes", min_value=0,
+        )
+        + "</div>",
+    )
+
     preview_button = "" if duplicate else '<button type="button" data-action="preview">検証する</button>'
     save_label = "複製として保存" if duplicate else "新しい版として保存"
     parent_attr = f' data-parent="{_escape(parent_config_id)}"' if duplicate else ""
+    summary = (
+        f'<b>{_escape(values["project_id"])}</b> × {_escape(values["template_id"])} ・ '
+        f'{gens} 世代 × {population} 個体 × {seeds} seed'
+    )
     return (
-        f'<form data-wb="config-form"{parent_attr}>'
+        f'<form data-wb="config-form"{parent_attr} class="cfg-form">'
         '<p class="form-error" data-form-error role="alert"></p>'
-        f'<div class="form-grid">{fields}</div>'
-        f"{preview_button}"
-        f'<button type="submit">{_escape(save_label)}</button>'
-        '<div data-preview></div>'
-        "</form>"
+        + section1 + section2 + section3 + section4
+        + '<details class="cfg-adv"><summary>詳細設定 '
+          '<small>乱数・並列・時間上限。通常は変更不要。</small></summary>'
+        + section5a + section5b
+        + '</details>'
+        + '<div data-preview></div>'
+        + '<div class="form-actions">'
+        + f'<span class="form-summary" data-summary>{summary}</span>'
+        + preview_button
+        + f'<button type="submit" class="button-primary">{_escape(save_label)}</button>'
+        + '</div>'
+        + "</form>"
     )
 
 
@@ -1500,11 +1665,13 @@ def _configs_new(handler):
     if job_store is None:
         handler._send_html(_guidance_page(phase="world"))
         return
+    from execution.library import LibraryStore
     query = _query(handler)
     from_id = query.get("from", [None])[0]
     repo = job_store.configs.repo
     projects = sorted(p.name for p in (repo / "projects").iterdir() if p.is_dir()) if (repo / "projects").is_dir() else []
     templates = sorted(p.name for p in (repo / "templates").iterdir() if p.is_dir()) if (repo / "templates").is_dir() else []
+    world_genres = {w["id"]: w["genre"] for w in LibraryStore(repo).worlds()}
     if from_id is not None:
         parent = job_store.configs.get(from_id)
         values = _initial_values(
@@ -1513,7 +1680,7 @@ def _configs_new(handler):
             generation=parent["generation"],
         )
         body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS,
-                                   parent_config_id=from_id)
+                                   parent_config_id=from_id, world_genres=world_genres)
         title = "実行設定を複製"
     else:
         values = _new_config_values()
@@ -1526,15 +1693,15 @@ def _configs_new(handler):
         elif project_preset in projects:
             # No explicit ?template=: default to the preset world's own genre
             # (execution/library.py's world.yaml gapengine.* resolution).
-            from execution.library import LibraryStore
-            world = next((w for w in LibraryStore(repo).worlds() if w["id"] == project_preset), None)
-            if world and world["genre"] in templates:
-                values["template_id"] = world["genre"]
-        body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS)
+            genre = world_genres.get(project_preset)
+            if genre in templates:
+                values["template_id"] = genre
+        body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS,
+                                   world_genres=world_genres)
         title = "新しい実行設定"
     handler._send_html(pages.document(
         title, body, crumbs=[("実行設定", "/configs"), (title, "/configs/new")], phase="world",
-        lead="新しい実行設定を作り、GAの実行に使います。",
+        lead="世界とジャンルを決め、どのくらいの規模で経緯を探索するかを指定します。ふだん触るのは上の 4 つの区画だけです。",
         job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
