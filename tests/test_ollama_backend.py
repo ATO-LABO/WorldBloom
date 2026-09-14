@@ -243,5 +243,73 @@ class ConfigsAvailabilityTests(unittest.TestCase):
         self.assertNotIn("error", result)
 
 
+class UiGenerationPathTests(unittest.TestCase):
+    """execution.generation: preflight, transport and validate_response for ollama."""
+
+    def _request(self, credentials=None):
+        return {"backend": "ollama", "model": "qwen3.5:9b-q4_K_M", "prompt": "prompt",
+                "credentials": credentials if credentials is not None else {},
+                "limits": {"max_saved_response_bytes": 8000, "call_timeout_seconds": 5}}
+
+    def test_preflight_needs_no_api_key(self) -> None:
+        from execution.generation import preflight
+
+        self.assertIsNone(preflight(self._request()))
+
+    def test_transport_posts_to_api_chat_without_auth_header(self) -> None:
+        from execution.generation import transport
+
+        seen = {}
+
+        class Stream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def read(self, n):
+                return b'{"done_reason": "stop", "message": {"content": "x"}}'
+
+        def fake_urlopen(req, timeout):
+            seen["url"] = req.full_url
+            seen["headers"] = dict(req.header_items())
+            seen["body"] = json.loads(req.data.decode("utf-8"))
+            return Stream()
+
+        with mock.patch("execution.generation.urllib.request.urlopen", side_effect=fake_urlopen):
+            response = transport(self._request({"base_url": "http://host:1/"}), None)
+
+        self.assertEqual(seen["url"], "http://host:1/api/chat")
+        self.assertNotIn("Authorization", seen["headers"])
+        self.assertFalse(seen["body"]["think"])
+        self.assertEqual(seen["body"]["model"], "qwen3.5:9b-q4_K_M")
+        self.assertFalse(response.truncated)
+
+    def test_validate_response_accepts_stop_and_rejects_length(self) -> None:
+        from execution.generation import Response, validate_response
+
+        ok = json.dumps({"done_reason": "stop", "message": {"content": "本文"}}).encode("utf-8")
+        self.assertEqual(validate_response("ollama", Response(ok)), "本文")
+        for payload in ({"done_reason": "length", "message": {"content": "x"}},
+                        {"done_reason": "stop", "message": {"content": 1}},
+                        []):
+            with self.assertRaises(ValueError):
+                validate_response("ollama", Response(json.dumps(payload).encode("utf-8")))
+
+    def test_worker_credentials_pass_connection_options_only(self) -> None:
+        from execution.output_worker import credentials
+
+        settings_dir = Path(tempfile.mkdtemp(prefix="worldbloom-ollama-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(settings_dir, ignore_errors=True))
+        path = settings_dir / "settings.json"
+        path.write_text(json.dumps({"output": {"ollama": {
+            "model": "m", "base_url": "http://h:1", "options": {"num_ctx": 8}, "think": False,
+            "extra": "dropped"}}}), encoding="utf-8")
+
+        self.assertEqual(credentials(path, "ollama"),
+                         {"base_url": "http://h:1", "options": {"num_ctx": 8}, "think": False})
+
+
 if __name__ == "__main__":
     unittest.main()
