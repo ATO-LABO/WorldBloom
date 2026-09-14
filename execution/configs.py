@@ -112,7 +112,9 @@ def normalize(spec):
         "limits": {k: _integer(gl.get(k, d), "generation.limits." + k,
                                0 if k == "max_calls" and backend == "none" else 1)
                    for k, d in {"max_calls": 0 if backend == "none" else 1,
-                                "call_timeout_seconds": 180, "wall_seconds": 240,
+                                # A local 9B model narrates in minutes, not seconds.
+                                "call_timeout_seconds": 900 if backend == "ollama" else 180,
+                                "wall_seconds": 3600 if backend == "ollama" else 240,
                                 "max_saved_response_bytes": 128000}.items()}}
     return result
 

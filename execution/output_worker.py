@@ -23,7 +23,8 @@ def credentials(path, backend):
     if not isinstance(settings, dict):
         raise ValueError("invalid local settings")
     config = _backend_config(settings, backend)
-    return {key: config[key] for key in ("command", "api_key") if key in config}
+    keys = ("command", "api_key", "base_url", "options", "think", "seed")
+    return {key: config[key] for key in keys if key in config}
 
 
 def run(control, output_id):

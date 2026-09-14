@@ -16,6 +16,7 @@ import sys
 import urllib.error
 import urllib.request
 
+from gapengine import ollama
 from gapengine.synopsis import BACKENDS, _validate_response
 
 
@@ -65,6 +66,10 @@ def preflight(request):
         args = ([shutil.which(name), "exec", "--skip-git-repo-check", "-m", model, "-"]
                 if backend == "codex-cli" else [shutil.which(name), "-p", "--model", model])
         return args
+    if backend == "ollama":
+        # Local server, no key. Reachability is only known after sending, so it
+        # stays a transport outcome rather than a preflight failure.
+        return None
     if backend != "none" and (not isinstance(credentials.get("api_key"), str) or not credentials["api_key"].strip()):
         raise ValueError("credentials missing")
     return None
@@ -146,13 +151,18 @@ def transport(request, command):
         finally:
             tree.close()
     backend = request["backend"]
-    key = request["credentials"]["api_key"]
-    if backend == "anthropic":
+    if backend == "ollama":
+        url, payload = ollama.build_request(
+            {**request["credentials"], "model": request["model"]}, request["prompt"])
+        headers = {}
+    elif backend == "anthropic":
+        key = request["credentials"]["api_key"]
         url = "https://api.anthropic.com/v1/messages"
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
         payload = {"model": request["model"], "max_tokens": 4096,
                    "messages": [{"role": "user", "content": request["prompt"]}]}
     else:
+        key = request["credentials"]["api_key"]
         url = "https://api.openai.com/v1/responses"
         headers = {"Authorization": "Bearer " + key}
         payload = {"model": request["model"], "input": request["prompt"]}
@@ -171,7 +181,12 @@ def validate_response(backend, response):
     if response.truncated:
         raise ValueError("response exceeds storage limit")
     text = response.raw.decode("utf-8")
-    if backend in ("anthropic", "openai"):
+    if backend == "ollama":
+        data = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError("invalid response object")
+        text = ollama.extract_text(data)
+    elif backend in ("anthropic", "openai"):
         data = json.loads(text)
         if not isinstance(data, dict):
             raise ValueError("invalid response object")
