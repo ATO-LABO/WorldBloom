@@ -566,22 +566,11 @@ def world_meta_for(
     )
 
 
-def _elite_header(
-    repository: RunRepository,
-    experiment: Path,
-    elite: Mapping[str, Any],
-) -> dict[str, Any]:
+@lru_cache(maxsize=1024)
+def _header_row(path_str: str, mtime_ns: int, size: int) -> dict:
     """Read only as far as the first header row of an exemplar log."""
 
-    exemplar = _as_mapping(elite.get("exemplar"))
-    layers_path = exemplar.get("layers_path")
-    if not isinstance(layers_path, str):
-        return {}
-    path = repository.safe_path(experiment, layers_path)
-    if not path.is_file():
-        return {}
-
-    with path.open("r", encoding="utf-8") as handle:
+    with open(path_str, "r", encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
                 continue
@@ -592,6 +581,23 @@ def _elite_header(
             ):
                 return dict(value)
     return {}
+
+
+def _elite_header(
+    repository: RunRepository,
+    experiment: Path,
+    elite: Mapping[str, Any],
+) -> dict[str, Any]:
+    exemplar = _as_mapping(elite.get("exemplar"))
+    layers_path = exemplar.get("layers_path")
+    if not isinstance(layers_path, str):
+        return {}
+    path = repository.safe_path(experiment, layers_path)
+    if not path.is_file():
+        return {}
+
+    stat = path.stat()
+    return dict(_header_row(str(path), stat.st_mtime_ns, stat.st_size))
 
 
 def _first_header(
@@ -1372,8 +1378,10 @@ def cell_view(
         cell_key,
     )
 
+    layers_stat = resolved_layers.stat()
     return {
-        "explanation": _with_reader(repository, experiment, extract_explanation(resolved_layers, experiment=experiment.name, cell=cell_key)),
+        "explanation": _with_reader(repository, experiment, dict(_cached_explanation(
+            resolved_layers, layers_stat.st_mtime_ns, layers_stat.st_size, experiment.name, cell_key))),
         "experiment": experiment.name,
         "cell": cell_key,
         "quality": _number(elite.get("quality")),

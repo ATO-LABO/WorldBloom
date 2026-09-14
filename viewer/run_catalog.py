@@ -109,9 +109,30 @@ def observe_candidate(root, item):
     return item
 
 
+# ponytail: keyed by the pointer file's (mtime_ns, size); published/<rev>/*.json
+# are write-once, so a hit skips their SHA re-verification for the life of the
+# process. In-place corruption of a published file is only caught after the
+# pointer changes or the process restarts. Bounded at 256 entries.
+_PUBLICATIONS: dict[tuple, dict] = {}
+
+
 def read_publication(root, run_id, revision=None, manifest_sha256=None):
     """The pointer is the commit record; an unreferenced folder is not published."""
-    pointer = document(read_json(contained(root, "published/current.json")), run_id)
+    pointer_path = contained(root, "published/current.json")
+    stat = pointer_path.stat()
+    key = (str(pointer_path), stat.st_mtime_ns, stat.st_size, run_id, revision, manifest_sha256)
+    cached = _PUBLICATIONS.get(key)
+    if cached is not None:
+        return dict(cached)
+    result = _read_publication(pointer_path, root, run_id, revision, manifest_sha256)
+    if len(_PUBLICATIONS) >= 256:
+        _PUBLICATIONS.clear()
+    _PUBLICATIONS[key] = result
+    return dict(result)
+
+
+def _read_publication(pointer_path, root, run_id, revision, manifest_sha256):
+    pointer = document(read_json(pointer_path), run_id)
     current = positive(pointer.get("revision"))
     revision = current if revision is None else positive(revision)
     if revision > current:
