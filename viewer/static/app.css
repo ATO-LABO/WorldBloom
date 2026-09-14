@@ -1298,3 +1298,56 @@ details {
   background: var(--warm-soft);
   color: var(--warm);
 }
+
+/* WB-UI-010 Stage 2: world/genre library editor + sortable candidate table. */
+.editor {
+  margin-bottom: 1rem;
+}
+
+.editor textarea {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 12em;
+  padding: 0.6rem;
+  width: 100%;
+}
+
+.library-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.validation:not(:empty) {
+  background: var(--accent-soft);
+  border-radius: var(--radius-s);
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.validation.validation-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.wb-table th a.sort {
+  color: inherit;
+  text-decoration: none;
+}
+
+.wb-table th a.sort.is-active {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.wb-table th a.sort.is-active.dir-asc::after {
+  content: " \25B2";
+}
+
+.wb-table th a.sort.is-active.dir-desc::after {
+  content: " \25BC";
+}

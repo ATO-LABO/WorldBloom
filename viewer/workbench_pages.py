@@ -10,7 +10,7 @@ from http import HTTPStatus
 import json
 import time
 import uuid
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from execution.configs import evolution_defaults
 from execution.provenance import ConfigError, contained
@@ -56,6 +56,15 @@ ERROR_MESSAGES = {
 
 CANDIDATE_STATE_OPTIONS = ("adopted", "held", "rejected", "unclassified")
 AVAILABILITY_LABELS = {"present": "あり", "pruned": "剪定済み", "missing": "不在", "stale": "不一致"}
+
+# §6: candidate-list column sort. "state" here is the *selection* state (選定
+#状態 column), not the run/job state; "draft" is the 稿 column's ok count
+# (synopsize + narrate).
+SORT_KEYS = ("generation", "individual_index", "seed", "cell_key", "reached", "quality", "state", "draft")
+_SORT_LABELS = {
+    "generation": "世代", "individual_index": "個体", "seed": "seed", "cell_key": "セル",
+    "reached": "到達", "quality": "q", "state": "選定状態", "draft": "稿",
+}
 
 # Embedded verbatim into /jobs/{id} as data-* JSON so workbench.js polls against
 # the same vocabulary the server rendered with, instead of hand-copying it.
@@ -513,6 +522,9 @@ def _job_shell(job, body_parts, *, extra_attrs=""):
         f'<p>{state_badge(state)}</p>',
     ]
     parts.extend(body_parts)
+    # §7: static placeholder -- workbench.js's applyJob() fills this in on the
+    # first poll (etaText()), so no server-side ETA computation is needed here.
+    parts.append('<p>完了予定 <span data-field="eta">—</span></p>')
     if not terminal:
         disabled = " disabled" if state == "stopping" else ""
         label = "停止処理中（猶予後に強制終了）" if state == "stopping" else "停止"
@@ -652,6 +664,61 @@ def _reached_text(value):
     return "不明"
 
 
+class _Desc:
+    """Wrap a value so tuple comparison sorts it in reverse.
+
+    Used only for the *present* half of a sort key (see sort_candidates): the
+    "value is None" half stays unwrapped so None always sorts last regardless
+    of direction, instead of jumping to the front under a naive reverse=True.
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value):
+        self.value = value
+
+    def __eq__(self, other):
+        return self.value == other.value
+
+    def __lt__(self, other):
+        return other.value < self.value
+
+
+def _sort_value(candidate, key, output_summary):
+    if key == "draft":
+        counts = (output_summary or {}).get(candidate["candidate_id"], {})
+        return counts.get("synopsize", 0) + counts.get("narrate", 0)
+    if key == "reached":
+        value = candidate.get("reached")
+        return None if value is None else (1 if value else 0)
+    return candidate.get(key)
+
+
+def sort_candidates(candidates, key, direction, output_summary):
+    """Stable sort by one column; None sorts last, ties break by candidate_id."""
+
+    def sort_key(candidate):
+        value = _sort_value(candidate, key, output_summary)
+        wrapped = _Desc(value) if direction == "desc" and value is not None else value
+        return (value is None, wrapped, candidate["candidate_id"])
+
+    return sorted(candidates, key=sort_key)
+
+
+def _sort_th(label, column, *, query, active_sort, active_dir):
+    if column not in SORT_KEYS:
+        return f"<th>{_escape(label)}</th>"
+    is_active = column == active_sort
+    next_dir = "desc" if is_active and active_dir == "asc" else "asc"
+    params = {k: v[0] for k, v in query.items() if v and v[0] != "" and k not in ("sort", "dir")}
+    params["sort"] = column
+    params["dir"] = next_dir
+    href = "?" + urlencode(params)
+    aria = f' aria-sort="{"ascending" if active_dir == "asc" else "descending"}"' if is_active else ""
+    classes = "sort is-active dir-" + active_dir if is_active else "sort"
+    return f'<th{aria}><a class="{classes}" href="{_escape(href)}">{_escape(label)}</a></th>'
+
+
 def _candidate_row(candidate, run_id, experiment_name, is_representative, running, output_summary):
     cid = candidate["candidate_id"]
     short = _short_id(cid)
@@ -680,6 +747,8 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
     counts = (output_summary or {}).get(cid, {})
     syn_ok, nar_ok = counts.get("synopsize", 0), counts.get("narrate", 0)
     draft_text = f"あらすじ ok {syn_ok} / 上映 ok {nar_ok}" if (syn_ok or nar_ok) else "—"
+    quality = candidate.get("quality")
+    quality_text = f"{quality:.4f}" if isinstance(quality, (int, float)) else "—"
     return (
         f'<tr data-candidate-id="{_escape(cid)}">'
         f'<td>{checkbox}</td>'
@@ -690,6 +759,7 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
         f'<td>{_escape(candidate.get("role"))}</td>'
         f'<td>{_escape(candidate.get("cell_key"))}</td>'
         f'<td>{_escape(_reached_text(candidate.get("reached")))}</td>'
+        f'<td>{_escape(quality_text)}</td>'
         f'<td>{_escape(AVAILABILITY_LABELS.get(candidate["log"]["availability"], candidate["log"]["availability"]))}</td>'
         f'<td>{_escape(candidate.get("screenable"))}</td>'
         f'<td><select data-field="state" aria-label="選定状態 {_escape(short)}"{disabled}>'
@@ -723,8 +793,14 @@ def _candidates_filter_form(run_id, query):
     reached_options = options("reached", [("true", "到達"), ("false", "未到達")])
     availability_options = options("availability", list(AVAILABILITY_LABELS.items()))
     state_options = options("state", [(s, s) for s in CANDIDATE_STATE_OPTIONS])
+    hidden_sort = ""
+    if val("sort"):
+        hidden_sort += f'<input type="hidden" name="sort" value="{_escape(val("sort"))}">'
+    if val("dir"):
+        hidden_sort += f'<input type="hidden" name="dir" value="{_escape(val("dir"))}">'
     return (
         '<form method="get" class="form-grid">'
+        f"{hidden_sort}"
         '<div class="field"><label>世代'
         f'<input type="number" name="generation" value="{_escape(val("generation"))}"></label></div>'
         '<div class="field"><label>個体'
@@ -757,7 +833,8 @@ def _generate_form(run_id, has_adopted, running):
 
 def render_candidates_page(*, run_id, experiment_name, config_id, revision, selection_revision,
                             candidates, representatives, running, query, representatives_error=False,
-                            output_summary=None, output_summary_error=False, has_adopted=None):
+                            output_summary=None, output_summary_error=False, has_adopted=None,
+                            sort_key=None, sort_dir="asc"):
     header = (
         f'<p>実験: {_escape(experiment_name)} · 公開版 {_escape(revision)} · '
         f'選定版 {_escape(selection_revision)} · {len(candidates)}件</p>'
@@ -785,10 +862,18 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
             _candidate_row(c, run_id, experiment_name, c["candidate_id"] in representatives, running, output_summary)
             for c in candidates
         )
+        def th(key):
+            return _sort_th(_SORT_LABELS[key], key, query=query, active_sort=sort_key, active_dir=sort_dir)
+
+        headers = (
+            "<th>選択</th><th>候補ID</th>"
+            + th("generation") + th("individual_index") + th("seed") + "<th>役割</th>"
+            + th("cell_key") + th("reached") + th("quality") + "<th>原記録</th><th>採用可</th>"
+            + th("state") + "<th>メモ</th>" + th("draft") + "<th>操作</th>"
+        )
         table = (
             '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
-            "<th>選択</th><th>候補ID</th><th>世代</th><th>個体</th><th>seed</th><th>役割</th><th>セル</th>"
-            "<th>到達</th><th>原記録</th><th>採用可</th><th>選定状態</th><th>メモ</th><th>稿</th><th>操作</th>"
+            f"{headers}"
             f"</tr></thead><tbody>{rows}</tbody></table></div>"
         )
     else:
@@ -892,6 +977,13 @@ def _configs_new(handler):
             values["project_id"] = project_preset
         if template_preset in templates:
             values["template_id"] = template_preset
+        elif project_preset in projects:
+            # No explicit ?template=: default to the preset world's own genre
+            # (execution/library.py's world.yaml gapengine.* resolution).
+            from execution.library import LibraryStore
+            world = next((w for w in LibraryStore(repo).worlds() if w["id"] == project_preset), None)
+            if world and world["genre"] in templates:
+                values["template_id"] = world["genre"]
         body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS)
         title = "新しい実行設定"
     handler._send_html(pages.document(
@@ -1006,7 +1098,14 @@ def _candidates_list(handler, run_id):
         return
     catalog, selections = repository.catalog, repository.selections
     query = _query(handler)
-    filters, state_filter = _parse_filters(_clean_query(query))
+    sort_key = query.get("sort", [None])[0]
+    if sort_key not in SORT_KEYS:
+        sort_key = None
+    sort_dir = query.get("dir", ["asc"])[0]
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
+    filter_query = {k: v for k, v in query.items() if k not in ("sort", "dir")}
+    filters, state_filter = _parse_filters(_clean_query(filter_query))
     result = catalog.candidates(run_id, **filters)
     selected = selections.get(run_id)
     entries = {e["candidate_id"]: e for e in selected["entries"]}
@@ -1035,12 +1134,15 @@ def _candidates_list(handler, run_id):
     has_adopted = any(e["state"] == "adopted" for e in selected["entries"])
     from viewer import output_pages
     summary = output_pages.run_output_summary(_job_store(handler), run_id)
+    if sort_key:
+        candidates = sort_candidates(candidates, sort_key, sort_dir, summary["by_candidate"])
     page = render_candidates_page(
         run_id=run_id, experiment_name=experiment_name, config_id=config_id,
         revision=result["revision"], selection_revision=selected["revision"],
         candidates=candidates, representatives=representatives, running=running, query=query,
         representatives_error=representatives_error, output_summary=summary["by_candidate"],
         output_summary_error=summary["error"], has_adopted=has_adopted,
+        sort_key=sort_key, sort_dir=sort_dir,
     )
     handler._send_html(pages.document(
         f"候補: {experiment_name}", page,

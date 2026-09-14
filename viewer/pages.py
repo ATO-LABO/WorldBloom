@@ -41,8 +41,8 @@ def _phase_href(
     phases: Mapping[str, Any] | None,
 ) -> str:
     if key == "world":
-        if run and world and world.get("id"):
-            return f"/#world-{_url_segment(str(world['id']))}"
+        if world and world.get("id"):
+            return f"/worlds/{_url_segment(str(world['id']))}"
         return "/"
     if key == "run":
         job_id = phases.get("job_id") if phases else None
@@ -548,7 +548,7 @@ def _world_project_info() -> dict[str, str]:
 
 def _world_section(
     world_name: str,
-    genre: str | None,
+    info: Mapping[str, str] | None,
     majors: Sequence[Mapping[str, Any]],
     minors: Sequence[Mapping[str, Any]],
     repository: data.RunRepository,
@@ -556,20 +556,29 @@ def _world_section(
     history: Sequence[Mapping[str, Any]] | None,
     outputs: Sequence[Mapping[str, Any]] | None,
 ) -> str:
-    resolved = genre if genre and genre != "不明" else None
-    world_id = _url_segment(resolved or world_name)
-    if resolved:
-        new_run_href = (
-            f"/configs/new?project={_url_segment(resolved)}"
-            f"&template={_url_segment(resolved)}"
-        )
+    # info = {"id": projects/<id> directory name, "genre": templates/<genre>}
+    # (from _project_info). A world created via /worlds/new can have an id
+    # that differs from its genre, so links to the world use the id and only
+    # the ?template= preset uses the genre.
+    info = info or {}
+    project_id = info.get("id") or None
+    genre = info.get("genre") or None
+    world_id = _url_segment(project_id or world_name)
+    if project_id:
+        new_run_href = f"/configs/new?project={_url_segment(project_id)}"
+        if genre:
+            new_run_href += f"&template={_url_segment(genre)}"
+        edit_link = f'<a class="button" href="/worlds/{_url_segment(project_id)}">世界を編集</a>'
     else:
         new_run_href = "/configs/new"
+        edit_link = ""
+    resolved = genre
     heading = (
         f'<section class="world-group" id="world-{world_id}">'
         '<div class="section-heading">'
         f'<div><span class="eyebrow">ジャンル: {_escape(resolved or "不明")}</span>'
         f"<h2>{_escape(world_name)}</h2></div>"
+        f'{edit_link}'
         f'<a class="button primary" href="{_escape(new_run_href)}">'
         "この世界で新しい実験を回す</a>"
         "</div>"
@@ -595,6 +604,53 @@ def _world_section(
     return heading + body + minor_block + "</section>"
 
 
+def _project_info(job_store: Any) -> dict[str, dict[str, str]]:
+    """Map a world's display name to {"id": projects/<id>, "genre": templates/<genre>}.
+
+    With --control (job_store set), delegate to execution.library.LibraryStore
+    so a world's genre reflects its current world.yaml gapengine.* references
+    (kept in sync by the /worlds editor) instead of the name-matching guess
+    below. Without --control, fall back to _world_project_info() unchanged.
+    """
+
+    if job_store is None:
+        return {name: {"id": slug, "genre": slug} for name, slug in _world_project_info().items()}
+    from execution.library import LibraryStore
+
+    info: dict[str, dict[str, str]] = {}
+    try:
+        worlds = LibraryStore(job_store.configs.repo).worlds()
+    except (ValueError, OSError, KeyError, TypeError, AttributeError):
+        return {name: {"id": slug, "genre": slug} for name, slug in _world_project_info().items()}
+    for world in worlds:
+        name = world.get("name")
+        project_id = world.get("id")
+        if name and project_id and name not in info:
+            info[name] = {"id": str(project_id), "genre": str(world.get("genre") or "")}
+    return info
+
+
+def _experiment_world(meta: Mapping[str, Any], job_store: Any) -> dict[str, str] | None:
+    """Header/phase-band world context for a run: resolve the world's
+    projects/<id> from its display name (never from the genre slug, which
+    can differ for worlds created via /worlds/new)."""
+    name = meta.get("world")
+    if not name:
+        return None
+    info = _project_info(job_store).get(str(name))
+    if not info or not info.get("id"):
+        return None
+    return {"id": info["id"], "name": str(name)}
+
+
+_HOME_ACTIONS = (
+    '<p class="actions">'
+    '<a class="button primary" href="/worlds/new">新しい世界を作る</a>'
+    '<a class="button" href="/worlds">世界とジャンルの一覧</a>'
+    "</p>"
+)
+
+
 def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
     groups, minor = data.grouped_experiments(repository)
     by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
@@ -618,7 +674,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         except (ValueError, OSError, KeyError, TypeError, AttributeError):
             outputs = []
 
-    project_info = _world_project_info()
+    project_info = _project_info(job_store)
     world_order: list[str] = []
     seen: set[str] = set()
     for name in project_info:
@@ -632,7 +688,8 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
     if not world_order:
         return document(
             "世界を選ぶ",
-            '<section class="card"><p>表示できる世界も実験もありません。</p>'
+            _HOME_ACTIONS
+            + '<section class="card"><p>表示できる世界も実験もありません。</p>'
             '<p class="muted">各実験ディレクトリに '
             "<code>archive.json</code> が必要です。</p></section>",
             phase="world",
@@ -652,7 +709,8 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         for world_name in world_order
     ]
     body = (
-        '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
+        _HOME_ACTIONS
+        + '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
         "上映します。</p>"
         + "".join(sections)
     )
@@ -907,8 +965,7 @@ def experiment_page(
         f"{_command_block(repository, meta)}"
         f"{tray}"
     )
-    genre = meta.get("genre")
-    world = {"id": genre, "name": meta["world"]} if genre and genre != "不明" else None
+    world = _experiment_world(meta, job_store)
     phases = data.phase_status(repository, experiment_name, job_store=job_store)
     return document(
         f"実験: {experiment_name}",
