@@ -16,6 +16,8 @@ from typing import Any
 
 import yaml
 
+from gapengine.scenes import VERB_LABELS
+
 _PROTAGONIST_FILL = "#2e6b4f"
 _ANTAGONIST_FILL = "#8c3030"
 _DEFAULT_FILL = "#fffdf8"
@@ -431,3 +433,233 @@ def calendar_grid_html(days: Any) -> str:
         for day in range(1, count + 1)
     )
     return f'<div class="calendar-grid" role="img" aria-label="{count}日間の日程">{cells}</div>'
+
+
+_VITALITY_LABELS = {"alive": "生存中", "downed": "戦闘不能", "dead": "死亡", "revived": "立ち直った"}
+_STANCE_LABELS = {"hostile": "敵対関係", "neutral": "中立関係", "friendly": "友好関係"}
+_ROLE_LABELS = {"hostile": "敵対相手", "neutral": "第三者", "ally": "味方", "self": "自分自身"}
+_OBJECTIVE_LABELS = {"self": "自分自身", "hostile": "敵対相手", "ally": "味方", "other": "味方でも敵でもない相手・場所"}
+
+
+def _ctx_text(ctx: Mapping[str, Any]) -> str:
+    """Render a canon/precedent ContextKey (gapengine/precedent.py).
+
+    Field set and values (phase, hostile_present, objective in
+    {none,self,ally,hostile,other}, vitality, stance in
+    {hostile,friendly,neutral}, disguised) mirror precedent.py's
+    `ctx_key`/`_parse_ctx` exactly, not just what today's three
+    genre templates happen to use -- an unrecognised value still shows (as
+    its raw token) rather than being silently dropped.
+    """
+
+    parts = []
+    phase = [str(step) for step in (ctx.get("phase") or []) if step]
+    if phase:
+        parts.append("段階: " + "・".join(phase))
+    if ctx.get("hostile_present"):
+        parts.append("敵対相手が同席")
+    objective = ctx.get("objective")
+    if objective and objective != "none":
+        parts.append(f"目的物: {_OBJECTIVE_LABELS.get(str(objective), str(objective))}")
+    vitality = ctx.get("vitality")
+    if vitality:
+        parts.append(_VITALITY_LABELS.get(str(vitality), str(vitality)))
+    stance = ctx.get("stance")
+    if stance:
+        parts.append(_STANCE_LABELS.get(str(stance), str(stance)))
+    if ctx.get("disguised"):
+        parts.append("変装中")
+    return "・".join(parts) if parts else "（条件なし）"
+
+
+def _act_text(act: Mapping[str, Any]) -> str:
+    verb = act.get("verb")
+    label = VERB_LABELS.get(str(verb), str(verb)) if verb else "（行動なし）"
+    detail = []
+    category = act.get("category")
+    if category:
+        detail.append(f"カテゴリ{category}")
+    role = act.get("role")
+    if role and role != "none":
+        detail.append(f"対象: {_ROLE_LABELS.get(str(role), str(role))}")
+    return f"{label}（{'・'.join(detail)}）" if detail else label
+
+
+def canon_table_html(canon_yaml: Mapping[str, Any]) -> str:
+    """Render a genre's canon.yaml as a 状況→行動→件数 table.
+
+    This is the GA's precedent for generation 0 (WB-EXPLAIN-canon): a prior
+    over "typical" actions per situation, not a plot -- individuals are
+    rewarded for straying from it (novelty_drive), never for following it.
+    """
+
+    entries = [entry for entry in (canon_yaml.get("entries") or []) if _mapping(entry)]
+    if not entries:
+        return '<p class="muted">正典データがありません。</p>'
+    rows = []
+    for entry in entries:
+        entry = _mapping(entry)
+        ctx_text = _ctx_text(_mapping(entry.get("ctx")))
+        act_text = _act_text(_mapping(entry.get("act")))
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(ctx_text)}</td>"
+            f"<td>{html.escape(act_text)}</td>"
+            f"<td>{_esc(entry.get('n'))}</td>"
+            "</tr>"
+        )
+    return (
+        '<div class="grid-wrap"><table class="wb-table canon-table"><thead><tr>'
+        "<th>状況</th><th>典型的な行動</th><th>擬似観測件数</th>"
+        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+    )
+
+
+def character_readout_html(
+    world_yaml: Mapping[str, Any],
+    subjects: Sequence[Mapping[str, Any]],
+    effects: Sequence[Any],
+) -> str:
+    """Render, per subject, what its numbers already mean: base strength
+    plus item modifiers (flagging ones hidden from other characters),
+    personal secrets (`facts.secret_of`), and foreshadowing tied to it
+    (effects.yaml plant/payoff pairs whose plant reveals this subject).
+
+    Nothing here is generated -- every line restates a value the engine
+    already tracks (WB-EXPLAIN-canon), so it stays exactly as trustworthy
+    as world.yaml/subjects/*.yaml/effects.yaml themselves.
+    """
+
+    item_defs = {
+        str(item["name"]): _mapping(item)
+        for item in world_yaml.get("items") or []
+        if _mapping(item).get("name")
+    }
+    facts = [_mapping(fact) for fact in world_yaml.get("facts") or [] if _mapping(fact)]
+    # engine/world.py defaults contest.epsilon to 5.0 when the world.yaml
+    # omits it -- match that instead of silently treating it as 0.
+    epsilon = _number(_mapping(world_yaml.get("contest")).get("epsilon"), 5.0)
+
+    beliefs_by_target: dict[str, list[tuple[str, float, set[str]]]] = {}
+    for subject in subjects:
+        observer_id = str(subject.get("id") or "")
+        for target_id, belief in _mapping(subject.get("beliefs_about")).items():
+            belief = _mapping(belief)
+            estimate = belief.get("base_estimate")
+            if estimate is None:
+                continue
+            known = {str(name) for name in belief.get("known_modifiers") or []}
+            beliefs_by_target.setdefault(str(target_id), []).append(
+                (observer_id, _number(estimate), known)
+            )
+
+    blocks = []
+    for subject in subjects:
+        subject_id = str(subject.get("id") or "")
+        if not subject_id:
+            continue
+
+        base = subject.get("base")
+        # Mirrors engine/subject.py Subject.from_yaml + engine/world.py's
+        # item_modifier(): both default an omitted `visible`/`active` to
+        # True, so a modifier missing the key is NOT hidden -- getting this
+        # backwards would fabricate a "hidden power" that isn't one.
+        modifiers: list[tuple[str, float, bool]] = []
+        for raw_modifier in subject.get("modifiers") or []:
+            raw_modifier = _mapping(raw_modifier)
+            if not raw_modifier.get("active", True):
+                continue
+            source = raw_modifier.get("source")
+            if not source:
+                continue
+            modifiers.append((str(source), _number(raw_modifier.get("value")), bool(raw_modifier.get("visible", True))))
+        for item_name, count in _mapping(subject.get("inventory")).items():
+            if _number(count) <= 0:
+                continue
+            modifier = _mapping(_mapping(item_defs.get(str(item_name))).get("modifier"))
+            if not modifier or not modifier.get("active", True):
+                continue
+            modifiers.append((str(item_name), _number(modifier.get("value")), bool(modifier.get("visible", True))))
+
+        strength_html = ""
+        if base is not None:
+            base_value = _number(base)
+            traits = _mapping(subject.get("traits"))
+            temperament = (
+                0.65 * _number(traits.get("stubbornness"))
+                + 0.20 * _number(traits.get("social"))
+                + 0.15 * _number(traits.get("curiosity"))
+            )
+            temperament_bonus = epsilon * temperament
+            total = base_value + sum(value for _, value, _ in modifiers) + temperament_bonus
+            if modifiers:
+                mod_items = "".join(
+                    f"<li>{html.escape(source)}: {value:+.0f}"
+                    f"（{'他の登場人物にも見えている' if visible else '他の登場人物には見えていない隠れた強化'}）</li>"
+                    for source, value, visible in modifiers
+                )
+                strength_html = (
+                    f"<p>基礎の強さ {base_value:.0f} ＋ 所持品などによる修正"
+                    f" ＋ 性格による小さな補正 {temperament_bonus:+.1f}"
+                    f" = 実際の強さ {total:.0f}"
+                    '（同席する仲間からの加算は含みません）</p>'
+                    f"<ul>{mod_items}</ul>"
+                )
+            else:
+                strength_html = (
+                    f"<p>基礎の強さ {base_value:.0f} ＋ 性格による小さな補正 {temperament_bonus:+.1f}"
+                    f" = 実際の強さ {total:.0f}（所持品などによる修正なし。"
+                    "同席する仲間からの加算は含みません）</p>"
+                )
+
+            observer_lines = []
+            for observer_id, estimate, known in beliefs_by_target.get(subject_id, []):
+                believed = estimate + sum(
+                    value for source, value, visible in modifiers
+                    if visible or source in known
+                )
+                if abs(believed - total) > 0.001:
+                    observer_lines.append(
+                        f"<li>{html.escape(observer_id)}の当初の見積もり: {believed:.0f}"
+                        f"（実際は{total:.0f}）</li>"
+                    )
+            if observer_lines:
+                strength_html += (
+                    '<p class="muted">他の人物からの見え方:</p>'
+                    f"<ul>{''.join(observer_lines)}</ul>"
+                )
+
+        secret_lines = [
+            f"<li>{html.escape(str(fact.get('label') or fact.get('id') or ''))}</li>"
+            for fact in facts
+            if str(fact.get("secret_of")) == subject_id
+        ]
+        secret_html = (
+            f'<p class="muted">この人物にまつわる秘密:</p><ul>{"".join(secret_lines)}</ul>'
+            if secret_lines else ""
+        )
+
+        payoff_lines = []
+        for effect in effects:
+            effect = _mapping(effect)
+            reveals = _mapping(_mapping(effect.get("plant")).get("reveals"))
+            if str(reveals.get("target")) != subject_id:
+                continue
+            description = _mapping(effect.get("payoff")).get("description")
+            if description:
+                payoff_lines.append(f"<li>{html.escape(str(description))}</li>")
+        payoff_html = (
+            f'<p class="muted">関連する伏線:</p><ul>{"".join(payoff_lines)}</ul>'
+            if payoff_lines else ""
+        )
+
+        body = strength_html + secret_html + payoff_html
+        if not body:
+            continue
+        blocks.append(
+            f'<details class="readout"><summary>{html.escape(subject_id)}</summary>{body}</details>'
+        )
+
+    if not blocks:
+        return '<p class="muted">読み下せる設定がありません。</p>'
+    return '<div class="character-readout">' + "".join(blocks) + "</div>"

@@ -186,15 +186,20 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         status, configs_body, _ = self.get_status("/configs")
         self.assertEqual(status, 200, configs_body)
-        # The header shell (home link + 設定/実行履歴 shortcuts) is common to
-        # every page; 実験一覧/選定トレイ no longer appear as global nav links
-        # (home link replaces the former, Sifting トレイ is not global anymore).
-        self.assertIn('<a class="home-cell" href="/">⌂ ホーム</a>', body)
+        # The header shell (home link or brand + 設定/実行履歴 shortcuts) is
+        # common to every page; 実験一覧/選定トレイ no longer appear as global
+        # nav links (home link replaces the former, Sifting トレイ is not
+        # global anymore). Home leads with the brand (it already *is* home);
+        # every other page leads with the ⌂ home link instead.
+        self.assertNotIn('<a class="home-cell" href="/">⌂ ホーム</a>', body)
+        self.assertIn('<a class="brand" href="/">WorldBloom</a>', body)
         self.assertIn('<a class="home-cell" href="/">⌂ ホーム</a>', configs_body)
-        for href, label in (("/configs", "設定"), ("/jobs", "実行履歴")):
+        self.assertNotIn('<a class="brand" href="/">WorldBloom</a>', configs_body)
+        for href, label, icon in (("/configs", "設定", "⚙"), ("/jobs", "実行履歴", "📝")):
             with self.subTest(href=href):
-                self.assertIn(f'<a href="{href}">{label}</a>', body)
-                self.assertIn(f'<a href="{href}">{label}</a>', configs_body)
+                link = f'<a href="{href}" title="{label}" aria-label="{label}">{icon}</a>'
+                self.assertIn(link, body)
+                self.assertIn(link, configs_body)
 
         plain = self._start_server()
         for path in ("/configs", "/jobs", "/selected"):

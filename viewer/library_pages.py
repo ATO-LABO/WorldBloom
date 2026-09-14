@@ -168,6 +168,16 @@ def _world_yaml_mapping(repo, world_id):
     return value if isinstance(value, dict) else {}
 
 
+def _genre_yaml(repo, genre_id, filename):
+    if not genre_id:
+        return None
+    path = repo / "templates" / genre_id / filename
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+
+
 def _overview_panel(world, subjects):
     goals = world_graph.world_summary(
         subjects, protagonist=world["protagonist"], antagonist=world["antagonist"],
@@ -180,15 +190,33 @@ def _overview_panel(world, subjects):
     )
 
 
-def _characters_panel(world, subjects):
+def _characters_panel(world, world_yaml, subjects, store):
     svg = world_graph.relation_svg(subjects, protagonist=world["protagonist"], antagonist=world["antagonist"])
     table = world_graph.character_table(subjects, protagonist=world["protagonist"], antagonist=world["antagonist"])
+    canon = _genre_yaml(store.repo, world.get("genre"), "canon.yaml")
+    canon_html = (
+        world_graph.canon_table_html(canon) if isinstance(canon, dict)
+        else '<p class="muted">このジャンルに正典データがありません。</p>'
+    )
+    effects = _genre_yaml(store.repo, world.get("genre"), "effects.yaml")
+    readout_html = world_graph.character_readout_html(
+        world_yaml, subjects, effects if isinstance(effects, list) else [],
+    )
     return (
         f'<p class="muted">人物数: {_escape(world["subjects"])}</p>'
         + svg + table
         + '<p class="muted">線の色: 緑=好意 / 赤=敵意 / 灰=中立。'
         "太さ=好感度の強さ、濃さ=認知度。"
         "線にカーソルを合わせると双方向の値が出ます。</p>"
+        + "<h3>このジャンルの定番（正典）</h3>"
+        + '<p class="muted">GA が個体ごとにどれだけ外れた行動を取るかの基準にする、'
+        "状況→典型的な行動の集計です。時系列の筋書きではなく、GAはこれに従うほど有利にはなりません"
+        "（外れるほど新規性の評価が上がります）。</p>"
+        + canon_html
+        + "<h3>設定の読み下し</h3>"
+        + '<p class="muted">世界の数値がすでに何を意味しているかの一覧です（隠れた強化・秘密・伏線）。'
+        "生成された説明ではなく、world.yaml/subjects/effects.yaml の値とエンジンの計算式どおりに表示しています。</p>"
+        + readout_html
     )
 
 
@@ -269,7 +297,7 @@ def render_world_detail(repository, world, store, job_store):
     world_name = str(world["name"] or world["id"])
     panels = [
         ("概要", _overview_panel(world, subjects)),
-        ("登場人物", _characters_panel(world, subjects)),
+        ("登場人物", _characters_panel(world, world_yaml, subjects, store)),
         ("場所", _places_panel(world_yaml)),
         ("期間", _period_panel(world_yaml)),
     ]

@@ -236,6 +236,18 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('class="day-cycle"', body)
         self.assertIn('class="calendar-grid"', body)
 
+    def test_world_detail_page_has_canon_and_readout(self):
+        # WB-EXPLAIN-canon: the characters tab surfaces the canon precedent
+        # table and the deterministic per-character readout (hidden item
+        # modifiers, secrets, foreshadowing) end-to-end through the route.
+        status, body = self.get("/worlds/momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertIn('class="wb-table canon-table"', body)
+        self.assertIn('class="character-readout"', body)
+        self.assertIn("金棒: +40", body)
+        self.assertIn("隠れた強化", body)
+        self.assertIn("鬼の力は金棒に支えられている", body)
+
     def test_genre_detail_page(self):
         status, body = self.get("/genres/momotaro")
         self.assertEqual(status, 200, body)
