@@ -8,6 +8,8 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 from execution.configs import generation_availability, _model
 from execution.output_store import OutputStore, verified
@@ -207,8 +209,6 @@ def prepare(configs, job, plan):
         blobs["inputs/synopses/" + cid + ".txt"] = raw
     # Prompt construction must execute from the captured runtime too. Importing
     # builders from a mutable checkout could otherwise mix two code versions.
-    import subprocess
-    import sys
     with tempfile.TemporaryDirectory(prefix="wb-output-prompts-") as temp:
         tmp = Path(temp)
         materialize(tmp, blobs)
@@ -230,6 +230,6 @@ def prepare(configs, job, plan):
     store.create(output, prompts, artifacts=blobs)
     return {"schema_version": 1, "output_id": job["output_id"],
             "runtime_manifest_sha256": output["runtime_manifest_sha256"],
-            "argv": [__import__("sys").executable, "-I", "-B",
+            "argv": [sys.executable, "-I", "-B",
                      str(store.folder(job["output_id"]) / "runtime/execution/output_worker.py"),
                      "--control", str(configs.control), "--output", job["output_id"]]}

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from execution.provenance import atomic_json
 from gapengine.qd import Archive, read_rows
 from gapengine.scenes import extract_scenes
 from gapengine.synopsis import (
@@ -23,17 +24,6 @@ from gapengine.synopsis import (
     generate_text,
     load_world_meta,
 )
-
-
-def _write_json(path: Path, value: Any) -> None:
-    from execution.provenance import write_bytes
-    raw = json.dumps(value, ensure_ascii=False, sort_keys=True,
-                     separators=(",", ":")) + "\n"
-    import os
-    import uuid
-    temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
-    write_bytes(temporary, raw.encode("utf-8"))
-    os.replace(temporary, path)
 
 
 def _safe_cell_name(cell: str) -> str:
@@ -168,7 +158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         entries.append(entry)
         entries.sort(key=lambda item: item["cell"])
-        _write_json(output_path, payload)
+        atomic_json(output_path, payload)
 
     payload = {
         "archive": archive_path.as_posix(),
@@ -176,7 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "entries": entries,
         "world": world_meta["name"],
     }
-    _write_json(output_path, payload)
+    atomic_json(output_path, payload)
     print(f"synopses={output_path} entries={len(entries)}")
     return 0
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from copy import deepcopy
+import json
 import time
 import uuid
 
@@ -82,7 +83,6 @@ class OutputStore:
     def request(self, output_id):
         folder = self.folder(output_id)
         seal = read_json(contained(folder, "request-seal.json"))
-        import json
         doc = json.loads(verified(contained(folder, "request.json"), seal["sha256"]))
         if doc.get("output_id") != output_id:
             raise ConfigError("output_id", "生成版の識別子が一致しません", code="snapshot_changed")
@@ -100,14 +100,14 @@ class OutputStore:
             verified(contained(folder, path), digest)
         return seal
 
-    def sink(self, output_id, candidate_id):
-        return AttemptSink(self, output_id, candidate_id)
+    def sink(self, output_id, candidate_id, *, request=None):
+        return AttemptSink(self, output_id, candidate_id, request=request)
 
     def project(self, output_id):
         request = self.request(output_id)
         entries = []
         for cid in request["candidate_ids"]:
-            sink = self.sink(output_id, cid)
+            sink = self.sink(output_id, cid, request=request)
             entry = sink.current()
             if entry is None:
                 entry = {**sink.identity, "status": "running" if sink.started() else "pending"}
@@ -125,14 +125,14 @@ class OutputStore:
         with directory_lock(folder):
             request = self.request(output_id)
             for cid in request["candidate_ids"]:
-                self.sink(output_id, cid).recover(stopped=stopped)
+                self.sink(output_id, cid, request=request).recover(stopped=stopped)
             return self.project(output_id)
 
 
 class AttemptSink:
-    def __init__(self, store, output_id, candidate_id):
+    def __init__(self, store, output_id, candidate_id, *, request=None):
         self.store = store
-        self.request = store.request(output_id)
+        self.request = store.request(output_id) if request is None else request
         if candidate_id not in self.request["candidate_ids"]:
             raise ConfigError("candidate_id", "生成要求にない候補です")
         self.output = store.folder(output_id)
@@ -203,7 +203,6 @@ class AttemptSink:
             pointer = read_json(self.folder / "current.json")
         except FileNotFoundError:
             return None
-        import json
         record = json.loads(verified(contained(self.folder, pointer["path"]), pointer["sha256"]))
         if any(record.get(k) != v for k, v in self.identity.items()):
             raise ConfigError("receipt", "結果の識別子が一致しません", code="snapshot_changed")

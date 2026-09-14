@@ -132,17 +132,25 @@ def verify_files(root: Path, records):
 def code_snapshot(repo: Path):
     """Capture the local Python closure, never settings, credentials or logs."""
     blobs = {}
+    stamps = {}
     for package in ("engine", "gapengine", "scripts", "execution"):
         folder = contained(repo, package)
         if not folder.is_dir():
             raise ConfigError("runtime", f"実行コードがありません: {package}")
         for path in sorted(folder.rglob("*.py")):
             relative = path.relative_to(repo).as_posix()
-            blobs[relative] = contained(repo, relative).read_bytes()
-    blobs["requirements.txt"] = contained(repo, "requirements.txt").read_bytes()
+            target = contained(repo, relative)
+            stat = target.stat()
+            stamps[relative] = (stat.st_size, stat.st_mtime_ns)
+            blobs[relative] = target.read_bytes()
+    target = contained(repo, "requirements.txt")
+    stat = target.stat()
+    stamps["requirements.txt"] = (stat.st_size, stat.st_mtime_ns)
+    blobs["requirements.txt"] = target.read_bytes()
     # Fail if files changed during the capture rather than claiming a coherent version.
-    for path, content in blobs.items():
-        if contained(repo, path).read_bytes() != content:
+    for path in blobs:
+        st = contained(repo, path).stat()
+        if (st.st_size, st.st_mtime_ns) != stamps[path]:
             raise ConfigError("runtime", "固定中にコードが変更されました", code="conflict")
     def git(*args):
         result = subprocess.run(["git", "-C", str(repo), *args],

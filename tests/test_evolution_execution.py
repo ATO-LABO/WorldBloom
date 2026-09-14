@@ -16,7 +16,7 @@ from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution import worker
 from execution.evolution_worker import EvolutionObserver, candidate_identity, log_observation
-from execution.provenance import ConfigError, canonical, read_json, sha256
+from execution.provenance import ConfigError, atomic_json, canonical, read_json, sha256
 from gapengine.evolve import EvolutionCancelled, evolve
 from gapengine.qd import Archive
 from test_gapengine import make_reaching_project, ROOT, TEMPLATE
@@ -228,6 +228,31 @@ class EvolutionExecutionTests(unittest.TestCase):
         with patch.object(Path, "read_bytes", side_effect=PermissionError("denied")):
             with self.assertRaises(PermissionError):
                 log_observation(root, path.name, digest, set())
+
+    def test_drain_reads_directory_diff_and_ignores_non_json(self):
+        root = self.base / "drain"
+        cfg = {**self.cfg, "out": root}
+        observer = EvolutionObserver(root, root.name, cfg)
+
+        def write_event(event_id):
+            atomic_json(observer.events / f"{event_id}.json", {"kind": "completed", "event_id": event_id,
+                "role": "protagonist", "generation": 0, "individual_index": 0, "seed": 0})
+
+        write_event("e1")
+        write_event("e2")
+        (observer.events / "not-an-event.txt").write_text("ignore me", encoding="utf-8")
+        import execution.evolution_worker as module
+        from unittest.mock import patch
+        with patch.object(module, "read_json", wraps=module.read_json) as reads:
+            observer.poll()
+            self.assertEqual(len(observer.completed), 2)
+            self.assertEqual(len(observer.seen), 2)
+            write_event("e3")
+            observer.poll()
+            # Only the new file is read on the second poll.
+            self.assertEqual(reads.call_count, 3)
+        self.assertEqual(len(observer.completed), 3)
+        self.assertEqual(len(observer.seen), 3)
 
 
 def cleanup_owned_process(identity):

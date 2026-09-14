@@ -22,6 +22,17 @@ PUBLIC_FIELDS = frozenset({"schema_version", "job_id", "request_id", "kind", "co
     "cancel_requested_at", "error", "exit_code", "progress", "reconciliation", "publication_revision",
     "output_id", "completion_kind", "counts"})
 
+_ENTRY_DIGESTS: dict[tuple[str, int, int], str] = {}
+
+
+def _file_digest(path: Path) -> str:
+    stat = path.stat()
+    key = (str(path), stat.st_size, stat.st_mtime_ns)
+    digest = _ENTRY_DIGESTS.get(key)
+    if digest is None:
+        digest = _ENTRY_DIGESTS[key] = sha256(path.read_bytes())
+    return digest
+
 
 class JobStore:
     def __init__(self, configs: ConfigStore, *, cancel_grace_seconds=30, startup_timeout=15):
@@ -104,7 +115,7 @@ class JobStore:
         if job.get("launch_identity") and identity != job["launch_identity"]:
             return "unknown"
         try:
-            if sha256(Path(job["entrypoint"]).read_bytes()) != job["worker_sha256"]:
+            if _file_digest(Path(job["entrypoint"])) != job["worker_sha256"]:
                 return "unknown"
         except OSError:
             return "unknown"

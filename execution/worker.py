@@ -312,10 +312,10 @@ def watch(child, tree, jobs, folder, nonce, deadline):
         if (now >= deadline or job["state"] in TERMINAL
                 or (cancel is not None and now - cancel >= job["cancel_grace_seconds"])):
             break
-        if now - last_heartbeat >= 0.5:
+        if now - last_heartbeat >= 5.0:
             change(jobs, folder, nonce, heartbeat=now)
             last_heartbeat = now
-        time.sleep(0.1)
+        time.sleep(0.25)
     tree.finish()
     child.wait(timeout=10)
     return read_job(jobs, folder), time.time() >= deadline
