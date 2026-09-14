@@ -88,12 +88,12 @@ def _short_id(value):
     return text[:12] + "…" if len(text) > 12 else text
 
 
-def _guidance_page(title="実行管理"):
+def _guidance_page(title="実行管理", *, phase=None):
     body = (
         '<section class="card"><p>実行管理は未設定です。'
         '<code>--control &lt;管理フォルダ&gt;</code> を付けてビューアを起動してください。</p></section>'
     )
-    return pages.document(title, body)
+    return pages.document(title, body, phase=phase)
 
 
 def _query(handler):
@@ -223,15 +223,15 @@ def render_config_form(values, *, projects, templates, backends, parent_config_i
         # config and must never be sent inside the duplicate API's "changes".
         project_block = (
             f'<input type="hidden" name="project_id" value="{_escape(values["project_id"])}">'
-            f'<p class="muted">プロジェクト: {_escape(values["project_id"])}（複製元と同じ）</p>'
+            f'<p class="muted">世界: {_escape(values["project_id"])}（複製元と同じ）</p>'
         )
         template_block = (
             f'<input type="hidden" name="template_id" value="{_escape(values["template_id"])}">'
-            f'<p class="muted">テンプレート: {_escape(values["template_id"])}（複製元と同じ）</p>'
+            f'<p class="muted">ジャンル: {_escape(values["template_id"])}（複製元と同じ）</p>'
         )
     else:
-        project_block = _select_field("プロジェクト", "project_id", projects, values["project_id"])
-        template_block = _select_field("テンプレート", "template_id", templates, values["template_id"])
+        project_block = _select_field("世界", "project_id", projects, values["project_id"])
+        template_block = _select_field("ジャンル", "template_id", templates, values["template_id"])
     fields = (
         _text_field("設定名", "label", values["label"], required=True)
         + project_block + template_block
@@ -764,7 +764,7 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
         '<p class="actions">'
         f'<a href="/exp/{_url(experiment_name)}">格子へ</a>'
         + (f'<a href="/configs/{_url(config_id)}">実行設定</a>' if config_id else "")
-        + '<a href="/selected">横断トレイ</a>'
+        + '<a href="/selected">横断 Sifting トレイ</a>'
         + '<a href="/outputs?run=' + _url(run_id) + '">作品一覧</a>'
         "</p>"
     )
@@ -848,19 +848,26 @@ def render_tray_page(rows):
 # Route handlers
 # --------------------------------------------------------------------------
 
+def _config_world(config):
+    return {"id": config["project_id"], "name": config["preview"]["world_name"]}
+
+
 def _configs_list(handler):
     job_store = _job_store(handler)
     if job_store is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="world"))
         return
     configs = job_store.configs.list()
-    handler._send_html(pages.document("設定一覧", render_configs_list(configs), crumbs=[("設定", "/configs")]))
+    handler._send_html(pages.document(
+        "実行設定一覧", render_configs_list(configs),
+        crumbs=[("実行設定", "/configs")], phase="world",
+    ))
 
 
 def _configs_new(handler):
     job_store = _job_store(handler)
     if job_store is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="world"))
         return
     query = _query(handler)
     from_id = query.get("from", [None])[0]
@@ -876,37 +883,48 @@ def _configs_new(handler):
         )
         body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS,
                                    parent_config_id=from_id)
-        title = "設定を複製"
+        title = "実行設定を複製"
     else:
-        body = render_config_form(_new_config_values(), projects=projects, templates=templates, backends=BACKENDS)
-        title = "新しい設定"
-    handler._send_html(pages.document(title, body, crumbs=[("設定", "/configs"), (title, "/configs/new")]))
+        values = _new_config_values()
+        project_preset = query.get("project", [None])[0]
+        template_preset = query.get("template", [None])[0]
+        if project_preset in projects:
+            values["project_id"] = project_preset
+        if template_preset in templates:
+            values["template_id"] = template_preset
+        body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS)
+        title = "新しい実行設定"
+    handler._send_html(pages.document(
+        title, body, crumbs=[("実行設定", "/configs"), (title, "/configs/new")], phase="world",
+    ))
 
 
 def _configs_detail(handler, cid):
     job_store = _job_store(handler)
     if job_store is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="world"))
         return
     config = job_store.configs.get(cid)
     label = config["label"]
     handler._send_html(pages.document(
-        f"設定: {label}", render_config_detail(config),
-        crumbs=[("設定", "/configs"), (label, f"/configs/{_url(cid)}")],
+        f"実行設定: {label}", render_config_detail(config),
+        crumbs=[("実行設定", "/configs"), (label, f"/configs/{_url(cid)}")],
+        phase="world", world=_config_world(config),
     ))
 
 
 def _configs_start(handler, cid):
     job_store = _job_store(handler)
     if job_store is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="world"))
         return
     config = job_store.configs.get(cid)
     request_id = "req-" + uuid.uuid4().hex
     label = config["label"]
     handler._send_html(pages.document(
         f"{label} を実行", render_start_confirm(config, request_id),
-        crumbs=[("設定", "/configs"), (label, f"/configs/{_url(cid)}"), ("実行確認", f"/configs/{_url(cid)}/start")],
+        crumbs=[("実行設定", "/configs"), (label, f"/configs/{_url(cid)}"), ("実行確認", f"/configs/{_url(cid)}/start")],
+        phase="world", world=_config_world(config),
     ))
 
 
@@ -930,7 +948,7 @@ def _duplicate(handler, cid):
 def _jobs_list(handler):
     repository = handler.repository
     if repository.catalog is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="run"))
         return
     records = repository.catalog.history()
     job_store = _job_store(handler)
@@ -942,13 +960,13 @@ def _jobs_list(handler):
             generation_jobs = []
     from viewer import output_pages
     body = render_jobs_list(records) + output_pages.render_generation_jobs_section(generation_jobs)
-    handler._send_html(pages.document("実行履歴", body, crumbs=[("実行履歴", "/jobs")]))
+    handler._send_html(pages.document("実行履歴", body, crumbs=[("実行履歴", "/jobs")], phase="run"))
 
 
 def _jobs_detail(handler, jid):
     job_store = _job_store(handler)
     if job_store is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="run"))
         return
     job = job_store.get(jid)
     if job.get("kind") in ("synopsize", "narrate"):
@@ -956,15 +974,35 @@ def _jobs_detail(handler, jid):
         body = output_pages.render_generation_job(job)
     else:
         body = render_job_page(job)
+    # job["run_id"] is the catalog run_id (an evolve job's happens to equal
+    # the experiment folder name since it always creates a native, non-legacy
+    # run, but a synopsize/narrate job's does not for a legacy run). Resolve
+    # it to the folder name for the header/Sifting link; keep the catalog id
+    # for the 上映 link, which /outputs?run= matches against.
+    catalog_run_id = job.get("run_id")
+    # Unresolved stays None: a legacy catalog id in the 実験 picker would make
+    # the Sifting link /exp/legacy-... and 404.
+    run_name = None
+    if catalog_run_id is not None:
+        try:
+            match = next(
+                (r for r in handler.repository.catalog.history() if r["run_id"] == catalog_run_id),
+                None,
+            )
+        except (ConfigError, OSError, ValueError, KeyError, TypeError, AttributeError):
+            match = None
+        if match is not None:
+            run_name = match["experiment_name"]
     handler._send_html(pages.document(
         f"処理: {jid}", body, crumbs=[("実行履歴", "/jobs"), (jid, f"/jobs/{_url(jid)}")],
+        phase="run", run=run_name, output_run=catalog_run_id,
     ))
 
 
 def _candidates_list(handler, run_id):
     repository = handler.repository
     if repository.catalog is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="sifting"))
         return
     catalog, selections = repository.catalog, repository.selections
     query = _query(handler)
@@ -1007,13 +1045,17 @@ def _candidates_list(handler, run_id):
     handler._send_html(pages.document(
         f"候補: {experiment_name}", page,
         crumbs=[(experiment_name, f"/exp/{_url(experiment_name)}"), ("候補一覧", f"/runs/{_url(run_id)}/candidates")],
+        # run_id here is the catalog run_id (from the URL); it's what
+        # /outputs?run= must use, while `run` (the experiment folder name)
+        # drives the header's picker and its /exp/ link.
+        phase="sifting", run=experiment_name, output_run=run_id,
     ))
 
 
 def _candidates_raw(handler, run_id, candidate_id):
     repository = handler.repository
     if repository.catalog is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="sifting"))
         return
     catalog = repository.catalog
     result = catalog.candidates(run_id)
@@ -1057,17 +1099,20 @@ def _candidates_raw(handler, run_id, candidate_id):
     handler._send_html(pages.document(
         f"{candidate_id} 原ログ", "".join(body),
         crumbs=[("候補一覧", f"/runs/{_url(run_id)}/candidates")],
+        phase="sifting",
     ))
 
 
 def _tray(handler):
     repository = handler.repository
     if repository.selections is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="sifting"))
         return
     rows = repository.selections.tray()
     body = f'<section data-wb="tray">{render_tray_page(rows)}</section>'
-    handler._send_html(pages.document("選定トレイ", body, crumbs=[("選定トレイ", "/selected")]))
+    handler._send_html(pages.document(
+        "Sifting トレイ", body, crumbs=[("Sifting トレイ", "/selected")], phase="sifting",
+    ))
 
 
 # --------------------------------------------------------------------------

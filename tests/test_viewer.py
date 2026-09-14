@@ -373,7 +373,7 @@ class ViewerServerTests(unittest.TestCase):
 
             try:
                 index = _wait_for_page(base_url + "/")
-                self.assertIn("WorldBloom 実験一覧", index)
+                self.assertIn("世界を選ぶ", index)
                 self.assertIn("exp-viewer", index)
 
                 grid = _wait_for_page(base_url + "/exp/exp-viewer")
