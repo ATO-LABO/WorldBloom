@@ -9,7 +9,9 @@
         "--runs",
         "C:\\Projects\\WorldBloom-local\\runs",
         "--port",
-        "5401"
+        "5401",
+        "--control",
+        "C:\\Projects\\WorldBloom-local\\control"
       ],
       "port": 5401
     }

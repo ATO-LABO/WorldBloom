@@ -49,9 +49,16 @@ def document(
         f"<title>{_escape(title)} | WorldBloom</title>"
         '<link rel="stylesheet" href="/static/app.css">'
         '<script src="/static/app.js" defer></script>'
+        '<script src="/static/workbench.js" defer></script>'
         "</head><body>"
         '<header class="site-header">'
         '<a class="brand" href="/">WorldBloom</a>'
+        '<nav class="site-nav" aria-label="ワークベンチ">'
+        '<a href="/">実験一覧</a>'
+        '<a href="/configs">設定</a>'
+        '<a href="/jobs">実行履歴</a>'
+        '<a href="/selected">選定トレイ</a>'
+        "</nav>"
         f'<nav class="crumbs" aria-label="パンくず">{breadcrumb}</nav>'
         "</header>"
         f'<main><h1>{_escape(title)}</h1>{body}</main>'
@@ -575,8 +582,26 @@ def experiment_page(
         + "</aside>"
     )
 
+    workbench_links = ""
+    if repository.catalog is not None:
+        run_id = repository.catalog.run_id(experiment_name)
+        if run_id.startswith("legacy-"):
+            run_id = repository.catalog.register_legacy(experiment_name)
+        links = [
+            f'<a href="/runs/{_url_segment(run_id)}/candidates">候補一覧（世代・seed別）</a>',
+            '<a href="/selected">横断選定トレイ</a>',
+        ]
+        manifest_path = repository.safe_path(experiment, "manifest.json")
+        if manifest_path.is_file():
+            manifest = data._read_json(manifest_path)
+            config_id = manifest.get("config_id") if isinstance(manifest, dict) else None
+            if config_id:
+                links.append(f'<a href="/configs/{_url_segment(config_id)}">実行設定</a>')
+        workbench_links = f'<p class="workbench-links">{" ".join(links)}</p>'
+
     body = (
         f'<form id="compare-cells" method="get" action="/exp/{_url_segment(experiment_name)}/compare"><p>格子から2〜4候補を選択して <button type="submit">四項目で比較</button></p></form>'
+        f"{workbench_links}"
         '<p class="experiment-meta">'
         f'<span class="genre">{_escape(meta["genre"])}</span> '
         f'{_escape(meta["world"])} · '

@@ -715,3 +715,151 @@ td {
 .reader-short { background: var(--panel-2); border-left: 3px solid var(--accent-2); padding: .65rem .8rem; margin: .8rem 0; }
 .reader-short p { margin: .35rem 0 0; }
 .reader-short-label { color: var(--muted); font-size: .75rem; }
+
+/* WB-UI-007 workbench: global nav, forms, job/candidate tables. */
+.site-nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.site-nav a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  text-decoration: underline;
+}
+
+.workbench-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0 0 1rem;
+}
+
+.wb-table {
+  min-width: 720px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.8rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.field-error:empty {
+  display: none;
+}
+
+.form-error {
+  color: var(--danger);
+}
+
+.form-error:empty {
+  display: none;
+}
+
+.state-badge {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.18rem 0.6rem;
+}
+
+.state-running,
+.state-stopping,
+.state-queued {
+  background: rgba(90, 169, 230, 0.18);
+  color: var(--accent-2);
+}
+
+.state-succeeded,
+.state-partial {
+  background: rgba(85, 214, 190, 0.18);
+  color: var(--accent);
+}
+
+.state-failed,
+.state-interrupted {
+  background: rgba(255, 128, 128, 0.18);
+  color: var(--danger);
+}
+
+.state-cancelled {
+  background: rgba(247, 178, 103, 0.18);
+  color: var(--warning);
+}
+
+.state-legacy,
+.state-untracked {
+  background: rgba(168, 183, 202, 0.18);
+  color: var(--muted);
+}
+
+.progress-row {
+  margin: 0.5rem 0;
+}
+
+.progress-row progress {
+  display: block;
+  width: 100%;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.wb-actions {
+  display: table-cell;
+}
+
+.wb-actions a,
+.wb-actions button {
+  margin-right: 0.6rem;
+}
+
+@media (max-width: 760px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .site-nav {
+    flex-wrap: wrap;
+  }
+}
+
+/* A long job_id/run_id in the <h1> must wrap instead of forcing a horizontal
+   scrollbar on narrow viewports (600px/375px). */
+main h1 {
+  overflow-wrap: anywhere;
+}

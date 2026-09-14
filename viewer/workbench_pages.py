@@ -1,0 +1,1038 @@
+"""HTML workbench: configuration forms, job monitoring, and Sifting (WB-UI-007).
+
+Every state change goes through the existing JSON APIs (job_api.py,
+run_catalog.py); this module only renders HTML and adds the one missing
+HTTP route (duplicate-save). GA execution never touches an LLM.
+"""
+from __future__ import annotations
+
+from http import HTTPStatus
+import json
+import time
+import uuid
+from urllib.parse import parse_qs, urlsplit
+
+from execution.configs import evolution_defaults
+from execution.provenance import ConfigError, contained
+from execution.worker import TERMINAL
+from gapengine.synopsis import BACKENDS
+from viewer import job_api, pages
+
+
+_escape = pages._escape
+_url = pages._url_segment
+
+RUNNING_STATES = frozenset({"queued", "running", "stopping"})
+
+STATE_LABELS = {
+    "queued": "待機中",
+    "running": "実行中",
+    "stopping": "停止処理中",
+    "succeeded": "完了",
+    "partial": "一部完了",
+    "failed": "失敗",
+    "cancelled": "停止済み",
+    "interrupted": "中断（プロセス消失）",
+    "legacy": "旧実験",
+    "untracked": "台帳外",
+}
+
+PHASE_LABELS = {
+    "preparing": "準備中",
+    "evaluating": "評価中",
+    "publishing": "世代確定中",
+    "generation_completed": "世代完了",
+    "generating": "生成中",
+}
+
+ERROR_MESSAGES = {
+    "worker_disappeared": ("監視プロセスが消失しました", "同じ設定で新しく実行できます"),
+    "launch_unconfirmed": ("監視プロセスの起動を確認できませんでした", "同じ設定で新しく実行できます"),
+    "launch_failed": ("監視プロセスを起動できませんでした", "実行環境を確認してから新しく実行してください"),
+    "wall_timeout": ("実行時間の上限に達しました", "上限を見直した新しい設定版で実行してください"),
+    "preparation_failed": ("入力とコードの固定に失敗しました", "設定の入力を確認してください"),
+    "process_failed": ("GAプロセスが異常終了しました", "実行ログを確認してから新しく実行してください"),
+}
+
+CANDIDATE_STATE_OPTIONS = ("adopted", "held", "rejected", "unclassified")
+AVAILABILITY_LABELS = {"present": "あり", "pruned": "剪定済み", "missing": "不在", "stale": "不一致"}
+
+# Embedded verbatim into /jobs/{id} as data-* JSON so workbench.js polls against
+# the same vocabulary the server rendered with, instead of hand-copying it.
+TERMINAL_JSON = json.dumps(sorted(TERMINAL), ensure_ascii=False)
+STATE_LABELS_JSON = json.dumps(STATE_LABELS, ensure_ascii=False, sort_keys=True)
+PHASE_LABELS_JSON = json.dumps(PHASE_LABELS, ensure_ascii=False, sort_keys=True)
+
+
+# --------------------------------------------------------------------------
+# Small render helpers
+# --------------------------------------------------------------------------
+
+def state_badge(state):
+    label = STATE_LABELS.get(state, str(state))
+    # data-field="state" lives on this element itself (not a wrapping <p>) so
+    # polling JS can swap both its className and its label span uniquely.
+    return (
+        f'<span class="state-badge state-{_escape(state)}" data-field="state">'
+        f'<span data-field="state-label">{_escape(label)}</span></span>'
+    )
+
+
+def _dl(pairs):
+    items = "".join(f"<dt>{_escape(label)}</dt><dd>{value}</dd>" for label, value in pairs)
+    return f'<dl class="metric">{items}</dl>'
+
+
+def _short_id(value):
+    text = str(value)
+    return text[:12] + "…" if len(text) > 12 else text
+
+
+def _guidance_page(title="実行管理"):
+    body = (
+        '<section class="card"><p>実行管理は未設定です。'
+        '<code>--control &lt;管理フォルダ&gt;</code> を付けてビューアを起動してください。</p></section>'
+    )
+    return pages.document(title, body)
+
+
+def _query(handler):
+    return parse_qs(urlsplit(handler.path).query, keep_blank_values=True)
+
+
+def _clean_query(query):
+    """Drop keys whose only value is empty.
+
+    The filter form (§3.8) always submits every field, blank or not
+    (`generation=&reached=true&...`); run_catalog.candidates()'s filter
+    parsing treats a present-but-empty value as an invalid one, so an
+    all-fields-rendered GET would 422 on the very first load.
+    """
+
+    return {key: values for key, values in query.items() if values and values[0] != ""}
+
+
+def _elapsed_seconds(job, progress):
+    explicit = progress.get("elapsed_seconds")
+    if explicit is not None:
+        return explicit
+    start = job.get("started_at") or job.get("created_at")
+    if start is None:
+        return None
+    end = job.get("finished_at") or time.time()
+    try:
+        return round(end - start, 1)
+    except TypeError:
+        return None
+
+
+def _job_store(handler):
+    return getattr(handler.server, "job_store", None)
+
+
+# --------------------------------------------------------------------------
+# Configuration form fields
+# --------------------------------------------------------------------------
+
+def _text_field(label, name, value, *, required=False):
+    req = " required" if required else ""
+    return (
+        '<div class="field">'
+        f'<label for="f-{_escape(name)}">{_escape(label)}</label>'
+        f'<input id="f-{_escape(name)}" type="text" name="{_escape(name)}" '
+        f'data-field="{_escape(name)}" value="{_escape(value)}"{req}>'
+        f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        "</div>"
+    )
+
+
+def _number_field(label, name, value):
+    return (
+        '<div class="field">'
+        f'<label for="f-{_escape(name)}">{_escape(label)}</label>'
+        f'<input id="f-{_escape(name)}" type="number" step="1" name="{_escape(name)}" '
+        f'data-field="{_escape(name)}" value="{_escape(value)}">'
+        f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        "</div>"
+    )
+
+
+def _select_field(label, name, options, selected):
+    opts = "".join(
+        f'<option value="{_escape(option)}"{" selected" if option == selected else ""}>{_escape(option)}</option>'
+        for option in options
+    )
+    return (
+        '<div class="field">'
+        f'<label for="f-{_escape(name)}">{_escape(label)}</label>'
+        f'<select id="f-{_escape(name)}" name="{_escape(name)}" data-field="{_escape(name)}">{opts}</select>'
+        f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        "</div>"
+    )
+
+
+def _checkbox_field(label, name, checked):
+    chk = " checked" if checked else ""
+    return (
+        '<div class="field">'
+        f'<label for="f-{_escape(name)}">'
+        f'<input id="f-{_escape(name)}" type="checkbox" name="{_escape(name)}" '
+        f'data-field="{_escape(name)}"{chk}> {_escape(label)}</label>'
+        f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        "</div>"
+    )
+
+
+def _initial_values(*, label, project_id, template_id, evolution, execution_limits, generation):
+    values = {"label": label, "project_id": project_id, "template_id": template_id}
+    for key in ("generations", "population", "seeds", "seed_base", "ga_seed", "processes"):
+        values[f"evolution.{key}"] = evolution[key]
+    values["evolution.keep"] = evolution["keep"]
+    for key in ("coevolve", "meta_evolution", "record_explanations"):
+        values[f"evolution.{key}"] = evolution[key]
+    values["evolution.target_ending"] = (
+        ", ".join(evolution["target_ending"]) if evolution.get("target_ending") else ""
+    )
+    values["execution_limits.wall_seconds"] = execution_limits["wall_seconds"]
+    values["generation.backend"] = generation["backend"]
+    values["generation.model"] = generation.get("model") or ""
+    limits = generation.get("limits") or {}
+    for key in ("max_calls", "call_timeout_seconds", "wall_seconds", "max_saved_response_bytes"):
+        values[f"generation.limits.{key}"] = limits.get(key, "")
+    return values
+
+
+def _new_config_values():
+    defaults = evolution_defaults()
+    return _initial_values(
+        label="", project_id="", template_id="",
+        evolution=defaults,
+        execution_limits={"wall_seconds": 3600},
+        generation={
+            "backend": "codex-cli", "model": None,
+            "limits": {"max_calls": 1, "call_timeout_seconds": 180,
+                       "wall_seconds": 240, "max_saved_response_bytes": 128000},
+        },
+    )
+
+
+def render_config_form(values, *, projects, templates, backends, parent_config_id=None):
+    duplicate = parent_config_id is not None
+    if duplicate:
+        # No data-field here: project_id/template_id are fixed by the parent
+        # config and must never be sent inside the duplicate API's "changes".
+        project_block = (
+            f'<input type="hidden" name="project_id" value="{_escape(values["project_id"])}">'
+            f'<p class="muted">プロジェクト: {_escape(values["project_id"])}（複製元と同じ）</p>'
+        )
+        template_block = (
+            f'<input type="hidden" name="template_id" value="{_escape(values["template_id"])}">'
+            f'<p class="muted">テンプレート: {_escape(values["template_id"])}（複製元と同じ）</p>'
+        )
+    else:
+        project_block = _select_field("プロジェクト", "project_id", projects, values["project_id"])
+        template_block = _select_field("テンプレート", "template_id", templates, values["template_id"])
+    fields = (
+        _text_field("設定名", "label", values["label"], required=True)
+        + project_block + template_block
+        + _number_field("世代数", "evolution.generations", values["evolution.generations"])
+        + _number_field("個体数", "evolution.population", values["evolution.population"])
+        + _number_field("seed数", "evolution.seeds", values["evolution.seeds"])
+        + _number_field("seed_base", "evolution.seed_base", values["evolution.seed_base"])
+        + _number_field("ga_seed", "evolution.ga_seed", values["evolution.ga_seed"])
+        + _number_field("processes", "evolution.processes", values["evolution.processes"])
+        + _select_field("保存方針", "evolution.keep", ("all", "reached", "exemplar"), values["evolution.keep"])
+        + _checkbox_field("共進化", "evolution.coevolve", values["evolution.coevolve"])
+        + _checkbox_field("メタ進化", "evolution.meta_evolution", values["evolution.meta_evolution"])
+        + _checkbox_field("説明記録", "evolution.record_explanations", values["evolution.record_explanations"])
+        + _text_field("結末（カンマ区切り。空なら世界の既定）", "evolution.target_ending", values["evolution.target_ending"])
+        + _number_field("実行時間上限（秒）", "execution_limits.wall_seconds", values["execution_limits.wall_seconds"])
+        + _select_field("生成方式", "generation.backend", backends, values["generation.backend"])
+        + _text_field("モデル（空なら未指定）", "generation.model", values["generation.model"])
+        + _number_field("max_calls", "generation.limits.max_calls", values["generation.limits.max_calls"])
+        + _number_field("call_timeout_seconds", "generation.limits.call_timeout_seconds",
+                         values["generation.limits.call_timeout_seconds"])
+        + _number_field("生成側 wall_seconds", "generation.limits.wall_seconds",
+                         values["generation.limits.wall_seconds"])
+        + _number_field("max_saved_response_bytes", "generation.limits.max_saved_response_bytes",
+                         values["generation.limits.max_saved_response_bytes"])
+    )
+    preview_button = "" if duplicate else '<button type="button" data-action="preview">検証する</button>'
+    save_label = "複製として保存" if duplicate else "新しい版として保存"
+    parent_attr = f' data-parent="{_escape(parent_config_id)}"' if duplicate else ""
+    return (
+        f'<form data-wb="config-form"{parent_attr}>'
+        '<p class="form-error" data-form-error role="alert"></p>'
+        f'<div class="form-grid">{fields}</div>'
+        f"{preview_button}"
+        f'<button type="submit">{_escape(save_label)}</button>'
+        '<div data-preview></div>'
+        "</form>"
+    )
+
+
+def render_configs_list(configs):
+    if not configs:
+        table = "<p>設定がありません。</p>"
+    else:
+        rows = "".join(
+            "<tr>"
+            f'<td><a href="/configs/{_url(c["config_id"])}">{_escape(c["label"])}</a></td>'
+            f'<td>{_escape(c["config_id"])}</td>'
+            f'<td>{_escape(c["project_id"])} / {_escape(c["template_id"])}</td>'
+            f'<td>{_escape(c["evolution"]["generations"])}×'
+            f'{_escape(c["evolution"]["population"])}×{_escape(c["evolution"]["seeds"])}</td>'
+            f'<td>{_escape(c["created_at"])}</td>'
+            "<td>"
+            + (
+                f'<a href="/configs/{_url(c["parent_config_id"])}">{_escape(c["parent_config_id"])}</a>'
+                if c.get("parent_config_id") else "—"
+            )
+            + "</td>"
+            '<td class="wb-actions">'
+            f'<a href="/configs/{_url(c["config_id"])}">確認</a>'
+            f'<a href="/configs/{_url(c["config_id"])}/start">GAを実行</a>'
+            "</td></tr>"
+            for c in configs
+        )
+        table = (
+            '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
+            "<th>設定名</th><th>config_id</th><th>ジャンル</th><th>世代×個体×seed</th>"
+            "<th>作成日時</th><th>複製元</th><th>操作</th>"
+            f"</tr></thead><tbody>{rows}</tbody></table></div>"
+        )
+    return table + '<p><a href="/configs/new">新しい設定を作る</a></p>'
+
+
+def render_config_detail(config):
+    preview = config["preview"]
+    ev = config["evolution"]
+    parent = config.get("parent_config_id")
+    parent_block = (
+        f'<p><a href="/configs/{_url(parent)}">複製元: {_escape(parent)}</a></p>' if parent else ""
+    )
+    world_section = _dl([
+        ("世界", _escape(preview["world_name"])),
+        ("主人公", _escape(preview["protagonist"])),
+        ("敵役", _escape(preview["antagonist"])),
+        ("解決済み結末", _escape(", ".join(preview["target_endings"]))),
+        ("最大ターン", _escape(preview["max_turns"])),
+    ])
+    ending_text = ", ".join(ev["target_ending"]) if ev.get("target_ending") else "世界の既定"
+    ga_section = _dl([
+        ("世代数", _escape(ev["generations"])),
+        ("個体数", _escape(ev["population"])),
+        ("seed数", _escape(ev["seeds"])),
+        ("seed_base", _escape(ev["seed_base"])),
+        ("ga_seed", _escape(ev["ga_seed"])),
+        ("processes", _escape(ev["processes"])),
+        ("保存方針", _escape(ev["keep"])),
+        ("共進化", _escape(ev["coevolve"])),
+        ("メタ進化", _escape(ev["meta_evolution"])),
+        ("説明記録", _escape(ev["record_explanations"])),
+        ("結末", _escape(ending_text)),
+        ("実行時間上限（秒）", _escape(config["execution_limits"]["wall_seconds"])),
+    ]) + '<p class="muted">列の値は次の版で変更可</p>'
+    fixed = preview["fixed_parameters"]
+    fixed_section = _dl([
+        ("由来", _escape(fixed["source"])),
+        ("mutation_probability", _escape(fixed["mutation_probability"])),
+        ("rule_mutation_probability", _escape(fixed["rule_mutation_probability"])),
+    ]) + '<p class="muted">実装上固定の値のため編集不可</p>'
+    planned_section = _dl([
+        ("個体評価数（予定）", _escape(preview["planned_individual_evaluations"])),
+        ("seed評価数（予定）", _escape(preview["planned_seed_evaluations"])),
+        ("seed範囲", f'{_escape(preview["seed_range"]["first"])} から {_escape(preview["seed_range"]["count"])} 件'),
+    ]) + ('<p class="muted">共進化のため2倍</p>' if ev["coevolve"] else "")
+    fallbacks = preview.get("fallbacks") or {}
+    if fallbacks:
+        fallback_section = "<ul>" + "".join(
+            f"<li>{_escape(name)}: {_escape(info.get('reason'))}</li>"
+            for name, info in fallbacks.items()
+        ) + "</ul>"
+    else:
+        fallback_section = "<p>省略なし</p>"
+    gen = config["generation"]
+    gen_preview = preview["generation"]
+    gen_pairs = [
+        ("方式", _escape(gen["backend"])),
+        ("モデル", _escape(gen["model"]) if gen.get("model") else "未指定"),
+        ("max_calls", _escape(gen["limits"]["max_calls"])),
+        ("call_timeout_seconds", _escape(gen["limits"]["call_timeout_seconds"])),
+        ("wall_seconds", _escape(gen["limits"]["wall_seconds"])),
+        ("max_saved_response_bytes", _escape(gen["limits"]["max_saved_response_bytes"])),
+        ("可否（保存時点）", _escape(gen_preview.get("available"))),
+        ("認証", _escape(gen_preview.get("authentication"))),
+    ]
+    completion_kind = gen_preview.get("completion_kind")
+    if completion_kind:
+        gen_pairs.append(("完了種別", _escape(completion_kind)))
+    gen_section = _dl(gen_pairs) + '<p class="muted">保存時点の可否。認証の有効性は未確認</p>'
+    provenance_section = _dl([
+        ("作成日時", _escape(config["created_at"])),
+        ("input_manifest_sha256", _escape(config["input_manifest_sha256"])),
+    ])
+    actions = (
+        '<p class="actions">'
+        f'<a href="/configs/{_url(config["config_id"])}/start">この設定でGAを実行</a>'
+        f'<a href="/configs/new?from={_url(config["config_id"])}">複製して編集</a>'
+        '<a href="/configs">一覧へ</a>'
+        "</p>"
+    )
+    return (
+        f'<p class="muted">config_id: {_escape(config["config_id"])}</p>'
+        + parent_block
+        + '<section class="card"><h2>世界と人物</h2>' + world_section + "</section>"
+        + '<section class="card"><h2>GA設定</h2>' + ga_section + "</section>"
+        + '<section class="card"><h2>実装上固定の値</h2>' + fixed_section + "</section>"
+        + '<section class="card"><h2>予定評価数</h2>' + planned_section + "</section>"
+        + '<section class="card"><h2>省略ファイルと実効値</h2>' + fallback_section + "</section>"
+        + '<section class="card"><h2>生成設定</h2>' + gen_section + "</section>"
+        + '<section class="card"><h2>来歴</h2>' + provenance_section + "</section>"
+        + actions
+    )
+
+
+def render_start_confirm(config, request_id):
+    ev = config["evolution"]
+    preview = config["preview"]
+    ending_text = ", ".join(ev["target_ending"]) if ev.get("target_ending") else "世界の既定"
+    summary = _dl([
+        ("終了条件（世代数）", _escape(ev["generations"])),
+        ("個体数", _escape(ev["population"])),
+        ("seed数", _escape(ev["seeds"])),
+        ("seed_base", _escape(ev["seed_base"])),
+        ("ga_seed", _escape(ev["ga_seed"])),
+        ("processes", _escape(ev["processes"])),
+        ("保存方針", _escape(ev["keep"])),
+        ("共進化", _escape(ev["coevolve"])),
+        ("メタ進化", _escape(ev["meta_evolution"])),
+        ("説明記録", _escape(ev["record_explanations"])),
+        ("結末", _escape(ending_text)),
+        ("個体評価数（予定）", _escape(preview["planned_individual_evaluations"])),
+        ("seed評価数（予定）", _escape(preview["planned_seed_evaluations"])),
+        ("実行時間上限（秒）", _escape(config["execution_limits"]["wall_seconds"])),
+    ])
+    return (
+        f'<div data-wb="start" data-config-id="{_escape(config["config_id"])}" '
+        f'data-request-id="{_escape(request_id)}">'
+        f'<h2>{_escape(config["label"])} を実行</h2>'
+        + summary
+        + '<p class="muted">GA は LLM を呼び出しません。</p>'
+        + '<p class="form-error" data-form-error role="alert"></p>'
+        + '<form><button type="submit">この設定でGAを実行</button></form>'
+        + f'<p class="actions"><a href="/configs/{_url(config["config_id"])}">設定に戻る</a></p>'
+        + "</div>"
+    )
+
+
+# --------------------------------------------------------------------------
+# Jobs
+# --------------------------------------------------------------------------
+
+def _job_row(record):
+    name_cell = _escape(record["experiment_name"])
+    if record["experiment_name"] != record["run_id"]:
+        name_cell += f' <span class="muted">({_escape(record["run_id"])})</span>'
+    revision = record.get("publication_revision")
+    cid = record.get("config_id")
+    config_cell = f'<a href="/configs/{_url(cid)}">{_escape(cid)}</a>' if cid else "未記録"
+    actions = []
+    if record.get("job_id"):
+        actions.append(f'<a href="/jobs/{_url(record["job_id"])}">処理画面</a>')
+    if record["state"] == "legacy" or revision is not None:
+        actions.append(f'<a href="/exp/{_url(record["experiment_name"])}">結果</a>')
+        actions.append(f'<a href="/runs/{_url(record["run_id"])}/candidates">候補一覧</a>')
+    return (
+        "<tr>"
+        f"<td>{name_cell}</td>"
+        f"<td>{state_badge(record['state'])}</td>"
+        f"<td>{_escape(PHASE_LABELS.get(record.get('phase'), record.get('phase')))}</td>"
+        f"<td>{_escape(revision) if revision is not None else '—'}</td>"
+        f"<td>{config_cell}</td>"
+        f'<td class="wb-actions">{" ".join(actions)}</td>'
+        "</tr>"
+    )
+
+
+def render_jobs_list(records):
+    running = [r for r in records if r["state"] in RUNNING_STATES]
+    history = [r for r in records if r["state"] not in RUNNING_STATES]
+
+    def table(rows, empty_text):
+        if not rows:
+            return f"<p>{empty_text}</p>"
+        body = "".join(_job_row(r) for r in rows)
+        return (
+            '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
+            "<th>実験</th><th>状態</th><th>段階</th><th>公開版</th><th>設定</th><th>操作</th>"
+            f"</tr></thead><tbody>{body}</tbody></table></div>"
+        )
+
+    return (
+        "<section><h2>進行中</h2>" + table(running, "進行中の実行はありません") + "</section>"
+        "<section><h2>履歴</h2>" + table(history, "実行履歴はありません") + "</section>"
+    )
+
+
+def render_job_page(job):
+    state = job.get("state")
+    terminal = state in TERMINAL
+    progress = job.get("progress") or {}
+    reconciliation = job.get("reconciliation")
+    parts = [
+        f'<section data-wb="job" data-job-id="{_escape(job.get("job_id"))}" data-poll="1" '
+        f'data-terminal="{"true" if terminal else "false"}" '
+        f'data-terminal-states="{_escape(TERMINAL_JSON)}" '
+        f'data-state-labels="{_escape(STATE_LABELS_JSON)}" '
+        f'data-phase-labels="{_escape(PHASE_LABELS_JSON)}">',
+        f'<p>{state_badge(state)}</p>',
+        f'<p data-field="phase">{_escape(PHASE_LABELS.get(job.get("phase"), job.get("phase")))}</p>',
+        '<p class="warning" data-connection-status hidden>'
+        "サーバーに接続できません（再試行中）</p>",
+    ]
+    # Always rendered (toggled with the `hidden` attribute) so polling JS can
+    # show/hide it without needing to create the element on the fly.
+    parts.append(
+        '<p class="warning" data-field="reconciliation"'
+        + ("" if reconciliation == "unknown" else " hidden")
+        + ">状態確認中: 監視プロセスの生存を確認しています。"
+        "確認できるまで新しい実行は受け付けられません</p>"
+    )
+    total_generations = progress.get("total_generations")
+    completed_generations = progress.get("completed_generations")
+    if total_generations:
+        parts.append(
+            '<div class="progress-row"><label>完了世代 '
+            f'<span data-field="completed_generations">{_escape(completed_generations)}</span>/'
+            f'<span data-field="total_generations">{_escape(total_generations)}</span></label>'
+            f'<progress aria-label="完了世代" value="{int(completed_generations or 0)}" '
+            f'max="{int(total_generations)}"></progress></div>'
+        )
+    total_individuals = progress.get("total_individuals")
+    completed_individuals = progress.get("completed_individuals")
+    parts.append(
+        '<div class="progress-row"><label>評価済み個体 '
+        f'<span data-field="completed_individuals">{_escape(completed_individuals)}</span>/'
+        f'<span data-field="total_individuals">{_escape(total_individuals)}</span></label>'
+        f'<progress aria-label="評価済み個体" value="{int(completed_individuals or 0)}" '
+        f'max="{int(total_individuals or 1)}"></progress></div>'
+    )
+    parts.append(
+        '<p>評価済みseed '
+        f'<span data-field="completed_seeds">{_escape(progress.get("completed_seeds"))}</span>/'
+        f'<span data-field="total_seeds">{_escape(progress.get("total_seeds"))}</span></p>'
+    )
+    active_seeds = progress.get("active_seeds")
+    if active_seeds is not None:
+        note = "未完了seedの記録（生存プロセス数ではない）" if terminal else "実行中seed数"
+        parts.append(f'<p>{_escape(note)}: <span data-field="active_seeds">{len(active_seeds)}</span></p>')
+    elapsed = _elapsed_seconds(job, progress)
+    parts.append(
+        '<p>経過秒: '
+        f'<span data-field="elapsed_seconds">{_escape(elapsed) if elapsed is not None else ""}</span></p>'
+    )
+    revision = job.get("publication_revision")
+    parts.append(
+        '<p>公開版: '
+        f'<span data-field="publication_revision">{_escape(revision) if revision is not None else "—"}</span></p>'
+    )
+    parts.append(f'<p>開始: {_escape(job.get("started_at"))} / 終了: {_escape(job.get("finished_at"))}</p>')
+    by_role = progress.get("by_role")
+    if by_role:
+        rows = "".join(
+            f"<tr><td>{_escape(role)}</td>"
+            f"<td>{_escape(values.get('completed_individuals'))}/{_escape(values.get('total_individuals'))}</td>"
+            f"<td>{_escape(values.get('completed_seeds'))}/{_escape(values.get('total_seeds'))}</td></tr>"
+            for role, values in by_role.items()
+        )
+        parts.append(
+            '<div class="grid-wrap"><table class="wb-table"><thead><tr><th>役割</th><th>個体</th><th>seed</th></tr></thead>'
+            f"<tbody>{rows}</tbody></table></div>"
+        )
+    config_id = job.get("config_id")
+    run_id = job.get("run_id")
+    if state in ("failed", "cancelled", "interrupted"):
+        code = (job.get("error") or {}).get("code")
+        message, next_step = ERROR_MESSAGES.get(code, (f"エラー: {code}", ""))
+        parts.append(f'<p class="error">{_escape(message)}</p><p>{_escape(next_step)}</p>')
+        if config_id:
+            parts.append(f'<p><a href="/configs/{_url(config_id)}/start">同じ設定で新しく実行</a></p>')
+        if job.get("publication_revision") is not None:
+            parts.append(
+                '<p class="actions">'
+                f'<a href="/exp/{_url(run_id)}">途中まで確定した結果</a>'
+                f'<a href="/runs/{_url(run_id)}/candidates">候補一覧</a></p>'
+            )
+    if state in ("succeeded", "partial"):
+        parts.append(
+            '<p class="actions">'
+            f'<a href="/exp/{_url(run_id)}">確定結果を見る</a>'
+            f'<a href="/runs/{_url(run_id)}/candidates">候補一覧</a></p>'
+        )
+    if not terminal:
+        disabled = " disabled" if state == "stopping" else ""
+        label = "停止処理中（猶予後に強制終了）" if state == "stopping" else "停止"
+        parts.append(
+            f'<button type="button" data-action="cancel"{disabled}>{_escape(label)}</button>'
+            '<span data-cancel-status></span>'
+        )
+    tail_links = ['<a href="/jobs">実行履歴へ</a>']
+    if config_id:
+        tail_links.append(f'<a href="/configs/{_url(config_id)}">設定</a>')
+    parts.append(f'<p class="actions">{"".join(tail_links)}</p>')
+    parts.append("</section>")
+    return "".join(parts)
+
+
+# --------------------------------------------------------------------------
+# Candidates / Sifting
+# --------------------------------------------------------------------------
+
+def _parse_filters(query):
+    """Mirror run_catalog.dispatch's GET-candidates query parsing exactly."""
+
+    filters = {}
+    state = query.pop("state", None)
+    if state is not None and (len(state) != 1 or state[0] not in CANDIDATE_STATE_OPTIONS):
+        raise ConfigError("state", "選定状態が正しくありません")
+    for key, values in query.items():
+        if len(values) != 1:
+            raise ConfigError("filters", "絞り込み値は1つ指定してください")
+        value = values[0]
+        if key in ("generation", "individual_index", "seed"):
+            if not value.isascii() or not value.isdigit():
+                raise ConfigError(key, "0以上の整数で指定してください")
+            value = int(value)
+        elif key == "reached":
+            if value not in ("true", "false"):
+                raise ConfigError(key, "trueまたはfalseで指定してください")
+            value = value == "true"
+        filters[key] = value
+    return filters, (state[0] if state else None)
+
+
+def _reached_text(value):
+    if value is True:
+        return "到達"
+    if value is False:
+        return "未到達"
+    return "不明"
+
+
+def _candidate_row(candidate, run_id, experiment_name, is_representative, running):
+    cid = candidate["candidate_id"]
+    short = _short_id(cid)
+    disabled = " disabled" if running else ""
+    state_options = "".join(
+        f'<option value="{option}"{" selected" if candidate["state"] == option else ""}>{option}</option>'
+        for option in CANDIDATE_STATE_OPTIONS
+    )
+    links = []
+    if is_representative:
+        cell = candidate.get("cell_key")
+        links.append(
+            f'<a href="/exp/{_url(experiment_name)}/cell/{_url(cell)}">格子で見る</a>'
+        )
+    if candidate["log"]["availability"] == "present":
+        links.append(f'<a href="/runs/{_url(run_id)}/candidates/{_url(cid)}/raw">原ログ</a>')
+    return (
+        f'<tr data-candidate-id="{_escape(cid)}">'
+        f'<td title="{_escape(cid)}">{_escape(short)}</td>'
+        f'<td>{_escape(candidate.get("generation"))}</td>'
+        f'<td>{_escape(candidate.get("individual_index"))}</td>'
+        f'<td>{_escape(candidate.get("seed"))}</td>'
+        f'<td>{_escape(candidate.get("role"))}</td>'
+        f'<td>{_escape(candidate.get("cell_key"))}</td>'
+        f'<td>{_escape(_reached_text(candidate.get("reached")))}</td>'
+        f'<td>{_escape(AVAILABILITY_LABELS.get(candidate["log"]["availability"], candidate["log"]["availability"]))}</td>'
+        f'<td>{_escape(candidate.get("screenable"))}</td>'
+        f'<td><select data-field="state" aria-label="選定状態 {_escape(short)}"{disabled}>'
+        f'{state_options}</select></td>'
+        f'<td><input data-field="note" aria-label="メモ {_escape(short)}" '
+        f'value="{_escape(candidate.get("note", ""))}"{disabled}></td>'
+        '<td class="wb-actions">'
+        f'<button type="button" data-action="save-candidate"{disabled}>保存</button> '
+        + " ".join(links)
+        + '<span data-save-status></span>'
+        "</td></tr>"
+    )
+
+
+def _candidates_filter_form(run_id, query):
+    def val(name):
+        values = query.get(name)
+        return values[0] if values else ""
+
+    def options(name, choices, empty_label=""):
+        parts = [f'<option value=""{" selected" if val(name) == "" else ""}>{_escape(empty_label)}</option>']
+        for choice, label in choices:
+            parts.append(
+                f'<option value="{_escape(choice)}"{" selected" if val(name) == choice else ""}>'
+                f"{_escape(label)}</option>"
+            )
+        return "".join(parts)
+
+    role_options = options("role", [(r, r) for r in ("protagonist", "antagonist", "unknown")])
+    reached_options = options("reached", [("true", "到達"), ("false", "未到達")])
+    availability_options = options("availability", list(AVAILABILITY_LABELS.items()))
+    state_options = options("state", [(s, s) for s in CANDIDATE_STATE_OPTIONS])
+    return (
+        '<form method="get" class="form-grid">'
+        '<div class="field"><label>世代'
+        f'<input type="number" name="generation" value="{_escape(val("generation"))}"></label></div>'
+        '<div class="field"><label>個体'
+        f'<input type="number" name="individual_index" value="{_escape(val("individual_index"))}"></label></div>'
+        '<div class="field"><label>seed'
+        f'<input type="number" name="seed" value="{_escape(val("seed"))}"></label></div>'
+        f'<div class="field"><label>役割<select name="role">{role_options}</select></label></div>'
+        f'<div class="field"><label>到達<select name="reached">{reached_options}</select></label></div>'
+        f'<div class="field"><label>原記録<select name="availability">{availability_options}</select></label></div>'
+        f'<div class="field"><label>選定状態<select name="state">{state_options}</select></label></div>'
+        '<div class="actions"><button type="submit">絞り込む</button>'
+        f'<a href="/runs/{_url(run_id)}/candidates">解除</a></div>'
+        "</form>"
+    )
+
+
+def render_candidates_page(*, run_id, experiment_name, config_id, revision, selection_revision,
+                            candidates, representatives, running, query, representatives_error=False):
+    header = (
+        f'<p>実験: {_escape(experiment_name)} · 公開版 {_escape(revision)} · '
+        f'選定版 {_escape(selection_revision)} · {len(candidates)}件</p>'
+        '<p class="actions">'
+        f'<a href="/exp/{_url(experiment_name)}">格子へ</a>'
+        + (f'<a href="/configs/{_url(config_id)}">実行設定</a>' if config_id else "")
+        + '<a href="/selected">横断トレイ</a>'
+        "</p>"
+    )
+    if running:
+        header += '<p class="warning">実行中のため選定は保存できません</p>'
+    if representatives_error:
+        header += '<p class="warning">代表セルを解決できないため［格子で見る］は表示しません</p>'
+    if candidates:
+        rows = "".join(
+            _candidate_row(c, run_id, experiment_name, c["candidate_id"] in representatives, running)
+            for c in candidates
+        )
+        table = (
+            '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
+            "<th>候補ID</th><th>世代</th><th>個体</th><th>seed</th><th>役割</th><th>セル</th>"
+            "<th>到達</th><th>原記録</th><th>採用可</th><th>選定状態</th><th>メモ</th><th>操作</th>"
+            f"</tr></thead><tbody>{rows}</tbody></table></div>"
+        )
+    else:
+        table = "<p>候補がありません。</p>"
+    return (
+        f'<section data-wb="candidates" data-run-id="{_escape(run_id)}" '
+        f'data-revision="{_escape(selection_revision)}">'
+        + header + _candidates_filter_form(run_id, query) + table
+        + "</section>"
+    )
+
+
+# --------------------------------------------------------------------------
+# Cross-run tray
+# --------------------------------------------------------------------------
+
+def _tray_row(entry):
+    cid = entry["candidate_id"]
+    return (
+        f'<tr data-run-id="{_escape(entry["run_id"])}" data-candidate-id="{_escape(cid)}" '
+        f'data-revision="{_escape(entry["selection_revision"])}">'
+        f'<td title="{_escape(cid)}">{_escape(_short_id(cid))}</td>'
+        f'<td>{_escape(entry.get("cell_key"))}</td>'
+        f'<td>{_escape(entry.get("generation"))}/{_escape(entry.get("seed"))}</td>'
+        f'<td>{_escape(entry.get("state"))}</td>'
+        f'<td>{_escape(entry.get("note"))}</td>'
+        '<td class="wb-actions">'
+        f'<a href="/runs/{_url(entry["run_id"])}/candidates">候補一覧</a>'
+        f'<a href="/exp/{_url(entry["experiment_name"])}">格子</a>'
+        '<button type="button" data-action="remove">外す</button>'
+        "</td></tr>"
+    )
+
+
+def render_tray_page(rows):
+    note = '<p class="muted">上映生成の操作は後続カード（WB-UI-008）</p>'
+    if not rows:
+        return "<p>採用・保留の候補はありません。</p>" + note
+    by_run = {}
+    for row in rows:
+        by_run.setdefault(row["run_id"], []).append(row)
+    sections = []
+    for entries in by_run.values():
+        experiment_name = entries[0]["experiment_name"]
+        adopted_count = sum(e["state"] == "adopted" for e in entries)
+        body = "".join(_tray_row(e) for e in entries)
+        sections.append(
+            f'<section class="card"><h2>{_escape(experiment_name)}（採用 {adopted_count} 件）</h2>'
+            '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
+            "<th>候補ID</th><th>セル</th><th>世代/seed</th><th>状態</th><th>メモ</th><th>操作</th>"
+            f"</tr></thead><tbody>{body}</tbody></table></div></section>"
+        )
+    return "".join(sections) + note
+
+
+# --------------------------------------------------------------------------
+# Route handlers
+# --------------------------------------------------------------------------
+
+def _configs_list(handler):
+    job_store = _job_store(handler)
+    if job_store is None:
+        handler._send_html(_guidance_page())
+        return
+    configs = job_store.configs.list()
+    handler._send_html(pages.document("設定一覧", render_configs_list(configs), crumbs=[("設定", "/configs")]))
+
+
+def _configs_new(handler):
+    job_store = _job_store(handler)
+    if job_store is None:
+        handler._send_html(_guidance_page())
+        return
+    query = _query(handler)
+    from_id = query.get("from", [None])[0]
+    repo = job_store.configs.repo
+    projects = sorted(p.name for p in (repo / "projects").iterdir() if p.is_dir()) if (repo / "projects").is_dir() else []
+    templates = sorted(p.name for p in (repo / "templates").iterdir() if p.is_dir()) if (repo / "templates").is_dir() else []
+    if from_id is not None:
+        parent = job_store.configs.get(from_id)
+        values = _initial_values(
+            label=parent["label"], project_id=parent["project_id"], template_id=parent["template_id"],
+            evolution=parent["evolution"], execution_limits=parent["execution_limits"],
+            generation=parent["generation"],
+        )
+        body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS,
+                                   parent_config_id=from_id)
+        title = "設定を複製"
+    else:
+        body = render_config_form(_new_config_values(), projects=projects, templates=templates, backends=BACKENDS)
+        title = "新しい設定"
+    handler._send_html(pages.document(title, body, crumbs=[("設定", "/configs"), (title, "/configs/new")]))
+
+
+def _configs_detail(handler, cid):
+    job_store = _job_store(handler)
+    if job_store is None:
+        handler._send_html(_guidance_page())
+        return
+    config = job_store.configs.get(cid)
+    label = config["label"]
+    handler._send_html(pages.document(
+        f"設定: {label}", render_config_detail(config),
+        crumbs=[("設定", "/configs"), (label, f"/configs/{_url(cid)}")],
+    ))
+
+
+def _configs_start(handler, cid):
+    job_store = _job_store(handler)
+    if job_store is None:
+        handler._send_html(_guidance_page())
+        return
+    config = job_store.configs.get(cid)
+    request_id = "req-" + uuid.uuid4().hex
+    label = config["label"]
+    handler._send_html(pages.document(
+        f"{label} を実行", render_start_confirm(config, request_id),
+        crumbs=[("設定", "/configs"), (label, f"/configs/{_url(cid)}"), ("実行確認", f"/configs/{_url(cid)}/start")],
+    ))
+
+
+def _duplicate(handler, cid):
+    job_store = _job_store(handler)
+    if job_store is None:
+        raise ConfigError("service", "実行管理は未設定です", code="unavailable")
+    handler.connection.settimeout(5)
+    try:
+        body = handler._request_json()
+    except ValueError as error:
+        raise ConfigError("request", "JSON本文が不正です", code="bad_request") from error
+    job_api.boundary(handler)
+    if set(body) != {"changes"} or not isinstance(body["changes"], dict):
+        raise ConfigError("request", "変更内容をオブジェクトで指定してください", code="bad_request")
+    settings_path = getattr(handler.server, "settings_path", None)
+    document = job_store.configs.duplicate(cid, body["changes"], settings_path=settings_path)
+    handler._send_json(HTTPStatus.CREATED, document)
+
+
+def _jobs_list(handler):
+    repository = handler.repository
+    if repository.catalog is None:
+        handler._send_html(_guidance_page())
+        return
+    records = repository.catalog.history()
+    handler._send_html(pages.document("実行履歴", render_jobs_list(records), crumbs=[("実行履歴", "/jobs")]))
+
+
+def _jobs_detail(handler, jid):
+    job_store = _job_store(handler)
+    if job_store is None:
+        handler._send_html(_guidance_page())
+        return
+    job = job_store.get(jid)
+    handler._send_html(pages.document(
+        f"処理: {jid}", render_job_page(job), crumbs=[("実行履歴", "/jobs"), (jid, f"/jobs/{_url(jid)}")],
+    ))
+
+
+def _candidates_list(handler, run_id):
+    repository = handler.repository
+    if repository.catalog is None:
+        handler._send_html(_guidance_page())
+        return
+    catalog, selections = repository.catalog, repository.selections
+    query = _query(handler)
+    filters, state_filter = _parse_filters(_clean_query(query))
+    result = catalog.candidates(run_id, **filters)
+    selected = selections.get(run_id)
+    entries = {e["candidate_id"]: e for e in selected["entries"]}
+    candidates = [
+        {**c, "state": entries.get(c["candidate_id"], {}).get("state", "unclassified"),
+         "note": entries.get(c["candidate_id"], {}).get("note", "")}
+        for c in result["candidates"]
+    ]
+    if state_filter is not None:
+        candidates = [c for c in candidates if c["state"] == state_filter]
+    snapshot = catalog.snapshot(run_id)
+    try:
+        representatives = set(catalog.representatives(snapshot).values())
+        representatives_error = False
+    except ConfigError:
+        # A broken/ambiguous representative mapping must not take the whole
+        # Sifting page down; degrade to "no grid links" instead.
+        representatives = set()
+        representatives_error = True
+    experiment_name = snapshot["experiment_name"]
+    history_record = next((r for r in catalog.history() if r["run_id"] == run_id), None)
+    running = history_record is not None and history_record["state"] in RUNNING_STATES
+    config_id = history_record.get("config_id") if history_record else None
+    page = render_candidates_page(
+        run_id=run_id, experiment_name=experiment_name, config_id=config_id,
+        revision=result["revision"], selection_revision=selected["revision"],
+        candidates=candidates, representatives=representatives, running=running, query=query,
+        representatives_error=representatives_error,
+    )
+    handler._send_html(pages.document(
+        f"候補: {experiment_name}", page,
+        crumbs=[(experiment_name, f"/exp/{_url(experiment_name)}"), ("候補一覧", f"/runs/{_url(run_id)}/candidates")],
+    ))
+
+
+def _candidates_raw(handler, run_id, candidate_id):
+    repository = handler.repository
+    if repository.catalog is None:
+        handler._send_html(_guidance_page())
+        return
+    catalog = repository.catalog
+    result = catalog.candidates(run_id)
+    candidate = next((c for c in result["candidates"] if c["candidate_id"] == candidate_id), None)
+    if candidate is None:
+        raise ConfigError("candidate_id", "候補がありません", code="not_found")
+    availability = candidate["log"]["availability"]
+    relative_path = candidate["log"].get("relative_path")
+    if availability != "present" or not relative_path:
+        raise ConfigError("candidate_id", f"原記録を表示できません（状態: {availability}）", code="not_found")
+    root, _legacy = catalog.resolve(run_id)
+    path = contained(root, relative_path)
+    raw = path.read_text(encoding="utf-8-sig")
+    lines = raw.splitlines()
+    query = _query(handler)
+    line_param = query.get("line", [None])[0]
+    body = [f'<p><a href="/runs/{_url(run_id)}/candidates">← 候補一覧へ戻る</a></p>']
+    body.append(
+        f'<p>SHA-256: {_escape(candidate.get("source_log_sha256"))} · '
+        f'世代{_escape(candidate.get("generation"))} · '
+        f'個体{_escape(candidate.get("individual_index"))} · seed{_escape(candidate.get("seed"))}</p>'
+    )
+    if line_param is not None:
+        try:
+            line = int(line_param)
+        except (TypeError, ValueError) as error:
+            raise ConfigError("line", "1始まりの整数を指定してください") from error
+        if not 1 <= line <= len(lines):
+            raise ConfigError("line", "原ログの範囲外です")
+        first, last = max(1, line - 3), min(len(lines), line + 3)
+        body.append(
+            f'<p>原ログ全{len(lines)}行のうちL{first}〜L{last}。'
+            f'<a href="/runs/{_url(run_id)}/candidates/{_url(candidate_id)}/raw">全文</a></p>'
+        )
+    else:
+        first, last = 1, len(lines)
+    body.append('<div class="raw-lines">')
+    for number in range(first, last + 1):
+        body.append(f'<pre id="L{number}"><a href="?line={number}#L{number}">L{number}</a> {_escape(lines[number - 1])}</pre>')
+    body.append("</div>")
+    handler._send_html(pages.document(
+        f"{candidate_id} 原ログ", "".join(body),
+        crumbs=[("候補一覧", f"/runs/{_url(run_id)}/candidates")],
+    ))
+
+
+def _tray(handler):
+    repository = handler.repository
+    if repository.selections is None:
+        handler._send_html(_guidance_page())
+        return
+    rows = repository.selections.tray()
+    body = f'<section data-wb="tray">{render_tray_page(rows)}</section>'
+    handler._send_html(pages.document("選定トレイ", body, crumbs=[("選定トレイ", "/selected")]))
+
+
+# --------------------------------------------------------------------------
+# Dispatch
+# --------------------------------------------------------------------------
+
+def _resolve(parts, method):
+    if method == "POST":
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "configs" and parts[3] == "duplicate":
+            return _duplicate, (parts[2],)
+        return None
+    if method != "GET" or not parts:
+        return None
+    head = parts[0]
+    if head == "configs":
+        if len(parts) == 1:
+            return _configs_list, ()
+        if len(parts) == 2 and parts[1] == "new":
+            return _configs_new, ()
+        if len(parts) == 2:
+            return _configs_detail, (parts[1],)
+        if len(parts) == 3 and parts[2] == "start":
+            return _configs_start, (parts[1],)
+        return None
+    if head == "jobs":
+        if len(parts) == 1:
+            return _jobs_list, ()
+        if len(parts) == 2:
+            return _jobs_detail, (parts[1],)
+        return None
+    if head == "runs":
+        if len(parts) == 3 and parts[2] == "candidates":
+            return _candidates_list, (parts[1],)
+        if len(parts) == 5 and parts[2] == "candidates" and parts[4] == "raw":
+            return _candidates_raw, (parts[1], parts[3])
+        return None
+    if head == "selected" and len(parts) == 1:
+        return _tray, ()
+    return None
+
+
+def dispatch(handler, parts, method):
+    route = _resolve(parts, method)
+    if route is None:
+        return False
+    action, args = route
+    try:
+        action(handler, *args)
+    except ConfigError as error:
+        job_api.send_error(handler, error)
+    except FileNotFoundError:
+        job_api.send_error(handler, ConfigError("resource", "公開済み記録がありません", code="not_found"))
+    except (OSError, ValueError, TypeError, KeyError):
+        handler._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+            "code": "storage_error", "message": "保存済み記録を処理できません",
+            "field_errors": {}, "retryable": False, "current_revision": None,
+        })
+    return True
