@@ -91,9 +91,17 @@ class ViewerPageTests(unittest.TestCase):
         self.assertNotIn("<script>", rendered)
 
     def test_index_includes_minor_run(self) -> None:
+        # The home dashboard no longer lists individual runs (WB-UI-016):
+        # it shows the world with a run count, and the run itself only
+        # appears inside that world's own "この世界の実験" block.
+        block = pages.world_runs_block(self.repository, "桃太郎", None)
+        self.assertIn("その他の短いラン", block)
+        self.assertIn("exp-viewer", block)
+
         rendered = pages.index_page(self.repository)
-        self.assertIn("その他の短いラン", rendered)
-        self.assertIn("exp-viewer", rendered)
+        self.assertIn("桃太郎", rendered)
+        self.assertIn("<th>実験</th>", rendered)
+        self.assertNotIn("exp-viewer", rendered)
 
     def test_detail_lines(self) -> None:
         rethink = data.detail_line(

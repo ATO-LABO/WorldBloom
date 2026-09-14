@@ -807,24 +807,27 @@ def _experiment_world(meta: Mapping[str, Any], job_store: Any) -> dict[str, str]
     return {"id": info["id"], "name": str(name)}
 
 
-_HOME_ACTIONS = (
-    '<p class="actions">'
-    '<a class="button primary" href="/worlds/new">新しい世界を作る</a>'
-    '<a class="button" href="/worlds">世界とジャンルの一覧</a>'
-    "</p>"
-)
+def _home_actions(can_create: bool) -> str:
+    if not can_create:
+        return ""
+    return (
+        '<p class="actions">'
+        '<a class="button primary" href="/worlds/new">新しい世界を作る</a>'
+        "</p>"
+    )
 
 
-def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
-    groups, minor = data.grouped_experiments(repository)
-    by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
-    minor_by_world: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for meta in minor:
-        minor_by_world[str(meta["world"])].append(meta)
+def _dashboard_sources(
+    repository: data.RunRepository,
+    job_store: Any,
+) -> tuple[list[Mapping[str, Any]] | None, list[Mapping[str, Any]] | None]:
+    """Fetch history/outputs once for a page rendering many progress rows.
 
-    # Fetched once for the whole dashboard: data.phase_status() otherwise
-    # calls catalog.history()/job_store.outputs() again for every row, which
-    # made the home page take several seconds with a couple dozen runs.
+    data.phase_status() otherwise calls catalog.history()/job_store.outputs()
+    again for every row, which made the home page take several seconds with
+    a couple dozen runs.
+    """
+
     history: list[Mapping[str, Any]] | None = None
     if repository.catalog is not None:
         try:
@@ -837,46 +840,111 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
             outputs = job_store.outputs()
         except (ValueError, OSError, KeyError, TypeError, AttributeError):
             outputs = []
+    return history, outputs
 
-    project_info = _project_info(job_store)
-    world_order: list[str] = []
-    seen: set[str] = set()
-    for name in project_info:
-        world_order.append(name)
-        seen.add(name)
-    for name in sorted(set(by_world) | set(minor_by_world)):
-        if name not in seen:
-            world_order.append(name)
-            seen.add(name)
 
-    if not world_order:
+def world_runs_block(
+    repository: data.RunRepository,
+    world_name: str,
+    job_store: Any,
+) -> str:
+    """The progress-dashboard body for one world's experiments (WB-UI-016).
+
+    Used by the world detail page's "この世界の実験" card; shows the same
+    major-run rows plus a closed "その他の短いラン" details as the home
+    dashboard previously did per world, just for a single world at a time.
+    """
+
+    groups, minor = data.grouped_experiments(repository)
+    majors = dict(groups).get(world_name, [])
+    minors = [meta for meta in minor if str(meta["world"]) == world_name]
+    history, outputs = _dashboard_sources(repository, job_store)
+
+    major_rows = "".join(
+        _progress_row(meta, repository, job_store, history, outputs) for meta in majors
+    )
+    body = (
+        f'<div class="progress-dashboard">{major_rows}</div>'
+        if major_rows
+        else '<p class="muted">まだ実験がありません。</p>'
+    )
+    if not minors:
+        return body
+    minor_rows = "".join(
+        _progress_row(meta, repository, job_store, history, outputs) for meta in minors
+    )
+    return body + (
+        '<details class="minor-runs">'
+        f"<summary>その他の短いラン ({len(minors)})</summary>"
+        f'<div class="progress-dashboard">{minor_rows}</div></details>'
+    )
+
+
+def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
+    from execution.library import LibraryStore
+    from viewer import library_pages  # deferred: library_pages imports pages
+
+    library_repo = job_store.configs.repo if job_store is not None else data.ROOT
+    try:
+        store = LibraryStore(library_repo)
+        worlds, genres = store.worlds(), store.genres()
+    except (ValueError, OSError, KeyError, TypeError, AttributeError):
+        worlds, genres = [], []
+
+    groups, minor = data.grouped_experiments(repository)
+    by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
+    minor_by_world: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for meta in minor:
+        minor_by_world[str(meta["world"])].append(meta)
+
+    if not worlds and not genres and not by_world and not minor_by_world:
         return document(
             "世界を選ぶ",
-            _HOME_ACTIONS
+            _home_actions(job_store is not None)
             + '<section class="card"><p>表示できる世界も実験もありません。</p>'
             '<p class="muted">各実験ディレクトリに '
             "<code>archive.json</code> が必要です。</p></section>",
             phase="world",
         )
 
-    sections = [
+    run_counts: dict[str, int] = defaultdict(int)
+    for name, metas in by_world.items():
+        run_counts[name] += len(metas)
+    for name, metas in minor_by_world.items():
+        run_counts[name] += len(metas)
+
+    # Runs whose world name matches no library world (legacy runs, or test
+    # fixtures) still need a way in: they keep the original per-world
+    # heading + progress-dashboard section, appended after the hub.
+    library_names = {world["name"] for world in worlds if world.get("name")}
+    legacy_names = sorted(
+        name
+        for name in set(by_world) | set(minor_by_world)
+        if name not in library_names
+    )
+    history, outputs = _dashboard_sources(repository, job_store) if legacy_names else (None, [])
+    legacy_sections = [
         _world_section(
-            world_name,
-            project_info.get(world_name),
-            by_world.get(world_name, []),
-            minor_by_world.get(world_name, []),
+            name,
+            None,
+            by_world.get(name, []),
+            minor_by_world.get(name, []),
             repository,
             job_store,
             history,
             outputs,
         )
-        for world_name in world_order
+        for name in legacy_names
     ]
+
     body = (
-        _HOME_ACTIONS
+        _home_actions(job_store is not None)
         + '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
         "上映します。</p>"
-        + "".join(sections)
+        + library_pages.render_worlds_hub(
+            worlds, genres, run_counts=run_counts, can_create=job_store is not None,
+        )
+        + "".join(legacy_sections)
     )
     return document("世界を選ぶ", body, phase="world")
 

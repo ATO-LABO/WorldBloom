@@ -1467,3 +1467,37 @@ details {
 .changed {
   animation: wb-flash 1s ease-out;
 }
+
+/* WB-UI-016: world detail page (relation graph, setting summary, editor). */
+.relation-graph {
+  display: block;
+  height: auto;
+  max-width: 640px;
+  width: 100%;
+}
+
+.relation-card .character-table {
+  margin-top: 1rem;
+}
+
+.world-summary {
+  column-gap: 1rem;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  margin: 0.8rem 0 0;
+  row-gap: 0.4rem;
+}
+
+.world-summary dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.world-summary dd {
+  margin: 0;
+}
+
+.editor-group > summary {
+  cursor: pointer;
+  padding: 0.4rem 0;
+}
