@@ -318,7 +318,7 @@ def render_configs_list(configs):
     # No .next-cta class here: the page-level next_action (set by the caller,
     # WB-UI-012 §2.2's "/configs" row) already is this same link.
     return (
-        table
+        '<section class="card"><h2>実行設定</h2>' + table + "</section>"
         + pages.glossary(("config_id", "genre"))
     )
 
@@ -1019,16 +1019,29 @@ def _config_world(config):
     return {"id": config["project_id"], "name": config["preview"]["world_name"]}
 
 
+def _named_world(job_store, world_id):
+    """{id, name} for a world with no pinned config of its own (still needs
+    a header label -- see the /jobs?world= scoping in _jobs_list)."""
+    if not world_id:
+        return None
+    match = next((w for w in pages._library_worlds(job_store) if w["id"] == world_id), None)
+    return {"id": world_id, "name": (match["name"] if match else None) or world_id}
+
+
 def _configs_list(handler):
     job_store = _job_store(handler)
     if job_store is None:
         handler._send_html(_guidance_page(phase="world"))
         return
+    from execution.library import LibraryStore
+    from viewer import library_pages  # deferred: library_pages imports this module
     configs = job_store.configs.list()
+    body = render_configs_list(configs) + library_pages.render_genres_section(
+        LibraryStore(job_store.configs.repo).genres())
     handler._send_html(pages.document(
-        "実行設定一覧", render_configs_list(configs),
-        crumbs=[("実行設定", "/configs")], phase="world",
-        lead="実行設定の版を作り、そこから GA を実行します。",
+        "設定", body,
+        crumbs=[("設定", "/configs")], phase="world",
+        lead="実行設定の版を作り、そこから GA を実行します。ジャンルの追加・編集もここで行います。",
         next_action=("新しい実行設定を作る →", "/configs/new"),
         job_store=job_store, pin=data.pinned_target(job_store, configs=configs),
     ))
@@ -1161,12 +1174,18 @@ def _jobs_list(handler):
     # No duplicate empty-state CTA here: _jobs_next_action() already covers
     # "records is empty" -> "実行設定を作る" via the page-level next_action
     # below (WB-UI-012 §2.3's "1 つだけ").
-    pin = data.pinned_target(job_store)
+    # ?world= arrives from a per-world page's "2 実行" tab (_phase_href) so
+    # this scopes to *that* world instead of whichever world's config is
+    # newest system-wide -- see data.pinned_target's world_id docstring.
+    world_id = _query(handler).get("world", [None])[0]
+    pin = data.pinned_target(job_store, world_id=world_id)
+    world = pin["world"] if pin else _named_world(job_store, world_id)
     body = render_current_target_section(pin)
     body += render_jobs_list(records) + output_pages.render_generation_jobs_section(generation_jobs)
     body += pages.glossary(("job_state", "phase", "publication_revision", "config_id", "run"))
     handler._send_html(pages.document(
         "実行履歴", body, crumbs=[("実行履歴", "/jobs")], phase="run",
+        world=world,
         job_store=job_store, pin=pin,
         lead="実行中と過去のジョブを見ます。",
         next_action=_jobs_next_action(records),

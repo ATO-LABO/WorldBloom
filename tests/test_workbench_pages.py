@@ -364,6 +364,35 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(pin["job"]["job_id"], "job-run")
         self.assertEqual(pin["run"], "run-c")  # still the last *finished* run
 
+    def test_pinned_target_world_id_scopes_the_idle_fallback(self):
+        # Bug: viewing world "momotaro" (no config of its own here) and
+        # stepping into "2 実行" used to land on "romance"'s config just
+        # because it was the newest config system-wide. world_id must keep
+        # an idle, config-less world from borrowing another world's target.
+        self.assertEqual(data.pinned_target(self.fake, world_id="romance")["world"]["id"], "romance")
+        self.assertIsNone(data.pinned_target(self.fake, world_id="momotaro"))
+
+        # A job actually running for "romance" is genuine system-wide state
+        # (JobStore.submit() allows only one non-terminal job at a time), so
+        # it still wins even when scoped to a different, idle world.
+        self.fake.add(_job("job-run", "run-a", "running"))
+        pin = data.pinned_target(self.fake, world_id="momotaro")
+        self.assertEqual(pin["job"]["job_id"], "job-run")
+
+    def test_jobs_page_world_query_does_not_leak_another_worlds_config(self):
+        # romance's "cfg-test" ("wb") must not appear as momotaro's target
+        # just because it's the only (and thus newest) config system-wide.
+        status, body, _ = self.get_status("/jobs?world=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn("target-card", body)
+        self.assertNotIn("/configs/cfg-test/start", body)
+        self.assertIn('<option value="momotaro" selected>', body)
+
+        status, body, _ = self.get_status("/worlds/momotaro")
+        self.assertEqual(status, 200, body)
+        band = body[body.index('<nav class="phase-band"'):body.index("</nav>")]
+        self.assertIn('href="/jobs?world=momotaro"', band)
+
     def test_home_tabs_follow_pinned_world(self):
         self.fake.add(_job("job-ok", "run-c", "succeeded"))
 
