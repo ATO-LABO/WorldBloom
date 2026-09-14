@@ -87,22 +87,27 @@ def _genre_row(genre):
     )
 
 
-def render_worlds_hub(worlds, genres, *, run_counts, can_create):
+def render_worlds_hub(worlds, *, run_counts):
     world_table = (
         '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
         f'<th>名前</th><th>ID</th><th title="{_escape(pages.TERM_HELP["genre"])}">ジャンル</th>'
         "<th>人物数</th><th>主人公/敵役</th><th>実験</th><th>操作</th>"
         f'</tr></thead><tbody>{"".join(_world_row(w, run_counts.get(w["name"], 0)) for w in worlds)}</tbody></table></div>'
     ) if worlds else "<p>世界がありません。</p>"
+    return '<section class="card"><h2>世界</h2>' + world_table + "</section>"
+
+
+def render_genres_section(genres):
+    # Genres are grammar shared across worlds, so they live on the ⚙ 設定
+    # page (/configs), not on the home hub next to "new world".
     genre_table = (
         '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
         "<th>ID</th><th>ファイル</th><th>使っている世界</th><th>操作</th>"
         f'</tr></thead><tbody>{"".join(_genre_row(g) for g in genres)}</tbody></table></div>'
     ) if genres else "<p>ジャンルがありません。</p>"
-    create_genre = '<p><a href="/genres/new">新しいジャンルを作る</a></p>' if can_create else ""
     return (
-        '<section class="card"><h2>世界</h2>' + world_table + "</section>"
-        + '<section class="card" id="genres"><h2>ジャンル</h2>' + genre_table + create_genre + "</section>"
+        '<section class="card" id="genres"><h2>ジャンル</h2>' + genre_table
+        + '<p><a href="/genres/new">新しいジャンルを作る</a></p></section>'
     )
 
 
