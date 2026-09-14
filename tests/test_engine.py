@@ -3407,5 +3407,43 @@ class Phase4EngineTests(unittest.TestCase):
         )
 
 
+class YamlCacheTests(unittest.TestCase):
+    def test_load_yaml_caches_by_path_and_mtime(self) -> None:
+        import os
+        from unittest.mock import patch
+
+        from engine import yaml_cache
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "doc.yaml"
+            path.write_text("a: 1\nb: [1, 2, 3]\n", encoding="utf-8")
+
+            with patch.object(
+                yaml_cache.yaml, "safe_load", wraps=yaml.safe_load
+            ) as parse:
+                first = yaml_cache.load_yaml(path)
+                second = yaml_cache.load_yaml(path)
+                self.assertEqual(parse.call_count, 1)
+                self.assertEqual(first, {"a": 1, "b": [1, 2, 3]})
+                self.assertEqual(first, second)
+                self.assertIsNot(first, second)
+                second["b"].append(4)
+                self.assertEqual(first["b"], [1, 2, 3])
+
+                # Same size, newer mtime: must re-parse.
+                stat = path.stat()
+                os.utime(
+                    path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**7)
+                )
+                yaml_cache.load_yaml(path)
+                self.assertEqual(parse.call_count, 2)
+
+                path.write_text("a: 2\nb: []\n", encoding="utf-8")
+                self.assertEqual(
+                    yaml_cache.load_yaml(path), {"a": 2, "b": []}
+                )
+                self.assertEqual(parse.call_count, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

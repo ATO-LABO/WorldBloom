@@ -219,16 +219,20 @@ class Policy:
 
     def _precedent_probability(
         self,
-        context: ContextKey,
-        action: ActionKey,
-        candidate_acts: set[ActionKey],
+        normalized_context: ContextKey,
+        normalized_action: ActionKey,
+        normalized_candidates: frozenset[ActionKey],
         self_table: PrecedentTable,
     ) -> float:
-        p_self = self_table.p(context, action, candidate_acts)
+        p_self = self_table.p_normalized(
+            normalized_context, normalized_action, normalized_candidates
+        )
         if self.precedent is None:
             p_ref = p_self
         else:
-            p_ref = self.precedent.p(context, action, candidate_acts)
+            p_ref = self.precedent.p_normalized(
+                normalized_context, normalized_action, normalized_candidates
+            )
         return self.lam * p_ref + (1.0 - self.lam) * p_self
 
     def reweight(
@@ -242,6 +246,7 @@ class Policy:
         day: int = 0,
     ) -> list[tuple[Action, float]]:
         context = ctx_key(subject, world, present)
+        normalized_context = normalize_ctx(context)
         classified: list[tuple[Action, float, Classification]] = [
             (
                 action,
@@ -254,6 +259,9 @@ class Policy:
             act_key(classification, action)
             for action, _, classification in classified
         }
+        normalized_candidates = frozenset(
+            normalize_act(value) for value in candidate_acts
+        )
         self_history = self._history_table(subject)
         annotation_only = (
             self.annotate_only
@@ -281,36 +289,47 @@ class Policy:
             turn_genome.category_weight[category]
             for category in active
         ) / len(active)
+        candidate_rules = [
+            rule for rule in self.rules if rule["scope"] == "candidate"
+        ]
 
         output: list[tuple[Action, float]] = []
         for action, weight, classification in classified:
-            target = _candidate_target(action, subject, world)
-            candidate_namespace = world.namespace(
-                subject,
-                present,
-                turn=int(turn),
-                day=int(day),
-                bindings={"target": target},
-            )
-            candidate_adjustments = [
-                rule["adjust"]
-                for rule in self.rules
-                if rule["scope"] == "candidate"
-                and rule["predicate"].evaluate(candidate_namespace)
-            ]
-            effective_genome = _adjust_genome(
-                self.genome,
-                [
-                    *turn_adjustments,
-                    *candidate_adjustments,
-                ],
+            if candidate_rules:
+                target = _candidate_target(action, subject, world)
+                candidate_namespace = world.namespace(
+                    subject,
+                    present,
+                    turn=int(turn),
+                    day=int(day),
+                    bindings={"target": target},
+                )
+                candidate_adjustments = [
+                    rule["adjust"]
+                    for rule in candidate_rules
+                    if rule["predicate"].evaluate(candidate_namespace)
+                ]
+            else:
+                candidate_adjustments = []
+
+            effective_genome = (
+                turn_genome
+                if not candidate_adjustments
+                else _adjust_genome(
+                    self.genome,
+                    [
+                        *turn_adjustments,
+                        *candidate_adjustments,
+                    ],
+                )
             )
 
             action_key = act_key(classification, action)
+            normalized_action = normalize_act(action_key)
             p_prec = self._precedent_probability(
-                context,
-                action_key,
-                candidate_acts,
+                normalized_context,
+                normalized_action,
+                normalized_candidates,
                 self_history,
             )
 

@@ -6,9 +6,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-import yaml
-
 from engine.predicate import Predicate, compile_predicate
+from engine.yaml_cache import load_yaml
 
 if TYPE_CHECKING:
     from engine.actions import Action
@@ -102,7 +101,7 @@ def _load_effect_library(
         source,
         label="Effect library",
     )
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    raw = load_yaml(path)
     return _as_sequence(raw, label="effects"), path
 
 

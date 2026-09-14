@@ -60,22 +60,27 @@ class Relations:
                     ),
                 }
 
-    def relation(self, observer: str, target: str) -> dict[str, float]:
+    def _lookup(self, observer: str, target: str) -> dict[str, float] | None:
         resolved = (
             self._target_resolver(observer, target)
             if self._target_resolver is not None
             else target
         )
-        relation = self._values.get(observer, {}).get(resolved)
+        return self._values.get(observer, {}).get(resolved)
+
+    def relation(self, observer: str, target: str) -> dict[str, float]:
+        relation = self._lookup(observer, target)
         if relation is None:
             return {"affinity": 0.0, "awareness": 0.0}
         return dict(relation)
 
     def stance(self, observer: str, target: str) -> float:
-        return self.relation(observer, target)["affinity"]
+        relation = self._lookup(observer, target)
+        return 0.0 if relation is None else relation["affinity"]
 
     def awareness(self, observer: str, target: str) -> float:
-        return self.relation(observer, target)["awareness"]
+        relation = self._lookup(observer, target)
+        return 0.0 if relation is None else relation["awareness"]
 
     def bonds(self, subject: str) -> float:
         return round(
