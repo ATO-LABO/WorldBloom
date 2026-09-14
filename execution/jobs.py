@@ -265,7 +265,10 @@ class JobStore:
         from execution.generation import aggregate
         with self._lock():
             outputs = OutputStore(self.configs.control)
-            request = outputs.request(output_id)
+            try:
+                request = outputs.request(output_id)
+            except FileNotFoundError as error:
+                raise ConfigError("output_id", "生成版がありません", code="not_found") from error
             job = self._reconcile(self._read(request["job_id"]))
             stopped = job["state"] in worker.TERMINAL and worker.output_tree_stopped(job)
             if recover and not stopped:
@@ -284,7 +287,18 @@ class JobStore:
         root = OutputStore(self.configs.control).root
         if not root.exists():
             return []
-        return [self.output(p.name) for p in sorted(root.iterdir()) if p.is_dir() and p.name.startswith("out-")]
+        listed = []
+        for p in sorted(root.iterdir()):
+            if not (p.is_dir() and p.name.startswith("out-")):
+                continue
+            # One damaged output must not hide the others; the row carries its own error.
+            try:
+                listed.append(self.output(p.name))
+            except ConfigError as error:
+                listed.append({"output_id": p.name, "error": {"code": error.code, "message": str(error)}})
+            except (OSError, ValueError, KeyError, TypeError):
+                listed.append({"output_id": p.name, "error": {"code": "storage_error", "message": "保存済み生成記録を処理できません"}})
+        return listed
 
     def assert_run_idle(self, run_id):
         if not self.root.exists():
