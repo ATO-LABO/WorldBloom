@@ -156,7 +156,7 @@ def _header_pickers(
         + "".join(pickers)
         + '<span class="header-links">'
         '<a href="/configs" title="設定" aria-label="設定">⚙</a>'
-        '<a href="/jobs" title="実行履歴" aria-label="実行履歴">📝</a>'
+        '<a href="/history" title="実行履歴" aria-label="実行履歴">📝</a>'
         "</span>"
         "</div>"
     )

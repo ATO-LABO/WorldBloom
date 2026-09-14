@@ -179,6 +179,17 @@
     });
   };
 
+  // WB-UI-017: the run page's idle-state config picker (a <select> inside a
+  // GET form). With JS, switching the selection submits the form right away
+  // instead of waiting for the <noscript> fallback button (browsers never
+  // parse a <noscript> element's content into the DOM while scripting is
+  // enabled, so there is nothing to hide here).
+  const initRunConfigPicker = () => {
+    document.querySelectorAll('[data-wb="run-config"] select').forEach((select) => {
+      select.addEventListener("change", () => select.form.submit());
+    });
+  };
+
   const initStart = () => {
     const root = document.querySelector('[data-wb="start"]');
     if (!root) {
@@ -432,6 +443,21 @@
       individualProgress.max = progress.total_individuals || 1;
     }
 
+    const seedProgress = root.querySelector('progress[aria-label="評価済みseed"]');
+    if (seedProgress) {
+      seedProgress.value = progress.completed_seeds || 0;
+      seedProgress.max = progress.total_seeds || 1;
+    }
+    if (progress.metrics) {
+      setText(root, "metric_occupied", progress.metrics.occupied_cells);
+      if (typeof progress.metrics.average_archive_quality === "number") {
+        setText(root, "metric_quality", progress.metrics.average_archive_quality.toFixed(2));
+      }
+      if (typeof progress.metrics.reach_rate === "number") {
+        setText(root, "metric_reach", Math.round(progress.metrics.reach_rate * 100));
+      }
+    }
+
     // Generation jobs (synopsize/narrate) carry progress.completed/total and a
     // top-level counts map instead of the GA fields above (§3.2, WB-UI-008).
     setField(root, "completed", progress.completed);
@@ -534,6 +560,19 @@
             connectionNote.hidden = true;
           }
           applyJob(root, json, labels);
+          // WB-UI-017: the run page's QD map/metrics are server-rendered from
+          // the published archive, not patched by JS -- when the published
+          // revision moves on, a reload is the simplest way to pick it up.
+          // root.dataset.revision only exists on the run page (not the
+          // generation-job page), so this is a no-op there.
+          if (root.dataset.revision !== undefined) {
+            const newRevision = json.publication_revision == null ? "" : String(json.publication_revision);
+            if (newRevision !== root.dataset.revision) {
+              stopped = true;
+              window.location.reload();
+              return;
+            }
+          }
           if (disconnectedAt !== null) {
             const seconds = Math.round((Date.now() - disconnectedAt) / 1000);
             setText(root, "delta", `復帰（${seconds}秒ぶり）`);
@@ -1012,6 +1051,7 @@
   };
 
   initConfigForm();
+  initRunConfigPicker();
   initStart();
   initJob();
   initGenerate();

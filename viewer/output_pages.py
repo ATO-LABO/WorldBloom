@@ -487,12 +487,12 @@ def _outputs_list(handler):
     if run_filter:
         outputs = [o for o in outputs if (o.get("request") or {}).get("run_id") == run_filter]
     # WB-UI-012 §2.2: no outputs yet -> point back at where generation
-    # happens (the run's candidate list when we know which run, else /jobs).
+    # happens (the run's candidate list when we know which run, else /history).
     next_action = None
     if not outputs:
         next_action = (
             ("候補一覧で生成する →", f"/runs/{_url(run_filter)}/candidates")
-            if run_filter else ("候補一覧で生成する →", "/jobs")
+            if run_filter else ("候補一覧で生成する →", "/history")
         )
     handler._send_html(pages.document(
         "作品一覧", render_outputs_list(outputs, run_names), crumbs=[("作品一覧", "/outputs")],

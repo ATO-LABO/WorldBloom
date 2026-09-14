@@ -593,7 +593,8 @@ class OutputPagesTests(unittest.TestCase):
         self.assertIn(f"/outputs/{oid}", body)
         self.assertIn(output_pages.COMPLETION_LABELS["generated"], body)
 
-        status, body, _ = self.get_status("/jobs")
+        # WB-UI-017: the job tables live on /history now (/jobs is the run screen).
+        status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)
         self.assertIn("生成ジョブ", body)
         self.assertIn(jid, body)
