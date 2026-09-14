@@ -16,7 +16,7 @@ from execution.configs import evolution_defaults
 from execution.provenance import ConfigError, contained
 from execution.worker import TERMINAL
 from gapengine.synopsis import BACKENDS
-from viewer import job_api, pages
+from viewer import data, job_api, pages
 
 
 _escape = pages._escape
@@ -474,6 +474,29 @@ def _job_row(record):
     )
 
 
+def _target_card(job, config):
+    world = _config_world(config)
+    label_link = f'<a href="/configs/{_url(config["config_id"])}">{_escape(config["label"])}</a>'
+    if job is not None:
+        verb = "を GA で処理中" if job.get("kind", "evolve") == "evolve" else "の作品を生成中"
+        heading = f'{_escape(world["name"])} {verb}'
+        rows = [("設定", label_link), ("状態", state_badge(job["state"]))]
+        cta = ("進捗を見る →", f'/jobs/{_url(job["job_id"])}') if job.get("job_id") else None
+    else:
+        heading = f'{_escape(world["name"])} を GA で処理します'
+        rows = [("設定", label_link)]
+        cta = ("この設定でGAを実行 →", f'/configs/{_url(config["config_id"])}/start')
+    cta_html = ""
+    if cta:
+        cta_label, cta_href = cta
+        cta_html = f'<p><a class="button primary" href="{cta_href}">{_escape(cta_label)}</a></p>'
+    return f'<section class="card target-card"><h2>{heading}</h2>{_dl(rows)}{cta_html}</section>'
+
+
+def render_current_target_section(pin):
+    return _target_card(pin["job"], pin["config"]) if pin else ""
+
+
 def render_jobs_list(records):
     running = [r for r in records if r["state"] in RUNNING_STATES]
     history = [r for r in records if r["state"] not in RUNNING_STATES]
@@ -483,7 +506,7 @@ def render_jobs_list(records):
             return f"<p>{empty_text}</p>"
         body = "".join(_job_row(r) for r in rows)
         return (
-            '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
+            '<div class="grid-wrap"><table class="wb-table wb-table--compact"><thead><tr>'
             f'<th title="{_th_title("run")}">実験</th>'
             f'<th title="{_th_title("job_state")}">状態</th>'
             f'<th title="{_th_title("phase")}">段階</th>'
@@ -1007,6 +1030,7 @@ def _configs_list(handler):
         crumbs=[("実行設定", "/configs")], phase="world",
         lead="実行設定の版を作り、そこから GA を実行します。",
         next_action=("新しい実行設定を作る →", "/configs/new"),
+        job_store=job_store, pin=data.pinned_target(job_store, configs=configs),
     ))
 
 
@@ -1050,6 +1074,7 @@ def _configs_new(handler):
     handler._send_html(pages.document(
         title, body, crumbs=[("実行設定", "/configs"), (title, "/configs/new")], phase="world",
         lead="新しい実行設定を作り、GAの実行に使います。",
+        job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
 
@@ -1066,6 +1091,7 @@ def _configs_detail(handler, cid):
         phase="world", world=_config_world(config),
         lead="この設定版の内容を確認して実行します。",
         next_action=("この設定でGAを実行 →", f"/configs/{_url(cid)}/start"),
+        job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
 
@@ -1082,6 +1108,7 @@ def _configs_start(handler, cid):
         crumbs=[("実行設定", "/configs"), (label, f"/configs/{_url(cid)}"), ("実行確認", f"/configs/{_url(cid)}/start")],
         phase="world", world=_config_world(config),
         lead="実行内容を確認し、開始します。",
+        job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
 
@@ -1134,10 +1161,13 @@ def _jobs_list(handler):
     # No duplicate empty-state CTA here: _jobs_next_action() already covers
     # "records is empty" -> "実行設定を作る" via the page-level next_action
     # below (WB-UI-012 §2.3's "1 つだけ").
-    body = render_jobs_list(records) + output_pages.render_generation_jobs_section(generation_jobs)
+    pin = data.pinned_target(job_store)
+    body = render_current_target_section(pin)
+    body += render_jobs_list(records) + output_pages.render_generation_jobs_section(generation_jobs)
     body += pages.glossary(("job_state", "phase", "publication_revision", "config_id", "run"))
     handler._send_html(pages.document(
         "実行履歴", body, crumbs=[("実行履歴", "/jobs")], phase="run",
+        job_store=job_store, pin=pin,
         lead="実行中と過去のジョブを見ます。",
         next_action=_jobs_next_action(records),
     ))
@@ -1184,6 +1214,7 @@ def _jobs_detail(handler, jid):
         phase="run", run=run_name, output_run=catalog_run_id,
         lead="実行の進み具合を見ます。完了したら候補を Sifting します。",
         next_action=next_action,
+        job_store=job_store,
     ))
 
 
@@ -1264,6 +1295,7 @@ def _candidates_list(handler, run_id):
         phase="sifting", run=experiment_name, output_run=run_id,
         lead="候補に選定状態を付け、採用した候補から本文を生成します。",
         next_action=next_action,
+        job_store=_job_store(handler),
     ))
 
 
@@ -1273,6 +1305,7 @@ def _candidates_raw(handler, run_id, candidate_id):
         handler._send_html(_guidance_page(phase="sifting"))
         return
     catalog = repository.catalog
+    experiment_name = catalog.snapshot(run_id)["experiment_name"]
     result = catalog.candidates(run_id)
     candidate = next((c for c in result["candidates"] if c["candidate_id"] == candidate_id), None)
     if candidate is None:
@@ -1314,7 +1347,8 @@ def _candidates_raw(handler, run_id, candidate_id):
     handler._send_html(pages.document(
         f"{candidate_id} 原ログ", "".join(body),
         crumbs=[("候補一覧", f"/runs/{_url(run_id)}/candidates")],
-        phase="sifting",
+        phase="sifting", run=experiment_name, output_run=run_id,
+        job_store=_job_store(handler),
     ))
 
 
@@ -1329,6 +1363,7 @@ def _tray(handler):
         "Sifting トレイ", body, crumbs=[("Sifting トレイ", "/selected")], phase="sifting",
         lead="実験をまたいで採用した候補をまとめて見ます。",
         next_action=("作品一覧へ →", "/outputs"),
+        job_store=_job_store(handler),
     ))
 
 

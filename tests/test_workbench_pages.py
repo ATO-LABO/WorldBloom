@@ -22,7 +22,7 @@ import urllib.request
 from execution.configs import ConfigStore
 from execution.provenance import ConfigError, atomic_json, canonical, sha256, write_bytes
 from execution.worker import TERMINAL
-from viewer import workbench_pages
+from viewer import data, workbench_pages
 from viewer.data import RunRepository
 from viewer.server import ViewerServer, ViewerHandler
 
@@ -309,7 +309,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertGreater(history_at, running_at)
         self.assertLess(body.index("run-a"), history_at)
         self.assertGreater(body.index("run-b"), history_at)
-        self.assertGreater(body.index("run-c"), history_at)
+        self.assertGreater(body.index("<td>run-c</td>"), history_at)
         self.assertLess(body.index("run-d"), history_at)
 
         status, body, _ = self.get_status("/jobs/job-run")
@@ -337,6 +337,55 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/absent")
         self.assertEqual(status, 404, body)
+
+    def test_pinned_target_running_wins_then_latest_config(self):
+        self.assertIsNone(data.pinned_target(None))
+
+        pin = data.pinned_target(self.fake)
+        self.assertEqual(
+            pin["world"],
+            {"id": "romance", "name": self.configs.get("cfg-test")["preview"]["world_name"]},
+        )
+        self.assertIsNone(pin["run"])
+        self.assertIsNone(pin["job"])
+
+        self.fake.add(_job("job-ok", "run-c", "succeeded"))
+        pin = data.pinned_target(self.fake)
+        self.assertEqual(pin["run"], "run-c")
+        self.assertIsNone(pin["job"])
+
+        self.fake.add(_job("job-run", "run-a", "running"))
+        pin = data.pinned_target(self.fake)
+        self.assertEqual(pin["job"]["job_id"], "job-run")
+        self.assertEqual(pin["run"], "run-c")  # still the last *finished* run
+
+    def test_home_tabs_follow_pinned_world(self):
+        self.fake.add(_job("job-ok", "run-c", "succeeded"))
+
+        # Home has no phase band at all (WB feedback: showing 4 phase tabs on
+        # the world-picker lobby invites clicking ahead by mistake) but keeps
+        # the world picker, pinned to the same world it would otherwise route to.
+        status, body, _ = self.get_status("/")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn('<nav class="phase-band"', body)
+        self.assertIn('data-wb="world-picker"', body)
+        self.assertIn('<option value="romance" selected>', body)
+
+        for path in ("/configs", "/jobs", "/worlds/romance"):
+            status, body, _ = self.get_status(path)
+            self.assertEqual(status, 200, body)
+            band = body[body.index('<nav class="phase-band"'):body.index("</nav>")]
+            self.assertIn('href="/exp/run-c"', band, path)
+            self.assertIn('href="/outputs?run=run-c"', band, path)
+            self.assertNotIn('href="/selected"', band, path)
+            self.assertIn('data-wb="world-picker"', body, path)
+            self.assertIn('<option value="romance" selected>', body, path)
+
+        # /selected is a deliberate cross-world view: it must not be pinned.
+        status, body, _ = self.get_status("/selected")
+        self.assertEqual(status, 200, body)
+        band = body[body.index('<nav class="phase-band"'):body.index("</nav>")]
+        self.assertIn('href="/selected"', band)
 
     # ------------------------------------------------------- candidates
 

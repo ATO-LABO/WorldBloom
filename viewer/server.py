@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Mapping, Sequence
 from http import HTTPStatus
@@ -360,7 +361,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--port",
         type=int,
-        default=5401,
+        # PORT lets a launcher that dynamically assigns ports (e.g. to dodge
+        # a collision with another session already on 5401) pick the port
+        # without a hardcoded --port flag in launch.json.
+        default=int(os.environ.get("PORT", 5401)),
     )
     parser.add_argument("--control", type=Path, help="Enable persistent configuration/job APIs at this control root.")
     parser.add_argument("--repo", type=Path, default=ROOT)

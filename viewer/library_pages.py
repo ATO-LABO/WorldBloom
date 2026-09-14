@@ -341,6 +341,7 @@ def _worlds_new(handler):
     body = render_world_new_form(worlds, genres, from_id=from_id, genre_id=genre_id)
     handler._send_html(pages.document(
         "新しい世界を作る", body, crumbs=[("新しい世界", "/worlds/new")], phase="world",
+        job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
 
@@ -363,6 +364,7 @@ def _worlds_detail(handler, world_id):
         phase="world", world={"id": world_id, "name": label},
         lead="GA 実行前のベース設定です。人物と関係を確かめ、必要なら編集してから実験に使います。",
         next_action=("この世界で実験を回す →", run_href),
+        job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
 
@@ -381,6 +383,7 @@ def _genres_new(handler):
     body = render_genre_new_form(genres, from_id=from_id)
     handler._send_html(pages.document(
         "新しいジャンルを作る", body, crumbs=[("新しいジャンル", "/genres/new")], phase="world",
+        job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
 
@@ -401,6 +404,7 @@ def _genres_detail(handler, genre_id):
         phase="world",
         lead="このジャンルの文法を編集し、世界を指定して検証します。",
         next_action=("世界一覧へ →", "/worlds"),
+        job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
 

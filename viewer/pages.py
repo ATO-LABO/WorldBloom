@@ -90,16 +90,42 @@ def _phase_band(
     )
 
 
+def _library_worlds(job_store: Any) -> list[Mapping[str, Any]]:
+    from execution.library import LibraryStore  # deferred: mirrors index_page
+
+    try:
+        repo = job_store.configs.repo if job_store is not None else data.ROOT
+        return LibraryStore(repo).worlds()
+    except (ValueError, OSError, KeyError, TypeError, AttributeError):
+        return []
+
+
+def _world_picker(
+    world: Mapping[str, Any] | None,
+    worlds: Sequence[Mapping[str, Any]],
+) -> str:
+    current = str(world["id"]) if world and world.get("id") else ""
+    known = {str(w["id"]) for w in worlds}
+    placeholder_selected = "" if current in known else " selected"
+    options = [f'<option value=""{placeholder_selected}>世界を選ぶ…</option>']
+    for w in worlds:
+        wid = str(w["id"])
+        selected = " selected" if wid == current else ""
+        options.append(
+            f'<option value="{_escape(wid)}"{selected}>{_escape(w.get("name") or wid)}</option>'
+        )
+    return (
+        '<label class="picker"><span class="picker-label">世界</span>'
+        f'<select class="picker-select" data-wb="world-picker">{"".join(options)}</select></label>'
+    )
+
+
 def _header_pickers(
     world: Mapping[str, Any] | None,
     run: str | None,
+    worlds: Sequence[Mapping[str, Any]],
 ) -> str:
-    pickers = []
-    if world is not None:
-        pickers.append(
-            '<span class="picker"><span class="picker-label">世界</span>'
-            f'<span class="picker-value">{_escape(world.get("name"))}</span></span>'
-        )
+    pickers = [_world_picker(world, worlds)]
     if run is not None:
         pickers.append(
             '<span class="picker"><span class="picker-label">実験</span>'
@@ -129,7 +155,20 @@ def document(
     phases: Mapping[str, Any] | None = None,
     lead: str | None = None,
     next_action: tuple[str, str] | None = None,
+    job_store: Any = None,
+    pin: Mapping[str, Any] | None = None,
+    show_phase_band: bool = True,
 ) -> str:
+    # pin (data.pinned_target()) fills in world/run/output_run for callers
+    # that don't already know their own (Home, /configs, /jobs): the run is
+    # only borrowed when the header world *is* the pinned world, so a page
+    # for a different world never gets ③/④ tabs pointing at someone else's
+    # run -- it keeps the honest cross-world /selected and /outputs fallback.
+    if pin is not None:
+        if world is None:
+            world = pin["world"]
+        if run is None and output_run is None and world.get("id") == pin["world"]["id"]:
+            run, output_run = pin["run"], pin["output_run"]
     # Callers that already looked up phase_status() (experiment/cell/compare/
     # raw pages) get the stage link's catalog-id distinction for free; other
     # callers pass output_run explicitly when they know it (see workbench_
@@ -172,8 +211,9 @@ def document(
         "</head><body>"
         '<div class="app-shell">'
         '<header class="site-header">'
-        + _header_pickers(world, run)
-        + _phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
+        + _header_pickers(world, run, _library_worlds(job_store))
+        + (_phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
+           if show_phase_band else "")
         + f'<nav class="crumbs" aria-label="パンくず">{breadcrumb}</nav>'
         "</header>"
         f'<main class="page-shell"><h1>{_escape(title)}</h1>{lead_html}{body}</main>'
@@ -918,6 +958,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         worlds, genres = store.worlds(), store.genres()
     except (ValueError, OSError, KeyError, TypeError, AttributeError):
         worlds, genres = [], []
+    pin = data.pinned_target(job_store)
 
     groups, minor = data.grouped_experiments(repository)
     by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
@@ -933,6 +974,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
             '<p class="muted">各実験ディレクトリに '
             "<code>archive.json</code> が必要です。</p></section>",
             phase="world",
+            job_store=job_store, pin=pin, show_phase_band=False,
         )
 
     run_counts: dict[str, int] = defaultdict(int)
@@ -974,7 +1016,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         )
         + "".join(legacy_sections)
     )
-    return document("世界を選ぶ", body, phase="world")
+    return document("世界を選ぶ", body, phase="world", job_store=job_store, pin=pin, show_phase_band=False)
 
 
 def _threshold_text(thresholds: Mapping[str, Any]) -> str:
@@ -1238,6 +1280,7 @@ def experiment_page(
         phases=phases,
         lead="格子で候補を吟味し、★で選定します。",
         next_action=(next_label, next_href),
+        job_store=job_store,
     )
 
 
@@ -1739,6 +1782,7 @@ def cell_page(
         phases=phases,
         lead="この候補の経緯を四項目で確かめます。",
         next_action=("格子に戻る →", experiment_url),
+        job_store=job_store,
     )
 
 
@@ -1753,7 +1797,7 @@ def compare_page(repository, experiment_name, cells, *, job_store=None):
                         '<p role="alert">比較する異なる候補を2〜4件選んでください。</p>'
                         + f'<p><a href="{grid_href}">← 格子で候補を選ぶ</a></p>',
                         run=experiment_name, phase="sifting", phases=phases,
-                        lead=lead, next_action=next_action)
+                        lead=lead, next_action=next_action, job_store=job_store)
     explanations = [data.cell_explanation(repository, experiment, cell) for cell in cells]
     same = len({x["trajectory_signature"] for x in explanations}) == 1
     body = f'<p><a href="{grid_href}">← 格子で候補を選ぶ</a></p>'
@@ -1769,7 +1813,7 @@ def compare_page(repository, experiment_name, cells, *, job_store=None):
         body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
         body += reader_ui.panel(explanation) + '</section>'
     return document("四項目で比較", body + '</div>', run=experiment_name, phase="sifting", phases=phases,
-                     lead=lead, next_action=next_action)
+                     lead=lead, next_action=next_action, job_store=job_store)
 
 
 def raw_page(repository, experiment_name, cell_key, line=None, *, job_store=None):
@@ -1799,4 +1843,5 @@ def raw_page(repository, experiment_name, cell_key, line=None, *, job_store=None
     return document(
         f"{cell_key} 原ログ", body + '</div>',
         run=experiment_name, phase="sifting", phases=phases,
+        job_store=job_store,
     )

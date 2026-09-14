@@ -420,6 +420,66 @@ def phase_status(
     return status
 
 
+FINISHED_RUN_STATES = frozenset({"succeeded", "partial"})
+
+
+def pinned_target(
+    job_store: Any,
+    *,
+    configs: Sequence[Mapping[str, Any]] | None = None,
+    jobs: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """The one world the tool is currently about, plus that world's latest run.
+
+    JobStore.submit() refuses a new job while any job is non-terminal, so at
+    most one job runs at a time: its config's world is the pin. With nothing
+    running, the most recently created config names the world (so /jobs can
+    say what would be processed before the first run). The run is the most
+    recent finished evolve job of that world -- an evolve job's run_id is also
+    its experiment folder name, so one value serves both /exp/<run> and
+    /outputs?run=<run>. Legacy runs (no job) never become the pinned run.
+    `configs`/`jobs` may be passed in by a caller that already listed them.
+    Returns None without --control or when no config exists.
+    """
+    if job_store is None:
+        return None
+    try:
+        if configs is None:
+            configs = job_store.configs.list()
+        if jobs is None:
+            jobs = job_store.list()
+    except _SAFE_STATUS_ERRORS:
+        return None
+    configs_by_id = {c["config_id"]: c for c in configs}
+    running = next(
+        (j for j in jobs
+         if j.get("state") in RUNNING_JOB_STATES and j.get("config_id") in configs_by_id),
+        None,
+    )
+    if running is not None:
+        config = configs_by_id[running["config_id"]]
+    elif configs:
+        config = max(configs, key=lambda c: c["created_at"])
+    else:
+        return None
+    world_id = config["project_id"]
+    finished = [
+        j for j in jobs
+        if j.get("kind", "evolve") == "evolve"
+        and j.get("state") in FINISHED_RUN_STATES
+        and configs_by_id.get(j.get("config_id"), {}).get("project_id") == world_id
+    ]
+    latest = max(finished, key=lambda j: j["created_at"], default=None)
+    run = latest["run_id"] if latest else None
+    return {
+        "world": {"id": world_id, "name": config["preview"]["world_name"]},
+        "config": config,
+        "job": running,
+        "run": run,
+        "output_run": run,
+    }
+
+
 @lru_cache(maxsize=None)
 def _yaml_mapping(path: Path) -> Mapping[str, Any]:
     """Read each immutable project/template YAML file only once."""
