@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from execution.provenance import atomic_json
 from gapengine.qd import Archive, read_rows
 from gapengine.scenes import extract_scenes
 from gapengine.synopsis import (
@@ -23,17 +24,6 @@ from gapengine.synopsis import (
     generate_text,
     load_world_meta,
 )
-
-
-def _write_json(path: Path, value: Any) -> None:
-    from execution.provenance import write_bytes
-    raw = json.dumps(value, ensure_ascii=False, sort_keys=True,
-                     separators=(",", ":")) + "\n"
-    import os
-    import uuid
-    temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
-    write_bytes(temporary, raw.encode("utf-8"))
-    os.replace(temporary, path)
 
 
 def _load_json(path: Path) -> Any:
@@ -155,7 +145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if len(parts) != 2 or (parts[0], parts[1]) not in archive.cells:
             entry["error"] = "selected cell is not present in archive"
             entries.append(entry)
-            _write_json(index_path, payload)
+            atomic_json(index_path, payload)
             continue
 
         elite = archive.cells[(parts[0], parts[1])]
@@ -213,20 +203,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
         entries.append(entry)
-        _write_json(index_path, payload)
+        atomic_json(index_path, payload)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    index_path = output_dir / "index.json"
-    _write_json(
-        index_path,
-        {
-            "archive": archive_path.as_posix(),
-            "backend": args.backend,
-            "entries": entries,
-            "selected": selected,
-            "world": world_meta["name"],
-        },
-    )
+    atomic_json(index_path, payload)
     print(f"stories={output_dir} selected={len(selected)}")
     return 0
 

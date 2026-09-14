@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 import sys
 import threading
@@ -58,7 +59,7 @@ class EvolutionObserver:
     sink(progress) and cancellation() are optional embedding/test hooks. Failures
     are propagated to the GA thread; they must never silently report success.
     """
-    def __init__(self, root, run_id, cfg, *, sink=None, cancellation=None, interval=0.1):
+    def __init__(self, root, run_id, cfg, *, sink=None, cancellation=None, interval=0.5):
         self.root = Path(root).absolute()
         self.run_id = identifier(run_id, "run_id")
         self.folder = contained(self.root, "evaluation")
@@ -118,13 +119,13 @@ class EvolutionObserver:
         atomic_json(self.cancel, {"schema_version": 1, "requested": True})
 
     def _drain(self):
-        for path in sorted(self.events.glob("*.json")):
-            if path.name in self.seen:
+        for name in sorted(set(os.listdir(self.events)) - self.seen):
+            if not name.endswith(".json"):
                 continue
-            event = read_json(path)
+            event = read_json(self.events / name)
             target = self.completed if event["kind"] == "completed" else self.seed_starts
             target[event["event_id"]] = event
-            self.seen.add(path.name)
+            self.seen.add(name)
 
     def progress(self):
         total = self.generations * self.population * len(self.roles)

@@ -39,8 +39,15 @@ def run(control, output_id):
     # The exclusive marker is permanent; restart recovery is local-only.
     from execution.provenance import write_bytes
     write_bytes(store.folder(output_id) / "worker-started.json", b'{"schema_version":1}')
+    preflight_error = None
+    auth = None
+    try:
+        store.verify_artifacts(output_id)
+        auth = credentials(job.get("settings_path"), request["backend"])
+    except (OSError, ValueError, ConfigError) as error:
+        preflight_error = error
     for cid in request["candidate_ids"]:
-        sink = store.sink(output_id, cid)
+        sink = store.sink(output_id, cid, request=request)
         job = read_job(jobs, folder)
         if job["state"] in TERMINAL or job.get("cancel_requested_at") is not None:
             sink.finish(result(sink.identity, "skipped_cancelled", "cancelled_before_start", retry_policy="safe_new_request"))
@@ -48,12 +55,9 @@ def run(control, output_id):
         if time.time() >= job["created_at"] + job["wall_seconds"]:
             sink.finish(result(sink.identity, "skipped_limit", "limit_reached", retry_policy="new_budget_request"))
             continue
-        try:
-            store.verify_artifacts(output_id)
-            auth = credentials(job.get("settings_path"), request["backend"])
-        except (OSError, ValueError, ConfigError) as error:
+        if preflight_error is not None:
             sink.finish(result(sink.identity, "error", "preflight_failed", stage="preflight",
-                cause_type=type(error).__name__, retry_policy="safe_new_request"))
+                cause_type=type(preflight_error).__name__, retry_policy="safe_new_request"))
         else:
             call = sink.call_request(auth)
             call["deadline"] = job["created_at"] + job["wall_seconds"]
