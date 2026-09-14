@@ -592,8 +592,14 @@ def render_job_page(job):
     run_id = job.get("run_id")
     if state in ("failed", "cancelled", "interrupted"):
         code = (job.get("error") or {}).get("code")
-        message, next_step = ERROR_MESSAGES.get(code, (f"エラー: {code}", ""))
-        parts.append(f'<p class="error">{_escape(message)}</p><p>{_escape(next_step)}</p>')
+        if code is None and state == "cancelled":
+            # A user-requested stop is not an error; say so instead of "エラー: None".
+            parts.append('<p class="warning">利用者の停止要求により停止しました</p>'
+                         '<p>同じ設定で新しく実行できます</p>')
+        else:
+            message, next_step = ERROR_MESSAGES.get(
+                code, ("エラー情報がありません" if code is None else f"エラー: {code}", ""))
+            parts.append(f'<p class="error">{_escape(message)}</p><p>{_escape(next_step)}</p>')
         if config_id:
             parts.append(f'<p><a href="/configs/{_url(config_id)}/start">同じ設定で新しく実行</a></p>')
         if job.get("publication_revision") is not None:
