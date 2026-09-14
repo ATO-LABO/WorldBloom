@@ -77,6 +77,20 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(saved(root), before)
         self.assertFalse((root / ".write.lock").exists())
 
+    def test_read_publication_caches_by_pointer_stat_and_invalidates_on_refresh(self):
+        root, rid = self.legacy()
+        folder = self.catalog.legacy / rid
+        import viewer.run_catalog as module
+        with patch.object(module, "verified_json", wraps=module.verified_json) as verified:
+            first = read_publication(folder, rid)
+            count_after_first = verified.call_count
+            second = read_publication(folder, rid)
+            self.assertEqual(second, first)
+            self.assertEqual(verified.call_count, count_after_first)
+        self.catalog.register_legacy(root.name, refresh=True)
+        newer = read_publication(folder, rid)
+        self.assertGreater(newer["revision"], first["revision"])
+
     def test_missing_import_never_promoted_without_explicit_refresh(self):
         root, rid = self.legacy(missing=True)
         old = self.catalog.snapshot(rid)

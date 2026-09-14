@@ -15,6 +15,7 @@ from pathlib import Path
 
 import yaml
 
+from engine.yaml_cache import load_yaml
 from execution.provenance import ConfigError, contained, identifier
 
 GENRE_FILES = ("action_graph.yaml", "canon.yaml", "effects.yaml", "qd.yaml", "rules.yaml",
@@ -34,7 +35,7 @@ def _load_yaml_or_none(path):
     if not path.is_file():
         return None
     try:
-        return yaml.safe_load(path.read_text(encoding="utf-8"))
+        return load_yaml(path)
     except yaml.YAMLError:
         return None
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -41,17 +42,34 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
+# ponytail: the symlink/junction check of a root itself and its ancestors is
+# cached per process; a link planted at the root or above it after the first
+# contained() call for that root goes undetected until the process restarts.
+# Paths below the root are still checked on every call. Bounded by maxsize=64.
+@lru_cache(maxsize=64)
+def _checked_root(root_str: str) -> Path:
+    root = Path(root_str)
+    for part in (root, *root.parents):
+        if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
+            raise ConfigError("path", "リンクを経由した保存・読取はできません")
+    return root.resolve()
+
+
 def contained(root: Path, relative: str) -> Path:
     root = Path(root).absolute()
     rel = Path(relative)
     if rel.is_absolute() or rel.drive or ".." in rel.parts or "\\" in relative:
         raise ConfigError("path", "保存範囲外のパスです")
+    resolved_root = _checked_root(str(root))
     result = root / rel
-    # Reject symlinks/junctions, including ancestors of configured roots.
+    # Reject symlinks/junctions strictly below root; root and its ancestors
+    # were already checked (and cached) by _checked_root above.
     for part in (result, *result.parents):
+        if part == root:
+            break
         if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
             raise ConfigError("path", "リンクを経由した保存・読取はできません")
-    if not result.resolve().is_relative_to(root.resolve()):
+    if not result.resolve().is_relative_to(resolved_root):
         raise ConfigError("path", "保存範囲外のパスです")
     return result
 

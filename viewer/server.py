@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -58,14 +59,20 @@ def static_path(name: str) -> Path:
 class ViewerServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    _last_reconcile = 0.0
 
     def service_actions(self):
         jobs = getattr(self, "job_store", None)
-        if jobs is not None:
-            try:
-                jobs.list()
-            except (ConfigError, OSError, ValueError):
-                pass
+        if jobs is None:
+            return
+        now = time.monotonic()
+        if now - self._last_reconcile < 2.0:
+            return
+        self._last_reconcile = now
+        try:
+            jobs.list()
+        except (ConfigError, OSError, ValueError):
+            pass
 
 
 class ViewerHandler(BaseHTTPRequestHandler):

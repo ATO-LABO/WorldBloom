@@ -122,7 +122,7 @@ class SelectionStore:
         found = self._read(run_id, revision, sha256)
         if found is not None:
             return found
-        snapshot = self.catalog.snapshot(run_id)
+        snapshot = self.catalog.snapshot(run_id, observe=False)
         return self._initial(run_id, snapshot)
 
     def _projection(self, snapshot, selected):
@@ -136,7 +136,7 @@ class SelectionStore:
         return cells
 
     def projected(self, run_id):
-        snapshot = self.catalog.snapshot(run_id)
+        snapshot = self.catalog.snapshot(run_id, observe=False)
         selected = self._read(run_id) or self._initial(run_id, snapshot)
         return self._projection(snapshot, selected)
 
