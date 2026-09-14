@@ -230,6 +230,19 @@ class OutputJobTests(unittest.TestCase):
             self.assertEqual(status,200,output);self.assertEqual(output["counts"],{"prompt_only":2})
         self.assertEqual(call("POST","/api/outputs/"+job["output_id"]+"/recover",{})[0],200)
         self.assertEqual(len(list(self.outputs.root.glob("out-*"))),1)
+        self.assertEqual(call("GET","/api/outputs/out-missing")[0],404)
+        broken=self.outputs.root/"out-broken";broken.mkdir()
+        (broken/"request-seal.json").write_text("{not json",encoding="utf-8")
+        status,listing=call("GET","/api/outputs")
+        self.assertEqual(status,200,listing)
+        rows={row["output_id"]:row for row in listing["outputs"]}
+        self.assertEqual(rows[job["output_id"]]["counts"],{"prompt_only":2})
+        self.assertEqual(rows["out-broken"]["error"]["code"],"storage_error",rows["out-broken"])
+        (broken/"request-seal.json").write_text(json.dumps({"sha256":"0"*64,"items":{}}),encoding="utf-8")
+        (broken/"request.json").write_text("{}",encoding="utf-8")
+        status,listing=call("GET","/api/outputs")
+        self.assertEqual(status,200,listing)
+        self.assertEqual({r["output_id"]:r.get("error",{}).get("code") for r in listing["outputs"]},{job["output_id"]:None,"out-broken":"snapshot_changed"})
 
     def test_runtime_and_input_snapshots_are_used_and_selection_stays_locked(self):
         self.fixture_transport("ok", delay=2)
