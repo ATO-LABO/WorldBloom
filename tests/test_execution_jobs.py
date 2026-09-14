@@ -309,7 +309,7 @@ if mode == "fail":
         self.assertEqual(self.jobs.list()[0]["state"], "failed")
         with self.assertRaises(ConfigError) as error:
             self.jobs.submit({"request_id":"gen","kind":"narrate","config_id":"cfg-test"})
-        self.assertEqual(error.exception.code,"unavailable")
+        self.assertEqual(error.exception.code,"invalid_config")
 
     def test_path_and_request_field_rejection(self):
         for extra in ({"argv":["calc"]},{"run_id":"existing"},{"out":"C:/tmp"}):

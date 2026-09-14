@@ -26,18 +26,14 @@ from gapengine.synopsis import (
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            value,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    from execution.provenance import write_bytes
+    raw = json.dumps(value, ensure_ascii=False, sort_keys=True,
+                     separators=(",", ":")) + "\n"
+    import os
+    import uuid
+    temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
+    write_bytes(temporary, raw.encode("utf-8"))
+    os.replace(temporary, path)
 
 
 def _load_json(path: Path) -> Any:
@@ -144,6 +140,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     synopses = _synopsis_by_cell(synopses_path)
     entries: list[dict[str, Any]] = []
+    index_path = output_dir / "index.json"
+    payload = {"archive": archive_path.as_posix(), "backend": args.backend,
+               "entries": entries, "selected": selected, "world": world_meta["name"]}
     reported_warnings: set[str] = set()
 
     for cell_key in selected:
@@ -156,6 +155,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if len(parts) != 2 or (parts[0], parts[1]) not in archive.cells:
             entry["error"] = "selected cell is not present in archive"
             entries.append(entry)
+            _write_json(index_path, payload)
             continue
 
         elite = archive.cells[(parts[0], parts[1])]
@@ -213,6 +213,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
         entries.append(entry)
+        _write_json(index_path, payload)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     index_path = output_dir / "index.json"

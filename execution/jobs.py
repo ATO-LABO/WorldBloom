@@ -19,7 +19,8 @@ from execution import worker
 
 PUBLIC_FIELDS = frozenset({"schema_version", "job_id", "request_id", "kind", "config_id", "run_id",
     "state", "phase", "revision", "created_at", "updated_at", "started_at", "finished_at", "heartbeat",
-    "cancel_requested_at", "error", "exit_code", "progress", "reconciliation", "publication_revision"})
+    "cancel_requested_at", "error", "exit_code", "progress", "reconciliation", "publication_revision",
+    "output_id", "completion_kind", "counts"})
 
 
 class JobStore:
@@ -59,6 +60,32 @@ class JobStore:
             raise ConfigError("job_id", "ジョブがありません", code="not_found") from error
 
     def _save(self, job, **updates):
+        if job.get("output_id") and updates.get("state") in worker.TERMINAL:
+            if not worker.output_tree_stopped(job):
+                return {**job, "reconciliation": "unknown"}
+            from execution.output_store import OutputStore
+            from execution.generation import aggregate
+            outputs = OutputStore(self.configs.control)
+            stopped = "cancelled" if job.get("cancel_requested_at") or updates["state"] == "cancelled" else "limit" if (updates.get("error") or {}).get("code") == "wall_timeout" else "interrupted"
+            try:
+                if not outputs.folder(job["output_id"]).is_dir():
+                    summary = None
+                else:
+                    recovered = outputs.recover(job["output_id"], owner_stopped=True, stopped=stopped)
+                    summary = aggregate(recovered["entries"], stopped=stopped if updates["state"] in ("cancelled", "interrupted") else None)
+            except (ValueError, OSError, KeyError, TypeError):
+                # A broken output must not block the job ledger; output(output_id) surfaces the error.
+                updates["reconciliation"] = "unknown"
+            else:
+                if summary is not None:
+                    updates.update(completion_kind=summary["completion_kind"], counts=summary["counts"],
+                        progress={"completed": len(recovered["entries"]), "total": len(recovered["entries"]), "counts": summary["counts"]})
+                    if updates["state"] not in ("cancelled", "interrupted"):
+                        # The entry set decides the job state (contract §14). A wall limit that
+                        # left every entry ok did not affect the output, so it is not an error.
+                        updates["state"] = summary["state"]
+                        if summary["state"] == "succeeded":
+                            updates["error"] = None
         job.update(updates, updated_at=time.time(), revision=job["revision"] + 1)
         atomic_json(self._folder(job["job_id"]) / "job.json", job)
         worker.record_event(self._folder(job["job_id"]), job)
@@ -88,7 +115,7 @@ class JobStore:
             return job
         status = self._identity_status(job)
         if status == "dead":
-            return self._save(job, state="interrupted", finished_at=time.time(),
+            return self._save(job, state="cancelled" if job.get("cancel_requested_at") is not None else "interrupted", finished_at=time.time(),
                               reconciliation="confirmed", error={"code":"worker_disappeared"})
         if status == "unknown":
             # A late supervisor must claim this job under the same lock before
@@ -132,19 +159,23 @@ class JobStore:
         with self._lock():
             return [self.public(self._reconcile(j)) for j in self._all()]
 
-    def submit(self, request):
+    def submit(self, request, *, settings_path=None):
         if not isinstance(request, dict):
             raise ConfigError("request", "オブジェクトを指定してください")
-        if set(request) - {"request_id", "kind", "config_id"}:
-            raise ConfigError("request", "未対応の要求項目があります")
-        rid = identifier(request.get("request_id"), "request_id")
         kind = request.get("kind")
-        if kind in ("synopsize", "narrate"):
-            raise ConfigError("kind", "生成処理は未接続です", code="unavailable")
-        if kind != "evolve":
-            raise ConfigError("kind", "処理種別が不正です")
-        cid = identifier(request.get("config_id"), "config_id")
-        request = {"schema_version":1, "request_id":rid, "kind":kind, "config_id":cid}
+        generating = kind in ("synopsize", "narrate")
+        if generating:
+            from execution.output_requests import normalize
+            request = normalize(request)
+            rid, cid = request["request_id"], request["config_id"]
+        else:
+            if set(request) - {"request_id", "kind", "config_id"}:
+                raise ConfigError("request", "未対応の要求項目があります")
+            rid = identifier(request.get("request_id"), "request_id")
+            if kind != "evolve":
+                raise ConfigError("kind", "処理種別が不正です")
+            cid = identifier(request.get("config_id"), "config_id")
+            request = {"schema_version":1, "request_id":rid, "kind":kind, "config_id":cid}
         request_hash = sha256(canonical(request))
         jid = "job-" + hashlib.sha256(rid.encode()).hexdigest()
         with self._lock():
@@ -158,6 +189,10 @@ class JobStore:
             for other in self._all():
                 if self._reconcile(other)["state"] not in worker.TERMINAL:
                     raise ConfigError("jobs", "他の処理が実行中または状態確認中です", code="conflict")
+            plan = None
+            if generating:
+                from execution.output_requests import admit
+                plan = admit(self, request, settings_path=settings_path)
             # Probe the containment API before publishing a request.
             try:
                 tree = worker.ProcessTree(); tree.close()
@@ -169,7 +204,7 @@ class JobStore:
             entry = final / "worker.py"
             source = Path(worker.__file__).read_bytes()
             write_bytes(pending / "worker.py", source)
-            run_id = "run-" + secrets.token_hex(16)
+            run_id = request["run_id"] if generating else "run-" + secrets.token_hex(16)
             now = time.time()
             job = {"schema_version":1, "job_id":jid, "request_id":rid, "request_hash":request_hash,
                    "nonce":nonce, "kind":kind, "config_id":cid, "run_id":run_id,
@@ -182,6 +217,13 @@ class JobStore:
                        "total_individuals":config["preview"]["planned_individual_evaluations"],
                        "total_seeds":config["preview"]["planned_seed_evaluations"],
                        "detail_available":False}}
+            if generating:
+                job.update(output_id="out-" + secrets.token_hex(16),
+                    output_plan_sha256=sha256(canonical(plan)),
+                    settings_path=str(Path(settings_path).absolute()) if settings_path is not None else None,
+                    wall_seconds=request["limits"]["wall_seconds"],
+                    progress={"completed": 0, "total": len(plan["candidate_ids"]), "counts": {}})
+                atomic_json(pending / "output-plan.json", plan)
             atomic_json(pending / "request.json", request)
             atomic_json(pending / "job.json", job)
             publish_directory(pending, final)
@@ -206,12 +248,43 @@ class JobStore:
             if job["state"] in worker.TERMINAL:
                 return self.public(job)
             if job["state"] == "queued":
-                return self.public(self._save(job, state="cancelled", cancel_requested_at=time.time(), finished_at=time.time()))
+                now = time.time()
+                saved = self._save(job, state="cancelled", cancel_requested_at=now, finished_at=now)
+                if saved["state"] != "cancelled":
+                    # _save declined the terminal write because the output tree is still alive.
+                    saved = self._save(job, state="stopping", cancel_requested_at=now)
+                return self.public(saved)
             if job.get("cancel_requested_at") is None:
                 # The worker observes this before starting the GA, including when
                 # the cancel request races its initial acknowledgement.
                 job = self._save(job, state="stopping", cancel_requested_at=time.time())
             return self.public(job)
+
+    def output(self, output_id, *, recover=False):
+        from execution.output_store import OutputStore
+        from execution.generation import aggregate
+        with self._lock():
+            outputs = OutputStore(self.configs.control)
+            request = outputs.request(output_id)
+            job = self._reconcile(self._read(request["job_id"]))
+            stopped = job["state"] in worker.TERMINAL and worker.output_tree_stopped(job)
+            if recover and not stopped:
+                raise ConfigError("output_id", "所有workerの停止確認が必要です", code="conflict")
+            if stopped:
+                reason = "cancelled" if job["state"] == "cancelled" else "limit" if (job.get("error") or {}).get("code") == "wall_timeout" else "interrupted"
+                payload = outputs.recover(output_id, owner_stopped=True, stopped=reason)
+            else:
+                payload = outputs.project(output_id)
+            if job["state"] in ("cancelled", "interrupted"):
+                payload.update(aggregate(payload["entries"], stopped=job["state"]))
+            return {**payload, "request": request, "job_state": job["state"]}
+
+    def outputs(self):
+        from execution.output_store import OutputStore
+        root = OutputStore(self.configs.control).root
+        if not root.exists():
+            return []
+        return [self.output(p.name) for p in sorted(root.iterdir()) if p.is_dir() and p.name.startswith("out-")]
 
     def assert_run_idle(self, run_id):
         if not self.root.exists():

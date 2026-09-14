@@ -82,12 +82,20 @@ def dispatch(handler, parts, method):
             handler._send_json(HTTPStatus.OK, configs.preview(body, settings_path=settings))
         elif method == "POST" and parts == ["api", "configs"]:
             handler._send_json(HTTPStatus.CREATED, configs.save(body, settings_path=settings))
+        elif method == "GET" and parts == ["api", "outputs"]:
+            handler._send_json(HTTPStatus.OK, {"outputs": jobs.outputs()})
+        elif method == "GET" and len(parts) == 3 and parts[1] == "outputs":
+            handler._send_json(HTTPStatus.OK, jobs.output(parts[2]))
+        elif method == "POST" and len(parts) == 4 and parts[1] == "outputs" and parts[3] == "recover":
+            if body:
+                raise ConfigError("request", "復旧要求の本文は空オブジェクトにしてください")
+            handler._send_json(HTTPStatus.OK, jobs.output(parts[2], recover=True))
         elif method == "GET" and parts == ["api", "jobs"]:
             handler._send_json(HTTPStatus.OK, {"jobs":jobs.list()})
         elif method == "GET" and len(parts) == 3 and parts[1] == "jobs":
             handler._send_json(HTTPStatus.OK, jobs.get(parts[2]))
         elif method == "POST" and parts == ["api", "jobs"]:
-            job, created = jobs.submit(body)
+            job, created = jobs.submit(body, settings_path=settings)
             handler._send_json(HTTPStatus.ACCEPTED if created else HTTPStatus.OK, job)
         elif method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "cancel":
             if body:
