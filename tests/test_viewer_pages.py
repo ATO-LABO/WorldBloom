@@ -170,6 +170,43 @@ class ViewerPageTests(unittest.TestCase):
         self.assertIn("主導カテゴリ", pages.METRIC_HELP["tendency"])
         self.assertIn("一致しない", pages.METRIC_HELP["tendency"])
 
+    def test_term_and_glossary_share_term_help(self) -> None:
+        # WB-UI-013: term() without a label falls back to the heading word
+        # embedded in TERM_HELP[key] ("<heading>: <definition>"); glossary()
+        # must render the same heading/definition split, from the same dict
+        # (no separate copy to drift out of sync).
+        self.assertIs(pages.METRIC_HELP, pages.TERM_HELP)
+        rendered = pages.term("candidate_id")
+        self.assertIn('title="', rendered)
+        self.assertIn(">候補ID<", rendered)
+        labelled = pages.term("candidate_id", "ID")
+        self.assertIn(">ID<", labelled)
+        block = pages.glossary(["candidate_id", "cell"])
+        self.assertIn("<dt>候補ID</dt>", block)
+        self.assertIn("<dt>セル</dt>", block)
+        self.assertIn(pages.TERM_HELP["candidate_id"].split(": ", 1)[1], block)
+
+    def test_document_lead_and_next_action(self) -> None:
+        html = pages.document(
+            "タイトル", "<p>本文</p>", lead="目的の説明。",
+            next_action=("次へ →", "/somewhere"),
+        )
+        self.assertIn('<p class="page-lead">目的の説明。 '
+                       '<a class="next-cta" href="/somewhere">次: 次へ →</a></p>', html)
+        no_action = pages.document("タイトル", "<p>本文</p>", lead="目的のみ。")
+        self.assertIn('<p class="page-lead">目的のみ。 </p>', no_action)
+        neither = pages.document("タイトル", "<p>本文</p>")
+        self.assertNotIn("page-lead", neither)
+
+    def test_next_action_for_matches_home_and_grid(self) -> None:
+        # WB-UI-012 §5.3: /exp/<run>'s "next:" must agree with the home
+        # dashboard's for the same run -- both now call next_action_for().
+        phases = {"world": True, "run": True, "sifting": False, "stage": False, "next": "sifting"}
+        home_next = pages._next_command({"name": "exp-x"}, phases)
+        grid_next = pages.next_action_for("exp-x", phases)
+        self.assertEqual(home_next, grid_next)
+        self.assertEqual(grid_next, ("Sifting で候補を選ぶ →", "/exp/exp-x"))
+
     def test_grade_ramp_and_gate_exclusion(self) -> None:
         self.assertEqual(pages._grade(1.0), "grade-strong")
         self.assertEqual(pages._grade(0.67), "grade-good")

@@ -278,6 +278,29 @@ class OutputPagesTests(unittest.TestCase):
         self.assertIn("作品一覧を読み込めません", body)
         self.fake.outputs_raise = False
 
+    def test_outputs_list_is_five_columns_with_detail_row(self):
+        # WB-UI-014 §3.2: list columns shrink to output_id/種別/状態/内訳/操作;
+        # 選定版/backend-model/対象数/設定 move into a collapsed detail row.
+        rid, cids = self._legacy_run("exp-out-cols", count=1)
+        oid, jid, store = self._create_output(kind="synopsize", run_id=rid, candidate_ids=cids)
+        self._finish(store, oid, cids[0], "ok", "completed", text="p1")
+        self.fake.add(_gen_job(jid, rid, oid, "synopsize", "succeeded"))
+
+        status, body, _ = self.get_status("/outputs")
+        self.assertEqual(status, 200, body)
+        thead = body[body.index("<thead>"):body.index("</thead>")]
+        # "<thead>" itself contains "<th", so match the column tag precisely.
+        self.assertEqual(len(re.findall(r"<th[ >]", thead)), 5)
+        self.assertIn('class="detail-row"', body)
+        self.assertIn('class="row-toggle"', body)
+        detail = body[body.index('class="detail-row"'):]
+        self.assertIn("選定版", detail)
+        self.assertIn("backend/model", detail)
+        self.assertIn("対象数", detail)
+        self.assertIn("/configs/cfg-test", detail)
+        self.assertIn('<details class="glossary">', body)
+        self.assertIn('<p class="page-lead">', body)
+
     # ---------------------------------------------------------- output detail
 
     def test_output_detail_entries_and_absent(self):
