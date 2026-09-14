@@ -200,6 +200,16 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
         self.assertIn('href="/genres/new"', body)
+        self.assertIn("<th>実験</th>", body)
+
+    def test_home_is_worlds_hub(self):
+        status, body = self.get("/")
+        self.assertEqual(status, 200, body)
+        self.assertIn("桃太郎", body)
+        self.assertIn('id="genres"', body)
+        self.assertIn('href="/worlds/new"', body)
+        self.assertIn('href="/genres/new"', body)
+        self.assertIn("<th>実験</th>", body)
 
     def test_world_detail_page(self):
         status, body = self.get("/worlds/momotaro")
@@ -209,6 +219,9 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('data-file="world.yaml"', body)
         self.assertIn('data-file="subjects/03_momotaro.yaml"', body)
         self.assertIn("人物を追加", body)
+        self.assertIn('class="relation-graph"', body)
+        self.assertIn('id="experiments"', body)
+        self.assertIn('<details class="editor-group">', body)
 
     def test_genre_detail_page(self):
         status, body = self.get("/genres/momotaro")
@@ -241,8 +254,10 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
 
 
 class LibraryGuidanceTests(unittest.TestCase):
-    """Without --control (no job_store), /worlds and /genres must degrade to
-    the same guidance page as the rest of the workbench, never a crash."""
+    """Without --control (no job_store), /worlds and /worlds/<id> now fall
+    back to a read-only listing/detail (WB-UI-016) instead of the guidance
+    page; /worlds/new, /genres/new and /genres/<id> still need --control to
+    mutate anything, so they keep showing guidance."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wb-ui010-lib-guidance-")
@@ -256,15 +271,30 @@ class LibraryGuidanceTests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def test_worlds_without_control_is_guidance_not_crash(self):
+    def get(self, path):
         conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
         try:
-            conn.request("GET", "/worlds")
+            conn.request("GET", path)
             response = conn.getresponse()
-            body = response.read().decode("utf-8")
+            return response.status, response.read().decode("utf-8")
         finally:
             conn.close()
-        self.assertEqual(response.status, 200, body)
+
+    def test_worlds_without_control_is_a_read_only_listing(self):
+        status, body = self.get("/worlds")
+        self.assertEqual(status, 200, body)
+        self.assertIn("桃太郎", body)
+        self.assertNotIn('href="/worlds/new"', body)
+
+    def test_world_detail_without_control_is_read_only(self):
+        status, body = self.get("/worlds/momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertIn('class="relation-graph"', body)
+        self.assertNotIn('data-action="save-file"', body)
+
+    def test_genre_detail_without_control_is_still_guidance(self):
+        status, body = self.get("/genres/momotaro")
+        self.assertEqual(status, 200, body)
         self.assertIn("実行管理は未設定です", body)
 
 

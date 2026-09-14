@@ -374,7 +374,14 @@ class ViewerServerTests(unittest.TestCase):
             try:
                 index = _wait_for_page(base_url + "/")
                 self.assertIn("世界を選ぶ", index)
-                self.assertIn("exp-viewer", index)
+                self.assertIn("桃太郎", index)
+
+                # exp-viewer only appears inside its own world's detail page
+                # now (WB-UI-016); this request also runs without --control,
+                # so it doubles as a check that the read-only world page
+                # still renders.
+                world_page = _wait_for_page(base_url + "/worlds/momotaro")
+                self.assertIn("exp-viewer", world_page)
 
                 grid = _wait_for_page(base_url + "/exp/exp-viewer")
                 self.assertIn("III|high", grid)
