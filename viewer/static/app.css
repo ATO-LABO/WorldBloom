@@ -240,13 +240,6 @@ select {
   font-size: 0.85rem;
 }
 
-.crumbs {
-  color: var(--muted);
-  min-width: 0;
-  overflow-wrap: anywhere;
-  padding: 0.5rem max(1rem, calc((100vw - 1280px) / 2));
-}
-
 h1 {
   font-size: clamp(1.4rem, 3vw, 2rem);
   margin: 0 0 1rem;
@@ -970,8 +963,7 @@ td {
     padding-inline: 0.75rem;
   }
 
-  .header-pickers,
-  .crumbs {
+  .header-pickers {
     padding-inline: 0.75rem;
   }
 
