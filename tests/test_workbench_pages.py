@@ -186,8 +186,12 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         status, configs_body, _ = self.get_status("/configs")
         self.assertEqual(status, 200, configs_body)
-        for href, label in (("/", "実験一覧"), ("/configs", "設定"),
-                             ("/jobs", "実行履歴"), ("/selected", "選定トレイ")):
+        # The header shell (home link + 設定/実行履歴 shortcuts) is common to
+        # every page; 実験一覧/選定トレイ no longer appear as global nav links
+        # (home link replaces the former, Sifting トレイ is not global anymore).
+        self.assertIn('<a class="home-cell" href="/">⌂ ホーム</a>', body)
+        self.assertIn('<a class="home-cell" href="/">⌂ ホーム</a>', configs_body)
+        for href, label in (("/configs", "設定"), ("/jobs", "実行履歴")):
             with self.subTest(href=href):
                 self.assertIn(f'<a href="{href}">{label}</a>', body)
                 self.assertIn(f'<a href="{href}">{label}</a>', configs_body)

@@ -224,7 +224,7 @@ def _generate_confirm(handler, run_id):
     job_store = _job_store(handler)
     repository = handler.repository
     if job_store is None or repository.catalog is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="stage"))
         return
     catalog, selections = repository.catalog, repository.selections
     query = _query(handler)
@@ -235,10 +235,17 @@ def _generate_confirm(handler, run_id):
 
     kind = qval("kind")
     if kind not in ("synopsize", "narrate"):
+        # run_id is the catalog run_id; the header wants the experiment
+        # folder name (same distinction as everywhere else in this module).
+        try:
+            run_name = catalog.resolve(run_id)[0].name
+        except (ConfigError, OSError, ValueError, KeyError, TypeError):
+            run_name = None
         handler._send_html(pages.document(
             "生成の確認",
             '<p class="error">生成種別（kind）が不正です</p>'
             f'<p><a href="/runs/{_url(run_id)}/candidates">候補一覧に戻る</a></p>',
+            phase="stage", run=run_name, output_run=run_id,
         ))
         return
     mode = qval("mode") or "missing_or_failed"
@@ -333,6 +340,7 @@ def _generate_confirm(handler, run_id):
     handler._send_html(pages.document(
         "生成の確認", body,
         crumbs=[("候補一覧", f"/runs/{_url(run_id)}/candidates"), ("生成の確認", f"/runs/{_url(run_id)}/generate")],
+        phase="stage", run=snapshot["experiment_name"], output_run=run_id,
     ))
 
 
@@ -443,25 +451,36 @@ def _render_generate_body(*, run_id, kind, mode, candidate_ids, by_id, selection
 def _outputs_list(handler):
     job_store = _job_store(handler)
     if job_store is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="stage"))
         return
     query = _query(handler)
     run_filter = query.get("run", [None])[0]
-    try:
-        outputs = job_store.outputs()
-    except (ConfigError, OSError, ValueError, KeyError, TypeError, AttributeError):
-        body = '<p class="error">作品一覧を読み込めません。保存記録が破損している可能性があります</p>'
-        handler._send_html(pages.document("作品一覧", body, crumbs=[("作品一覧", "/outputs")]))
-        return
-    if run_filter:
-        outputs = [o for o in outputs if (o.get("request") or {}).get("run_id") == run_filter]
+    # run_filter (the ?run= query value) is the catalog run_id -- outputs are
+    # always keyed that way, including for legacy runs whose catalog id
+    # differs from the experiment folder name. The header's 実験 picker and
+    # its 工程 links must use the folder name, so resolve it via history()
+    # before rendering (computed first so the error branch below can use it
+    # too).
     try:
         history = handler.repository.catalog.history()
     except (ConfigError, OSError, ValueError, KeyError, TypeError):
         history = []
     run_names = {r["run_id"]: r["experiment_name"] for r in history}
+    run_experiment = run_names.get(run_filter) if run_filter else None
+    try:
+        outputs = job_store.outputs()
+    except (ConfigError, OSError, ValueError, KeyError, TypeError, AttributeError):
+        body = '<p class="error">作品一覧を読み込めません。保存記録が破損している可能性があります</p>'
+        handler._send_html(pages.document(
+            "作品一覧", body, crumbs=[("作品一覧", "/outputs")],
+            phase="stage", run=run_experiment, output_run=run_filter,
+        ))
+        return
+    if run_filter:
+        outputs = [o for o in outputs if (o.get("request") or {}).get("run_id") == run_filter]
     handler._send_html(pages.document(
         "作品一覧", render_outputs_list(outputs, run_names), crumbs=[("作品一覧", "/outputs")],
+        phase="stage", run=run_experiment, output_run=run_filter,
     ))
 
 
@@ -548,7 +567,7 @@ def _output_row(output):
 def _output_detail(handler, output_id):
     job_store = _job_store(handler)
     if job_store is None:
-        handler._send_html(_guidance_page())
+        handler._send_html(_guidance_page(phase="stage"))
         return
     try:
         output = job_store.output(output_id)
@@ -706,6 +725,11 @@ def _output_detail(handler, output_id):
     handler._send_html(pages.document(
         f"作品: {_short_id(output_id)}", body,
         crumbs=[("作品一覧", "/outputs"), (_short_id(output_id), f"/outputs/{_url(output_id)}")],
+        # run_id here is the catalog run_id; the header's 実験 picker and its
+        # Sifting link use the experiment folder name (history()-resolved
+        # above, None if it can't be resolved), while the 上映 link must keep
+        # using the catalog id (that's what /outputs?run= matches against).
+        phase="stage", run=experiment_name, output_run=run_id,
     ))
 
 

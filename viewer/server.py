@@ -153,8 +153,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return
         if job_api.dispatch(self, parts, "GET"):
             return
+        job_store = getattr(self.server, "job_store", None)
         if not parts:
-            self._send_html(pages.index_page(self.repository))
+            self._send_html(pages.index_page(self.repository, job_store=job_store))
             return
         if len(parts) == 2 and parts[0] == "static":
             name = parts[1]
@@ -167,17 +168,23 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return
         if len(parts) == 3 and parts[0] == "exp" and parts[2] == "compare":
             query = parse_qs(urlsplit(self.path).query)
-            self._send_html(pages.compare_page(self.repository, parts[1], query.get("cell", [])))
+            self._send_html(pages.compare_page(
+                self.repository, parts[1], query.get("cell", []), job_store=job_store,
+            ))
             return
         if len(parts) == 5 and parts[0] == "exp" and parts[2] == "cell" and parts[4] == "raw":
             query = parse_qs(urlsplit(self.path).query)
-            self._send_html(pages.raw_page(self.repository, parts[1], parts[3], query.get("line", [None])[0]))
+            self._send_html(pages.raw_page(
+                self.repository, parts[1], parts[3], query.get("line", [None])[0],
+                job_store=job_store,
+            ))
             return
         if len(parts) == 2 and parts[0] == "exp":
             self._send_html(
                 pages.experiment_page(
                     self.repository,
                     parts[1],
+                    job_store=job_store,
                 )
             )
             return
@@ -195,6 +202,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
                     parts[1],
                     parts[3],
                     view=view,
+                    job_store=job_store,
                 )
             )
             return

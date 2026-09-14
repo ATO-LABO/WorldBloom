@@ -313,6 +313,113 @@ class RunRepository:
         return destination
 
 
+RUNNING_JOB_STATES = frozenset({"queued", "running", "stopping"})
+
+
+_SAFE_STATUS_ERRORS = (ValueError, OSError, KeyError, TypeError, AttributeError)
+
+
+def phase_status(
+    repository: RunRepository,
+    run_name: str,
+    *,
+    job_store: Any = None,
+    history: Sequence[Mapping[str, Any]] | None = None,
+    outputs: Sequence[Mapping[str, Any]] | None = None,
+    selected: bool | None = None,
+) -> dict[str, Any]:
+    """Coarse per-run progress across the 4 UI phases (world/run/sifting/stage).
+
+    world is always True (the run already belongs to an existing world).
+    run is True once the archive is readable and no job for this run is
+    still in flight (matched by experiment_name, which run_catalog always
+    sets to the run's folder name). sifting is True once at least one cell
+    is selected. stage is True once at least one generation output has an
+    ok entry for this run -- matched by the *catalog* run_id (legacy runs
+    are keyed that way in the output ledger, not by the folder name), which
+    this function also returns as "catalog_run_id" for callers that need to
+    link to /outputs?run=... themselves.
+
+    A caller rendering many rows at once (the home dashboard) should fetch
+    `repository.catalog.history()` and `job_store.outputs()` itself and pass
+    them in as `history`/`outputs`, instead of paying for one call each per
+    row; left as None, this function fetches them itself (single-run callers
+    such as the experiment/cell pages).
+    """
+
+    status: dict[str, Any] = {
+        "world": True,
+        "run": False,
+        "sifting": False,
+        "stage": False,
+        "next": None,
+        "job_id": None,
+        "catalog_run_id": None,
+    }
+
+    try:
+        experiment = repository.experiment(run_name)
+    except (MissingResource, ForbiddenPath):
+        experiment = None
+
+    running_job_id = None
+    catalog_run_id = None
+    if repository.catalog is not None:
+        records = history
+        if records is None:
+            try:
+                records = repository.catalog.history()
+            except _SAFE_STATUS_ERRORS:
+                records = []
+        for record in records:
+            if record.get("experiment_name") == run_name:
+                catalog_run_id = record.get("run_id")
+                if record.get("state") in RUNNING_JOB_STATES:
+                    running_job_id = record.get("job_id")
+                break
+
+    status["run"] = experiment is not None and running_job_id is None
+    status["job_id"] = running_job_id
+    status["catalog_run_id"] = catalog_run_id
+
+    if selected is not None:
+        # The dashboard already paid for repository.selection() inside
+        # experiment_meta(); reading it again per row doubles the home cost.
+        status["sifting"] = bool(selected)
+    elif experiment is not None:
+        try:
+            status["sifting"] = len(repository.selection(experiment)) > 0
+        except _SAFE_STATUS_ERRORS:
+            pass
+
+    if job_store is not None:
+        # Outputs are always requested (and therefore stored) against the
+        # catalog run_id, not the experiment folder name; a legacy run's two
+        # ids differ, so falling back to run_name here would silently match
+        # nothing for every legacy run.
+        stage_match_id = catalog_run_id or run_name
+        try:
+            entries = outputs
+            if entries is None:
+                entries = job_store.outputs()
+            for output in entries:
+                request = output.get("request")
+                if not request or request.get("run_id") != stage_match_id:
+                    continue
+                if any(entry.get("status") == "ok" for entry in output.get("entries", [])):
+                    status["stage"] = True
+                    break
+        except _SAFE_STATUS_ERRORS:
+            pass
+
+    for key in ("run", "sifting", "stage"):
+        if not status[key]:
+            status["next"] = key
+            break
+
+    return status
+
+
 @lru_cache(maxsize=None)
 def _yaml_mapping(path: Path) -> Mapping[str, Any]:
     """Read each immutable project/template YAML file only once."""

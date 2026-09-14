@@ -24,14 +24,117 @@ def _url_segment(value: str) -> str:
     return quote(value, safe="")
 
 
+_PHASE_ITEMS = (
+    ("world", "1", "世界"),
+    ("run", "2", "実行"),
+    ("sifting", "3", "Sifting"),
+    ("stage", "4", "上映"),
+)
+
+
+def _phase_href(
+    key: str,
+    *,
+    world: Mapping[str, Any] | None,
+    run: str | None,
+    output_run: str | None,
+    phases: Mapping[str, Any] | None,
+) -> str:
+    if key == "world":
+        if run and world and world.get("id"):
+            return f"/#world-{_url_segment(str(world['id']))}"
+        return "/"
+    if key == "run":
+        job_id = phases.get("job_id") if phases else None
+        return f"/jobs/{_url_segment(str(job_id))}" if job_id else "/jobs"
+    if key == "sifting":
+        return f"/exp/{_url_segment(run)}" if run else "/selected"
+    if key == "stage":
+        # /outputs?run= always keys off the *catalog* run_id (legacy runs'
+        # catalog id differs from the experiment folder name in `run`), so
+        # this must not fall back to `run` itself.
+        return f"/outputs?run={_url_segment(output_run)}" if output_run else "/outputs"
+    raise AssertionError(key)  # pragma: no cover - exhaustive _PHASE_ITEMS
+
+
+def _phase_band(
+    *,
+    phase: str | None,
+    phases: Mapping[str, Any] | None,
+    world: Mapping[str, Any] | None,
+    run: str | None,
+    output_run: str | None,
+) -> str:
+    segments = []
+    for key, number, label in _PHASE_ITEMS:
+        classes = ["phase-seg"]
+        if phases and phases.get(key):
+            classes.append("is-done")
+        if phase == key:
+            classes.append("is-active")
+        href = html.escape(
+            _phase_href(key, world=world, run=run, output_run=output_run, phases=phases),
+            quote=True,
+        )
+        current = ' aria-current="step"' if phase == key else ""
+        segments.append(
+            f'<a class="{" ".join(classes)}"{current} href="{href}">'
+            f'<span class="seg-num">{number}</span>'
+            f'<span class="seg-title">{_escape(label)}</span></a>'
+        )
+    return (
+        '<nav class="phase-band" aria-label="工程">'
+        + "".join(segments)
+        + "</nav>"
+    )
+
+
+def _header_pickers(
+    world: Mapping[str, Any] | None,
+    run: str | None,
+) -> str:
+    pickers = []
+    if world is not None:
+        pickers.append(
+            '<span class="picker"><span class="picker-label">世界</span>'
+            f'<span class="picker-value">{_escape(world.get("name"))}</span></span>'
+        )
+    if run is not None:
+        pickers.append(
+            '<span class="picker"><span class="picker-label">実験</span>'
+            f'<span class="picker-value">{_escape(run)}</span></span>'
+        )
+    return (
+        '<div class="header-pickers">'
+        '<a class="home-cell" href="/">⌂ ホーム</a>'
+        + "".join(pickers)
+        + '<span class="header-links">'
+        '<a href="/configs">設定</a><a href="/jobs">実行履歴</a>'
+        "</span>"
+        '<a class="brand" href="/">WorldBloom</a>'
+        "</div>"
+    )
+
+
 def document(
     title: str,
     body: str,
     *,
     crumbs: list[tuple[str, str]] = (),
+    world: Mapping[str, Any] | None = None,
+    run: str | None = None,
+    output_run: str | None = None,
+    phase: str | None = None,
+    phases: Mapping[str, Any] | None = None,
 ) -> str:
+    # Callers that already looked up phase_status() (experiment/cell/compare/
+    # raw pages) get the stage link's catalog-id distinction for free; other
+    # callers pass output_run explicitly when they know it (see workbench_
+    # pages.py / output_pages.py), or leave it unset when there is none.
+    if output_run is None and phases:
+        output_run = phases.get("catalog_run_id")
     crumb_items = [
-        '<a href="/">実験一覧</a>'
+        '<a href="/">ホーム</a>'
     ]
     for label, href in crumbs:
         crumb_items.append(
@@ -51,18 +154,15 @@ def document(
         '<script src="/static/app.js" defer></script>'
         '<script src="/static/workbench.js" defer></script>'
         "</head><body>"
+        '<div class="app-shell">'
         '<header class="site-header">'
-        '<a class="brand" href="/">WorldBloom</a>'
-        '<nav class="site-nav" aria-label="ワークベンチ">'
-        '<a href="/">実験一覧</a>'
-        '<a href="/configs">設定</a>'
-        '<a href="/jobs">実行履歴</a>'
-        '<a href="/selected">選定トレイ</a>'
-        "</nav>"
-        f'<nav class="crumbs" aria-label="パンくず">{breadcrumb}</nav>'
+        + _header_pickers(world, run)
+        + _phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
+        + f'<nav class="crumbs" aria-label="パンくず">{breadcrumb}</nav>'
         "</header>"
-        f'<main><h1>{_escape(title)}</h1>{body}</main>'
+        f'<main class="page-shell"><h1>{_escape(title)}</h1>{body}</main>'
         '<div id="toast" role="status" aria-live="polite"></div>'
+        "</div>"
         "</body></html>"
     )
 
@@ -341,33 +441,222 @@ def _command_block(
     )
 
 
-def index_page(repository: data.RunRepository) -> str:
+_NEXT_LABELS = {
+    "sifting": "Sifting で候補を選ぶ →",
+    "stage": "上映を生成する →",
+}
+
+
+def _next_command(meta: Mapping[str, Any], phases: Mapping[str, Any]) -> tuple[str, str]:
+    run_name = str(meta["name"])
+    # Outputs are stored under the catalog run_id (legacy runs' catalog id
+    # differs from the experiment folder name), so /outputs?run= must use it
+    # when known; fall back to the folder name only when there is no catalog.
+    output_run = str(phases.get("catalog_run_id") or run_name)
+    next_phase = phases.get("next")
+    if next_phase is None:
+        return "上映を読む →", f"/outputs?run={_url_segment(output_run)}"
+    if next_phase == "run":
+        job_id = phases.get("job_id")
+        if job_id:
+            return "実行の進捗を見る →", f"/jobs/{_url_segment(str(job_id))}"
+        return "実行する →", "/jobs"
+    if next_phase == "sifting":
+        return _NEXT_LABELS["sifting"], f"/exp/{_url_segment(run_name)}"
+    return _NEXT_LABELS["stage"], f"/outputs?run={_url_segment(output_run)}"
+
+
+_CIRCLED_DIGITS = ("①", "②", "③", "④")
+
+
+def _progress_badges(phases: Mapping[str, Any]) -> str:
+    parts = []
+    for circled, (key, _number, _label) in zip(_CIRCLED_DIGITS, _PHASE_ITEMS):
+        done = bool(phases.get(key))
+        cls = "progress-badge-done" if done else "progress-badge-next"
+        mark = "●" if done else "○"
+        parts.append(f'<span class="progress-badge {cls}">{circled}{mark}</span>')
+    return '<div class="progress-badges">' + "".join(parts) + "</div>"
+
+
+def _progress_row(
+    meta: Mapping[str, Any],
+    repository: data.RunRepository,
+    job_store: Any,
+    history: Sequence[Mapping[str, Any]] | None,
+    outputs: Sequence[Mapping[str, Any]] | None,
+) -> str:
+    run_name = str(meta["name"])
+    selected_count = meta.get("selected")
+    phases = data.phase_status(
+        repository, run_name, job_store=job_store, history=history, outputs=outputs,
+        selected=(int(selected_count) > 0) if isinstance(selected_count, int) else None,
+    )
+    href = f"/exp/{_url_segment(run_name)}"
+    date = datetime.fromtimestamp(
+        float(meta["archive_mtime"])
+    ).strftime("%Y-%m-%d %H:%M")
+    seeds = meta.get("seeds")
+    seed_count = len(seeds) if isinstance(seeds, list) else None
+    quality_values = meta.get("quality_series") or []
+    quality_text = f"{quality_values[-1]:.2f}" if quality_values else "—"
+    reach_values = meta.get("reach_series") or []
+    next_label, next_href = _next_command(meta, phases)
+    return (
+        '<div class="progress-row">'
+        '<div class="progress-label">'
+        f'<a href="{href}"><strong>{_escape(run_name)}</strong></a>'
+        f'<span class="muted">{_escape(date)}'
+        f' · {_escape(meta["generations"])}世代'
+        f' · {_escape(meta.get("population"))}個体'
+        f' · {_escape(seed_count)}シード</span>'
+        "</div>"
+        f"{_progress_badges(phases)}"
+        '<div class="progress-metrics muted">'
+        f'占有 {_escape(meta["cells"])}/{_escape(meta["grid_size"])}'
+        f' · q̄ {_escape(quality_text)}'
+        f' · 到達率 {_escape(_gate_text(reach_values))}'
+        "</div>"
+        f'<a class="progress-command" href="{next_href}">次: {_escape(next_label)}</a>'
+        "</div>"
+    )
+
+
+def _world_project_info() -> dict[str, str]:
+    """Map a world's display name to its resolvable genre slug.
+
+    Mirrors data.resolve_genre's own requirement (project.world.yaml name +
+    a matching templates/<slug> directory) so the "?project=&template="
+    preset only ever points at real directories.
+    """
+
+    projects_dir = data.ROOT / "projects"
+    if not projects_dir.is_dir():
+        return {}
+    info: dict[str, str] = {}
+    for project_dir in sorted(
+        (p for p in projects_dir.iterdir() if p.is_dir()),
+        key=lambda path: path.name,
+    ):
+        world = data._yaml_mapping(project_dir / "world.yaml")
+        name = str(world.get("name") or "")
+        template_dir = data.ROOT / "templates" / project_dir.name
+        if name and name not in info and template_dir.is_dir():
+            info[name] = project_dir.name
+    return info
+
+
+def _world_section(
+    world_name: str,
+    genre: str | None,
+    majors: Sequence[Mapping[str, Any]],
+    minors: Sequence[Mapping[str, Any]],
+    repository: data.RunRepository,
+    job_store: Any,
+    history: Sequence[Mapping[str, Any]] | None,
+    outputs: Sequence[Mapping[str, Any]] | None,
+) -> str:
+    resolved = genre if genre and genre != "不明" else None
+    world_id = _url_segment(resolved or world_name)
+    if resolved:
+        new_run_href = (
+            f"/configs/new?project={_url_segment(resolved)}"
+            f"&template={_url_segment(resolved)}"
+        )
+    else:
+        new_run_href = "/configs/new"
+    heading = (
+        f'<section class="world-group" id="world-{world_id}">'
+        '<div class="section-heading">'
+        f'<div><span class="eyebrow">ジャンル: {_escape(resolved or "不明")}</span>'
+        f"<h2>{_escape(world_name)}</h2></div>"
+        f'<a class="button primary" href="{_escape(new_run_href)}">'
+        "この世界で新しい実験を回す</a>"
+        "</div>"
+    )
+    major_rows = "".join(
+        _progress_row(meta, repository, job_store, history, outputs) for meta in majors
+    )
+    body = (
+        f'<div class="progress-dashboard">{major_rows}</div>'
+        if major_rows
+        else '<p class="muted">まだ実験がありません。</p>'
+    )
+    minor_block = ""
+    if minors:
+        minor_rows = "".join(
+            _progress_row(meta, repository, job_store, history, outputs) for meta in minors
+        )
+        minor_block = (
+            '<details class="minor-runs">'
+            f"<summary>その他の短いラン ({len(minors)})</summary>"
+            f'<div class="progress-dashboard">{minor_rows}</div></details>'
+        )
+    return heading + body + minor_block + "</section>"
+
+
+def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
     groups, minor = data.grouped_experiments(repository)
-    if not groups and not minor:
+    by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
+    minor_by_world: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for meta in minor:
+        minor_by_world[str(meta["world"])].append(meta)
+
+    # Fetched once for the whole dashboard: data.phase_status() otherwise
+    # calls catalog.history()/job_store.outputs() again for every row, which
+    # made the home page take several seconds with a couple dozen runs.
+    history: list[Mapping[str, Any]] | None = None
+    if repository.catalog is not None:
+        try:
+            history = repository.catalog.history()
+        except (ValueError, OSError, KeyError, TypeError, AttributeError):
+            history = []
+    outputs: list[Mapping[str, Any]] | None = None
+    if job_store is not None:
+        try:
+            outputs = job_store.outputs()
+        except (ValueError, OSError, KeyError, TypeError, AttributeError):
+            outputs = []
+
+    project_info = _world_project_info()
+    world_order: list[str] = []
+    seen: set[str] = set()
+    for name in project_info:
+        world_order.append(name)
+        seen.add(name)
+    for name in sorted(set(by_world) | set(minor_by_world)):
+        if name not in seen:
+            world_order.append(name)
+            seen.add(name)
+
+    if not world_order:
         return document(
-            "WorldBloom 実験一覧",
-            '<section class="card"><p>表示できる実験がありません。</p>'
+            "世界を選ぶ",
+            '<section class="card"><p>表示できる世界も実験もありません。</p>'
             '<p class="muted">各実験ディレクトリに '
             "<code>archive.json</code> が必要です。</p></section>",
+            phase="world",
         )
 
-    sections = []
-    for world, metas in groups:
-        genre = metas[0]["genre"] if metas else "不明"
-        sections.append(
-            '<section class="run-group">'
-            f"<h2>{_escape(genre)} {_escape(world)}</h2>"
-            f'<div class="run-list">{"".join(_experiment_card(meta) for meta in metas)}</div>'
-            "</section>"
+    sections = [
+        _world_section(
+            world_name,
+            project_info.get(world_name),
+            by_world.get(world_name, []),
+            minor_by_world.get(world_name, []),
+            repository,
+            job_store,
+            history,
+            outputs,
         )
-    if minor:
-        sections.append(
-            '<details class="minor-runs">'
-            f"<summary>その他の短いラン（{len(minor)}件）</summary>"
-            f'<div class="run-list">{"".join(_experiment_card(meta) for meta in minor)}</div>'
-            "</details>"
-        )
-    return document("WorldBloom 実験一覧", "".join(sections))
+        for world_name in world_order
+    ]
+    body = (
+        '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
+        "上映します。</p>"
+        + "".join(sections)
+    )
+    return document("世界を選ぶ", body, phase="world")
 
 
 def _threshold_text(thresholds: Mapping[str, Any]) -> str:
@@ -489,6 +778,8 @@ def _cell_markup(
 def experiment_page(
     repository: data.RunRepository,
     experiment_name: str,
+    *,
+    job_store: Any = None,
 ) -> str:
     experiment = repository.experiment(experiment_name)
     archive = repository.archive(experiment)
@@ -577,7 +868,7 @@ def experiment_page(
         if cell in selected
     ]
     tray = (
-        '<aside class="tray"><strong>選定トレイ:</strong> '
+        '<aside class="tray"><strong>Sifting トレイ:</strong> '
         + (" ".join(tray_links) if tray_links else "選定なし")
         + "</aside>"
     )
@@ -589,7 +880,7 @@ def experiment_page(
             run_id = repository.catalog.register_legacy(experiment_name)
         links = [
             f'<a href="/runs/{_url_segment(run_id)}/candidates">候補一覧（世代・seed別）</a>',
-            '<a href="/selected">横断選定トレイ</a>',
+            '<a href="/selected">横断 Sifting トレイ</a>',
         ]
         manifest_path = repository.safe_path(experiment, "manifest.json")
         if manifest_path.is_file():
@@ -616,10 +907,17 @@ def experiment_page(
         f"{_command_block(repository, meta)}"
         f"{tray}"
     )
+    genre = meta.get("genre")
+    world = {"id": genre, "name": meta["world"]} if genre and genre != "不明" else None
+    phases = data.phase_status(repository, experiment_name, job_store=job_store)
     return document(
         f"実験: {experiment_name}",
         body,
         crumbs=[(experiment_name, f"/exp/{_url_segment(experiment_name)}")],
+        world=world,
+        run=experiment_name,
+        phase="sifting",
+        phases=phases,
     )
 
 
@@ -1004,6 +1302,7 @@ def cell_page(
     cell_key: str,
     *,
     view: str,
+    job_store: Any = None,
 ) -> str:
     experiment = repository.experiment(experiment_name)
     model = data.cell_view(
@@ -1107,6 +1406,7 @@ def cell_page(
     )
     if model["explanation"].get("reader_summary"):
         body = '<section class="card reader-primary">' + reader_ui.panel(model["explanation"]) + "</section>" + body
+    phases = data.phase_status(repository, experiment_name, job_store=job_store)
     return document(
         f"{experiment_name} / {cell_key}",
         body,
@@ -1114,15 +1414,20 @@ def cell_page(
             (experiment_name, experiment_url),
             (cell_key, cell_base),
         ],
+        run=experiment_name,
+        phase="sifting",
+        phases=phases,
     )
 
 
-def compare_page(repository, experiment_name, cells):
+def compare_page(repository, experiment_name, cells, *, job_store=None):
     experiment = repository.experiment(experiment_name)
+    phases = data.phase_status(repository, experiment_name, job_store=job_store)
     if not 2 <= len(cells) <= 4 or len(set(cells)) != len(cells):
         return document("四項目で比較",
                         '<p role="alert">比較する異なる候補を2〜4件選んでください。</p>'
-                        + f'<p><a href="/exp/{_url_segment(experiment_name)}">← 格子で候補を選ぶ</a></p>')
+                        + f'<p><a href="/exp/{_url_segment(experiment_name)}">← 格子で候補を選ぶ</a></p>',
+                        run=experiment_name, phase="sifting", phases=phases)
     explanations = [data.cell_explanation(repository, experiment, cell) for cell in cells]
     same = len({x["trajectory_signature"] for x in explanations}) == 1
     body = f'<p><a href="/exp/{_url_segment(experiment_name)}">← 格子で候補を選ぶ</a></p>'
@@ -1137,10 +1442,10 @@ def compare_page(repository, experiment_name, cells):
     for cell, explanation in zip(cells, explanations):
         body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
         body += reader_ui.panel(explanation) + '</section>'
-    return document("四項目で比較", body + '</div>')
+    return document("四項目で比較", body + '</div>', run=experiment_name, phase="sifting", phases=phases)
 
 
-def raw_page(repository, experiment_name, cell_key, line=None):
+def raw_page(repository, experiment_name, cell_key, line=None, *, job_store=None):
     experiment = repository.experiment(experiment_name)
     explanation = data.cell_explanation(repository, experiment, cell_key)
     # The source path is obtained only through the repository containment check.
@@ -1163,4 +1468,8 @@ def raw_page(repository, experiment_name, cell_key, line=None):
     for number in range(first, last + 1):
         value = lines[number - 1]
         body += f'<pre id="L{number}"><a href="?line={number}#L{number}">L{number}</a> {_escape(value)}</pre>'
-    return document(f"{cell_key} 原ログ", body + '</div>')
+    phases = data.phase_status(repository, experiment_name, job_store=job_store)
+    return document(
+        f"{cell_key} 原ログ", body + '</div>',
+        run=experiment_name, phase="sifting", phases=phases,
+    )

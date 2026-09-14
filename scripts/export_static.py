@@ -27,30 +27,50 @@ DESCRIPTION_LINES = [
 ]
 
 CSS = """
-:root { color-scheme: light; }
-body { font-family: system-ui, "Hiragino Sans", "Yu Gothic", sans-serif; margin: 0;
-       background: #fafaf8; color: #1c1c1c; line-height: 1.7; }
+:root {
+  color-scheme: light;
+  --background: #f6f3ea;
+  --surface: #fffdf8;
+  --text: #24302a;
+  --muted: #66716d;
+  --line: #ddd8cc;
+  --accent: #2e6b4f;
+  --accent-dark: #1d4a36;
+  --gold: #c9a24a;
+  --warm-soft: #fbecd0;
+  --danger: #8c3030;
+  --font-ui: "Yu Gothic UI", "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+  --font-serif: "Yu Mincho", "Hiragino Mincho ProN", serif;
+}
+body { font-family: var(--font-ui); margin: 0;
+       background: var(--background); color: var(--text); line-height: 1.7; }
+.site-header { background: var(--accent-dark); border-bottom: 3px solid var(--gold);
+               color: #f8f4ec; padding: 14px max(16px, calc((100vw - 960px) / 2)); }
+.site-header .wordmark { font-size: 1.1rem; font-weight: 750; text-decoration: none; color: #f8f4ec; }
 main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
 h1 { font-size: 1.8rem; }
-h2 { font-size: 1.3rem; border-bottom: 2px solid #ddd; padding-bottom: 4px; margin-top: 2.5rem; }
-.lead p { margin: 0.3em 0; color: #444; }
-.meta { color: #555; font-size: 0.92rem; }
+h2 { font-size: 1.3rem; border-bottom: 2px solid var(--line); padding-bottom: 4px; margin-top: 2.5rem; }
+.lead p { margin: 0.3em 0; color: var(--muted); }
+.meta { color: var(--muted); font-size: 0.92rem; }
 .table-wrap { overflow-x: auto; margin: 1em 0; }
 table { border-collapse: collapse; width: 100%; min-width: 480px; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; font-size: 0.9rem; }
-thead th { background: #eee; text-align: center; }
-tbody th { background: #f5f5f0; white-space: nowrap; }
-td.empty { color: #999; text-align: center; }
-td.selected { background: #fff3d6; border: 2px solid #d9a441; }
+th, td { border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; font-size: 0.9rem; }
+thead th { background: var(--surface); text-align: center; }
+tbody th { background: var(--surface); white-space: nowrap; }
+td.empty { color: var(--muted); text-align: center; }
+td.selected { background: var(--warm-soft); border: 2px solid var(--gold); }
 .stat { font-weight: 600; }
 .synopsis-head { margin: 0 0 4px; }
-.read-link { display: inline-block; margin-top: 6px; font-weight: 600; }
-.missing { color: #a00; }
-details summary { cursor: pointer; color: #333; }
+.read-link { display: inline-block; margin-top: 6px; font-weight: 600; color: var(--accent); }
+.missing { color: var(--danger); }
+details summary { cursor: pointer; color: var(--text); }
+.story-body { font-family: var(--font-serif); font-size: 1.05rem; line-height: 2.05; }
 .story-body p { margin: 0.8em 0; }
-.back { display: inline-block; margin-bottom: 1.5em; }
-footer.credit { margin-top: 2em; font-size: 0.85rem; color: #666; }
+.back { display: inline-block; margin-bottom: 1.5em; color: var(--accent); }
+footer.credit { margin-top: 2em; font-size: 0.85rem; color: var(--muted); }
 """
+
+HEADER = '<header class="site-header"><span class="wordmark">WorldBloom</span></header>'
 
 
 def read_json(path: Path):
@@ -224,6 +244,7 @@ def render_index(experiments: list[Experiment]) -> str:
 <style>{CSS}</style>
 </head>
 <body>
+{HEADER}
 <main>
 <h1>WorldBloom</h1>
 <p class="subtitle">遺伝的アルゴリズム×LLM による結末固定型の物語生成エンジン</p>
@@ -259,6 +280,7 @@ def render_story_page(root: Path, exp: Experiment, cell: str) -> str | None:
 <style>{CSS}</style>
 </head>
 <body>
+{HEADER}
 <main>
 <a class="back" href="../index.html">&larr; 一覧に戻る</a>
 <h1>{esc(exp.world)}・{esc(cell)}</h1>
