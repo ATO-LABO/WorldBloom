@@ -1,6 +1,14 @@
 "use strict";
 
 (() => {
+  const parseJsonAttr = (text, fallback) => {
+    try {
+      return JSON.parse(text || "");
+    } catch (error) {
+      return fallback;
+    }
+  };
+
   const api = async (method, path, body) => {
     const hasBody = method !== "GET" && method !== "HEAD";
     const init = { method, headers: { "X-WorldBloom-Client": "1" } };
@@ -288,6 +296,24 @@
         ? "—"
         : job.publication_revision
     );
+
+    // Generation jobs (synopsize/narrate) carry progress.completed/total and a
+    // top-level counts map instead of the GA fields above (§3.2, WB-UI-008).
+    setText(root, "completed", (job.progress || {}).completed);
+    setText(root, "total", (job.progress || {}).total);
+    const counts = job.counts || (job.progress || {}).counts;
+    if (counts) {
+      const countsEl = root.querySelector('[data-field="counts"]');
+      if (countsEl) {
+        // data-entry-labels carries ENTRY_STATUS_LABELS (server-rendered);
+        // an unmapped key falls back to itself.
+        const entryLabels = parseJsonAttr(root.dataset.entryLabels, {});
+        countsEl.textContent = Object.keys(counts)
+          .sort()
+          .map((key) => `${entryLabels[key] || key} ${counts[key]}`)
+          .join(" · ");
+      }
+    }
   };
 
   const initJob = () => {
@@ -297,17 +323,10 @@
     }
     const jobId = root.dataset.jobId;
     // Parse the server-rendered vocabulary once; the attributes are constants.
-    const parseJson = (text, fallback) => {
-      try {
-        return JSON.parse(text || "");
-      } catch (error) {
-        return fallback;
-      }
-    };
-    const terminalStates = new Set(parseJson(root.dataset.terminalStates, []));
+    const terminalStates = new Set(parseJsonAttr(root.dataset.terminalStates, []));
     const labels = {
-      state: parseJson(root.dataset.stateLabels, {}),
-      phase: parseJson(root.dataset.phaseLabels, {}),
+      state: parseJsonAttr(root.dataset.stateLabels, {}),
+      phase: parseJsonAttr(root.dataset.phaseLabels, {}),
     };
     let timer = null;
     let stopped = root.dataset.terminal === "true";
@@ -376,6 +395,177 @@
 
     if (!stopped) {
       timer = window.setTimeout(poll, 2000);
+    }
+  };
+
+  // WB-UI-008: the confirmation page's [この内容で生成を開始] button. The
+  // request body is the server-rendered data-request JSON, sent verbatim.
+  const initGenerate = () => {
+    const root = document.querySelector('[data-wb="generate"]');
+    if (!root) {
+      return;
+    }
+    const form = root.querySelector("form");
+    if (!form || !root.dataset.request) {
+      return;
+    }
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const ackBox = form.querySelector("[data-ack]");
+      const errorArea = form.querySelector("[data-form-error]");
+      if (ackBox && !ackBox.checked) {
+        if (errorArea) {
+          errorArea.textContent = "二重生成の可能性を確認するチェックが必要です";
+        }
+        return;
+      }
+      const button = form.querySelector('button[type="submit"]');
+      if (button) {
+        button.disabled = true;
+      }
+      let status;
+      let json;
+      try {
+        ({ status, json } = await api("POST", "/api/jobs", JSON.parse(root.dataset.request)));
+      } catch (error) {
+        if (button) {
+          button.disabled = false;
+        }
+        if (errorArea) {
+          errorArea.textContent = "サーバーに接続できません";
+        }
+        return;
+      }
+      if ((status === 202 || status === 200) && json && json.job_id) {
+        window.location.href = `/jobs/${encodeURIComponent(json.job_id)}`;
+        return;
+      }
+      if (button) {
+        button.disabled = false;
+      }
+      applyErrors(form, json);
+    });
+  };
+
+  // WB-UI-008: output detail page. Polls /api/outputs/{id} while generation is
+  // running, fills in completed entries' text without a reload, and wires the
+  // [復旧] button (POST /api/outputs/{id}/recover).
+  const initOutput = () => {
+    const root = document.querySelector('[data-wb="output"]');
+    if (!root) {
+      return;
+    }
+    const outputId = root.dataset.outputId;
+    const terminalStates = new Set(parseJsonAttr(root.dataset.terminalStates, []));
+    const statusLabels = parseJsonAttr(root.dataset.statusLabels, {});
+    let stopped = root.dataset.terminal === "true";
+    const connectionNote = root.querySelector("[data-connection-status]");
+
+    const recoverButton = root.querySelector('[data-action="recover"]');
+    if (recoverButton) {
+      recoverButton.addEventListener("click", async () => {
+        recoverButton.disabled = true;
+        const statusEl = root.querySelector("[data-recover-status]");
+        try {
+          const { status, json } = await api("POST", `/api/outputs/${encodeURIComponent(outputId)}/recover`, {});
+          if (status === 200) {
+            window.location.reload();
+            return;
+          }
+          if (statusEl) {
+            statusEl.textContent = (json && json.message) || `HTTP ${status}`;
+          }
+        } catch (error) {
+          if (statusEl) {
+            statusEl.textContent = "サーバーに接続できません";
+          }
+        }
+        recoverButton.disabled = false;
+      });
+    }
+
+    const fillText = async (article, entry) => {
+      if (article.querySelector('[data-field="text"]')) {
+        return;
+      }
+      try {
+        const response = await fetch(
+          `/outputs/${encodeURIComponent(outputId)}/entries/${encodeURIComponent(entry.candidate_id)}/text`,
+          { headers: { "X-WorldBloom-Client": "1" } }
+        );
+        if (!response.ok) {
+          return;
+        }
+        const text = await response.text();
+        const container = document.createElement("div");
+        container.className = "story-text";
+        container.dataset.field = "text";
+        text.split("\n\n").forEach((paragraph) => {
+          if (!paragraph.trim()) {
+            return;
+          }
+          const p = document.createElement("p");
+          p.textContent = paragraph;
+          container.append(p);
+        });
+        article.append(container);
+      } catch (error) {
+        // Left for the next poll or a manual reload.
+      }
+    };
+
+    const applyEntry = (article, entry) => {
+      article.dataset.status = entry.status;
+      const badge = article.querySelector('[data-field="state"]');
+      if (badge) {
+        badge.className = `state-badge state-${entry.status}`;
+        const label = badge.querySelector('[data-field="state-label"]');
+        if (label) {
+          label.textContent = statusLabels[entry.status] || entry.status;
+        }
+      }
+      setText(article, "message", entry.message);
+      if (entry.status === "ok") {
+        fillText(article, entry);
+      }
+    };
+
+    const poll = async () => {
+      if (stopped) {
+        return;
+      }
+      try {
+        const { status, json } = await api("GET", `/api/outputs/${encodeURIComponent(outputId)}`);
+        if (status === 200 && json) {
+          if (connectionNote) {
+            connectionNote.hidden = true;
+          }
+          (json.entries || []).forEach((entry) => {
+            const article = root.querySelector(`[data-entry="${CSS.escape(entry.candidate_id)}"]`);
+            if (article) {
+              applyEntry(article, entry);
+            }
+          });
+          // A null job_state (no owning job record) is terminal too: nothing
+          // to reconcile, so stop polling exactly like a terminal state.
+          if (json.job_state == null || terminalStates.has(json.job_state)) {
+            stopped = true;
+            window.location.reload();
+            return;
+          }
+        }
+      } catch (error) {
+        if (connectionNote) {
+          connectionNote.hidden = false;
+        }
+      }
+      if (!stopped) {
+        window.setTimeout(poll, 2000);
+      }
+    };
+
+    if (!stopped) {
+      window.setTimeout(poll, 2000);
     }
   };
 
@@ -457,6 +647,8 @@
   initConfigForm();
   initStart();
   initJob();
+  initGenerate();
+  initOutput();
   initCandidates();
   initTray();
 })();

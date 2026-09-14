@@ -863,3 +863,52 @@ a:focus-visible {
 main h1 {
   overflow-wrap: anywhere;
 }
+
+/* WB-UI-008 workbench: generation confirm/job/output pages. */
+.story-text {
+  line-height: 1.9;
+  max-width: 48rem;
+  overflow-wrap: anywhere;
+}
+
+.story-text p {
+  margin: 0 0 1rem;
+}
+
+[data-entry] {
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.generate-summary {
+  margin: 1rem 0;
+}
+
+details {
+  margin: 0.5rem 0;
+}
+
+.state-ok {
+  background: rgba(85, 214, 190, 0.18);
+  color: var(--accent);
+}
+
+.state-prompt_only,
+.state-pending,
+.state-skipped_limit,
+.state-skipped_cancelled,
+.state-skipped_interrupted {
+  background: rgba(168, 183, 202, 0.18);
+  color: var(--muted);
+}
+
+.state-error {
+  background: rgba(255, 128, 128, 0.18);
+  color: var(--danger);
+}
+
+.state-unknown {
+  background: rgba(247, 178, 103, 0.18);
+  color: var(--warning);
+}

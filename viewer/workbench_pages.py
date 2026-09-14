@@ -475,30 +475,68 @@ def render_jobs_list(records):
     )
 
 
-def render_job_page(job):
+def _connection_warnings(reconciliation):
+    """The connection-lost and reconciliation-pending notices.
+
+    Order matters here for UI-007 parity (state badge -> phase -> these two),
+    so callers splice this in right after their own kind-specific first line
+    (e.g. the phase paragraph) rather than _job_shell forcing a fixed slot.
+    """
+    return [
+        '<p class="warning" data-connection-status hidden>'
+        "サーバーに接続できません（再試行中）</p>",
+        # Always rendered (toggled with the `hidden` attribute) so polling JS
+        # can show/hide it without needing to create the element on the fly.
+        '<p class="warning" data-field="reconciliation"'
+        + ("" if reconciliation == "unknown" else " hidden")
+        + ">状態確認中: 監視プロセスの生存を確認しています。"
+        "確認できるまで新しい実行は受け付けられません</p>",
+    ]
+
+
+def _job_shell(job, body_parts, *, extra_attrs=""):
+    """Common processing-page chrome shared by GA jobs (render_job_page) and
+    generation jobs (output_pages.render_generation_job): state badge, cancel
+    button and tail links. Only the kind-specific body (including where it
+    places _connection_warnings()) differs between the two. `extra_attrs` lets
+    a caller add its own data-* attributes to the root <section> (e.g. the
+    generation job page's data-entry-labels for translating counts in JS).
+    """
     state = job.get("state")
     terminal = state in TERMINAL
-    progress = job.get("progress") or {}
-    reconciliation = job.get("reconciliation")
     parts = [
         f'<section data-wb="job" data-job-id="{_escape(job.get("job_id"))}" data-poll="1" '
         f'data-terminal="{"true" if terminal else "false"}" '
         f'data-terminal-states="{_escape(TERMINAL_JSON)}" '
         f'data-state-labels="{_escape(STATE_LABELS_JSON)}" '
-        f'data-phase-labels="{_escape(PHASE_LABELS_JSON)}">',
+        f'data-phase-labels="{_escape(PHASE_LABELS_JSON)}"{extra_attrs}>',
         f'<p>{state_badge(state)}</p>',
-        f'<p data-field="phase">{_escape(PHASE_LABELS.get(job.get("phase"), job.get("phase")))}</p>',
-        '<p class="warning" data-connection-status hidden>'
-        "サーバーに接続できません（再試行中）</p>",
     ]
-    # Always rendered (toggled with the `hidden` attribute) so polling JS can
-    # show/hide it without needing to create the element on the fly.
-    parts.append(
-        '<p class="warning" data-field="reconciliation"'
-        + ("" if reconciliation == "unknown" else " hidden")
-        + ">状態確認中: 監視プロセスの生存を確認しています。"
-        "確認できるまで新しい実行は受け付けられません</p>"
-    )
+    parts.extend(body_parts)
+    if not terminal:
+        disabled = " disabled" if state == "stopping" else ""
+        label = "停止処理中（猶予後に強制終了）" if state == "stopping" else "停止"
+        parts.append(
+            f'<button type="button" data-action="cancel"{disabled}>{_escape(label)}</button>'
+            '<span data-cancel-status></span>'
+        )
+    tail_links = ['<a href="/jobs">実行履歴へ</a>']
+    config_id = job.get("config_id")
+    if config_id:
+        tail_links.append(f'<a href="/configs/{_url(config_id)}">設定</a>')
+    parts.append(f'<p class="actions">{"".join(tail_links)}</p>')
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def render_job_page(job):
+    state = job.get("state")
+    terminal = state in TERMINAL
+    progress = job.get("progress") or {}
+    parts = [
+        f'<p data-field="phase">{_escape(PHASE_LABELS.get(job.get("phase"), job.get("phase")))}</p>',
+    ]
+    parts.extend(_connection_warnings(job.get("reconciliation")))
     total_generations = progress.get("total_generations")
     completed_generations = progress.get("completed_generations")
     if total_generations:
@@ -570,19 +608,7 @@ def render_job_page(job):
             f'<a href="/exp/{_url(run_id)}">確定結果を見る</a>'
             f'<a href="/runs/{_url(run_id)}/candidates">候補一覧</a></p>'
         )
-    if not terminal:
-        disabled = " disabled" if state == "stopping" else ""
-        label = "停止処理中（猶予後に強制終了）" if state == "stopping" else "停止"
-        parts.append(
-            f'<button type="button" data-action="cancel"{disabled}>{_escape(label)}</button>'
-            '<span data-cancel-status></span>'
-        )
-    tail_links = ['<a href="/jobs">実行履歴へ</a>']
-    if config_id:
-        tail_links.append(f'<a href="/configs/{_url(config_id)}">設定</a>')
-    parts.append(f'<p class="actions">{"".join(tail_links)}</p>')
-    parts.append("</section>")
-    return "".join(parts)
+    return _job_shell(job, parts)
 
 
 # --------------------------------------------------------------------------
@@ -620,7 +646,7 @@ def _reached_text(value):
     return "不明"
 
 
-def _candidate_row(candidate, run_id, experiment_name, is_representative, running):
+def _candidate_row(candidate, run_id, experiment_name, is_representative, running, output_summary):
     cid = candidate["candidate_id"]
     short = _short_id(cid)
     disabled = " disabled" if running else ""
@@ -636,8 +662,21 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
         )
     if candidate["log"]["availability"] == "present":
         links.append(f'<a href="/runs/{_url(run_id)}/candidates/{_url(cid)}/raw">原ログ</a>')
+    checkbox = ""
+    if candidate.get("screenable"):
+        # form="generate-form" lets the checkbox live in the table body while
+        # submitting into the <form> rendered above the table (§2/WB-UI-008).
+        checkbox_disabled = " disabled" if running else ""
+        checkbox = (
+            f'<input type="checkbox" name="candidate" value="{_escape(cid)}" form="generate-form" '
+            f'aria-label="候補 {_escape(short)} を選択"{checkbox_disabled}>'
+        )
+    counts = (output_summary or {}).get(cid, {})
+    syn_ok, nar_ok = counts.get("synopsize", 0), counts.get("narrate", 0)
+    draft_text = f"あらすじ ok {syn_ok} / 上映 ok {nar_ok}" if (syn_ok or nar_ok) else "—"
     return (
         f'<tr data-candidate-id="{_escape(cid)}">'
+        f'<td>{checkbox}</td>'
         f'<td title="{_escape(cid)}">{_escape(short)}</td>'
         f'<td>{_escape(candidate.get("generation"))}</td>'
         f'<td>{_escape(candidate.get("individual_index"))}</td>'
@@ -651,6 +690,7 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
         f'{state_options}</select></td>'
         f'<td><input data-field="note" aria-label="メモ {_escape(short)}" '
         f'value="{_escape(candidate.get("note", ""))}"{disabled}></td>'
+        f'<td>{_escape(draft_text)} <a href="/outputs?run={_url(run_id)}">作品</a></td>'
         '<td class="wb-actions">'
         f'<button type="button" data-action="save-candidate"{disabled}>保存</button> '
         + " ".join(links)
@@ -695,8 +735,23 @@ def _candidates_filter_form(run_id, query):
     )
 
 
+def _generate_form(run_id, has_adopted, running):
+    narrate_disabled = running or not has_adopted
+    narrate_note = "" if has_adopted else '<span class="muted">採用済みの候補がありません</span>'
+    return (
+        f'<form id="generate-form" method="get" action="/runs/{_url(run_id)}/generate">'
+        f'<button type="submit" name="kind" value="synopsize"{" disabled" if running else ""}>'
+        "あらすじを生成（選択した候補）</button> "
+        f'<button type="submit" name="kind" value="narrate"{" disabled" if narrate_disabled else ""}>'
+        "上映を生成（採用済み候補）</button> "
+        f"{narrate_note}"
+        "</form>"
+    )
+
+
 def render_candidates_page(*, run_id, experiment_name, config_id, revision, selection_revision,
-                            candidates, representatives, running, query, representatives_error=False):
+                            candidates, representatives, running, query, representatives_error=False,
+                            output_summary=None, output_summary_error=False, has_adopted=None):
     header = (
         f'<p>実験: {_escape(experiment_name)} · 公開版 {_escape(revision)} · '
         f'選定版 {_escape(selection_revision)} · {len(candidates)}件</p>'
@@ -704,21 +759,30 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
         f'<a href="/exp/{_url(experiment_name)}">格子へ</a>'
         + (f'<a href="/configs/{_url(config_id)}">実行設定</a>' if config_id else "")
         + '<a href="/selected">横断トレイ</a>'
+        + '<a href="/outputs?run=' + _url(run_id) + '">作品一覧</a>'
         "</p>"
     )
     if running:
         header += '<p class="warning">実行中のため選定は保存できません</p>'
     if representatives_error:
         header += '<p class="warning">代表セルを解決できないため［格子で見る］は表示しません</p>'
+    if output_summary_error:
+        header += '<p class="warning">稿の記録を読み取れないため件数を表示できません</p>'
+    # has_adopted must reflect the *unfiltered* selection (the candidates
+    # list here may be narrowed by the filter form), otherwise a filter that
+    # hides every adopted row would wrongly grey out the narrate button.
+    if has_adopted is None:
+        has_adopted = any(c["state"] == "adopted" for c in candidates)
+    generate_form = _generate_form(run_id, has_adopted, running)
     if candidates:
         rows = "".join(
-            _candidate_row(c, run_id, experiment_name, c["candidate_id"] in representatives, running)
+            _candidate_row(c, run_id, experiment_name, c["candidate_id"] in representatives, running, output_summary)
             for c in candidates
         )
         table = (
             '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
-            "<th>候補ID</th><th>世代</th><th>個体</th><th>seed</th><th>役割</th><th>セル</th>"
-            "<th>到達</th><th>原記録</th><th>採用可</th><th>選定状態</th><th>メモ</th><th>操作</th>"
+            "<th>選択</th><th>候補ID</th><th>世代</th><th>個体</th><th>seed</th><th>役割</th><th>セル</th>"
+            "<th>到達</th><th>原記録</th><th>採用可</th><th>選定状態</th><th>メモ</th><th>稿</th><th>操作</th>"
             f"</tr></thead><tbody>{rows}</tbody></table></div>"
         )
     else:
@@ -726,7 +790,7 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
     return (
         f'<section data-wb="candidates" data-run-id="{_escape(run_id)}" '
         f'data-revision="{_escape(selection_revision)}">'
-        + header + _candidates_filter_form(run_id, query) + table
+        + header + generate_form + _candidates_filter_form(run_id, query) + table
         + "</section>"
     )
 
@@ -863,7 +927,16 @@ def _jobs_list(handler):
         handler._send_html(_guidance_page())
         return
     records = repository.catalog.history()
-    handler._send_html(pages.document("実行履歴", render_jobs_list(records), crumbs=[("実行履歴", "/jobs")]))
+    job_store = _job_store(handler)
+    generation_jobs = []
+    if job_store is not None:
+        try:
+            generation_jobs = [j for j in job_store.list() if j.get("kind") in ("synopsize", "narrate")]
+        except (ConfigError, OSError, ValueError, KeyError, TypeError):
+            generation_jobs = []
+    from viewer import output_pages
+    body = render_jobs_list(records) + output_pages.render_generation_jobs_section(generation_jobs)
+    handler._send_html(pages.document("実行履歴", body, crumbs=[("実行履歴", "/jobs")]))
 
 
 def _jobs_detail(handler, jid):
@@ -872,8 +945,13 @@ def _jobs_detail(handler, jid):
         handler._send_html(_guidance_page())
         return
     job = job_store.get(jid)
+    if job.get("kind") in ("synopsize", "narrate"):
+        from viewer import output_pages
+        body = output_pages.render_generation_job(job)
+    else:
+        body = render_job_page(job)
     handler._send_html(pages.document(
-        f"処理: {jid}", render_job_page(job), crumbs=[("実行履歴", "/jobs"), (jid, f"/jobs/{_url(jid)}")],
+        f"処理: {jid}", body, crumbs=[("実行履歴", "/jobs"), (jid, f"/jobs/{_url(jid)}")],
     ))
 
 
@@ -908,11 +986,17 @@ def _candidates_list(handler, run_id):
     history_record = next((r for r in catalog.history() if r["run_id"] == run_id), None)
     running = history_record is not None and history_record["state"] in RUNNING_STATES
     config_id = history_record.get("config_id") if history_record else None
+    # Unfiltered: the narrate button's enabled state must not depend on
+    # whatever the filter form narrowed `candidates` down to above.
+    has_adopted = any(e["state"] == "adopted" for e in selected["entries"])
+    from viewer import output_pages
+    summary = output_pages.run_output_summary(_job_store(handler), run_id)
     page = render_candidates_page(
         run_id=run_id, experiment_name=experiment_name, config_id=config_id,
         revision=result["revision"], selection_revision=selected["revision"],
         candidates=candidates, representatives=representatives, running=running, query=query,
-        representatives_error=representatives_error,
+        representatives_error=representatives_error, output_summary=summary["by_candidate"],
+        output_summary_error=summary["error"], has_adopted=has_adopted,
     )
     handler._send_html(pages.document(
         f"候補: {experiment_name}", page,
