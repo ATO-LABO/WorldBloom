@@ -183,6 +183,34 @@ def document(
     )
 
 
+def tabs(name: str, panels: Sequence[tuple[str, str]]) -> str:
+    """Render a zero-JS tab strip: a radio-button group plus labelled panels.
+
+    Pure CSS via sibling selectors (app.css hand-writes one rule per panel
+    index for `name`) -- no client script, and every panel's markup stays in
+    the document (just hidden), so page-content assertions in tests don't
+    need to know which tab is open. The first panel is selected by default.
+    """
+
+    inputs, tab_list, panel_markup = [], [], []
+    for index, (label, content) in enumerate(panels):
+        input_id = f"tab-{_escape(name)}-{index}"
+        checked = " checked" if index == 0 else ""
+        inputs.append(
+            f'<input type="radio" name="tabs-{_escape(name)}" id="{input_id}" '
+            f'class="tab-input"{checked}>'
+        )
+        tab_list.append(f'<label class="tab-label" for="{input_id}">{_escape(label)}</label>')
+        panel_markup.append(f'<section class="tab-panel" aria-label="{_escape(label)}">{content}</section>')
+    return (
+        f'<div class="tabs tabs-{_escape(name)}">'
+        + "".join(inputs)
+        + '<div class="tab-list">' + "".join(tab_list) + "</div>"
+        + '<div class="tab-panels">' + "".join(panel_markup) + "</div>"
+        "</div>"
+    )
+
+
 def sparkline(
     values: Sequence[float],
     *,

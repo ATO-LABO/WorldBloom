@@ -168,31 +168,44 @@ def _world_yaml_mapping(repo, world_id):
     return value if isinstance(value, dict) else {}
 
 
-def _world_overview(world, world_yaml, subjects, run_href):
-    summary = world_graph.world_summary(
-        world_yaml, subjects, protagonist=world["protagonist"], antagonist=world["antagonist"],
+def _overview_panel(world, subjects):
+    goals = world_graph.world_summary(
+        subjects, protagonist=world["protagonist"], antagonist=world["antagonist"],
     )
     return (
-        '<section class="card">'
         f'<p>名前: {_escape(world["name"])} · ジャンル: {_escape(world["genre"]) if world["genre"] else "—"}'
         f' · 人物数: {_escape(world["subjects"])}'
         f' · 主人公/敵役: {_escape(world["protagonist"])} / {_escape(world["antagonist"])}</p>'
-        f'<p class="actions"><a class="button primary" href="{_escape(run_href)}">この世界で新しい実験を回す</a></p>'
-        + summary
-        + "</section>"
+        + goals
     )
 
 
-def _relation_card(world, subjects):
+def _characters_panel(world, subjects):
     svg = world_graph.relation_svg(subjects, protagonist=world["protagonist"], antagonist=world["antagonist"])
     table = world_graph.character_table(subjects, protagonist=world["protagonist"], antagonist=world["antagonist"])
     return (
-        '<section class="card relation-card"><h2>人物と関係</h2>'
+        f'<p class="muted">人物数: {_escape(world["subjects"])}</p>'
         + svg + table
         + '<p class="muted">線の色: 緑=好意 / 赤=敵意 / 灰=中立。'
         "太さ=好感度の強さ、濃さ=認知度。"
         "線にカーソルを合わせると双方向の値が出ます。</p>"
-        "</section>"
+    )
+
+
+def _places_panel(world_yaml):
+    zones = world_yaml.get("zones") or []
+    routes = world_yaml.get("routes") or {}
+    return world_graph.zone_list_html(zones) + world_graph.zone_svg(zones, routes)
+
+
+def _period_panel(world_yaml):
+    time_info = world_yaml.get("time") or {}
+    days = time_info.get("days")
+    slots = time_info.get("slots") or []
+    day_count = _escape(days) if days else "—"
+    return (
+        "<h3>1日の時間帯</h3>" + world_graph.day_cycle_svg(slots)
+        + f"<h3>日程（{day_count}日間）</h3>" + world_graph.calendar_grid_html(days)
     )
 
 
@@ -254,9 +267,20 @@ def render_world_detail(repository, world, store, job_store):
     world_yaml = _world_yaml_mapping(store.repo, world["id"])
     subjects = world_graph.load_subjects(store.repo / "projects" / world["id"])
     world_name = str(world["name"] or world["id"])
+    panels = [
+        ("概要", _overview_panel(world, subjects)),
+        ("登場人物", _characters_panel(world, subjects)),
+        ("場所", _places_panel(world_yaml)),
+        ("期間", _period_panel(world_yaml)),
+    ]
+    overview_card = (
+        '<section class="card">'
+        f'<p class="actions"><a class="button primary" href="{_escape(run_href)}">この世界で新しい実験を回す</a></p>'
+        + pages.tabs("world", panels)
+        + "</section>"
+    )
     return (
-        _world_overview(world, world_yaml, subjects, run_href)
-        + _relation_card(world, subjects)
+        overview_card
         + _experiments_card(repository, world_name, job_store)
         + _editor_group(store, world, job_store)
     )
