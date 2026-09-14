@@ -153,6 +153,12 @@ def generation_availability(generation, settings_path=None):
         available = shutil.which(command) is not None
         return {**base, "available": available,
                 "reason": None if available else "executable_missing"}
+    if backend == "ollama":
+        from gapengine import ollama
+        probe = ollama.availability({**config, "model": model})
+        # Allowlisted facts only: the probe's raw error string is dropped.
+        return {**base, "available": bool(probe["available"]),
+                "authentication": "not_required", "reason": probe["reason"]}
     key = config.get("api_key")
     available = isinstance(key, str) and bool(key.strip())
     return {**base, "available": available,

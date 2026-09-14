@@ -16,6 +16,7 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+from gapengine import ollama
 from gapengine.qd import Elite
 
 
@@ -24,6 +25,7 @@ BACKENDS = (
     "codex-cli",
     "anthropic",
     "openai",
+    "ollama",
     "none",
 )
 
@@ -587,6 +589,18 @@ def generate_text(
         return GenerationResult(
             status="ok",
             text=_validate_response("".join(parts)),
+        )
+
+    if backend == "ollama":
+        url, payload = ollama.build_request(config, prompt)
+        response = _post_json(url, {}, payload, timeout=timeout)
+        try:
+            text = ollama.extract_text(response)
+        except ValueError as error:
+            raise GenerationError(str(error)) from error
+        return GenerationResult(
+            status="ok",
+            text=_validate_response(text),
         )
 
     model = str(config.get("model", "gpt-5.6"))
