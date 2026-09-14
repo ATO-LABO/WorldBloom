@@ -237,20 +237,22 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         # panel's content is present somewhere in the flat HTML.
         status, body = self.get("/worlds/momotaro")
         self.assertEqual(status, 200, body)
-        self.assertEqual(body.count('class="tab-input"'), 4)
-        for index, label in enumerate(["概要", "登場人物", "場所", "期間"]):
+        self.assertEqual(body.count('class="tab-input"'), 5)
+        for index, label in enumerate(["概要", "登場人物", "初期物語", "場所", "期間"]):
             self.assertIn(f'<label class="tab-label" for="tab-world-{index}">{label}</label>', body)
         self.assertIn('class="relation-graph zone-graph"', body)
         self.assertIn('class="day-cycle"', body)
         self.assertIn('class="calendar-grid"', body)
 
     def test_world_detail_page_has_canon_and_readout(self):
-        # WB-EXPLAIN-canon: the characters tab surfaces the canon precedent
-        # table and the deterministic per-character readout (hidden item
-        # modifiers, secrets, foreshadowing) end-to-end through the route.
+        # WB-EXPLAIN-canon: the 初期物語 tab surfaces the canon precedent
+        # table (WB-UI-020: phrased with this world's objective) and the
+        # characters tab the deterministic per-character readout (hidden
+        # item modifiers, secrets, foreshadowing) end-to-end through the route.
         status, body = self.get("/worlds/momotaro")
         self.assertEqual(status, 200, body)
         self.assertIn('class="wb-table canon-table"', body)
+        self.assertIn("鬼ヶ島の宝物を敵が持っている", body)
         self.assertIn('class="character-readout"', body)
         self.assertIn("金棒: +40", body)
         self.assertIn("隠れた強化", body)

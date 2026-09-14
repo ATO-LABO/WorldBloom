@@ -185,7 +185,7 @@ def character_table(
     """Render the one-row-per-subject table shown beside the relation SVG."""
 
     rows = []
-    for subject in subjects:
+    for index, subject in enumerate(subjects):
         subject_id = str(subject.get("id") or "")
         if not subject_id:
             continue
@@ -210,7 +210,9 @@ def character_table(
             if str(name) != subject_id
         ]
         rows.append(
-            "<tr>"
+            # data-sheet pairs the row with the <dialog> character_readout_html
+            # emits for the same subjects index (app.js opens it on click).
+            f'<tr data-sheet="sheet-{index}" tabindex="0" title="クリックでパラメータを開く">'
             f"<td>{html.escape(subject_id)}</td>"
             f"<td>{html.escape(role)}</td>"
             f"<td>{identity_text}</td>"
@@ -435,92 +437,158 @@ def calendar_grid_html(days: Any) -> str:
     return f'<div class="calendar-grid" role="img" aria-label="{count}日間の日程">{cells}</div>'
 
 
-_VITALITY_LABELS = {"alive": "生存中", "downed": "戦闘不能", "dead": "死亡", "revived": "立ち直った"}
-_STANCE_LABELS = {"hostile": "敵対関係", "neutral": "中立関係", "friendly": "友好関係"}
 _ROLE_LABELS = {"hostile": "敵対相手", "neutral": "第三者", "ally": "味方", "self": "自分自身"}
-_OBJECTIVE_LABELS = {"self": "自分自身", "hostile": "敵対相手", "ally": "味方", "other": "味方でも敵でもない相手・場所"}
 
 
-def _ctx_text(ctx: Mapping[str, Any]) -> str:
-    """Render a canon/precedent ContextKey (gapengine/precedent.py).
-
-    Field set and values (phase, hostile_present, objective in
-    {none,self,ally,hostile,other}, vitality, stance in
-    {hostile,friendly,neutral}, disguised) mirror precedent.py's
-    `ctx_key`/`_parse_ctx` exactly, not just what today's three
-    genre templates happen to use -- an unrecognised value still shows (as
-    its raw token) rather than being silently dropped.
-    """
-
-    parts = []
-    phase = [str(step) for step in (ctx.get("phase") or []) if step]
-    if phase:
-        parts.append("段階: " + "・".join(phase))
-    if ctx.get("hostile_present"):
-        parts.append("敵対相手が同席")
-    objective = ctx.get("objective")
-    if objective and objective != "none":
-        parts.append(f"目的物: {_OBJECTIVE_LABELS.get(str(objective), str(objective))}")
-    vitality = ctx.get("vitality")
-    if vitality:
-        parts.append(_VITALITY_LABELS.get(str(vitality), str(vitality)))
-    stance = ctx.get("stance")
-    if stance:
-        parts.append(_STANCE_LABELS.get(str(stance), str(stance)))
-    if ctx.get("disguised"):
-        parts.append("変装中")
-    return "・".join(parts) if parts else "（条件なし）"
+# WB-UI-020: canon.yaml rendered for a reader. Each ctx field is phrased as
+# a clause; fields that never vary across the table are pulled out into one
+# footnote (or dropped when they only hold precedent.py's default), so a row
+# reads as a sentence instead of a dump of the context key.
+_CTX_DEFAULTS = {
+    "phase": (), "hostile_present": False, "objective": "none",
+    "vitality": "alive", "stance": "neutral", "disguised": False,
+}
 
 
-def _act_text(act: Mapping[str, Any]) -> str:
-    verb = act.get("verb")
-    label = VERB_LABELS.get(str(verb), str(verb)) if verb else "（行動なし）"
-    detail = []
-    category = act.get("category")
-    if category:
-        detail.append(f"カテゴリ{category}")
-    role = act.get("role")
-    if role and role != "none":
-        detail.append(f"対象: {_ROLE_LABELS.get(str(role), str(role))}")
-    return f"{label}（{'・'.join(detail)}）" if detail else label
+def _ctx_value(ctx: Mapping[str, Any], field: str) -> Any:
+    if field == "phase":
+        return tuple(str(step) for step in (ctx.get("phase") or []) if step)
+    if field in ("hostile_present", "disguised"):
+        return bool(ctx.get(field))
+    return str(ctx.get(field) or _CTX_DEFAULTS[field])
 
 
-def canon_table_html(canon_yaml: Mapping[str, Any]) -> str:
-    """Render a genre's canon.yaml as a 状況→行動→件数 table.
+def _ctx_clause(field: str, value: Any, objective: str) -> str:
+    if field == "phase":
+        return f"{'・'.join(value)}のあと" if value else "まだ何も起きていないうち"
+    if field == "hostile_present":
+        return "敵が目の前にいる" if value else "敵がいない"
+    if field == "objective":
+        holder = {
+            "none": "誰の手にもない", "self": "自分が持っている", "hostile": "敵が持っている",
+            "ally": "味方が持っている", "other": "第三者が持っている",
+        }.get(value, value)
+        return f"{objective}を{holder}" if value != "none" else f"{objective}が{holder}"
+    if field == "vitality":
+        return {"alive": "無事", "downed": "倒れている", "dead": "死んでいる", "revived": "立ち直った直後"}.get(value, value)
+    if field == "stance":
+        return {"hostile": "敵と敵対している", "friendly": "敵と友好的", "neutral": "敵と中立"}.get(value, value)
+    if field == "disguised":
+        return "変装中" if value else "素顔"
+    return str(value)
+
+
+def canon_table_html(canon_yaml: Mapping[str, Any], *, objective: str = "目的の品") -> str:
+    """Render a genre's canon.yaml as 状況（一文）→定石の行動→定石の強さ（バー）.
 
     This is the GA's precedent for generation 0 (WB-EXPLAIN-canon): a prior
-    over "typical" actions per situation, not a plot -- individuals are
-    rewarded for straying from it (novelty_drive), never for following it.
+    over "typical" actions per situation, not a plot -- novelty_drive makes
+    the protagonist less likely to pick these, never more.
     """
 
-    entries = [entry for entry in (canon_yaml.get("entries") or []) if _mapping(entry)]
+    entries = [_mapping(entry) for entry in (canon_yaml.get("entries") or []) if _mapping(entry)]
     if not entries:
         return '<p class="muted">正典データがありません。</p>'
+    contexts = [_mapping(entry.get("ctx")) for entry in entries]
+    varying, shared = [], []
+    for field, default in _CTX_DEFAULTS.items():
+        values = {_ctx_value(ctx, field) for ctx in contexts}
+        if len(values) > 1:
+            varying.append(field)
+        elif values and next(iter(values)) != default:
+            shared.append(_ctx_clause(field, next(iter(values)), objective))
+    max_n = max([_number(entry.get("n"), 1.0) for entry in entries] + [0.0])
     rows = []
-    for entry in entries:
-        entry = _mapping(entry)
-        ctx_text = _ctx_text(_mapping(entry.get("ctx")))
-        act_text = _act_text(_mapping(entry.get("act")))
+    for entry, ctx in zip(entries, contexts):
+        clauses = [_ctx_clause(field, _ctx_value(ctx, field), objective) for field in varying]
+        act = _mapping(entry.get("act"))
+        verb = act.get("verb")
+        act_text = VERB_LABELS.get(str(verb), str(verb)) if verb else "（行動なし）"
+        role = act.get("role")
+        if role and role != "none":
+            act_text += f"（相手: {_ROLE_LABELS.get(str(role), str(role))}）"
+        n = _number(entry.get("n"), 1.0)
+        ratio = _clamp01(n / max_n) if max_n > 0 else 0.0
         rows.append(
             "<tr>"
-            f"<td>{html.escape(ctx_text)}</td>"
+            f"<td>{html.escape('、'.join(clauses) if clauses else 'どんな状況でも')}</td>"
             f"<td>{html.escape(act_text)}</td>"
-            f"<td>{_esc(entry.get('n'))}</td>"
+            f'<td><span class="gene-track"><span class="gene-fill" style="width:{ratio * 100:.1f}%"></span></span>'
+            f' <span class="muted">{n:g}</span></td>'
             "</tr>"
         )
+    shared_html = (
+        f'<p class="muted">すべての行に共通: 主人公は{html.escape("、".join(shared))}。</p>' if shared else ""
+    )
     return (
         '<div class="grid-wrap"><table class="wb-table canon-table"><thead><tr>'
-        "<th>状況</th><th>典型的な行動</th><th>擬似観測件数</th>"
+        "<th>状況</th><th>定石の行動</th><th>定石の強さ</th>"
         f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+        + shared_html
     )
+
+
+# WB-UI-018: the nine initial parameters of a subject, drawn as game-style
+# bars. Scales are fixed where the engine defines one (traits and reputation
+# live in 0..1, base is normalised /100 in the QD volatility vector); stamina
+# and ally_value have no ceiling, so they are drawn relative to the largest
+# value among this world's subjects -- "a lot" means "a lot for this world".
+_TRAIT_LABELS = (
+    ("social", "社交性"), ("stubbornness", "頑固さ"), ("curiosity", "好奇心"),
+    ("diligence", "勤勉さ"), ("temper", "気性の荒さ"),
+)
+
+
+_SHEET_NOTE = (
+    '<p class="muted sheet-note">気質と評判は 0〜1、基礎の強さは 100、'
+    "体力と仲間への加勢はこの世界での最大値を上限にバーを描いています。"
+    "右側は数値がすでに意味しているもの（見えない修正・秘密・伏線）で、生成された説明ではなく "
+    "world.yaml/subjects/effects.yaml の値とエンジンの計算式どおりです。</p>"
+)
+
+
+def _stat_bar(label: str, value: float, scale: float, text: str) -> str:
+    ratio = _clamp01(value / scale) if scale > 0 else 0.0
+    return (
+        f'<div class="stat"><span class="stat-label">{html.escape(label)}</span>'
+        f'<span class="gene-track"><span class="gene-fill" style="width:{ratio * 100:.1f}%"></span></span>'
+        f'<span class="stat-value">{html.escape(text)}</span></div>'
+    )
+
+
+def _stat_bars_html(
+    subject: Mapping[str, Any], *, base_scale: float, stamina_scale: float, ally_scale: float,
+) -> str:
+    traits = _mapping(subject.get("traits"))
+    stamina = _mapping(subject.get("stamina"))
+    base = _number(subject.get("base"))
+    stamina_max = _number(stamina.get("max"))
+    recover = _number(stamina.get("recover_per_slot"))
+    reputation = _number(subject.get("reputation"))
+    ally = _number(subject.get("ally_value"))
+    bars = [
+        _stat_bar(label, _number(traits.get(key)), 1.0, f"{_number(traits.get(key)):.2f}")
+        for key, label in _TRAIT_LABELS
+    ]
+    bars += [
+        _stat_bar("基礎の強さ", base, base_scale, f"{base:.0f}"),
+        _stat_bar("体力", stamina_max, stamina_scale, f"{stamina_max:.0f}（回復 {recover:g}/時間帯）"),
+        _stat_bar("評判", reputation, 1.0, f"{reputation:.2f}"),
+        _stat_bar("仲間への加勢", ally, ally_scale, f"{ally:.0f}"),
+    ]
+    return '<div class="stat-bars">' + "".join(bars) + "</div>"
 
 
 def character_readout_html(
     world_yaml: Mapping[str, Any],
     subjects: Sequence[Mapping[str, Any]],
     effects: Sequence[Any],
+    *,
+    protagonist: str | None = None,
+    antagonist: str | None = None,
 ) -> str:
-    """Render, per subject, what its numbers already mean: base strength
+    """Render one stat sheet per subject: its nine initial parameters as
+    bars (WB-UI-018) next to what its numbers already mean -- base strength
     plus item modifiers (flagging ones hidden from other characters),
     personal secrets (`facts.secret_of`), and foreshadowing tied to it
     (effects.yaml plant/payoff pairs whose plant reveals this subject).
@@ -553,8 +621,13 @@ def character_readout_html(
                 (observer_id, _number(estimate), known)
             )
 
+    scales = dict(
+        base_scale=max([100.0] + [_number(s.get("base")) for s in subjects]),
+        stamina_scale=max([0.0] + [_number(_mapping(s.get("stamina")).get("max")) for s in subjects]),
+        ally_scale=max([0.0] + [_number(s.get("ally_value")) for s in subjects]),
+    )
     blocks = []
-    for subject in subjects:
+    for index, subject in enumerate(subjects):
         subject_id = str(subject.get("id") or "")
         if not subject_id:
             continue
@@ -653,13 +726,22 @@ def character_readout_html(
             if payoff_lines else ""
         )
 
-        body = strength_html + secret_html + payoff_html
-        if not body:
-            continue
+        body = (strength_html + secret_html + payoff_html
+                or '<p class="muted">秘密・伏線・隠された修正はありません。</p>')
+        role = "主人公" if subject_id == protagonist else "敵役" if subject_id == antagonist else ""
+        role_html = f' <span class="muted">{role}</span>' if role else ""
         blocks.append(
-            f'<details class="readout"><summary>{html.escape(subject_id)}</summary>{body}</details>'
+            f'<dialog class="sheet-dialog" id="sheet-{index}" aria-label="{html.escape(subject_id)}のパラメータ">'
+            '<section class="character-sheet">'
+            f'<div class="sheet-head"><h4>{html.escape(subject_id)}{role_html}</h4>'
+            '<button type="button" class="button" data-close-dialog>閉じる</button></div>'
+            '<div class="sheet-body">'
+            + _stat_bars_html(subject, **scales)
+            + f'<div class="sheet-readout">{body}</div></div>'
+            + _SHEET_NOTE
+            + "</section></dialog>"
         )
 
     if not blocks:
-        return '<p class="muted">読み下せる設定がありません。</p>'
+        return '<p class="muted">人物がいません。</p>'
     return '<div class="character-readout">' + "".join(blocks) + "</div>"
