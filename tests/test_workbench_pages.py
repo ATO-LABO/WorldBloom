@@ -525,6 +525,20 @@ class WorkbenchTests(unittest.TestCase):
 
     # --------------------------------------------------------- vocabulary
 
+    def test_cancelled_job_without_error_is_not_an_error(self):
+        """UI-009 finding: a user-requested stop must not render "エラー: None"."""
+        base = {"job_id": "job-stop", "phase": "evaluating", "error": None, "progress": {},
+                "config_id": "cfg-test", "run_id": "run-stop", "created_at": 1.0, "started_at": 2.0, "finished_at": 5.0}
+        html = workbench_pages.render_job_page({**base, "state": "cancelled"})
+        self.assertNotIn("エラー: None", html)
+        self.assertIn("利用者の停止要求により停止しました", html)
+        self.assertIn("同じ設定で新しく実行", html)
+        html = workbench_pages.render_job_page({**base, "state": "interrupted"})
+        self.assertNotIn("エラー: None", html)
+        self.assertIn("エラー情報がありません", html)
+        html = workbench_pages.render_job_page({**base, "state": "failed", "error": {"code": "wall_timeout"}})
+        self.assertIn(workbench_pages.ERROR_MESSAGES["wall_timeout"][0], html)
+
     def test_state_vocabulary(self):
         for state, label in workbench_pages.STATE_LABELS.items():
             with self.subTest(state=state):
