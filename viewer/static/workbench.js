@@ -68,7 +68,12 @@
       }
       const key = path[path.length - 1];
       let value;
-      if (el.type === "checkbox") {
+      if (el.type === "radio") {
+        if (!el.checked) {
+          return;
+        }
+        value = el.value;
+      } else if (el.type === "checkbox") {
         value = el.checked;
       } else if (el.type === "number") {
         value = el.value === "" ? null : Number(el.value);
@@ -151,6 +156,70 @@
         }
       });
     }
+
+    // WB-UI-019: picking a world with a known genre snaps the genre select to
+    // match, instead of leaving a mismatched pair silently in place.
+    const worldSelect = form.querySelector('select[data-field="project_id"]');
+    const genreSelect = form.querySelector('select[data-field="template_id"]');
+    if (worldSelect && genreSelect) {
+      worldSelect.addEventListener("change", () => {
+        const genre = worldSelect.selectedOptions[0] && worldSelect.selectedOptions[0].dataset.genre;
+        if (genre && Array.from(genreSelect.options).some((opt) => opt.value === genre)) {
+          genreSelect.value = genre;
+        }
+      });
+    }
+
+    // WB-UI-019: the "探索の規模" section's live per-generation/total run
+    // count and the sticky footer's one-line summary.
+    const escapeHtml = (text) =>
+      String(text).replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[ch]));
+    const updateSummary = () => {
+      const num = (name) => {
+        const el = form.querySelector(`[data-field="${name}"]`);
+        const n = el ? Number(el.value) : NaN;
+        return Number.isFinite(n) ? n : 0;
+      };
+      const generations = num("evolution.generations");
+      const population = num("evolution.population");
+      const seeds = num("evolution.seeds");
+      const perGenEl = form.querySelector("[data-per-gen]");
+      if (perGenEl) {
+        perGenEl.textContent = (population * seeds).toLocaleString("ja-JP");
+      }
+      const totalEl = form.querySelector("[data-total]");
+      if (totalEl) {
+        totalEl.textContent = (generations * population * seeds).toLocaleString("ja-JP");
+      }
+      const summaryEl = form.querySelector("[data-summary]");
+      if (summaryEl) {
+        const worldField = form.querySelector('[name="project_id"]');
+        const genreField = form.querySelector('[name="template_id"]');
+        const world = worldField ? worldField.value : "";
+        const genre = genreField ? genreField.value : "";
+        summaryEl.innerHTML =
+          `<b>${escapeHtml(world)}</b> × ${escapeHtml(genre)} ・ ` +
+          `${generations} 世代 × ${population} 個体 × ${seeds} seed`;
+      }
+    };
+    ["evolution.generations", "evolution.population", "evolution.seeds"].forEach((name) => {
+      const el = form.querySelector(`[data-field="${name}"]`);
+      if (el) {
+        el.addEventListener("input", updateSummary);
+        el.addEventListener("change", updateSummary);
+      }
+    });
+    if (worldSelect) {
+      worldSelect.addEventListener("input", updateSummary);
+      worldSelect.addEventListener("change", updateSummary);
+    }
+    if (genreSelect) {
+      genreSelect.addEventListener("input", updateSummary);
+      genreSelect.addEventListener("change", updateSummary);
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const parent = form.dataset.parent;

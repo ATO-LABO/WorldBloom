@@ -253,11 +253,22 @@ class WorkbenchTests(unittest.TestCase):
                 self.assertIn(f'data-field="{field}"', body)
                 self.assertIn(f'data-error-for="{field}"', body)
         self.assertIn('<option value="romance">romance</option>', body)
+        self.assertIn('class="cfg-adv"', body)
+        self.assertIn(
+            'type="radio" id="f-evolution.keep-reached" name="evolution.keep" value="reached" '
+            'data-field="evolution.keep" checked',
+            body,
+        )
+        # The fixture's "romance" world resolves to the "romance" genre
+        # (templates/romance exists), so its <option> carries data-genre.
+        self.assertIn('data-genre="', body)
+        self.assertIn('data-per-gen', body)
 
         status, body, _ = self.get_status("/configs/new?from=cfg-test")
         self.assertEqual(status, 200, body)
         self.assertIn('data-parent="cfg-test"', body)
         self.assertGreaterEqual(body.count('type="hidden"'), 2)
+        self.assertIn('data-summary', body)
 
     def test_duplicate_api(self):
         status, payload = self.http(
