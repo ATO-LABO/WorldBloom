@@ -102,6 +102,8 @@ class ViewerPageTests(unittest.TestCase):
         self.assertIn("桃太郎", rendered)
         self.assertIn("<th>実験</th>", rendered)
         self.assertNotIn("exp-viewer", rendered)
+        self.assertIn('data-wb="world-picker"', rendered)
+        self.assertNotIn('<nav class="phase-band"', rendered)  # Home never shows the phase tabs
 
     def test_detail_lines(self) -> None:
         rethink = data.detail_line(

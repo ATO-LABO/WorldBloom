@@ -999,6 +999,18 @@
     });
   };
 
+  // Header world picker: always lands on the world's own page (its
+  // experiments list disambiguates which run to continue with).
+  const initWorldPicker = () => {
+    document.querySelectorAll('[data-wb="world-picker"]').forEach((select) => {
+      select.addEventListener("change", () => {
+        if (select.value) {
+          window.location.href = `/worlds/${encodeURIComponent(select.value)}`;
+        }
+      });
+    });
+  };
+
   initConfigForm();
   initStart();
   initJob();
@@ -1008,4 +1020,5 @@
   initTray();
   initLibrary();
   initRowToggles();
+  initWorldPicker();
 })();

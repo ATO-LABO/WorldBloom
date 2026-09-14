@@ -8,12 +8,77 @@
         "viewer/server.py",
         "--runs",
         "C:\\Projects\\WorldBloom-local\\runs",
-        "--port",
-        "5401",
         "--control",
         "C:\\Projects\\WorldBloom-local\\control"
       ],
-      "port": 5401
+      "port": 5401,
+      "autoPort": true
+    },
+    {
+      "name": "worldbloom-viewer-ui-restyle",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "C:/Projects/WorldBloom-local/wt/ui-restyle/viewer/server.py",
+        "--runs",
+        "C:/Projects/WorldBloom-local/runs",
+        "--port",
+        "5421",
+        "--control",
+        "C:\\Projects\\WorldBloom-local\\control",
+        "--repo",
+        "C:/Projects/WorldBloom-local/wt/ui-restyle"
+      ],
+      "port": 5421
+    },
+    {
+      "name": "storysim-live-ref",
+      "runtimeExecutable": "C:/Users/akkiy/AppData/Local/Programs/Python/Python310/python.exe",
+      "runtimeArgs": [
+        "G:/マイドライブ/Projects/StorySim/viewer/server.py"
+      ],
+      "port": 5301
+    },
+    {
+      "name": "storysim-public-ref",
+      "runtimeExecutable": "C:/Users/akkiy/AppData/Local/Programs/Python/Python310/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "5309",
+        "--directory",
+        "C:/Projects/StorySim-local/StorySim-viewer"
+      ],
+      "port": 5309
+    },
+    {
+      "name": "worldbloom-viewer-ui-home",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "C:/Projects/WorldBloom-local/wt/ui-home-split/viewer/server.py",
+        "--runs",
+        "C:/Projects/WorldBloom-local/runs",
+        "--port",
+        "5431",
+        "--control",
+        "C:\\Projects\\WorldBloom-local\\control",
+        "--repo",
+        "C:/Projects/WorldBloom-local/wt/ui-home-split"
+      ],
+      "port": 5431
+    },
+    {
+      "name": "worldbloom-viewer-alt2",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "viewer/server.py",
+        "--runs",
+        "C:\\Projects\\WorldBloom-local\\runs",
+        "--port",
+        "5451",
+        "--control",
+        "C:\\Projects\\WorldBloom-local\\control"
+      ],
+      "port": 5451
     }
   ]
 }

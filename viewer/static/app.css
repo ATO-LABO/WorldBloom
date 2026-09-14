@@ -121,6 +121,21 @@ select {
   overflow-wrap: anywhere;
 }
 
+.picker-select {
+  background: transparent;
+  border: 0;
+  color: #f8f4ec;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0;
+}
+
+.picker-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
 .header-links {
   display: flex;
   gap: 1rem;
@@ -233,6 +248,10 @@ p {
   border-radius: var(--radius-m);
   margin: 0 0 1rem;
   padding: 1rem;
+}
+
+.target-card {
+  background: var(--accent-soft);
 }
 
 .muted {
@@ -1126,6 +1145,15 @@ td {
 
 .wb-table {
   min-width: 720px;
+}
+
+.wb-table--compact {
+  font-size: 0.85rem;
+}
+
+.wb-table--compact th,
+.wb-table--compact td {
+  padding: 0.3rem 0.5rem;
 }
 
 .form-grid {

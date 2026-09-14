@@ -249,6 +249,7 @@ def _generate_confirm(handler, run_id):
             f'<p><a href="/runs/{_url(run_id)}/candidates">候補一覧に戻る</a></p>',
             phase="stage", run=run_name, output_run=run_id,
             lead="生成内容を確認して開始します。",
+            job_store=job_store,
         ))
         return
     mode = qval("mode") or "missing_or_failed"
@@ -345,6 +346,7 @@ def _generate_confirm(handler, run_id):
         crumbs=[("候補一覧", f"/runs/{_url(run_id)}/candidates"), ("生成の確認", f"/runs/{_url(run_id)}/generate")],
         phase="stage", run=snapshot["experiment_name"], output_run=run_id,
         lead="生成内容を確認して開始します。",
+        job_store=job_store,
     ))
 
 
@@ -479,6 +481,7 @@ def _outputs_list(handler):
         handler._send_html(pages.document(
             "作品一覧", body, crumbs=[("作品一覧", "/outputs")],
             phase="stage", run=run_experiment, output_run=run_filter, lead=lead,
+            job_store=job_store,
         ))
         return
     if run_filter:
@@ -495,6 +498,7 @@ def _outputs_list(handler):
         "作品一覧", render_outputs_list(outputs, run_names), crumbs=[("作品一覧", "/outputs")],
         phase="stage", run=run_experiment, output_run=run_filter,
         lead=lead, next_action=next_action,
+        job_store=job_store,
     ))
 
 
@@ -764,6 +768,7 @@ def _output_detail(handler, output_id):
         phase="stage", run=experiment_name, output_run=run_id,
         lead="生成結果を読み、必要なら再生成します。",
         next_action=("作品一覧へ →", f"/outputs?run={_url(run_id)}"),
+        job_store=job_store,
     ))
 
 
