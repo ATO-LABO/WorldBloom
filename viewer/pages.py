@@ -964,10 +964,9 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
 
     library_repo = job_store.configs.repo if job_store is not None else data.ROOT
     try:
-        store = LibraryStore(library_repo)
-        worlds, genres = store.worlds(), store.genres()
+        worlds = LibraryStore(library_repo).worlds()
     except (ValueError, OSError, KeyError, TypeError, AttributeError):
-        worlds, genres = [], []
+        worlds = []
 
     groups, minor = data.grouped_experiments(repository)
     by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
@@ -975,7 +974,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
     for meta in minor:
         minor_by_world[str(meta["world"])].append(meta)
 
-    if not worlds and not genres and not by_world and not minor_by_world:
+    if not worlds and not by_world and not minor_by_world:
         return document(
             "世界を選ぶ",
             _home_actions(job_store is not None)
@@ -1020,9 +1019,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         _home_actions(job_store is not None)
         + '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
         "上映します。</p>"
-        + library_pages.render_worlds_hub(
-            worlds, genres, run_counts=run_counts, can_create=job_store is not None,
-        )
+        + library_pages.render_worlds_hub(worlds, run_counts=run_counts)
         + "".join(legacy_sections)
     )
     return document(

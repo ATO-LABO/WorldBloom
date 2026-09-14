@@ -197,19 +197,27 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         status, body = self.get("/worlds")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertIn('id="genres"', body)
+        self.assertNotIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
-        self.assertIn('href="/genres/new"', body)
+        self.assertNotIn('href="/genres/new"', body)
         self.assertIn("<th>実験</th>", body)
 
     def test_home_is_worlds_hub(self):
         status, body = self.get("/")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertIn('id="genres"', body)
+        self.assertNotIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
-        self.assertIn('href="/genres/new"', body)
+        self.assertNotIn('href="/genres/new"', body)
         self.assertIn("<th>実験</th>", body)
+
+    def test_genres_live_on_settings_page(self):
+        # Genre creation moved off the home hub: ⚙ 設定 (/configs) owns it.
+        status, body = self.get("/configs")
+        self.assertEqual(status, 200, body)
+        self.assertIn('id="genres"', body)
+        self.assertIn('href="/genres/new"', body)
+        self.assertIn('href="/genres/momotaro"', body)
 
     def test_world_detail_page(self):
         status, body = self.get("/worlds/momotaro")
