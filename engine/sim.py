@@ -119,6 +119,7 @@ class Simulation:
     def _layer_snapshots(
         self,
         subject_ids: set[str] | None = None,
+        objective: dict[str, str | None] | None = None,
     ) -> dict[str, dict[str, Any]]:
         selected = (
             sorted(self.subjects)
@@ -129,6 +130,7 @@ class Simulation:
             subject_id: self.subjects[subject_id].layer_snapshot(
                 self.world,
                 self._present_for(self.subjects[subject_id]),
+                objective=objective,
             )
             for subject_id in selected
         }
@@ -147,10 +149,11 @@ class Simulation:
         dict[str, dict[str, dict[str, float]]],
         dict[str, str | None],
     ]:
+        objective = self._objective_snapshot()
         return (
-            self._layer_snapshots(subject_ids),
+            self._layer_snapshots(subject_ids, objective),
             self.world.relations.snapshot(),
-            self._objective_snapshot(),
+            objective,
         )
 
     def _action_capture_ids(

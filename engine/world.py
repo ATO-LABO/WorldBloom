@@ -376,6 +376,7 @@ class World:
                 key=lambda value: str(value["name"]),
             )
         }
+        self._item_modifiers: dict[str, dict[str, Any] | None] = {}
         self.recipes = {
             name: dict(item["made_from"])
             for name, item in self.items.items()
@@ -630,6 +631,9 @@ class World:
         self.delivered: dict[str, str] = {}
         self.confront_successes: set[tuple[str, str]] = set()
         self.pending_effects: list[dict[str, Any]] = []
+        self._namespace_base: (
+            tuple[tuple[int, ...], dict[str, str]] | None
+        ) = None
         configure_phase2(self, definition, source)
         self.offers: dict[
             tuple[str, str],
@@ -1686,15 +1690,64 @@ class World:
                 return False
         return True
 
+    def item_modifier(self, item: str) -> dict[str, Any] | None:
+        """Parsed Modifier kwargs for an item's modifier block, or None."""
+        if item in self._item_modifiers:
+            return self._item_modifiers[item]
+        definition = self.items.get(item, {})
+        raw_modifier = definition.get("modifier")
+        if not raw_modifier:
+            self._item_modifiers[item] = None
+            return None
+        kind = str(raw_modifier.get("kind", "item"))
+        raw_affinity_cap = raw_modifier.get("affinity_cap")
+        affinity_cap = (
+            float(raw_affinity_cap)
+            if raw_affinity_cap is not None
+            else None
+        )
+        raw_cap_targets = (
+            raw_modifier.get("affinity_cap_targets", ()) or ()
+        )
+        if isinstance(raw_cap_targets, str):
+            cap_targets = (raw_cap_targets,)
+        elif isinstance(raw_cap_targets, (list, tuple, set)):
+            cap_targets = tuple(
+                sorted({str(value) for value in raw_cap_targets})
+            )
+        else:
+            raise ValueError(
+                f"Item modifier affinity_cap_targets must be "
+                f"a string or sequence: {item}"
+            )
+        spec = {
+            "id": str(raw_modifier.get("id", f"item:{item}")),
+            "source": item,
+            "value": float(raw_modifier.get("value", 0.0)),
+            "kind": kind,
+            "visible": bool(raw_modifier.get("visible", True)),
+            "active": bool(raw_modifier.get("active", True)),
+            "lethal": bool(raw_modifier.get("lethal", False)),
+            "lethal_chance": float(
+                raw_modifier.get("lethal_chance", 0.0)
+            ),
+            "affinity_cap": affinity_cap,
+            "affinity_cap_targets": cap_targets,
+        }
+        self._item_modifiers[item] = spec
+        return spec
+
     def holder(self, item: str) -> str | None:
         if item in self.delivered:
             return self.delivered[item]
-        holders = sorted(
-            subject.id
-            for subject in self.subjects.values()
-            if subject.inventory.get(item, 0) > 0
+        return min(
+            (
+                subject.id
+                for subject in self.subjects.values()
+                if subject.inventory.get(item, 0) > 0
+            ),
+            default=None,
         )
-        return holders[0] if holders else None
 
     def present_subjects(
         self,
@@ -1801,6 +1854,32 @@ class World:
             if destination != subject.zone
         }
 
+    def _identifier_namespace(self) -> dict[str, str]:
+        # ponytail: length-only key; valid while subjects/items/facts/zones/
+        # disguises are write-once at load. Hash the key sets if that changes.
+        key = (
+            len(self.subjects),
+            len(self.items),
+            len(self.facts),
+            len(self.zones),
+            len(self.disguises),
+        )
+        cached = self._namespace_base
+        if cached is None or cached[0] != key:
+            identifiers = (
+                set(self.subjects)
+                | set(self.items)
+                | set(self.facts)
+                | set(self.zones)
+                | disguise_aliases(self)
+            )
+            cached = (
+                key,
+                {identifier: identifier for identifier in sorted(identifiers)},
+            )
+            self._namespace_base = cached
+        return cached[1]
+
     def namespace(
         self,
         subject: Subject,
@@ -1843,16 +1922,7 @@ class World:
                     return True
             return False
 
-        namespace = Namespace()
-        identifiers = (
-            set(self.subjects)
-            | set(self.items)
-            | set(self.facts)
-            | set(self.zones)
-            | disguise_aliases(self)
-        )
-        for identifier in sorted(identifiers):
-            namespace[identifier] = identifier
+        namespace = Namespace(self._identifier_namespace())
         namespace.update(
             {
                 "self": subject.id,

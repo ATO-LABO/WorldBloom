@@ -498,61 +498,12 @@ class Subject:
         for item in sorted(self.inventory):
             if self.inventory[item] <= 0:
                 continue
-            definition = world.items.get(item, {})
-            raw_modifier = definition.get("modifier")
-            if not raw_modifier:
+            spec = world.item_modifier(item)
+            if spec is None:
                 continue
-            kind = str(raw_modifier.get("kind", "item"))
-            if (item, kind) in disabled_derived:
+            if (item, spec["kind"]) in disabled_derived:
                 continue
-
-            raw_affinity_cap = raw_modifier.get("affinity_cap")
-            affinity_cap = (
-                float(raw_affinity_cap)
-                if raw_affinity_cap is not None
-                else None
-            )
-            raw_cap_targets = (
-                raw_modifier.get("affinity_cap_targets", ()) or ()
-            )
-            if isinstance(raw_cap_targets, str):
-                cap_targets = (raw_cap_targets,)
-            elif isinstance(raw_cap_targets, (list, tuple, set)):
-                cap_targets = tuple(
-                    sorted({str(value) for value in raw_cap_targets})
-                )
-            else:
-                raise ValueError(
-                    f"Item modifier affinity_cap_targets must be "
-                    f"a string or sequence: {item}"
-                )
-
-            derived.append(
-                Modifier(
-                    id=str(
-                        raw_modifier.get("id", f"item:{item}")
-                    ),
-                    source=item,
-                    value=float(
-                        raw_modifier.get("value", 0.0)
-                    ),
-                    kind=kind,
-                    visible=bool(
-                        raw_modifier.get("visible", True)
-                    ),
-                    active=bool(
-                        raw_modifier.get("active", True)
-                    ),
-                    lethal=bool(
-                        raw_modifier.get("lethal", False)
-                    ),
-                    lethal_chance=float(
-                        raw_modifier.get("lethal_chance", 0.0)
-                    ),
-                    affinity_cap=affinity_cap,
-                    affinity_cap_targets=cap_targets,
-                )
-            )
+            derived.append(Modifier(**spec))
 
         threshold = world.companionship["threshold"]
         for peer in sorted(
@@ -598,6 +549,8 @@ class Subject:
         self,
         world: World,
         present: list[Subject],
+        *,
+        objective: dict[str, str | None] | None = None,
     ) -> dict[str, Any]:
         modifiers = [
             {
@@ -621,10 +574,11 @@ class Subject:
             }
             for target, value in sorted(self.beliefs_about.items())
         }
-        objective = {
-            item: world.holder(item)
-            for item in sorted(world.objectives)
-        }
+        if objective is None:
+            objective = {
+                item: world.holder(item)
+                for item in sorted(world.objectives)
+            }
         snapshot: dict[str, Any] = {
             "ability": {
                 "base": round(self.base, 4),
@@ -659,10 +613,13 @@ class Subject:
                     for key in sorted(effect)
                 }
                 for effect in sorted(
-                    world.pending_effects,
+                    (
+                        value
+                        for value in world.pending_effects
+                        if value.get("planted_by") == self.id
+                    ),
                     key=lambda value: str(value.get("id", "")),
                 )
-                if effect.get("planted_by") == self.id
             ],
             "vitality": self.vitality,
             "zone": self.zone,

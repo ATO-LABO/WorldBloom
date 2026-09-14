@@ -32,7 +32,7 @@ def relation_diff(
     before: dict[str, dict[str, dict[str, float]]],
     after: dict[str, dict[str, dict[str, float]]],
 ) -> list[dict[str, str | float]]:
-    if before == after:
+    if before is after or before == after:
         return []
 
     rows: list[dict[str, str | float]] = []
