@@ -320,6 +320,7 @@ p {
   color: inherit;
   display: block;
   padding: 1rem;
+  position: relative;
   text-decoration: none;
   transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
@@ -328,6 +329,28 @@ p {
   border-color: var(--accent);
   box-shadow: var(--shadow);
   transform: translateY(-1px);
+}
+
+/* .world-card is an <article> when it has a footer (quick-start button)
+   below the clickable area: the link covers the card via ::after (the
+   "stretched link" pattern) so the footer's own link/button can sit above
+   it without nesting an <a> inside an <a>. */
+.world-card-link {
+  color: inherit;
+  display: block;
+  text-decoration: none;
+}
+
+.world-card-link::after {
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.world-card-footer {
+  margin-top: 0.6rem;
+  position: relative;
+  z-index: 1;
 }
 
 .world-card h3 {
@@ -465,6 +488,23 @@ p {
   background: var(--accent);
   color: #fff;
   transform: translateY(-1px);
+}
+
+.run-delete {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.run-delete:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 /* -------------------------------------------------------- section headings */
@@ -1789,6 +1829,44 @@ details {
   width: 100%;
 }
 
+/* WB-UI-021: nodes are buttons; hovering one lights it, its partners and
+   the edges between them while the rest of the graph dims. */
+.relation-graph .node {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 0.15s;
+}
+
+.relation-graph line {
+  transition: stroke-opacity 0.15s, stroke-width 0.15s;
+}
+
+.relation-graph.has-lit .node:not(.lit):not(.lit-peer) {
+  opacity: 0.35;
+}
+
+.relation-graph.has-lit line:not(.lit) {
+  stroke-opacity: 0.08;
+}
+
+.relation-graph line.lit {
+  stroke-opacity: 1;
+}
+
+.relation-graph .node.lit circle {
+  stroke: var(--gold);
+  stroke-width: 4;
+}
+
+.relation-graph .node.lit-peer circle {
+  stroke: var(--gold);
+  stroke-width: 2;
+}
+
+.relation-graph .node.lit text {
+  font-weight: 700;
+}
+
 .tab-panel .character-table {
   margin-top: 1rem;
 }
@@ -1848,7 +1926,8 @@ details {
 .tabs-world .tab-input:nth-of-type(2):checked ~ .tab-panels .tab-panel:nth-of-type(2),
 .tabs-world .tab-input:nth-of-type(3):checked ~ .tab-panels .tab-panel:nth-of-type(3),
 .tabs-world .tab-input:nth-of-type(4):checked ~ .tab-panels .tab-panel:nth-of-type(4),
-.tabs-world .tab-input:nth-of-type(5):checked ~ .tab-panels .tab-panel:nth-of-type(5) {
+.tabs-world .tab-input:nth-of-type(5):checked ~ .tab-panels .tab-panel:nth-of-type(5),
+.tabs-world .tab-input:nth-of-type(6):checked ~ .tab-panels .tab-panel:nth-of-type(6) {
   display: block;
 }
 
@@ -1856,7 +1935,8 @@ details {
 .tabs-world .tab-input:nth-of-type(2):checked ~ .tab-list .tab-label:nth-of-type(2),
 .tabs-world .tab-input:nth-of-type(3):checked ~ .tab-list .tab-label:nth-of-type(3),
 .tabs-world .tab-input:nth-of-type(4):checked ~ .tab-list .tab-label:nth-of-type(4),
-.tabs-world .tab-input:nth-of-type(5):checked ~ .tab-list .tab-label:nth-of-type(5) {
+.tabs-world .tab-input:nth-of-type(5):checked ~ .tab-list .tab-label:nth-of-type(5),
+.tabs-world .tab-input:nth-of-type(6):checked ~ .tab-list .tab-label:nth-of-type(6) {
   border-bottom-color: var(--accent);
   color: var(--text);
   font-weight: 700;
@@ -1866,7 +1946,8 @@ details {
 .tabs-world .tab-input:nth-of-type(2):focus-visible ~ .tab-list .tab-label:nth-of-type(2),
 .tabs-world .tab-input:nth-of-type(3):focus-visible ~ .tab-list .tab-label:nth-of-type(3),
 .tabs-world .tab-input:nth-of-type(4):focus-visible ~ .tab-list .tab-label:nth-of-type(4),
-.tabs-world .tab-input:nth-of-type(5):focus-visible ~ .tab-list .tab-label:nth-of-type(5) {
+.tabs-world .tab-input:nth-of-type(5):focus-visible ~ .tab-list .tab-label:nth-of-type(5),
+.tabs-world .tab-input:nth-of-type(6):focus-visible ~ .tab-list .tab-label:nth-of-type(6) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -2261,4 +2342,10 @@ details.cfg-adv .cfg-sec h2 {
     grid-template-columns: 1fr;
     gap: 0.6rem;
   }
+}
+
+/* WB-UI-021: output settings card. */
+[data-availability] {
+  color: var(--muted);
+  font-size: 0.85rem;
 }

@@ -15,6 +15,7 @@ from http import HTTPStatus
 import json
 import uuid
 
+from execution.output_settings import current_generation
 from execution.output_store import OutputStore, verified
 from execution.provenance import ConfigError, contained, read_json
 from execution.worker import TERMINAL
@@ -307,10 +308,20 @@ def _generate_confirm(handler, run_id):
             })
     acknowledge_unknown = bool(attempt_ids)
 
+    generation = None
     check = None
     if config is not None:
         settings_path = getattr(handler.server, "settings_path", None)
-        check = job_store.configs.check_generation(config_id, settings_path=settings_path)
+        try:
+            generation = current_generation(settings_path)
+            check = generation["availability"]
+        except ConfigError:
+            # A broken settings.json must not 500 this page -- fall back to
+            # an unavailable check so the block below still explains why,
+            # with no start button (review item 2).
+            generation = None
+            check = {"available": False, "authentication": "unverified",
+                      "reason": "settings_unreadable"}
 
     request_id = "req-" + uuid.uuid4().hex
     request = None
@@ -320,8 +331,8 @@ def _generate_confirm(handler, run_id):
         request = {
             "schema_version": 1, "request_id": request_id, "kind": kind, "config_id": config_id,
             "run_id": run_id, "selection_revision": selected["revision"], "candidate_ids": candidate_ids,
-            "backend": config["generation"]["backend"], "model": config["generation"]["model"],
-            "limits": config["generation"]["limits"], "mode": mode,
+            "backend": generation["backend"], "model": generation["model"],
+            "limits": generation["limits"], "mode": mode,
             "synopsis_refs": synopsis_refs if kind == "narrate" else {},
             "acknowledge_unknown": acknowledge_unknown, "attempt_ids": attempt_ids,
         }
@@ -329,7 +340,7 @@ def _generate_confirm(handler, run_id):
     body = _render_generate_body(
         run_id=run_id, kind=kind, mode=mode, candidate_ids=candidate_ids, by_id=by_id,
         selection_revision=selected["revision"], config_id=config_id, config=config,
-        legacy=legacy, config_note=config_note, check=check, request=request,
+        legacy=legacy, config_note=config_note, generation=generation, check=check, request=request,
         request_id=request_id, synopsis_refs=synopsis_refs, attempt_ids=attempt_ids,
         ack_requested=ack_requested, errors=errors,
     )
@@ -343,7 +354,7 @@ def _generate_confirm(handler, run_id):
 
 
 def _render_generate_body(*, run_id, kind, mode, candidate_ids, by_id, selection_revision,
-                           config_id, config, legacy, config_note, check, request, request_id,
+                           config_id, config, legacy, config_note, generation, check, request, request_id,
                            synopsis_refs, attempt_ids, ack_requested, errors):
     parts = [f'<p><a href="/runs/{_url(run_id)}/candidates">← 候補一覧に戻る</a></p>']
     parts.append(
@@ -382,15 +393,15 @@ def _render_generate_body(*, run_id, kind, mode, candidate_ids, by_id, selection
         else:
             parts.append(f'<p>設定: {_escape(config_id)} {_escape(config_note)}</p>')
     parts.append(f'<p>予定呼出し数: {_escape(len(candidate_ids))} 件（候補数）</p>')
-    if config is not None:
-        gen = config["generation"]
-        limits = gen["limits"]
+    if generation is not None:
+        limits = generation["limits"]
         parts.append(
-            f'<p>backend: {_escape(gen["backend"])} ・ model: {_escape(gen.get("model") or "—")}</p>'
+            f'<p>文章生成: {_escape(generation["backend"])} ・ {_escape(generation.get("model") or "—")}'
+            '（<a href="/configs#output">⚙ 設定で変更</a>）</p>'
             f'<p>max_calls: {_escape(limits["max_calls"])} ・ call_timeout_seconds: {_escape(limits["call_timeout_seconds"])} ・ '
             f'wall_seconds: {_escape(limits["wall_seconds"])} ・ max_saved_response_bytes: {_escape(limits["max_saved_response_bytes"])}</p>'
         )
-        if gen["backend"] == "none":
+        if generation["backend"] == "none":
             parts.append('<p class="muted">プロンプト保存のみ（本文は生成されません）</p>')
         # max_calls==0 with a real backend is still a hard cap (0 calls will be
         # made), so the truthiness check must not swallow that case.
@@ -400,7 +411,8 @@ def _render_generate_body(*, run_id, kind, mode, candidate_ids, by_id, selection
             )
     if check is not None:
         avail_text = "可" if check.get("available") else "不可"
-        reason = f' ・ 理由: {_escape(check.get("reason"))}' if check.get("reason") else ""
+        reason = (f' ・ 理由: {_escape(workbench_pages.availability_label(check))}'
+                  if check.get("reason") and not check.get("available") else "")
         parts.append(
             f'<p>現在の生成可否: {_escape(avail_text)} ・ 認証: {_escape(check.get("authentication"))}{reason}</p>'
             '<p class="muted">認証の有効性は実呼出しまで未確認</p>'

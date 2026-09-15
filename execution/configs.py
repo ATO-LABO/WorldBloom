@@ -25,7 +25,7 @@ from gapengine.evolve import _load_yaml, _rule_ids
 from gapengine.genome import Genome
 from gapengine.policy import _compile_rules
 from gapengine.precedent import load_canon
-from gapengine.synopsis import BACKENDS, _backend_config
+from gapengine.synopsis import _backend_config
 from scripts.evolve import build_parser
 from execution.provenance import (
     ConfigError, atomic_json, canonical, code_snapshot, contained, directory_lock,
@@ -68,9 +68,24 @@ def evolution_defaults():
             if a.dest not in {"help", "project", "template", "out"}}
 
 
+def quick_label(world_name, genre):
+    """Default 設定名 for a freshly opened config form (WB-UI-022).
+
+    Naive local time is intentional here (a human-facing label, unlike this
+    module's UTC created_at) -- don't "fix" it to UTC. The quick-start button
+    itself doesn't call this: it builds the same label client-side at click
+    time (workbench.js's quickLabel), since this render-time value would
+    otherwise go stale if the page sits open before the button is clicked.
+    """
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return f"{stamp} {genre} - {world_name}"
+
+
 def normalize(spec):
     _keys(spec, {"label", "project_id", "template_id", "evolution",
                  "execution_limits", "generation"}, "config")
+    if "generation" in spec:
+        raise ConfigError("generation", "文章生成の設定は ⚙ 設定で行います（実行設定には含めません）")
     result = {"label": spec.get("label", "")}
     if not isinstance(result["label"], str) or not result["label"].strip() or len(result["label"]) > 200:
         raise ConfigError("label", "設定名を1〜200文字で入力してください")
@@ -99,23 +114,6 @@ def normalize(spec):
     _keys(limits, {"wall_seconds"}, "execution_limits")
     result["execution_limits"] = {"wall_seconds": _integer(
         limits.get("wall_seconds", 3600), "execution_limits.wall_seconds", 1)}
-    generation = spec.get("generation", {})
-    _keys(generation, {"backend", "model", "limits"}, "generation")
-    backend = generation.get("backend", "codex-cli")
-    if not isinstance(backend, str) or backend not in BACKENDS:
-        raise ConfigError("generation.backend", "未対応の生成方式です")
-    gl = generation.get("limits", {})
-    _keys(gl, {"max_calls", "call_timeout_seconds", "wall_seconds",
-               "max_saved_response_bytes"}, "generation.limits")
-    result["generation"] = {
-        "backend": backend, "model": _model(generation.get("model")),
-        "limits": {k: _integer(gl.get(k, d), "generation.limits." + k,
-                               0 if k == "max_calls" and backend == "none" else 1)
-                   for k, d in {"max_calls": 0 if backend == "none" else 1,
-                                # A local 9B model narrates in minutes, not seconds.
-                                "call_timeout_seconds": 900 if backend == "ollama" else 180,
-                                "wall_seconds": 3600 if backend == "ollama" else 240,
-                                "max_saved_response_bytes": 128000}.items()}}
     return result
 
 
@@ -317,7 +315,7 @@ class ConfigStore:
         if self.control == self.runs or self.control.is_relative_to(self.runs) or self.runs.is_relative_to(self.control):
             raise ConfigError("storage", "管理領域と実行領域を分離してください")
 
-    def _prepare(self, spec, settings_path=None, parent=None):
+    def _prepare(self, spec, parent=None):
         spec = normalize(spec)
         if parent is None:
             try:
@@ -338,20 +336,18 @@ class ConfigStore:
                 raise
             except (ValueError, KeyError, TypeError, OSError, yaml.YAMLError) as error:
                 raise ConfigError("inputs", "世界・人物・テンプレートまたは結末の検証に失敗しました") from error
-        available = generation_availability(spec["generation"], settings_path)
-        spec["generation"]["model"] = available["model"]
-        return spec, blobs, manifest, {**description, "generation": available}
+        return spec, blobs, manifest, description
 
-    def preview(self, spec, *, settings_path=None):
-        spec, _, manifest, description = self._prepare(spec, settings_path)
+    def preview(self, spec):
+        spec, _, manifest, description = self._prepare(spec)
         return {"schema_version": 1, **spec, "preview": description,
                 "input_manifest_sha256": sha256(canonical(manifest))}
 
-    def save(self, spec, *, config_id=None, settings_path=None, parent_config_id=None):
+    def save(self, spec, *, config_id=None, parent_config_id=None):
         cid = identifier(("cfg-" + uuid.uuid4().hex) if config_id is None else config_id, "config_id")
         configs = self.control / "configs"
         contained(configs, cid)
-        spec, blobs, manifest, preview = self._prepare(spec, settings_path, parent_config_id)
+        spec, blobs, manifest, preview = self._prepare(spec, parent_config_id)
         document = {"schema_version": 1, "config_id": cid,
                     "parent_config_id": parent_config_id, "created_at": _now(),
                     **spec, "preview": preview,
@@ -396,21 +392,14 @@ class ConfigStore:
         return [self.get(p.name) for p in sorted(folder.iterdir())
                 if p.is_dir() and not p.name.startswith(".")]
 
-    def check_generation(self, config_id, *, settings_path=None):
-        config = self.get(config_id)
-        generation = config["generation"]
-        if generation["backend"] != "none" and generation["model"] is None:
-            return generation_availability(generation)
-        return generation_availability(generation, settings_path)
-
-    def duplicate(self, config_id, changes=None, *, new_id=None, settings_path=None):
+    def duplicate(self, config_id, changes=None, *, new_id=None):
         original = self.get(config_id)
         spec = {k: original[k] for k in ("label", "project_id", "template_id",
-                "evolution", "execution_limits", "generation")}
+                "evolution", "execution_limits")}
         changes = changes or {}
         for key, value in changes.items():
-            spec[key] = {**spec[key], **value} if key in ("evolution", "execution_limits", "generation") and isinstance(value, dict) else value
-        return self.save(spec, config_id=new_id, parent_config_id=config_id, settings_path=settings_path)
+            spec[key] = {**spec[key], **value} if key in ("evolution", "execution_limits") and isinstance(value, dict) else value
+        return self.save(spec, config_id=new_id, parent_config_id=config_id)
 
     def prepare_run(self, config_id, *, run_id=None, job_id):
         rid = identifier(("run-" + uuid.uuid4().hex) if run_id is None else run_id, "run_id")
@@ -450,7 +439,6 @@ class ConfigStore:
                         "argv": argv, "evolution": config["evolution"],
                         "target_endings": config["preview"]["target_endings"],
                         "execution_limits": config["execution_limits"],
-                        "generation": config["generation"],
                         "status": "prepared"}
             atomic_json(staging / "config.json", config)
             atomic_json(staging / "input-manifest.json", inputs)

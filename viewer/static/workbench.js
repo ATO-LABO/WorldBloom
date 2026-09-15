@@ -80,8 +80,6 @@
       } else if (el.dataset.field === "evolution.target_ending") {
         const parts = el.value.split(",").map((part) => part.trim()).filter(Boolean);
         value = parts.length ? parts : null;
-      } else if (el.dataset.field === "generation.model") {
-        value = el.value === "" ? null : el.value;
       } else {
         value = el.value;
       }
@@ -112,12 +110,6 @@
         preview.fallbacks && Object.keys(preview.fallbacks).length
           ? Object.keys(preview.fallbacks).join(", ")
           : "省略なし",
-      ],
-      [
-        "生成可否",
-        preview.generation
-          ? `${preview.generation.available} (${preview.generation.authentication})`
-          : "",
       ],
     ];
     const dl = document.createElement("dl");
@@ -238,6 +230,69 @@
           return;
         }
         applyErrors(form, json);
+      } catch (error) {
+        applyErrors(form, { message: "サーバーに接続できません" });
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+        }
+      }
+    });
+  };
+
+  // WB-UI-021: /configs's 文章生成 card. Picking a backend snaps model/limits
+  // to that backend's own settings.json values (data-backends), same idea as
+  // initConfigForm's world->genre snap above.
+  const initOutputSettings = () => {
+    const form = document.querySelector('[data-wb="output-settings"]');
+    if (!form) {
+      return;
+    }
+    const backends = parseJsonAttr(form.dataset.backends, {});
+    const applyBackend = (backend) => {
+      const info = backends[backend] || {};
+      const modelInput = form.querySelector('[data-field="model"]');
+      if (modelInput) {
+        modelInput.value = info.model || "";
+      }
+      Object.entries(info.limits || {}).forEach(([key, value]) => {
+        const el = form.querySelector(`[data-field="limits.${key}"]`);
+        if (el) {
+          el.value = value;
+        }
+      });
+    };
+    form.querySelectorAll('input[name="backend"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        if (radio.checked) {
+          applyBackend(radio.value);
+        }
+      });
+    });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submitButton = form.querySelector('button[type="submit"]');
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+      try {
+        const payload = collectConfig(form);
+        if (payload.model === "") {
+          payload.model = null;
+        }
+        const { status, json } = await api("POST", "/api/settings/output", payload);
+        if (status === 200 && json) {
+          clearErrors(form);
+          const availEl = form.querySelector("[data-availability]");
+          if (availEl && json.availability) {
+            availEl.textContent = json.availability.label || "";
+          }
+          if (json.backends) {
+            form.dataset.backends = JSON.stringify(json.backends);
+          }
+        } else {
+          applyErrors(form, json);
+        }
       } catch (error) {
         applyErrors(form, { message: "サーバーに接続できません" });
       } finally {
@@ -1103,6 +1158,54 @@
     });
   };
 
+  // WB-UI-022: mirrors execution/configs.py's quick_label() -- built here
+  // (not server-rendered) so the timestamp is the actual click time, not
+  // this page's render time (the page can sit open a while before a click).
+  const quickLabel = (worldName, genre) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} `
+      + `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    return `${stamp} ${genre} - ${worldName}`;
+  };
+
+  // WB-UI-022: "この世界で新しい実験を回す" buttons carry data-quick-start --
+  // clicking one saves a config (auto-generated 設定名, current defaults, no
+  // form) and jumps straight to the run screen. A modified click (new tab,
+  // etc.) or any failure (or no JS) falls back to the anchor's own href, the
+  // full /configs/new form.
+  const initQuickStart = () => {
+    document.querySelectorAll("[data-quick-start]").forEach((link) => {
+      link.addEventListener("click", async (event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+        event.preventDefault();
+        if (link.dataset.busy) {
+          return;
+        }
+        link.dataset.busy = "1";
+        const projectId = link.dataset.project;
+        try {
+          const { status, json } = await api("POST", "/api/configs", {
+            label: quickLabel(link.dataset.worldName, link.dataset.template),
+            project_id: projectId,
+            template_id: link.dataset.template,
+          });
+          if (status === 201 && json && json.config_id) {
+            window.location.href =
+              `/jobs?world=${encodeURIComponent(projectId)}&config=${encodeURIComponent(json.config_id)}`;
+            return;
+          }
+        } catch (error) {
+          // fall through to href below
+        }
+        delete link.dataset.busy;
+        window.location.href = link.href;
+      });
+    });
+  };
+
   // Header world picker: always lands on the world's own page (its
   // experiments list disambiguates which run to continue with).
   const initWorldPicker = () => {
@@ -1116,6 +1219,7 @@
   };
 
   initConfigForm();
+  initOutputSettings();
   initRunConfigPicker();
   initStart();
   initJob();
@@ -1126,4 +1230,5 @@
   initLibrary();
   initRowToggles();
   initWorldPicker();
+  initQuickStart();
 })();

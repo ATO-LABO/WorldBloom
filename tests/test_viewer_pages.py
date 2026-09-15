@@ -94,9 +94,10 @@ class ViewerPageTests(unittest.TestCase):
         # The home dashboard no longer lists individual runs (WB-UI-016):
         # it shows the world with a run count, and the run itself only
         # appears inside that world's own "この世界の実験" block.
-        block = pages.world_runs_block(self.repository, "桃太郎", None)
+        block, _count = pages.world_runs_block(self.repository, "桃太郎", None)
         self.assertIn("その他の短いラン", block)
         self.assertIn("exp-viewer", block)
+        self.assertNotIn("run-delete", block)  # no delete button without --control
 
         rendered = pages.index_page(self.repository)
         self.assertIn("桃太郎", rendered)
@@ -106,6 +107,14 @@ class ViewerPageTests(unittest.TestCase):
         # header's world/run picker (useful elsewhere) would be redundant here.
         self.assertNotIn('data-wb="world-picker"', rendered)
         self.assertNotIn('<nav class="phase-band"', rendered)  # Home never shows the phase tabs
+
+    def test_index_world_card_has_quick_start(self) -> None:
+        # WB-UI-022's one-click "この世界で新しい実験を回す" button lives in
+        # each home card's footer (merged from the card-grid redesign).
+        rendered = pages.index_page(self.repository)
+        card_start = rendered.index('class="world-card"')
+        card_end = rendered.index("</article>", card_start)
+        self.assertIn("data-quick-start", rendered[card_start:card_end])
 
     def test_detail_lines(self) -> None:
         rethink = data.detail_line(
@@ -460,6 +469,25 @@ class ViewerPageTests(unittest.TestCase):
         self.assertTrue(
             any("→" in detail for detail in rethink_scene["details"])
         )
+
+    def test_quick_start_actions_needs_both_world_and_genre(self):
+        # WB-UI-022: no genre (or no world) -> a single plain link to the full
+        # form, no data-quick-start hook and no second "設定を変更して実行" link.
+        for world_id, genre in (("momotaro", ""), ("", "romance")):
+            html = pages.quick_start_actions(world_id, genre, "桃太郎", "/configs/new?project=momotaro")
+            self.assertNotIn("data-quick-start", html)
+            self.assertEqual(html.count("<a "), 1)
+
+    def test_quick_start_actions_escapes_and_wires_data_attrs(self):
+        html = pages.quick_start_actions(
+            "momo\"taro", "roman<ce", "桃太郎 & 一味", "/configs/new?project=momotaro&template=romance",
+        )
+        self.assertIn("data-quick-start", html)
+        self.assertIn('data-project="momo&quot;taro"', html)
+        self.assertIn('data-template="roman&lt;ce"', html)
+        self.assertIn('data-world-name="桃太郎 &amp; 一味"', html)
+        self.assertNotIn('"roman<ce"', html)
+        self.assertEqual(html.count("<a "), 2)
 
 
 if __name__ == "__main__":

@@ -91,6 +91,12 @@ def relation_svg(
 
     by_id = {str(subject["id"]): subject for subject in subjects if subject.get("id")}
     id_set = set(ids)
+    # WB-UI-021: same "sheet-<subjects index>" ids as character_table /
+    # character_readout_html, so a node opens the same <dialog> as its row
+    # and app.js can light the edges that touch a hovered node.
+    sheet_of: dict[str, str] = {}
+    for index, subject in enumerate(subjects):
+        sheet_of.setdefault(str(subject.get("id") or ""), f"sheet-{index}")
 
     center_x, center_y, radius = 320.0, 200.0, 150.0
     positions: dict[str, tuple[float, float]] = {}
@@ -143,7 +149,8 @@ def relation_svg(
         edge_markup.append(
             f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
             f'stroke="{color}" stroke-width="{width:.1f}" '
-            f'stroke-opacity="{opacity:.2f}"><title>{html.escape(title)}</title></line>'
+            f'stroke-opacity="{opacity:.2f}" data-a="{sheet_of[pair[0]]}" data-b="{sheet_of[pair[1]]}">'
+            f"<title>{html.escape(title)}</title></line>"
         )
 
     node_markup = []
@@ -161,7 +168,8 @@ def relation_svg(
             classes, fill = "node", _DEFAULT_FILL
             stroke_attr = f' stroke="{_DEFAULT_STROKE}"'
         node_markup.append(
-            f'<g class="{classes}">'
+            f'<g class="{classes}" data-sheet="{sheet_of[subject_id]}" tabindex="0" role="button" '
+            f'aria-label="{html.escape(subject_id)}のパラメータを開く">'
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="22" fill="{fill}"{stroke_attr}/>'
             f'<text x="{x:.1f}" y="{y + 36:.1f}" text-anchor="middle">'
             f"{html.escape(subject_id)}</text></g>"

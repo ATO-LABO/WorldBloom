@@ -47,7 +47,6 @@ class JobTests(unittest.TestCase):
         shutil.copyfile(ROOT / "requirements.txt", self.repo / "requirements.txt")
         self.configs = ConfigStore(self.repo, self.base / "control", self.base / "runs")
         self.configs.save({"label":"jobs", "project_id":"romance", "template_id":"romance",
-                           "generation":{"backend":"none"},
                            "evolution":{"generations":1,"population":1,"seeds":1}}, config_id="cfg-test")
         self.jobs = JobStore(self.configs, cancel_grace_seconds=0.3)
         self.identities = []
