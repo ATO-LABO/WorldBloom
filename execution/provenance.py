@@ -16,6 +16,18 @@ import uuid
 import yaml
 
 
+def python_executable() -> str:
+    """The interpreter to launch worker/generation subprocesses with.
+    Normally sys.executable IS that interpreter (the CLI's own python.exe),
+    but a frozen desktop build's sys.executable is the packaged GUI exe
+    itself, which doesn't understand -I -B <script> <args>. WORLDBLOOM_PYTHON
+    lets such a launcher point every subprocess call at a real interpreter
+    instead. (execution/worker.py keeps its own copy of this function: it is
+    stdlib-only by design, launched with -I, and cannot import this module.)"""
+
+    return os.environ.get("WORLDBLOOM_PYTHON") or sys.executable
+
+
 class ConfigError(ValueError):
     def __init__(self, field: str, message: str, *, code: str = "invalid_config"):
         super().__init__(message)
@@ -171,9 +183,15 @@ def code_snapshot(repo: Path):
         if (st.st_size, st.st_mtime_ns) != stamps[path]:
             raise ConfigError("runtime", "固定中にコードが変更されました", code="conflict")
     def git(*args):
-        result = subprocess.run(["git", "-C", str(repo), *args],
-                                capture_output=True, text=True, encoding="utf-8",
-                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        # A packaged distribution's repo folder has no .git and may run on a
+        # machine without git installed at all (FileNotFoundError) -- head/
+        # dirty are provenance nice-to-haves, not required for GA execution.
+        try:
+            result = subprocess.run(["git", "-C", str(repo), *args],
+                                    capture_output=True, text=True, encoding="utf-8",
+                                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        except FileNotFoundError:
+            return None
         return result.stdout.strip() if result.returncode == 0 else None
     head = git("rev-parse", "HEAD")
     dirty = git("status", "--porcelain")
@@ -182,7 +200,7 @@ def code_snapshot(repo: Path):
     return blobs, {"schema_version": 1, "head": head,
                    "dirty": dirty != "" if dirty is not None else None,
                    "files": records, "python": sys.version,
-                   "python_executable": sys.executable, "pyyaml": yaml.__version__}
+                   "python_executable": python_executable(), "pyyaml": yaml.__version__}
 
 
 def publish_directory(staging: Path, destination: Path):

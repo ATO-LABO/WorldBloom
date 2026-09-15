@@ -21,6 +21,13 @@ import uuid
 TERMINAL = frozenset({"succeeded", "partial", "failed", "cancelled", "interrupted"})
 
 
+def _python_executable() -> str:
+    """See execution/provenance.py's python_executable() (duplicated, not
+    imported -- this file is stdlib-only by design, launched with -I)."""
+
+    return os.environ.get("WORLDBLOOM_PYTHON") or sys.executable
+
+
 def kernel():
     if os.name != "nt":
         raise OSError("Windows process containment is required")
@@ -362,7 +369,7 @@ def main(argv=None):
         if time.time() >= deadline:
             change(jobs, folder, args.nonce, state="failed", error={"code":"wall_timeout"}, finished_at=time.time())
             return 1
-        preparation_argv = [sys.executable, "-I", "-B", str(entry), "--prepare"]
+        preparation_argv = [_python_executable(), "-I", "-B", str(entry), "--prepare"]
         for name in ("control", "runs", "repo", "job", "nonce"):
             preparation_argv.extend(["--" + name, getattr(args, name)])
         child = tree.launch(preparation_argv, folder)

@@ -10,12 +10,11 @@ from pathlib import Path
 import secrets
 import shutil
 import subprocess
-import sys
 import time
 
 from execution.configs import ConfigStore
 from execution.provenance import (ConfigError, atomic_json, canonical, contained,
-    directory_lock, identifier, publish_directory, read_json, sha256, write_bytes)
+    directory_lock, identifier, publish_directory, python_executable, read_json, sha256, write_bytes)
 from execution import worker
 
 PUBLIC_FIELDS = frozenset({"schema_version", "job_id", "request_id", "kind", "config_id", "run_id",
@@ -239,7 +238,7 @@ class JobStore:
             atomic_json(pending / "request.json", request)
             atomic_json(pending / "job.json", job)
             publish_directory(pending, final)
-            argv = [sys.executable, "-I", "-B", str(entry), "--control", str(self.configs.control),
+            argv = [python_executable(), "-I", "-B", str(entry), "--control", str(self.configs.control),
                     "--runs", str(self.configs.runs), "--repo", str(self.configs.repo),
                     "--job", jid, "--nonce", nonce]
             try:

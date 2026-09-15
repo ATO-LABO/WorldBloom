@@ -9,12 +9,11 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import subprocess
-import sys
 
 from execution.configs import generation_availability, _model
 from execution.output_settings import resolve_generation
 from execution.output_store import OutputStore, verified
-from execution.provenance import (ConfigError, canonical, contained, directory_lock,
+from execution.provenance import (ConfigError, canonical, contained, directory_lock, python_executable,
     identifier, read_json, sha256, code_snapshot)
 from execution.worker import TERMINAL
 
@@ -215,7 +214,7 @@ def prepare(configs, job, plan):
         tmp = Path(temp)
         materialize(tmp, blobs)
         verify_files(tmp / "runtime", runtime["files"])
-        built = subprocess.run([sys.executable, "-I", "-B",
+        built = subprocess.run([python_executable(), "-I", "-B",
             str(tmp / "runtime/execution/output_worker.py"), "--build", str(tmp)],
             cwd=tmp, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW)
@@ -232,6 +231,6 @@ def prepare(configs, job, plan):
     store.create(output, prompts, artifacts=blobs)
     return {"schema_version": 1, "output_id": job["output_id"],
             "runtime_manifest_sha256": output["runtime_manifest_sha256"],
-            "argv": [sys.executable, "-I", "-B",
+            "argv": [python_executable(), "-I", "-B",
                      str(store.folder(job["output_id"]) / "runtime/execution/output_worker.py"),
                      "--control", str(configs.control), "--output", job["output_id"]]}

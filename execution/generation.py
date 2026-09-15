@@ -12,10 +12,10 @@ import subprocess
 import tempfile
 import threading
 import time
-import sys
 import urllib.error
 import urllib.request
 
+from execution.provenance import python_executable
 from gapengine import ollama
 from gapengine.synopsis import BACKENDS, _validate_response
 
@@ -101,7 +101,7 @@ def transport(request, command):
             with tempfile.TemporaryDirectory(prefix="wb-generation-cli-") as cwd:
                 bridge = Path(__file__).with_name("cli_bridge.py")
                 try:
-                    child = tree.launch([sys.executable, "-I", "-B", str(bridge), *command], cwd, capture=True)
+                    child = tree.launch([python_executable(), "-I", "-B", str(bridge), *command], cwd, capture=True)
                 except OSError as error:
                     raise BoundaryError("launch_failed", error) from error
                 data, errors = bytearray(), []

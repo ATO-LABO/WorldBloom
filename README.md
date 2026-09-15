@@ -14,6 +14,10 @@
 展開して `WorldBloom.exe` を開くだけ。Python・Ollamaのインストールは不要です<br>
 （桃太郎・恋愛・探偵の3実験を見るだけの読み取り専用ビルドです）
 
+自分で世界を選んでGA実験を回したい場合は、フル機能版をどうぞ（Python 3.11以上が別途必要です）
+
+[![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio--portable.zip-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip)
+
 <img src="docs/images/readme-hero.png" width="820" alt="WorldBloomビューアのSifting画面。進化で見つかった物語の展開が格子状に並び、あらすじが表示されている">
 
 </div>
