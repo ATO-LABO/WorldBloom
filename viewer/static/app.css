@@ -2241,6 +2241,7 @@ details {
 
 .qd-map {
   border-collapse: collapse;
+  margin: 0 auto;
   width: auto;
 }
 
