@@ -405,6 +405,23 @@ p {
   transform: translateY(-1px);
 }
 
+.run-delete {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.run-delete:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* -------------------------------------------------------- section headings */
 
 .cell-navigation,
@@ -1824,7 +1841,8 @@ details {
 .tabs-world .tab-input:nth-of-type(2):checked ~ .tab-panels .tab-panel:nth-of-type(2),
 .tabs-world .tab-input:nth-of-type(3):checked ~ .tab-panels .tab-panel:nth-of-type(3),
 .tabs-world .tab-input:nth-of-type(4):checked ~ .tab-panels .tab-panel:nth-of-type(4),
-.tabs-world .tab-input:nth-of-type(5):checked ~ .tab-panels .tab-panel:nth-of-type(5) {
+.tabs-world .tab-input:nth-of-type(5):checked ~ .tab-panels .tab-panel:nth-of-type(5),
+.tabs-world .tab-input:nth-of-type(6):checked ~ .tab-panels .tab-panel:nth-of-type(6) {
   display: block;
 }
 
@@ -1832,7 +1850,8 @@ details {
 .tabs-world .tab-input:nth-of-type(2):checked ~ .tab-list .tab-label:nth-of-type(2),
 .tabs-world .tab-input:nth-of-type(3):checked ~ .tab-list .tab-label:nth-of-type(3),
 .tabs-world .tab-input:nth-of-type(4):checked ~ .tab-list .tab-label:nth-of-type(4),
-.tabs-world .tab-input:nth-of-type(5):checked ~ .tab-list .tab-label:nth-of-type(5) {
+.tabs-world .tab-input:nth-of-type(5):checked ~ .tab-list .tab-label:nth-of-type(5),
+.tabs-world .tab-input:nth-of-type(6):checked ~ .tab-list .tab-label:nth-of-type(6) {
   border-bottom-color: var(--accent);
   color: var(--text);
   font-weight: 700;
@@ -1842,7 +1861,8 @@ details {
 .tabs-world .tab-input:nth-of-type(2):focus-visible ~ .tab-list .tab-label:nth-of-type(2),
 .tabs-world .tab-input:nth-of-type(3):focus-visible ~ .tab-list .tab-label:nth-of-type(3),
 .tabs-world .tab-input:nth-of-type(4):focus-visible ~ .tab-list .tab-label:nth-of-type(4),
-.tabs-world .tab-input:nth-of-type(5):focus-visible ~ .tab-list .tab-label:nth-of-type(5) {
+.tabs-world .tab-input:nth-of-type(5):focus-visible ~ .tab-list .tab-label:nth-of-type(5),
+.tabs-world .tab-input:nth-of-type(6):focus-visible ~ .tab-list .tab-label:nth-of-type(6) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

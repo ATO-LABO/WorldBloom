@@ -687,6 +687,11 @@ def _progress_row(
     quality_text = f"{quality_values[-1]:.2f}" if quality_values else "—"
     reach_values = meta.get("reach_series") or []
     next_label, next_href = _next_command(meta, phases)
+    delete_button = (
+        f'<button type="button" class="run-delete" data-run="{_escape(run_name)}" '
+        f'data-endpoint="/exp/{_url_segment(run_name)}/delete">削除</button>'
+        if job_store is not None else ""
+    )
     return (
         '<div class="progress-row">'
         '<div class="progress-label">'
@@ -703,6 +708,7 @@ def _progress_row(
         f' · 到達率 {_escape(_gate_text(reach_values))}'
         "</div>"
         f'<a class="progress-command" href="{next_href}">次: {_escape(next_label)}</a>'
+        f"{delete_button}"
         "</div>"
     )
 
@@ -868,18 +874,20 @@ def world_runs_block(
     repository: data.RunRepository,
     world_name: str,
     job_store: Any,
-) -> str:
-    """The progress-dashboard body for one world's experiments (WB-UI-016).
+) -> tuple[str, int]:
+    """The progress-dashboard body for one world's experiments (WB-UI-016),
+    plus its run count (WB-UI: 実行履歴 tab).
 
-    Used by the world detail page's "この世界の実験" card; shows the same
-    major-run rows plus a closed "その他の短いラン" details as the home
-    dashboard previously did per world, just for a single world at a time.
+    Used by the world detail page's 実行履歴 tab; shows the same major-run
+    rows plus a closed "その他の短いラン" details as the home dashboard
+    previously did per world, just for a single world at a time.
     """
 
     groups, minor = data.grouped_experiments(repository)
     majors = dict(groups).get(world_name, [])
     minors = [meta for meta in minor if str(meta["world"]) == world_name]
     history, outputs = _dashboard_sources(repository, job_store)
+    count = len(majors) + len(minors)
 
     major_rows = "".join(
         _progress_row(meta, repository, job_store, history, outputs) for meta in majors
@@ -890,7 +898,7 @@ def world_runs_block(
         else '<p class="muted">まだ実験がありません。</p>'
     )
     if not minors:
-        return body
+        return body, count
     minor_rows = "".join(
         _progress_row(meta, repository, job_store, history, outputs) for meta in minors
     )
@@ -898,7 +906,7 @@ def world_runs_block(
         '<details class="minor-runs">'
         f"<summary>その他の短いラン ({len(minors)})</summary>"
         f'<div class="progress-dashboard">{minor_rows}</div></details>'
-    )
+    ), count
 
 
 def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
