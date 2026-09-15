@@ -821,10 +821,10 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("選定は保存できません", html)
         self.assertIn("disabled", html)
 
-    def test_candidates_table_is_nine_columns_with_detail_rows(self):
-        # WB-UI-014 §3.1: 9 list columns (選択/候補ID/セル/q/到達/採用可/選定状態/
-        # メモ/操作); 世代/個体/seed/役割/原記録/稿 move into a per-row detail
-        # toggle instead of being spread across the table.
+    def test_candidates_table_is_ten_columns_with_detail_rows(self):
+        # WB-UI-014 §3.1 (+あらすじ column): 10 list columns (選択/候補ID/セル/
+        # あらすじ/q/到達/採用可/選定状態/メモ/操作); 世代/個体/seed/役割/原記録/稿
+        # move into a per-row detail toggle instead of being spread across the table.
         self._legacy_experiment("exp-detail")
         catalog = self.server.repository.catalog
         rid = catalog.register_legacy("exp-detail")
@@ -833,13 +833,36 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         thead = body[body.index("<thead>"):body.index("</thead>")]
         # "<thead>" itself contains "<th", so match the column tag precisely.
-        self.assertEqual(len(re.findall(r"<th[ >]", thead)), 9)
+        self.assertEqual(len(re.findall(r"<th[ >]", thead)), 10)
         self.assertEqual(body.count('class="detail-row"'), 2)  # one per candidate
         self.assertEqual(body.count('class="row-toggle"'), 2)
         self.assertIn('aria-expanded="false"', body)
         self.assertIn('aria-controls="detail-', body)
         self.assertIn('<details class="glossary">', body)
         self.assertIn('<p class="page-lead">', body)
+
+    def test_candidates_synopsis_column(self):
+        root = self._legacy_experiment("exp-syn")
+        catalog = self.server.repository.catalog
+        rid = catalog.register_legacy("exp-syn")
+        cids = {c["cell_key"]: c["candidate_id"] for c in catalog.candidates(rid)["candidates"]}
+
+        status, body, _ = self.get_status(f"/runs/{rid}/candidates")
+        self.assertEqual(status, 200, body)
+        self.assertIn("<th>あらすじ</th>", body)
+        for cid in cids.values():
+            row = body[body.index(f'data-candidate-id="{cid}"'):]
+            self.assertIn('<td class="synopsis"><span>—</span></td>', row)
+
+        synopsis_text = "あ" * 100
+        atomic_json(root / "synopses.json", {"entries": [{"cell": "I|low", "synopsis": synopsis_text}]})
+
+        status, body, _ = self.get_status(f"/runs/{rid}/candidates")
+        self.assertEqual(status, 200, body)
+        low_row = body[body.index(f'data-candidate-id="{cids["I|low"]}"'):]
+        self.assertIn(f'<td class="synopsis"><span>{"あ" * 60}…</span></td>', low_row)
+        high_row = body[body.index(f'data-candidate-id="{cids["VI|high"]}"'):]
+        self.assertIn('<td class="synopsis"><span>—</span></td>', high_row)
 
     def test_configs_and_jobs_pages_have_lead_and_next_cta(self):
         status, body, _ = self.get_status("/configs")

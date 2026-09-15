@@ -1423,6 +1423,18 @@ def _reached_text(value):
     return "不明"
 
 
+SYNOPSIS_SNIPPET_CHARS = 60
+
+
+def _synopsis_snippet(text):
+    if not text:
+        return "—"
+    flat = " ".join(text.split())
+    if not flat:
+        return "—"
+    return flat if len(flat) <= SYNOPSIS_SNIPPET_CHARS else flat[:SYNOPSIS_SNIPPET_CHARS] + "…"
+
+
 def _sort_value(candidate, key, output_summary):
     if key == "draft":
         counts = (output_summary or {}).get(candidate["candidate_id"], {})
@@ -1461,7 +1473,8 @@ def _sort_th(label, column, *, query, active_sort, active_dir, term_key=None):
     return f'<th{aria}{title_attr}><a class="{classes}" href="{_escape(href)}">{_escape(label)}</a></th>'
 
 
-def _candidate_row(candidate, run_id, experiment_name, is_representative, running, output_summary):
+def _candidate_row(candidate, run_id, experiment_name, is_representative, running, output_summary,
+                    synopsis_text=None):
     cid = candidate["candidate_id"]
     short = _short_id(cid)
     disabled = " disabled" if running else ""
@@ -1505,6 +1518,7 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
         f'<td>{checkbox}</td>'
         f'<td title="{_escape(cid)}">{_escape(short)}</td>'
         f'<td>{_escape(candidate.get("cell_key"))}</td>'
+        f'<td class="synopsis"><span>{_escape(_synopsis_snippet(synopsis_text))}</span></td>'
         f'<td>{_escape(quality_text)}</td>'
         f'<td>{_escape(_reached_text(candidate.get("reached")))}</td>'
         f'<td>{_escape(candidate.get("screenable"))}</td>'
@@ -1519,7 +1533,7 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
         "</td></tr>"
     )
     detail = (
-        f'<tr id="{detail_id}" class="detail-row" hidden><td colspan="9">'
+        f'<tr id="{detail_id}" class="detail-row" hidden><td colspan="10">'
         '<dl class="metric">'
         f'<dt>{pages.term("candidate_generation", "世代")}</dt><dd>{_escape(candidate.get("generation"))}</dd>'
         f'<dt>{pages.term("individual", "個体")}</dt><dd>{_escape(candidate.get("individual_index"))}</dd>'
@@ -1601,7 +1615,7 @@ CANDIDATES_GLOSSARY_KEYS = (
 def render_candidates_page(*, run_id, experiment_name, config_id, revision, selection_revision,
                             candidates, representatives, running, query, representatives_error=False,
                             output_summary=None, output_summary_error=False, has_adopted=None,
-                            sort_key=None, sort_dir="asc", running_job_id=None):
+                            sort_key=None, sort_dir="asc", running_job_id=None, synopses=None):
     header = (
         f'<p>{pages.term("run", "実験")}: {_escape(experiment_name)} · '
         f'{pages.term("publication_revision", "公開版")} {_escape(revision)} · '
@@ -1629,7 +1643,8 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
     generate_form = _generate_form(run_id, has_adopted, running)
     if candidates:
         rows = "".join(
-            _candidate_row(c, run_id, experiment_name, c["candidate_id"] in representatives, running, output_summary)
+            _candidate_row(c, run_id, experiment_name, c["candidate_id"] in representatives, running, output_summary,
+                            synopsis_text=(synopses or {}).get(c.get("cell_key")))
             for c in candidates
         )
         def th(key, term_key=None):
@@ -1639,7 +1654,7 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
         headers = (
             "<th>選択</th>"
             f'<th title="{_th_title("candidate_id")}">候補ID</th>'
-            + th("cell_key", "cell") + th("quality", "quality") + th("reached", "reached")
+            + th("cell_key", "cell") + "<th>あらすじ</th>" + th("quality", "quality") + th("reached", "reached")
             + f'<th title="{_th_title("screenable")}">採用可</th>'
             + th("state", "state")
             + f'<th title="{_th_title("note")}">メモ</th>'
@@ -2072,6 +2087,7 @@ def _candidates_list(handler, run_id):
         representatives = set()
         representatives_error = True
     experiment_name = snapshot["experiment_name"]
+    synopses = data.synopsis_texts(repository, repository.runs_root / experiment_name)
     history_record = next((r for r in catalog.history() if r["run_id"] == run_id), None)
     running = history_record is not None and history_record["state"] in RUNNING_STATES
     running_job_id = history_record.get("job_id") if running and history_record else None
@@ -2090,7 +2106,7 @@ def _candidates_list(handler, run_id):
         candidates=candidates, representatives=representatives, running=running, query=query,
         representatives_error=representatives_error, output_summary=summary["by_candidate"],
         output_summary_error=summary["error"], has_adopted=has_adopted,
-        sort_key=sort_key, sort_dir=sort_dir, running_job_id=running_job_id,
+        sort_key=sort_key, sort_dir=sort_dir, running_job_id=running_job_id, synopses=synopses,
     )
     # WB-UI-012 §2.2/§2.3: a run with no candidates at all sends the user
     # back to start a run; otherwise the three-way adopt/generate/read
