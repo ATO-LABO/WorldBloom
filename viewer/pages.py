@@ -473,7 +473,7 @@ TERM_HELP = {
     ),
     "backend_model": (
         "backend/model: 本文を生成した方式とモデル名"
-        "（例: ollama / qwen3.5:9b）。画面を開いただけでは生成しない。"
+        "（例: ollama / qwen3.6:35b）。画面を開いただけでは生成しない。"
     ),
     "kind": (
         "種別: あらすじ生成（synopsize）か上映生成（narrate、本文）か。"
