@@ -366,11 +366,13 @@ p {
 }
 
 .world-card h3 {
+  font-size: 1.1rem;
   margin: 0 0 0.6rem;
 }
 
 .world-card dl {
   display: grid;
+  font-size: 0.9rem;
   gap: 0.3rem;
   margin: 0;
 }
@@ -383,6 +385,11 @@ p {
 
 .world-card dt {
   color: var(--muted);
+}
+
+.world-card dt[title] {
+  border-bottom: 1px dotted currentColor;
+  cursor: help;
 }
 
 .world-card dd {
@@ -422,6 +429,14 @@ p {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+#experiments .progress-dashboard + .minor-runs {
+  margin-top: 0.6rem;
+}
+
+#experiments > .minor-runs {
+  margin-bottom: 0;
 }
 
 .progress-row {
@@ -752,8 +767,16 @@ td {
 
 .commands pre,
 .output-panel pre {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.9;
+  margin: 0.5rem 0 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.outputs-grid > .card {
+  margin-bottom: 0;
 }
 
 .cmd {
@@ -805,6 +828,12 @@ td {
   overflow-wrap: anywhere;
 }
 
+.elite-summary .metric dd:last-of-type {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
 .card > dl.metric + p.muted {
   font-size: 0.85rem;
   margin: 0.6rem 0 0;
@@ -850,7 +879,11 @@ td {
   align-items: center;
   display: grid;
   gap: 0.45rem;
-  grid-template-columns: 2rem minmax(4rem, 1fr) 3rem;
+  grid-template-columns: max-content minmax(4rem, 1fr) 3rem;
+}
+
+.gene > span:first-child {
+  white-space: nowrap;
 }
 
 .gene-track {
@@ -974,6 +1007,11 @@ td {
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-bottom: 0.65rem;
+}
+
+.day h3 > .muted {
+  font-size: 0.85rem;
+  font-weight: 400;
 }
 
 .chip,
@@ -1274,9 +1312,16 @@ td {
 
 .raw-lines pre {
   border-bottom: 1px solid var(--line);
+  margin: 0;
   overflow-wrap: anywhere;
   padding: 0.5rem;
   white-space: pre-wrap;
+}
+
+.raw-lines pre > a {
+  color: var(--muted);
+  font-size: 0.85em;
+  margin-right: 0.4rem;
 }
 
 .raw-lines pre:target {
@@ -1417,6 +1462,10 @@ td {
   gap: 0.25rem;
 }
 
+.field[hidden] {
+  display: none;
+}
+
 .field-error {
   color: var(--danger);
   font-size: 0.85rem;
@@ -1514,6 +1563,48 @@ form[data-wb="library-create"] > .form-grid {
   color: var(--muted);
 }
 
+/* Sifting selection state (採用/保留/除外/未分類). Shared by the tray badge
+   (.state-badge.state-sel-*) and the candidate-table <select>
+   (.state-select.state-sel-*), so the row control and the badge read the same:
+   ✔ green = adopted, ⏸ amber = held, ✖ red = rejected, ○ grey = unclassified. */
+.state-select {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 0.22rem 1.6rem 0.22rem 0.6rem;
+}
+
+.state-sel-adopted {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.state-sel-held {
+  background: var(--warm-soft);
+  border-color: var(--warm);
+  color: var(--warm);
+}
+
+.state-sel-rejected {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.state-sel-unclassified {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+/* Option rows keep the neutral popup colours so the list stays legible. */
+.state-select option {
+  background: var(--surface-strong);
+  color: var(--text);
+  font-weight: 400;
+}
+
 .progress-row progress {
   display: block;
   width: 100%;
@@ -1573,6 +1664,15 @@ section[data-wb="job"][data-entry-labels] > p > a[href^="/outputs/"] {
   padding-top: 1.25rem;
 }
 
+.page-shell > section:not([class]) .wb-table {
+  font-size: 0.85rem;
+}
+
+.page-shell > section:not([class]) .wb-table th,
+.page-shell > section:not([class]) .wb-table td {
+  padding: 0.3rem 0.5rem;
+}
+
 .page-shell > .card + p.actions:last-child {
   border-top: 1px solid var(--line);
   margin-top: 0.25rem;
@@ -1580,6 +1680,11 @@ section[data-wb="job"][data-entry-labels] > p > a[href^="/outputs/"] {
 }
 
 .page-shell > .card + p.actions:last-child a {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+p.actions > a[data-quick-start] + a {
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -1715,6 +1820,23 @@ section[data-wb="output"] > article > p[data-field="message"]:empty {
   display: none;
 }
 
+section[data-wb="output"] > article > h3 {
+  font-size: 1.2rem;
+  margin-bottom: 0.6rem;
+}
+
+section[data-wb="output"] article details pre {
+  max-height: 30rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+section[data-wb="generate"] > p:first-child > a {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 section[data-wb="generate"] > form {
   border-top: 1px solid var(--line);
   margin-top: 1.2rem;
@@ -1769,6 +1891,16 @@ details {
   margin-bottom: 1rem;
 }
 
+.editor > summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.editor > button {
+  margin-top: 0.5rem;
+}
+
 [data-wb="library"][data-kind="genre"] .editor > summary {
   cursor: pointer;
   font-weight: 700;
@@ -1778,6 +1910,29 @@ details {
 [data-wb="library"][data-kind="genre"] .editor + .editor {
   border-top: 1px solid var(--line);
   padding-top: 0.8rem;
+}
+
+[data-wb="library"][data-kind="genre"] .editor textarea {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+[data-wb="library"][data-kind="genre"] button[data-action="save-file"] {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  padding: 0.35rem 0.75rem;
+}
+
+[data-wb="library"][data-kind="genre"] .editor [data-save-status],
+[data-wb="library"][data-kind="genre"] .editor .field-error {
+  margin-left: 0.6rem;
+}
+
+[data-wb="library"][data-kind="genre"] .editor [data-save-status] {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 [data-wb="library"][data-kind="genre"] form[data-action="validate"] {
@@ -1915,61 +2070,129 @@ details {
   align-self: start;
 }
 
-/* WB-UI design pass: the config card packs a title, state, picker, plan and
-   CTA into one column — give each group its own line and a divider so it
-   reads as steps, not a wall of text. */
+/* WB-UI design pass 2: the config card reads top-down as heading+state ->
+   which config (picker + its tools) -> how big / how long (headline numbers,
+   the rest folded) -> go. Everything below is scoped under .run-prep. */
 .run-prep > h2 {
-  margin-bottom: 0.75rem;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  margin-bottom: 1rem;
 }
 
-.run-prep > .state-badge {
-  display: inline-flex;
-  margin-bottom: 1.1rem;
+.run-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 }
 
-.run-prep > form[data-wb="run-config"] {
-  margin-bottom: 0.6rem;
+.run-pick > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Native <select>, dressed: appearance:none drops the platform chrome; the
+   chevron is an inline SVG (stroke = --muted's hex, since data: URIs cannot
+   read custom properties). */
+.run-pick > select {
+  appearance: none;
+  background: var(--surface-strong)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2366716d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 0.8rem center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+  overflow: hidden;
+  padding: 0.55rem 2.2rem 0.55rem 0.75rem;
+  text-overflow: ellipsis;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.run-pick > select:hover {
+  border-color: var(--accent);
+}
+
+.run-pick > select:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+.run-prep > form[data-wb="run-config"] noscript .button {
+  margin-top: 0.5rem;
 }
 
 .run-prep > p.actions {
-  border-top: 1px solid var(--line);
-  margin: 0.9rem 0 1.1rem;
-  padding-top: 0.9rem;
+  gap: 0.4rem;
+  margin: 0.55rem 0 0;
 }
 
-.run-prep > p.actions a {
+.run-prep > p.actions > .button {
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  padding: 0.2rem 0.6rem;
 }
 
-.run-prep > dl.run-plan {
+.run-prep > p.actions > .button:hover {
+  color: var(--text);
+}
+
+.run-prep > .run-plan {
   border-top: 1px solid var(--line);
+  margin-top: 1.1rem;
   padding-top: 1rem;
+}
+
+.run-plan > p {
+  margin: 0 0 0.3rem;
+}
+
+.run-size b {
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-eta {
+  font-size: 0.9rem;
+}
+
+.run-plan > details {
+  margin: 0.45rem 0 0;
+}
+
+.run-plan > details > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.run-plan > details > .metric {
+  font-size: 0.88rem;
+  margin-top: 0.5rem;
 }
 
 .run-prep > div[data-wb="start"] {
   border-top: 1px solid var(--line);
-  margin-top: 1.2rem;
-  padding-top: 1.2rem;
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+}
+
+.run-prep > div[data-wb="start"] .button {
+  padding: 0.6rem 0.75rem;
+  text-align: center;
+  width: 100%;
 }
 
 .run-prep > p.muted {
-  margin-top: 0.6rem;
-}
-
-.run-plan {
-  display: grid;
-  gap: 0.35rem 0.8rem;
-  grid-template-columns: max-content 1fr;
-  margin: 0;
-}
-
-.run-plan dt {
-  color: var(--muted);
-}
-
-.run-plan dd {
-  margin: 0;
+  font-size: 0.8rem;
+  margin: 0.5rem 0 0;
 }
 
 .run-vessel {
@@ -2053,8 +2276,18 @@ details {
   margin: 0 0 0.3rem;
 }
 
+[data-vessel="progress"] .run-detail .wb-table {
+  min-width: 0;
+}
+
+[data-vessel="progress"] .run-detail .wb-table th,
+[data-vessel="progress"] .run-detail .wb-table td {
+  padding: 0.35rem 0.5rem;
+}
+
 .qd-map {
   border-collapse: collapse;
+  margin: 0 auto;
   width: auto;
 }
 
@@ -2161,6 +2394,12 @@ details {
   color: var(--text);
 }
 
+[data-vessel="map"] > .metrics {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+}
+
 [data-vessel="exits"] > p.actions {
   border-top: 1px solid var(--line);
   margin: 0.9rem 0 0;
@@ -2243,6 +2482,11 @@ details {
   margin-right: 0.8rem;
 }
 
+[data-wb="candidates"] .detail-row p.detail-links {
+  font-size: 0.9rem;
+  margin: 0.6rem 0 0;
+}
+
 .row-toggle {
   background: transparent;
   border: 1px solid var(--line);
@@ -2250,6 +2494,39 @@ details {
   cursor: pointer;
   font-size: 0.8rem;
   padding: 0.1rem 0.5rem;
+}
+
+[data-wb="tray"] .wb-actions button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.5rem;
+}
+
+[data-wb="candidates"] > p:first-child {
+  margin-bottom: 0.3rem;
+}
+
+[data-wb="candidates"] > p.related {
+  margin-bottom: 0.6rem;
+}
+
+[data-wb="candidates"] > p.warning {
+  background: var(--warm-soft);
+  border-radius: var(--radius-s);
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.7rem;
+}
+
+[data-wb="candidates"] > .grid-wrap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow);
+  margin: 0 0 1rem;
+  padding: 1.25rem;
 }
 
 /* WB-UI design pass: the candidates page's primary "generate" form had no
@@ -2356,7 +2633,12 @@ details {
 }
 
 .tab-panel .character-table {
+  margin-bottom: 1rem;
   margin-top: 1rem;
+}
+
+.tabs-world .tab-panel > p.muted {
+  max-width: 48rem;
 }
 
 .world-summary {
@@ -2466,6 +2748,33 @@ details {
   stroke-opacity: 0.6;
 }
 
+.zone-cost-toggle {
+  align-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.85rem;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+}
+
+.zone-cost-toggle input {
+  accent-color: var(--accent);
+}
+
+.zone-edge-label {
+  display: none;
+  fill: var(--muted);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+}
+
+.zone-graph-wrap:has(.zone-cost-toggle-input:checked) .zone-edge-label {
+  display: block;
+}
+
 .day-cycle {
   display: block;
   height: auto;
@@ -2496,10 +2805,12 @@ details {
   justify-content: center;
 }
 
-/* WB-EXPLAIN-canon / WB-UI-020: canon precedent table (初期物語 tab). */
+/* WB-EXPLAIN-canon / WB-UI-020: canon precedent table (初期物語 tab), laid
+   out as an IF (state columns) -> THEN (定石) decision table rather than a
+   sentence-per-row narrative, so it can't read as a timeline. */
 .canon-table {
   margin: 0.6rem 0 0.6rem;
-  min-width: 0; /* .wb-table's 720px floor would scroll the sentence column away */
+  min-width: 0; /* .wb-table's 720px floor would scroll condition columns away */
   table-layout: fixed;
   width: 100%;
 }
@@ -2509,18 +2820,49 @@ details {
   white-space: normal;
 }
 
-.canon-table th:nth-child(2) {
-  width: 11em;
-}
-
-.canon-table th:last-child {
-  width: 9em;
+/* table-layout:fixed takes column widths from the table's FIRST row only
+   (CSS2.1 17.5.2), which is .canon-groups here, not the field-header row --
+   so the width has to go on that row's THEN cell (定石の行動 + 定石の強さ
+   together, colspan=2), not on a nth-last-child of the field-header row
+   (that row's widths are silently ignored for layout). Splitting the two
+   THEN columns individually would need a <colgroup>, which isn't worth it
+   here -- an even split leaves both columns comfortably sized. */
+.canon-groups th:last-child {
+  width: 20em;
 }
 
 .canon-table .gene-track {
   display: inline-block;
   vertical-align: middle;
   width: 6rem;
+}
+
+.canon-table .tag {
+  margin: 0 0.3rem 0.2rem 0;
+}
+
+.canon-groups th {
+  font-weight: 500;
+  text-align: center;
+}
+
+.canon-groups .canon-then {
+  color: var(--accent);
+}
+
+.canon-table .canon-then {
+  border-left: 2px solid var(--accent);
+}
+
+@media (max-width: 760px) {
+  /* One column per condition leaves too few characters per column on a
+     phone for table-layout:fixed's equal split -- every header wraps to
+     one character per line. Let the table size to its content and scroll
+     horizontally in .grid-wrap instead, same as every other .wb-table. */
+  .canon-table {
+    min-width: 42rem;
+    table-layout: auto;
+  }
 }
 
 /* WB-UI-018: per-character stat sheet (nine initial parameters as bars,
@@ -2654,6 +2996,12 @@ details {
   color: var(--muted);
   font-size: 0.85rem;
   margin: 0;
+}
+
+#output > .desc {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
 }
 
 .cfg-form .rows {
@@ -2844,6 +3192,16 @@ details.cfg-adv .cfg-sec h2 {
   z-index: 4;
 }
 
+/* The bar spans the full viewport, but .cfg-form's own column stops at
+   880px inside .page-shell's (up to 1280px, centered) column -- inset the
+   bar's content to the same edges so the buttons sit above the form, not
+   stranded at the viewport edge on wide screens. */
+.cfg-form .form-actions {
+  --shell-left: max(1.25rem, calc((100vw - 1280px) / 2 + 1.25rem));
+  padding-left: var(--shell-left);
+  padding-right: max(1.25rem, calc(100vw - var(--shell-left) - 880px));
+}
+
 /* WB-UI design pass: /configs embeds the output-settings card inline in a
    list page, not as a full-screen form -- its lone "save" button shouldn't
    hijack the whole viewport as a fixed bar while you're reading the tables
@@ -2887,6 +3245,26 @@ details.cfg-adv .cfg-sec h2 {
 }
 
 .cfg-form .form-actions button[data-action="preview"]:hover {
+  border-color: var(--accent);
+}
+
+.field-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.cfg-form .button-secondary {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.4rem 0.8rem;
+}
+
+.cfg-form .button-secondary:hover {
   border-color: var(--accent);
 }
 

@@ -8,6 +8,9 @@ request was built with.
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+import urllib.error
+import urllib.request
 
 from execution.configs import _integer, _model, generation_availability
 from execution.provenance import ConfigError, atomic_json, read_json
@@ -15,6 +18,77 @@ from gapengine.synopsis import BACKENDS
 
 DEFAULT_BACKEND = "codex-cli"
 LIMIT_FIELDS = ("max_calls", "call_timeout_seconds", "wall_seconds", "max_saved_response_bytes")
+VERIFIED_MODELS_LIMIT = 20
+
+# generation_availability() only checks that an api_key string is non-empty --
+# cheap enough to run on every /configs render and every admission check. A
+# 疎通テスト click is rare and explicit, so it can afford one real read-only
+# call to confirm the *exact model name* is actually visible to that key.
+_MODEL_LIST_ENDPOINTS = {
+    "anthropic": ("https://api.anthropic.com/v1/models",
+                  lambda key: {"x-api-key": key, "anthropic-version": "2023-06-01"}),
+    "openai": ("https://api.openai.com/v1/models",
+               lambda key: {"Authorization": f"Bearer {key}"}),
+}
+
+# The only backends that authenticate with a bare api_key -- the /configs
+# card shows its APIキー field for exactly these.
+API_KEY_BACKENDS = frozenset(_MODEL_LIST_ENDPOINTS)
+
+
+def _fetch_remote_models(backend, section, *, timeout=6.0):
+    """anthropic/openai's own model list for this api_key. (names, reason)."""
+    url, headers_for = _MODEL_LIST_ENDPOINTS[backend]
+    key = str(section.get("api_key", "")).strip()
+    if not key:
+        return [], "credentials_missing"
+    request = urllib.request.Request(url, headers=headers_for(key))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, ValueError):
+        return [], "server_unreachable"
+    names = sorted({entry.get("id") for entry in data.get("data", []) if isinstance(entry, dict) and entry.get("id")})
+    return names, None
+
+
+def _model_reachable(backend, section, model, *, timeout=6.0):
+    """Real round trip for anthropic/openai: is `model` in this key's model list?
+
+    codex-cli/claude-cli already get a genuine check (the executable exists);
+    verifying their exact model name would mean actually invoking the CLI,
+    which costs real time/tokens -- out of scope for a quick test button.
+    Ollama's own generation_availability() probe already lists real models.
+    """
+    if backend not in _MODEL_LIST_ENDPOINTS:
+        return True, None
+    names, reason = _fetch_remote_models(backend, section, timeout=timeout)
+    if reason is not None:
+        return False, reason
+    return (model in names), (None if model in names else "model_missing")
+
+
+def list_models(settings_path, backend):
+    """Models actually selectable for `backend` right now.
+
+    ollama/anthropic/openai have a real "list models" API, so this is a live
+    catalog (live=True) from the configured server/api_key. codex-cli and
+    claude-cli have no such API -- there is no way to enumerate what models
+    they accept short of invoking the CLI itself, so this falls back to
+    whatever 疎通テスト has already confirmed (live=False). "none" needs no
+    model at all.
+    """
+    if not isinstance(backend, str) or backend not in BACKENDS:
+        raise ConfigError("backend", "未対応の生成方式です")
+    section = _section(_read_settings(settings_path), backend)
+    if backend == "ollama":
+        from gapengine import ollama
+        names, reason = ollama.list_models(section)
+        return {"models": names, "live": True, "reason": reason}
+    if backend in _MODEL_LIST_ENDPOINTS:
+        names, reason = _fetch_remote_models(backend, section)
+        return {"models": names, "live": True, "reason": reason}
+    return {"models": _verified_models(section), "live": False, "reason": None}
 
 
 def default_limits(backend):
@@ -45,8 +119,20 @@ def _section(settings, backend):
     return value if isinstance(value, dict) else {}
 
 
+def _verified_models(section):
+    """Models a 疎通テスト has actually confirmed reachable, most-recent first."""
+    raw = section.get("verified_models")
+    if not isinstance(raw, list):
+        return []
+    models = []
+    for item in raw:
+        if isinstance(item, str) and item.strip() and item not in models:
+            models.append(item.strip())
+    return models[:VERIFIED_MODELS_LIMIT]
+
+
 def _backend_view(settings, backend):
-    """One backend's {model, limits}, defaulted and validated leniently.
+    """One backend's {model, limits, verified_models}, defaulted and validated leniently.
 
     This feeds display (the /configs card) as well as resolution, so a
     malformed value quietly falls back to the default instead of failing the
@@ -67,7 +153,9 @@ def _backend_view(settings, backend):
             limits[key] = _integer(raw_limits.get(key, default), "limits." + key, minimum)
         except ConfigError:
             limits[key] = default
-    return {"model": model, "limits": limits}
+    has_api_key = bool(str(section.get("api_key", "")).strip())
+    return {"model": model, "limits": limits, "verified_models": _verified_models(section),
+            "has_api_key": has_api_key}
 
 
 def _default_backend(settings):
@@ -94,6 +182,75 @@ def resolve_generation(settings_path):
 def current_generation(settings_path):
     generation = resolve_generation(settings_path)
     return {**generation, "availability": generation_availability(generation, settings_path)}
+
+
+def _remember_verified_model(settings_path, backend, model):
+    settings = _read_settings(settings_path)
+    output = settings.get("output")
+    output = deepcopy(output) if isinstance(output, dict) else {}
+    section = output.get(backend)
+    section = dict(section) if isinstance(section, dict) else {}
+    models = _verified_models(section)
+    if model in models:
+        models.remove(model)
+    section["verified_models"] = [model] + models[:VERIFIED_MODELS_LIMIT - 1]
+    output[backend] = section
+    settings["output"] = output
+    atomic_json(settings_path, settings)
+
+
+def write_api_key(settings_path, backend, api_key):
+    """Store an api_key for a backend that needs one (anthropic/openai only).
+
+    Write-only: read_output_settings()/_backend_view() only ever expose
+    whether a key is set (has_api_key), never the value itself.
+    """
+    if settings_path is None:
+        raise ConfigError("settings", "設定ファイルの場所が未設定です")
+    if not isinstance(backend, str) or backend not in _MODEL_LIST_ENDPOINTS:
+        raise ConfigError("backend", "この生成方式は api_key を使いません")
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise ConfigError("api_key", "APIキーを入力してください")
+    settings = _read_settings(settings_path)
+    output = settings.get("output")
+    output = deepcopy(output) if isinstance(output, dict) else {}
+    section = output.get(backend)
+    section = dict(section) if isinstance(section, dict) else {}
+    section["api_key"] = api_key.strip()
+    output[backend] = section
+    settings["output"] = output
+    atomic_json(settings_path, settings)
+
+
+def test_generation(settings_path, backend, model):
+    """Probe backend/model connectivity without changing the active selection.
+
+    On success the model is remembered as "verified" for this backend, so it
+    shows up as a pickable option next time (the /configs card's datalist).
+    """
+    if settings_path is None:
+        raise ConfigError("settings", "設定ファイルの場所が未設定です")
+    if not isinstance(backend, str) or backend not in BACKENDS:
+        raise ConfigError("backend", "未対応の生成方式です")
+    if backend == "none":
+        model = None
+    else:
+        try:
+            model = _model(model)
+        except ConfigError as error:
+            raise ConfigError("model", "モデル名を明示してください") from error
+        if model is None:
+            raise ConfigError("model", "モデルを指定してください")
+    generation = {"backend": backend, "model": model, "limits": default_limits(backend)}
+    availability = generation_availability(generation, settings_path)
+    if availability["available"] and model and backend in _MODEL_LIST_ENDPOINTS:
+        section = _section(_read_settings(settings_path), backend)
+        reachable, reason = _model_reachable(backend, section, model)
+        if not reachable:
+            availability = {**availability, "available": False, "reason": reason}
+    if availability["available"] and model:
+        _remember_verified_model(settings_path, backend, model)
+    return availability
 
 
 def write_output_settings(settings_path, changes):

@@ -15,10 +15,10 @@ StorySim（同作者の別プロジェクト。世界と人物をシミュレー
 - Python 3.11 以上（開発は 3.13）
 - `pip install -r requirements.txt`（PyYAML のみ）
 
-あらすじ・本文の生成に LLM を使う場合（任意）。既定はローカルの Ollama＋Qwen3.5:
+あらすじ・本文の生成に LLM を使う場合（任意）。既定はローカルの Ollama＋Qwen3.6:
 
 1. [Ollama](https://ollama.com) をインストール
-2. `ollama pull qwen3.5:9b-q4_K_M`（約6.6GB。VRAM 8GBで動作確認済み）
+2. `ollama pull qwen3.6:35b`（35B-A3B MoE、約22GB。VRAM 8GBでも大半がCPUオフロードされつつ約22 tok/sで動作確認済み）
 
 代替として `claude-cli` / `codex-cli` / Anthropic API / OpenAI API のいずれかも選べます（`--backend` で切り替え）。
 
@@ -38,7 +38,7 @@ pip install -r requirements.txt
 {
   "output": {
     "ollama": {
-      "model": "qwen3.5:9b-q4_K_M",
+      "model": "qwen3.6:35b",
       "base_url": "http://localhost:11434",
       "think": false,
       "options": {"num_ctx": 16384, "num_predict": 4096}
@@ -47,7 +47,7 @@ pip install -r requirements.txt
 }
 ```
 
-`options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は Qwen3.5 の思考トークンを抑えるため既定で `false`。`settings.json` は `.gitignore` 対象（APIキーを含み得るため）。
+`options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は Qwen3.6 の思考トークンを抑えるため既定で `false`。`settings.json` は `.gitignore` 対象（APIキーを含み得るため）。
 
 ### (c) サンプルをビューアで見る
 
@@ -66,7 +66,7 @@ python scripts/evolve.py --project projects/momotaro --template templates/momota
   --out <出力先>/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
 ```
 
-所要時間の目安: 20コアで約1時間（実測: exp12 が6プロセスで約70分）。出力先はリポジトリ外を推奨（`.gitignore` は `runs/` を無視するが、リポジトリ内に大量の実験出力を置くべきではない）。`--project` / `--template` は `momotaro` / `detective` / `romance` の3ジャンルを同梱。
+所要時間の目安: 20コアで約1時間（実測: exp12 が6プロセスで約70分。計測は2026-09-14時点のコードに基づくため、その後のGA/ビューア側の性能改善（WB-OPT-001〜003）で実際はこれより速くなっている可能性がある）。出力先はリポジトリ外を推奨（`.gitignore` は `runs/` を無視するが、リポジトリ内に大量の実験出力を置くべきではない）。`--project` / `--template` は `momotaro` / `detective` / `romance` の3ジャンルを同梱。
 
 ### (e) あらすじ化・本文化
 

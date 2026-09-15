@@ -75,10 +75,14 @@ class WorldGraphTests(unittest.TestCase):
     def test_zone_svg_structure(self) -> None:
         world_yaml = self._world_yaml()
         svg = world_graph.zone_svg(world_yaml["zones"], world_yaml["routes"])
+        self.assertIn('class="zone-cost-toggle-input" checked', svg)
         self.assertIn('<svg class="relation-graph zone-graph"', svg)
         self.assertEqual(svg.count('class="node'), 5)
-        # 海<->鬼ヶ島 is the only routed pair carrying a cost/requires_item.
+        # 海<->鬼ヶ島 is the only routed pair with an explicit cost/item, but
+        # every other hop still shows the engine's default cost of 1.
         self.assertIn("要: 船", svg)
+        self.assertIn("移動コスト 1", svg)
+        self.assertIn("移動コスト 4", svg)
 
     def test_zone_svg_is_deterministic(self) -> None:
         world_yaml = self._world_yaml()
@@ -117,10 +121,26 @@ class WorldGraphTests(unittest.TestCase):
         canon = self._genre_yaml("canon.yaml")
         table = world_graph.canon_table_html(canon)
         self.assertIn('<table class="wb-table canon-table">', table)
-        self.assertEqual(table.count("<tr>"), len(canon["entries"]) + 1)  # +1 header row
+        self.assertEqual(table.count("<tr>"), len(canon["entries"]) + 1)  # +1 field-header row
+        # Each varying ctx field is its own column now (decision table, not
+        # a one-sentence-per-row narrative), grouped under an IF/THEN header.
+        self.assertIn('<tr class="canon-groups">', table)
+        # The IF group's colspan must track the varying-field count (3 here:
+        # phase/hostile_present/objective) -- this is the one structural
+        # invariant that could silently drift out of sync with cond_headers.
+        self.assertIn('<th colspan="3">この状況のとき</th>', table)
+        self.assertIn(">この状況のとき<", table)
+        self.assertIn(">ふつうこうする（定石）<", table)
+        self.assertIn(">これまでの出来事<", table)
+        self.assertIn(">敵の有無<", table)
+        self.assertIn(">目的の品の所在<", table)
+        self.assertNotIn("進行度", table)  # not a percentage/degree -- a list of past beats
         # ctx.phase=[出発, 越境] + act.verb=fight should read as Japanese text,
-        # not raw YAML tokens.
-        self.assertIn("出発・越境のあと、敵が目の前にいる、目的の品を敵が持っている", table)
+        # not raw YAML tokens, split across the condition columns rather than
+        # folded into one sentence.
+        self.assertIn('<span class="tag">出発</span><span class="tag">越境</span>', table)
+        self.assertIn("目の前にいる", table)
+        self.assertIn("敵が持っている", table)
         self.assertIn("戦った（相手: 敵対相手）", table)
         # WB-UI-020: vitality=alive is the default everywhere (dropped),
         # stance=hostile is constant but not the default (footnote), and n
@@ -132,6 +152,16 @@ class WorldGraphTests(unittest.TestCase):
 
     def test_canon_table_html_empty(self) -> None:
         self.assertIn("正典データがありません", world_graph.canon_table_html({}))
+
+    def test_canon_table_html_single_entry_falls_back_to_generic_situation(self) -> None:
+        # A single entry has no other row to vary against, so every ctx
+        # field's value-set has exactly one member -- the varying=[] branch
+        # (no per-field columns, one generic 状況 column) must still render.
+        canon = {"entries": [{"ctx": {"stance": "hostile"}, "act": {"verb": "move"}, "n": 1}]}
+        table = world_graph.canon_table_html(canon)
+        self.assertIn('<th colspan="1">この状況のとき</th>', table)
+        self.assertIn("<th>状況</th>", table)
+        self.assertIn('<td class="muted">どんな状況でも</td>', table)
 
     def test_character_readout_html_surfaces_the_oni_kanabo_story(self) -> None:
         # 鬼's 金棒 (kanabo) is a hidden +40 strength modifier that 桃太郎
