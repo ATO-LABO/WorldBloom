@@ -251,14 +251,6 @@ def _period_panel(world_yaml):
     )
 
 
-def _experiments_card(repository, world_name, job_store):
-    return (
-        '<section class="card" id="experiments"><h2>この世界の実験</h2>'
-        + pages.world_runs_block(repository, world_name, job_store)
-        + "</section>"
-    )
-
-
 def _editor_group(store, world, job_store):
     if job_store is None:
         return '<p class="library-note">編集・検証には <code>--control</code> 付きで起動してください。</p>'
@@ -309,12 +301,14 @@ def render_world_detail(repository, world, store, job_store):
     world_yaml = _world_yaml_mapping(store.repo, world["id"])
     subjects = world_graph.load_subjects(store.repo / "projects" / world["id"])
     world_name = str(world["name"] or world["id"])
+    runs_html, run_count = pages.world_runs_block(repository, world_name, job_store)
     panels = [
         ("概要", _overview_panel(world, subjects)),
         ("登場人物", _characters_panel(world, world_yaml, subjects, store)),
         ("初期物語", _canon_panel(world, subjects, store)),
         ("場所", _places_panel(world_yaml)),
         ("期間", _period_panel(world_yaml)),
+        (f"実行履歴 ({run_count})", '<div id="experiments">' + runs_html + "</div>"),
     ]
     overview_card = (
         '<section class="card">'
@@ -322,11 +316,7 @@ def render_world_detail(repository, world, store, job_store):
         + pages.tabs("world", panels)
         + "</section>"
     )
-    return (
-        overview_card
-        + _experiments_card(repository, world_name, job_store)
-        + _editor_group(store, world, job_store)
-    )
+    return overview_card + _editor_group(store, world, job_store)
 
 
 def render_genre_detail(genre, contents, worlds):

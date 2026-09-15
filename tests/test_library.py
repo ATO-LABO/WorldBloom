@@ -16,8 +16,10 @@ import unittest
 import yaml
 
 from execution.configs import ConfigStore
+from execution.jobs import JobStore
 from execution.library import LibraryStore
-from execution.provenance import ConfigError
+from execution.output_store import OutputStore
+from execution.provenance import ConfigError, sha256
 from viewer.data import RunRepository
 from viewer.server import ViewerHandler, ViewerServer
 
@@ -237,9 +239,10 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         # panel's content is present somewhere in the flat HTML.
         status, body = self.get("/worlds/momotaro")
         self.assertEqual(status, 200, body)
-        self.assertEqual(body.count('class="tab-input"'), 5)
+        self.assertEqual(body.count('class="tab-input"'), 6)
         for index, label in enumerate(["概要", "登場人物", "初期物語", "場所", "期間"]):
             self.assertIn(f'<label class="tab-label" for="tab-world-{index}">{label}</label>', body)
+        self.assertIn('<label class="tab-label" for="tab-world-5">実行履歴 (', body)
         self.assertIn('class="relation-graph zone-graph"', body)
         self.assertIn('class="day-cycle"', body)
         self.assertIn('class="calendar-grid"', body)
@@ -286,6 +289,134 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertEqual(status, 200, payload)
         self.assertEqual(payload["world_name"], "桃太郎")
         self.assertEqual(payload["subjects"], 7)
+
+
+class RunDeleteTests(unittest.TestCase):
+    """execution.jobs.JobStore.delete_run and its POST /exp/<name>/delete
+    route: cascade-deletes a run's job records, generated outputs and
+    selections/legacy registration along with the run folder itself."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-run-delete-")
+        self.addCleanup(self.temp.cleanup)
+        self.base = Path(self.temp.name)
+        self.repo = self.base / "repo"
+        self.repo.mkdir()
+        for name in ("projects", "templates"):
+            shutil.copytree(ROOT / name, self.repo / name)
+        self.control = self.base / "control"
+        self.runs = self.base / "runs"
+        self.runs.mkdir()
+        self.configs = ConfigStore(self.repo, self.control, self.runs)
+        self.jobs = JobStore(self.configs)
+
+        self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
+        self.server.repository = RunRepository(self.runs, control_root=self.control, jobs=self.jobs)
+        self.server.job_store = self.jobs
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+        thread.start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def http(self, method, path, *, client_header=True):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        headers = {"X-WorldBloom-Client": "1"} if client_header else {}
+        try:
+            conn.request(method, path, headers=headers)
+            response = conn.getresponse()
+            raw = response.read()
+            try:
+                payload = json.loads(raw) if raw else None
+            except json.JSONDecodeError:
+                # _parts() rejects a traversal-ish segment (e.g. "..") before
+                # routing, via BaseHTTPRequestHandler.send_error()'s HTML body.
+                payload = raw.decode("utf-8", "replace")
+            return response.status, payload
+        finally:
+            conn.close()
+
+    def _write_legacy_run(self, name):
+        experiment = self.runs / name
+        experiment.mkdir()
+        (experiment / "archive.json").write_text(json.dumps({"cells": {}}), encoding="utf-8")
+        (self.runs / f"{name}.log").write_text("log", encoding="utf-8")
+        return experiment
+
+    def _write_job(self, job_id, *, run_id, state):
+        folder = self.control / "jobs" / job_id
+        folder.mkdir(parents=True)
+        (folder / "worker.py").write_bytes(b"")
+        request_bytes = json.dumps({"request_id": job_id, "kind": "evolve", "config_id": "cfg-x"}).encode("utf-8")
+        (folder / "request.json").write_bytes(request_bytes)
+        job = {"job_id": job_id, "entrypoint": str((folder / "worker.py").resolve()),
+               "request_hash": sha256(request_bytes), "run_id": run_id, "state": state, "kind": "evolve"}
+        (folder / "job.json").write_text(json.dumps(job), encoding="utf-8")
+        return folder
+
+    def _write_output(self, output_id, *, run_id):
+        request = {"output_id": output_id, "candidate_ids": ["cand-1"], "run_id": run_id,
+                   "limits": {"max_calls": 1, "call_timeout_seconds": 30, "wall_seconds": 60,
+                              "max_saved_response_bytes": 1024}}
+        OutputStore(self.configs.control).create(request, {"cand-1": "prompt text"})
+        return self.control / "outputs" / output_id
+
+    def test_delete_legacy_run_cascades(self):
+        name = "legacy-run-1"
+        self._write_legacy_run(name)
+        rid = self.server.repository.catalog.register_legacy(name)
+        legacy_dir = self.control / "legacy" / rid
+        self.assertTrue(legacy_dir.is_dir())
+
+        status, payload = self.http("POST", f"/exp/{name}/delete")
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload, {"deleted": name, "run_id": rid})
+        self.assertFalse((self.runs / name).exists())
+        self.assertFalse((self.runs / f"{name}.log").exists())
+        self.assertFalse(legacy_dir.exists())
+        self.assertNotIn(rid, {r["run_id"] for r in self.server.repository.catalog.history()})
+
+    def test_delete_manifest_run_removes_job_and_output(self):
+        name = "run-x"
+        experiment = self.runs / name
+        experiment.mkdir()
+        (experiment / "manifest.json").write_text(json.dumps({"run_id": name}), encoding="utf-8")
+        job_folder = self._write_job("job-" + sha256(b"job-run-x"), run_id=name, state="succeeded")
+        output_folder = self._write_output("out-" + sha256(b"output-run-x")[:32], run_id=name)
+
+        status, payload = self.http("POST", f"/exp/{name}/delete")
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload, {"deleted": name, "run_id": name})
+        self.assertFalse(experiment.exists())
+        self.assertFalse(job_folder.exists())
+        self.assertFalse(output_folder.exists())
+
+    def test_delete_run_with_active_job_conflicts(self):
+        name = "run-active"
+        experiment = self.runs / name
+        experiment.mkdir()
+        (experiment / "manifest.json").write_text(json.dumps({"run_id": name}), encoding="utf-8")
+        job_folder = self._write_job("job-" + sha256(b"job-run-active"), run_id=name, state="running")
+
+        status, payload = self.http("POST", f"/exp/{name}/delete")
+        self.assertEqual(status, 409, payload)
+        self.assertTrue(experiment.exists())
+        self.assertTrue(job_folder.exists())
+
+    def test_delete_run_requires_client_header(self):
+        name = "legacy-run-2"
+        self._write_legacy_run(name)
+        status, payload = self.http("POST", f"/exp/{name}/delete", client_header=False)
+        self.assertEqual(status, 403, payload)
+        self.assertTrue((self.runs / name).exists())
+
+    def test_delete_unknown_run_is_404(self):
+        status, payload = self.http("POST", "/exp/no-such-run/delete")
+        self.assertEqual(status, 404, payload)
+
+    def test_delete_run_rejects_path_traversal(self):
+        status, payload = self.http("POST", "/exp/../delete")
+        self.assertGreaterEqual(status, 400)
+        self.assertLess(status, 500)
 
 
 class LibraryGuidanceTests(unittest.TestCase):

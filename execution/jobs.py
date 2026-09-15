@@ -8,6 +8,7 @@ import hashlib
 import os
 from pathlib import Path
 import secrets
+import shutil
 import subprocess
 import sys
 import time
@@ -310,6 +311,45 @@ class JobStore:
             except (OSError, ValueError, KeyError, TypeError):
                 listed.append({"output_id": p.name, "error": {"code": "storage_error", "message": "保存済み生成記録を処理できません"}})
         return listed
+
+    def delete_run(self, name):
+        if not isinstance(name, str) or not name or name in (".", "..") or any(c in name for c in "/\\\0"):
+            raise ConfigError("run_id", "実行名が正しくありません")
+        root = contained(self.configs.runs, name)
+        if not root.is_dir():
+            raise ConfigError("run_id", "実行がありません", code="not_found")
+        # RunCatalog hashes the resolved runs root; contained() does not resolve.
+        rid = name if (root / "manifest.json").is_file() else "legacy-" + sha256(
+            str(Path(self.configs.runs).resolve() / name).encode("utf-8"))
+        with self._lock():
+            matching = [job for job in self._all() if job["run_id"] == rid]
+            for job in matching:
+                if self._reconcile(job)["state"] not in worker.TERMINAL:
+                    raise ConfigError("run_id", "実行中の実験は削除できません", code="conflict")
+            for job in matching:
+                shutil.rmtree(self._folder(job["job_id"]))
+            from execution.output_store import OutputStore
+            outputs = OutputStore(self.configs.control)
+            if outputs.root.exists():
+                for folder in sorted(outputs.root.iterdir()):
+                    if not (folder.is_dir() and folder.name.startswith("out-")):
+                        continue
+                    try:
+                        request = outputs.request(folder.name)
+                    except (ConfigError, OSError, ValueError, KeyError, TypeError):
+                        continue
+                    if request.get("run_id") == rid:
+                        shutil.rmtree(folder)
+            for base in (contained(self.configs.control, "selections"), contained(self.configs.control, "legacy")):
+                target = contained(base, rid)
+                if target.is_dir():
+                    shutil.rmtree(target)
+            shutil.rmtree(root)
+            for suffix in (".log", ".done"):
+                sibling = self.configs.runs / (name + suffix)
+                if sibling.exists():
+                    sibling.unlink()
+        return {"deleted": name, "run_id": rid}
 
     def assert_run_idle(self, run_id):
         if not self.root.exists():

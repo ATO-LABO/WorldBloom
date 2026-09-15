@@ -94,9 +94,10 @@ class ViewerPageTests(unittest.TestCase):
         # The home dashboard no longer lists individual runs (WB-UI-016):
         # it shows the world with a run count, and the run itself only
         # appears inside that world's own "この世界の実験" block.
-        block = pages.world_runs_block(self.repository, "桃太郎", None)
+        block, _count = pages.world_runs_block(self.repository, "桃太郎", None)
         self.assertIn("その他の短いラン", block)
         self.assertIn("exp-viewer", block)
+        self.assertNotIn("run-delete", block)  # no delete button without --control
 
         rendered = pages.index_page(self.repository)
         self.assertIn("桃太郎", rendered)
