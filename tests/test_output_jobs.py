@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 from execution.jobs import JobStore
+from execution.output_settings import resolve_generation
 from execution.output_store import OutputStore
 from execution.output_requests import normalize, admit, prepare, eligible
 from execution.provenance import ConfigError, atomic_json, canonical, read_json, sha256
@@ -38,6 +39,8 @@ class OutputJobTests(unittest.TestCase):
     def setUp(self):
         support.JobTests.setUp(self)
         shutil.copytree(ROOT / "viewer", self.repo / "viewer", ignore=shutil.ignore_patterns("__pycache__"))
+        self.settings_path = self.base / "settings.json"
+        self.set_generation("none")
         self.configs.runs.mkdir(exist_ok=True)
         self.run = self.configs.runs / "legacy-fixture"
         self.run.mkdir()
@@ -56,14 +59,25 @@ class OutputJobTests(unittest.TestCase):
             [{"candidate_id": cid, "state": "adopted"} for cid in self.ids], expected_revision=0)
         self.outputs = OutputStore(self.configs.control)
 
+    def set_generation(self, backend, model=None, limits=None):
+        """Rewrite the test's own settings.json -- WB-UI-021's single source
+        of generation config, replacing the old per-config "generation" spec.
+        """
+        section = {"model": model} if backend != "none" else {}
+        if limits is not None:
+            section["limits"] = limits
+        payload = {"output": {"default_backend": backend}}
+        if section:
+            payload["output"][backend] = section
+        atomic_json(self.settings_path, payload)
+
     def request(self, rid="req-output", kind="synopsize", config="cfg-test", **changes):
-        cfg = self.configs.get(config)
         return {"request_id": rid, "kind": kind, "config_id": config, "run_id": self.rid,
             "selection_revision": self.sel["revision"], "candidate_ids": self.ids,
-            **cfg["generation"], "mode": "missing_or_failed", **changes}
+            **resolve_generation(self.settings_path), "mode": "missing_or_failed", **changes}
 
     def start(self, request=None):
-        return self.jobs.submit(request or self.request())[0]
+        return self.jobs.submit(request or self.request(), settings_path=self.settings_path)[0]
 
     def finish(self, job):
         end = self.wait_state(job["job_id"], worker.TERMINAL)
@@ -89,8 +103,8 @@ class OutputJobTests(unittest.TestCase):
             source += f"    if request['candidate_id'] == {self.ids[-1]!r}: time.sleep(300)\n"
         source += f"    return Response({canonical({"status":"completed","output":[{"content":[{"type":"output_text","text":TEXT}]}]})!r})\n"
         path.write_text(source, encoding="utf-8")
-        return self.configs.duplicate("cfg-test", {"generation":{"backend":"openai", "model":"fixture-model", "limits":{
-            "max_calls": 2, "call_timeout_seconds": 10, "wall_seconds": 60, "max_saved_response_bytes": 4096}}}, new_id="cfg-live")
+        self.set_generation("openai", "fixture-model", {"max_calls": 2, "call_timeout_seconds": 10,
+            "wall_seconds": 60, "max_saved_response_bytes": 4096})
 
     def launch_fixture(self, request):
         with patch("execution.output_requests.generation_availability", return_value={"available":True}):
@@ -100,7 +114,7 @@ class OutputJobTests(unittest.TestCase):
         before = {p.name: p.read_bytes() for p in self.run.iterdir() if p.is_file()}
         req = self.request()
         with ThreadPoolExecutor(2) as pool:
-            results = list(pool.map(lambda _: self.jobs.submit(req), range(2)))
+            results = list(pool.map(lambda _: self.jobs.submit(req, settings_path=self.settings_path), range(2)))
         self.assertEqual(sum(created for _, created in results), 1)
         job = results[0][0]
         end = self.finish(job)
@@ -108,7 +122,7 @@ class OutputJobTests(unittest.TestCase):
         self.assertEqual(end["counts"], {"prompt_only":2})
         other = JobStore(self.configs)
         for _ in range(2):
-            same, created = other.submit(req)
+            same, created = other.submit(req, settings_path=self.settings_path)
             self.assertFalse(created)
             self.assertEqual(same["output_id"], job["output_id"])
             self.assertEqual(other.output(job["output_id"])["counts"], {"prompt_only":2})
@@ -132,13 +146,47 @@ class OutputJobTests(unittest.TestCase):
             self.start(self.request(kind="narrate"))
         self.assertEqual(list(self.jobs.root.glob("job-*")), [])
 
+    def test_admission_rejects_settings_changed_after_request_built(self):
+        # WB-UI-021 review item 1: a request frozen at page-render time (still
+        # holding the old backend/model/limits) must be rejected -- not
+        # silently admitted under today's settings.json -- once the operator
+        # has since changed 文章生成 on /configs.
+        req = self.request()
+        self.set_generation("openai", "changed-model")
+        with self.assertRaises(ConfigError) as caught:
+            self.start(req)
+        self.assertEqual(caught.exception.code, "conflict")
+        self.assertEqual(caught.exception.field_errors,
+            {"backend": "文章生成の設定が変更されています。画面を開き直してください"})
+        self.assertEqual(list(self.jobs.root.glob("job-*")), [])
+
+    def test_http_admission_conflict_when_settings_changed_is_409(self):
+        server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
+        server.repository = RunRepository(self.configs.runs)
+        server.job_store = self.jobs
+        server.settings_path = self.settings_path
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+        req = self.request()
+        self.set_generation("openai", "changed-model")
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=10)
+        conn.request("POST", "/api/jobs", body=json.dumps(req),
+            headers={"Content-Type": "application/json", "X-WorldBloom-Client": "1"})
+        response = conn.getresponse()
+        status = response.status
+        data = json.loads(response.read())
+        conn.close()
+        self.assertEqual(status, 409, data)
+        self.assertEqual(data["code"], "conflict")
+        self.assertEqual(list(self.jobs.root.glob("job-*")), [])
+
     def test_frozen_input_and_legacy_prompt_bytes_for_two_genres(self):
         from gapengine.qd import read_rows
         from gapengine.synopsis import load_world_meta, build_synopsis_prompt, build_narration_prompt
         from gapengine.scenes import extract_scenes
         for genre in ("romance", "detective"):
-            cfg = self.configs.save({"label":genre, "project_id":genre, "template_id":genre,
-                "generation":{"backend":"none"}}, config_id="cfg-"+genre)
+            cfg = self.configs.save({"label":genre, "project_id":genre, "template_id":genre},
+                config_id="cfg-"+genre)
             for kind in ("synopsize", "narrate"):
                 req = self.request(genre+"-"+kind, kind=kind, config=cfg["config_id"], mode="regenerate")
                 job = self.start(req)
@@ -157,7 +205,7 @@ class OutputJobTests(unittest.TestCase):
 
     def test_success_preserved_new_version_and_explicit_unknown_retry(self):
         self.fixture_transport("mixed")
-        job = self.launch_fixture(self.request(config="cfg-live"))
+        job = self.launch_fixture(self.request())
         end = self.finish(job)
         self.assertEqual((end["state"],end["completion_kind"]),("partial","partial_unknown"), end)
         first = self.jobs.output(job["output_id"])
@@ -166,11 +214,11 @@ class OutputJobTests(unittest.TestCase):
         before = (self.outputs.folder(job["output_id"]) / successful["text_ref"]).read_bytes()
         with patch("execution.output_requests.generation_availability", return_value={"available":True}):
             with self.assertRaises(ConfigError):
-                self.start(self.request("no-repeat", config="cfg-live"))
+                self.start(self.request("no-repeat"))
             for attempts in ([], ["attempt-wrong"]):
                 with self.assertRaises(ConfigError):
-                    self.start(self.request("bad-ack", config="cfg-live", acknowledge_unknown=True, attempt_ids=attempts))
-            second = self.start(self.request("confirmed", config="cfg-live", candidate_ids=[unknown["candidate_id"]],
+                    self.start(self.request("bad-ack", acknowledge_unknown=True, attempt_ids=attempts))
+            second = self.start(self.request("confirmed", candidate_ids=[unknown["candidate_id"]],
                 acknowledge_unknown=True, attempt_ids=[unknown["attempt_id"]]))
         self.finish(second)
         self.assertNotEqual(second["output_id"], job["output_id"])
@@ -182,7 +230,7 @@ class OutputJobTests(unittest.TestCase):
         for crash in (False, True):
             marker = self.base / "descendant.json"
             if marker.exists(): marker.unlink()
-            job = self.launch_fixture(self.request("crash" if crash else "stop", config="cfg-live", mode="regenerate"))
+            job = self.launch_fixture(self.request("crash" if crash else "stop", mode="regenerate"))
             support.until(marker.exists)
             identity = worker.process_identity(read_json(marker)["pid"])
             self.identities.append(identity)
@@ -211,6 +259,7 @@ class OutputJobTests(unittest.TestCase):
         server = ViewerServer(("127.0.0.1",0), ViewerHandler)
         server.repository = RunRepository(self.configs.runs)
         server.job_store = self.jobs
+        server.settings_path = self.settings_path
         thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
         self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
         def call(method, path, body=None, extra=None):
@@ -246,7 +295,7 @@ class OutputJobTests(unittest.TestCase):
 
     def test_runtime_and_input_snapshots_are_used_and_selection_stays_locked(self):
         self.fixture_transport("ok", delay=2)
-        job=self.launch_fixture(self.request(config="cfg-live"))
+        job=self.launch_fixture(self.request())
         support.until(lambda:self.jobs.get(job["job_id"])["phase"] == "generating")
         with self.assertRaises(ConfigError):
             self.selection.update(self.rid,[{"candidate_id":self.ids[0],"state":"held"}],expected_revision=1)
@@ -267,9 +316,9 @@ class OutputJobTests(unittest.TestCase):
 
     def test_wall_limit_stops_started_call_and_keeps_unstarted_as_limit(self):
         self.fixture_transport("ok",delay=30)
-        self.configs.duplicate("cfg-live",{"generation":{"limits":{"max_calls":2,"call_timeout_seconds":10,
-            "wall_seconds":12,"max_saved_response_bytes":4096}}},new_id="cfg-wall")
-        job=self.launch_fixture(self.request(config="cfg-wall"))
+        self.set_generation("openai","fixture-model",{"max_calls":2,"call_timeout_seconds":10,
+            "wall_seconds":12,"max_saved_response_bytes":4096})
+        job=self.launch_fixture(self.request())
         end=self.finish(job)
         self.assertEqual(end["state"],"failed",end)
         doc=self.jobs.output(job["output_id"],recover=True)
@@ -278,9 +327,9 @@ class OutputJobTests(unittest.TestCase):
 
     def test_wall_limit_after_first_success_is_partial_and_keeps_wall_timeout(self):
         self.fixture_transport("slow_second")
-        self.configs.duplicate("cfg-live",{"generation":{"limits":{"max_calls":2,"call_timeout_seconds":120,
-            "wall_seconds":25,"max_saved_response_bytes":4096}}},new_id="cfg-wall-partial")
-        job=self.launch_fixture(self.request(config="cfg-wall-partial"))
+        self.set_generation("openai","fixture-model",{"max_calls":2,"call_timeout_seconds":120,
+            "wall_seconds":25,"max_saved_response_bytes":4096})
+        job=self.launch_fixture(self.request())
         end=support.until(lambda:(j if (j:=self.jobs.get(job["job_id"]))["state"] in worker.TERMINAL else None),timeout=60)
         support.until(lambda:worker.output_tree_stopped(self.jobs._read(job["job_id"])),timeout=60)
         self.assertEqual((end["state"],end["completion_kind"]),("partial","partial_unknown"),end)
@@ -306,8 +355,7 @@ class OutputJobTests(unittest.TestCase):
         source=make_reaching_project(self.base)
         shutil.copytree(source,self.repo/"projects"/"reaching")
         cfg=self.configs.save({"label":"real-ga", "project_id":"reaching", "template_id":"momotaro",
-            "evolution":{"generations":2,"population":2,"seeds":1,"keep":"all"},
-            "generation":{"backend":"none"}},config_id="cfg-reaching")
+            "evolution":{"generations":2,"population":2,"seeds":1,"keep":"all"}},config_id="cfg-reaching")
         ga=self.jobs.submit({"request_id":"real-ga","kind":"evolve","config_id":cfg["config_id"]})[0]
         end=self.finish(ga);self.assertEqual(end["state"],"succeeded",end)
         self.rid=ga["run_id"]

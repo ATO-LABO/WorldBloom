@@ -105,9 +105,11 @@ class WorkbenchTests(unittest.TestCase):
         self.configs = ConfigStore(ROOT, self.control, self.runs)
         self.configs.save({
             "label": "wb", "project_id": "romance", "template_id": "romance",
-            "generation": {"backend": "none"},
             "evolution": {"generations": 1, "population": 1, "seeds": 1},
         }, config_id="cfg-test")
+        # WB-UI-021: a private, writable settings.json -- never the real repo's
+        # (the /api/settings/output round trip below actually writes to it).
+        self.settings_path = self.base / "settings.json"
         self.fake = FakeJobStore(self.configs)
         self.server = self._start_server(job_store=self.fake, control=self.control)
         # A test that launches a real supervisor process (test_candidates_running_lock_via_http)
@@ -132,7 +134,7 @@ class WorkbenchTests(unittest.TestCase):
             server.repository = RunRepository(self.runs)
         if job_store is not None:
             server.job_store = job_store
-        server.settings_path = ROOT / "settings.json"
+        server.settings_path = self.settings_path
         thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
         thread.start()
         # LIFO cleanup order: shutdown() (stop the poll loop) must run before
@@ -227,11 +229,23 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("wb", body)
         self.assertIn("cfg-test", body)
 
+        # WB-UI-021: /configs carries the single 文章生成 card, defaulted from
+        # an absent settings.json (DEFAULT_BACKEND = codex-cli).
+        self.assertIn('<section class="card" id="output">', body)
+        self.assertIn('data-wb="output-settings"', body)
+        self.assertIn(
+            'type="radio" id="f-backend-codex-cli" name="backend" value="codex-cli" '
+            'data-field="backend" checked',
+            body,
+        )
+
         status, body, _ = self.get_status("/configs/cfg-test")
         self.assertEqual(status, 200, body)
         self.assertIn("予定評価数", body)
         self.assertIn("編集不可", body)
-        self.assertIn("prompt_only", body)
+        # WB-UI-021: generation moved off the execution config entirely --
+        # nothing about it is shown on the config detail page any more.
+        self.assertNotIn("生成設定", body)
 
         status, body, _ = self.get_status("/configs/absent")
         self.assertEqual(status, 404, body)
@@ -245,13 +259,14 @@ class WorkbenchTests(unittest.TestCase):
             "evolution.seed_base", "evolution.ga_seed", "evolution.processes",
             "evolution.keep", "evolution.coevolve", "evolution.meta_evolution",
             "evolution.record_explanations", "evolution.target_ending",
-            "execution_limits.wall_seconds", "generation.backend", "generation.model",
-            "generation.limits.max_calls", "generation.limits.call_timeout_seconds",
-            "generation.limits.wall_seconds", "generation.limits.max_saved_response_bytes",
+            "execution_limits.wall_seconds",
         ):
             with self.subTest(field=field):
                 self.assertIn(f'data-field="{field}"', body)
                 self.assertIn(f'data-error-for="{field}"', body)
+        # WB-UI-021: no more generation.* fields on the run-config form --
+        # text generation moved to the /configs 文章生成 card.
+        self.assertNotIn('data-field="generation', body)
         self.assertIn('<option value="romance">romance</option>', body)
         self.assertIn('class="cfg-adv"', body)
         self.assertIn(
@@ -269,6 +284,56 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('data-parent="cfg-test"', body)
         self.assertGreaterEqual(body.count('type="hidden"'), 2)
         self.assertIn('data-summary', body)
+
+    def test_output_settings_api_round_trip(self):
+        status, before = self.http("GET", "/api/settings/output")
+        self.assertEqual(status, 200, before)
+        self.assertEqual(before["backend"], "codex-cli")
+        self.assertIsNone(before["model"])
+        self.assertIn("availability", before)
+
+        status, after = self.http("POST", "/api/settings/output", {
+            "backend": "openai", "model": "gpt-secret",
+            "limits": {"max_calls": 3, "call_timeout_seconds": 90,
+                       "wall_seconds": 300, "max_saved_response_bytes": 4096},
+        })
+        self.assertEqual(status, 200, after)
+        self.assertEqual(after["backend"], "openai")
+        self.assertEqual(after["model"], "gpt-secret")
+        self.assertEqual(after["limits"]["max_calls"], 3)
+        self.assertNotIn("api_key", json.dumps(after))
+
+        status, refetched = self.http("GET", "/api/settings/output")
+        self.assertEqual(status, 200, refetched)
+        self.assertEqual(refetched["backend"], "openai")
+        self.assertEqual(refetched["model"], "gpt-secret")
+
+        # A saved credential (api_key) in settings.json's own "openai" section
+        # must survive a later write and never reach the API response.
+        raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        raw["output"]["openai"]["api_key"] = "DO-NOT-LEAK"
+        self.settings_path.write_text(json.dumps(raw), encoding="utf-8")
+        status, after2 = self.http("POST", "/api/settings/output", {"model": "gpt-secret-2"})
+        self.assertEqual(status, 200, after2)
+        self.assertNotIn("DO-NOT-LEAK", json.dumps(after2))
+        raw2 = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        self.assertEqual(raw2["output"]["openai"]["api_key"], "DO-NOT-LEAK")
+
+        status, payload = self.http(
+            "POST", "/api/settings/output", {"model": "x"}, headers={"X-WorldBloom-Client": ""},
+        )
+        self.assertEqual(status, 403, payload)
+
+        status, payload = self.http("POST", "/api/settings/output", {"backend": "bogus"})
+        self.assertEqual(status, 422, payload)
+
+    def test_configs_page_survives_unreadable_settings_json(self):
+        # WB-UI-021 review item 2: a broken settings.json must not 500 /configs.
+        self.settings_path.write_text("{not json", encoding="utf-8")
+        status, body, _ = self.get_status("/configs")
+        self.assertEqual(status, 200, body)
+        self.assertIn("settings.json を読めません", body)
+        self.assertNotIn('data-wb="output-settings"', body)
 
     def test_duplicate_api(self):
         status, payload = self.http(
@@ -426,7 +491,6 @@ class WorkbenchTests(unittest.TestCase):
     def test_run_page_blocked_by_other_world(self):
         self.configs.save({
             "label": "momo", "project_id": "momotaro", "template_id": "momotaro",
-            "generation": {"backend": "none"},
             "evolution": {"generations": 1, "population": 1, "seeds": 1},
         }, config_id="cfg-momo")
         self.fake.add(_job("job-run", "run-a", "running"))  # romance's cfg-test

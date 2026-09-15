@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 from execution.configs import generation_availability, _model
+from execution.output_settings import resolve_generation
 from execution.output_store import OutputStore, verified
 from execution.provenance import (ConfigError, canonical, contained, directory_lock,
     identifier, read_json, sha256, code_snapshot)
@@ -124,9 +125,10 @@ def admit(jobs, request, *, settings_path=None):
     from execution.selections import SelectionStore
     from viewer.run_catalog import RunCatalog
     config = jobs.configs.get(request["config_id"])
-    if any(request[k] != config["generation"][k] for k in ("backend", "model", "limits")):
-        raise ConfigError("config_id", "生成設定が保存版と一致しません。変更は新しい設定版へ保存してください")
-    if not generation_availability(config["generation"], settings_path)["available"]:
+    current = resolve_generation(settings_path)
+    if any(request[k] != current[k] for k in ("backend", "model", "limits")):
+        raise ConfigError("backend", "文章生成の設定が変更されています。画面を開き直してください", code="conflict")
+    if not generation_availability(current, settings_path)["available"]:
         raise ConfigError("backend", "明示モデル・実行環境・資格情報を確認してください", code="unavailable")
     catalog = RunCatalog(jobs.configs.runs, jobs.configs.control)
     root, legacy = catalog.resolve(request["run_id"])
