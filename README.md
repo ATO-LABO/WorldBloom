@@ -1,6 +1,22 @@
+<div align="center">
+
 # WorldBloom
 
-遺伝的アルゴリズム×LLM による結末固定型の物語生成エンジン
+**遺伝的アルゴリズム×LLM による結末固定型の物語生成エンジン**
+
+第五回AIアートグランプリ D部門応募作品
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/ATO-LABO/WorldBloom?label=viewer)](https://github.com/ATO-LABO/WorldBloom/releases/latest)
+
+[![Download WorldBloom.exe](https://img.shields.io/badge/Download-WorldBloom--portable.zip-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-portable.zip)
+
+展開して `WorldBloom.exe` を開くだけ。Python・Ollamaのインストールは不要です<br>
+（桃太郎・恋愛・探偵の3実験を見るだけの読み取り専用ビルドです）
+
+<img src="docs/images/readme-hero.png" width="820" alt="WorldBloomビューアのSifting画面。進化で見つかった物語の展開が格子状に並び、あらすじが表示されている">
+
+</div>
 
 ## これは何か
 
@@ -9,10 +25,6 @@
 主体は7層構造（力・認識・資源・段階・身分・目的物・伏線）＋ vitality で表現し、遺伝子は行動系列ではなく「戦略ベクトル」（9スカラー）です。固定シードで走らせたシミュレーションのうち、固定結末に到達したものだけを MAP-Elites 格子（主導カテゴリ I〜VI × volatility）に残します。**出来事の生成に LLM は関与しません。**格子に残ったあらすじは人が読んで選び、選ばれた道のりだけを LLM が本文化します。
 
 StorySim（同作者の別プロジェクト。世界と人物をシミュレートし、面白かったログを物語に書き起こす方式）から要素を切り取って再構築したもので、フォークではありません。
-
-## サンプルをすぐ見る（Windows・インストール不要）
-
-Python や Ollama を入れずに、桃太郎・恋愛・探偵の3実験（進化で見つかった物語展開の格子・あらすじ・本文）を見るだけなら、[Releases](../../releases/latest) から `WorldBloom-portable.zip` をダウンロードしてください。展開して `WorldBloom.exe` をダブルクリックするだけで起動します（見るだけの読み取り専用ビルドです。初回起動時にWindowsのSmartScreen警告が出た場合は同梱の `README.txt` を参照してください）。
 
 自分で進化を回す・文章を生成し直す場合は、以下のソースから実行してください。
 
