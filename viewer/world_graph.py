@@ -298,8 +298,10 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
 
     Same circular layout and edge-dedup approach as relation_svg, but edges
     carry no affinity -- a route either exists or it doesn't -- so every
-    edge is drawn the same way, with the hop's cost/requires_item (if any)
-    surfaced only in the hover title.
+    edge is drawn the same way. Every hop's cost (defaulting to 1, same as
+    engine/world.py's Route) and requires_item (if any) is shown as an
+    on-graph label as well as the hover title; a checkbox above the graph
+    toggles the labels off for a cleaner look.
     """
 
     names = list(dict.fromkeys(
@@ -323,6 +325,7 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
         )
 
     edges: dict[tuple[str, str], list[str]] = {}
+    edge_labels: dict[tuple[str, str], list[str]] = {}
     for origin, hops in _mapping(routes).items():
         origin = str(origin)
         if origin not in name_set:
@@ -332,16 +335,20 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
             target = str(hop.get("to"))
             if target == origin or target not in name_set:
                 continue
-            detail = []
-            cost = hop.get("cost")
-            if cost is not None:
-                detail.append(f"移動コスト {cost}")
+            # Same default as engine/world.py's Route(cost=1.0) -- an
+            # omitted cost is still a real cost, so it's shown as "1".
+            cost = _number(hop.get("cost"), 1.0)
+            detail = [f"移動コスト {cost:g}"]
             requires = hop.get("requires_item")
             if requires:
                 detail.append(f"要: {requires}")
-            suffix = f"（{'・'.join(detail)}）" if detail else ""
+            suffix = f"（{'・'.join(detail)}）"
             pair = tuple(sorted((origin, target)))
             edges.setdefault(pair, []).append(f"{origin}→{target}{suffix}")
+            label = "・".join(detail)
+            labels = edge_labels.setdefault(pair, [])
+            if label not in labels:
+                labels.append(label)
 
     edge_markup = []
     for pair in sorted(edges):
@@ -352,6 +359,13 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
             f'stroke="{_NEUTRAL}" stroke-width="2.0">'
             f'<title>{html.escape(title)}</title></line>'
         )
+        labels = edge_labels.get(pair)
+        if labels:
+            mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+            edge_markup.append(
+                f'<text class="zone-edge-label" x="{mx:.1f}" y="{my - 8.0:.1f}" '
+                f'text-anchor="middle">{html.escape(" / ".join(labels))}</text>'
+            )
 
     node_markup = []
     for name in names:
@@ -365,11 +379,15 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
         )
 
     return (
+        '<div class="zone-graph-wrap">'
+        '<label class="zone-cost-toggle">'
+        '<input type="checkbox" class="zone-cost-toggle-input" checked> 移動コストを表示'
+        "</label>"
         '<svg class="relation-graph zone-graph" viewBox="0 0 640 400" '
         'role="img" aria-label="場所のつながり">'
         + "".join(edge_markup)
         + "".join(node_markup)
-        + "</svg>"
+        + "</svg></div>"
     )
 
 
@@ -448,13 +466,29 @@ def calendar_grid_html(days: Any) -> str:
 _ROLE_LABELS = {"hostile": "敵対相手", "neutral": "第三者", "ally": "味方", "self": "自分自身"}
 
 
-# WB-UI-020: canon.yaml rendered for a reader. Each ctx field is phrased as
-# a clause; fields that never vary across the table are pulled out into one
-# footnote (or dropped when they only hold precedent.py's default), so a row
-# reads as a sentence instead of a dump of the context key.
+# WB-UI-020 / later revision: canon.yaml rendered for a reader as a
+# situation/action decision table, not a sentence-per-row narrative -- each
+# ctx field that actually varies across entries gets its own column (read
+# condition-by-condition, like a lookup table), and fields that never vary
+# are pulled out into one footnote (or dropped when they only hold
+# precedent.py's default). A first draft phrased each row as one sentence,
+# but that made the table read as a timeline it isn't: canon.yaml has no
+# ordering guarantee across rows, it's "if this exact situation comes up
+# during the GA run, this is what's typical" for each row independently.
 _CTX_DEFAULTS = {
     "phase": (), "hostile_present": False, "objective": "none",
     "vitality": "alive", "stance": "neutral", "disguised": False,
+}
+
+# Column headers for the varying fields. "phase" is the one field that is a
+# genuinely cumulative list of past story beats (not a "degree"/percentage),
+# hence "これまでの出来事" rather than something like "進行度".
+_CTX_HEADERS = {
+    "phase": "これまでの出来事",
+    "hostile_present": "敵の有無",
+    "vitality": "生死",
+    "stance": "敵との関係",
+    "disguised": "変装",
 }
 
 
@@ -467,6 +501,9 @@ def _ctx_value(ctx: Mapping[str, Any], field: str) -> Any:
 
 
 def _ctx_clause(field: str, value: Any, objective: str) -> str:
+    """Full-sentence phrasing of one ctx field, used only for the "すべての
+    行に共通" footnote (a single sentence, not a table row, so it doesn't
+    carry the same read-as-a-timeline risk as per-row text)."""
     if field == "phase":
         return f"{'・'.join(value)}のあと" if value else "まだ何も起きていないうち"
     if field == "hostile_present":
@@ -486,12 +523,42 @@ def _ctx_clause(field: str, value: Any, objective: str) -> str:
     return str(value)
 
 
+def _ctx_header(field: str, objective: str) -> str:
+    return f"{objective}の所在" if field == "objective" else _CTX_HEADERS[field]
+
+
+def _ctx_cell_html(field: str, value: Any) -> str:
+    """Short per-row cell text for one condition column (already escaped)."""
+    if field == "phase":
+        if not value:
+            return '<span class="muted">まだ何も起きていない</span>'
+        return "".join(f'<span class="tag">{html.escape(step)}</span>' for step in value)
+    if field == "hostile_present":
+        text = "目の前にいる" if value else "いない"
+    elif field == "objective":
+        text = {
+            "none": "誰の手にもない", "self": "自分が持っている", "hostile": "敵が持っている",
+            "ally": "味方が持っている", "other": "第三者が持っている",
+        }.get(value, str(value))
+    elif field == "vitality":
+        text = {"alive": "無事", "downed": "倒れている", "dead": "死んでいる", "revived": "立ち直った直後"}.get(value, str(value))
+    elif field == "stance":
+        text = {"hostile": "敵対している", "friendly": "友好的", "neutral": "中立"}.get(value, str(value))
+    elif field == "disguised":
+        text = "変装中" if value else "素顔"
+    else:
+        text = str(value)
+    return html.escape(text)
+
+
 def canon_table_html(canon_yaml: Mapping[str, Any], *, objective: str = "目的の品") -> str:
-    """Render a genre's canon.yaml as 状況（一文）→定石の行動→定石の強さ（バー）.
+    """Render a genre's canon.yaml as a 状況→定石の行動→定石の強さ decision table.
 
     This is the GA's precedent for generation 0 (WB-EXPLAIN-canon): a prior
     over "typical" actions per situation, not a plot -- novelty_drive makes
-    the protagonist less likely to pick these, never more.
+    the protagonist less likely to pick these, never more. Each varying ctx
+    field is its own column (read condition-by-condition), not a sentence,
+    so the table can't be mistaken for a chronological script.
     """
 
     entries = [_mapping(entry) for entry in (canon_yaml.get("entries") or []) if _mapping(entry)]
@@ -506,9 +573,19 @@ def canon_table_html(canon_yaml: Mapping[str, Any], *, objective: str = "目的�
         elif values and next(iter(values)) != default:
             shared.append(_ctx_clause(field, next(iter(values)), objective))
     max_n = max([_number(entry.get("n"), 1.0) for entry in entries] + [0.0])
+
+    if varying:
+        cond_headers = "".join(f"<th>{html.escape(_ctx_header(field, objective))}</th>" for field in varying)
+    else:
+        cond_headers = "<th>状況</th>"
+    cond_span = len(varying) or 1
+
     rows = []
     for entry, ctx in zip(entries, contexts):
-        clauses = [_ctx_clause(field, _ctx_value(ctx, field), objective) for field in varying]
+        if varying:
+            cond_cells = "".join(f"<td>{_ctx_cell_html(field, _ctx_value(ctx, field))}</td>" for field in varying)
+        else:
+            cond_cells = '<td class="muted">どんな状況でも</td>'
         act = _mapping(entry.get("act"))
         verb = act.get("verb")
         act_text = VERB_LABELS.get(str(verb), str(verb)) if verb else "（行動なし）"
@@ -519,8 +596,8 @@ def canon_table_html(canon_yaml: Mapping[str, Any], *, objective: str = "目的�
         ratio = _clamp01(n / max_n) if max_n > 0 else 0.0
         rows.append(
             "<tr>"
-            f"<td>{html.escape('、'.join(clauses) if clauses else 'どんな状況でも')}</td>"
-            f"<td>{html.escape(act_text)}</td>"
+            f"{cond_cells}"
+            f'<td class="canon-then">{html.escape(act_text)}</td>'
             f'<td><span class="gene-track"><span class="gene-fill" style="width:{ratio * 100:.1f}%"></span></span>'
             f' <span class="muted">{n:g}</span></td>'
             "</tr>"
@@ -529,9 +606,11 @@ def canon_table_html(canon_yaml: Mapping[str, Any], *, objective: str = "目的�
         f'<p class="muted">すべての行に共通: 主人公は{html.escape("、".join(shared))}。</p>' if shared else ""
     )
     return (
-        '<div class="grid-wrap"><table class="wb-table canon-table"><thead><tr>'
-        "<th>状況</th><th>定石の行動</th><th>定石の強さ</th>"
-        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+        '<div class="grid-wrap"><table class="wb-table canon-table"><thead>'
+        f'<tr class="canon-groups"><th colspan="{cond_span}">この状況のとき</th>'
+        '<th colspan="2" class="canon-then">ふつうこうする（定石）</th></tr>'
+        f'<tr>{cond_headers}<th class="canon-then">定石の行動</th><th>定石の強さ</th></tr>'
+        f'</thead><tbody>{"".join(rows)}</tbody></table></div>'
         + shared_html
     )
 

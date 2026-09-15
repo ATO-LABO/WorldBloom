@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Mapping
 
-DEFAULT_MODEL = "qwen3.5:9b-q4_K_M"
+DEFAULT_MODEL = "qwen3.6:35b"
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_OPTIONS = {"num_ctx": 16384, "num_predict": 4096}
 
@@ -55,30 +55,22 @@ def _as_mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def availability(
+def list_models(
     config: Mapping[str, Any],
     *,
     timeout: float = 2.0,
-) -> dict[str, Any]:
-    """Check whether the configured Ollama server and model are reachable."""
+) -> tuple[list[str], str | None]:
+    """The local server's model names via /api/tags, sorted. (names, reason)."""
 
     base_url = str(config.get("base_url", DEFAULT_BASE_URL)).rstrip("/")
-    model = str(config.get("model", DEFAULT_MODEL))
-    result: dict[str, Any] = {
-        "available": False,
-        "reason": None,
-        "model": model,
-    }
     try:
         with urllib.request.urlopen(
             f"{base_url}/api/tags",
             timeout=timeout,
         ) as response:
             data = json.loads(response.read().decode("utf-8"))
-    except (OSError, urllib.error.URLError, ValueError) as error:
-        result["reason"] = "server_unreachable"
-        result["error"] = str(error)
-        return result
+    except (OSError, urllib.error.URLError, ValueError):
+        return [], "server_unreachable"
 
     names: set[str] = set()
     for entry in _as_mapping(data).get("models", []) or []:
@@ -88,10 +80,28 @@ def availability(
             value = entry.get(key)
             if isinstance(value, str):
                 names.add(value)
+    return sorted(names), None
 
+
+def availability(
+    config: Mapping[str, Any],
+    *,
+    timeout: float = 2.0,
+) -> dict[str, Any]:
+    """Check whether the configured Ollama server and model are reachable."""
+
+    model = str(config.get("model", DEFAULT_MODEL))
+    result: dict[str, Any] = {
+        "available": False,
+        "reason": None,
+        "model": model,
+    }
+    names, reason = list_models(config, timeout=timeout)
+    if reason is not None:
+        result["reason"] = reason
+        return result
     if model not in names:
         result["reason"] = "model_missing"
         return result
-
     result["available"] = True
     return result

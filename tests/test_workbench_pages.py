@@ -234,10 +234,10 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('<section class="card" id="output">', body)
         self.assertIn('data-wb="output-settings"', body)
         self.assertIn(
-            'type="radio" id="f-backend-codex-cli" name="backend" value="codex-cli" '
-            'data-field="backend" checked',
+            '<select id="f-backend" name="backend" data-field="backend">',
             body,
         )
+        self.assertIn('<option value="codex-cli" selected>', body)
 
         status, body, _ = self.get_status("/configs/cfg-test")
         self.assertEqual(status, 200, body)
@@ -301,7 +301,9 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(after["backend"], "openai")
         self.assertEqual(after["model"], "gpt-secret")
         self.assertEqual(after["limits"]["max_calls"], 3)
-        self.assertNotIn("api_key", json.dumps(after))
+        # "has_api_key" (a bare boolean) is fine; only the credential's own
+        # quoted key/value must never round-trip through this API.
+        self.assertNotIn('"api_key"', json.dumps(after))
 
         status, refetched = self.http("GET", "/api/settings/output")
         self.assertEqual(status, 200, refetched)
@@ -708,6 +710,16 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         row = body[body.index(f'data-candidate-id="{cid}"'):]
         self.assertIn('<option value="adopted" selected>', row)
+        # The selection state reads in Japanese with a glance mark, and the
+        # <select> carries the state class so app.css can colour it.
+        select_html = row[row.index('<select data-field="state"'):row.index("</select>")]
+        self.assertIn('class="state-select state-sel-adopted"', select_html)
+        self.assertIn('<option value="adopted" selected>✔ 採用</option>', select_html)
+        self.assertIn('<option value="held">⏸ 保留</option>', select_html)
+        self.assertIn('<option value="rejected">✖ 除外</option>', select_html)
+        self.assertIn('<option value="unclassified">○ 未分類</option>', select_html)
+        # The filter form uses the same labels (values stay the API keys).
+        self.assertIn('<option value="rejected">✖ 除外</option>', body[:body.index("<thead>")])
 
     def test_candidates_sort_quality_desc_and_bogus_sort_ignored(self):
         self._legacy_experiment("exp-sort")
@@ -884,6 +896,8 @@ class WorkbenchTests(unittest.TestCase):
         row = body[body.index(f'data-candidate-id="{cid}"'):]
         self.assertIn("data-revision=", row)
         self.assertIn("外す", row)
+        # The tray shows the state as a coloured badge, not the raw key.
+        self.assertIn('<span class="state-badge state-sel-adopted">✔ 採用</span>', row)
 
     # -------------------------------------------------------------- CSP
 
