@@ -349,9 +349,20 @@ p {
 }
 
 .world-card-footer {
-  margin-top: 0.6rem;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
   position: relative;
   z-index: 1;
+}
+
+.world-card-footer a:not(.button) {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .world-card h3 {
@@ -698,6 +709,47 @@ td {
   -webkit-line-clamp: 2;
 }
 
+.archive-grid .explain-short {
+  margin: 0.6rem 0 0.5rem;
+}
+
+.archive-grid td > label {
+  color: var(--muted);
+  display: block;
+  font-size: 0.82rem;
+  margin-top: 0.45rem;
+}
+
+#compare-cells > p {
+  margin: 0 0 0.4rem;
+}
+
+#compare-cells button {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  padding: 0.35rem 0.75rem;
+}
+
+#compare-cells button:hover {
+  border-color: var(--accent);
+}
+
+.workbench-links {
+  margin: 0 0 1.25rem;
+}
+
+.workbench-links a {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.experiment-meta {
+  font-size: 0.9rem;
+  margin: 0 0 1.25rem;
+}
+
 .commands pre,
 .output-panel pre {
   white-space: pre-wrap;
@@ -753,11 +805,29 @@ td {
   overflow-wrap: anywhere;
 }
 
+.card > dl.metric + p.muted {
+  font-size: 0.85rem;
+  margin: 0.6rem 0 0;
+}
+
 .selection {
   align-items: center;
   display: inline-flex;
   float: right;
   gap: 0.4rem;
+}
+
+.elite-summary > .selection.large {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  color: var(--accent-dark);
+  font-weight: 700;
+  padding: 0.45rem 0.8rem;
+}
+
+.elite-summary > .selection.large input {
+  accent-color: var(--accent);
 }
 
 .genome {
@@ -1127,6 +1197,10 @@ td {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
 }
 
+.explanation-comparison > .card {
+  margin-bottom: 0;
+}
+
 .four-items {
   display: grid;
   gap: 0.4rem;
@@ -1152,6 +1226,50 @@ td {
   border-left: 3px solid var(--accent);
   overflow-wrap: anywhere;
   padding-left: 0.8rem;
+}
+
+.four-items ~ p.muted {
+  font-size: 0.85rem;
+}
+
+.four-items ~ p a {
+  font-size: 0.85rem;
+}
+
+.four-items ~ .causal-link {
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+}
+
+.four-items ~ details {
+  border-top: 1px solid var(--line);
+  margin: 0.8rem 0 0;
+  padding-top: 0.5rem;
+}
+
+.four-items ~ details > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.story-section + .card > details {
+  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 0.6rem 0;
+}
+
+.story-section + .card > details:last-of-type {
+  border-bottom: 1px solid var(--line);
+}
+
+.story-section + .card > details > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.story-section + .card > details[open] > summary {
+  margin-bottom: 0.5rem;
 }
 
 .raw-lines pre {
@@ -1249,6 +1367,14 @@ td {
   min-width: 720px;
 }
 
+.wb-table th,
+.wb-table .chip,
+.wb-table .state-badge,
+.wb-table .wb-actions a,
+.wb-table .wb-actions button {
+  white-space: nowrap;
+}
+
 .wb-table--compact {
   font-size: 0.85rem;
 }
@@ -1263,6 +1389,26 @@ td {
   gap: 0.8rem 1rem;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   margin-bottom: 1rem;
+}
+
+[data-wb="candidates"] form.form-grid .field > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+[data-wb="candidates"] form.form-grid input,
+[data-wb="candidates"] form.form-grid select {
+  width: 100%;
+}
+
+[data-wb="candidates"] form.form-grid > .actions {
+  align-self: end;
+}
+
+[data-wb="candidates"] form.form-grid > .actions a {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .field {
@@ -1286,6 +1432,48 @@ td {
 
 .form-error:empty {
   display: none;
+}
+
+form[data-wb="library-create"] {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow);
+  margin: 0 0 1rem;
+  max-width: 720px;
+  padding: 1.25rem;
+}
+
+form[data-wb="library-create"] button[type="submit"] {
+  background: var(--accent);
+  border: 1px solid var(--accent-dark);
+  border-radius: var(--radius-s);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+}
+
+form[data-wb="library-create"] button[type="submit"]:hover {
+  background: var(--accent-dark);
+}
+
+form[data-wb="library-create"] .field > label {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+form[data-wb="library-create"] input[type="text"],
+form[data-wb="library-create"] select {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 0.5rem 0.65rem;
+  width: 100%;
+}
+
+form[data-wb="library-create"] > .form-grid {
+  margin-bottom: 1.25rem;
 }
 
 .state-badge {
@@ -1331,11 +1519,69 @@ td {
   width: 100%;
 }
 
+/* WB-UI design pass: the single generation-job vessel (not the run page's
+   own progress vessel, which lays itself out differently) had no rhythm
+   between its status <p> rows, the cancel button and the tail links. */
+section[data-wb="job"][data-entry-labels] > p {
+  margin-bottom: 0.3rem;
+}
+
+section[data-wb="job"][data-entry-labels] > .progress-row {
+  margin: 0.8rem 0;
+}
+
+section[data-wb="job"][data-entry-labels] > .progress-row:hover {
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+  transform: none;
+}
+
+section[data-wb="job"][data-entry-labels] > button[data-action="cancel"] {
+  margin-top: 0.6rem;
+}
+
+section[data-wb="job"][data-entry-labels] > p.actions {
+  border-top: 1px solid var(--line);
+  margin-top: 1.2rem;
+  padding-top: 0.9rem;
+}
+
+section[data-wb="job"][data-entry-labels] > p.actions a {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+section[data-wb="job"][data-entry-labels] > p > a[href^="/outputs/"] {
+  background: var(--accent-soft);
+  border-radius: var(--radius-s);
+  color: var(--accent-dark);
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  text-decoration: none;
+}
+
 .actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.page-shell > section:not([class]) + section:not([class]) {
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+}
+
+.page-shell > .card + p.actions:last-child {
+  border-top: 1px solid var(--line);
+  margin-top: 0.25rem;
+  padding-top: 0.9rem;
+}
+
+.page-shell > .card + p.actions:last-child a {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 button:focus-visible,
@@ -1351,6 +1597,17 @@ a:focus-visible {
 .wb-actions a,
 .wb-actions button {
   margin-right: 0.6rem;
+}
+
+[data-wb="candidates"] .wb-actions [data-save-status] {
+  color: var(--muted);
+  display: block;
+  font-size: 0.8rem;
+  margin-top: 0.3rem;
+}
+
+[data-wb="candidates"] .wb-actions [data-save-status]:empty {
+  display: none;
 }
 
 @media (max-width: 760px) {
@@ -1397,8 +1654,86 @@ main h1 {
   padding-top: 1rem;
 }
 
+/* WB-UI design pass: the output detail's metadata (up to ~10 <p> rows) had
+   no rhythm at all, so it read as one undifferentiated block running
+   straight into the ops row and the first article. */
+section[data-wb="output"] > p {
+  margin-bottom: 0.3rem;
+}
+
+section[data-wb="output"] > p.actions,
+section[data-wb="output"] > p.muted {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+section[data-wb="output"] > p.actions > a,
+section[data-wb="output"] > p.actions > button[data-action="recover"] {
+  background: var(--surface-strong);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  color: var(--accent-dark);
+  cursor: pointer;
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  text-decoration: none;
+}
+
+section[data-wb="output"] > p.actions > a:hover {
+  background: var(--accent-soft);
+}
+
 .generate-summary {
   margin: 1rem 0;
+}
+
+.generate-summary > .grid-wrap {
+  margin-bottom: 1rem;
+}
+
+.generate-summary > p {
+  margin-bottom: 0.3rem;
+}
+
+.generate-summary > p + ul {
+  margin-top: 0.2rem;
+}
+
+.card > h2 > a[href$="/candidates"] {
+  font-size: 0.85rem;
+  font-weight: 400;
+  margin-left: 0.5rem;
+}
+
+section[data-wb="output"] > article > p:first-of-type > a {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+section[data-wb="output"] > article > p[data-field="message"]:empty {
+  display: none;
+}
+
+section[data-wb="generate"] > form {
+  border-top: 1px solid var(--line);
+  margin-top: 1.2rem;
+  padding-top: 1.2rem;
+}
+
+section[data-wb="generate"] > form > label {
+  display: block;
+  margin-bottom: 0.8rem;
+}
+
+section[data-wb="generate"] > form > button[type="submit"] {
+  background: var(--accent);
+  border: 1px solid var(--accent-dark);
+  border-radius: var(--radius-s);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
 }
 
 details {
@@ -1434,7 +1769,34 @@ details {
   margin-bottom: 1rem;
 }
 
-.editor textarea {
+[data-wb="library"][data-kind="genre"] .editor > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.4rem 0;
+}
+
+[data-wb="library"][data-kind="genre"] .editor + .editor {
+  border-top: 1px solid var(--line);
+  padding-top: 0.8rem;
+}
+
+[data-wb="library"][data-kind="genre"] form[data-action="validate"] {
+  border-top: 1px solid var(--line);
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+}
+
+[data-wb="library"][data-kind="genre"] form[data-action="validate"] button[type="submit"] {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  margin-left: 0.4rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.editor textarea,
+.editor-group textarea[data-subject-content] {
   background: var(--surface-strong);
   border: 1px solid var(--line);
   border-radius: var(--radius-s);
@@ -1445,6 +1807,14 @@ details {
   min-height: 12em;
   padding: 0.6rem;
   width: 100%;
+}
+
+.editor-group .field {
+  margin-bottom: 0.6rem;
+}
+
+.editor-group > form[data-action="validate"] {
+  margin: 0 0 1.2rem;
 }
 
 .library-note {
@@ -1545,6 +1915,48 @@ details {
   align-self: start;
 }
 
+/* WB-UI design pass: the config card packs a title, state, picker, plan and
+   CTA into one column — give each group its own line and a divider so it
+   reads as steps, not a wall of text. */
+.run-prep > h2 {
+  margin-bottom: 0.75rem;
+}
+
+.run-prep > .state-badge {
+  display: inline-flex;
+  margin-bottom: 1.1rem;
+}
+
+.run-prep > form[data-wb="run-config"] {
+  margin-bottom: 0.6rem;
+}
+
+.run-prep > p.actions {
+  border-top: 1px solid var(--line);
+  margin: 0.9rem 0 1.1rem;
+  padding-top: 0.9rem;
+}
+
+.run-prep > p.actions a {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.run-prep > dl.run-plan {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.run-prep > div[data-wb="start"] {
+  border-top: 1px solid var(--line);
+  margin-top: 1.2rem;
+  padding-top: 1.2rem;
+}
+
+.run-prep > p.muted {
+  margin-top: 0.6rem;
+}
+
 .run-plan {
   display: grid;
   gap: 0.35rem 0.8rem;
@@ -1625,6 +2037,22 @@ details {
   margin-top: 0.8rem;
 }
 
+[data-vessel="progress"] > .run-detail > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+[data-vessel="progress"] > .run-detail[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+[data-vessel="progress"] > .run-detail > p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.3rem;
+}
+
 .qd-map {
   border-collapse: collapse;
   width: auto;
@@ -1683,13 +2111,26 @@ details {
 }
 
 .qd-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  align-items: baseline;
+  column-gap: 0.25rem;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  justify-items: start;
+  row-gap: 0.2rem;
+}
+
+.qd-metric > .tip,
+.qd-metric > .spark,
+.qd-metric > span.muted {
+  grid-column: 1 / -1;
 }
 
 .qd-metric b {
   font-size: 1.15rem;
+}
+
+.qd-metric > small {
+  color: var(--muted);
 }
 
 .qd-delta {
@@ -1718,6 +2159,17 @@ details {
   border-color: var(--accent);
   box-shadow: inset 3px 0 0 var(--accent);
   color: var(--text);
+}
+
+[data-vessel="exits"] > p.actions {
+  border-top: 1px solid var(--line);
+  margin: 0.9rem 0 0;
+  padding-top: 0.75rem;
+}
+
+[data-vessel="exits"] > p.actions a {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .exit.off {
@@ -1798,6 +2250,41 @@ details {
   cursor: pointer;
   font-size: 0.8rem;
   padding: 0.1rem 0.5rem;
+}
+
+/* WB-UI design pass: the candidates page's primary "generate" form had no
+   styling at all, so it read as just more text between the header and the
+   filter form below it. */
+[data-wb="candidates"] > #generate-form {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.75rem;
+  margin: 0.9rem 0 1.1rem;
+  padding: 0.9rem 0;
+}
+
+[data-wb="candidates"] > #generate-form button[type="submit"] {
+  background: var(--accent);
+  border: 1px solid var(--accent-dark);
+  border-radius: var(--radius-s);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+}
+
+[data-wb="candidates"] > #generate-form button[type="submit"]:disabled {
+  background: var(--line);
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+[data-wb="candidates"] > #generate-form .muted {
+  font-size: 0.85rem;
 }
 
 @media (max-width: 800px) {
@@ -1891,7 +2378,12 @@ details {
 
 .editor-group > summary {
   cursor: pointer;
+  font-weight: 700;
   padding: 0.4rem 0;
+}
+
+.editor-group[open] > summary {
+  margin-bottom: 0.8rem;
 }
 
 /* World detail tabs (概要/登場人物/場所/期間): zero-JS radio+label tabs. */
@@ -2123,6 +2615,28 @@ details {
   max-width: 880px;
 }
 
+.cfg-form > [data-preview]:not(:empty) {
+  border-top: 1px solid var(--line);
+  padding: 1.5rem 0 0.5rem;
+}
+
+.cfg-form > [data-preview] dl {
+  display: grid;
+  gap: 0.35rem 0.8rem;
+  grid-template-columns: max-content 1fr;
+  margin: 0;
+}
+
+.cfg-form > [data-preview] dt {
+  color: var(--muted);
+}
+
+.cfg-form > [data-preview] dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .cfg-sec {
   border-top: 1px solid var(--line);
   display: grid;
@@ -2280,6 +2794,18 @@ details.cfg-adv {
   padding: 1rem 0 0.5rem;
 }
 
+form[data-wb="output-settings"] > .field + .field {
+  margin-top: 1rem;
+}
+
+form[data-wb="output-settings"] > details.cfg-adv {
+  margin-top: 1.25rem;
+}
+
+form[data-wb="output-settings"] > details.cfg-adv > .cols {
+  margin-top: 1rem;
+}
+
 details.cfg-adv > summary {
   cursor: pointer;
   font-weight: 700;
@@ -2318,6 +2844,19 @@ details.cfg-adv .cfg-sec h2 {
   z-index: 4;
 }
 
+/* WB-UI design pass: /configs embeds the output-settings card inline in a
+   list page, not as a full-screen form -- its lone "save" button shouldn't
+   hijack the whole viewport as a fixed bar while you're reading the tables
+   above it. */
+#output .form-actions {
+  backdrop-filter: none;
+  background: transparent;
+  box-shadow: none;
+  margin-top: 1rem;
+  padding: 1rem 0 0;
+  position: static;
+}
+
 .form-summary {
   color: var(--muted);
   font-size: 0.85rem;
@@ -2336,6 +2875,19 @@ details.cfg-adv .cfg-sec h2 {
   cursor: pointer;
   font-weight: 700;
   padding: 0.5rem 1rem;
+}
+
+.cfg-form .form-actions button[data-action="preview"] {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+}
+
+.cfg-form .form-actions button[data-action="preview"]:hover {
+  border-color: var(--accent);
 }
 
 @media (max-width: 720px) {
