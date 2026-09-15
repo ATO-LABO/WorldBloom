@@ -1563,6 +1563,48 @@ form[data-wb="library-create"] > .form-grid {
   color: var(--muted);
 }
 
+/* Sifting selection state (採用/保留/除外/未分類). Shared by the tray badge
+   (.state-badge.state-sel-*) and the candidate-table <select>
+   (.state-select.state-sel-*), so the row control and the badge read the same:
+   ✔ green = adopted, ⏸ amber = held, ✖ red = rejected, ○ grey = unclassified. */
+.state-select {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 0.22rem 1.6rem 0.22rem 0.6rem;
+}
+
+.state-sel-adopted {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.state-sel-held {
+  background: var(--warm-soft);
+  border-color: var(--warm);
+  color: var(--warm);
+}
+
+.state-sel-rejected {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.state-sel-unclassified {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+/* Option rows keep the neutral popup colours so the list stays legible. */
+.state-select option {
+  background: var(--surface-strong);
+  color: var(--text);
+  font-weight: 400;
+}
+
 .progress-row progress {
   display: block;
   width: 100%;
