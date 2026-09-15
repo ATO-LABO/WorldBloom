@@ -413,7 +413,6 @@ class EvolutionHttpTests(unittest.TestCase):
         engine.write_text(source, encoding="utf-8")
         self.configs = ConfigStore(self.repo, self.base / "control", self.base / "runs")
         self.configs.save({"label":"progress", "project_id":"momotaro", "template_id":"momotaro",
-            "generation":{"backend":"none"},
             "evolution":{"generations":2,"population":3,"seeds":2,"processes":2,"coevolve":True}}, config_id="cfg-test")
         self.jobs = JobStore(self.configs, cancel_grace_seconds=5)
         self.server = ViewerServer(("127.0.0.1",0),ViewerHandler)

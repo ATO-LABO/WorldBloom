@@ -13,10 +13,10 @@ import time
 import uuid
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from execution.configs import evolution_defaults
+from execution.configs import evolution_defaults, generation_availability, quick_label
+from execution.output_settings import read_output_settings
 from execution.provenance import ConfigError, contained
 from execution.worker import TERMINAL
-from gapengine.synopsis import BACKENDS
 from viewer import data, job_api, pages
 
 
@@ -57,6 +57,37 @@ ERROR_MESSAGES = {
 
 CANDIDATE_STATE_OPTIONS = ("adopted", "held", "rejected", "unclassified")
 AVAILABILITY_LABELS = {"present": "あり", "pruned": "剪定済み", "missing": "不在", "stale": "不一致"}
+
+# WB-UI-021: /configs's 文章生成 card (execution/output_settings.py's backend choices).
+GENERATION_BACKEND_OPTIONS = (
+    ("claude-cli", "Claude Code CLI（claude -p）"),
+    ("codex-cli", "Codex CLI（codex exec）。既定"),
+    ("anthropic", "Anthropic API（api_key が必要）"),
+    ("openai", "OpenAI API（api_key が必要）"),
+    ("ollama", "ローカル Ollama"),
+    ("none", "生成しない（プロンプト保存のみ）"),
+)
+GENERATION_REASON_LABELS = {
+    "executable_missing": "実行ファイルが見つかりません",
+    "credentials_missing": "資格情報がありません",
+    "model_required": "モデルを指定してください",
+    "settings_unreadable": "settings.json を読めません",
+    "invalid_model": "モデル名が不正です",
+}
+
+
+def availability_label(availability):
+    """Japanese text for a generation_availability()-shaped result.
+
+    Shared by the /configs card's initial render, the settings API's
+    `availability.label` (read by workbench.js), and JS itself -- so the
+    reason wording lives in exactly one place (WB-UI-021 review item 3).
+    """
+    if availability.get("available"):
+        return "利用可能"
+    reason = availability.get("reason")
+    return GENERATION_REASON_LABELS.get(reason, reason or "利用できません")
+
 
 # §6: candidate-list column sort. "state" here is the *selection* state (選定
 #状態 column), not the run/job state; "draft" is the 稿 column's ok count
@@ -151,13 +182,12 @@ def _job_store(handler):
 def _field_key(name):
     """Internal name shown next to a field's Japanese label (mono, lower).
 
-    Strips the leading "evolution."/"generation." namespace prefix (kept for
+    Strips the leading "evolution." namespace prefix (kept for
     execution_limits.* and bare names like "label") so the key matches what a
-    config JSON author would actually type under evolution:/generation:.
+    config JSON author would actually type under evolution:.
     """
-    for prefix in ("evolution.", "generation."):
-        if name.startswith(prefix):
-            return name[len(prefix):]
+    if name.startswith("evolution."):
+        return name[len("evolution."):]
     return name
 
 
@@ -263,7 +293,7 @@ def _as_int(value):
         return 0
 
 
-def _initial_values(*, label, project_id, template_id, evolution, execution_limits, generation):
+def _initial_values(*, label, project_id, template_id, evolution, execution_limits):
     values = {"label": label, "project_id": project_id, "template_id": template_id}
     for key in ("generations", "population", "seeds", "seed_base", "ga_seed", "processes"):
         values[f"evolution.{key}"] = evolution[key]
@@ -274,11 +304,6 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
         ", ".join(evolution["target_ending"]) if evolution.get("target_ending") else ""
     )
     values["execution_limits.wall_seconds"] = execution_limits["wall_seconds"]
-    values["generation.backend"] = generation["backend"]
-    values["generation.model"] = generation.get("model") or ""
-    limits = generation.get("limits") or {}
-    for key in ("max_calls", "call_timeout_seconds", "wall_seconds", "max_saved_response_bytes"):
-        values[f"generation.limits.{key}"] = limits.get(key, "")
     return values
 
 
@@ -288,15 +313,10 @@ def _new_config_values():
         label="", project_id="", template_id="",
         evolution=defaults,
         execution_limits={"wall_seconds": 3600},
-        generation={
-            "backend": "codex-cli", "model": None,
-            "limits": {"max_calls": 1, "call_timeout_seconds": 180,
-                       "wall_seconds": 240, "max_saved_response_bytes": 128000},
-        },
     )
 
 
-def render_config_form(values, *, projects, templates, backends, parent_config_id=None, world_genres=None):
+def render_config_form(values, *, projects, templates, parent_config_id=None, world_genres=None):
     duplicate = parent_config_id is not None
     if duplicate:
         # No data-field here: project_id/template_id are fixed by the parent
@@ -380,14 +400,6 @@ def render_config_form(values, *, projects, templates, backends, parent_config_i
         + "</div>",
     )
 
-    section4 = _section(
-        "文章生成", "Sifting で経緯を文章にするときの生成先。",
-        '<div class="cols">'
-        + _select_field("生成方式", "generation.backend", backends, values["generation.backend"])
-        + _text_field("モデル", "generation.model", values["generation.model"], placeholder="空なら生成方式の既定")
-        + "</div>",
-    )
-
     section5a = _section(
         "乱数と並列", "同じ値なら同じ結果になります（決定論）。",
         '<div class="cols">'
@@ -398,29 +410,11 @@ def render_config_form(values, *, projects, templates, backends, parent_config_i
     )
 
     section5b = _section(
-        "時間と回数の上限", "上限に達すると、その時点までの結果で打ち切ります。",
+        "時間の上限", "上限に達すると、その時点までの結果で打ち切ります。",
         '<div class="cols">'
         + _number_field(
             "実行全体", "execution_limits.wall_seconds", values["execution_limits.wall_seconds"],
             unit="秒", min_value=1,
-        )
-        + _number_field(
-            "生成全体", "generation.limits.wall_seconds", values["generation.limits.wall_seconds"],
-            unit="秒", min_value=1,
-        )
-        + _number_field(
-            "生成 1 回", "generation.limits.call_timeout_seconds", values["generation.limits.call_timeout_seconds"],
-            unit="秒", min_value=1,
-        )
-        + "</div>"
-        + '<div class="cols">'
-        + _number_field(
-            "生成の呼び出し回数", "generation.limits.max_calls", values["generation.limits.max_calls"],
-            unit="回", min_value=0,
-        )
-        + _number_field(
-            "応答の保存上限", "generation.limits.max_saved_response_bytes",
-            values["generation.limits.max_saved_response_bytes"], unit="bytes", min_value=0,
         )
         + "</div>",
     )
@@ -435,7 +429,7 @@ def render_config_form(values, *, projects, templates, backends, parent_config_i
     return (
         f'<form data-wb="config-form"{parent_attr} class="cfg-form">'
         '<p class="form-error" data-form-error role="alert"></p>'
-        + section1 + section2 + section3 + section4
+        + section1 + section2 + section3
         + '<details class="cfg-adv"><summary>詳細設定 '
           '<small>乱数・並列・時間上限。通常は変更不要。</small></summary>'
         + section5a + section5b
@@ -534,22 +528,6 @@ def render_config_detail(config):
         ) + "</ul>"
     else:
         fallback_section = "<p>省略なし</p>"
-    gen = config["generation"]
-    gen_preview = preview["generation"]
-    gen_pairs = [
-        ("方式", _escape(gen["backend"])),
-        ("モデル", _escape(gen["model"]) if gen.get("model") else "未指定"),
-        ("max_calls", _escape(gen["limits"]["max_calls"])),
-        ("call_timeout_seconds", _escape(gen["limits"]["call_timeout_seconds"])),
-        ("wall_seconds", _escape(gen["limits"]["wall_seconds"])),
-        ("max_saved_response_bytes", _escape(gen["limits"]["max_saved_response_bytes"])),
-        ("可否（保存時点）", _escape(gen_preview.get("available"))),
-        ("認証", _escape(gen_preview.get("authentication"))),
-    ]
-    completion_kind = gen_preview.get("completion_kind")
-    if completion_kind:
-        gen_pairs.append(("完了種別", _escape(completion_kind)))
-    gen_section = _dl(gen_pairs) + '<p class="muted">保存時点の可否。認証の有効性は未確認</p>'
     provenance_section = _dl([
         ("作成日時", _escape(config["created_at"])),
         ("input_manifest_sha256", _escape(config["input_manifest_sha256"])),
@@ -569,7 +547,6 @@ def render_config_detail(config):
         + '<section class="card"><h2>実装上固定の値</h2>' + fixed_section + "</section>"
         + '<section class="card"><h2>予定評価数</h2>' + planned_section + "</section>"
         + '<section class="card"><h2>省略ファイルと実効値</h2>' + fallback_section + "</section>"
-        + '<section class="card"><h2>生成設定</h2>' + gen_section + "</section>"
         + '<section class="card"><h2>来歴</h2>' + provenance_section + "</section>"
         + actions
     )
@@ -1638,6 +1615,57 @@ def _config_world(config):
     return {"id": config["project_id"], "name": config["preview"]["world_name"]}
 
 
+def render_output_settings_card(settings_path):
+    """WB-UI-021: the single generation-settings source, shown on /configs.
+
+    Backend-specific credentials (api_key/command/base_url/options) never
+    reach this HTML -- read_output_settings() already strips them.
+    """
+    try:
+        view = read_output_settings(settings_path)
+        current = {"backend": view["backend"], "model": view["model"], "limits": view["limits"]}
+        availability = generation_availability(current, settings_path)
+    except ConfigError:
+        # A broken settings.json must not 500 the whole /configs page --
+        # show the same reason text the API/JS would, with no editable form.
+        avail_text = GENERATION_REASON_LABELS["settings_unreadable"]
+        return (
+            '<section class="card" id="output"><h2>文章生成</h2>'
+            '<p class="desc">Sifting で経緯を文章にするときの生成先。すべての実行設定に共通です。</p>'
+            f'<p data-availability>{_escape(avail_text)}</p>'
+            "</section>"
+        )
+    avail_text = availability_label(availability)
+    limits = view["limits"]
+    backends_attr = _escape(json.dumps(view["backends"], ensure_ascii=False, sort_keys=True))
+    form = (
+        f'<form data-wb="output-settings" class="cfg-form" data-backends="{backends_attr}">'
+        '<p class="form-error" data-form-error role="alert"></p>'
+        + _radio_field("生成方式", "backend", GENERATION_BACKEND_OPTIONS, view["backend"])
+        + _text_field("モデル", "model", view["model"] or "", placeholder="方式に合わせて明示")
+        + '<details class="cfg-adv"><summary>上限 <small>時間・回数。通常は変更不要。</small></summary>'
+        + '<div class="cols">'
+        + _number_field("呼び出し回数", "limits.max_calls", limits["max_calls"], unit="回", min_value=0)
+        + _number_field("生成 1 回", "limits.call_timeout_seconds", limits["call_timeout_seconds"], unit="秒", min_value=1)
+        + "</div>"
+        + '<div class="cols">'
+        + _number_field("生成全体", "limits.wall_seconds", limits["wall_seconds"], unit="秒", min_value=1)
+        + _number_field(
+            "応答の保存上限", "limits.max_saved_response_bytes",
+            limits["max_saved_response_bytes"], unit="bytes", min_value=0,
+        )
+        + "</div></details>"
+        + f'<p data-availability>{_escape(avail_text)}</p>'
+        + '<div class="form-actions"><button type="submit" class="button-primary">保存</button></div>'
+        + "</form>"
+    )
+    return (
+        '<section class="card" id="output"><h2>文章生成</h2>'
+        '<p class="desc">Sifting で経緯を文章にするときの生成先。すべての実行設定に共通です。</p>'
+        + form + "</section>"
+    )
+
+
 def _configs_list(handler):
     job_store = _job_store(handler)
     if job_store is None:
@@ -1646,15 +1674,17 @@ def _configs_list(handler):
     from execution.library import LibraryStore
     from viewer import library_pages  # deferred: library_pages imports this module
     configs = job_store.configs.list()
+    settings_path = getattr(handler.server, "settings_path", None)
     body = (
         render_configs_list(configs)
+        + render_output_settings_card(settings_path)
         + library_pages.render_genres_section(LibraryStore(job_store.configs.repo).genres())
         + pages.glossary(("config_id", "genre"))
     )
     handler._send_html(pages.document(
         "設定", body,
         crumbs=[("設定", "/configs")], phase="world",
-        lead="実行設定の版を作り、そこから GA を実行します。ジャンルの追加・編集もここで行います。",
+        lead="実行設定の版を作り、そこから GA を実行します。文章生成の生成先とジャンルの追加・編集もここで行います。",
         next_action=("新しい実行設定を作る →", "/configs/new"),
         job_store=job_store, pin=data.pinned_target(job_store, configs=configs),
     ))
@@ -1671,15 +1701,16 @@ def _configs_new(handler):
     repo = job_store.configs.repo
     projects = sorted(p.name for p in (repo / "projects").iterdir() if p.is_dir()) if (repo / "projects").is_dir() else []
     templates = sorted(p.name for p in (repo / "templates").iterdir() if p.is_dir()) if (repo / "templates").is_dir() else []
-    world_genres = {w["id"]: w["genre"] for w in LibraryStore(repo).worlds()}
+    worlds = LibraryStore(repo).worlds()
+    world_genres = {w["id"]: w["genre"] for w in worlds}
+    world_names = {w["id"]: (w["name"] or w["id"]) for w in worlds}
     if from_id is not None:
         parent = job_store.configs.get(from_id)
         values = _initial_values(
             label=parent["label"], project_id=parent["project_id"], template_id=parent["template_id"],
             evolution=parent["evolution"], execution_limits=parent["execution_limits"],
-            generation=parent["generation"],
         )
-        body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS,
+        body = render_config_form(values, projects=projects, templates=templates,
                                    parent_config_id=from_id, world_genres=world_genres)
         title = "実行設定を複製"
     else:
@@ -1696,12 +1727,15 @@ def _configs_new(handler):
             genre = world_genres.get(project_preset)
             if genre in templates:
                 values["template_id"] = genre
-        body = render_config_form(values, projects=projects, templates=templates, backends=BACKENDS,
+        if values["project_id"] and values["template_id"]:
+            values["label"] = quick_label(
+                world_names.get(values["project_id"], values["project_id"]), values["template_id"])
+        body = render_config_form(values, projects=projects, templates=templates,
                                    world_genres=world_genres)
         title = "新しい実行設定"
     handler._send_html(pages.document(
         title, body, crumbs=[("実行設定", "/configs"), (title, "/configs/new")], phase="world",
-        lead="世界とジャンルを決め、どのくらいの規模で経緯を探索するかを指定します。ふだん触るのは上の 4 つの区画だけです。",
+        lead="世界とジャンルを決め、どのくらいの規模で経緯を探索するかを指定します。ふだん触るのは上の 3 つの区画だけです。",
         job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
@@ -1754,8 +1788,7 @@ def _duplicate(handler, cid):
     job_api.boundary(handler)
     if set(body) != {"changes"} or not isinstance(body["changes"], dict):
         raise ConfigError("request", "変更内容をオブジェクトで指定してください", code="bad_request")
-    settings_path = getattr(handler.server, "settings_path", None)
-    document = job_store.configs.duplicate(cid, body["changes"], settings_path=settings_path)
+    document = job_store.configs.duplicate(cid, body["changes"])
     handler._send_json(HTTPStatus.CREATED, document)
 
 
