@@ -19,7 +19,12 @@ from engine.subject import BeliefAbout, Subject
 from engine.verbs import VerbEngine
 from engine.world import World
 from gapengine.classify import classify
-from gapengine.evolve import _prune_layers, evolve
+from gapengine.evolve import (
+    _generation_lineage_summary,
+    _lineage_stats,
+    _prune_layers,
+    evolve,
+)
 from gapengine.genome import CATEGORIES, Genome
 from gapengine.policy import Policy
 from gapengine.precedent import PrecedentTable, ctx_key
@@ -2200,6 +2205,166 @@ class Phase4GapEngineTests(unittest.TestCase):
             quality(rethink_rows, world_meta),
             quality(base_rows, world_meta),
         )
+
+
+class LineageStatsTests(unittest.TestCase):
+    """WB-LINEAGE-001: ally/contest counting and generation-level aggregates,
+    exercised against hand-built layer rows (no simulation run)."""
+
+    def test_ally_gained_counts_only_protagonist_as_subject(self) -> None:
+        rows = [
+            {"kind": "header", "protagonist": "桃太郎"},
+            {
+                "kind": "event",
+                "verb": "ally_gained",
+                "subject": "鬼",
+                "details": {"ally": "桃太郎"},
+            },
+            {
+                "kind": "event",
+                "verb": "ally_gained",
+                "subject": "桃太郎",
+                "details": {"ally": "犬"},
+                "turn": 1,
+            },
+        ]
+        stats = _lineage_stats(rows, "桃太郎", "鬼")
+        self.assertEqual(stats["allies_final"], 1)
+
+    def test_no_contest_leaves_contest_fields_none(self) -> None:
+        rows = [
+            {"kind": "header", "protagonist": "桃太郎"},
+            {
+                "kind": "event",
+                "verb": "ally_gained",
+                "subject": "桃太郎",
+                "details": {"ally": "犬"},
+                "turn": 1,
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "fight",
+                "args": ["鬼"],
+                "result": "invalid",
+                "turn": 2,
+            },
+        ]
+        stats = _lineage_stats(rows, "桃太郎", "鬼")
+        self.assertIsNone(stats["allies_at_contest"])
+        self.assertIsNone(stats["contest_turn"])
+        self.assertEqual(stats["allies_final"], 1)
+
+    def test_contest_is_recorded_once_at_first_resolved_fight(self) -> None:
+        rows = [
+            {"kind": "header", "protagonist": "桃太郎"},
+            {
+                "kind": "event",
+                "verb": "ally_gained",
+                "subject": "桃太郎",
+                "details": {"ally": "犬"},
+                "turn": 1,
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "fight",
+                "args": ["鬼"],
+                "result": "won",
+                "turn": 5,
+            },
+            {
+                "kind": "event",
+                "verb": "ally_gained",
+                "subject": "桃太郎",
+                "details": {"ally": "猿"},
+                "turn": 6,
+            },
+            {
+                "kind": "decision",
+                "subject": "桃太郎",
+                "verb": "fight",
+                "args": ["鬼"],
+                "result": "lost",
+                "turn": 9,
+            },
+        ]
+        stats = _lineage_stats(rows, "桃太郎", "鬼")
+        # allies gained after turn 5 must not count toward the contest snapshot,
+        # and the second fight against the same antagonist must not overwrite it.
+        self.assertEqual(stats["allies_at_contest"], 1)
+        self.assertEqual(stats["contest_turn"], 5)
+        self.assertEqual(stats["allies_final"], 2)
+
+    def test_contest_is_recorded_when_antagonist_is_the_subject(self) -> None:
+        # resolve(actor, target, ...) decides the winner symmetrically, so a
+        # fight the antagonist initiated is just as decisive as one the
+        # protagonist initiated (review fix: "decisive contest" must not
+        # depend on who is `subject`).
+        rows = [
+            {"kind": "header", "protagonist": "桃太郎"},
+            {
+                "kind": "event",
+                "verb": "ally_gained",
+                "subject": "桃太郎",
+                "details": {"ally": "犬"},
+                "turn": 1,
+            },
+            {
+                "kind": "decision",
+                "subject": "鬼",
+                "verb": "fight",
+                "args": ["桃太郎"],
+                "result": "won",
+                "turn": 5,
+            },
+        ]
+        stats = _lineage_stats(rows, "桃太郎", "鬼")
+        self.assertEqual(stats["allies_at_contest"], 1)
+        self.assertEqual(stats["contest_turn"], 5)
+
+    def test_action_share_counts_a_run_once_for_repeated_actions(self) -> None:
+        raw_results = [
+            {
+                "runs": [
+                    {
+                        "effective_sequence": [
+                            ["I", "train", "none"],
+                            ["I", "train", "none"],
+                        ],
+                        "allies_at_contest": None,
+                        "allies_final": 0,
+                        "contest_turn": None,
+                    },
+                ],
+            },
+        ]
+        summary = _generation_lineage_summary(raw_results)
+        self.assertEqual(summary["action_share"], {"I/train/none": 1.0})
+
+    def test_allies_mean_at_contest_excludes_non_contest_runs(self) -> None:
+        raw_results = [
+            {
+                "runs": [
+                    {
+                        "effective_sequence": [],
+                        "allies_at_contest": 2,
+                        "allies_final": 2,
+                        "contest_turn": 5,
+                    },
+                    {
+                        "effective_sequence": [],
+                        "allies_at_contest": None,
+                        "allies_final": 1,
+                        "contest_turn": None,
+                    },
+                ],
+            },
+        ]
+        summary = _generation_lineage_summary(raw_results)
+        self.assertEqual(summary["allies_mean_at_contest"], 2.0)
+        self.assertAlmostEqual(summary["allies_mean_final"], 1.5)
+        self.assertEqual(summary["contest_rate"], 0.5)
 
 
 if __name__ == "__main__":

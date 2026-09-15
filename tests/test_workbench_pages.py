@@ -527,6 +527,108 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('class="exit on"', body)
         self.assertIn('data-revision="1"', body)
 
+    def test_run_page_shows_generation_trend_table(self):
+        # WB-LINEAGE-001: reach rate / allies-at-contest / the biggest
+        # action-share swings, one row per closed generation.
+        run_id = "run-lineage-trend"
+        self._hand_published_run(run_id, "cfg-test", summary={
+            "generations": [
+                {
+                    "generation": 0,
+                    "occupied_cells": 1, "average_archive_quality": 0.5,
+                    "reach_rate": 0.5, "archive_dissimilarity": 0.0,
+                    "action_share": {"I/train/none": 0.5},
+                    "allies_mean_at_contest": None,
+                    "allies_mean_final": 0.5,
+                    "contest_rate": 0.0,
+                },
+                {
+                    "generation": 1,
+                    "occupied_cells": 1, "average_archive_quality": 0.6,
+                    "reach_rate": 1.0, "archive_dissimilarity": 0.0,
+                    "action_share": {"I/train/none": 0.9, "II/give_item/ally": 0.75},
+                    "allies_mean_at_contest": 1.5,
+                    "allies_mean_final": 2.0,
+                    "contest_rate": 1.0,
+                },
+            ],
+        })
+        self.fake.add(_job("job-trend", run_id, "succeeded", publication_revision=1))
+
+        status, body, _ = self.get_status("/jobs/job-trend")
+        self.assertEqual(status, 200, body)
+        self.assertIn("世代の推移", body)
+        self.assertIn("<td>g0</td>", body)
+        self.assertIn("<td>g1</td>", body)
+        self.assertIn("50%", body)
+        self.assertIn("100%", body)
+        self.assertIn("1.5", body)
+        # g0 has no previous generation to diff against.
+        first_row = body[body.index("<td>g0</td>"):body.index("<td>g1</td>")]
+        self.assertIn("<td>—</td>", first_row)
+        # g1: give_item moved further (+0.75) than train (+0.4), so it leads.
+        second_row = body[body.index("<td>g1</td>"):]
+        self.assertIn("譲渡→味方 0%→75%", second_row)
+        self.assertIn("訓練 50%→90%", second_row)
+        self.assertLess(second_row.index("譲渡"), second_row.index("訓練"))
+
+    def test_run_page_distinguishes_same_verb_across_roles_in_trend_table(self):
+        # Review fix: action_share keys only collide on verb once role is
+        # dropped -- give_item/ally and give_item/hostile must not render as
+        # the same "譲渡" label with contradictory percentages.
+        run_id = "run-lineage-role-collision"
+        self._hand_published_run(run_id, "cfg-test", summary={
+            "generations": [
+                {
+                    "generation": 0,
+                    "occupied_cells": 1, "average_archive_quality": 0.5,
+                    "reach_rate": 0.5, "archive_dissimilarity": 0.0,
+                    "action_share": {
+                        "III/give_item/ally": 0.2,
+                        "III/give_item/hostile": 0.6,
+                    },
+                    "allies_mean_at_contest": None,
+                    "allies_mean_final": 0.5,
+                    "contest_rate": 0.0,
+                },
+                {
+                    "generation": 1,
+                    "occupied_cells": 1, "average_archive_quality": 0.6,
+                    "reach_rate": 1.0, "archive_dissimilarity": 0.0,
+                    "action_share": {
+                        "III/give_item/ally": 0.8,
+                        "III/give_item/hostile": 0.1,
+                    },
+                    "allies_mean_at_contest": 1.5,
+                    "allies_mean_final": 2.0,
+                    "contest_rate": 1.0,
+                },
+            ],
+        })
+        self.fake.add(_job("job-role-collision", run_id, "succeeded", publication_revision=1))
+
+        status, body, _ = self.get_status("/jobs/job-role-collision")
+        self.assertEqual(status, 200, body)
+        second_row = body[body.index("<td>g1</td>"):]
+        self.assertIn("譲渡→味方 20%→80%", second_row)
+        self.assertIn("譲渡→敵対相手 60%→10%", second_row)
+
+    def test_run_page_hides_generation_trend_table_for_legacy_summary(self):
+        # Backward compat: a summary.json from before WB-LINEAGE-001 has no
+        # action_share -- render no heading and no table at all.
+        run_id = "run-lineage-legacy"
+        self._hand_published_run(run_id, "cfg-test", summary={
+            "generations": [
+                {"occupied_cells": 1, "average_archive_quality": 0.5,
+                 "reach_rate": 1.0, "archive_dissimilarity": 0.0},
+            ],
+        })
+        self.fake.add(_job("job-legacy", run_id, "succeeded", publication_revision=1))
+
+        status, body, _ = self.get_status("/jobs/job-legacy")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn("世代の推移", body)
+
     def test_history_page_lists_tables(self):
         status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)

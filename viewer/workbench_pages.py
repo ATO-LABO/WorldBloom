@@ -17,7 +17,7 @@ from execution.configs import evolution_defaults, generation_availability, quick
 from execution.output_settings import read_output_settings
 from execution.provenance import ConfigError, contained
 from execution.worker import TERMINAL
-from viewer import data, job_api, pages
+from viewer import data, explanation_ui, job_api, pages, world_graph
 
 
 _escape = pages._escape
@@ -870,6 +870,66 @@ def _run_detail(job, progress):
     return "".join(parts)
 
 
+def _action_share_label(key):
+    """"category/verb/role" -> a display label that keeps role/verb pairs
+    like give_item/ally vs give_item/hostile from colliding on the same verb
+    text (WB-LINEAGE-001 review fix)."""
+    parts = key.split("/")
+    verb = explanation_ui.verb_label(parts[1])
+    role = parts[2] if len(parts) > 2 else "none"
+    if role == "none":
+        return verb
+    return f"{verb}→{world_graph._ROLE_LABELS.get(role, role)}"
+
+
+def _generation_trend_table(generations):
+    """WB-LINEAGE-001: one row per closed generation, so "what changed as
+    generations passed" survives past the last elite. Server-rendered only --
+    the run page's full reload on each new publication (poll() in
+    workbench.js) already refreshes this along with the QD map, so no JS
+    patch path is needed here."""
+    if not generations or "action_share" not in generations[0]:
+        return ""
+    rows = []
+    previous_share = None
+    for gen in generations:
+        reach = gen.get("reach_rate")
+        reach_text = f"{round(reach * 100)}%" if isinstance(reach, (int, float)) else "—"
+        allies = gen.get("allies_mean_at_contest")
+        allies_text = f"{allies:.1f}" if isinstance(allies, (int, float)) else "—"
+        share = gen.get("action_share") or {}
+        moved = "—"
+        if previous_share is not None:
+            candidates = []
+            for key in sorted(set(previous_share) | set(share)):
+                before = previous_share.get(key, 0.0)
+                after = share.get(key, 0.0)
+                diff = abs(after - before)
+                if diff >= 0.10:
+                    candidates.append((key, before, after, diff))
+            candidates.sort(key=lambda item: -item[3])
+            pieces = [
+                f"{_action_share_label(key)} "
+                f"{round(before * 100)}%→{round(after * 100)}%"
+                for key, before, after, _ in candidates[:3]
+            ]
+            if pieces:
+                moved = " / ".join(pieces)
+        rows.append(
+            f'<tr><td>g{_escape(gen.get("generation"))}</td>'
+            f"<td>{_escape(reach_text)}</td>"
+            f"<td>{_escape(allies_text)}</td>"
+            f"<td>{_escape(moved)}</td></tr>"
+        )
+        previous_share = share
+    return (
+        "<h3>世代の推移</h3>"
+        '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
+        "<th>世代</th><th>到達率</th><th>仲間</th><th>動いた行動</th>"
+        f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+    )
+
+
 def _run_vessel_progress(view):
     job, config = view["job"], view["config"]
     ghost = job is None
@@ -906,6 +966,8 @@ def _run_vessel_progress(view):
     parts.append(f'<p class="run-phase">段階: <span data-field="phase">{_escape(phase_label)}</span></p>')
     if job is not None:
         parts.append(_run_detail(job, progress))
+        live = view.get("live")
+        parts.append(_generation_trend_table((live or {}).get("generations") or []))
     parts.append("</section>")
     return "".join(parts)
 
@@ -1141,6 +1203,7 @@ def _live_map(handler, job):
     return {
         "revision": revision,
         "cells": cells,
+        "generations": generations,
         "series": {
             "occupied": series("occupied_cells"),
             "quality": series("average_archive_quality"),
