@@ -366,11 +366,13 @@ p {
 }
 
 .world-card h3 {
+  font-size: 1.1rem;
   margin: 0 0 0.6rem;
 }
 
 .world-card dl {
   display: grid;
+  font-size: 0.9rem;
   gap: 0.3rem;
   margin: 0;
 }
@@ -383,6 +385,11 @@ p {
 
 .world-card dt {
   color: var(--muted);
+}
+
+.world-card dt[title] {
+  border-bottom: 1px dotted currentColor;
+  cursor: help;
 }
 
 .world-card dd {
@@ -422,6 +429,14 @@ p {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+#experiments .progress-dashboard + .minor-runs {
+  margin-top: 0.6rem;
+}
+
+#experiments > .minor-runs {
+  margin-bottom: 0;
 }
 
 .progress-row {
@@ -752,8 +767,16 @@ td {
 
 .commands pre,
 .output-panel pre {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.9;
+  margin: 0.5rem 0 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.outputs-grid > .card {
+  margin-bottom: 0;
 }
 
 .cmd {
@@ -805,6 +828,12 @@ td {
   overflow-wrap: anywhere;
 }
 
+.elite-summary .metric dd:last-of-type {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
 .card > dl.metric + p.muted {
   font-size: 0.85rem;
   margin: 0.6rem 0 0;
@@ -850,7 +879,11 @@ td {
   align-items: center;
   display: grid;
   gap: 0.45rem;
-  grid-template-columns: 2rem minmax(4rem, 1fr) 3rem;
+  grid-template-columns: max-content minmax(4rem, 1fr) 3rem;
+}
+
+.gene > span:first-child {
+  white-space: nowrap;
 }
 
 .gene-track {
@@ -974,6 +1007,11 @@ td {
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-bottom: 0.65rem;
+}
+
+.day h3 > .muted {
+  font-size: 0.85rem;
+  font-weight: 400;
 }
 
 .chip,
@@ -1274,9 +1312,16 @@ td {
 
 .raw-lines pre {
   border-bottom: 1px solid var(--line);
+  margin: 0;
   overflow-wrap: anywhere;
   padding: 0.5rem;
   white-space: pre-wrap;
+}
+
+.raw-lines pre > a {
+  color: var(--muted);
+  font-size: 0.85em;
+  margin-right: 0.4rem;
 }
 
 .raw-lines pre:target {
@@ -1573,6 +1618,15 @@ section[data-wb="job"][data-entry-labels] > p > a[href^="/outputs/"] {
   padding-top: 1.25rem;
 }
 
+.page-shell > section:not([class]) .wb-table {
+  font-size: 0.85rem;
+}
+
+.page-shell > section:not([class]) .wb-table th,
+.page-shell > section:not([class]) .wb-table td {
+  padding: 0.3rem 0.5rem;
+}
+
 .page-shell > .card + p.actions:last-child {
   border-top: 1px solid var(--line);
   margin-top: 0.25rem;
@@ -1580,6 +1634,11 @@ section[data-wb="job"][data-entry-labels] > p > a[href^="/outputs/"] {
 }
 
 .page-shell > .card + p.actions:last-child a {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+p.actions > a[data-quick-start] + a {
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -1715,6 +1774,23 @@ section[data-wb="output"] > article > p[data-field="message"]:empty {
   display: none;
 }
 
+section[data-wb="output"] > article > h3 {
+  font-size: 1.2rem;
+  margin-bottom: 0.6rem;
+}
+
+section[data-wb="output"] article details pre {
+  max-height: 30rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+section[data-wb="generate"] > p:first-child > a {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 section[data-wb="generate"] > form {
   border-top: 1px solid var(--line);
   margin-top: 1.2rem;
@@ -1769,6 +1845,16 @@ details {
   margin-bottom: 1rem;
 }
 
+.editor > summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.editor > button {
+  margin-top: 0.5rem;
+}
+
 [data-wb="library"][data-kind="genre"] .editor > summary {
   cursor: pointer;
   font-weight: 700;
@@ -1778,6 +1864,29 @@ details {
 [data-wb="library"][data-kind="genre"] .editor + .editor {
   border-top: 1px solid var(--line);
   padding-top: 0.8rem;
+}
+
+[data-wb="library"][data-kind="genre"] .editor textarea {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+[data-wb="library"][data-kind="genre"] button[data-action="save-file"] {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  padding: 0.35rem 0.75rem;
+}
+
+[data-wb="library"][data-kind="genre"] .editor [data-save-status],
+[data-wb="library"][data-kind="genre"] .editor .field-error {
+  margin-left: 0.6rem;
+}
+
+[data-wb="library"][data-kind="genre"] .editor [data-save-status] {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 [data-wb="library"][data-kind="genre"] form[data-action="validate"] {
@@ -2053,6 +2162,15 @@ details {
   margin: 0 0 0.3rem;
 }
 
+[data-vessel="progress"] .run-detail .wb-table {
+  min-width: 0;
+}
+
+[data-vessel="progress"] .run-detail .wb-table th,
+[data-vessel="progress"] .run-detail .wb-table td {
+  padding: 0.35rem 0.5rem;
+}
+
 .qd-map {
   border-collapse: collapse;
   width: auto;
@@ -2161,6 +2279,12 @@ details {
   color: var(--text);
 }
 
+[data-vessel="map"] > .metrics {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+}
+
 [data-vessel="exits"] > p.actions {
   border-top: 1px solid var(--line);
   margin: 0.9rem 0 0;
@@ -2243,6 +2367,11 @@ details {
   margin-right: 0.8rem;
 }
 
+[data-wb="candidates"] .detail-row p.detail-links {
+  font-size: 0.9rem;
+  margin: 0.6rem 0 0;
+}
+
 .row-toggle {
   background: transparent;
   border: 1px solid var(--line);
@@ -2250,6 +2379,39 @@ details {
   cursor: pointer;
   font-size: 0.8rem;
   padding: 0.1rem 0.5rem;
+}
+
+[data-wb="tray"] .wb-actions button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.5rem;
+}
+
+[data-wb="candidates"] > p:first-child {
+  margin-bottom: 0.3rem;
+}
+
+[data-wb="candidates"] > p.related {
+  margin-bottom: 0.6rem;
+}
+
+[data-wb="candidates"] > p.warning {
+  background: var(--warm-soft);
+  border-radius: var(--radius-s);
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.7rem;
+}
+
+[data-wb="candidates"] > .grid-wrap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow);
+  margin: 0 0 1rem;
+  padding: 1.25rem;
 }
 
 /* WB-UI design pass: the candidates page's primary "generate" form had no
@@ -2356,7 +2518,12 @@ details {
 }
 
 .tab-panel .character-table {
+  margin-bottom: 1rem;
   margin-top: 1rem;
+}
+
+.tabs-world .tab-panel > p.muted {
+  max-width: 48rem;
 }
 
 .world-summary {
@@ -2656,6 +2823,12 @@ details {
   margin: 0;
 }
 
+#output > .desc {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
 .cfg-form .rows {
   display: flex;
   flex-direction: column;
@@ -2842,6 +3015,16 @@ details.cfg-adv .cfg-sec h2 {
   position: fixed;
   right: 0;
   z-index: 4;
+}
+
+/* The bar spans the full viewport, but .cfg-form's own column stops at
+   880px inside .page-shell's (up to 1280px, centered) column -- inset the
+   bar's content to the same edges so the buttons sit above the form, not
+   stranded at the viewport edge on wide screens. */
+.cfg-form .form-actions {
+  --shell-left: max(1.25rem, calc((100vw - 1280px) / 2 + 1.25rem));
+  padding-left: var(--shell-left);
+  padding-right: max(1.25rem, calc(100vw - var(--shell-left) - 880px));
 }
 
 /* WB-UI design pass: /configs embeds the output-settings card inline in a
