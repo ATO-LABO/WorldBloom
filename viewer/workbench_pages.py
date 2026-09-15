@@ -708,8 +708,9 @@ def _run_config_picker(world, configs, selected):
     return (
         '<form method="get" action="/jobs" data-wb="run-config">'
         f'<input type="hidden" name="world" value="{_escape(world["id"])}">'
-        f'<select name="config">{options}</select>'
-        "<noscript><button type=\"submit\">切り替え</button></noscript>"
+        '<label class="run-pick"><span>実行設定</span>'
+        f'<select name="config">{options}</select></label>'
+        '<noscript><button type="submit" class="button">切り替え</button></noscript>'
         "</form>"
     )
 
@@ -717,27 +718,37 @@ def _run_config_picker(world, configs, selected):
 def _config_aux_links(config, world):
     return (
         '<p class="actions">'
-        f'<a href="/configs/{_url(config["config_id"])}">編集</a>'
-        f'<a href="/configs/new?from={_url(config["config_id"])}">複製して調整</a>'
-        f'<a href="{_escape(_new_config_href(world))}">新しく作る →</a>'
+        f'<a class="button" href="/configs/{_url(config["config_id"])}">編集</a>'
+        f'<a class="button" href="/configs/new?from={_url(config["config_id"])}">複製して調整</a>'
+        f'<a class="button" href="{_escape(_new_config_href(world))}">＋ 新しく作る</a>'
         "</p>"
     )
 
 
-def _run_plan_dl(config, estimate):
+def _run_plan(config, estimate, *, open_detail=False):
     ev = config["evolution"]
     preview = config["preview"]
     coevolve = "あり" if ev.get("coevolve") else "なし"
     meta = "あり" if ev.get("meta_evolution") else "なし"
-    return _dl([
-        ("世代 × 個体 × seed",
-         f'{_escape(ev["generations"])} × {_escape(ev["population"])} × {_escape(ev["seeds"])}'),
+    detail = _dl([
         ("評価する個体 / seed",
          f'{_escape(preview["planned_individual_evaluations"])} / {_escape(preview["planned_seed_evaluations"])}'),
         ("保存方針", _escape(ev["keep"])),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
-        ("所要時間の目安", estimate),
-    ], cls="run-plan")
+    ])
+    # A running job's page reloads on every publication_revision change
+    # (workbench.js's poll loop), which would otherwise re-collapse this
+    # <details> each time -- open it by default once a job exists, since the
+    # config is fixed at that point and this is the only place to see it.
+    open_attr = " open" if open_detail else ""
+    return (
+        '<div class="run-plan">'
+        f'<p class="run-size"><b>{_escape(ev["generations"])}</b> 世代 × '
+        f'<b>{_escape(ev["population"])}</b> 個体 × <b>{_escape(ev["seeds"])}</b> seed</p>'
+        f'<p class="run-eta"><span class="muted">所要時間の目安</span> {estimate}</p>'
+        f'<details{open_attr}><summary>詳細（評価数・保存方針・共進化）</summary>{detail}</details>'
+        "</div>"
+    )
 
 
 def _start_cta(config, request_id):
@@ -783,18 +794,21 @@ def _run_terminal_message(job):
 
 def _run_prep(view):
     world, job, config, configs = view["world"], view["job"], view["config"], view["configs"]
-    parts = ["<h2>設定</h2>"]
+    poll_line = ""
     if job is None:
-        parts.append('<span class="state-badge state-idle">待機中</span>')
+        badge = '<span class="state-badge state-idle">待機中</span>'
     else:
+        badge = state_badge(job["state"])
         # updated-at/delta: the WB-UI-015 "最終更新 HH:MM:SS" + what-moved-since
-        # summary applyJob() already fills in on every poll; the run page keeps
-        # the same data-field targets next to the state badge.
-        parts.append(
-            f'{state_badge(job["state"])} '
-            '<span data-field="updated-at" class="muted"></span> '
-            '<span data-field="delta" class="muted"></span>'
+        # summary applyJob() already fills in on every poll. Kept out of the
+        # <h2> (only the badge lives there) so the heading's accessible name
+        # doesn't change on every poll tick.
+        poll_line = (
+            '<p class="muted"><span data-field="updated-at"></span> '
+            '<span data-field="delta"></span></p>'
         )
+    # The state badge lives inside the heading so "設定 待機中" reads as one row.
+    parts = [f"<h2>設定 {badge}</h2>", poll_line]
     if not configs:
         if job is not None:
             parts.append("<p>このジョブの設定は削除されています。</p>")
@@ -807,7 +821,7 @@ def _run_prep(view):
     if job is None:
         parts.append(_run_config_picker(world, configs, config))
         parts.append(_config_aux_links(config, world))
-        parts.append(_run_plan_dl(config, view["estimate"]))
+        parts.append(_run_plan(config, view["estimate"]))
         if view["blocking_job"] is not None:
             parts.append(_blocking_notice(view["blocking_job"]))
         else:
@@ -815,7 +829,7 @@ def _run_prep(view):
         parts.append('<p class="muted">GA は LLM を呼び出しません。</p>')
     else:
         parts.append(f'<p>設定: <a href="/configs/{_url(config["config_id"])}">{_escape(config["label"])}</a></p>')
-        parts.append(_run_plan_dl(config, view["estimate"]))
+        parts.append(_run_plan(config, view["estimate"], open_detail=True))
         if job["state"] in RUNNING_STATES:
             parts.append(_cancel_controls(job))
             parts.append('<p class="muted">停止すると、閉じた世代までの結果は残ります。</p>')
