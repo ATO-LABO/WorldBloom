@@ -111,21 +111,49 @@
     );
   });
 
-  // WB-UI-018: character table rows open the matching stat-sheet <dialog>.
-  const openSheet = (row) => {
-    const dialog = document.getElementById(row.dataset.sheet);
+  // WB-UI-018/021: character table rows and relation-graph nodes open the
+  // matching stat-sheet <dialog>.
+  const openSheet = (trigger) => {
+    const dialog = document.getElementById(trigger.dataset.sheet);
     if (dialog && typeof dialog.showModal === "function" && !dialog.open) {
       dialog.showModal();
     }
   };
 
-  document.querySelectorAll("tr[data-sheet]").forEach((row) => {
-    row.addEventListener("click", () => openSheet(row));
-    row.addEventListener("keydown", (event) => {
+  document.querySelectorAll("tr[data-sheet], .relation-graph .node[data-sheet]").forEach((trigger) => {
+    trigger.addEventListener("click", () => openSheet(trigger));
+    trigger.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        openSheet(row);
+        openSheet(trigger);
       }
+    });
+  });
+
+  // WB-UI-021: hovering (or focusing) a node lights it and the edges that
+  // touch it; everything else in the graph dims.
+  document.querySelectorAll(".relation-graph").forEach((graph) => {
+    const light = (node, on) => {
+      const id = node.dataset.sheet;
+      graph.classList.toggle("has-lit", on);
+      node.classList.toggle("lit", on);
+      graph.querySelectorAll("line").forEach((line) => {
+        const touches = line.dataset.a === id || line.dataset.b === id;
+        line.classList.toggle("lit", on && touches);
+        if (on && touches) {
+          graph.querySelector(`.node[data-sheet="${line.dataset.a === id ? line.dataset.b : line.dataset.a}"]`)
+            ?.classList.add("lit-peer");
+        }
+      });
+      if (!on) {
+        graph.querySelectorAll(".lit-peer").forEach((peer) => peer.classList.remove("lit-peer"));
+      }
+    };
+    graph.querySelectorAll(".node[data-sheet]").forEach((node) => {
+      node.addEventListener("mouseenter", () => light(node, true));
+      node.addEventListener("mouseleave", () => light(node, false));
+      node.addEventListener("focus", () => light(node, true));
+      node.addEventListener("blur", () => light(node, false));
     });
   });
 
