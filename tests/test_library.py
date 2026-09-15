@@ -249,13 +249,15 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
 
     def test_world_detail_page_has_canon_and_readout(self):
         # WB-EXPLAIN-canon: the 初期物語 tab surfaces the canon precedent
-        # table (WB-UI-020: phrased with this world's objective) and the
-        # characters tab the deterministic per-character readout (hidden
-        # item modifiers, secrets, foreshadowing) end-to-end through the route.
+        # decision table (phrased with this world's objective in the column
+        # header, not folded into a per-row sentence) and the characters tab
+        # the deterministic per-character readout (hidden item modifiers,
+        # secrets, foreshadowing) end-to-end through the route.
         status, body = self.get("/worlds/momotaro")
         self.assertEqual(status, 200, body)
         self.assertIn('class="wb-table canon-table"', body)
-        self.assertIn("鬼ヶ島の宝物を敵が持っている", body)
+        self.assertIn("鬼ヶ島の宝物の所在", body)
+        self.assertIn("敵が持っている", body)
         self.assertIn('class="character-readout"', body)
         self.assertIn("金棒: +40", body)
         self.assertIn("隠れた強化", body)
