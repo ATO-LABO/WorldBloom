@@ -310,7 +310,8 @@ p {
 .world-hub-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* 280px min => 4 columns inside the 1280px page shell, fewer as it narrows. */
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   margin-top: 0.75rem;
 }
 

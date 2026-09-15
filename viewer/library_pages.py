@@ -71,7 +71,7 @@ def _world_card(world):
         f'<div><dt>主人公/敵役</dt><dd>{_escape(world["protagonist"])} / {_escape(world["antagonist"])}</dd></div>'
         "</dl></a>"
         '<div class="world-card-footer">'
-        + pages.quick_start_actions(world["id"], genre, world["name"] or world["id"], run_href, css_class="button")
+        + pages.quick_start_actions(world["id"], genre, world["name"] or world["id"], run_href, css_class="button", text="すぐ実行")
         + "</div></article>"
     )
 
