@@ -28,6 +28,11 @@ class WorldGraphTests(unittest.TestCase):
         )
         self.assertIn('<svg class="relation-graph"', svg)
         self.assertEqual(svg.count('class="node'), 7)
+        # WB-UI-021: nodes open the same sheet as their table row (桃太郎 is
+        # subjects[2]); edges name both endpoints so hover can light them.
+        self.assertIn('class="node is-protagonist" data-sheet="sheet-2" tabindex="0" role="button"', svg)
+        self.assertEqual(svg.count('data-sheet="sheet-'), 7)
+        self.assertIn('data-a="sheet-2" data-b="sheet-6"', svg)  # 桃太郎—鬼
         self.assertNotIn("旅の商人", svg)
         self.assertEqual(svg.count("is-protagonist"), 1)
         self.assertEqual(svg.count("is-antagonist"), 1)

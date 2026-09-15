@@ -1727,6 +1727,44 @@ details {
   width: 100%;
 }
 
+/* WB-UI-021: nodes are buttons; hovering one lights it, its partners and
+   the edges between them while the rest of the graph dims. */
+.relation-graph .node {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 0.15s;
+}
+
+.relation-graph line {
+  transition: stroke-opacity 0.15s, stroke-width 0.15s;
+}
+
+.relation-graph.has-lit .node:not(.lit):not(.lit-peer) {
+  opacity: 0.35;
+}
+
+.relation-graph.has-lit line:not(.lit) {
+  stroke-opacity: 0.08;
+}
+
+.relation-graph line.lit {
+  stroke-opacity: 1;
+}
+
+.relation-graph .node.lit circle {
+  stroke: var(--gold);
+  stroke-width: 4;
+}
+
+.relation-graph .node.lit-peer circle {
+  stroke: var(--gold);
+  stroke-width: 2;
+}
+
+.relation-graph .node.lit text {
+  font-weight: 700;
+}
+
 .tab-panel .character-table {
   margin-top: 1rem;
 }
