@@ -499,6 +499,16 @@ TERM_HELP = {
     "world": (
         "世界: 地名・経路・日数と登場人物の初期状態の組。projects/<世界> に置かれる。"
     ),
+    # WB-LINEAGE-002
+    "lineage": (
+        "主系: このエリートから親を一本道でたどった列。"
+        "二親のうち遺伝子が近い方だけを採用し、免れた側は表示しない。"
+    ),
+    "turning": (
+        "転機: 主系の隣り合う親子を同じ seed で再実行し、"
+        "主人公の決定が最初に分かれた地点。"
+        "分かれても何も変えない選択は読み飛ばす。"
+    ),
 }
 
 METRIC_HELP = TERM_HELP  # backward-compat alias; do not add new entries here
@@ -1596,6 +1606,7 @@ def cell_page(
             f'<a href="{cell_base}?view={mode}"{current}>'
             f"{_escape(label)}</a>"
         )
+    mode_links.append(f'<a href="{cell_base}/lineage">{_tip("lineage", "系譜")}</a>')
 
     parents = " × ".join(
         str(parent)
@@ -1671,6 +1682,270 @@ def cell_page(
         phases=phases,
         lead="この候補の経緯を四項目で確かめます。",
         next_action=("格子に戻る →", experiment_url),
+        job_store=job_store,
+    )
+
+
+def _gene_shift_text(gene_shift: Sequence[Mapping[str, Any]] | None) -> str:
+    """The "動いた性格" one-liner: the biggest-|delta| scalar, plus a second
+    one only when the rest moved by more than ±0.05 (design doc §(d))."""
+
+    if not gene_shift:
+        return "（起点。比べる前がありません）"
+    leading = gene_shift[0]
+    lines = [f'{leading["label"]} {leading["before"]:.2f}→{leading["after"]:.2f}']
+    rest = gene_shift[1:]
+    if rest and any(abs(item["delta"]) > 0.05 for item in rest):
+        second = rest[0]
+        lines.append(f'{second["label"]} {second["before"]:.2f}→{second["after"]:.2f}')
+    elif rest:
+        lines.append("他は±0.05以内")
+    return "／".join(lines)
+
+
+def _lineage_action_text(action: Mapping[str, Any] | None) -> str:
+    if not action:
+        return "—"
+    verb = explanation_ui.verb_label(action.get("verb"))
+    args = "・".join(str(value) for value in action.get("args") or [])
+    return f"{verb}（{args}）" if args else verb
+
+
+def _lineage_outcome_text(outcome: Mapping[str, Any] | None) -> str:
+    if outcome is None:
+        return "再現できず不明"
+    parts = []
+    if outcome.get("ending"):
+        parts.append(f"結末: {outcome['ending']}")
+    elif outcome.get("downed"):
+        parts.append("道中で倒れた")
+    reached = outcome.get("reached")
+    parts.append("到達" if reached else "未到達" if reached is False else "到達: 不明")
+    parts.append(f'仲間 {outcome.get("allies_final", 0)} 人')
+    win_probability = outcome.get("win_probability")
+    if win_probability is not None:
+        parts.append(f"決戦勝率 {win_probability:.0%}")
+    return " ／ ".join(parts)
+
+
+def _candidate_table(
+    candidates: Sequence[Mapping[str, Any]],
+    stats: Mapping[str, Any] | None = None,
+) -> str:
+    if not candidates:
+        return '<p class="muted">候補の記録がありません（record_explanations 対象外）。</p>'
+    note = ""
+    if stats is not None and stats.get("total_candidates") is not None:
+        note = (
+            f'<p class="muted">記録 {stats.get("recorded_candidates")} / '
+            f'全 {stats.get("total_candidates")} 件。省略: '
+            f'{"あり" if stats.get("truncated") else "なし"}。</p>'
+        )
+    rows = []
+    for candidate in sorted(
+        candidates,
+        key=lambda item: -(data._number(item.get("probability"), 0.0)),
+    ):
+        verb = explanation_ui.verb_label(candidate.get("verb"))
+        args = "・".join(str(value) for value in candidate.get("args") or [])
+        probability = candidate.get("probability")
+        width = round(data._number(probability, 0.0) * 100)
+        mark = " ✓" if candidate.get("selected") else ""
+        rows.append(
+            "<tr>"
+            f'<td>{_escape(verb)}{(" " + _escape(args)) if args else ""}{mark}</td>'
+            f'<td><div class="candidate-bar"><div class="candidate-bar-fill" '
+            f'style="width:{width}%"></div></div></td>'
+            f'<td>{f"{probability:.0%}" if probability is not None else "—"}</td>'
+            "</tr>"
+        )
+    return (
+        note
+        + '<table class="candidate-table"><thead><tr>'
+        "<th>行動</th><th></th><th>確率</th>"
+        f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    )
+
+
+def _lineage_band(
+    ancestry: Sequence[Mapping[str, Any]],
+    turnings: Sequence[Mapping[str, Any]],
+    first_reach_index: int | None,
+) -> str:
+    turning_indices = {turning["child_index"] for turning in turnings}
+    last = len(ancestry) - 1
+    items = []
+    for index, node in enumerate(ancestry):
+        classes = ["lineage-node"]
+        labels = []
+        if index == 0:
+            labels.append(f"g{node['generation']}")
+        if index == first_reach_index:
+            classes.append("reach")
+            labels.append("初到達")
+        if index in turning_indices:
+            classes.append("turning")
+            labels.append("転機")
+        if index == last:
+            classes.append("final")
+            labels.append(f"g{node['generation']}(最終)")
+        if node.get("rerun_error"):
+            classes.append("broken")
+        label_html = (
+            f'<span class="label">{_escape(" / ".join(labels))}</span>'
+            if labels
+            else ""
+        )
+        items.append(
+            f'<li class="{" ".join(classes)}" title="世代 g{node["generation"]}">'
+            f'<span class="dot"></span>{label_html}</li>'
+        )
+    return f'<ol class="lineage-band">{"".join(items)}</ol>'
+
+
+def _turning_card(
+    title: str,
+    *,
+    generation: int,
+    body_lines: Sequence[str],
+    href: str | None = None,
+    current: bool = False,
+) -> str:
+    inner = (
+        f"<h3>{_escape(title)}</h3><p class=\"muted\">g{generation}</p>"
+        + "".join(f"<p>{line}</p>" for line in body_lines)
+    )
+    if href is None:
+        return f'<div class="card turning-card">{inner}</div>'
+    current_attr = ' aria-current="page"' if current else ""
+    return f'<a class="card turning-card" href="{href}"{current_attr}>{inner}</a>'
+
+
+def _turning_detail(turning: Mapping[str, Any]) -> str:
+    present = turning.get("present")
+    header = f'<p>T{_escape(turning["turn"])}（親側 T{_escape(turning["parent_turn"])}）'
+    if present:
+        header += f'　同席: {_escape("、".join(present))}'
+    header += "</p>"
+    trait_series = turning.get("trait_series")
+    trait_html = (
+        f'<p class="muted">{_escape(trait_series["label"])}の推移</p>'
+        f'{sparkline(trait_series["values"])}'
+        if trait_series
+        else ""
+    )
+    body = (
+        header
+        + f'<p>{_gene_shift_text(turning["gene_shift"])}</p>'
+        + trait_html
+        + '<div class="turning-columns">'
+        + "<div><h3>親の選択肢</h3>"
+        + _candidate_table(turning["parent_candidates"], turning.get("parent_candidate_stats"))
+        + f'<p>実際の選択: {_lineage_action_text(turning["parent_action"])}</p></div>'
+        + "<div><h3>子の選択肢</h3>"
+        + _candidate_table(turning["child_candidates"], turning.get("child_candidate_stats"))
+        + f'<p>実際の選択: {_lineage_action_text(turning["child_action"])}</p></div>'
+        + "</div>"
+        + f'<p>{_lineage_outcome_text(turning["outcome"])}</p>'
+    )
+    return body
+
+
+def lineage_page(
+    repository: data.RunRepository,
+    experiment_name: str,
+    cell_key: str,
+    *,
+    turning_index: int | None = None,
+    job_store: Any = None,
+) -> str:
+    experiment = repository.experiment(experiment_name)
+    model = data.lineage_view(repository, experiment, cell_key)
+    experiment_url = f"/exp/{_url_segment(experiment_name)}"
+    cell_base = f"{experiment_url}/cell/{_url_segment(cell_key)}"
+    lineage_base = f"{cell_base}/lineage"
+
+    ancestry = model["ancestry"]
+    turnings = model["turnings"]
+    first_reach_index = model["first_reach_index"]
+    selected = (
+        turning_index
+        if turning_index is not None and 0 <= turning_index < len(turnings)
+        else (0 if turnings else None)
+    )
+
+    cards = [
+        _turning_card(
+            "出発点",
+            generation=ancestry[0]["generation"],
+            body_lines=[_lineage_outcome_text(ancestry[0].get("outcome"))],
+        )
+    ]
+    for index, turning in enumerate(turnings):
+        cards.append(
+            _turning_card(
+                "転機",
+                generation=turning["child_generation"],
+                body_lines=[
+                    _gene_shift_text(turning["gene_shift"]),
+                    f'{_lineage_action_text(turning["parent_action"])} → '
+                    f'{_lineage_action_text(turning["child_action"])}',
+                    _lineage_outcome_text(turning["outcome"]),
+                ],
+                href=f"{lineage_base}?turning={index}",
+                current=(index == selected),
+            )
+        )
+    if first_reach_index is not None:
+        reach_node = ancestry[first_reach_index]
+        cards.append(
+            _turning_card(
+                "初到達",
+                generation=reach_node["generation"],
+                body_lines=[_lineage_outcome_text(reach_node.get("outcome"))],
+            )
+        )
+
+    if turnings and selected is not None:
+        detail = _turning_detail(turnings[selected])
+    else:
+        detail = (
+            '<p class="muted">この系譜には転機が見つかりませんでした'
+            "（決定が完全に一致したか、比べられる祖先がありません）。</p>"
+        )
+
+    broken = [entry["ref"] for entry in ancestry if entry.get("rerun_error")]
+    warning = (
+        '<p class="warning">一部の祖先は再現できませんでした（'
+        + _escape("、".join(broken))
+        + "）。関わる転機は省略されています。</p>"
+        if broken
+        else ""
+    )
+
+    body = (
+        f'<div class="cell-navigation"><a href="{cell_base}">← 候補</a></div>'
+        + warning
+        + '<section class="card"><h2>系譜</h2>'
+        + glossary(["lineage", "turning"])
+        + _lineage_band(ancestry, turnings, first_reach_index)
+        + "</section>"
+        + '<section class="card turning-cards"><h2>出発点・転機・初到達</h2>'
+        + "".join(cards)
+        + "</section>"
+        + '<section class="card"><h2>選んだ転機の詳細</h2>'
+        + detail
+        + "</section>"
+    )
+    phases = data.phase_status(repository, experiment_name, job_store=job_store)
+    return document(
+        f"{experiment_name} / {cell_key} / 系譜",
+        body,
+        run=experiment_name,
+        phase="sifting",
+        phases=phases,
+        lead="祖先をたどり、行動が最初に分かれた地点を確かめます。",
+        next_action=("候補に戻る →", cell_base),
         job_store=job_store,
     )
 

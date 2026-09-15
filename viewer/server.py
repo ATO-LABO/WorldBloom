@@ -189,6 +189,20 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 job_store=job_store,
             ))
             return
+        if len(parts) == 5 and parts[0] == "exp" and parts[2] == "cell" and parts[4] == "lineage":
+            query = parse_qs(urlsplit(self.path).query)
+            raw_turning = query.get("turning", [None])[0]
+            turning_index = None
+            if raw_turning is not None:
+                try:
+                    turning_index = int(raw_turning)
+                except ValueError:
+                    turning_index = None
+            self._send_html(pages.lineage_page(
+                self.repository, parts[1], parts[3], turning_index=turning_index,
+                job_store=job_store,
+            ))
+            return
         if len(parts) == 2 and parts[0] == "exp":
             self._send_html(
                 pages.experiment_page(

@@ -1418,6 +1418,31 @@ def cell_view(
     }
 
 
+def lineage_view(
+    repository: RunRepository,
+    experiment: Path,
+    cell_key: str,
+) -> dict[str, Any]:
+    """Build the model for one cell's lineage page (WB-LINEAGE-002): the
+    primary-lineage band, every turning point found along it, and the
+    first-reach marker. A thin wrapper around gapengine.lineage -- the
+    existence/shape checks mirror cell_view's so the two pages fail the same
+    way for the same malformed input."""
+
+    from gapengine import lineage as lineage_engine
+
+    repository.validate_segment(cell_key)
+    if cell_key.count("|") != 1 or not all(cell_key.split("|", 1)):
+        raise BadRequest("cell must have the form category|volatility_bin")
+
+    archive = repository.archive(experiment)
+    cells = _as_mapping(archive.get("cells"))
+    if not isinstance(cells.get(cell_key), Mapping):
+        raise MissingResource(f"cell not found: {cell_key}")
+
+    return lineage_engine.build_lineage_report(repository, experiment, cell_key)
+
+
 @lru_cache(maxsize=128)
 def _cached_explanation(path, mtime_ns, size, experiment_name, cell_key):
     # Only extraction is cached; editorial approval is checked on every request.
