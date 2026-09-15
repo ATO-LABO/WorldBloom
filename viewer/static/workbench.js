@@ -1029,9 +1029,16 @@
       if (!button) {
         return;
       }
+      const stateSelect = row.querySelector('[data-field="state"]');
+      if (stateSelect) {
+        // Recolour the pill (.state-sel-*) as soon as the choice changes, so
+        // ✔採用/⏸保留/✖除外/○未分類 reads correctly before 保存 is pressed.
+        stateSelect.addEventListener("change", () => {
+          stateSelect.className = `state-select state-sel-${stateSelect.value}`;
+        });
+      }
       button.addEventListener("click", async () => {
         const statusEl = row.querySelector("[data-save-status]");
-        const stateSelect = row.querySelector('[data-field="state"]');
         const noteInput = row.querySelector('[data-field="note"]');
         button.disabled = true;
         try {

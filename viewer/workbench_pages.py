@@ -56,6 +56,17 @@ ERROR_MESSAGES = {
 }
 
 CANDIDATE_STATE_OPTIONS = ("adopted", "held", "rejected", "unclassified")
+# Japanese labels for the selection state as shown in the Sifting UI (the
+# <select> in the candidate table, the filter form and the tray badge). The
+# leading mark makes the four states scannable at a glance: ✔ adopted (green),
+# ⏸ held (amber), ✖ rejected (red), ○ unclassified (grey) -- colours live in
+# app.css under .state-sel-*.
+CANDIDATE_STATE_LABELS = {
+    "adopted": "✔ 採用",
+    "held": "⏸ 保留",
+    "rejected": "✖ 除外",
+    "unclassified": "○ 未分類",
+}
 AVAILABILITY_LABELS = {"present": "あり", "pruned": "剪定済み", "missing": "不在", "stale": "不一致"}
 
 # WB-UI-021: /configs's 文章生成 card (execution/output_settings.py's backend choices).
@@ -117,6 +128,13 @@ PHASE_LABELS_JSON = json.dumps(PHASE_LABELS, ensure_ascii=False, sort_keys=True)
 # --------------------------------------------------------------------------
 # Small render helpers
 # --------------------------------------------------------------------------
+
+def selection_state_badge(state):
+    """Badge for the Sifting *selection* state (採用/保留/除外/未分類), coloured
+    via .state-sel-<state> so it reads the same as the row <select>."""
+    label = CANDIDATE_STATE_LABELS.get(state, str(state))
+    return f'<span class="state-badge state-sel-{_escape(state)}">{_escape(label)}</span>'
+
 
 def state_badge(state, labels=STATE_LABELS):
     label = labels.get(state, str(state))
@@ -1479,7 +1497,8 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
     short = _short_id(cid)
     disabled = " disabled" if running else ""
     state_options = "".join(
-        f'<option value="{option}"{" selected" if candidate["state"] == option else ""}>{option}</option>'
+        f'<option value="{option}"{" selected" if candidate["state"] == option else ""}>'
+        f'{_escape(CANDIDATE_STATE_LABELS.get(option, option))}</option>'
         for option in CANDIDATE_STATE_OPTIONS
     )
     checkbox = ""
@@ -1522,7 +1541,8 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
         f'<td>{_escape(quality_text)}</td>'
         f'<td>{_escape(_reached_text(candidate.get("reached")))}</td>'
         f'<td>{_escape(candidate.get("screenable"))}</td>'
-        f'<td><select data-field="state" aria-label="選定状態 {_escape(short)}"{disabled}>'
+        f'<td><select data-field="state" class="state-select state-sel-{_escape(candidate["state"])}" '
+        f'aria-label="選定状態 {_escape(short)}"{disabled}>'
         f'{state_options}</select></td>'
         f'<td><input data-field="note" aria-label="メモ {_escape(short)}" '
         f'value="{_escape(candidate.get("note", ""))}"{disabled}></td>'
@@ -1566,7 +1586,7 @@ def _candidates_filter_form(run_id, query):
     role_options = options("role", [(r, r) for r in ("protagonist", "antagonist", "unknown")])
     reached_options = options("reached", [("true", "到達"), ("false", "未到達")])
     availability_options = options("availability", list(AVAILABILITY_LABELS.items()))
-    state_options = options("state", [(s, s) for s in CANDIDATE_STATE_OPTIONS])
+    state_options = options("state", [(s, CANDIDATE_STATE_LABELS.get(s, s)) for s in CANDIDATE_STATE_OPTIONS])
     hidden_sort = ""
     if val("sort"):
         hidden_sort += f'<input type="hidden" name="sort" value="{_escape(val("sort"))}">'
@@ -1691,7 +1711,7 @@ def _tray_row(entry):
         f'<td title="{_escape(cid)}">{_escape(_short_id(cid))}</td>'
         f'<td>{_escape(entry.get("cell_key"))}</td>'
         f'<td>{_escape(entry.get("generation"))}/{_escape(entry.get("seed"))}</td>'
-        f'<td>{_escape(entry.get("state"))}</td>'
+        f'<td>{selection_state_badge(entry.get("state"))}</td>'
         f'<td>{_escape(entry.get("note"))}</td>'
         '<td class="wb-actions">'
         f'<a href="/runs/{_url(entry["run_id"])}/candidates">候補一覧</a>'
@@ -2116,7 +2136,7 @@ def _candidates_list(handler, run_id):
     if not snapshot["candidates"]["candidates"]:
         next_action = ("実行する →", "/configs/new")
     elif not has_adopted:
-        next_action = ("候補を採用する（選定状態を adopted に）→", "#candidate-table")
+        next_action = ("候補を採用する（選定状態を「✔ 採用」に）→", "#candidate-table")
     elif not has_draft:
         next_action = ("あらすじを生成する →", "#generate-form")
     else:
