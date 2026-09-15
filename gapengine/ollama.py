@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Mapping
 
-DEFAULT_MODEL = "qwen3.5:9b-q4_K_M"
+DEFAULT_MODEL = "qwen3.6:35b"
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_OPTIONS = {"num_ctx": 16384, "num_predict": 4096}
 
