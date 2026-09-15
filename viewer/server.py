@@ -316,6 +316,14 @@ class ViewerHandler(BaseHTTPRequestHandler):
                     jobs.assert_run_idle(parts[1])
                 self._update_selection(parts[1])
                 return
+            if len(parts) == 3 and parts[0] == "exp" and parts[2] == "delete":
+                jobs = getattr(self.server, "job_store", None)
+                if jobs is None:
+                    raise MissingResource("route not found")
+                job_api.boundary(self, client_header=True, body_required=False)
+                self.repository.validate_segment(parts[1])
+                self._send_json(HTTPStatus.OK, jobs.delete_run(parts[1]))
+                return
             raise MissingResource("route not found")
         except ConfigError as error:
             job_api.send_error(self, error)

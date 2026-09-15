@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import yaml
 
-from execution.configs import ConfigStore, evolution_defaults, generation_availability, normalize
+from execution.configs import ConfigStore, evolution_defaults, normalize
 from execution.provenance import ConfigError, canonical, directory_lock, sha256
 from scripts.evolve import build_parser
 
@@ -248,35 +248,22 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("qd.yaml", result["preview"]["fallbacks"])
         self.assertEqual(self.store.duplicate("cfg-ref")["preview"]["target_endings"], ["mutual"])
 
-    def test_generation_readiness_no_implicit_model_and_no_secrets(self):
-        generation = normalize(self.spec)["generation"]
-        with patch("execution.configs.shutil.which", return_value="codex.exe"):
-            self.assertEqual(generation_availability(generation)["reason"], "model_required")
-            settings = self.base / "settings.json"
-            settings.write_text(json.dumps({"output": {"codex-cli": {"model": "explicit-model",
-                                "api_key": "DO-NOT-LEAK", "command": "codex"}}}), encoding="utf-8")
-            preview = self.store.preview(self.spec, settings_path=settings)
-        self.assertTrue(preview["preview"]["generation"]["available"])
-        self.assertEqual(preview["generation"]["model"], "explicit-model")
-        self.assertNotIn("DO-NOT-LEAK", json.dumps(preview))
-        self.assertNotIn("command", json.dumps(preview["preview"]["generation"]))
-        self.assertEqual(preview["preview"]["generation"]["authentication"], "unverified")
-
-    def test_api_credentials_and_prompt_only_are_distinct(self):
-        spec = normalize({**self.spec, "generation": {"backend": "openai", "model": "explicit"}})
-        self.assertEqual(generation_availability(spec["generation"])["reason"], "credentials_missing")
-        spec = normalize({**self.spec, "generation": {"backend": "none"}})
-        result = generation_availability(spec["generation"])
-        self.assertTrue(result["available"])
-        self.assertEqual(result["completion_kind"], "prompt_only")
-        self.assertIsNone(result["model"])
-
-    def test_generation_limits_and_unknown_fields_rejected(self):
-        for generation in ({"backend": "bad"}, {"model": ""}, {"model": "--unsafe"},
-                           {"api_key": "secret"}, {"limits": {"max_calls": 0}},
-                           {"limits": {"wall_seconds": True}}):
+    def test_generation_is_rejected_from_execution_config(self):
+        # WB-UI-021: generation moved out to settings.json's "output" section
+        # (execution/output_settings.py); an execution config must not accept
+        # it any more, in any shape.
+        for generation in ({"backend": "codex-cli"}, {"backend": "none"}, {"model": "explicit"}):
             with self.subTest(generation=generation), self.assertRaises(ConfigError):
-                self.store.preview({**self.spec, "generation": generation})
+                normalize({**self.spec, "generation": generation})
+
+    def test_preview_and_save_carry_no_generation_section(self):
+        preview = self.store.preview(self.spec)
+        self.assertNotIn("generation", preview)
+        self.assertNotIn("generation", preview["preview"])
+        saved = self.save()
+        self.assertNotIn("generation", saved)
+        self.assertNotIn("generation", saved["preview"])
+        self.assertNotIn("generation", self.store.duplicate("cfg-test", new_id="cfg-clone"))
 
     def test_prepare_does_not_spawn_and_freezes_code_inputs(self):
         self.runtime()
@@ -298,7 +285,9 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("python", runtime)
         self.assertIn("pyyaml", runtime)
         self.assertIsNone(runtime["head"])  # fixture repo is not a git checkout
-        self.assertFalse(any("settings" in f["path"] for f in runtime["files"]))
+        # The frozen runtime is source code (execution/output_settings.py included);
+        # only the settings.json *data* file (secrets) must never be swept in.
+        self.assertFalse(any(f["path"].rsplit("/", 1)[-1] == "settings.json" for f in runtime["files"]))
 
     def test_run_tampering_detected(self):
         self.runtime()
@@ -349,22 +338,23 @@ class ConfigTests(unittest.TestCase):
         self.assertGreaterEqual(len(list(fixed.rglob("layers.jsonl"))), 4)
         self.store.verify_run("run-parallel")
 
-    def test_generation_recheck_revocation_uses_frozen_model(self):
+    def test_output_settings_resolve_live_from_settings_json(self):
+        # WB-UI-021: there is no frozen "recheck" any more -- current_generation()
+        # always reads settings.json as it is *now* (execution/output_settings.py
+        # owns this; ConfigStore has nothing left to check_generation()).
+        from execution.output_settings import current_generation
         settings = self.base / "settings.json"
-        settings.write_text(json.dumps({"output": {"openai": {"model": "model-one", "api_key": "hidden"}}}), encoding="utf-8")
-        spec = {**self.spec, "generation": {"backend": "openai"}}
-        self.store.save(spec, config_id="cfg-generation", settings_path=settings)
-        settings.write_text(json.dumps({"output": {"openai": {"model": "model-two"}}}), encoding="utf-8")
-        result = self.store.check_generation("cfg-generation", settings_path=settings)
-        self.assertFalse(result["available"])
+        settings.write_text(json.dumps({"output": {"default_backend": "openai",
+            "openai": {"model": "model-one", "api_key": "hidden"}}}), encoding="utf-8")
+        result = current_generation(settings)
         self.assertEqual(result["model"], "model-one")
-        self.assertEqual(result["reason"], "credentials_missing")
-
-    def test_saved_model_missing_does_not_adopt_a_later_default(self):
-        self.save()
-        settings = self.base / "settings.json"
-        settings.write_text(json.dumps({"output": {"codex-cli": {"model": "later"}}}), encoding="utf-8")
-        self.assertEqual(self.store.check_generation("cfg-test", settings_path=settings)["reason"], "model_required")
+        self.assertTrue(result["availability"]["available"])
+        settings.write_text(json.dumps({"output": {"default_backend": "openai",
+            "openai": {"model": "model-two"}}}), encoding="utf-8")
+        result = current_generation(settings)
+        self.assertEqual(result["model"], "model-two")
+        self.assertFalse(result["availability"]["available"])
+        self.assertEqual(result["availability"]["reason"], "credentials_missing")
 
     def test_actual_subject_content_is_available_from_fixed_preview(self):
         saved = self.save()

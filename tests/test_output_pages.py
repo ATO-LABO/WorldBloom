@@ -139,14 +139,16 @@ class OutputPagesTests(unittest.TestCase):
         self.configs = ConfigStore(ROOT, self.control, self.runs)
         self.configs.save({
             "label": "wb", "project_id": "romance", "template_id": "romance",
-            "generation": {"backend": "none"},
             "evolution": {"generations": 1, "population": 1, "seeds": 1},
         }, config_id="cfg-test")
         self.fake = FakeJobStore(self.configs)
         self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
         self.server.repository = RunRepository(self.runs, control_root=self.control, jobs=self.fake)
         self.server.job_store = self.fake
-        self.server.settings_path = ROOT / "settings.json"
+        # WB-UI-021: a private, writable settings.json -- never the real repo's.
+        self.settings_path = self.base / "settings.json"
+        self.settings_path.write_text(json.dumps({"output": {"default_backend": "none"}}), encoding="utf-8")
+        self.server.settings_path = self.settings_path
         thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
         thread.start()
         self.addCleanup(self.server.server_close)
@@ -442,6 +444,41 @@ class OutputPagesTests(unittest.TestCase):
         self.assertIn("予定呼出し数: 2 件", first)
         self.assertIn(">wb</a>", first)  # config["label"] saved in setUp
 
+        # WB-UI-021: generation now reads live from settings.json, and the
+        # page links back to /configs#output instead of showing a frozen
+        # per-config backend/model pair.
+        self.assertIn("文章生成: none", first)
+        self.assertIn('<a href="/configs#output">⚙ 設定で変更</a>', first)
+
+    def test_generate_confirm_does_not_leak_credentials(self):
+        # WB-UI-021 decision 4: api_key/command/base_url/options must never
+        # reach the confirmation page, even though it now reads settings.json
+        # live to build the request.
+        self.settings_path.write_text(json.dumps({"output": {
+            "default_backend": "openai",
+            "openai": {"model": "gpt-secret", "api_key": "DO-NOT-LEAK", "base_url": "http://leak.example"},
+        }}), encoding="utf-8")
+        rid, cids = self._legacy_run("exp-gen-secret", count=1)
+        status, body, _ = self.get_status(
+            f"/runs/{rid}/generate?kind=synopsize&config=cfg-test&candidate={cids[0]}"
+        )
+        self.assertEqual(status, 200, body)
+        self.assertNotIn("DO-NOT-LEAK", body)
+        self.assertNotIn("leak.example", body)
+        self.assertIn("文章生成: openai", body)
+
+    def test_generate_confirm_survives_unreadable_settings_json(self):
+        # WB-UI-021 review item 2: a broken settings.json must not 500 the
+        # confirmation page -- and must not offer a start button.
+        self.settings_path.write_text("{not json", encoding="utf-8")
+        rid, cids = self._legacy_run("exp-gen-broken-settings", count=1)
+        status, body, _ = self.get_status(
+            f"/runs/{rid}/generate?kind=synopsize&config=cfg-test&candidate={cids[0]}"
+        )
+        self.assertEqual(status, 200, body)
+        self.assertIn("settings.json を読めません", body)
+        self.assertNotIn("data-request=", body)
+
     def test_generate_confirm_request_fields_match_output_requests(self):
         from execution import output_requests
 
@@ -457,22 +494,25 @@ class OutputPagesTests(unittest.TestCase):
 
     def test_generate_confirm_unavailable_backend_has_no_start_button(self):
         rid, cids = self._legacy_run("exp-gen-unavail", count=1)
-        original = self.configs.check_generation
-        self.configs.check_generation = lambda cid, *, settings_path=None: {
-            "backend": "codex-cli", "model": "gpt-5.6-sol", "available": False,
-            "authentication": "unverified", "reason": "executable_missing", "limits": {},
+        limits = {"max_calls": 1, "call_timeout_seconds": 180, "wall_seconds": 240,
+                  "max_saved_response_bytes": 128000}
+        original = output_pages.current_generation
+        output_pages.current_generation = lambda settings_path=None: {
+            "backend": "codex-cli", "model": "gpt-5.6-sol", "limits": limits,
+            "availability": {"backend": "codex-cli", "model": "gpt-5.6-sol", "available": False,
+                "authentication": "unverified", "reason": "executable_missing", "limits": limits},
         }
         try:
             status, body, _ = self.get_status(
                 f"/runs/{rid}/generate?kind=synopsize&config=cfg-test&candidate={cids[0]}"
             )
         finally:
-            self.configs.check_generation = original
+            output_pages.current_generation = original
         self.assertEqual(status, 200, body)
         self.assertNotIn("data-request=", body)
         self.assertNotIn("<button type=\"submit\">この内容で生成を開始</button>", body)
         self.assertIn("不可", body)
-        self.assertIn("executable_missing", body)
+        self.assertIn("実行ファイルが見つかりません", body)  # availability_label(executable_missing)
 
     def test_generate_confirm_narrate_requires_adoption_then_uses_adopted(self):
         rid, cids = self._legacy_run("exp-gen-nar", count=2)

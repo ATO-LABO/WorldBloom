@@ -55,8 +55,13 @@ _NEW_WORLD_CARD = (
 def _world_card(world):
     genre = world["genre"]
     edit_href = f"/worlds/{_url(world['id'])}"
+    run_href = (
+        f"/configs/new?project={_url(world['id'])}&template={_url(genre)}"
+        if genre else f"/configs/new?project={_url(world['id'])}"
+    )
     return (
-        f'<a class="world-card" href="{edit_href}">'
+        '<article class="world-card">'
+        f'<a class="world-card-link" href="{edit_href}">'
         f'<h3>{_escape(world["name"] or world["id"])}</h3>'
         "<dl>"
         f'<div><dt>ID</dt><dd>{_escape(world["id"])}</dd></div>'
@@ -65,6 +70,9 @@ def _world_card(world):
         f'<div><dt>人物数</dt><dd>{_escape(world["subjects"])}</dd></div>'
         f'<div><dt>主人公/敵役</dt><dd>{_escape(world["protagonist"])} / {_escape(world["antagonist"])}</dd></div>'
         "</dl></a>"
+        '<div class="world-card-footer">'
+        + pages.quick_start_actions(world["id"], genre, world["name"] or world["id"], run_href, css_class="button")
+        + "</div></article>"
     )
 
 
@@ -244,14 +252,6 @@ def _period_panel(world_yaml):
     )
 
 
-def _experiments_card(repository, world_name, job_store):
-    return (
-        '<section class="card" id="experiments"><h2>この世界の実験</h2>'
-        + pages.world_runs_block(repository, world_name, job_store)
-        + "</section>"
-    )
-
-
 def _editor_group(store, world, job_store):
     if job_store is None:
         return '<p class="library-note">編集・検証には <code>--control</code> 付きで起動してください。</p>'
@@ -302,24 +302,25 @@ def render_world_detail(repository, world, store, job_store):
     world_yaml = _world_yaml_mapping(store.repo, world["id"])
     subjects = world_graph.load_subjects(store.repo / "projects" / world["id"])
     world_name = str(world["name"] or world["id"])
+    runs_html, run_count = pages.world_runs_block(repository, world_name, job_store)
     panels = [
         ("概要", _overview_panel(world, subjects)),
         ("登場人物", _characters_panel(world, world_yaml, subjects, store)),
         ("初期物語", _canon_panel(world, subjects, store)),
         ("場所", _places_panel(world_yaml)),
         ("期間", _period_panel(world_yaml)),
+        (f"実行履歴 ({run_count})", '<div id="experiments">' + runs_html + "</div>"),
     ]
+    run_actions = pages.quick_start_actions(
+        world["id"], world["genre"], world["name"] or world["id"], run_href, css_class="button primary",
+    )
     overview_card = (
         '<section class="card">'
-        f'<p class="actions"><a class="button primary" href="{_escape(run_href)}">この世界で新しい実験を回す</a></p>'
+        f'<p class="actions">{run_actions}</p>'
         + pages.tabs("world", panels)
         + "</section>"
     )
-    return (
-        overview_card
-        + _experiments_card(repository, world_name, job_store)
-        + _editor_group(store, world, job_store)
-    )
+    return overview_card + _editor_group(store, world, job_store)
 
 
 def render_genre_detail(genre, contents, worlds):

@@ -3,6 +3,7 @@ from http import HTTPStatus
 import ipaddress
 from urllib.parse import urlsplit
 
+from execution.output_settings import current_generation, read_output_settings, write_output_settings
 from execution.provenance import ConfigError
 
 
@@ -50,6 +51,14 @@ def boundary(handler, *, client_header=True, body_required=True):
         raise ConfigError("request", "本文長が不正です", code="bad_request")
 
 
+def _labeled_availability(settings):
+    # deferred: workbench_pages imports this module at load time, so the
+    # reverse import must happen at call time, not module top level.
+    from viewer.workbench_pages import availability_label
+    availability = current_generation(settings)["availability"]
+    return {**availability, "label": availability_label(availability)}
+
+
 def send_error(handler, error):
     body = error.as_dict()
     body.setdefault("current_revision", None)
@@ -79,9 +88,16 @@ def dispatch(handler, parts, method):
         elif method == "GET" and len(parts) == 3 and parts[1] == "configs":
             handler._send_json(HTTPStatus.OK, configs.get(parts[2]))
         elif method == "POST" and parts == ["api", "configs", "preview"]:
-            handler._send_json(HTTPStatus.OK, configs.preview(body, settings_path=settings))
+            handler._send_json(HTTPStatus.OK, configs.preview(body))
         elif method == "POST" and parts == ["api", "configs"]:
-            handler._send_json(HTTPStatus.CREATED, configs.save(body, settings_path=settings))
+            handler._send_json(HTTPStatus.CREATED, configs.save(body))
+        elif method == "GET" and parts == ["api", "settings", "output"]:
+            view = read_output_settings(settings)
+            handler._send_json(HTTPStatus.OK, {**view, "availability": _labeled_availability(settings)})
+        elif method == "POST" and parts == ["api", "settings", "output"]:
+            write_output_settings(settings, body)
+            view = read_output_settings(settings)
+            handler._send_json(HTTPStatus.OK, {**view, "availability": _labeled_availability(settings)})
         elif method == "GET" and parts == ["api", "outputs"]:
             handler._send_json(HTTPStatus.OK, {"outputs": jobs.outputs()})
         elif method == "GET" and len(parts) == 3 and parts[1] == "outputs":

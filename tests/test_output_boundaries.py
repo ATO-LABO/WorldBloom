@@ -109,10 +109,13 @@ class FrozenSourceBoundaries(unittest.TestCase):
     setUp = integration.OutputJobTests.setUp
     cleanup_jobs = integration.OutputJobTests.cleanup_jobs
     request = integration.OutputJobTests.request
+    # WB-UI-021: setUp() now calls self.set_generation() (writes the test's
+    # own settings.json), so it must be borrowed alongside setUp itself.
+    set_generation = integration.OutputJobTests.set_generation
 
     def plan(self, request=None):
         request=normalize(request or self.request())
-        with self.jobs._lock():return admit(self.jobs,request)
+        with self.jobs._lock():return admit(self.jobs,request,settings_path=self.settings_path)
 
     def job(self, name):return {"job_id":"job-"+name,"output_id":"out-"+name}
 

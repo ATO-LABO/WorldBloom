@@ -67,6 +67,22 @@
       "port": 5431
     },
     {
+      "name": "worldbloom-viewer-ui-home-cards",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "C:/Projects/WorldBloom-local/wt/ui-home-cards/viewer/server.py",
+        "--runs",
+        "C:/Projects/WorldBloom-local/runs",
+        "--port",
+        "5441",
+        "--control",
+        "C:\\Projects\\WorldBloom-local\\control",
+        "--repo",
+        "C:/Projects/WorldBloom-local/wt/ui-home-cards"
+      ],
+      "port": 5441
+    },
+    {
       "name": "worldbloom-viewer-alt2",
       "runtimeExecutable": "python",
       "runtimeArgs": [
