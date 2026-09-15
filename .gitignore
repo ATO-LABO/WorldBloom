@@ -10,8 +10,9 @@ runs/
 # Snapshot backups taken before applying external-AI deliveries
 _backup_before_*/
 
-# Claude Code session state
-.claude/scheduled_tasks.lock
+# Claude Code session state / internal workflow notes (not for public distribution)
+.claude/
+CLAUDE.md
 
 # LLM settings (API keys)
 settings.json

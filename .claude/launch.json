@@ -95,6 +95,62 @@
         "C:\\Projects\\WorldBloom-local\\control"
       ],
       "port": 5451
+    },
+    {
+      "name": "worldbloom-viewer-ollamacheck",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "viewer/server.py",
+        "--runs",
+        "C:/Projects/WorldBloom-local/runs-ollamacheck",
+        "--port",
+        "5461",
+        "--control",
+        "C:/Projects/WorldBloom-local/control-ollamacheck"
+      ],
+      "port": 5461
+    },
+    {
+      "name": "worldbloom-viewer-samples",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "viewer/server.py",
+        "--runs",
+        "samples",
+        "--port",
+        "5471"
+      ],
+      "port": 5471
+    },
+    {
+      "name": "worldbloom-viewer-cand-synopsis",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "C:/Projects/WorldBloom-local/wt/cand-synopsis/viewer/server.py",
+        "--runs",
+        "C:/Projects/WorldBloom-local/runs",
+        "--port",
+        "5481",
+        "--control",
+        "C:\\Projects\\WorldBloom-local\\control",
+        "--repo",
+        "C:/Projects/WorldBloom-local/wt/cand-synopsis"
+      ],
+      "port": 5481
+    },
+    {
+      "name": "worldbloom-viewer-ollamacheck2",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "viewer/server.py",
+        "--runs",
+        "C:/Projects/WorldBloom-local/runs-ollamacheck",
+        "--port",
+        "5491",
+        "--control",
+        "C:/Projects/WorldBloom-local/control-ollamacheck"
+      ],
+      "port": 5491
     }
   ]
 }
