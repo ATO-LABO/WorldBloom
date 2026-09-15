@@ -66,8 +66,8 @@ def _world_row(world, run_count):
         f'<td>{runs_cell}</td>'
         '<td class="wb-actions">'
         f'<a href="{edit_href}">開く</a>'
-        f'<a href="{run_href}">この世界で新しい実験を回す</a>'
-        "</td></tr>"
+        + pages.quick_start_actions(world["id"], genre, world["name"] or world["id"], run_href)
+        + "</td></tr>"
     )
 
 
@@ -310,9 +310,12 @@ def render_world_detail(repository, world, store, job_store):
         ("期間", _period_panel(world_yaml)),
         (f"実行履歴 ({run_count})", '<div id="experiments">' + runs_html + "</div>"),
     ]
+    run_actions = pages.quick_start_actions(
+        world["id"], world["genre"], world["name"] or world["id"], run_href, css_class="button primary",
+    )
     overview_card = (
         '<section class="card">'
-        f'<p class="actions"><a class="button primary" href="{_escape(run_href)}">この世界で新しい実験を回す</a></p>'
+        f'<p class="actions">{run_actions}</p>'
         + pages.tabs("world", panels)
         + "</section>"
     )

@@ -737,6 +737,25 @@ def _world_project_info() -> dict[str, str]:
     return info
 
 
+def quick_start_actions(world_id, genre, world_name, run_href, *, css_class="", text="この世界で新しい実験を回す"):
+    """WB-UI-022: one click starts a run with an auto-generated 設定名 and the
+    current defaults, skipping the config form. The 設定名 is built client-side
+    at click time (see workbench.js's quickLabel/initQuickStart) so it carries
+    the actual click time, not this page's render time. Falls back to a plain
+    link to that form when there is no world/genre to start from
+    (data-quick-start's JS handler also falls back to run_href on failure).
+    """
+    cls = f' class="{_escape(css_class)}"' if css_class else ""
+    if not world_id or not genre:
+        return f'<a{cls} href="{_escape(run_href)}">{_escape(text)}</a>'
+    quick = (
+        f'<a{cls} href="{_escape(run_href)}" data-quick-start '
+        f'data-project="{_escape(world_id)}" data-template="{_escape(genre)}" '
+        f'data-world-name="{_escape(world_name)}">{_escape(text)}</a>'
+    )
+    return quick + f' <a href="{_escape(run_href)}">設定を変更して実行</a>'
+
+
 def _world_section(
     world_name: str,
     info: Mapping[str, str] | None,
@@ -764,14 +783,13 @@ def _world_section(
         new_run_href = "/configs/new"
         edit_link = ""
     resolved = genre
+    run_actions = quick_start_actions(project_id, genre, world_name, new_run_href, css_class="button primary")
     heading = (
         f'<section class="world-group" id="world-{world_id}">'
         '<div class="section-heading">'
         f'<div><span class="eyebrow">ジャンル: {_escape(resolved or "不明")}</span>'
         f"<h2>{_escape(world_name)}</h2></div>"
-        f'{edit_link}'
-        f'<a class="button primary" href="{_escape(new_run_href)}">'
-        "この世界で新しい実験を回す</a>"
+        f'{edit_link}{run_actions}'
         "</div>"
     )
     major_rows = "".join(
