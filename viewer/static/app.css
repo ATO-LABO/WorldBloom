@@ -2702,6 +2702,33 @@ details {
   stroke-opacity: 0.6;
 }
 
+.zone-cost-toggle {
+  align-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.85rem;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+}
+
+.zone-cost-toggle input {
+  accent-color: var(--accent);
+}
+
+.zone-edge-label {
+  display: none;
+  fill: var(--muted);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+}
+
+.zone-graph-wrap:has(.zone-cost-toggle-input:checked) .zone-edge-label {
+  display: block;
+}
+
 .day-cycle {
   display: block;
   height: auto;

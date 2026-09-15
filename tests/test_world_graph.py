@@ -75,10 +75,14 @@ class WorldGraphTests(unittest.TestCase):
     def test_zone_svg_structure(self) -> None:
         world_yaml = self._world_yaml()
         svg = world_graph.zone_svg(world_yaml["zones"], world_yaml["routes"])
+        self.assertIn('class="zone-cost-toggle-input" checked', svg)
         self.assertIn('<svg class="relation-graph zone-graph"', svg)
         self.assertEqual(svg.count('class="node'), 5)
-        # 海<->鬼ヶ島 is the only routed pair carrying a cost/requires_item.
+        # 海<->鬼ヶ島 is the only routed pair with an explicit cost/item, but
+        # every other hop still shows the engine's default cost of 1.
         self.assertIn("要: 船", svg)
+        self.assertIn("移動コスト 1", svg)
+        self.assertIn("移動コスト 4", svg)
 
     def test_zone_svg_is_deterministic(self) -> None:
         world_yaml = self._world_yaml()

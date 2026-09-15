@@ -298,8 +298,10 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
 
     Same circular layout and edge-dedup approach as relation_svg, but edges
     carry no affinity -- a route either exists or it doesn't -- so every
-    edge is drawn the same way, with the hop's cost/requires_item (if any)
-    surfaced only in the hover title.
+    edge is drawn the same way. Every hop's cost (defaulting to 1, same as
+    engine/world.py's Route) and requires_item (if any) is shown as an
+    on-graph label as well as the hover title; a checkbox above the graph
+    toggles the labels off for a cleaner look.
     """
 
     names = list(dict.fromkeys(
@@ -323,6 +325,7 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
         )
 
     edges: dict[tuple[str, str], list[str]] = {}
+    edge_labels: dict[tuple[str, str], list[str]] = {}
     for origin, hops in _mapping(routes).items():
         origin = str(origin)
         if origin not in name_set:
@@ -332,16 +335,20 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
             target = str(hop.get("to"))
             if target == origin or target not in name_set:
                 continue
-            detail = []
-            cost = hop.get("cost")
-            if cost is not None:
-                detail.append(f"移動コスト {cost}")
+            # Same default as engine/world.py's Route(cost=1.0) -- an
+            # omitted cost is still a real cost, so it's shown as "1".
+            cost = _number(hop.get("cost"), 1.0)
+            detail = [f"移動コスト {cost:g}"]
             requires = hop.get("requires_item")
             if requires:
                 detail.append(f"要: {requires}")
-            suffix = f"（{'・'.join(detail)}）" if detail else ""
+            suffix = f"（{'・'.join(detail)}）"
             pair = tuple(sorted((origin, target)))
             edges.setdefault(pair, []).append(f"{origin}→{target}{suffix}")
+            label = "・".join(detail)
+            labels = edge_labels.setdefault(pair, [])
+            if label not in labels:
+                labels.append(label)
 
     edge_markup = []
     for pair in sorted(edges):
@@ -352,6 +359,13 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
             f'stroke="{_NEUTRAL}" stroke-width="2.0">'
             f'<title>{html.escape(title)}</title></line>'
         )
+        labels = edge_labels.get(pair)
+        if labels:
+            mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+            edge_markup.append(
+                f'<text class="zone-edge-label" x="{mx:.1f}" y="{my - 8.0:.1f}" '
+                f'text-anchor="middle">{html.escape(" / ".join(labels))}</text>'
+            )
 
     node_markup = []
     for name in names:
@@ -365,11 +379,15 @@ def zone_svg(zones: Sequence[Mapping[str, Any]], routes: Mapping[str, Any]) -> s
         )
 
     return (
+        '<div class="zone-graph-wrap">'
+        '<label class="zone-cost-toggle">'
+        '<input type="checkbox" class="zone-cost-toggle-input" checked> 移動コストを表示'
+        "</label>"
         '<svg class="relation-graph zone-graph" viewBox="0 0 640 400" '
         'role="img" aria-label="場所のつながり">'
         + "".join(edge_markup)
         + "".join(node_markup)
-        + "</svg>"
+        + "</svg></div>"
     )
 
 
