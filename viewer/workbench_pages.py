@@ -73,6 +73,8 @@ GENERATION_REASON_LABELS = {
     "model_required": "モデルを指定してください",
     "settings_unreadable": "settings.json を読めません",
     "invalid_model": "モデル名が不正です",
+    "model_missing": "そのモデルは見つかりません",
+    "server_unreachable": "サーバーに接続できません",
 }
 
 
@@ -199,14 +201,15 @@ def _hint_html(hint):
     return f'<p class="hint">{_escape(hint)}</p>' if hint else ""
 
 
-def _text_field(label, name, value, *, required=False, placeholder="", hint=""):
+def _text_field(label, name, value, *, required=False, placeholder="", hint="", list_id=None):
     req = " required" if required else ""
     ph = f' placeholder="{_escape(placeholder)}"' if placeholder else ""
+    lst = f' list="{_escape(list_id)}"' if list_id else ""
     return (
         '<div class="field">'
         f'<label for="f-{_escape(name)}">{_escape(label)}{_key_span(name)}</label>'
         f'<input id="f-{_escape(name)}" type="text" name="{_escape(name)}" '
-        f'data-field="{_escape(name)}" value="{_escape(value)}"{req}{ph}>'
+        f'data-field="{_escape(name)}" value="{_escape(value)}"{req}{ph}{lst}>'
         f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
         f'{_hint_html(hint)}'
         "</div>"
@@ -1652,11 +1655,21 @@ def render_output_settings_card(settings_path):
     avail_text = availability_label(availability)
     limits = view["limits"]
     backends_attr = _escape(json.dumps(view["backends"], ensure_ascii=False, sort_keys=True))
+    verified_options = "".join(
+        f'<option value="{_escape(model)}">'
+        for model in view["backends"][view["backend"]]["verified_models"]
+    )
     form = (
         f'<form data-wb="output-settings" class="cfg-form" data-backends="{backends_attr}">'
         '<p class="form-error" data-form-error role="alert"></p>'
         + _radio_field("生成方式", "backend", GENERATION_BACKEND_OPTIONS, view["backend"])
-        + _text_field("モデル", "model", view["model"] or "", placeholder="方式に合わせて明示")
+        + _text_field("モデル", "model", view["model"] or "", placeholder="方式に合わせて明示",
+                       list_id="output-model-list")
+        + f'<datalist id="output-model-list">{verified_options}</datalist>'
+        + '<div class="field-actions">'
+        + '<button type="button" class="button-secondary" data-wb-test-model>疎通テスト</button>'
+        + '<span class="test-result" data-test-result></span>'
+        + '</div>'
         + '<details class="cfg-adv"><summary>上限 <small>時間・回数。通常は変更不要。</small></summary>'
         + '<div class="cols">'
         + _number_field("呼び出し回数", "limits.max_calls", limits["max_calls"], unit="回", min_value=0)

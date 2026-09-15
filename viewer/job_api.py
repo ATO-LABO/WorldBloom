@@ -3,7 +3,9 @@ from http import HTTPStatus
 import ipaddress
 from urllib.parse import urlsplit
 
-from execution.output_settings import current_generation, read_output_settings, write_output_settings
+from execution.output_settings import (
+    current_generation, read_output_settings, test_generation, write_output_settings,
+)
 from execution.provenance import ConfigError
 
 
@@ -51,12 +53,16 @@ def boundary(handler, *, client_header=True, body_required=True):
         raise ConfigError("request", "本文長が不正です", code="bad_request")
 
 
-def _labeled_availability(settings):
+def _label(availability):
     # deferred: workbench_pages imports this module at load time, so the
     # reverse import must happen at call time, not module top level.
     from viewer.workbench_pages import availability_label
+    return availability_label(availability)
+
+
+def _labeled_availability(settings):
     availability = current_generation(settings)["availability"]
-    return {**availability, "label": availability_label(availability)}
+    return {**availability, "label": _label(availability)}
 
 
 def send_error(handler, error):
@@ -98,6 +104,13 @@ def dispatch(handler, parts, method):
             write_output_settings(settings, body)
             view = read_output_settings(settings)
             handler._send_json(HTTPStatus.OK, {**view, "availability": _labeled_availability(settings)})
+        elif method == "POST" and parts == ["api", "settings", "output", "test"]:
+            availability = test_generation(settings, body.get("backend"), body.get("model"))
+            view = read_output_settings(settings)
+            handler._send_json(HTTPStatus.OK, {
+                "availability": {**availability, "label": _label(availability)},
+                "backends": view["backends"],
+            })
         elif method == "GET" and parts == ["api", "outputs"]:
             handler._send_json(HTTPStatus.OK, {"outputs": jobs.outputs()})
         elif method == "GET" and len(parts) == 3 and parts[1] == "outputs":
