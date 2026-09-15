@@ -16,6 +16,20 @@
 - `G:\マイドライブ` は Google Drive for Desktop のストリーミングマウント。大量の小ファイルを書かない。角括弧付きフォルダは PowerShell で `-LiteralPath` を使う
 - 決定論が設計の前提: 同じ `(world, genome, seed, precedent)` で `layers.jsonl` がバイト一致すること。乱数は単一の `random.Random(seed)`、候補生成と Policy は乱数を消費しない、タイブレークは名前順
 
+## 配布用exe（読み取り専用ビューア）
+
+`viewer/app_desktop.py`（pywebviewでウィンドウ化した起動エントリ）と `viewer/build_exe.cmd`（PyInstallerビルドスクリプト）が実装。判定員のPCにOllama等を入れさせないため、`--control`を渡さない**閲覧専用**（`samples/`の桃太郎・恋愛・探偵3実験を見るだけ、GA実行・文章生成は不可）。
+
+- **方式**: `viewer/execution/gapengine/engine`（自作パッケージ）はexeに焼き込まず、配布フォルダ内の生ファイルとして`app/`配下に同梱し、`app_desktop.py`側は`importlib.import_module("viewer.server")`のような**文字列指定の動的import**で読み込む。静的な`from viewer... import ...`にするとPyInstallerの解析が自作パッケージを検出してexeに焼き込んでしまい、`Path(__file__).resolve().parents[N]`ベースの`projects/`/`templates/`探索（`viewer/data.py`のROOT等）が`sys._MEIPASS`配下を指して壊れる。生ファイルのままsys.pathに追加する方式なら`__file__`は配布フォルダ内の実パスを指すので無改修で動く。
+- **データルート解決順**（`app_desktop.py`の`resolve_app_root()`）: 環境変数`WORLDBLOOM_APP_ROOT` → exeと同じフォルダの`app/` → ビルド時に焼き込んだ開発PCのリポジトリ位置（`default_root.txt`。exeを配布フォルダに入れる前に単体でダブルクリックした場合のフォールバック）。全滅時はpywebviewウィンドウでエラーメッセージを表示（コンソールは無い前提）。
+- **再ビルド条件**: `viewer/`, `execution/`, `gapengine/`, `engine/`, `templates/`, `projects/` のいずれかを変更したら配布フォルダを作り直す（コードはexeに含まれないため`build_exe.cmd`の再実行は基本不要。`app_desktop.py`自体やpywebview周りを変えたときだけexeの再ビルドが要る）。`samples/`を`scripts/pack_samples.py`で更新したときも作り直す。
+- **配布フォルダの更新手順**:
+  1. （`app_desktop.py`を変えた場合のみ）`viewer\build_exe.cmd` を実行 → `C:\Projects\WorldBloom-local\dist\WorldBloom.exe` が更新される
+  2. `robocopy` で `viewer/ execution/ gapengine/ engine/ templates/ projects/ samples/` を `C:\Projects\WorldBloom-local\dist\WorldBloom-portable\app\` へ`/E /XD __pycache__`付きで同期（**`scripts/`も対象**——`execution/configs.py`が`from scripts.evolve import build_parser`を無条件importするため、同梱漏れは`ModuleNotFoundError: No module named 'scripts'`で即発覚する）
+  3. `WorldBloom-portable/README.txt`・zip (`WorldBloom-portable.zip`) を作り直す
+  4. 検証は `reference/exe-packaging.md` §6 のとおり（環境変数を消して起動→ポート疎通→データ欠如時のエラー表示→プロセス残留ゼロ）
+- ビルド成果物・中間物・zipは `C:\Projects\WorldBloom-local\dist` / `build`（Drive外）に置く。配布用zipをGitHub Releasesに添付する運用は別途検討中（2026-09-16時点で未実施）。
+
 ## 検証の共通規約
 - 回帰テスト: `python -m unittest discover -s tests -v`（決定論・中立遺伝子の無変調・前提違反ゼロ・伏線減点・vitality 遷移）
 - エンジンや候補生成を変えたら、決定論テストと中立遺伝子テストを必ず通す。乱数の消費順序が変わる変更は設計書に明記する
