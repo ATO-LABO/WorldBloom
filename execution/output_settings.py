@@ -31,6 +31,26 @@ _MODEL_LIST_ENDPOINTS = {
                lambda key: {"Authorization": f"Bearer {key}"}),
 }
 
+# The only backends that authenticate with a bare api_key -- the /configs
+# card shows its APIキー field for exactly these.
+API_KEY_BACKENDS = frozenset(_MODEL_LIST_ENDPOINTS)
+
+
+def _fetch_remote_models(backend, section, *, timeout=6.0):
+    """anthropic/openai's own model list for this api_key. (names, reason)."""
+    url, headers_for = _MODEL_LIST_ENDPOINTS[backend]
+    key = str(section.get("api_key", "")).strip()
+    if not key:
+        return [], "credentials_missing"
+    request = urllib.request.Request(url, headers=headers_for(key))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, ValueError):
+        return [], "server_unreachable"
+    names = sorted({entry.get("id") for entry in data.get("data", []) if isinstance(entry, dict) and entry.get("id")})
+    return names, None
+
 
 def _model_reachable(backend, section, model, *, timeout=6.0):
     """Real round trip for anthropic/openai: is `model` in this key's model list?
@@ -40,21 +60,35 @@ def _model_reachable(backend, section, model, *, timeout=6.0):
     which costs real time/tokens -- out of scope for a quick test button.
     Ollama's own generation_availability() probe already lists real models.
     """
-    endpoint = _MODEL_LIST_ENDPOINTS.get(backend)
-    if endpoint is None:
+    if backend not in _MODEL_LIST_ENDPOINTS:
         return True, None
-    url, headers_for = endpoint
-    key = str(section.get("api_key", "")).strip()
-    if not key:
-        return False, "credentials_missing"
-    request = urllib.request.Request(url, headers=headers_for(key))
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except (OSError, urllib.error.URLError, ValueError):
-        return False, "server_unreachable"
-    names = {entry.get("id") for entry in data.get("data", []) if isinstance(entry, dict)}
+    names, reason = _fetch_remote_models(backend, section, timeout=timeout)
+    if reason is not None:
+        return False, reason
     return (model in names), (None if model in names else "model_missing")
+
+
+def list_models(settings_path, backend):
+    """Models actually selectable for `backend` right now.
+
+    ollama/anthropic/openai have a real "list models" API, so this is a live
+    catalog (live=True) from the configured server/api_key. codex-cli and
+    claude-cli have no such API -- there is no way to enumerate what models
+    they accept short of invoking the CLI itself, so this falls back to
+    whatever 疎通テスト has already confirmed (live=False). "none" needs no
+    model at all.
+    """
+    if not isinstance(backend, str) or backend not in BACKENDS:
+        raise ConfigError("backend", "未対応の生成方式です")
+    section = _section(_read_settings(settings_path), backend)
+    if backend == "ollama":
+        from gapengine import ollama
+        names, reason = ollama.list_models(section)
+        return {"models": names, "live": True, "reason": reason}
+    if backend in _MODEL_LIST_ENDPOINTS:
+        names, reason = _fetch_remote_models(backend, section)
+        return {"models": names, "live": True, "reason": reason}
+    return {"models": _verified_models(section), "live": False, "reason": None}
 
 
 def default_limits(backend):
@@ -119,7 +153,9 @@ def _backend_view(settings, backend):
             limits[key] = _integer(raw_limits.get(key, default), "limits." + key, minimum)
         except ConfigError:
             limits[key] = default
-    return {"model": model, "limits": limits, "verified_models": _verified_models(section)}
+    has_api_key = bool(str(section.get("api_key", "")).strip())
+    return {"model": model, "limits": limits, "verified_models": _verified_models(section),
+            "has_api_key": has_api_key}
 
 
 def _default_backend(settings):
@@ -158,6 +194,29 @@ def _remember_verified_model(settings_path, backend, model):
     if model in models:
         models.remove(model)
     section["verified_models"] = [model] + models[:VERIFIED_MODELS_LIMIT - 1]
+    output[backend] = section
+    settings["output"] = output
+    atomic_json(settings_path, settings)
+
+
+def write_api_key(settings_path, backend, api_key):
+    """Store an api_key for a backend that needs one (anthropic/openai only).
+
+    Write-only: read_output_settings()/_backend_view() only ever expose
+    whether a key is set (has_api_key), never the value itself.
+    """
+    if settings_path is None:
+        raise ConfigError("settings", "設定ファイルの場所が未設定です")
+    if not isinstance(backend, str) or backend not in _MODEL_LIST_ENDPOINTS:
+        raise ConfigError("backend", "この生成方式は api_key を使いません")
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise ConfigError("api_key", "APIキーを入力してください")
+    settings = _read_settings(settings_path)
+    output = settings.get("output")
+    output = deepcopy(output) if isinstance(output, dict) else {}
+    section = output.get(backend)
+    section = dict(section) if isinstance(section, dict) else {}
+    section["api_key"] = api_key.strip()
     output[backend] = section
     settings["output"] = output
     atomic_json(settings_path, settings)

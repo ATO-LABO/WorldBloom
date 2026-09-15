@@ -249,7 +249,12 @@
       return;
     }
     let backends = parseJsonAttr(form.dataset.backends, {});
+    const apiKeyBackends = new Set(parseJsonAttr(form.dataset.apiKeyBackends, []));
     const datalist = document.getElementById("output-model-list");
+    const modelHint = form.querySelector("[data-model-hint]");
+    const apiKeyField = form.querySelector("[data-api-key-field]");
+    const apiKeyInput = form.querySelector("[data-apikey]");
+    const apiKeyStatus = form.querySelector("[data-api-key-status]");
     const updateDatalist = (models) => {
       if (!datalist) {
         return;
@@ -260,6 +265,29 @@
         option.value = model;
         datalist.appendChild(option);
       });
+    };
+    // Ollama/anthropic/openai expose a real "list models" API -- ask it for
+    // this backend's actual catalog so the model field's dropdown offers only
+    // models that really exist, instead of whatever the user remembers to
+    // type. codex-cli/claude-cli have no such API (live: false); their
+    // dropdown stays limited to models 疎通テスト has already confirmed.
+    const fetchModels = async (backend) => {
+      try {
+        const { status, json } = await api("GET", `/api/settings/output/models?backend=${encodeURIComponent(backend)}`);
+        if (status !== 200 || !json) {
+          return;
+        }
+        updateDatalist(json.models);
+        if (modelHint) {
+          if (!json.live) {
+            modelHint.textContent = "この方式は候補の自動取得に対応していません。モデル名を入力し、疎通テストで確認してください。";
+          } else {
+            modelHint.textContent = json.reason_label || "";
+          }
+        }
+      } catch (error) {
+        // best-effort: the datalist keeps its server-rendered verified_models.
+      }
     };
     const applyBackend = (backend) => {
       const info = backends[backend] || {};
@@ -274,14 +302,59 @@
         }
       });
       updateDatalist(info.verified_models);
+      fetchModels(backend);
+      if (apiKeyField) {
+        apiKeyField.hidden = !apiKeyBackends.has(backend);
+      }
+      if (apiKeyInput) {
+        apiKeyInput.value = "";
+      }
+      if (apiKeyStatus) {
+        apiKeyStatus.textContent = info.has_api_key ? "設定済み(変更する場合のみ入力)" : "未設定";
+      }
     };
-    form.querySelectorAll('input[name="backend"]').forEach((radio) => {
-      radio.addEventListener("change", () => {
-        if (radio.checked) {
-          applyBackend(radio.value);
+    const backendSelect = form.querySelector('select[name="backend"]');
+    if (backendSelect) {
+      backendSelect.addEventListener("change", () => applyBackend(backendSelect.value));
+      fetchModels(backendSelect.value);
+    }
+    const saveApiKeyButton = form.querySelector("[data-wb-save-api-key]");
+    if (saveApiKeyButton) {
+      saveApiKeyButton.addEventListener("click", async () => {
+        if (!backendSelect || !apiKeyInput) {
+          return;
+        }
+        const backend = backendSelect.value;
+        saveApiKeyButton.disabled = true;
+        if (apiKeyStatus) {
+          apiKeyStatus.textContent = "保存中…";
+        }
+        try {
+          const { status, json } = await api("POST", "/api/settings/output/api-key", {
+            backend, api_key: apiKeyInput.value,
+          });
+          if (status === 200 && json) {
+            apiKeyInput.value = "";
+            if (json.backends) {
+              backends = json.backends;
+              form.dataset.backends = JSON.stringify(json.backends);
+            }
+            if (apiKeyStatus) {
+              apiKeyStatus.textContent = "設定済み(変更する場合のみ入力)";
+            }
+            fetchModels(backend);
+          } else if (apiKeyStatus) {
+            apiKeyStatus.textContent = (json && json.message) || "保存に失敗しました";
+          }
+        } catch (error) {
+          if (apiKeyStatus) {
+            apiKeyStatus.textContent = "サーバーに接続できません";
+          }
+        } finally {
+          saveApiKeyButton.disabled = false;
         }
       });
-    });
+    }
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const submitButton = form.querySelector('button[type="submit"]');
@@ -316,38 +389,37 @@
       }
     });
     const testButton = form.querySelector("[data-wb-test-model]");
-    const testResult = form.querySelector("[data-test-result]");
+    const availEl = form.querySelector("[data-availability]");
     if (testButton) {
       testButton.addEventListener("click", async () => {
-        const backendRadio = form.querySelector('input[name="backend"]:checked');
-        const modelInput = form.querySelector('[data-field="model"]');
-        if (!backendRadio) {
+        if (!backendSelect) {
           return;
         }
+        const modelInput = form.querySelector('[data-field="model"]');
         testButton.disabled = true;
-        if (testResult) {
-          testResult.textContent = "確認中…";
+        if (availEl) {
+          availEl.textContent = "確認中…";
         }
         try {
           const { status, json } = await api("POST", "/api/settings/output/test", {
-            backend: backendRadio.value,
+            backend: backendSelect.value,
             model: modelInput && modelInput.value ? modelInput.value : null,
           });
           if (status === 200 && json) {
-            if (testResult) {
-              testResult.textContent = (json.availability && json.availability.label) || "";
+            if (availEl) {
+              availEl.textContent = (json.availability && json.availability.label) || "";
             }
             if (json.backends) {
               backends = json.backends;
               form.dataset.backends = JSON.stringify(json.backends);
-              updateDatalist((json.backends[backendRadio.value] || {}).verified_models);
+              updateDatalist((json.backends[backendSelect.value] || {}).verified_models);
             }
-          } else if (testResult) {
-            testResult.textContent = (json && json.message) || "確認に失敗しました";
+          } else if (availEl) {
+            availEl.textContent = (json && json.message) || "確認に失敗しました";
           }
         } catch (error) {
-          if (testResult) {
-            testResult.textContent = "サーバーに接続できません";
+          if (availEl) {
+            availEl.textContent = "サーバーに接続できません";
           }
         } finally {
           testButton.disabled = false;

@@ -1462,6 +1462,10 @@ td {
   gap: 0.25rem;
 }
 
+.field[hidden] {
+  display: none;
+}
+
 .field-error {
   color: var(--danger);
   font-size: 0.85rem;
@@ -3206,7 +3210,7 @@ details.cfg-adv .cfg-sec h2 {
   align-items: center;
   display: flex;
   gap: 0.75rem;
-  margin: -0.5rem 0 1rem;
+  margin: 0.5rem 0 1rem;
 }
 
 .cfg-form .button-secondary {
@@ -3220,11 +3224,6 @@ details.cfg-adv .cfg-sec h2 {
 
 .cfg-form .button-secondary:hover {
   border-color: var(--accent);
-}
-
-.test-result {
-  color: var(--muted);
-  font-size: 0.85rem;
 }
 
 @media (max-width: 720px) {

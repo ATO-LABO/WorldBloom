@@ -8,8 +8,8 @@ import unittest
 from unittest.mock import patch
 
 from execution.output_settings import (
-    DEFAULT_BACKEND, current_generation, read_output_settings,
-    resolve_generation, test_generation, write_output_settings,
+    DEFAULT_BACKEND, current_generation, list_models, read_output_settings,
+    resolve_generation, test_generation, write_api_key, write_output_settings,
 )
 from execution.provenance import ConfigError
 from gapengine.synopsis import BACKENDS
@@ -18,8 +18,18 @@ from gapengine.synopsis import BACKENDS
 class _FakeModelsResponse:
     """Stands in for urllib.request.urlopen()'s context-manager response."""
 
-    def __init__(self, model_ids):
-        self._body = json.dumps({"data": [{"id": m} for m in model_ids]}).encode("utf-8")
+    def __init__(self, body):
+        self._body = body
+
+    @classmethod
+    def for_ids(cls, model_ids):
+        """openai/anthropic /v1/models shape: {"data": [{"id": ...}, ...]}."""
+        return cls(json.dumps({"data": [{"id": m} for m in model_ids]}).encode("utf-8"))
+
+    @classmethod
+    def tags(cls, names):
+        """ollama /api/tags shape: {"models": [{"name": ...}, ...]}."""
+        return cls(json.dumps({"models": [{"name": n} for n in names]}).encode("utf-8"))
 
     def __enter__(self):
         return self
@@ -85,9 +95,14 @@ class OutputSettingsTests(unittest.TestCase):
             "command": "codex", "base_url": "http://leak.example"}}})
         view = write_output_settings(self.settings_path, {"model": "new-model"})
         self.assertEqual(view["model"], "new-model")
-        self.assertNotIn("api_key", json.dumps(view))
-        self.assertNotIn("command", json.dumps(view))
-        self.assertNotIn("base_url", json.dumps(view))
+        dumped = json.dumps(view)
+        self.assertNotIn("DO-NOT-LEAK", dumped)
+        # "has_api_key" (a bare boolean) is fine; the credential's own key/value
+        # never is -- check for the quoted key, not the bare substring, so this
+        # doesn't false-positive on "has_api_key".
+        self.assertNotIn('"api_key"', dumped)
+        self.assertNotIn("command", dumped)
+        self.assertNotIn("base_url", dumped)
         raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
         self.assertEqual(raw["output"]["codex-cli"]["api_key"], "DO-NOT-LEAK")
         self.assertEqual(raw["output"]["codex-cli"]["command"], "codex")
@@ -166,7 +181,7 @@ class OutputSettingsTests(unittest.TestCase):
     def test_test_generation_remembers_a_reachable_model_but_not_an_unreachable_one(self):
         self.write({"output": {"openai": {"api_key": "sk-x"}}})
         with patch("execution.output_settings.urllib.request.urlopen",
-                   return_value=_FakeModelsResponse(["gpt-x", "gpt-y"])):
+                   return_value=_FakeModelsResponse.for_ids(["gpt-x", "gpt-y"])):
             result = test_generation(self.settings_path, "openai", "gpt-x")
         self.assertTrue(result["available"])
         view = read_output_settings(self.settings_path)
@@ -186,7 +201,7 @@ class OutputSettingsTests(unittest.TestCase):
         # api_key itself is valid -- this is the actual "疎通" the button promises.
         self.write({"output": {"openai": {"api_key": "sk-x"}}})
         with patch("execution.output_settings.urllib.request.urlopen",
-                   return_value=_FakeModelsResponse(["gpt-y"])):
+                   return_value=_FakeModelsResponse.for_ids(["gpt-y"])):
             result = test_generation(self.settings_path, "openai", "gpt-x-typo")
         self.assertFalse(result["available"])
         self.assertEqual(result["reason"], "model_missing")
@@ -196,7 +211,7 @@ class OutputSettingsTests(unittest.TestCase):
     def test_test_generation_reorders_and_caps_verified_models(self):
         self.write({"output": {"openai": {"api_key": "sk-x"}}})
         with patch("execution.output_settings.urllib.request.urlopen",
-                   return_value=_FakeModelsResponse(["a", "b", "c"])):
+                   return_value=_FakeModelsResponse.for_ids(["a", "b", "c"])):
             for model in ("a", "b", "c"):
                 test_generation(self.settings_path, "openai", model)
             test_generation(self.settings_path, "openai", "a")  # re-verify moves it to the front
@@ -222,6 +237,76 @@ class OutputSettingsTests(unittest.TestCase):
         result = test_generation(self.settings_path, "codex-cli", "any-model")
         self.assertFalse(result["available"])
         self.assertEqual(result["reason"], "executable_missing")
+
+    # -------------------------------------------------------- モデル候補一覧
+
+    def test_list_models_openai_returns_a_live_catalog(self):
+        self.write({"output": {"openai": {"api_key": "sk-x"}}})
+        with patch("execution.output_settings.urllib.request.urlopen",
+                   return_value=_FakeModelsResponse.for_ids(["gpt-a", "gpt-b"])):
+            result = list_models(self.settings_path, "openai")
+        self.assertEqual(result, {"models": ["gpt-a", "gpt-b"], "live": True, "reason": None})
+
+    def test_list_models_openai_without_credentials_is_empty_but_still_live(self):
+        result = list_models(self.settings_path, "openai")
+        self.assertEqual(result, {"models": [], "live": True, "reason": "credentials_missing"})
+
+    def test_list_models_ollama_uses_the_local_server_tags(self):
+        self.write({"output": {"ollama": {}}})
+        with patch("gapengine.ollama.urllib.request.urlopen",
+                   return_value=_FakeModelsResponse.tags(["qwen3.6:35b", "llama3"])):
+            result = list_models(self.settings_path, "ollama")
+        self.assertEqual(result, {"models": ["llama3", "qwen3.6:35b"], "live": True, "reason": None})
+
+    def test_list_models_cli_backend_falls_back_to_verified_history_not_live(self):
+        # codex-cli/claude-cli have no "list models" API -- only what a past
+        # 疎通テスト confirmed is offered, and it must say so via live=False.
+        self.write({"output": {"codex-cli": {"verified_models": ["gpt-5.6-sol"]}}})
+        result = list_models(self.settings_path, "codex-cli")
+        self.assertEqual(result, {"models": ["gpt-5.6-sol"], "live": False, "reason": None})
+
+    def test_list_models_none_backend_needs_nothing(self):
+        result = list_models(self.settings_path, "none")
+        self.assertEqual(result, {"models": [], "live": False, "reason": None})
+
+    def test_list_models_rejects_invalid_backend(self):
+        with self.assertRaises(ConfigError):
+            list_models(self.settings_path, "not-a-backend")
+
+    # -------------------------------------------------------------- APIキー
+
+    def test_write_api_key_is_write_only(self):
+        write_api_key(self.settings_path, "openai", "sk-secret")
+        view = read_output_settings(self.settings_path)
+        self.assertTrue(view["backends"]["openai"]["has_api_key"])
+        self.assertNotIn("sk-secret", json.dumps(view))
+        raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        self.assertEqual(raw["output"]["openai"]["api_key"], "sk-secret")
+        # It never touches the active backend/model selection.
+        self.assertEqual(view["backend"], DEFAULT_BACKEND)
+
+    def test_write_api_key_preserves_other_backend_fields(self):
+        self.write({"output": {"openai": {"model": "gpt-x", "limits": {"max_calls": 3}}}})
+        write_api_key(self.settings_path, "openai", "sk-secret")
+        view = read_output_settings(self.settings_path)
+        self.assertEqual(view["backends"]["openai"]["model"], "gpt-x")
+        self.assertEqual(view["backends"]["openai"]["limits"]["max_calls"], 3)
+        self.assertTrue(view["backends"]["openai"]["has_api_key"])
+
+    def test_write_api_key_rejects_backends_that_do_not_use_one(self):
+        for backend in ("codex-cli", "claude-cli", "ollama", "none"):
+            with self.subTest(backend=backend), self.assertRaises(ConfigError):
+                write_api_key(self.settings_path, backend, "sk-secret")
+
+    def test_write_api_key_rejects_blank_or_missing_key(self):
+        with self.assertRaises(ConfigError):
+            write_api_key(self.settings_path, "openai", "")
+        with self.assertRaises(ConfigError):
+            write_api_key(self.settings_path, "openai", "   ")
+        with self.assertRaises(ConfigError):
+            write_api_key(self.settings_path, "openai", None)
+        with self.assertRaises(ConfigError):
+            write_api_key(None, "openai", "sk-secret")
 
 
 if __name__ == "__main__":

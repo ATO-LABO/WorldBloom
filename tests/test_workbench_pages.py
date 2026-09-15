@@ -234,10 +234,10 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('<section class="card" id="output">', body)
         self.assertIn('data-wb="output-settings"', body)
         self.assertIn(
-            'type="radio" id="f-backend-codex-cli" name="backend" value="codex-cli" '
-            'data-field="backend" checked',
+            '<select id="f-backend" name="backend" data-field="backend">',
             body,
         )
+        self.assertIn('<option value="codex-cli" selected>', body)
 
         status, body, _ = self.get_status("/configs/cfg-test")
         self.assertEqual(status, 200, body)
@@ -301,7 +301,9 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(after["backend"], "openai")
         self.assertEqual(after["model"], "gpt-secret")
         self.assertEqual(after["limits"]["max_calls"], 3)
-        self.assertNotIn("api_key", json.dumps(after))
+        # "has_api_key" (a bare boolean) is fine; only the credential's own
+        # quoted key/value must never round-trip through this API.
+        self.assertNotIn('"api_key"', json.dumps(after))
 
         status, refetched = self.http("GET", "/api/settings/output")
         self.assertEqual(status, 200, refetched)
