@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import sys
 import tempfile
 import uuid
 
@@ -29,7 +28,7 @@ from gapengine.synopsis import _backend_config
 from scripts.evolve import build_parser
 from execution.provenance import (
     ConfigError, atomic_json, canonical, code_snapshot, contained, directory_lock,
-    identifier, materialize, publish_directory, read_json, sha256, verify_files,
+    identifier, materialize, publish_directory, python_executable, read_json, sha256, verify_files,
 )
 
 
@@ -417,7 +416,7 @@ class ConfigStore:
             verify_files(staging / "inputs", inputs["files"])
             materialize(staging / "runtime", code)
             verify_files(staging / "runtime", runtime["files"])
-            argv = [sys.executable, "-I", "-B", str(final / "runtime/scripts/evolve.py"),
+            argv = [python_executable(), "-I", "-B", str(final / "runtime/scripts/evolve.py"),
                     "--project", str(final / "inputs/projects" / config["project_id"]),
                     "--template", str(final / "inputs/templates" / config["template_id"]),
                     "--out", str(final)]
