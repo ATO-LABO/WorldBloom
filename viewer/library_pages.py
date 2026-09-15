@@ -46,28 +46,25 @@ def _editor_block(rel, content, *, label=None):
     )
 
 
-def _world_row(world, run_count):
+_NEW_WORLD_CARD = (
+    '<a class="world-card world-card--new" href="/worlds/new">'
+    '<span class="world-card-new-plus" aria-hidden="true">+</span>新しい世界を作る</a>'
+)
+
+
+def _world_card(world):
     genre = world["genre"]
     edit_href = f"/worlds/{_url(world['id'])}"
-    run_href = (
-        f"/configs/new?project={_url(world['id'])}&template={_url(genre)}"
-        if genre else f"/configs/new?project={_url(world['id'])}"
-    )
-    runs_cell = (
-        f'<a href="{edit_href}#experiments">{run_count} 件</a>' if run_count else "—"
-    )
     return (
-        "<tr>"
-        f'<td><a href="{edit_href}">{_escape(world["name"] or world["id"])}</a></td>'
-        f'<td>{_escape(world["id"])}</td>'
-        f'<td>{_escape(genre) if genre else "—"}</td>'
-        f'<td>{_escape(world["subjects"])}</td>'
-        f'<td>{_escape(world["protagonist"])} / {_escape(world["antagonist"])}</td>'
-        f'<td>{runs_cell}</td>'
-        '<td class="wb-actions">'
-        f'<a href="{edit_href}">開く</a>'
-        f'<a href="{run_href}">この世界で新しい実験を回す</a>'
-        "</td></tr>"
+        f'<a class="world-card" href="{edit_href}">'
+        f'<h3>{_escape(world["name"] or world["id"])}</h3>'
+        "<dl>"
+        f'<div><dt>ID</dt><dd>{_escape(world["id"])}</dd></div>'
+        f'<div><dt title="{_escape(pages.TERM_HELP["genre"])}">ジャンル</dt>'
+        f'<dd>{_escape(genre) if genre else "—"}</dd></div>'
+        f'<div><dt>人物数</dt><dd>{_escape(world["subjects"])}</dd></div>'
+        f'<div><dt>主人公/敵役</dt><dd>{_escape(world["protagonist"])} / {_escape(world["antagonist"])}</dd></div>'
+        "</dl></a>"
     )
 
 
@@ -83,14 +80,10 @@ def _genre_row(genre):
     )
 
 
-def render_worlds_hub(worlds, *, run_counts):
-    world_table = (
-        '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
-        f'<th>名前</th><th>ID</th><th title="{_escape(pages.TERM_HELP["genre"])}">ジャンル</th>'
-        "<th>人物数</th><th>主人公/敵役</th><th>実験</th><th>操作</th>"
-        f'</tr></thead><tbody>{"".join(_world_row(w, run_counts.get(w["name"], 0)) for w in worlds)}</tbody></table></div>'
-    ) if worlds else "<p>世界がありません。</p>"
-    return '<section class="card"><h2>世界</h2>' + world_table + "</section>"
+def render_worlds_hub(worlds, *, can_create):
+    cards = (_NEW_WORLD_CARD if can_create else "") + "".join(_world_card(w) for w in worlds)
+    body = f'<div class="world-hub-grid">{cards}</div>' if cards else "<p>世界がありません。</p>"
+    return '<section class="card"><h2>世界</h2>' + body + "</section>"
 
 
 def render_genres_section(genres):

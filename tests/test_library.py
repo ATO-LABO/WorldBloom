@@ -200,7 +200,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertNotIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
         self.assertNotIn('href="/genres/new"', body)
-        self.assertIn("<th>実験</th>", body)
+        self.assertIn('class="world-card"', body)
 
     def test_home_is_worlds_hub(self):
         status, body = self.get("/")
@@ -209,7 +209,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertNotIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
         self.assertNotIn('href="/genres/new"', body)
-        self.assertIn("<th>実験</th>", body)
+        self.assertIn('class="world-card"', body)
 
     def test_genres_live_on_settings_page(self):
         # Genre creation moved off the home hub: ⚙ 設定 (/configs) owns it.

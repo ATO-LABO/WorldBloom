@@ -100,7 +100,7 @@ class ViewerPageTests(unittest.TestCase):
 
         rendered = pages.index_page(self.repository)
         self.assertIn("桃太郎", rendered)
-        self.assertIn("<th>実験</th>", rendered)
+        self.assertIn('class="world-card"', rendered)
         self.assertNotIn("exp-viewer", rendered)
         # Home already shows the full world/genre hub in the body, so the
         # header's world/run picker (useful elsewhere) would be redundant here.
