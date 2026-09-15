@@ -10,15 +10,23 @@
 
 StorySim（同作者の別プロジェクト。世界と人物をシミュレートし、面白かったログを物語に書き起こす方式）から要素を切り取って再構築したもので、フォークではありません。
 
+## サンプルをすぐ見る（Windows・インストール不要）
+
+Python や Ollama を入れずに、桃太郎・恋愛・探偵の3実験（進化で見つかった物語展開の格子・あらすじ・本文）を見るだけなら、[Releases](../../releases/latest) から `WorldBloom-portable.zip` をダウンロードしてください。展開して `WorldBloom.exe` をダブルクリックするだけで起動します（見るだけの読み取り専用ビルドです。初回起動時にWindowsのSmartScreen警告が出た場合は同梱の `README.txt` を参照してください）。
+
+自分で進化を回す・文章を生成し直す場合は、以下のソースから実行してください。
+
 ## 必要なもの
 
 - Python 3.11 以上（開発は 3.13）
 - `pip install -r requirements.txt`（PyYAML のみ）
 
-あらすじ・本文の生成に LLM を使う場合（任意）。既定はローカルの Ollama＋Qwen3.6:
+あらすじ・本文の生成に LLM を使う場合（任意）。既定はローカルの Ollama＋Qwen3.5（本応募の提出物はこのモデルで生成。詳細は開示文書を参照）:
 
 1. [Ollama](https://ollama.com) をインストール
-2. `ollama pull qwen3.6:35b`（35B-A3B MoE、約22GB。VRAM 8GBでも大半がCPUオフロードされつつ約22 tok/sで動作確認済み）
+2. `ollama pull qwen3.5:9b-q4_K_M`
+
+より大きなモデル（`qwen3.6:35b` など）への切り替えも `--backend`/`settings.json` の `model` で可能ですが、提出済みの本文・あらすじの生成条件とは異なります。
 
 代替として `claude-cli` / `codex-cli` / Anthropic API / OpenAI API のいずれかも選べます（`--backend` で切り替え）。
 
@@ -38,7 +46,7 @@ pip install -r requirements.txt
 {
   "output": {
     "ollama": {
-      "model": "qwen3.6:35b",
+      "model": "qwen3.5:9b-q4_K_M",
       "base_url": "http://localhost:11434",
       "think": false,
       "options": {"num_ctx": 16384, "num_predict": 4096}
@@ -47,7 +55,7 @@ pip install -r requirements.txt
 }
 ```
 
-`options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は Qwen3.6 の思考トークンを抑えるため既定で `false`。`settings.json` は `.gitignore` 対象（APIキーを含み得るため）。
+`options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は思考トークンを抑えるため既定で `false`。`settings.json` は `.gitignore` 対象（APIキーを含み得るため）。
 
 ### (c) サンプルをビューアで見る
 
