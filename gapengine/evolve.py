@@ -9,7 +9,7 @@ import uuid
 import multiprocessing
 import random
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 import yaml
 
@@ -132,6 +132,53 @@ def _world_meta(
     return value
 
 
+def _lineage_stats(
+    rows: Sequence[Mapping[str, Any]],
+    protagonist: str,
+    antagonist: str,
+) -> dict[str, Any]:
+    """Ally count and the antagonist contest turn, read back from the layer
+    rows a run already wrote. Read-only: never touches sim state, rng, or the
+    layer file itself (WB-LINEAGE-001)."""
+    allies: set[str] = set()
+    allies_at_contest: int | None = None
+    contest_turn: int | None = None
+    for row in rows:
+        if (
+            row.get("kind") == "event"
+            and row.get("verb") == "ally_gained"
+            and row.get("subject") == protagonist
+        ):
+            details = row.get("details")
+            ally = details.get("ally") if isinstance(details, Mapping) else None
+            if ally is not None:
+                allies.add(str(ally))
+            continue
+        if contest_turn is not None:
+            continue
+        if (
+            row.get("kind") != "decision"
+            or row.get("verb") != "fight"
+            or row.get("result") not in ("won", "lost")
+        ):
+            continue
+        # Either side may be the fight's subject: resolve(actor, target, ...)
+        # decides the winner symmetrically and just relabels `result` from
+        # the actor's view, so who initiated is not part of "decisive contest".
+        args = row.get("args")
+        target = args[0] if isinstance(args, list) and args else None
+        pair = {row.get("subject"), target}
+        if pair != {protagonist, antagonist}:
+            continue
+        allies_at_contest = len(allies)
+        contest_turn = row.get("turn")
+    return {
+        "allies_at_contest": allies_at_contest,
+        "allies_final": len(allies),
+        "contest_turn": contest_turn,
+    }
+
+
 def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
     raw_genome = job.get("genome")
     genome = (
@@ -242,10 +289,14 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
 
         run_descriptor = descriptor(rows, qd_cfg)
         is_reached = reached(rows, world.target_ending)
+        lineage = _lineage_stats(rows, protagonist, antagonist)
         header = rows[0]
         relative_path = layer_path.relative_to(logical_root).as_posix()
         run_result: dict[str, Any] = {
+            "allies_at_contest": lineage["allies_at_contest"],
+            "allies_final": lineage["allies_final"],
             "category": run_descriptor.category,
+            "contest_turn": lineage["contest_turn"],
             "effective_sequence": [
                 list(value) for value in effective_sequence(rows)
             ],
@@ -674,6 +725,50 @@ def _prune_layers(
                 seed_dir.rmdir()
 
 
+def _generation_lineage_summary(
+    raw_results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Action-share and ally/contest aggregates for one generation's raw
+    (pre-pruning) protagonist results (WB-LINEAGE-001). Every action
+    category/verb/role combination is counted mechanically -- nothing is
+    singled out by name."""
+    runs = [run for result in raw_results for run in result["runs"]]
+    total_runs = len(runs)
+
+    action_counts: dict[str, int] = {}
+    for run in runs:
+        keys = {
+            "/".join(str(part) for part in triple)
+            for triple in run.get("effective_sequence", [])
+        }
+        for key in keys:
+            action_counts[key] = action_counts.get(key, 0) + 1
+    action_share = {
+        key: action_counts[key] / total_runs for key in sorted(action_counts)
+    }
+
+    contest_runs = [run for run in runs if run.get("contest_turn") is not None]
+    allies_mean_at_contest = (
+        sum(float(run["allies_at_contest"]) for run in contest_runs)
+        / len(contest_runs)
+        if contest_runs
+        else None
+    )
+    allies_mean_final = (
+        sum(float(run["allies_final"]) for run in runs) / total_runs
+        if total_runs
+        else None
+    )
+    contest_rate = len(contest_runs) / total_runs if total_runs else None
+
+    return {
+        "action_share": action_share,
+        "allies_mean_at_contest": allies_mean_at_contest,
+        "allies_mean_final": allies_mean_final,
+        "contest_rate": contest_rate,
+    }
+
+
 def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     project_dir = Path(str(cfg["project"])).resolve()
     template_dir = Path(str(cfg["template"])).resolve()
@@ -1088,9 +1183,14 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             archive,
             out_dir,
         )
+        lineage_summary = _generation_lineage_summary(raw_results)
         generation_summary: dict[str, Any] = {
+            "action_share": lineage_summary["action_share"],
+            "allies_mean_at_contest": lineage_summary["allies_mean_at_contest"],
+            "allies_mean_final": lineage_summary["allies_mean_final"],
             "archive_dissimilarity": archive_dissimilarity,
             "average_archive_quality": average_quality,
+            "contest_rate": lineage_summary["contest_rate"],
             "generation": generation,
             "generation_dissimilarity": generation_dissimilarity,
             "occupied_cells": len(archive.cells),
