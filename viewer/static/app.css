@@ -307,8 +307,70 @@ p {
   color: var(--muted);
 }
 
-.world-group {
-  margin-bottom: 2rem;
+.world-hub-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 0.75rem;
+}
+
+.world-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  color: inherit;
+  display: block;
+  padding: 1rem;
+  text-decoration: none;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.world-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.world-card h3 {
+  margin: 0 0 0.6rem;
+}
+
+.world-card dl {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.world-card dl div {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: space-between;
+}
+
+.world-card dt {
+  color: var(--muted);
+}
+
+.world-card dd {
+  margin: 0;
+  text-align: right;
+}
+
+.world-card--new {
+  align-items: center;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  border-style: dashed;
+  color: var(--accent-dark);
+  display: flex;
+  font-weight: 700;
+  gap: 0.5rem;
+  justify-content: center;
+  text-align: center;
+}
+
+.world-card-new-plus {
+  font-size: 1.3rem;
+  line-height: 1;
 }
 
 .eyebrow {

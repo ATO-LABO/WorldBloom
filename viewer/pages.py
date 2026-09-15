@@ -731,64 +731,6 @@ def _world_project_info() -> dict[str, str]:
     return info
 
 
-def _world_section(
-    world_name: str,
-    info: Mapping[str, str] | None,
-    majors: Sequence[Mapping[str, Any]],
-    minors: Sequence[Mapping[str, Any]],
-    repository: data.RunRepository,
-    job_store: Any,
-    history: Sequence[Mapping[str, Any]] | None,
-    outputs: Sequence[Mapping[str, Any]] | None,
-) -> str:
-    # info = {"id": projects/<id> directory name, "genre": templates/<genre>}
-    # (from _project_info). A world created via /worlds/new can have an id
-    # that differs from its genre, so links to the world use the id and only
-    # the ?template= preset uses the genre.
-    info = info or {}
-    project_id = info.get("id") or None
-    genre = info.get("genre") or None
-    world_id = _url_segment(project_id or world_name)
-    if project_id:
-        new_run_href = f"/configs/new?project={_url_segment(project_id)}"
-        if genre:
-            new_run_href += f"&template={_url_segment(genre)}"
-        edit_link = f'<a class="button" href="/worlds/{_url_segment(project_id)}">世界を編集</a>'
-    else:
-        new_run_href = "/configs/new"
-        edit_link = ""
-    resolved = genre
-    heading = (
-        f'<section class="world-group" id="world-{world_id}">'
-        '<div class="section-heading">'
-        f'<div><span class="eyebrow">ジャンル: {_escape(resolved or "不明")}</span>'
-        f"<h2>{_escape(world_name)}</h2></div>"
-        f'{edit_link}'
-        f'<a class="button primary" href="{_escape(new_run_href)}">'
-        "この世界で新しい実験を回す</a>"
-        "</div>"
-    )
-    major_rows = "".join(
-        _progress_row(meta, repository, job_store, history, outputs) for meta in majors
-    )
-    body = (
-        f'<div class="progress-dashboard">{major_rows}</div>'
-        if major_rows
-        else '<p class="muted">まだ実験がありません。</p>'
-    )
-    minor_block = ""
-    if minors:
-        minor_rows = "".join(
-            _progress_row(meta, repository, job_store, history, outputs) for meta in minors
-        )
-        minor_block = (
-            '<details class="minor-runs">'
-            f"<summary>その他の短いラン ({len(minors)})</summary>"
-            f'<div class="progress-dashboard">{minor_rows}</div></details>'
-        )
-    return heading + body + minor_block + "</section>"
-
-
 def _project_info(job_store: Any) -> dict[str, dict[str, str]]:
     """Map a world's display name to {"id": projects/<id>, "genre": templates/<genre>}.
 
@@ -928,42 +870,10 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
             job_store=job_store, show_phase_band=False, is_home=True,
         )
 
-    run_counts: dict[str, int] = defaultdict(int)
-    for name, metas in by_world.items():
-        run_counts[name] += len(metas)
-    for name, metas in minor_by_world.items():
-        run_counts[name] += len(metas)
-
-    # Runs whose world name matches no library world (legacy runs, or test
-    # fixtures) still need a way in: they keep the original per-world
-    # heading + progress-dashboard section, appended after the hub.
-    library_names = {world["name"] for world in worlds if world.get("name")}
-    legacy_names = sorted(
-        name
-        for name in set(by_world) | set(minor_by_world)
-        if name not in library_names
-    )
-    history, outputs = _dashboard_sources(repository, job_store) if legacy_names else (None, [])
-    legacy_sections = [
-        _world_section(
-            name,
-            None,
-            by_world.get(name, []),
-            minor_by_world.get(name, []),
-            repository,
-            job_store,
-            history,
-            outputs,
-        )
-        for name in legacy_names
-    ]
-
     body = (
-        _home_actions(job_store is not None)
-        + '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
+        '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
         "上映します。</p>"
-        + library_pages.render_worlds_hub(worlds, run_counts=run_counts)
-        + "".join(legacy_sections)
+        + library_pages.render_worlds_hub(worlds, can_create=job_store is not None)
     )
     return document(
         "世界を選ぶ", body, phase="world",
