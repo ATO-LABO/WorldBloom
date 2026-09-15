@@ -248,7 +248,19 @@
     if (!form) {
       return;
     }
-    const backends = parseJsonAttr(form.dataset.backends, {});
+    let backends = parseJsonAttr(form.dataset.backends, {});
+    const datalist = document.getElementById("output-model-list");
+    const updateDatalist = (models) => {
+      if (!datalist) {
+        return;
+      }
+      datalist.textContent = "";
+      (models || []).forEach((model) => {
+        const option = document.createElement("option");
+        option.value = model;
+        datalist.appendChild(option);
+      });
+    };
     const applyBackend = (backend) => {
       const info = backends[backend] || {};
       const modelInput = form.querySelector('[data-field="model"]');
@@ -261,6 +273,7 @@
           el.value = value;
         }
       });
+      updateDatalist(info.verified_models);
     };
     form.querySelectorAll('input[name="backend"]').forEach((radio) => {
       radio.addEventListener("change", () => {
@@ -288,6 +301,7 @@
             availEl.textContent = json.availability.label || "";
           }
           if (json.backends) {
+            backends = json.backends;
             form.dataset.backends = JSON.stringify(json.backends);
           }
         } else {
@@ -301,6 +315,45 @@
         }
       }
     });
+    const testButton = form.querySelector("[data-wb-test-model]");
+    const testResult = form.querySelector("[data-test-result]");
+    if (testButton) {
+      testButton.addEventListener("click", async () => {
+        const backendRadio = form.querySelector('input[name="backend"]:checked');
+        const modelInput = form.querySelector('[data-field="model"]');
+        if (!backendRadio) {
+          return;
+        }
+        testButton.disabled = true;
+        if (testResult) {
+          testResult.textContent = "確認中…";
+        }
+        try {
+          const { status, json } = await api("POST", "/api/settings/output/test", {
+            backend: backendRadio.value,
+            model: modelInput && modelInput.value ? modelInput.value : null,
+          });
+          if (status === 200 && json) {
+            if (testResult) {
+              testResult.textContent = (json.availability && json.availability.label) || "";
+            }
+            if (json.backends) {
+              backends = json.backends;
+              form.dataset.backends = JSON.stringify(json.backends);
+              updateDatalist((json.backends[backendRadio.value] || {}).verified_models);
+            }
+          } else if (testResult) {
+            testResult.textContent = (json && json.message) || "確認に失敗しました";
+          }
+        } catch (error) {
+          if (testResult) {
+            testResult.textContent = "サーバーに接続できません";
+          }
+        } finally {
+          testButton.disabled = false;
+        }
+      });
+    }
   };
 
   // WB-UI-017: the run page's idle-state config picker (a <select> inside a

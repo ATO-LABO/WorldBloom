@@ -5,13 +5,30 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from execution.output_settings import (
     DEFAULT_BACKEND, current_generation, read_output_settings,
-    resolve_generation, write_output_settings,
+    resolve_generation, test_generation, write_output_settings,
 )
 from execution.provenance import ConfigError
 from gapengine.synopsis import BACKENDS
+
+
+class _FakeModelsResponse:
+    """Stands in for urllib.request.urlopen()'s context-manager response."""
+
+    def __init__(self, model_ids):
+        self._body = json.dumps({"data": [{"id": m} for m in model_ids]}).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def read(self):
+        return self._body
 
 
 class OutputSettingsTests(unittest.TestCase):
@@ -143,6 +160,68 @@ class OutputSettingsTests(unittest.TestCase):
         self.assertEqual(result["model"], "m")
         self.assertFalse(result["availability"]["available"])
         self.assertEqual(result["availability"]["reason"], "credentials_missing")
+
+    # -------------------------------------------------------- 疎通テスト
+
+    def test_test_generation_remembers_a_reachable_model_but_not_an_unreachable_one(self):
+        self.write({"output": {"openai": {"api_key": "sk-x"}}})
+        with patch("execution.output_settings.urllib.request.urlopen",
+                   return_value=_FakeModelsResponse(["gpt-x", "gpt-y"])):
+            result = test_generation(self.settings_path, "openai", "gpt-x")
+        self.assertTrue(result["available"])
+        view = read_output_settings(self.settings_path)
+        self.assertEqual(view["backends"]["openai"]["verified_models"], ["gpt-x"])
+        # A backend with no credentials never even reaches the network, and
+        # never gets remembered.
+        result = test_generation(self.settings_path, "anthropic", "claude-x")
+        self.assertFalse(result["available"])
+        self.assertEqual(result["reason"], "credentials_missing")
+        view = read_output_settings(self.settings_path)
+        self.assertEqual(view["backends"]["anthropic"]["verified_models"], [])
+        # test_generation never touches the active backend/model selection.
+        self.assertEqual(view["backend"], DEFAULT_BACKEND)
+
+    def test_test_generation_rejects_a_model_name_the_api_key_cannot_see(self):
+        # A typo'd/nonexistent model must not be believed just because the
+        # api_key itself is valid -- this is the actual "疎通" the button promises.
+        self.write({"output": {"openai": {"api_key": "sk-x"}}})
+        with patch("execution.output_settings.urllib.request.urlopen",
+                   return_value=_FakeModelsResponse(["gpt-y"])):
+            result = test_generation(self.settings_path, "openai", "gpt-x-typo")
+        self.assertFalse(result["available"])
+        self.assertEqual(result["reason"], "model_missing")
+        view = read_output_settings(self.settings_path)
+        self.assertEqual(view["backends"]["openai"]["verified_models"], [])
+
+    def test_test_generation_reorders_and_caps_verified_models(self):
+        self.write({"output": {"openai": {"api_key": "sk-x"}}})
+        with patch("execution.output_settings.urllib.request.urlopen",
+                   return_value=_FakeModelsResponse(["a", "b", "c"])):
+            for model in ("a", "b", "c"):
+                test_generation(self.settings_path, "openai", model)
+            test_generation(self.settings_path, "openai", "a")  # re-verify moves it to the front
+        view = read_output_settings(self.settings_path)
+        self.assertEqual(view["backends"]["openai"]["verified_models"], ["a", "c", "b"])
+
+    def test_test_generation_rejects_invalid_backend_or_missing_model(self):
+        with self.assertRaises(ConfigError):
+            test_generation(self.settings_path, "not-a-backend", "m")
+        with self.assertRaises(ConfigError):
+            test_generation(self.settings_path, "openai", None)
+        with self.assertRaises(ConfigError):
+            test_generation(None, "openai", "m")
+        # backend "none" needs no model and is always available.
+        result = test_generation(self.settings_path, "none", None)
+        self.assertTrue(result["available"])
+
+    def test_test_generation_leaves_cli_and_ollama_checks_unchanged(self):
+        # codex-cli/claude-cli/ollama already get a real check inside
+        # generation_availability() itself -- test_generation must not touch
+        # the network again for them (no urlopen patch needed here to pass).
+        self.write({"output": {"codex-cli": {"command": "__wb_missing_cli__"}}})
+        result = test_generation(self.settings_path, "codex-cli", "any-model")
+        self.assertFalse(result["available"])
+        self.assertEqual(result["reason"], "executable_missing")
 
 
 if __name__ == "__main__":

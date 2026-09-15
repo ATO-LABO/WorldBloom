@@ -3175,6 +3175,31 @@ details.cfg-adv .cfg-sec h2 {
   border-color: var(--accent);
 }
 
+.field-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  margin: -0.5rem 0 1rem;
+}
+
+.cfg-form .button-secondary {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.4rem 0.8rem;
+}
+
+.cfg-form .button-secondary:hover {
+  border-color: var(--accent);
+}
+
+.test-result {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 @media (max-width: 720px) {
   .cfg-sec {
     grid-template-columns: 1fr;
