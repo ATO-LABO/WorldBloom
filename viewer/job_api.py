@@ -1,10 +1,11 @@
 """JSON routes and request boundaries for configuration and job services."""
 from http import HTTPStatus
 import ipaddress
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from execution.output_settings import (
-    current_generation, read_output_settings, test_generation, write_output_settings,
+    current_generation, list_models, read_output_settings, test_generation,
+    write_api_key, write_output_settings,
 )
 from execution.provenance import ConfigError
 
@@ -100,6 +101,15 @@ def dispatch(handler, parts, method):
         elif method == "GET" and parts == ["api", "settings", "output"]:
             view = read_output_settings(settings)
             handler._send_json(HTTPStatus.OK, {**view, "availability": _labeled_availability(settings)})
+        elif method == "POST" and parts == ["api", "settings", "output", "api-key"]:
+            write_api_key(settings, body.get("backend"), body.get("api_key"))
+            view = read_output_settings(settings)
+            handler._send_json(HTTPStatus.OK, {"backends": view["backends"]})
+        elif method == "GET" and parts == ["api", "settings", "output", "models"]:
+            from viewer.workbench_pages import reason_label
+            backend = (parse_qs(urlsplit(handler.path).query).get("backend") or [None])[0]
+            catalog = list_models(settings, backend)
+            handler._send_json(HTTPStatus.OK, {**catalog, "reason_label": reason_label(catalog["reason"])})
         elif method == "POST" and parts == ["api", "settings", "output"]:
             write_output_settings(settings, body)
             view = read_output_settings(settings)

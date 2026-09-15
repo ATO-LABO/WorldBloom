@@ -14,7 +14,7 @@ import uuid
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from execution.configs import evolution_defaults, generation_availability, quick_label
-from execution.output_settings import read_output_settings
+from execution.output_settings import API_KEY_BACKENDS, read_output_settings
 from execution.provenance import ConfigError, contained
 from execution.worker import TERMINAL
 from viewer import data, explanation_ui, job_api, pages, world_graph
@@ -89,6 +89,13 @@ def availability_label(availability):
         return "利用可能"
     reason = availability.get("reason")
     return GENERATION_REASON_LABELS.get(reason, reason or "利用できません")
+
+
+def reason_label(reason):
+    """Japanese text for a bare reason code (list_models()'s "reason" field)."""
+    if reason is None:
+        return None
+    return GENERATION_REASON_LABELS.get(reason, reason)
 
 
 # §6: candidate-list column sort. "state" here is the *selection* state (選定
@@ -260,6 +267,24 @@ def _checkbox_field(label, name, checked, *, desc=""):
         f'<label class="toggle" for="f-{_escape(name)}">'
         f'<input id="f-{_escape(name)}" type="checkbox" name="{_escape(name)}" '
         f'data-field="{_escape(name)}"{chk}><b>{_escape(label)}</b><small>{_escape(desc)}</small></label>'
+        f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
+        "</div>"
+    )
+
+
+def _described_select_field(label, name, options, selected):
+    """Like _select_field, but options are (value, description) pairs shown
+    inline in each <option> -- for a compact dropdown standing in for what
+    would otherwise be a _radio_field's row of cards (WB-UI-021 output card)."""
+    opts = []
+    for value, desc in options:
+        sel = " selected" if value == selected else ""
+        text = f"{value} — {desc}" if desc else value
+        opts.append(f'<option value="{_escape(value)}"{sel}>{_escape(text)}</option>')
+    return (
+        '<div class="field">'
+        f'<label for="f-{_escape(name)}">{_escape(label)}{_key_span(name)}</label>'
+        f'<select id="f-{_escape(name)}" name="{_escape(name)}" data-field="{_escape(name)}">{"".join(opts)}</select>'
         f'<span class="field-error" data-error-for="{_escape(name)}" role="alert"></span>'
         "</div>"
     )
@@ -1718,20 +1743,34 @@ def render_output_settings_card(settings_path):
     avail_text = availability_label(availability)
     limits = view["limits"]
     backends_attr = _escape(json.dumps(view["backends"], ensure_ascii=False, sort_keys=True))
+    api_key_backends_attr = _escape(json.dumps(sorted(API_KEY_BACKENDS)))
     verified_options = "".join(
         f'<option value="{_escape(model)}">'
         for model in view["backends"][view["backend"]]["verified_models"]
     )
+    needs_api_key = view["backend"] in API_KEY_BACKENDS
+    api_key_status = "設定済み(変更する場合のみ入力)" if view["backends"][view["backend"]]["has_api_key"] else "未設定"
     form = (
-        f'<form data-wb="output-settings" class="cfg-form" data-backends="{backends_attr}">'
+        f'<form data-wb="output-settings" class="cfg-form" data-backends="{backends_attr}" '
+        f'data-api-key-backends="{api_key_backends_attr}">'
         '<p class="form-error" data-form-error role="alert"></p>'
-        + _radio_field("生成方式", "backend", GENERATION_BACKEND_OPTIONS, view["backend"])
+        + _described_select_field("生成方式", "backend", GENERATION_BACKEND_OPTIONS, view["backend"])
+        + '<div class="field" data-api-key-field'
+        + ("" if needs_api_key else " hidden")
+        + '>'
+        + '<label for="f-api_key">APIキー <span class="key">api_key</span></label>'
+        + '<input id="f-api_key" type="password" data-apikey autocomplete="off" placeholder="sk-...">'
+        + f'<p class="hint" data-api-key-status>{_escape(api_key_status)}</p>'
+        + '<div class="field-actions">'
+        + '<button type="button" class="button-secondary" data-wb-save-api-key>キーを保存</button>'
+        + '</div>'
+        + '</div>'
         + _text_field("モデル", "model", view["model"] or "", placeholder="方式に合わせて明示",
                        list_id="output-model-list")
         + f'<datalist id="output-model-list">{verified_options}</datalist>'
+        + '<p class="hint" data-model-hint></p>'
         + '<div class="field-actions">'
         + '<button type="button" class="button-secondary" data-wb-test-model>疎通テスト</button>'
-        + '<span class="test-result" data-test-result></span>'
         + '</div>'
         + '<details class="cfg-adv"><summary>上限 <small>時間・回数。通常は変更不要。</small></summary>'
         + '<div class="cols">'
