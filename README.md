@@ -66,7 +66,7 @@ python scripts/evolve.py --project projects/momotaro --template templates/momota
   --out <出力先>/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
 ```
 
-所要時間の目安: 20コアで約1時間（実測: exp12 が6プロセスで約70分）。出力先はリポジトリ外を推奨（`.gitignore` は `runs/` を無視するが、リポジトリ内に大量の実験出力を置くべきではない）。`--project` / `--template` は `momotaro` / `detective` / `romance` の3ジャンルを同梱。
+所要時間の目安: 20コアで約1時間（実測: exp12 が6プロセスで約70分。計測は2026-09-14時点のコードに基づくため、その後のGA/ビューア側の性能改善（WB-OPT-001〜003）で実際はこれより速くなっている可能性がある）。出力先はリポジトリ外を推奨（`.gitignore` は `runs/` を無視するが、リポジトリ内に大量の実験出力を置くべきではない）。`--project` / `--template` は `momotaro` / `detective` / `romance` の3ジャンルを同梱。
 
 ### (e) あらすじ化・本文化
 
