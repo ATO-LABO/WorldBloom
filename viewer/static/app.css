@@ -2732,10 +2732,12 @@ details {
   justify-content: center;
 }
 
-/* WB-EXPLAIN-canon / WB-UI-020: canon precedent table (初期物語 tab). */
+/* WB-EXPLAIN-canon / WB-UI-020: canon precedent table (初期物語 tab), laid
+   out as an IF (state columns) -> THEN (定石) decision table rather than a
+   sentence-per-row narrative, so it can't read as a timeline. */
 .canon-table {
   margin: 0.6rem 0 0.6rem;
-  min-width: 0; /* .wb-table's 720px floor would scroll the sentence column away */
+  min-width: 0; /* .wb-table's 720px floor would scroll condition columns away */
   table-layout: fixed;
   width: 100%;
 }
@@ -2745,18 +2747,49 @@ details {
   white-space: normal;
 }
 
-.canon-table th:nth-child(2) {
-  width: 11em;
-}
-
-.canon-table th:last-child {
-  width: 9em;
+/* table-layout:fixed takes column widths from the table's FIRST row only
+   (CSS2.1 17.5.2), which is .canon-groups here, not the field-header row --
+   so the width has to go on that row's THEN cell (定石の行動 + 定石の強さ
+   together, colspan=2), not on a nth-last-child of the field-header row
+   (that row's widths are silently ignored for layout). Splitting the two
+   THEN columns individually would need a <colgroup>, which isn't worth it
+   here -- an even split leaves both columns comfortably sized. */
+.canon-groups th:last-child {
+  width: 20em;
 }
 
 .canon-table .gene-track {
   display: inline-block;
   vertical-align: middle;
   width: 6rem;
+}
+
+.canon-table .tag {
+  margin: 0 0.3rem 0.2rem 0;
+}
+
+.canon-groups th {
+  font-weight: 500;
+  text-align: center;
+}
+
+.canon-groups .canon-then {
+  color: var(--accent);
+}
+
+.canon-table .canon-then {
+  border-left: 2px solid var(--accent);
+}
+
+@media (max-width: 760px) {
+  /* One column per condition leaves too few characters per column on a
+     phone for table-layout:fixed's equal split -- every header wraps to
+     one character per line. Let the table size to its content and scroll
+     horizontally in .grid-wrap instead, same as every other .wb-table. */
+  .canon-table {
+    min-width: 42rem;
+    table-layout: auto;
+  }
 }
 
 /* WB-UI-018: per-character stat sheet (nine initial parameters as bars,
