@@ -2445,6 +2445,24 @@ details {
   margin: 0.6rem 0 0;
 }
 
+/* Candidate list: synopsis opening (server trims to ~60 chars), hard-capped at two lines. */
+[data-wb="candidates"] .wb-table td.synopsis {
+  max-width: 32rem;
+  min-width: 28rem;
+  white-space: normal;
+}
+
+[data-wb="candidates"] .wb-table td.synopsis > span {
+  color: var(--text);
+  display: -webkit-box;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .row-toggle {
   background: transparent;
   border: 1px solid var(--line);
