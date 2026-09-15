@@ -462,6 +462,25 @@ class ViewerPageTests(unittest.TestCase):
             any("→" in detail for detail in rethink_scene["details"])
         )
 
+    def test_quick_start_actions_needs_both_world_and_genre(self):
+        # WB-UI-022: no genre (or no world) -> a single plain link to the full
+        # form, no data-quick-start hook and no second "設定を変更して実行" link.
+        for world_id, genre in (("momotaro", ""), ("", "romance")):
+            html = pages.quick_start_actions(world_id, genre, "桃太郎", "/configs/new?project=momotaro")
+            self.assertNotIn("data-quick-start", html)
+            self.assertEqual(html.count("<a "), 1)
+
+    def test_quick_start_actions_escapes_and_wires_data_attrs(self):
+        html = pages.quick_start_actions(
+            "momo\"taro", "roman<ce", "桃太郎 & 一味", "/configs/new?project=momotaro&template=romance",
+        )
+        self.assertIn("data-quick-start", html)
+        self.assertIn('data-project="momo&quot;taro"', html)
+        self.assertIn('data-template="roman&lt;ce"', html)
+        self.assertIn('data-world-name="桃太郎 &amp; 一味"', html)
+        self.assertNotIn('"roman<ce"', html)
+        self.assertEqual(html.count("<a "), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
