@@ -824,6 +824,19 @@ def grouped_experiments(
     return sorted(grouped.items()), minor
 
 
+def synopsis_texts(repository: RunRepository, experiment: Path) -> dict[str, str]:
+    """cell_key -> synopsis text from <experiment>/synopses.json (empty when absent/unreadable)."""
+    try:
+        _, entries = _entries(repository, experiment, "synopses.json")
+    except (OSError, ValueError):
+        return {}
+    return {
+        str(entry["cell"]): str(entry["synopsis"])
+        for entry in entries
+        if isinstance(entry.get("cell"), str) and isinstance(entry.get("synopsis"), str) and entry["synopsis"]
+    }
+
+
 def synopsis_entry(
     repository: RunRepository,
     experiment: Path,
