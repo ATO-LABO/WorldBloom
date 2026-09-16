@@ -4,8 +4,6 @@
 
 **遺伝的アルゴリズム×LLM による結末固定型の物語生成エンジン**
 
-第五回AIアートグランプリ D部門応募作品
-
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ATO-LABO/WorldBloom)](https://github.com/ATO-LABO/WorldBloom/releases/latest)
 
@@ -139,12 +137,8 @@ docs/        設計書・実装計画・開示文書
 
 - 詳細設計: [docs/2026-09-11_gapengine-detailed-design.md](docs/2026-09-11_gapengine-detailed-design.md)
 - ビューア UI/UX 設計: [docs/2026-09-12_viewer-ux-design.md](docs/2026-09-12_viewer-ux-design.md)
-- 生成プロセス開示文書（第五回AIアートグランプリ D部門向け）: [docs/2026-09-14_grandprix-disclosure.md](docs/2026-09-14_grandprix-disclosure.md)
+- 生成プロセス開示文書: [docs/2026-09-14_grandprix-disclosure.md](docs/2026-09-14_grandprix-disclosure.md)
 - 公開ページ（格子・あらすじ・本文を読むだけの静的サイト）: https://ato-labo.github.io/WorldBloom/
-
-## 第五回AIアートグランプリ
-
-本プロジェクトは第五回AIアートグランプリ D部門への応募作品『WorldBloom ── 遺伝的アルゴリズム×LLM による結末固定型の物語生成エンジン』です。使用したAIモデル・シード値・プロンプト等の開示は [docs/2026-09-14_grandprix-disclosure.md](docs/2026-09-14_grandprix-disclosure.md) を参照してください。
 
 ## ライセンス
 
