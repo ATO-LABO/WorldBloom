@@ -14,6 +14,10 @@
 
 インストールせずブラウザで見るだけなら → [公開ビューア](https://ato-labo.github.io/WorldBloom/)（桃太郎・恋愛・探偵の3実験）
 
+3分でわかるダイジェスト動画 → [YouTube](https://youtu.be/Yozi2qb2IQg)
+
+[![WorldBloom 3分ダイジェスト動画](https://img.youtube.com/vi/Yozi2qb2IQg/maxresdefault.jpg)](https://youtu.be/Yozi2qb2IQg)
+
 <img src="docs/images/readme-hero.png" width="820" alt="WorldBloomビューアのSifting画面。進化で見つかった物語の展開が格子状に並び、あらすじが表示されている">
 
 </div>
@@ -150,6 +154,7 @@ docs/        設計書・実装計画・開示文書
 - 詳細設計: [docs/2026-09-11_gapengine-detailed-design.md](docs/2026-09-11_gapengine-detailed-design.md)
 - ビューア UI/UX 設計: [docs/2026-09-12_viewer-ux-design.md](docs/2026-09-12_viewer-ux-design.md)
 - 公開ページ（格子・あらすじ・本文を読むだけの静的サイト）: https://ato-labo.github.io/WorldBloom/
+- ダイジェスト動画（3分、YouTube）: https://youtu.be/Yozi2qb2IQg
 
 ## ライセンス
 
