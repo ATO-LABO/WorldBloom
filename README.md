@@ -137,7 +137,6 @@ docs/        設計書・実装計画・開示文書
 
 - 詳細設計: [docs/2026-09-11_gapengine-detailed-design.md](docs/2026-09-11_gapengine-detailed-design.md)
 - ビューア UI/UX 設計: [docs/2026-09-12_viewer-ux-design.md](docs/2026-09-12_viewer-ux-design.md)
-- 生成プロセス開示文書: [docs/2026-09-14_grandprix-disclosure.md](docs/2026-09-14_grandprix-disclosure.md)
 - 公開ページ（格子・あらすじ・本文を読むだけの静的サイト）: https://ato-labo.github.io/WorldBloom/
 
 ## ライセンス
