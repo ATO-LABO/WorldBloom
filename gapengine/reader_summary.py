@@ -13,6 +13,13 @@ MAX_BYTES = 128_000
 # 根拠の文が代償の fact を引用するような取り違えを構造的に防ぐ。ここに無い
 # kind（将来増えても）は title / synopsis からは引用できるので、情報が完全に
 # 失われることはない。
+# 保証の範囲（Opusレビュー指摘）: refs検証が保証するのは引用先のkindだけで、
+# 本文の内容がそのfactから実際に導かれていることまでは検証していない。四項目
+# ラベル下の「帰属」（このリンクを辿ればこの文の根拠に飛べる）を機械的に守る
+# ものであり、意味的正しさの証明ではない。事実、title/synopsisはどのfactでも
+# 引用できるので、根拠寄りの内容をtitleに書いても検証は通る——ただしそこに
+# 秘匿すべき情報は無い（同じfactは常に生の四項目パネルにも表示される）ので、
+# これは意図的に許容された余地であって見落としではない。
 # ponytail: 動詞ごとに増えうる新しい fact kind をここへ追記し忘れると、その
 # 項目には引用できなくなる（title/synopsis経由でのみ言及可能）。build_packet
 # が新しい kind を足したら、ここに対応する項目を足すこと。
@@ -157,7 +164,12 @@ def build_packet(explanation):
 
 
 def build_prompt(packet):
-    return INSTRUCTIONS + "\n資料:\n" + json.dumps(packet, ensure_ascii=False, indent=2)
+    # Opusレビュー指摘: どの項目を出すべきかは facts から導けるが、モデルに
+    # 推論させず明示する。present は _item_ids() が既に計算している値の
+    # 再掲であり、検証（parse_summary）側は何も緩めない。
+    present = [key for key in ITEM_LABELS if _item_ids(packet)[key]]
+    keys_line = f"この資料で出すキー: {', '.join(['title', *present, 'synopsis'])}"
+    return INSTRUCTIONS + "\n" + keys_line + "\n資料:\n" + json.dumps(packet, ensure_ascii=False, indent=2)
 
 
 def _item_ids(packet):

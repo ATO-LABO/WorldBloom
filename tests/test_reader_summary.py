@@ -135,6 +135,19 @@ class ReaderSummaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "response schema"):
             rs.parse_summary(json.dumps(summary), self.packet)
 
+    def test_accepts_a_response_that_correctly_omits_a_kind_with_no_fact(self):
+        # The positive direction of the present-item check: a packet where a
+        # kind is genuinely absent (grounds -- e.g. a generic verb whose
+        # _grounds_text() came back empty) must accept a response that
+        # omits that key, not just reject one that fills it in. self.packet
+        # has all four kinds present, so build one without "grounds" here.
+        packet = copy.deepcopy(self.packet)
+        packet["facts"] = [f for f in packet["facts"]
+                           if f["kind"] != "actor_knowledge_before_decision_not_world_truth"]
+        summary = _summary_for(packet, "根拠が記録されていない候補")
+        self.assertNotIn("grounds", summary)
+        rs.parse_summary(json.dumps(summary), packet)  # must not raise
+
     def test_optional_missing_malformed_stale_and_unreviewed_fallback(self):
         path = self.exp / "reader-summaries" / rs.artifact_name("III|high")
         self.assertIsNone(rs.load_summary(self.repo, self.exp, self.explanation))
