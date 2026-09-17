@@ -225,4 +225,41 @@
   document.querySelectorAll(".run-delete").forEach((button) => {
     button.addEventListener("click", () => deleteRun(button));
   });
+
+  const generateReaderSummary = async (button) => {
+    const endpoint = button.dataset.endpoint;
+    if (!endpoint) {
+      return;
+    }
+    button.disabled = true;
+    const label = button.textContent;
+    button.textContent = "生成中…";
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {"X-WorldBloom-Client": "1"}
+      });
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const body = await response.json();
+          if (body && body.message) {
+            message = body.message;
+          }
+        } catch (error) {
+          // response body wasn't JSON; keep the plain HTTP status message.
+        }
+        throw new Error(message);
+      }
+      window.location.reload();
+    } catch (error) {
+      notify(`生成に失敗しました: ${error.message}`);
+      button.disabled = false;
+      button.textContent = label;
+    }
+  };
+
+  document.querySelectorAll(".reader-generate").forEach((button) => {
+    button.addEventListener("click", () => generateReaderSummary(button));
+  });
 })();

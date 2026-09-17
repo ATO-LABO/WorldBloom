@@ -306,6 +306,39 @@ class ViewerHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def _generate_reader_summary(
+        self,
+        experiment_name: str,
+        cell: str,
+    ) -> None:
+        # WB-EXPLAIN-009: on-demand reader prose for one candidate. Read
+        # only (no request body); only ever writes into
+        # reader-summaries/, never into archive.json/selection/layers.jsonl.
+        jobs = getattr(self.server, "job_store", None)
+        settings_path = getattr(self.server, "settings_path", None)
+        if jobs is None or settings_path is None:
+            raise MissingResource("route not found")
+        job_api.boundary(self, client_header=True, body_required=False)
+        from execution.output_settings import resolve_generation
+
+        generation = resolve_generation(settings_path)
+        if generation["backend"] == "none":
+            raise ConfigError("generation", "文章生成のバックエンドが未設定です", code="unavailable")
+        # The call can hold reader-summaries/'s directory_lock for minutes;
+        # a concurrent GA job publishing a generation or a selection write
+        # takes the same lock non-blocking (execution/evolution_worker.py,
+        # execution/selections.py), so refuse while a run is active rather
+        # than risk starving it.
+        jobs.assert_run_idle(experiment_name)
+        experiment = self.repository.experiment(experiment_name)
+        self.repository.validate_segment(cell)
+        summary = data.ensure_reader_summary(
+            self.repository, experiment, cell,
+            settings_path=settings_path, backend=generation["backend"],
+            timeout=generation["limits"]["call_timeout_seconds"],
+        )
+        self._send_json(HTTPStatus.OK, {"cell": cell, "reviewed": summary["reviewed"]})
+
     def do_POST(self) -> None:
         try:
             parts = self._parts()
@@ -337,6 +370,14 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 job_api.boundary(self, client_header=True, body_required=False)
                 self.repository.validate_segment(parts[1])
                 self._send_json(HTTPStatus.OK, jobs.delete_run(parts[1]))
+                return
+            if (
+                len(parts) == 5
+                and parts[0] == "exp"
+                and parts[2] == "cell"
+                and parts[4] == "reader-summary"
+            ):
+                self._generate_reader_summary(parts[1], parts[3])
                 return
             raise MissingResource("route not found")
         except ConfigError as error:
