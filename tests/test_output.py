@@ -356,7 +356,7 @@ class OutputStageTests(unittest.TestCase):
         self.assertEqual(
             observed_commands,
             [
-                ["C:\\tools\\claude.CMD", "-p"],
+                ["C:\\tools\\claude.CMD", "-p", "--model", "claude-sonnet-5"],
                 [
                     "C:\\tools\\codex.CMD",
                     "exec",
