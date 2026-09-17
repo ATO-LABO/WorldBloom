@@ -196,25 +196,37 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
             conn.close()
 
     def test_worlds_hub_page(self):
+        # WB-UI-023: home carries a 世界/ジャンル tab pair so the genre layer
+        # (previously reachable only from ⚙ 設定) is visible without leaving
+        # the front page. 世界 stays the default (first) tab.
         status, body = self.get("/worlds")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertNotIn('id="genres"', body)
+        self.assertIn('class="tabs tabs-home"', body)
+        self.assertIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
-        self.assertNotIn('href="/genres/new"', body)
+        self.assertIn('href="/genres/new"', body)
         self.assertIn('class="world-card"', body)
 
     def test_home_is_worlds_hub(self):
         status, body = self.get("/")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertNotIn('id="genres"', body)
+        self.assertIn('class="tabs tabs-home"', body)
+        self.assertIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
-        self.assertNotIn('href="/genres/new"', body)
+        self.assertIn('href="/genres/new"', body)
         self.assertIn('class="world-card"', body)
+        # The lead names the engine/genre/world layering; the genre tab's own
+        # lead explains what a genre is, once, without a redundant <h2>.
+        self.assertIn("1 つの物語エンジンに", body)
+        self.assertIn("ジャンルは行動の文法", body)
+        self.assertEqual(body.count("<h2>ジャンル</h2>"), 0)
 
     def test_genres_live_on_settings_page(self):
-        # Genre creation moved off the home hub: ⚙ 設定 (/configs) owns it.
+        # ⚙ 設定 (/configs) remains the genre editing surface; WB-UI-023
+        # additionally surfaces a read/browse copy on the home hub's ジャンル
+        # tab (test_home_is_worlds_hub), so this only pins /configs itself.
         status, body = self.get("/configs")
         self.assertEqual(status, 200, body)
         self.assertIn('id="genres"', body)

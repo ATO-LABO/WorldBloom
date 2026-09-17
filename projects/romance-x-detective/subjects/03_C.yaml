@@ -1,0 +1,75 @@
+id: C
+
+traits:
+  social: 0.82
+  stubbornness: 0.70
+  curiosity: 0.46
+  diligence: 0.58
+  temper: 0.42
+
+base: 50
+modifiers:
+  - id: reputation:rumor
+    source: 噂
+    value: 40
+    kind: reputation
+    visible: false
+    active: true
+
+beliefs_about:
+  A:
+    known_modifiers: []
+    base_estimate: 50
+    identity_seen: false
+    observe_progress: 0.0
+  B:
+    known_modifiers: []
+    base_estimate: 50
+    identity_seen: false
+    observe_progress: 0.0
+
+beliefs: {}
+knowledge: [噂の出所]
+inventory: {花束: 1}
+reputation: 0.25
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - observe
+  - confront
+  - share_knowledge
+  - give_item
+  - persuade
+  - pledge
+  - rest
+  - grand_gesture
+
+identity:
+  "true": 噂による優位を利用してBに近づくライバル
+  displayed: C
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: [A]
+  outcome: mutual
+
+relations:
+  A: {affinity: -0.42, awareness: 0.72}
+  B: {affinity: 0.50, awareness: 0.80}
+  D: {affinity: -0.10, awareness: 0.45}
+  E: {affinity: 0.20, awareness: 0.42}
+
+stamina:
+  max: 12
+  recover_per_slot: 1.3
+
+range:
+  zones: [学校, カフェ, 公園, Bの家, 駅]
+  entry: カフェ
+
+companions: []
+ally_value: 0
+objective_claimant: true

@@ -889,6 +889,10 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         worlds = LibraryStore(library_repo).worlds()
     except (ValueError, OSError, KeyError, TypeError, AttributeError):
         worlds = []
+    try:
+        genres = LibraryStore(library_repo).genres()
+    except (ValueError, OSError, KeyError, TypeError, AttributeError):
+        genres = []
 
     groups, minor = data.grouped_experiments(repository)
     by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
@@ -908,9 +912,10 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         )
 
     body = (
-        '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
-        "上映します。</p>"
-        + library_pages.render_worlds_hub(worlds, can_create=job_store is not None)
+        '<p class="lead">WorldBloom は 1 つの物語エンジンに、ジャンル'
+        "（行動の文法）と世界（人物と場所の初期設定）を差し込んで動かします。"
+        "世界を選び、実験を回し、Sifting で候補を選んで上映します。</p>"
+        + library_pages.render_home_tabs(worlds, genres, can_create=job_store is not None)
     )
     return document(
         "世界を選ぶ", body, phase="world",
