@@ -143,6 +143,11 @@ def _backend_view(settings, backend):
         model = _model(section.get("model"))
     except ConfigError:
         model = None
+    if model is None and backend == "claude-cli":
+        # Keep in sync with gapengine/synopsis.py's own claude-cli fallback --
+        # this is what actually gets used once nothing is configured, so the
+        # /configs card should show it rather than an empty field.
+        model = "claude-sonnet-5"
     raw_limits = section.get("limits")
     raw_limits = raw_limits if isinstance(raw_limits, dict) else {}
     defaults = default_limits(backend)
