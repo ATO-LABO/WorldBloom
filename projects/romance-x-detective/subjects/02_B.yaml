@@ -1,0 +1,83 @@
+id: B
+
+traits:
+  social: 0.54
+  stubbornness: 0.66
+  curiosity: 0.55
+  diligence: 0.70
+  temper: 0.24
+
+base: 80
+modifiers:
+  - id: trauma:defense
+    source: 防衛
+    value: -30
+    kind: trauma
+    visible: false
+    active: true
+    affinity_cap: 0.35
+    affinity_cap_targets: [A, C]
+
+  - id: rumor:c_advantage
+    source: 噂
+    value: 0
+    kind: rumor
+    visible: false
+    active: true
+    affinity_cap: 0.5
+    affinity_cap_targets: [A]
+
+beliefs_about:
+  A:
+    known_modifiers: []
+    base_estimate: 50
+    identity_seen: false
+    observe_progress: 0.0
+  C:
+    known_modifiers: []
+    base_estimate: 90
+    identity_seen: false
+    observe_progress: 0.0
+
+beliefs: {}
+knowledge: []
+inventory: {}
+reputation: 0.0
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - observe
+  - share_knowledge
+  - persuade
+  - pledge
+  - rest
+
+identity:
+  "true": Aを大切に思いながら過去の傷から距離を置く相手
+  displayed: B
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: mutual
+
+relations:
+  A: {affinity: 0.25, awareness: 0.78}
+  C: {affinity: 0.35, awareness: 0.72}
+  D: {affinity: 0.48, awareness: 0.80}
+  E: {affinity: 0.75, awareness: 1.0}
+
+stamina:
+  max: 11
+  recover_per_slot: 1.2
+
+range:
+  zones: [学校, カフェ, 公園, Bの家, 駅]
+  entry: 学校
+
+companions: []
+ally_value: 0
+objective_claimant: false
