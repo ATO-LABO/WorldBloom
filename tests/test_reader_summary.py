@@ -19,6 +19,24 @@ from viewer import explanation_ui
 from gapengine.explanations import extract_explanation
 
 
+def _summary_for(packet, title):
+    """A schema-valid summary (see rs.parse_summary) for an arbitrary real
+    packet: each present item cites only its own fact kind(s), title/
+    synopsis cite the first/last fact. Used wherever a test needs to
+    publish a plausible LLM response against a packet whose exact facts
+    vary by fixture (so a hardcoded refs list can't be relied on)."""
+    item_ids = rs._item_ids(packet)
+    all_ids = [fact["id"] for fact in packet["facts"]]
+    value = {"title": {"text": title, "refs": [all_ids[0]]}}
+    for key in rs.ITEM_LABELS:
+        ids = sorted(item_ids[key])
+        if ids:
+            value[key] = {"text": f"({key}の説明)", "refs": ids}
+    value["synopsis"] = [{"text": "あらすじ一文目。", "refs": [all_ids[0]]},
+                         {"text": "あらすじ二文目。", "refs": [all_ids[-1]]}]
+    return value
+
+
 class ReaderSummaryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -29,10 +47,23 @@ class ReaderSummaryTests(unittest.TestCase):
         self.explanation = data.cell_explanation(self.repo, self.exp, "III|high")
         self.packet = {"version": rs.VERSION, "experiment": "exp-viewer", "cell": "III|high",
                        "source_sha256": self.explanation["source"]["sha256"],
-                       "facts": [{"id": "f1", "kind": "test", "value": {}, "lines": [2]}]}
-        part = {"text": "探偵は証拠を見直した。", "refs": ["f1"]}
-        self.summary = {"title": {"text": "疑いの先が変わる話", "refs": ["f1"]},
-                        "sentences": [part, copy.deepcopy(part), copy.deepcopy(part)]}
+                       "facts": [
+                           {"id": "f1", "kind": "executed_action", "value": {}, "lines": [2]},
+                           {"id": "f2", "kind": "actor_knowledge_before_decision_not_world_truth",
+                            "value": {}, "lines": [2]},
+                           {"id": "f3", "kind": "immediate_cost_only", "value": {}, "lines": [3]},
+                           {"id": "f4", "kind": "executed_later_action_not_total_causal_proof",
+                            "value": {}, "lines": [4]},
+                       ]}
+        self.summary = {
+            "title": {"text": "疑いの先が変わる話", "refs": ["f1"]},
+            "choice": {"text": "探偵は再考した。", "refs": ["f1"]},
+            "grounds": {"text": "証拠を見直していた。", "refs": ["f2"]},
+            "cost": {"text": "確認できた範囲では即時の損失は記録されていない。", "refs": ["f3"]},
+            "turning": {"text": "後に告発につながった。", "refs": ["f4"]},
+            "synopsis": [{"text": "探偵は証拠を見直した。", "refs": ["f1", "f2"]},
+                        {"text": "その後、乙を告発した。", "refs": ["f4"]}],
+        }
         self.artifact = {"version": rs.VERSION, "status": "generated",
                          "packet": self.packet, "prompt_sha256": rs.digest(rs.build_prompt(self.packet)),
                          "response": json.dumps(self.summary), "backend": "none", "model": "test"}
@@ -82,9 +113,27 @@ class ReaderSummaryTests(unittest.TestCase):
                 rs.parse_summary(response, self.packet)
         for refs in [[], ["f999"], [["f1"]], "f1"]:
             summary = copy.deepcopy(self.summary)
-            summary["sentences"][0]["refs"] = refs
-            with self.assertRaises(ValueError):
+            summary["synopsis"][0]["refs"] = refs
+            with self.subTest(refs=refs), self.assertRaises(ValueError):
                 rs.parse_summary(json.dumps(summary), self.packet)
+
+    def test_rejects_cross_item_citation_and_present_item_mismatch(self):
+        # grounds citing the cost fact (f3) -- the exact mix-up the
+        # per-item refs restriction exists to catch mechanically.
+        summary = copy.deepcopy(self.summary)
+        summary["grounds"]["refs"] = ["f3"]
+        with self.assertRaisesRegex(ValueError, "unsupported citation"):
+            rs.parse_summary(json.dumps(summary), self.packet)
+        # A fact-backed item silently dropped.
+        summary = copy.deepcopy(self.summary)
+        del summary["turning"]
+        with self.assertRaisesRegex(ValueError, "response schema"):
+            rs.parse_summary(json.dumps(summary), self.packet)
+        # An item invented for a kind that has no fact in this packet.
+        summary = copy.deepcopy(self.summary)
+        summary["extra_item_not_backed_by_any_fact"] = {"text": "x", "refs": ["f1"]}
+        with self.assertRaisesRegex(ValueError, "response schema"):
+            rs.parse_summary(json.dumps(summary), self.packet)
 
     def test_optional_missing_malformed_stale_and_unreviewed_fallback(self):
         path = self.exp / "reader-summaries" / rs.artifact_name("III|high")
@@ -114,7 +163,8 @@ class ReaderSummaryTests(unittest.TestCase):
     def test_reader_first_html_escaped_and_details_collapsed(self):
         summary = copy.deepcopy(self.summary)
         summary["title"]["text"] = "<script>alert(1)</script>"
-        summary["sentences"][0]["text"] = '<img src=x onerror="alert(2)">'
+        summary["choice"]["text"] = '<img src=x onerror="alert(2)">'
+        del summary["grounds"]
         self.explanation["reader_summary"] = {
             "summary": summary, "packet": self.packet, "model": "<model>", "reviewer": "editor", "reviewed": True}
         html = reader_ui.panel(self.explanation)
@@ -131,6 +181,11 @@ class ReaderSummaryTests(unittest.TestCase):
         self.assertNotIn('<details class="reader-evidence" open', html)
         self.assertLess(html.index("reader-prose"), html.index("根拠と詳細"))
         self.assertIn("/raw?line=2#L2", html)
+        # The four labels appear in order; grounds (dropped above) shows the
+        # missing-item placeholder instead of the LLM inventing a sentence.
+        for label in ["選択", "根拠", "即時の代償", "転機"]:
+            self.assertIn(f"<dt>{label}</dt>", html)
+        self.assertIn('<dd class="muted">記録なし</dd>', html)
 
     def test_one_shot_saves_response_but_requires_review_and_prevents_retry(self):
         settings = self.root / "settings.json"
@@ -221,8 +276,7 @@ class ReaderSummaryTests(unittest.TestCase):
     def _publish_fixture(self, cell):
         explanation = data.cell_explanation(self.repo, self.exp, cell)
         packet = rs.build_packet(explanation)
-        summary = copy.deepcopy(self.summary)
-        summary["title"]["text"] = "保存済み候補の見出し " + cell
+        summary = _summary_for(packet, "保存済み候補の見出し " + cell)
         artifact = dict(self.artifact, packet=packet, prompt_sha256=rs.digest(rs.build_prompt(packet)),
                         response=json.dumps(summary))
         review = dict(self.review, artifact_sha256=rs.digest(artifact))
@@ -306,12 +360,17 @@ class ReaderSummaryTests(unittest.TestCase):
     def test_ensure_reader_summary_generates_once_then_caches(self):
         settings = self.root / "settings.json"
         settings.write_text('{"output":{"codex-cli":{"model":"fixture"}}}', encoding="utf-8")
+        # self.summary is shaped for the synthetic self.packet used by the
+        # parse_summary/build_prompt tests; ensure_reader_summary() rebuilds
+        # the real packet for "III|high" internally, so the mocked response
+        # here must validate against that real packet instead.
+        summary = _summary_for(rs.build_packet(self.explanation), "疑いの先が変わる話")
         with patch("gapengine.synopsis.generate_text",
-                   return_value=GenerationResult("ok", json.dumps(self.summary))) as call:
+                   return_value=GenerationResult("ok", json.dumps(summary))) as call:
             first = data.ensure_reader_summary(self.repo, self.exp, "III|high",
                                                 settings_path=settings, backend="codex-cli", timeout=5)
             self.assertFalse(first["reviewed"])
-            self.assertEqual(first["summary"]["title"]["text"], self.summary["title"]["text"])
+            self.assertEqual(first["summary"]["title"]["text"], summary["title"]["text"])
             second = data.ensure_reader_summary(self.repo, self.exp, "III|high",
                                                  settings_path=settings, backend="codex-cli", timeout=5)
             self.assertEqual(second["summary"], first["summary"])
@@ -323,6 +382,7 @@ class ReaderSummaryTests(unittest.TestCase):
     def test_ensure_reader_summary_failure_does_not_block_a_retry(self):
         settings = self.root / "settings.json"
         settings.write_text('{"output":{"codex-cli":{"model":"fixture"}}}', encoding="utf-8")
+        summary = _summary_for(rs.build_packet(self.explanation), "疑いの先が変わる話")
         with patch("gapengine.synopsis.generate_text", side_effect=TimeoutError):
             with self.assertRaises(ConfigError):
                 data.ensure_reader_summary(self.repo, self.exp, "III|high",
@@ -330,11 +390,11 @@ class ReaderSummaryTests(unittest.TestCase):
         artifact = rs.read_json(self.exp / "reader-summaries" / rs.artifact_name("III|high"))
         self.assertEqual(artifact["status"], "rejected")
         with patch("gapengine.synopsis.generate_text",
-                   return_value=GenerationResult("ok", json.dumps(self.summary))) as call:
+                   return_value=GenerationResult("ok", json.dumps(summary))) as call:
             result = data.ensure_reader_summary(self.repo, self.exp, "III|high",
                                                  settings_path=settings, backend="codex-cli", timeout=5)
             self.assertEqual(call.call_count, 1)
-        self.assertEqual(result["summary"]["title"]["text"], self.summary["title"]["text"])
+        self.assertEqual(result["summary"]["title"]["text"], summary["title"]["text"])
 
     def test_no_summary_restores_core_panel_heading_and_navigation_order(self):
         document = pages.cell_page(self.repo, self.exp.name, "III|high", view="all")
@@ -431,6 +491,8 @@ class ReaderSummaryTests(unittest.TestCase):
             "予定・未解決の伏線を出来事に変えない",
             "新しい動機・証拠・代償・因果を足さない", "返答はJSONのみ",
             "各文と見出しに内容を支持するfactsのidをrefsとして付ける",
+            "対応するkindのfactが1つも無い項目は、キーごと省略する",
+            "refsは各項目に許可したkindのidだけにする",
         ]:
             with self.subTest(clause=clause):
                 self.assertIn(clause, prefix)
@@ -446,19 +508,22 @@ class ReaderSummaryTests(unittest.TestCase):
                 rs.verified_summary(artifact, review, self.packet)
 
     def test_quantity_boundaries_with_otherwise_valid_json(self):
-        for count in [2, 3, 5, 6]:
+        # 1-5 tolerated (real local models varied widely -- one item, or one
+        # per fact kind -- even when the per-item citation split was
+        # followed correctly); only 0 and >5 reject.
+        for count in [0, 1, 3, 5, 6]:
             summary = copy.deepcopy(self.summary)
-            summary["sentences"] = [summary["sentences"][0]] * count
+            summary["synopsis"] = [summary["synopsis"][0]] * count
             with self.subTest(count=count):
-                if count in [3, 5]:
+                if 1 <= count <= 5:
                     rs.parse_summary(json.dumps(summary), self.packet)
                 else:
                     with self.assertRaisesRegex(ValueError, "sentence count"):
                         rs.parse_summary(json.dumps(summary), self.packet)
-        for field, limit, error in [("title", 60, "title length"), ("sentence", 200, "statement text")]:
+        for field, limit, error in [("title", 60, "title length"), ("choice", 200, "statement text")]:
             for length in [limit, limit + 1]:
                 summary = copy.deepcopy(self.summary)
-                part = summary["title"] if field == "title" else summary["sentences"][0]
+                part = summary["title"] if field == "title" else summary["choice"]
                 part["text"] = "字" * length
                 with self.subTest(field=field, length=length):
                     if length == limit:
@@ -509,8 +574,9 @@ class ReaderSummaryRouteTests(unittest.TestCase):
         self.exp = _create_experiment(self.root / "runs")
         self.settings = self.root / "settings.json"
         self.settings.write_text('{"output":{"codex-cli":{"model":"fixture"}}}', encoding="utf-8")
-        self.summary = {"title": {"text": "疑いの先が変わる話", "refs": ["f1"]},
-                        "sentences": [{"text": "探偵は証拠を見直した。", "refs": ["f1"]}] * 3}
+        repository = data.RunRepository(self.root / "runs")
+        explanation = data.cell_explanation(repository, self.exp, "III|high")
+        self.summary = _summary_for(rs.build_packet(explanation), "疑いの先が変わる話")
 
         class FakeConfigs:
             def __init__(self, repo):
