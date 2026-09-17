@@ -508,7 +508,7 @@ def _outputs_list(handler):
 
 def _reader_summary_note():
     return (
-        '<p class="muted">読者向け要約（照合済み）は候補の詳細ページに別枠で表示され、'
+        '<p class="muted">読者向け要約（照合済み・未照合とも）は候補の詳細ページに別枠で表示され、'
         "ここに並ぶ生成稿とは別の成果物です</p>"
     )
 

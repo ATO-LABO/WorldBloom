@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from gapengine.explanations import extract_explanation, is_turning_candidate
-from gapengine.reader_summary import load_reviewed
+from gapengine.reader_summary import is_summarizable, load_summary
 from gapengine.qd import read_rows
 from gapengine.scenes import describe_row, extract_scenes
 from gapengine.synopsis import load_world_meta
@@ -1480,7 +1480,38 @@ def cell_explanation(repository, experiment, cell_key):
 
 
 def _with_reader(repository, experiment, explanation):
-    reader = load_reviewed(repository, experiment, explanation)
+    reader = load_summary(repository, experiment, explanation)
     if reader is not None:
         explanation["reader_summary"] = reader
     return explanation
+
+
+def ensure_reader_summary(repository, experiment, cell_key, *, settings_path, backend, timeout):
+    """POST /exp/<name>/cell/<cell>/reader-summary: generate (or reuse a
+    cached) on-demand reader summary for one candidate's representative
+    decision. Locked against concurrent writers for this experiment, same
+    as selection writes. Never calls the backend twice for an unchanged
+    packet+prompt -- a fresh explanation that already resolves to a saved,
+    non-stale summary is returned without generating."""
+    from execution.provenance import ConfigError, atomic_json, directory_lock
+    from gapengine.reader_summary import artifact_name, generate, unreviewed_summary
+
+    explanation = cell_explanation(repository, experiment, cell_key)
+    with directory_lock(experiment):
+        cached = load_summary(repository, experiment, explanation)
+        if cached is not None:
+            return cached
+        try:
+            artifact, packet = generate(explanation, backend=backend, settings_path=settings_path, timeout=timeout)
+        except ValueError as error:
+            # build_packet() itself rejected the explanation (no
+            # representative, or one rejected before execution) or the
+            # prompt was too large -- nothing was generated, nothing to
+            # save.
+            raise ConfigError("generation", str(error), code="unavailable") from error
+        path = repository.safe_path(experiment, "reader-summaries/" + artifact_name(packet["cell"]))
+        atomic_json(path, artifact)
+        if artifact["status"] != "generated":
+            raise ConfigError("generation", artifact.get("warning") or artifact.get("error") or "生成に失敗しました",
+                               code="generation_failed")
+        return unreviewed_summary(artifact, packet)
