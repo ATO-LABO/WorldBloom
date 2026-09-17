@@ -1646,6 +1646,8 @@ def cell_page(
         "</dl></section>"
         + ('' if model["explanation"].get("reader_summary") else
            '<section class="card"><h2>選択から後続へのつながり</h2>'
+           + (reader_ui.generate_button(experiment_name, cell_key, url_segment=_url_segment)
+              if _reader_generation_backend(job_store) else '')
            + explanation_ui.panel(model["explanation"]) + '</section>')
         + f'{_genome_panel(model["genome"], model["categories"])}'
         '<section class="card chart-card"><h2>7層の推移</h2>'
@@ -1950,6 +1952,18 @@ def lineage_page(
     )
 
 
+def _reader_generation_backend(job_store):
+    """WB-EXPLAIN-009: the configured 文章生成 backend, or None when there is
+    no control root (read-only exe) or the backend is "none". A pure
+    settings read -- never probes a remote backend at render time."""
+    if job_store is None:
+        return None
+    from execution.output_settings import resolve_generation
+    settings_path = job_store.configs.repo / "settings.json"
+    backend = resolve_generation(settings_path)["backend"]
+    return backend if backend != "none" else None
+
+
 def compare_page(repository, experiment_name, cells, *, job_store=None):
     experiment = repository.experiment(experiment_name)
     phases = data.phase_status(repository, experiment_name, job_store=job_store)
@@ -1972,10 +1986,14 @@ def compare_page(repository, experiment_name, cells, *, job_store=None):
     body += '<p>主人公の行動・対象・結果の並びは同じ筋です。</p>' if same else '<p>主人公の行動・対象・結果の並びに差があります。物語品質の優劣は判定していません。</p>'
     if has_reader:
         body += "</details>"
+    backend = _reader_generation_backend(job_store)
     body += '<div class="explanation-comparison">'
     for cell, explanation in zip(cells, explanations):
         body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
-        body += reader_ui.panel(explanation) + '</section>'
+        body += reader_ui.panel(explanation)
+        if backend and not explanation.get("reader_summary"):
+            body += reader_ui.generate_button(experiment_name, cell, url_segment=_url_segment)
+        body += '</section>'
     return document("四項目で比較", body + '</div>', run=experiment_name, phase="sifting", phases=phases,
                      lead=lead, next_action=next_action, job_store=job_store)
 
