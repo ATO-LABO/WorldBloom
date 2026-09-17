@@ -1,0 +1,71 @@
+id: D
+
+traits:
+  social: 0.78
+  stubbornness: 0.36
+  curiosity: 0.68
+  diligence: 0.60
+  temper: 0.22
+
+base: 25
+modifiers: []
+
+beliefs_about:
+  A:
+    known_modifiers: []
+    base_estimate: 50
+    identity_seen: true
+    observe_progress: 0.0
+  B:
+    known_modifiers: []
+    base_estimate: 50
+    identity_seen: false
+    observe_progress: 0.0
+  C:
+    known_modifiers: []
+    base_estimate: 90
+    identity_seen: false
+    observe_progress: 0.0
+
+beliefs: {}
+knowledge: [昔の約束]
+inventory: {}
+reputation: 0.05
+phase: []
+
+verbs:
+  - move
+  - investigate
+  - observe
+  - confront
+  - share_knowledge
+  - persuade
+  - rest
+
+identity:
+  "true": Aの背中を押し、噂の不自然さにも気づく友人
+  displayed: D
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: null
+
+relations:
+  A: {affinity: 0.72, awareness: 0.95}
+  B: {affinity: 0.48, awareness: 0.75}
+  C: {affinity: -0.18, awareness: 0.55}
+  E: {affinity: 0.15, awareness: 0.30}
+
+stamina:
+  max: 10
+  recover_per_slot: 1.4
+
+range:
+  zones: [学校, カフェ, 公園, 駅]
+  entry: 学校
+
+companions: []
+ally_value: 0
+objective_claimant: false
