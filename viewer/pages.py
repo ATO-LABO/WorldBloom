@@ -889,6 +889,10 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         worlds = LibraryStore(library_repo).worlds()
     except (ValueError, OSError, KeyError, TypeError, AttributeError):
         worlds = []
+    try:
+        genres = LibraryStore(library_repo).genres()
+    except (ValueError, OSError, KeyError, TypeError, AttributeError):
+        genres = []
 
     groups, minor = data.grouped_experiments(repository)
     by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
@@ -908,9 +912,10 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
         )
 
     body = (
-        '<p class="lead">世界を選び、実験を回し、Sifting で候補を選んで'
-        "上映します。</p>"
-        + library_pages.render_worlds_hub(worlds, can_create=job_store is not None)
+        '<p class="lead">WorldBloom は 1 つの物語エンジンに、ジャンル'
+        "（行動の文法）と世界（人物と場所の初期設定）を差し込んで動かします。"
+        "世界を選び、実験を回し、Sifting で候補を選んで上映します。</p>"
+        + library_pages.render_home_tabs(worlds, genres, can_create=job_store is not None)
     )
     return document(
         "世界を選ぶ", body, phase="world",
@@ -1646,6 +1651,9 @@ def cell_page(
         "</dl></section>"
         + ('' if model["explanation"].get("reader_summary") else
            '<section class="card"><h2>選択から後続へのつながり</h2>'
+           + (reader_ui.generate_button(experiment_name, cell_key, url_segment=_url_segment)
+              if _reader_generation_backend(job_store) and data.is_summarizable(model["explanation"])
+              else '')
            + explanation_ui.panel(model["explanation"]) + '</section>')
         + f'{_genome_panel(model["genome"], model["categories"])}'
         '<section class="card chart-card"><h2>7層の推移</h2>'
@@ -1950,6 +1958,18 @@ def lineage_page(
     )
 
 
+def _reader_generation_backend(job_store):
+    """WB-EXPLAIN-009: the configured 文章生成 backend, or None when there is
+    no control root (read-only exe) or the backend is "none". A pure
+    settings read -- never probes a remote backend at render time."""
+    if job_store is None:
+        return None
+    from execution.output_settings import resolve_generation
+    settings_path = job_store.configs.repo / "settings.json"
+    backend = resolve_generation(settings_path)["backend"]
+    return backend if backend != "none" else None
+
+
 def compare_page(repository, experiment_name, cells, *, job_store=None):
     experiment = repository.experiment(experiment_name)
     phases = data.phase_status(repository, experiment_name, job_store=job_store)
@@ -1972,10 +1992,14 @@ def compare_page(repository, experiment_name, cells, *, job_store=None):
     body += '<p>主人公の行動・対象・結果の並びは同じ筋です。</p>' if same else '<p>主人公の行動・対象・結果の並びに差があります。物語品質の優劣は判定していません。</p>'
     if has_reader:
         body += "</details>"
+    backend = _reader_generation_backend(job_store)
     body += '<div class="explanation-comparison">'
     for cell, explanation in zip(cells, explanations):
         body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
-        body += reader_ui.panel(explanation) + '</section>'
+        body += reader_ui.panel(explanation)
+        if backend and not explanation.get("reader_summary") and data.is_summarizable(explanation):
+            body += reader_ui.generate_button(experiment_name, cell, url_segment=_url_segment)
+        body += '</section>'
     return document("四項目で比較", body + '</div>', run=experiment_name, phase="sifting", phases=phases,
                      lead=lead, next_action=next_action, job_store=job_store)
 

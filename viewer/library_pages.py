@@ -88,24 +88,47 @@ def _genre_row(genre):
     )
 
 
-def render_worlds_hub(worlds, *, can_create):
+def render_worlds_hub(worlds, *, can_create, heading=True):
     cards = (_NEW_WORLD_CARD if can_create else "") + "".join(_world_card(w) for w in worlds)
     body = f'<div class="world-hub-grid">{cards}</div>' if cards else "<p>世界がありません。</p>"
-    return '<section class="card"><h2>世界</h2>' + body + "</section>"
+    head = "<h2>世界</h2>" if heading else ""
+    return f'<section class="card">{head}' + body + "</section>"
 
 
-def render_genres_section(genres):
-    # Genres are grammar shared across worlds, so they live on the ⚙ 設定
-    # page (/configs), not on the home hub next to "new world".
+GENRE_LEAD = (
+    '<p class="muted">ジャンルは行動の文法（行動グラフ・正典プライア・効果表・ルール・QD軸）。'
+    "templates/&lt;ジャンル&gt; に置かれ、世界から差し込んで使います。"
+    "同じジャンルを複数の世界で使うと、人物や場所が違っても展開のルールは共通になります。</p>"
+)
+
+
+def render_genres_section(genres, *, heading=True):
+    # Genres are grammar shared across worlds: this section also appears on
+    # the ⚙ 設定 page (/configs) and, since WB-UI-023, on the home hub's
+    # ジャンル tab (rendered without its own heading there).
     genre_table = (
         '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
         "<th>ID</th><th>ファイル</th><th>使っている世界</th><th>操作</th>"
         f'</tr></thead><tbody>{"".join(_genre_row(g) for g in genres)}</tbody></table></div>'
     ) if genres else "<p>ジャンルがありません。</p>"
+    head = "<h2>ジャンル</h2>" if heading else ""
     return (
-        '<section class="card" id="genres"><h2>ジャンル</h2>' + genre_table
+        f'<section class="card" id="genres">{head}{GENRE_LEAD}' + genre_table
         + '<p><a href="/genres/new">新しいジャンルを作る</a></p></section>'
     )
+
+
+def render_home_tabs(worlds, genres, *, can_create):
+    """WB-UI-023: home hub as 世界/ジャンル tabs, so a visitor can see the
+
+    engine's genre layer without leaving the front page (it was previously
+    reachable only from /configs). 世界 stays the default tab.
+    """
+    panels = [
+        ("世界", render_worlds_hub(worlds, can_create=can_create, heading=False)),
+        (f"ジャンル（{len(genres)}）", render_genres_section(genres, heading=False)),
+    ]
+    return pages.tabs("home", panels)
 
 
 def render_world_new_form(worlds, genres, *, from_id, genre_id):
