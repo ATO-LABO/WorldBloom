@@ -62,7 +62,12 @@ class OutputSettingsTests(unittest.TestCase):
             "wall_seconds": 240, "max_saved_response_bytes": 128000})
         self.assertEqual(set(view["backends"]), set(BACKENDS))
         for backend in BACKENDS:
-            self.assertIsNone(view["backends"][backend]["model"])
+            if backend == "claude-cli":
+                # claude-cli defaults to Sonnet 5 when nothing is configured,
+                # matching gapengine/synopsis.py's own generation-time fallback.
+                self.assertEqual(view["backends"][backend]["model"], "claude-sonnet-5")
+            else:
+                self.assertIsNone(view["backends"][backend]["model"])
         # none defaults to max_calls 0; ollama's own timeout/wall differ.
         self.assertEqual(view["backends"]["none"]["limits"]["max_calls"], 0)
         self.assertEqual(view["backends"]["ollama"]["limits"]["call_timeout_seconds"], 900)
@@ -125,6 +130,14 @@ class OutputSettingsTests(unittest.TestCase):
         self.write({"output": {"default_backend": "codex-cli", "codex-cli": {"model": "x"}}})
         with self.assertRaises(ConfigError):
             write_output_settings(self.settings_path, {"backend": "openai"})
+
+    def test_claude_cli_defaults_to_sonnet_5_and_can_be_saved_as_is(self):
+        # Switching to claude-cli with no model needs no explicit model --
+        # it already has a usable default, unlike every other real backend.
+        view = write_output_settings(self.settings_path, {"backend": "claude-cli"})
+        self.assertEqual(view["model"], "claude-sonnet-5")
+        raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        self.assertEqual(raw["output"]["claude-cli"]["model"], "claude-sonnet-5")
 
     def test_invalid_limits_are_rejected(self):
         for limits in ({"unknown_field": 1}, {"max_calls": -1},

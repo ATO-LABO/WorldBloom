@@ -516,7 +516,7 @@ def generate_text(
             raise GenerationError("claude CLI was not found")
 
         arguments = [command, "-p"]
-        model = str(config.get("model", "")).strip()
+        model = str(config.get("model") or "claude-sonnet-5").strip()
         if model:
             arguments.extend(["--model", model])
 
