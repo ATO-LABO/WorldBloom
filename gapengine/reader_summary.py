@@ -67,6 +67,15 @@ def build_packet(explanation):
     rep = explanation.get("representative") or {}
     if not rep:
         raise ValueError("no representative decision recorded")
+    if rep.get("outcome", {}).get("result") == "invalid":
+        # A decision rejected before execution (e.g. an "invalid" confront)
+        # can still be flagged as a turning candidate -- explanations.py's
+        # is_turning_candidate() only looks at the verb, not the result --
+        # and can therefore become the representative. Never narrate it as
+        # something that happened (see the identical invalid-link filter
+        # for later actions below); the raw four-item display is the
+        # correct fallback here.
+        raise ValueError("representative decision was rejected before execution")
     details = rep.get("outcome", {}).get("details", {}) or {}
     facts = []
 
@@ -207,22 +216,33 @@ def verified_summary(artifact, review, packet):
             "model": artifact["model"], "reviewer": review["reviewer"], "reviewed": True}
 
 
+def is_summarizable(explanation):
+    """Whether build_packet() could succeed for this explanation, without
+    actually building the packet -- used to decide whether to offer the
+    on-demand button at all (a representative decision rejected before
+    execution, e.g. an invalid confront, has nothing to summarize)."""
+    rep = explanation.get("representative") or {}
+    return bool(rep) and rep.get("outcome", {}).get("result") != "invalid"
+
+
 def load_summary(repository, experiment, explanation):
     """Two-tier read, never calls the LLM: a human-reviewed artifact first
     (reviewed=True, WB-EXPLAIN-007's original path), else a bare on-demand
     artifact the reader-summary button already generated and saved
     (reviewed=False, WB-EXPLAIN-009). None if neither exists or either is
     stale against the current explanation (source changed, packet
-    mismatch, response no longer parses)."""
-    try:
-        packet = build_packet(explanation)
-    except (ValueError, KeyError, TypeError):
-        return None
+    mismatch, response no longer parses). Checks for a saved artifact
+    first -- build_packet() re-reads and re-hashes the source log, so the
+    common case (no artifact saved yet) skips it entirely."""
     try:
         name = artifact_name(explanation["source"]["cell"])
         path = repository.safe_path(experiment, "reader-summaries/" + name)
         artifact = read_json(path)
-    except (OSError, ValueError):
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    try:
+        packet = build_packet(explanation)
+    except (ValueError, KeyError, TypeError):
         return None
     try:
         approval = repository.safe_path(experiment, "reader-summaries/" + review_path(name).name)

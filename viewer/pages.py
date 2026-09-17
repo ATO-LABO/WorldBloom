@@ -1647,7 +1647,8 @@ def cell_page(
         + ('' if model["explanation"].get("reader_summary") else
            '<section class="card"><h2>選択から後続へのつながり</h2>'
            + (reader_ui.generate_button(experiment_name, cell_key, url_segment=_url_segment)
-              if _reader_generation_backend(job_store) else '')
+              if _reader_generation_backend(job_store) and data.is_summarizable(model["explanation"])
+              else '')
            + explanation_ui.panel(model["explanation"]) + '</section>')
         + f'{_genome_panel(model["genome"], model["categories"])}'
         '<section class="card chart-card"><h2>7層の推移</h2>'
@@ -1991,7 +1992,7 @@ def compare_page(repository, experiment_name, cells, *, job_store=None):
     for cell, explanation in zip(cells, explanations):
         body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
         body += reader_ui.panel(explanation)
-        if backend and not explanation.get("reader_summary"):
+        if backend and not explanation.get("reader_summary") and data.is_summarizable(explanation):
             body += reader_ui.generate_button(experiment_name, cell, url_segment=_url_segment)
         body += '</section>'
     return document("四項目で比較", body + '</div>', run=experiment_name, phase="sifting", phases=phases,

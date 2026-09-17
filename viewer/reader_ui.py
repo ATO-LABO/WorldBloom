@@ -4,13 +4,16 @@ from viewer import explanation_ui
 
 
 def _label(reader):
-    if reader.get("reviewed", True):
+    # Default to the unreviewed label when "reviewed" is missing entirely --
+    # never let a caller that forgot the flag get mistaken for a human-
+    # approved summary.
+    if reader.get("reviewed", False):
         return "LLMで文章化・編集と原ログ照合済みの試作"
     return "AI生成（未照合）。根拠は下の原ログで確かめられます"
 
 
 def _short_label(reader):
-    return "LLM要約・編集照合済み" if reader.get("reviewed", True) else "AI生成・未照合"
+    return "LLM要約・編集照合済み" if reader.get("reviewed", False) else "AI生成・未照合"
 
 
 def panel(explanation):

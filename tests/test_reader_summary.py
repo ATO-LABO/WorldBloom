@@ -116,7 +116,7 @@ class ReaderSummaryTests(unittest.TestCase):
         summary["title"]["text"] = "<script>alert(1)</script>"
         summary["sentences"][0]["text"] = '<img src=x onerror="alert(2)">'
         self.explanation["reader_summary"] = {
-            "summary": summary, "packet": self.packet, "model": "<model>", "reviewer": "editor"}
+            "summary": summary, "packet": self.packet, "model": "<model>", "reviewer": "editor", "reviewed": True}
         html = reader_ui.panel(self.explanation)
         self.assertIn("&lt;script&gt;", html)
         self.assertNotIn("<script>", html)
@@ -381,6 +381,24 @@ class ReaderSummaryTests(unittest.TestCase):
                             if f["kind"] == "actor_knowledge_before_decision_not_world_truth")
         self.assertIn("証拠", grounds_fact["value"]["text"])
 
+    def test_invalid_representative_is_never_summarized(self):
+        # explanations.is_turning_candidate() flags by verb alone, so a
+        # rejected-before-execution confront (result="invalid") can still
+        # become the representative. It must never be narrated as
+        # something that happened -- not even the bare "invalid" result
+        # string -- and the button must not be offered for it either.
+        explanation = extract_explanation(self._linked_fixture(), experiment=self.exp.name, cell="III|high")
+        explanation["representative"].update(verb="confront", outcome={"result": "invalid", "details": {}})
+        with self.assertRaisesRegex(ValueError, "rejected before execution"):
+            rs.build_packet(explanation)
+        self.assertFalse(rs.is_summarizable(explanation))
+        # Even with a saved artifact present (e.g. stale, from before this
+        # fix), load_summary() must still refuse once build_packet() itself
+        # rejects the representative.
+        path = self.exp / "reader-summaries" / rs.artifact_name("III|high")
+        rs.write_new(path, self.artifact)
+        self.assertIsNone(rs.load_summary(self.repo, self.exp, explanation))
+
     def test_packet_field_allowlist_excludes_truth_policy_and_pending(self):
         explanation = extract_explanation(self._linked_fixture(), experiment=self.exp.name, cell="III|high")
         rep = explanation["representative"]
@@ -505,6 +523,9 @@ class ReaderSummaryRouteTests(unittest.TestCase):
             def list(self):
                 return []
 
+            def assert_run_idle(self, run_id):
+                pass
+
         self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
         self.server.repository = data.RunRepository(self.root / "runs")
         self.server.job_store = FakeJobStore(self.root)
@@ -534,6 +555,19 @@ class ReaderSummaryRouteTests(unittest.TestCase):
         with patch("gapengine.synopsis.generate_text") as call:
             status, payload = self.post("/exp/exp-viewer/cell/III|high/reader-summary")
         self.assertEqual(status, 503, payload)
+        call.assert_not_called()
+
+    def test_active_run_is_rejected_without_calling_the_llm(self):
+        # A GA job's publish() and selection writes take the same
+        # directory_lock non-blocking; this route can hold it for minutes,
+        # so it must refuse outright while the run is active rather than
+        # risk starving them.
+        def raise_conflict(run_id):
+            raise ConfigError("run_id", "実行中の結果は選定できません", code="conflict")
+        self.server.job_store.assert_run_idle = raise_conflict
+        with patch("gapengine.synopsis.generate_text") as call:
+            status, payload = self.post("/exp/exp-viewer/cell/III|high/reader-summary")
+        self.assertEqual(status, 409, payload)
         call.assert_not_called()
 
     def test_generates_once_then_reuses_the_cache(self):

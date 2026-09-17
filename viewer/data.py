@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from gapengine.explanations import extract_explanation, is_turning_candidate
-from gapengine.reader_summary import load_summary
+from gapengine.reader_summary import is_summarizable, load_summary
 from gapengine.qd import read_rows
 from gapengine.scenes import describe_row, extract_scenes
 from gapengine.synopsis import load_world_meta
@@ -1501,7 +1501,14 @@ def ensure_reader_summary(repository, experiment, cell_key, *, settings_path, ba
         cached = load_summary(repository, experiment, explanation)
         if cached is not None:
             return cached
-        artifact, packet = generate(explanation, backend=backend, settings_path=settings_path, timeout=timeout)
+        try:
+            artifact, packet = generate(explanation, backend=backend, settings_path=settings_path, timeout=timeout)
+        except ValueError as error:
+            # build_packet() itself rejected the explanation (no
+            # representative, or one rejected before execution) or the
+            # prompt was too large -- nothing was generated, nothing to
+            # save.
+            raise ConfigError("generation", str(error), code="unavailable") from error
         path = repository.safe_path(experiment, "reader-summaries/" + artifact_name(packet["cell"]))
         atomic_json(path, artifact)
         if artifact["status"] != "generated":

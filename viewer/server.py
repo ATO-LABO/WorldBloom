@@ -324,6 +324,12 @@ class ViewerHandler(BaseHTTPRequestHandler):
         generation = resolve_generation(settings_path)
         if generation["backend"] == "none":
             raise ConfigError("generation", "文章生成のバックエンドが未設定です", code="unavailable")
+        # The call can hold reader-summaries/'s directory_lock for minutes;
+        # a concurrent GA job publishing a generation or a selection write
+        # takes the same lock non-blocking (execution/evolution_worker.py,
+        # execution/selections.py), so refuse while a run is active rather
+        # than risk starving it.
+        jobs.assert_run_idle(experiment_name)
         experiment = self.repository.experiment(experiment_name)
         self.repository.validate_segment(cell)
         summary = data.ensure_reader_summary(
