@@ -1,5 +1,5 @@
 kappa: 0.0          # Stage 2 既定は OFF。GPU 復旧後の計測で method と合わせて決める
-method: noul
+method: choice       # Stage 1 計測で決定: noul 比 1/13 のコール数、順位相関 0.55。分布が尖るので kappa は 0.3〜0.6 を目安に
 backend:
   type: ollama
   model: qwen3.6:35b
