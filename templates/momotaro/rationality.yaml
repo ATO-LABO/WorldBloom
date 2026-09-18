@@ -9,6 +9,7 @@ backend:
     max_temp: 78   # 2026-09-19夜の疎通実験で86℃到達を確認。82では遅すぎたため引き下げ
     cooldown_seconds: 45
     check_every: 5
+  gpu_lease_wait_seconds: 600  # WB-JEV-001: 機体全体のGPUリースが取れるまで待つ秒数(GA実行1回分)
 max_judge_calls_per_run: null  # 1 run(seed)あたりの判定器呼び出し上限。null=無制限（--rationality-max-calls で上書き可）
 key_items:
   - きびだんご

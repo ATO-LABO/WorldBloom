@@ -7,8 +7,10 @@ skipped by instruction)."""
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
 import random
 import tempfile
 import unittest
@@ -22,6 +24,7 @@ from engine.actions import Action
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.world import World
+from gapengine import gpu_guard
 from gapengine.evolve import _merge_rationality_table, evolve
 from gapengine.genome import Genome
 from gapengine.policy import Policy
@@ -31,6 +34,7 @@ from gapengine.rationality import (
     Rationality,
     RationalityTable,
     _even_chunks,
+    _read_gpu_temperature,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1191,6 +1195,116 @@ class RationalityCoevolveWiringTests(unittest.TestCase):
             for row in new_rows:
                 self.assertIn(row["key"], merged)
                 self.assertEqual(merged[row["key"]], row["p"])
+
+
+class GpuLeaseWiringTests(unittest.TestCase):
+    """WB-JEV-001: evolve() must only take the machine-wide GPU lease
+    (gapengine.gpu_guard.gpu_lease) when a real Ollama call is actually
+    imminent (kappa > 0 and backend == "ollama"), never for kappa<=0,
+    "none" or "fake" -- and a GpuBusy from that lease must surface as a
+    plain RuntimeError, not propagate raw or get swallowed. Every test
+    points WORLDBLOOM_GPU_LEASE_DIR at a throwaway directory so a real
+    lease file is never touched, and none of them exercise a real Ollama
+    call (_build_rationality_judge is patched wherever backend="ollama")."""
+
+    def setUp(self) -> None:
+        self._lease_tempdir = tempfile.TemporaryDirectory()
+        self._env_patch = patch.dict(
+            os.environ, {"WORLDBLOOM_GPU_LEASE_DIR": self._lease_tempdir.name}
+        )
+        self._env_patch.start()
+        self.addCleanup(self._env_patch.stop)
+        self.addCleanup(self._lease_tempdir.cleanup)
+
+    def _run_evolve(self, out_dir: Path, rationality_override: dict[str, Any] | None) -> None:
+        cfg: dict[str, Any] = {
+            "project": PROJECT,
+            "template": TEMPLATE,
+            "out": out_dir,
+            "generations": 1,
+            "population": 1,
+            "seeds": 1,
+            "keep": "all",
+        }
+        if rationality_override is not None:
+            cfg["rationality"] = rationality_override
+        evolve(cfg)
+
+    def test_kappa_zero_never_takes_the_gpu_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("gapengine.evolve.gpu_guard.gpu_lease") as mock_lease:
+                self._run_evolve(Path(temporary) / "out", None)
+            mock_lease.assert_not_called()
+
+    def test_backend_none_never_takes_the_gpu_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("gapengine.evolve.gpu_guard.gpu_lease") as mock_lease:
+                self._run_evolve(
+                    Path(temporary) / "out",
+                    {"kappa": 1.0, "backend": "none"},
+                )
+            mock_lease.assert_not_called()
+
+    def test_backend_fake_never_takes_the_gpu_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("gapengine.evolve.gpu_guard.gpu_lease") as mock_lease:
+                self._run_evolve(
+                    Path(temporary) / "out",
+                    {"kappa": 1.0, "backend": "fake"},
+                )
+            mock_lease.assert_not_called()
+
+    def test_backend_ollama_takes_the_gpu_lease_around_the_whole_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            out_dir = Path(temporary) / "out"
+            with patch(
+                "gapengine.evolve._build_rationality_judge", return_value=NullJudge()
+            ), patch(
+                "gapengine.evolve.gpu_guard.gpu_lease",
+                return_value=contextlib.nullcontext(),
+            ) as mock_lease:
+                self._run_evolve(
+                    out_dir,
+                    {"kappa": 1.0, "backend": "ollama"},
+                )
+            mock_lease.assert_called_once()
+            args, kwargs = mock_lease.call_args
+            owner = args[0] if args else kwargs["owner"]
+            self.assertEqual(owner, f"jev-ga:{out_dir.name}")
+            self.assertEqual(kwargs["wait_seconds"], 600)
+
+    def test_gpu_busy_surfaces_as_runtime_error_not_raw_or_swallowed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            out_dir = Path(temporary) / "out"
+            with patch(
+                "gapengine.evolve._build_rationality_judge", return_value=NullJudge()
+            ), patch(
+                "gapengine.evolve.gpu_guard.gpu_lease",
+                side_effect=gpu_guard.GpuBusy({"owner": "output:some-job"}),
+            ):
+                with self.assertRaises(RuntimeError) as context:
+                    self._run_evolve(
+                        out_dir,
+                        {"kappa": 1.0, "backend": "ollama"},
+                    )
+            self.assertNotIsInstance(context.exception, gpu_guard.GpuBusy)
+            self.assertIn("output:some-job", str(context.exception))
+            # No generation ever ran: preparing for the run must not leave a
+            # generation directory behind when the lease could not be taken.
+            self.assertFalse((out_dir / "g0").exists())
+
+
+class ReadGpuTemperatureDelegationTests(unittest.TestCase):
+    """WB-JEV-001: gapengine.rationality._read_gpu_temperature must delegate
+    to gapengine.gpu_guard.read_gpu_temperature (one nvidia-smi readout
+    implementation shared by the thermal guard and the GPU guard), while
+    staying monkeypatchable under its own module-level name for
+    OllamaLogprobJudge's existing thermal-guard tests."""
+
+    def test_delegates_to_gpu_guard_read_gpu_temperature(self) -> None:
+        with patch("gapengine.rationality.gpu_guard.read_gpu_temperature", return_value=71.5) as mock_read:
+            self.assertEqual(_read_gpu_temperature(), 71.5)
+        mock_read.assert_called_once_with()
 
 
 if __name__ == "__main__":

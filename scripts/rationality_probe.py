@@ -56,6 +56,7 @@ import yaml
 
 from engine.sim import Simulation
 from engine.world import World
+from gapengine import gpu_guard
 from gapengine.evolve import _load_subjects
 from gapengine.genome import Genome
 from gapengine.knowledge_text import (
@@ -976,11 +977,12 @@ def _run_bench(args: argparse.Namespace) -> int:
     descs = [desc for desc, _chosen in point["candidates"]][:15]
 
     timings: list[float] = []
-    for desc in descs:
-        prompt = f"{point['state_text']}\n\n候補: {desc}\n\n{QUESTION}"
-        started = time.monotonic()
-        _ollama_call(args.model, prompt, base_url=args.base_url, timeout=args.timeout)
-        timings.append(time.monotonic() - started)
+    with gpu_guard.gpu_lease(f"jev-probe:{args.model}", wait_seconds=600):
+        for desc in descs:
+            prompt = f"{point['state_text']}\n\n候補: {desc}\n\n{QUESTION}"
+            started = time.monotonic()
+            _ollama_call(args.model, prompt, base_url=args.base_url, timeout=args.timeout)
+            timings.append(time.monotonic() - started)
 
     first = timings[0] if timings else None
     rest = timings[1:]
@@ -1140,26 +1142,27 @@ def main(argv: list[str] | None = None) -> int:
         report_path = out_dir / "report.md"
         mode_b_points = _mode_b_points()
         scores: dict[tuple[str, str], float | None] = {}
-        scores.update(
-            _score_points(
-                mode_b_points,
-                model=args.model,
-                base_url=args.base_url,
-                timeout=args.timeout,
-                probe_path=probe_path,
-                stats=stats,
+        with gpu_guard.gpu_lease(f"jev-probe:{args.model}", wait_seconds=600):
+            scores.update(
+                _score_points(
+                    mode_b_points,
+                    model=args.model,
+                    base_url=args.base_url,
+                    timeout=args.timeout,
+                    probe_path=probe_path,
+                    stats=stats,
+                )
             )
-        )
-        scores.update(
-            _score_points(
-                mode_a_points,
-                model=args.model,
-                base_url=args.base_url,
-                timeout=args.timeout,
-                probe_path=probe_path,
-                stats=stats,
+            scores.update(
+                _score_points(
+                    mode_a_points,
+                    model=args.model,
+                    base_url=args.base_url,
+                    timeout=args.timeout,
+                    probe_path=probe_path,
+                    stats=stats,
+                )
             )
-        )
         _write_report(
             report_path,
             model=args.model,
@@ -1172,23 +1175,24 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         report_path = out_dir / "report-choice.md"
-        limit = _measure_top_logprobs_limit(
-            args.model, base_url=args.base_url, timeout=args.timeout
-        )
-        # Capped at len(LABELS): a chunk larger than the label alphabet would
-        # silently drop the tail candidates in zip(labels, chunk_descs).
-        chunk_size = min(limit if limit >= 2 else 10, len(LABELS))
-        stats["measured_top_logprobs_limit"] = limit
-        stats["chunk_size"] = chunk_size
-        scores = _score_points_choice(
-            mode_a_points,
-            model=args.model,
-            base_url=args.base_url,
-            timeout=args.timeout,
-            probe_path=probe_path,
-            stats=stats,
-            chunk_size=chunk_size,
-        )
+        with gpu_guard.gpu_lease(f"jev-probe:{args.model}", wait_seconds=600):
+            limit = _measure_top_logprobs_limit(
+                args.model, base_url=args.base_url, timeout=args.timeout
+            )
+            # Capped at len(LABELS): a chunk larger than the label alphabet
+            # would silently drop the tail candidates in zip(labels, chunk_descs).
+            chunk_size = min(limit if limit >= 2 else 10, len(LABELS))
+            stats["measured_top_logprobs_limit"] = limit
+            stats["chunk_size"] = chunk_size
+            scores = _score_points_choice(
+                mode_a_points,
+                model=args.model,
+                base_url=args.base_url,
+                timeout=args.timeout,
+                probe_path=probe_path,
+                stats=stats,
+                chunk_size=chunk_size,
+            )
         _write_choice_report(
             report_path,
             model=args.model,

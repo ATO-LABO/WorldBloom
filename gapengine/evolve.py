@@ -8,6 +8,7 @@ import os
 import uuid
 import multiprocessing
 import random
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -16,6 +17,7 @@ import yaml
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.world import World
+from gapengine import gpu_guard
 from gapengine.genome import Genome
 from gapengine.knowledge_text import load_common_knowledge, load_key_items
 from gapengine.ollama import DEFAULT_BASE_URL as RATIONALITY_DEFAULT_BASE_URL
@@ -1099,200 +1101,130 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         else []
     )
 
-    for generation in range(generations):
-        if observer is not None:
-            observer.checkpoint(phase="preparing", generation=generation, role=None)
-        generation_dir = out_dir / f"g{generation}"
-        archive_runs = (
-            _archive_precedent_paths(archive, out_dir)
-            if generation > 0
-            else []
-        )
-        precedent = canon.merge(
-            from_runs(
-                archive_runs,
-                protagonist=protagonist,
+    gpu_guard_owner = f"jev-ga:{out_dir.name}"
+    gpu_guard_active = (
+        rationality_enabled
+        and rationality_cfg is not None
+        and rationality_cfg["backend"] == "ollama"
+    )
+    gpu_guard_wait_seconds = (
+        float(
+            _rationality_pick(
+                "gpu_lease_wait_seconds",
+                rationality_yaml_backend.get("gpu_lease_wait_seconds", 600),
             )
         )
-        precedent_path = generation_dir / "precedent.json"
-        _json_write(precedent_path, json.loads(precedent.to_json()))
+        if gpu_guard_active
+        else 0.0
+    )
 
-        antagonist_precedent: PrecedentTable | None = None
-        if coevolve:
-            assert antagonist_archive is not None
-            antagonist_archive_runs = (
-                _archive_precedent_paths(
-                    antagonist_archive,
-                    out_dir,
+    with ExitStack() as _gpu_guard_stack:
+        if gpu_guard_active:
+            try:
+                _gpu_guard_stack.enter_context(
+                    gpu_guard.gpu_lease(
+                        gpu_guard_owner, wait_seconds=gpu_guard_wait_seconds
+                    )
                 )
+            except gpu_guard.GpuBusy as exc:
+                raise RuntimeError(
+                    "GPU is busy for the GA run: held by "
+                    f"{exc.holder.get('owner', 'unknown')}"
+                ) from exc
+
+        for generation in range(generations):
+            if observer is not None:
+                observer.checkpoint(phase="preparing", generation=generation, role=None)
+            generation_dir = out_dir / f"g{generation}"
+            archive_runs = (
+                _archive_precedent_paths(archive, out_dir)
                 if generation > 0
                 else []
             )
-            antagonist_precedent = antagonist_canon.merge(
+            precedent = canon.merge(
                 from_runs(
-                    antagonist_archive_runs,
-                    protagonist=antagonist,
+                    archive_runs,
+                    protagonist=protagonist,
                 )
             )
-            _json_write(
-                generation_dir / "precedent.antagonist.json",
-                json.loads(antagonist_precedent.to_json()),
-            )
+            precedent_path = generation_dir / "precedent.json"
+            _json_write(precedent_path, json.loads(precedent.to_json()))
 
-        if generation > 0:
-            population = _next_population(
-                population_size,
-                archive,
-                previous_results,
-                ga_rng,
-                rule_ids=rule_ids,
-            )
+            antagonist_precedent: PrecedentTable | None = None
             if coevolve:
                 assert antagonist_archive is not None
-                antagonist_population = _next_population(
+                antagonist_archive_runs = (
+                    _archive_precedent_paths(
+                        antagonist_archive,
+                        out_dir,
+                    )
+                    if generation > 0
+                    else []
+                )
+                antagonist_precedent = antagonist_canon.merge(
+                    from_runs(
+                        antagonist_archive_runs,
+                        protagonist=antagonist,
+                    )
+                )
+                _json_write(
+                    generation_dir / "precedent.antagonist.json",
+                    json.loads(antagonist_precedent.to_json()),
+                )
+
+            if generation > 0:
+                population = _next_population(
                     population_size,
-                    antagonist_archive,
-                    previous_antagonist_results,
+                    archive,
+                    previous_results,
                     ga_rng,
                     rule_ids=rule_ids,
                 )
+                if coevolve:
+                    assert antagonist_archive is not None
+                    antagonist_population = _next_population(
+                        population_size,
+                        antagonist_archive,
+                        previous_antagonist_results,
+                        ga_rng,
+                        rule_ids=rule_ids,
+                    )
 
-        _json_write(
-            generation_dir / "population.json",
-            [
-                {
-                    "genome": genome.to_dict(),
-                    "index": index,
-                    "parents": parents,
-                }
-                for index, (genome, parents) in enumerate(population)
-            ],
-        )
-        if coevolve:
             _json_write(
-                generation_dir / "population.antagonist.json",
+                generation_dir / "population.json",
                 [
                     {
                         "genome": genome.to_dict(),
                         "index": index,
                         "parents": parents,
                     }
-                    for index, (genome, parents) in enumerate(
-                        antagonist_population
-                    )
+                    for index, (genome, parents) in enumerate(population)
                 ],
             )
+            if coevolve:
+                _json_write(
+                    generation_dir / "population.antagonist.json",
+                    [
+                        {
+                            "genome": genome.to_dict(),
+                            "index": index,
+                            "parents": parents,
+                        }
+                        for index, (genome, parents) in enumerate(
+                            antagonist_population
+                        )
+                    ],
+                )
 
-        antagonist_samples = (
-            [
-                antagonist_archive.cells[cell].genome
-                for cell in sorted(antagonist_archive.cells)
-            ]
-            if antagonist_archive is not None
-            else []
-        )
-        jobs = [
-            {
-                "action_cfg": action_cfg,
-                "action_graph_path": (
-                    str(action_graph_path)
-                    if action_graph_path is not None
-                    else None
-                ),
-                "antagonist": antagonist,
-                "antagonist_action_cfg": antagonist_action_cfg,
-                "antagonist_genome": (
-                    antagonist_samples[
-                        index % len(antagonist_samples)
-                    ].to_dict()
-                    if antagonist_samples
-                    else None
-                ),
-                "antagonist_precedent_json": (
-                    antagonist_precedent.to_json()
-                    if antagonist_precedent is not None
-                    else None
-                ),
-                "genome": genome.to_dict(),
-                "index": index,
-                "logical_root": str(out_dir),
-                "out_dir": str(generation_dir / f"ind-{index}"),
-                "parents": parents,
-                "precedent_json": precedent.to_json(),
-                "protagonist": protagonist,
-                "qd_cfg": qd_cfg,
-                "rules": rules,
-                "seeds": seeds,
-                "subjects_dir": str(subjects_dir),
-                "world_path": str(world_path),
-            }
-            for index, (genome, parents) in enumerate(population)
-        ]
-        for job in jobs:
-            job["record_explanations"] = bool(cfg.get("record_explanations", False))
-            job["target_ending"] = world_model.target_ending
-            if rationality_enabled:
-                job["rationality_cfg"] = rationality_cfg
-                job["rationality_table_path"] = str(rationality_table_path)
-        if observer is not None:
-            observer.bind(jobs, generation, "protagonist")
-        raw_results = _evaluate_jobs(jobs, processes, observer)
-
-        # WB-JEV-001 Stage 2 (Opus review R4): merged here (before the
-        # antagonist pass is built) so a coevolve antagonist job -- which
-        # evaluates the *same* protagonist genomes under its own Policy
-        # instance -- reuses this generation's protagonist-pass discoveries
-        # instead of starting cold. judge_calls/table_size for
-        # generation_summary are computed after *both* passes below, once
-        # the merge has folded in whichever pass ran second too.
-        if rationality_enabled:
-            assert rationality_table_path is not None
-            _merge_rationality_table(generation_dir, rationality_table_path)
-
-        if archive.volatility_thresholds is None:
-            archive.freeze_thresholds(
+            antagonist_samples = (
                 [
-                    float(run["volatility"])
-                    for result in raw_results
-                    for run in result["runs"]
+                    antagonist_archive.cells[cell].genome
+                    for cell in sorted(antagonist_archive.cells)
                 ]
+                if antagonist_archive is not None
+                else []
             )
-
-        generation_results = [
-            _result_summary(result, archive)
-            for result in raw_results
-        ]
-        for result in generation_results:
-            result["generation"] = generation
-        for result in raw_results:
-            _insert_result(
-                result,
-                archive,
-                generation,
-                include_matchup=coevolve,
-            )
-
-        _json_write(
-            generation_dir / "results.json",
-            generation_results,
-        )
-        _json_write(out_dir / "archive.json", archive.to_dict())
-
-        antagonist_raw_results: list[dict[str, Any]] = []
-        antagonist_generation_results: list[dict[str, Any]] = []
-        if coevolve:
-            assert antagonist_archive is not None
-            assert antagonist_precedent is not None
-            protagonist_samples = [
-                archive.cells[cell].genome
-                for cell in sorted(archive.cells)
-            ]
-            vol_high = (
-                archive.volatility_thresholds["mid_max"]
-                if archive.volatility_thresholds is not None
-                else 0.0
-            )
-            antagonist_jobs = [
+            jobs = [
                 {
                     "action_cfg": action_cfg,
                     "action_graph_path": (
@@ -1302,24 +1234,22 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                     ),
                     "antagonist": antagonist,
                     "antagonist_action_cfg": antagonist_action_cfg,
-                    "antagonist_genome": genome.to_dict(),
-                    "antagonist_precedent_json": (
-                        antagonist_precedent.to_json()
-                    ),
-                    "genome": (
-                        protagonist_samples[
-                            index % len(protagonist_samples)
+                    "antagonist_genome": (
+                        antagonist_samples[
+                            index % len(antagonist_samples)
                         ].to_dict()
-                        if protagonist_samples
+                        if antagonist_samples
                         else None
                     ),
+                    "antagonist_precedent_json": (
+                        antagonist_precedent.to_json()
+                        if antagonist_precedent is not None
+                        else None
+                    ),
+                    "genome": genome.to_dict(),
                     "index": index,
                     "logical_root": str(out_dir),
-                    "out_dir": str(
-                        generation_dir
-                        / "antagonist"
-                        / f"ind-{index}"
-                    ),
+                    "out_dir": str(generation_dir / f"ind-{index}"),
                     "parents": parents,
                     "precedent_json": precedent.to_json(),
                     "protagonist": protagonist,
@@ -1327,256 +1257,359 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                     "rules": rules,
                     "seeds": seeds,
                     "subjects_dir": str(subjects_dir),
-                    "vol_high": vol_high,
                     "world_path": str(world_path),
                 }
-                for index, (genome, parents) in enumerate(
-                    antagonist_population
-                )
+                for index, (genome, parents) in enumerate(population)
             ]
-            for job in antagonist_jobs:
+            for job in jobs:
                 job["record_explanations"] = bool(cfg.get("record_explanations", False))
                 job["target_ending"] = world_model.target_ending
-                # Opus review R4: the protagonist sample evaluated here gets
-                # the *same* rationality_cfg as the main protagonist pass,
-                # so the same genome never ends up with m_rat applied in
-                # only one of the two passes that evaluate it. The
-                # antagonist's own Policy is never given a Rationality
-                # (run_individual only attaches it to `policies[protagonist]`).
                 if rationality_enabled:
                     job["rationality_cfg"] = rationality_cfg
                     job["rationality_table_path"] = str(rationality_table_path)
             if observer is not None:
-                observer.bind(antagonist_jobs, generation, "antagonist")
-            antagonist_raw_results = _evaluate_jobs(antagonist_jobs, processes, observer)
+                observer.bind(jobs, generation, "protagonist")
+            raw_results = _evaluate_jobs(jobs, processes, observer)
 
+            # WB-JEV-001 Stage 2 (Opus review R4): merged here (before the
+            # antagonist pass is built) so a coevolve antagonist job -- which
+            # evaluates the *same* protagonist genomes under its own Policy
+            # instance -- reuses this generation's protagonist-pass discoveries
+            # instead of starting cold. judge_calls/table_size for
+            # generation_summary are computed after *both* passes below, once
+            # the merge has folded in whichever pass ran second too.
             if rationality_enabled:
                 assert rationality_table_path is not None
                 _merge_rationality_table(generation_dir, rationality_table_path)
 
-            if antagonist_archive.volatility_thresholds is None:
-                antagonist_archive.freeze_thresholds(
+            if archive.volatility_thresholds is None:
+                archive.freeze_thresholds(
                     [
                         float(run["volatility"])
-                        for result in antagonist_raw_results
+                        for result in raw_results
                         for run in result["runs"]
                     ]
                 )
 
-            antagonist_generation_results = [
-                _result_summary(
-                    result,
-                    antagonist_archive,
-                    role="antagonist",
-                )
-                for result in antagonist_raw_results
+            generation_results = [
+                _result_summary(result, archive)
+                for result in raw_results
             ]
-            for result in antagonist_generation_results:
+            for result in generation_results:
                 result["generation"] = generation
-            for result in antagonist_raw_results:
+            for result in raw_results:
                 _insert_result(
                     result,
-                    antagonist_archive,
+                    archive,
                     generation,
-                    role="antagonist",
-                    include_matchup=True,
+                    include_matchup=coevolve,
                 )
 
             _json_write(
-                generation_dir / "results.antagonist.json",
-                antagonist_generation_results,
+                generation_dir / "results.json",
+                generation_results,
             )
-            _json_write(out_dir / "archive_antagonist.json", antagonist_archive.to_dict())
+            _json_write(out_dir / "archive.json", archive.to_dict())
 
-        reached_best = [
-            _best_reached(result) for result in raw_results
-        ]
-        reached_best = [
-            value for value in reached_best if value is not None
-        ]
-        generation_dissimilarity = sequence_dissimilarity(
-            [
-                [
-                    tuple(str(part) for part in value)
-                    for value in run["effective_sequence"]
+            antagonist_raw_results: list[dict[str, Any]] = []
+            antagonist_generation_results: list[dict[str, Any]] = []
+            if coevolve:
+                assert antagonist_archive is not None
+                assert antagonist_precedent is not None
+                protagonist_samples = [
+                    archive.cells[cell].genome
+                    for cell in sorted(archive.cells)
                 ]
-                for run in reached_best
-            ]
-        )
-        reached_runs = sum(
-            bool(run["reached"])
-            for result in raw_results
-            for run in result["runs"]
-        )
-        total_runs = sum(
-            len(result["runs"]) for result in raw_results
-        )
-        average_quality = (
-            sum(elite.quality for elite in archive.cells.values())
-            / len(archive.cells)
-            if archive.cells
-            else None
-        )
-        archive_dissimilarity = _archive_dissimilarity(
-            archive,
-            out_dir,
-        )
-        lineage_summary = _generation_lineage_summary(raw_results)
-        generation_summary: dict[str, Any] = {
-            "action_share": lineage_summary["action_share"],
-            "allies_mean_at_contest": lineage_summary["allies_mean_at_contest"],
-            "allies_mean_final": lineage_summary["allies_mean_final"],
-            "archive_dissimilarity": archive_dissimilarity,
-            "average_archive_quality": average_quality,
-            "contest_rate": lineage_summary["contest_rate"],
-            "generation": generation,
-            "generation_dissimilarity": generation_dissimilarity,
-            "occupied_cells": len(archive.cells),
-            "reach_rate": reached_runs / total_runs,
-        }
-        if rationality_enabled:
-            # Opus review R4: summed across both passes -- coevolve's
-            # antagonist pass re-evaluates the same protagonist genomes
-            # under their own Rationality now too, so its judge calls count
-            # here as well. Read back after both merges above, so this is
-            # the generation's *final* table state either way.
-            generation_summary["rationality_judge_calls"] = sum(
-                int(result.get("rationality_judge_calls", 0))
-                for result in (*raw_results, *antagonist_raw_results)
-            )
-            generation_summary["rationality_table_size"] = len(
-                RationalityTable.load(rationality_table_path)
-            )
-            generation_summary["rationality_thermal_wait_seconds"] = sum(
-                float(result.get("rationality_thermal_wait_seconds", 0.0))
-                for result in (*raw_results, *antagonist_raw_results)
-            )
-            # Stage 2 re-review item 2: run_individual already tallies these
-            # per job (result["rationality_budget_exhausted_runs"] /
-            # ["rationality_judge_disabled_runs"]); sum them the same way as
-            # judge_calls above so they reach the generation summary too.
-            generation_summary["rationality_budget_exhausted_runs"] = sum(
-                int(result.get("rationality_budget_exhausted_runs", 0))
-                for result in (*raw_results, *antagonist_raw_results)
-            )
-            generation_summary["rationality_judge_disabled_runs"] = sum(
-                int(result.get("rationality_judge_disabled_runs", 0))
-                for result in (*raw_results, *antagonist_raw_results)
-            )
-
-        antagonist_archive_dissimilarity: float | None = None
-        if coevolve:
-            assert antagonist_archive is not None
-            antagonist_best = [
-                _best_reached(result, role="antagonist")
-                for result in antagonist_raw_results
-            ]
-            antagonist_best = [
-                value
-                for value in antagonist_best
-                if value is not None
-            ]
-            antagonist_generation_dissimilarity = (
-                sequence_dissimilarity(
-                    [
-                        [
-                            tuple(str(part) for part in value)
-                            for value in run[
-                                "antagonist_effective_sequence"
-                            ]
-                        ]
-                        for run in antagonist_best
-                    ]
+                vol_high = (
+                    archive.volatility_thresholds["mid_max"]
+                    if archive.volatility_thresholds is not None
+                    else 0.0
                 )
+                antagonist_jobs = [
+                    {
+                        "action_cfg": action_cfg,
+                        "action_graph_path": (
+                            str(action_graph_path)
+                            if action_graph_path is not None
+                            else None
+                        ),
+                        "antagonist": antagonist,
+                        "antagonist_action_cfg": antagonist_action_cfg,
+                        "antagonist_genome": genome.to_dict(),
+                        "antagonist_precedent_json": (
+                            antagonist_precedent.to_json()
+                        ),
+                        "genome": (
+                            protagonist_samples[
+                                index % len(protagonist_samples)
+                            ].to_dict()
+                            if protagonist_samples
+                            else None
+                        ),
+                        "index": index,
+                        "logical_root": str(out_dir),
+                        "out_dir": str(
+                            generation_dir
+                            / "antagonist"
+                            / f"ind-{index}"
+                        ),
+                        "parents": parents,
+                        "precedent_json": precedent.to_json(),
+                        "protagonist": protagonist,
+                        "qd_cfg": qd_cfg,
+                        "rules": rules,
+                        "seeds": seeds,
+                        "subjects_dir": str(subjects_dir),
+                        "vol_high": vol_high,
+                        "world_path": str(world_path),
+                    }
+                    for index, (genome, parents) in enumerate(
+                        antagonist_population
+                    )
+                ]
+                for job in antagonist_jobs:
+                    job["record_explanations"] = bool(cfg.get("record_explanations", False))
+                    job["target_ending"] = world_model.target_ending
+                    # Opus review R4: the protagonist sample evaluated here gets
+                    # the *same* rationality_cfg as the main protagonist pass,
+                    # so the same genome never ends up with m_rat applied in
+                    # only one of the two passes that evaluate it. The
+                    # antagonist's own Policy is never given a Rationality
+                    # (run_individual only attaches it to `policies[protagonist]`).
+                    if rationality_enabled:
+                        job["rationality_cfg"] = rationality_cfg
+                        job["rationality_table_path"] = str(rationality_table_path)
+                if observer is not None:
+                    observer.bind(antagonist_jobs, generation, "antagonist")
+                antagonist_raw_results = _evaluate_jobs(antagonist_jobs, processes, observer)
+
+                if rationality_enabled:
+                    assert rationality_table_path is not None
+                    _merge_rationality_table(generation_dir, rationality_table_path)
+
+                if antagonist_archive.volatility_thresholds is None:
+                    antagonist_archive.freeze_thresholds(
+                        [
+                            float(run["volatility"])
+                            for result in antagonist_raw_results
+                            for run in result["runs"]
+                        ]
+                    )
+
+                antagonist_generation_results = [
+                    _result_summary(
+                        result,
+                        antagonist_archive,
+                        role="antagonist",
+                    )
+                    for result in antagonist_raw_results
+                ]
+                for result in antagonist_generation_results:
+                    result["generation"] = generation
+                for result in antagonist_raw_results:
+                    _insert_result(
+                        result,
+                        antagonist_archive,
+                        generation,
+                        role="antagonist",
+                        include_matchup=True,
+                    )
+
+                _json_write(
+                    generation_dir / "results.antagonist.json",
+                    antagonist_generation_results,
+                )
+                _json_write(out_dir / "archive_antagonist.json", antagonist_archive.to_dict())
+
+            reached_best = [
+                _best_reached(result) for result in raw_results
+            ]
+            reached_best = [
+                value for value in reached_best if value is not None
+            ]
+            generation_dissimilarity = sequence_dissimilarity(
+                [
+                    [
+                        tuple(str(part) for part in value)
+                        for value in run["effective_sequence"]
+                    ]
+                    for run in reached_best
+                ]
             )
-            antagonist_reached_runs = sum(
+            reached_runs = sum(
                 bool(run["reached"])
-                for result in antagonist_raw_results
+                for result in raw_results
                 for run in result["runs"]
             )
-            antagonist_total_runs = sum(
-                len(result["runs"])
-                for result in antagonist_raw_results
+            total_runs = sum(
+                len(result["runs"]) for result in raw_results
             )
-            antagonist_average_quality = (
-                sum(
-                    elite.quality
-                    for elite in antagonist_archive.cells.values()
-                )
-                / len(antagonist_archive.cells)
-                if antagonist_archive.cells
+            average_quality = (
+                sum(elite.quality for elite in archive.cells.values())
+                / len(archive.cells)
+                if archive.cells
                 else None
             )
-            antagonist_archive_dissimilarity = (
-                _archive_dissimilarity(
-                    antagonist_archive,
-                    out_dir,
-                    subject=antagonist,
-                )
-            )
-            generation_summary.update(
-                {
-                    "antagonist_archive_dissimilarity": (
-                        antagonist_archive_dissimilarity
-                    ),
-                    "antagonist_average_archive_quality": (
-                        antagonist_average_quality
-                    ),
-                    "antagonist_generation_dissimilarity": (
-                        antagonist_generation_dissimilarity
-                    ),
-                    "antagonist_occupied_cells": len(
-                        antagonist_archive.cells
-                    ),
-                    "antagonist_reach_rate": (
-                        antagonist_reached_runs
-                        / antagonist_total_runs
-                    ),
-                }
-            )
-
-        summaries.append(generation_summary)
-
-        if observer is not None:
-            observer.checkpoint(phase="publishing")
-        _prune_layers(raw_results, out_dir, keep, observer=observer)
-        if coevolve:
-            _prune_layers(
-                antagonist_raw_results,
+            archive_dissimilarity = _archive_dissimilarity(
+                archive,
                 out_dir,
-                keep,
-                role="antagonist",
-                observer=observer,
             )
+            lineage_summary = _generation_lineage_summary(raw_results)
+            generation_summary: dict[str, Any] = {
+                "action_share": lineage_summary["action_share"],
+                "allies_mean_at_contest": lineage_summary["allies_mean_at_contest"],
+                "allies_mean_final": lineage_summary["allies_mean_final"],
+                "archive_dissimilarity": archive_dissimilarity,
+                "average_archive_quality": average_quality,
+                "contest_rate": lineage_summary["contest_rate"],
+                "generation": generation,
+                "generation_dissimilarity": generation_dissimilarity,
+                "occupied_cells": len(archive.cells),
+                "reach_rate": reached_runs / total_runs,
+            }
+            if rationality_enabled:
+                # Opus review R4: summed across both passes -- coevolve's
+                # antagonist pass re-evaluates the same protagonist genomes
+                # under their own Rationality now too, so its judge calls count
+                # here as well. Read back after both merges above, so this is
+                # the generation's *final* table state either way.
+                generation_summary["rationality_judge_calls"] = sum(
+                    int(result.get("rationality_judge_calls", 0))
+                    for result in (*raw_results, *antagonist_raw_results)
+                )
+                generation_summary["rationality_table_size"] = len(
+                    RationalityTable.load(rationality_table_path)
+                )
+                generation_summary["rationality_thermal_wait_seconds"] = sum(
+                    float(result.get("rationality_thermal_wait_seconds", 0.0))
+                    for result in (*raw_results, *antagonist_raw_results)
+                )
+                # Stage 2 re-review item 2: run_individual already tallies these
+                # per job (result["rationality_budget_exhausted_runs"] /
+                # ["rationality_judge_disabled_runs"]); sum them the same way as
+                # judge_calls above so they reach the generation summary too.
+                generation_summary["rationality_budget_exhausted_runs"] = sum(
+                    int(result.get("rationality_budget_exhausted_runs", 0))
+                    for result in (*raw_results, *antagonist_raw_results)
+                )
+                generation_summary["rationality_judge_disabled_runs"] = sum(
+                    int(result.get("rationality_judge_disabled_runs", 0))
+                    for result in (*raw_results, *antagonist_raw_results)
+                )
 
-        summary_payload: dict[str, Any] = {
-            "final_archive_dissimilarity": archive_dissimilarity,
-            "generations": summaries,
-            "keep": keep,
-            "seed_base": seed_base,
-            "seed_count": seed_count,
-            "seeds": seeds,
-            "target_ending": world_model.target_ending,
-        }
-        if meta_evolution:
-            summary_payload["meta_evolution"] = True
-        if coevolve:
-            summary_payload.update(
-                {
-                    "coevolve": True,
-                    "final_antagonist_archive_dissimilarity": (
-                        antagonist_archive_dissimilarity
-                    ),
-                }
-            )
-        _json_write(out_dir / "summary.json", summary_payload)
-        if observer is not None:
-            observer.publish(generation, archive, antagonist_archive, summary_payload)
+            antagonist_archive_dissimilarity: float | None = None
+            if coevolve:
+                assert antagonist_archive is not None
+                antagonist_best = [
+                    _best_reached(result, role="antagonist")
+                    for result in antagonist_raw_results
+                ]
+                antagonist_best = [
+                    value
+                    for value in antagonist_best
+                    if value is not None
+                ]
+                antagonist_generation_dissimilarity = (
+                    sequence_dissimilarity(
+                        [
+                            [
+                                tuple(str(part) for part in value)
+                                for value in run[
+                                    "antagonist_effective_sequence"
+                                ]
+                            ]
+                            for run in antagonist_best
+                        ]
+                    )
+                )
+                antagonist_reached_runs = sum(
+                    bool(run["reached"])
+                    for result in antagonist_raw_results
+                    for run in result["runs"]
+                )
+                antagonist_total_runs = sum(
+                    len(result["runs"])
+                    for result in antagonist_raw_results
+                )
+                antagonist_average_quality = (
+                    sum(
+                        elite.quality
+                        for elite in antagonist_archive.cells.values()
+                    )
+                    / len(antagonist_archive.cells)
+                    if antagonist_archive.cells
+                    else None
+                )
+                antagonist_archive_dissimilarity = (
+                    _archive_dissimilarity(
+                        antagonist_archive,
+                        out_dir,
+                        subject=antagonist,
+                    )
+                )
+                generation_summary.update(
+                    {
+                        "antagonist_archive_dissimilarity": (
+                            antagonist_archive_dissimilarity
+                        ),
+                        "antagonist_average_archive_quality": (
+                            antagonist_average_quality
+                        ),
+                        "antagonist_generation_dissimilarity": (
+                            antagonist_generation_dissimilarity
+                        ),
+                        "antagonist_occupied_cells": len(
+                            antagonist_archive.cells
+                        ),
+                        "antagonist_reach_rate": (
+                            antagonist_reached_runs
+                            / antagonist_total_runs
+                        ),
+                    }
+                )
 
-        previous_results = generation_results
-        if coevolve:
-            previous_antagonist_results = (
-                antagonist_generation_results
-            )
+            summaries.append(generation_summary)
 
-    return archive
+            if observer is not None:
+                observer.checkpoint(phase="publishing")
+            _prune_layers(raw_results, out_dir, keep, observer=observer)
+            if coevolve:
+                _prune_layers(
+                    antagonist_raw_results,
+                    out_dir,
+                    keep,
+                    role="antagonist",
+                    observer=observer,
+                )
+
+            summary_payload: dict[str, Any] = {
+                "final_archive_dissimilarity": archive_dissimilarity,
+                "generations": summaries,
+                "keep": keep,
+                "seed_base": seed_base,
+                "seed_count": seed_count,
+                "seeds": seeds,
+                "target_ending": world_model.target_ending,
+            }
+            if meta_evolution:
+                summary_payload["meta_evolution"] = True
+            if coevolve:
+                summary_payload.update(
+                    {
+                        "coevolve": True,
+                        "final_antagonist_archive_dissimilarity": (
+                            antagonist_archive_dissimilarity
+                        ),
+                    }
+                )
+            _json_write(out_dir / "summary.json", summary_payload)
+            if observer is not None:
+                observer.publish(generation, archive, antagonist_archive, summary_payload)
+
+            previous_results = generation_results
+            if coevolve:
+                previous_antagonist_results = (
+                    antagonist_generation_results
+                )
+
+        return archive
