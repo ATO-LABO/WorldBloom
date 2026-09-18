@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 
 from execution.provenance import python_executable
-from gapengine import ollama
+from gapengine import llama_server, ollama
 from gapengine.synopsis import BACKENDS, _validate_response
 
 
@@ -66,7 +66,7 @@ def preflight(request):
         args = ([shutil.which(name), "exec", "--skip-git-repo-check", "-m", model, "-"]
                 if backend == "codex-cli" else [shutil.which(name), "-p", "--model", model])
         return args
-    if backend == "ollama":
+    if backend in ("ollama", "llama-server"):
         # Local server, no key. Reachability is only known after sending, so it
         # stays a transport outcome rather than a preflight failure.
         return None
@@ -155,6 +155,10 @@ def transport(request, command):
         url, payload = ollama.build_request(
             {**request["credentials"], "model": request["model"]}, request["prompt"])
         headers = {}
+    elif backend == "llama-server":
+        url, payload = llama_server.build_request(
+            {**request["credentials"], "model": request["model"]}, request["prompt"])
+        headers = {}
     elif backend == "anthropic":
         key = request["credentials"]["api_key"]
         url = "https://api.anthropic.com/v1/messages"
@@ -186,6 +190,11 @@ def validate_response(backend, response):
         if not isinstance(data, dict):
             raise ValueError("invalid response object")
         text = ollama.extract_text(data)
+    elif backend == "llama-server":
+        data = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError("invalid response object")
+        text = llama_server.extract_text(data)
     elif backend in ("anthropic", "openai"):
         data = json.loads(text)
         if not isinstance(data, dict):
