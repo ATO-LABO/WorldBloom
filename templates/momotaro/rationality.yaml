@@ -6,9 +6,9 @@ backend:
   base_url: http://localhost:11434
   timeout: 300
   thermal_guard:  # 2026-09-19追記: このマシンは連続負荷で86℃・GPU lostを起こした実績がある
-    max_temp: 82
+    max_temp: 78   # 2026-09-19夜の疎通実験で86℃到達を確認。82では遅すぎたため引き下げ
     cooldown_seconds: 45
-    check_every: 10
+    check_every: 5
 max_judge_calls_per_run: null  # 1 run(seed)あたりの判定器呼び出し上限。null=無制限（--rationality-max-calls で上書き可）
 key_items:
   - きびだんご
