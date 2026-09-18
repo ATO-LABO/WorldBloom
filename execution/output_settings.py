@@ -58,7 +58,8 @@ def _model_reachable(backend, section, model, *, timeout=6.0):
     codex-cli/claude-cli already get a genuine check (the executable exists);
     verifying their exact model name would mean actually invoking the CLI,
     which costs real time/tokens -- out of scope for a quick test button.
-    Ollama's own generation_availability() probe already lists real models.
+    Ollama's and llama-server's own generation_availability() probe already
+    lists real models.
     """
     if backend not in _MODEL_LIST_ENDPOINTS:
         return True, None
@@ -71,12 +72,12 @@ def _model_reachable(backend, section, model, *, timeout=6.0):
 def list_models(settings_path, backend):
     """Models actually selectable for `backend` right now.
 
-    ollama/anthropic/openai have a real "list models" API, so this is a live
-    catalog (live=True) from the configured server/api_key. codex-cli and
-    claude-cli have no such API -- there is no way to enumerate what models
-    they accept short of invoking the CLI itself, so this falls back to
-    whatever 疎通テスト has already confirmed (live=False). "none" needs no
-    model at all.
+    ollama/llama-server/anthropic/openai have a real "list models" API, so
+    this is a live catalog (live=True) from the configured server/api_key.
+    codex-cli and claude-cli have no such API -- there is no way to
+    enumerate what models they accept short of invoking the CLI itself, so
+    this falls back to whatever 疎通テスト has already confirmed
+    (live=False). "none" needs no model at all.
     """
     if not isinstance(backend, str) or backend not in BACKENDS:
         raise ConfigError("backend", "未対応の生成方式です")
@@ -84,6 +85,10 @@ def list_models(settings_path, backend):
     if backend == "ollama":
         from gapengine import ollama
         names, reason = ollama.list_models(section)
+        return {"models": names, "live": True, "reason": reason}
+    if backend == "llama-server":
+        from gapengine import llama_server
+        names, reason = llama_server.list_models(section)
         return {"models": names, "live": True, "reason": reason}
     if backend in _MODEL_LIST_ENDPOINTS:
         names, reason = _fetch_remote_models(backend, section)
@@ -93,9 +98,9 @@ def list_models(settings_path, backend):
 
 def default_limits(backend):
     return {"max_calls": 0 if backend == "none" else 1,
-            # A local 9B model narrates in minutes, not seconds.
-            "call_timeout_seconds": 900 if backend == "ollama" else 180,
-            "wall_seconds": 3600 if backend == "ollama" else 240,
+            # A local 9B/27B model narrates in minutes, not seconds.
+            "call_timeout_seconds": 900 if backend in ("ollama", "llama-server") else 180,
+            "wall_seconds": 3600 if backend in ("ollama", "llama-server") else 240,
             "max_saved_response_bytes": 128000}
 
 
