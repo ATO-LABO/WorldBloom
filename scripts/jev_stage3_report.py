@@ -4,8 +4,12 @@ Aggregates one or more GA experiment output directories (as produced by
 ``scripts/evolve.py ... --keep all``, optionally with ``--kappa`` > 0) into a
 single Markdown report: reach rate, archive occupancy/quality, the
 protagonist's "weird action" rate, the rationality layer's own activity
-(kappa > 0 runs only), route diversity among reached runs, and a mechanical
-PASS/FAIL judgement against a baseline experiment.
+(kappa > 0 runs only), route diversity among reached runs, shaped fitness
+(overall and a paired generation-0-only comparison against the baseline --
+useful because the momotaro target's overall reach rate is low enough
+(~2%) that a 100-run experiment often shows no difference in reach rate
+alone), allies-at-contest/contest-rate, mean quality across every run, and
+a mechanical PASS/FAIL judgement against a baseline experiment.
 
 Usage:
     python scripts/jev_stage3_report.py --runs k0=<dir> k03=<dir> --out report.md
@@ -231,6 +235,74 @@ def _weird_and_rationality_stats(
     }
 
 
+def _shaped_allies_quality_stats(
+    generations: list[tuple[int, list[dict[str, Any]]]],
+) -> dict[str, Any]:
+    """Run-level shaped/allies/quality aggregates, plus generation-0's
+    shaped values keyed by (individual index, seed) for a paired
+    experiment-vs-baseline comparison: with the same --ga-seed, generation
+    0's population is identical across experiments, so a matching
+    (index, seed) pair is a genuine before/after comparison of the same
+    run, not just a same-generation average."""
+
+    all_shaped: list[float] = []
+    gen0_shaped_by_key: dict[tuple[int, int], float] = {}
+    allies_at_contest: list[float] = []
+    contest_runs = 0
+    total_runs = 0
+    all_quality: list[float] = []
+
+    for generation, individuals in generations:
+        for individual in individuals:
+            index = int(individual.get("index", -1))
+            for run in individual.get("runs", []):
+                total_runs += 1
+                if "shaped" in run:
+                    shaped_value = float(run["shaped"])
+                    all_shaped.append(shaped_value)
+                    if generation == 0:
+                        gen0_shaped_by_key[(index, int(run["seed"]))] = shaped_value
+                if run.get("allies_at_contest") is not None:
+                    allies_at_contest.append(float(run["allies_at_contest"]))
+                if run.get("contest_turn") is not None:
+                    contest_runs += 1
+                if "quality" in run:
+                    all_quality.append(float(run["quality"]))
+
+    return {
+        "shaped_mean": statistics.mean(all_shaped) if all_shaped else None,
+        "gen0_shaped_by_key": gen0_shaped_by_key,
+        "gen0_shaped_mean": (
+            statistics.mean(gen0_shaped_by_key.values())
+            if gen0_shaped_by_key
+            else None
+        ),
+        "allies_at_contest_mean": (
+            statistics.mean(allies_at_contest) if allies_at_contest else None
+        ),
+        "contest_runs": contest_runs,
+        "total_runs": total_runs,
+        "quality_mean": statistics.mean(all_quality) if all_quality else None,
+    }
+
+
+def _paired_gen0_shaped_diff(
+    stats: dict[str, Any], baseline: dict[str, Any]
+) -> tuple[float | None, int, int]:
+    """(mean_diff, positive_count, matched_count) for generation-0 runs
+    whose (individual index, seed) key exists in both experiments -- diff
+    is always experiment minus baseline."""
+
+    this_map = stats["shaped"]["gen0_shaped_by_key"]
+    baseline_map = baseline["shaped"]["gen0_shaped_by_key"]
+    diffs = [value - baseline_map[key] for key, value in this_map.items() if key in baseline_map]
+    if not diffs:
+        return None, 0, 0
+    mean_diff = sum(diffs) / len(diffs)
+    positive_count = sum(1 for diff in diffs if diff > 0)
+    return mean_diff, positive_count, len(diffs)
+
+
 def _diversity_stats(
     generations: list[tuple[int, list[dict[str, Any]]]],
 ) -> tuple[int, int]:
@@ -311,6 +383,7 @@ def compute_experiment(name: str, exp_dir: Path, project: Path) -> dict[str, Any
         "rationality": _rationality_summary(exp_dir),
         "distinct_sequences": distinct_sequences,
         "reached_run_count": reached_run_count,
+        "shaped": _shaped_allies_quality_stats(generations),
     }
 
 
@@ -328,14 +401,52 @@ def _int_or_dash(value: int | None) -> str:
     return "-" if value is None else str(value)
 
 
-def _metric_rows(stats_list: list[dict[str, Any]]) -> list[tuple[str, list[str]]]:
+def _metric_rows(
+    stats_list: list[dict[str, Any]], baseline_name: str
+) -> list[tuple[str, list[str]]]:
     def archive_field(stats: dict[str, Any], field: str) -> Any:
         return stats["archive"][field] if stats["archive"] else None
 
     def rationality_field(stats: dict[str, Any], field: str) -> Any:
         return stats["rationality"][field] if stats["rationality"] else None
 
+    baseline = next(s for s in stats_list if s["name"] == baseline_name)
+    paired = {
+        s["name"]: _paired_gen0_shaped_diff(s, baseline) for s in stats_list
+    }
+
     return [
+        (
+            "整形適応度 shaped: 全ラン平均",
+            [_num(s["shaped"]["shaped_mean"]) for s in stats_list],
+        ),
+        (
+            "整形適応度 shaped: 世代0平均",
+            [_num(s["shaped"]["gen0_shaped_mean"]) for s in stats_list],
+        ),
+        (
+            f"整形適応度 shaped: 世代0の対基準線差（平均、基準線={baseline_name}）",
+            [_num(paired[s["name"]][0]) for s in stats_list],
+        ),
+        (
+            "整形適応度 shaped: 世代0で差が正だったランの割合",
+            [_pct(paired[s["name"]][1], paired[s["name"]][2]) for s in stats_list],
+        ),
+        (
+            "決戦時の仲間数（平均）",
+            [_num(s["shaped"]["allies_at_contest_mean"]) for s in stats_list],
+        ),
+        (
+            "決戦に至ったランの割合",
+            [
+                _pct(s["shaped"]["contest_runs"], s["shaped"]["total_runs"])
+                for s in stats_list
+            ],
+        ),
+        (
+            "quality平均（全ラン、到達不問）",
+            [_num(s["shaped"]["quality_mean"]) for s in stats_list],
+        ),
         (
             "到達率（全体）",
             [_pct(s["overall_reached"], s["overall_total"]) for s in stats_list],
@@ -452,7 +563,7 @@ def _generation_table_rows(
 def _judgement_rows(
     stats_list: list[dict[str, Any]],
     baseline_name: str,
-) -> list[tuple[str, str, str, str]]:
+) -> list[tuple[str, str, str, str, str]]:
     baseline = next(s for s in stats_list if s["name"] == baseline_name)
     baseline_rate = (
         baseline["overall_reached"] / baseline["overall_total"]
@@ -466,6 +577,7 @@ def _judgement_rows(
         if baseline_weird_denominator
         else 0.0
     )
+    baseline_gen0_shaped = baseline["shaped"]["gen0_shaped_mean"]
 
     rows = []
     for s in stats_list:
@@ -473,13 +585,19 @@ def _judgement_rows(
         cells = s["archive"]["occupied_cells"] if s["archive"] else 0
         weird_denominator = s["weird"]["denominator"]
         weird_rate = s["weird_total"] / weird_denominator if weird_denominator else 0.0
+        gen0_shaped = s["shaped"]["gen0_shaped_mean"]
         label = s["name"] + ("（基準線）" if s["name"] == baseline_name else "")
+        if gen0_shaped is None or baseline_gen0_shaped is None:
+            shaped_pass = "-"
+        else:
+            shaped_pass = "PASS" if gen0_shaped > baseline_gen0_shaped else "FAIL"
         rows.append(
             (
                 label,
                 "PASS" if rate > baseline_rate else "FAIL",
                 "PASS" if cells >= 0.8 * baseline_cells else "FAIL",
                 "PASS" if weird_rate < baseline_weird_rate else "FAIL",
+                shaped_pass,
             )
         )
     return rows
@@ -504,7 +622,7 @@ def build_report(stats_list: list[dict[str, Any]], baseline_name: str) -> str:
 
     lines.append("## 指標一覧")
     lines.append("")
-    lines.append(_markdown_table(["指標", *names], _metric_rows(stats_list)))
+    lines.append(_markdown_table(["指標", *names], _metric_rows(stats_list, baseline_name)))
     lines.append("")
 
     lines.append("## 世代別到達率")
@@ -514,16 +632,24 @@ def build_report(stats_list: list[dict[str, Any]], baseline_name: str) -> str:
 
     lines.append(f"## 判定（基準線: {baseline_name}）")
     lines.append("")
-    judgement_header = ["実験", "到達率>基準線", "占有マス数>=基準線の80%", "変な行動率<基準線"]
+    judgement_header = [
+        "実験",
+        "到達率>基準線",
+        "占有マス数>=基準線の80%",
+        "変な行動率<基準線",
+        "shaped平均(世代0)>基準線",
+    ]
     judgement_lines = [
         "| " + " | ".join(judgement_header) + " |",
         "| " + " | ".join(["---"] * len(judgement_header)) + " |",
     ]
-    for label, reach_pass, cells_pass, weird_pass in _judgement_rows(
+    for label, reach_pass, cells_pass, weird_pass, shaped_pass in _judgement_rows(
         stats_list, baseline_name
     ):
         judgement_lines.append(
-            "| " + " | ".join([label, reach_pass, cells_pass, weird_pass]) + " |"
+            "| "
+            + " | ".join([label, reach_pass, cells_pass, weird_pass, shaped_pass])
+            + " |"
         )
     lines.append("\n".join(judgement_lines))
     lines.append("")
