@@ -5,6 +5,11 @@ backend:
   model: qwen3.6:35b
   base_url: http://localhost:11434
   timeout: 300
+  thermal_guard:  # 2026-09-19追記: このマシンは連続負荷で86℃・GPU lostを起こした実績がある
+    max_temp: 82
+    cooldown_seconds: 45
+    check_every: 10
+max_judge_calls_per_run: null  # 1 run(seed)あたりの判定器呼び出し上限。null=無制限（--rationality-max-calls で上書き可）
 key_items:
   - きびだんご
 common_knowledge:

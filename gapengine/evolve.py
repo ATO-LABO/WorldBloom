@@ -35,7 +35,13 @@ from gapengine.qd import (
     sequence_dissimilarity,
     shaped,
 )
-from gapengine.rationality import NullJudge, OllamaLogprobJudge, Rationality, RationalityTable
+from gapengine.rationality import (
+    FakeJudge,
+    NullJudge,
+    OllamaLogprobJudge,
+    Rationality,
+    RationalityTable,
+)
 
 
 def _json_write(path: Path, value: Any) -> None:
@@ -57,7 +63,11 @@ class EvolutionCancelled(Exception):
 
 def _build_rationality_judge(rationality_cfg: Mapping[str, Any]) -> Any:
     """WB-JEV-001 Stage 2: the judge for a run_individual job's Rationality,
-    picked by ``rationality_cfg["backend"]`` ("ollama" or "none")."""
+    picked by ``rationality_cfg["backend"]`` ("ollama" or "none" -- "fake"
+    is a network-free deterministic judge, reachable only by constructing a
+    cfg dict directly (not exposed on scripts/evolve.py's CLI), for tests
+    that need to exercise this wiring without Ollama/a GPU -- Opus review
+    WB-JEV-001 Stage 2 P3/P4 item 4)."""
 
     backend = str(rationality_cfg.get("backend", "none"))
     if backend == "ollama":
@@ -66,7 +76,10 @@ def _build_rationality_judge(rationality_cfg: Mapping[str, Any]) -> Any:
             base_url=str(rationality_cfg.get("base_url", RATIONALITY_DEFAULT_BASE_URL)),
             timeout=float(rationality_cfg.get("timeout", 300.0)),
             method=str(rationality_cfg.get("method", "noul")),
+            thermal_guard=rationality_cfg.get("thermal_guard"),
         )
+    if backend == "fake":
+        return FakeJudge()
     return NullJudge()
 
 
@@ -91,16 +104,33 @@ def _merge_rationality_table(
     into the experiment-wide table at ``table_path`` (the "正本"), then save
     it back so the next generation's jobs read the merged table. Same key
     appearing in more than one file is harmless -- the judge runs at
-    temperature 0, so every writer computes the same value for it."""
+    temperature 0, so every writer computes the same value for it.
+
+    Scans both ``ind-*/`` (protagonist-evaluation jobs) and
+    ``antagonist/ind-*/`` (coevolve's antagonist-evaluation jobs, which
+    reuse the same protagonist genomes under a *different* Policy instance
+    -- WB-JEV-001 Stage 2 Opus review R4). Safe to call more than once per
+    generation (idempotent) -- coevolve calls it again after the antagonist
+    pass so that pass's own new entries land in the master table too.
+
+    A malformed line (partial write, corrupt JSON, a row missing "key"/"p")
+    is skipped rather than aborting the whole merge (Opus review P5) --
+    losing one row just means that one (context, candidate) pair gets
+    re-scored next time it comes up, which is harmless at temperature 0."""
 
     table = RationalityTable.load(table_path)
-    for path in sorted(generation_dir.glob("ind-*/rationality-new.jsonl")):
-        rows = [
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        table.update({str(row["key"]): float(row["p"]) for row in rows})
+    paths = sorted(generation_dir.glob("ind-*/rationality-new.jsonl")) + sorted(
+        generation_dir.glob("antagonist/ind-*/rationality-new.jsonl")
+    )
+    for path in paths:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+                table.update({str(row["key"]): float(row["p"])})
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                continue
     table.save(table_path)
     return table
 
@@ -294,6 +324,9 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
     rationality_judge: Any = None
     rationality_new_path: Path | None = None
     rationality_total_judge_calls = 0
+    rationality_budget_exhausted_runs = 0
+    rationality_judge_disabled_runs = 0
+    rationality_total_thermal_wait_seconds = 0.0
     if rationality_cfg is not None:
         rationality_table = RationalityTable.load(
             Path(str(job["rationality_table_path"]))
@@ -355,10 +388,19 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         ).run()
         rows = read_rows(layer_path)
 
+        rationality_seed_meta: dict[str, Any] | None = None
         if rationality is not None:
             assert rationality_new_path is not None
             _append_rationality_entries(rationality_new_path, rationality.new_entries)
-            rationality_total_judge_calls += rationality.meta["judge_calls"]
+            rationality_seed_meta = rationality.meta
+            rationality_total_judge_calls += rationality_seed_meta["judge_calls"]
+            if rationality_seed_meta.get("budget_exhausted"):
+                rationality_budget_exhausted_runs += 1
+            if rationality_seed_meta.get("judge_disabled"):
+                rationality_judge_disabled_runs += 1
+            rationality_total_thermal_wait_seconds += float(
+                rationality_seed_meta.get("thermal_wait_seconds", 0.0)
+            )
 
         if antagonist_genome is not None:
             rows[0]["antagonist_genome"] = antagonist_genome.to_dict()
@@ -399,6 +441,19 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             "shaped": shaped(rows, world),
             "volatility": run_descriptor.volatility,
         }
+        # Only added when rationality actually ran this seed (Opus review
+        # R1/P1): kappa<=0 (the template default) must leave results.json
+        # byte-identical to a pre-Stage-2 run.
+        if rationality_seed_meta is not None:
+            run_result["rationality_judge_calls"] = rationality_seed_meta["judge_calls"]
+            if rationality_seed_meta.get("budget_exhausted"):
+                run_result["rationality_budget_exhausted"] = True
+            if rationality_seed_meta.get("judge_disabled"):
+                run_result["rationality_judge_disabled"] = True
+            if rationality_seed_meta.get("thermal_wait_seconds"):
+                run_result["rationality_thermal_wait_seconds"] = rationality_seed_meta[
+                    "thermal_wait_seconds"
+                ]
 
         if antagonist_genome is not None:
             antagonist_descriptor = descriptor(
@@ -451,6 +506,9 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         )
     if rationality_cfg is not None:
         result["rationality_judge_calls"] = rationality_total_judge_calls
+        result["rationality_budget_exhausted_runs"] = rationality_budget_exhausted_runs
+        result["rationality_judge_disabled_runs"] = rationality_judge_disabled_runs
+        result["rationality_thermal_wait_seconds"] = rationality_total_thermal_wait_seconds
     return result
 
 
@@ -965,7 +1023,16 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             "timeout": float(
                 _rationality_pick("timeout", rationality_yaml_backend.get("timeout", 300.0))
             ),
-            "max_judge_calls": _rationality_pick("max_judge_calls_per_run", None),
+            "max_judge_calls": _rationality_pick(
+                "max_judge_calls_per_run",
+                rationality_yaml.get("max_judge_calls_per_run"),
+            ),
+            # 2026-09-19 thermal-guard addendum: {"max_temp",
+            # "cooldown_seconds", "check_every"} or None (disabled). Lives
+            # under rationality.yaml's backend: like model/base_url/timeout.
+            "thermal_guard": _rationality_pick(
+                "thermal_guard", rationality_yaml_backend.get("thermal_guard")
+            ),
             "common_knowledge": load_common_knowledge(template_dir),
             "key_items": load_key_items(template_dir),
         }
@@ -1171,18 +1238,16 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             observer.bind(jobs, generation, "protagonist")
         raw_results = _evaluate_jobs(jobs, processes, observer)
 
-        rationality_table_size: int | None = None
-        rationality_generation_judge_calls: int | None = None
+        # WB-JEV-001 Stage 2 (Opus review R4): merged here (before the
+        # antagonist pass is built) so a coevolve antagonist job -- which
+        # evaluates the *same* protagonist genomes under its own Policy
+        # instance -- reuses this generation's protagonist-pass discoveries
+        # instead of starting cold. judge_calls/table_size for
+        # generation_summary are computed after *both* passes below, once
+        # the merge has folded in whichever pass ran second too.
         if rationality_enabled:
             assert rationality_table_path is not None
-            rationality_generation_judge_calls = sum(
-                int(result.get("rationality_judge_calls", 0))
-                for result in raw_results
-            )
-            merged_table = _merge_rationality_table(
-                generation_dir, rationality_table_path
-            )
-            rationality_table_size = len(merged_table)
+            _merge_rationality_table(generation_dir, rationality_table_path)
 
         if archive.volatility_thresholds is None:
             archive.freeze_thresholds(
@@ -1272,9 +1337,22 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             for job in antagonist_jobs:
                 job["record_explanations"] = bool(cfg.get("record_explanations", False))
                 job["target_ending"] = world_model.target_ending
+                # Opus review R4: the protagonist sample evaluated here gets
+                # the *same* rationality_cfg as the main protagonist pass,
+                # so the same genome never ends up with m_rat applied in
+                # only one of the two passes that evaluate it. The
+                # antagonist's own Policy is never given a Rationality
+                # (run_individual only attaches it to `policies[protagonist]`).
+                if rationality_enabled:
+                    job["rationality_cfg"] = rationality_cfg
+                    job["rationality_table_path"] = str(rationality_table_path)
             if observer is not None:
                 observer.bind(antagonist_jobs, generation, "antagonist")
             antagonist_raw_results = _evaluate_jobs(antagonist_jobs, processes, observer)
+
+            if rationality_enabled:
+                assert rationality_table_path is not None
+                _merge_rationality_table(generation_dir, rationality_table_path)
 
             if antagonist_archive.volatility_thresholds is None:
                 antagonist_archive.freeze_thresholds(
@@ -1357,8 +1435,22 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             "reach_rate": reached_runs / total_runs,
         }
         if rationality_enabled:
-            generation_summary["rationality_judge_calls"] = rationality_generation_judge_calls
-            generation_summary["rationality_table_size"] = rationality_table_size
+            # Opus review R4: summed across both passes -- coevolve's
+            # antagonist pass re-evaluates the same protagonist genomes
+            # under their own Rationality now too, so its judge calls count
+            # here as well. Read back after both merges above, so this is
+            # the generation's *final* table state either way.
+            generation_summary["rationality_judge_calls"] = sum(
+                int(result.get("rationality_judge_calls", 0))
+                for result in (*raw_results, *antagonist_raw_results)
+            )
+            generation_summary["rationality_table_size"] = len(
+                RationalityTable.load(rationality_table_path)
+            )
+            generation_summary["rationality_thermal_wait_seconds"] = sum(
+                float(result.get("rationality_thermal_wait_seconds", 0.0))
+                for result in (*raw_results, *antagonist_raw_results)
+            )
 
         antagonist_archive_dissimilarity: float | None = None
         if coevolve:
