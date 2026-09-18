@@ -23,13 +23,13 @@ import json
 import math
 import os
 import string
-import subprocess
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from gapengine import gpu_guard
 from gapengine.knowledge_text import (
     context_key,
     describe_candidate_coarse,
@@ -162,34 +162,18 @@ def _measure_top_logprobs_limit(model: str, *, base_url: str, timeout: float) ->
 
 
 def _read_gpu_temperature() -> float | None:
-    """Best-effort GPU temperature (Celsius) via ``nvidia-smi``. Returns
-    None -- silently, never raising -- when nvidia-smi isn't installed,
-    times out, or the machine has no NVIDIA GPU; the thermal guard treats
-    None as "can't tell, don't block" (2026-09-19 thermal-guard addendum:
-    this machine hit 86C and a GPU-lost event under sustained Ollama load).
-    A module-level function, not a method, specifically so a test can
+    """Best-effort GPU temperature (Celsius). Returns None -- silently,
+    never raising -- when nvidia-smi isn't installed, times out, or the
+    machine has no NVIDIA GPU; the thermal guard treats None as "can't
+    tell, don't block" (2026-09-19 thermal-guard addendum: this machine hit
+    86C and a GPU-lost event under sustained Ollama load). Delegates to
+    ``gapengine.gpu_guard.read_gpu_temperature`` (WB-JEV-001: the same
+    nvidia-smi readout main's GPU guard uses, kept as one implementation).
+    Stays a module-level function, not a method, specifically so a test can
     monkeypatch ``gapengine.rationality._read_gpu_temperature`` without
     needing a real GPU."""
 
-    try:
-        completed = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=temperature.gpu",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if completed.returncode != 0:
-        return None
-    try:
-        return float(completed.stdout.strip().splitlines()[0])
-    except (ValueError, IndexError):
-        return None
+    return gpu_guard.read_gpu_temperature()
 
 
 def _even_chunks(items: Sequence[str], max_size: int) -> list[list[str]]:
