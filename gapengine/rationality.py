@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import string
 import subprocess
 import time
@@ -276,12 +277,18 @@ class RationalityTable:
         return cls({str(key): float(value) for key, value in raw.items()})
 
     def save(self, path: str | Path) -> None:
+        """Atomic write (temp file in the same directory + ``os.replace``):
+        Stage 3 has multiple experiments reading/writing this same table in
+        sequence, so a reader must never see a partially written file (same
+        approach as ``gapengine.evolve._json_write``, reimplemented here to
+        avoid a circular import)."""
+
         location = Path(path)
         location.parent.mkdir(parents=True, exist_ok=True)
-        location.write_text(
-            json.dumps(self._data, ensure_ascii=False, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        payload = json.dumps(self._data, ensure_ascii=False, sort_keys=True) + "\n"
+        temporary = location.with_name(f"{location.name}.tmp-{os.getpid()}")
+        temporary.write_text(payload, encoding="utf-8")
+        os.replace(temporary, location)
 
 
 # ---------------------------------------------------------------------------
@@ -695,13 +702,18 @@ class Rationality:
                 # failure, not an individual 欠測) disables the judge for
                 # the rest of this run; every later decision point's
                 # missing candidates fall straight to None/m_rat=1.0
-                # without ever calling the judge again.
-                if scores and all(p is None for p in scores):
-                    self._consecutive_failures += 1
-                    if self._consecutive_failures >= 3:
-                        self._judge_disabled = True
-                else:
-                    self._consecutive_failures = 0
+                # without ever calling the judge again. NullJudge (backend
+                # "none") always returns all-None by design -- that is the
+                # intended "layer enabled, no judge" control condition, not
+                # a failure, so it must never trip the breaker (Stage 2
+                # re-review item 3).
+                if getattr(self.judge, "backend_name", None) != "none":
+                    if scores and all(p is None for p in scores):
+                        self._consecutive_failures += 1
+                        if self._consecutive_failures >= 3:
+                            self._judge_disabled = True
+                    else:
+                        self._consecutive_failures = 0
 
         p_by_desc = {desc: self.table.get(keys[desc]) for desc in unique_descs}
         p_list = [p_by_desc[desc] for desc in descs]

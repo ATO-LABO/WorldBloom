@@ -1451,6 +1451,18 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 float(result.get("rationality_thermal_wait_seconds", 0.0))
                 for result in (*raw_results, *antagonist_raw_results)
             )
+            # Stage 2 re-review item 2: run_individual already tallies these
+            # per job (result["rationality_budget_exhausted_runs"] /
+            # ["rationality_judge_disabled_runs"]); sum them the same way as
+            # judge_calls above so they reach the generation summary too.
+            generation_summary["rationality_budget_exhausted_runs"] = sum(
+                int(result.get("rationality_budget_exhausted_runs", 0))
+                for result in (*raw_results, *antagonist_raw_results)
+            )
+            generation_summary["rationality_judge_disabled_runs"] = sum(
+                int(result.get("rationality_judge_disabled_runs", 0))
+                for result in (*raw_results, *antagonist_raw_results)
+            )
 
         antagonist_archive_dissimilarity: float | None = None
         if coevolve:

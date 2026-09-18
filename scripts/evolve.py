@@ -87,6 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override rationality.yaml's judge backend.",
     )
     parser.add_argument(
+        "--rationality-method",
+        choices=("noul", "choice"),
+        default=None,
+        help="Override rationality.yaml's judge method (yes/no vs multiple-choice).",
+    )
+    parser.add_argument(
         "--rationality-table",
         type=Path,
         default=None,
@@ -125,6 +131,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "rationality": {
                 "kappa": args.kappa,
                 "backend": args.rationality_backend,
+                "method": args.rationality_method,
                 "table": args.rationality_table,
                 "max_judge_calls_per_run": args.rationality_max_calls,
             },
