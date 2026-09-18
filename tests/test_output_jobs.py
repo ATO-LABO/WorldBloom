@@ -88,7 +88,10 @@ class OutputJobTests(unittest.TestCase):
         # Instrument ONLY the disposable runtime source. No real backend executes.
         path = self.repo / "execution/generation.py"
         source = path.read_text(encoding="utf-8")
-        source += "\n_original_preflight = preflight\n"
+        # The appended code imports what it uses itself: generation.py dropping an
+        # import it no longer needs (afd0906 removed `sys`) must not break the fake.
+        source += "\nimport json, subprocess, sys, time\nfrom pathlib import Path\n"
+        source += "_original_preflight = preflight\n"
         source += "def preflight(request): return None\n"
         source += f"def transport(request, command):\n    time.sleep({delay!r})\n"
         if mode == "tree":
