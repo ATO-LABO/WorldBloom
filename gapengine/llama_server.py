@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from typing import Any, Mapping
 
 DEFAULT_MODEL = "bonsai2-27b"
@@ -96,6 +100,67 @@ def list_models(
         if isinstance(value, str):
             names.add(value)
     return sorted(names), None
+
+
+def is_ready(config: Mapping[str, Any], *, timeout: float = 2.0) -> bool:
+    """True if the configured server answers GET /health with 200."""
+
+    base_url = str(config.get("base_url", DEFAULT_BASE_URL)).rstrip("/")
+    try:
+        with urllib.request.urlopen(f"{base_url}/health", timeout=timeout) as response:
+            return response.status == 200
+    except (OSError, urllib.error.URLError, ValueError):
+        return False
+
+
+@contextmanager
+def managed_server(config: Mapping[str, Any], *, on_started=None, sleep=time.sleep, clock=time.monotonic):
+    """Start the configured llama-server if needed, and stop it again on exit.
+
+    Yields False without spawning anything if the server is already reachable,
+    or if config has no (non-empty) "launch" command list. Yields True once
+    the freshly launched server answers /health, and terminates it on exit.
+    """
+
+    if is_ready(config):
+        yield False
+        return
+
+    launch = config.get("launch")
+    if not isinstance(launch, list) or not launch or not all(isinstance(part, str) and part for part in launch):
+        yield False
+        return
+
+    startup_seconds = float(config.get("startup_seconds", 180))
+    kwargs: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    process = subprocess.Popen(list(launch), **kwargs)
+    if on_started is not None:
+        on_started(process.pid)
+    try:
+        deadline = clock() + startup_seconds
+        while True:
+            if is_ready(config):
+                break
+            if process.poll() is not None:
+                raise RuntimeError("llama-server failed to start")
+            if clock() >= deadline:
+                raise RuntimeError("llama-server failed to start")
+            sleep(2.0)
+        yield True
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
 
 
 def availability(

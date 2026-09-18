@@ -16,7 +16,7 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from gapengine import llama_server, ollama
+from gapengine import gpu_guard, llama_server, ollama
 from gapengine.qd import Elite
 
 
@@ -370,16 +370,19 @@ def load_settings(path: str | Path) -> tuple[dict[str, Any], str | None]:
     return raw, None
 
 
+def _output_section(settings: Mapping[str, Any]) -> Mapping[str, Any]:
+    for key in ("output", "perform", "llm"):
+        candidate = settings.get(key)
+        if isinstance(candidate, Mapping):
+            return candidate
+    return settings
+
+
 def _backend_config(
     settings: Mapping[str, Any],
     backend: str,
 ) -> Mapping[str, Any]:
-    section: Mapping[str, Any] = settings
-    for key in ("output", "perform", "llm"):
-        candidate = settings.get(key)
-        if isinstance(candidate, Mapping):
-            section = candidate
-            break
+    section = _output_section(settings)
     aliases = (backend, backend.replace("-", "_"))
     for alias in aliases:
         value = section.get(alias)
@@ -593,8 +596,18 @@ def generate_text(
         )
 
     if backend == "ollama":
-        url, payload = ollama.build_request(config, prompt)
-        response = _post_json(url, {}, payload, timeout=timeout)
+        output_settings = _output_section(settings)
+        try:
+            with gpu_guard.local_gpu_session(
+                "ollama", output_settings, owner="generate_text", wait_seconds=timeout,
+            ):
+                guard = output_settings.get("gpu_guard")
+                if isinstance(guard, Mapping):
+                    gpu_guard.wait_until_cool(guard.get("thermal"))
+                url, payload = ollama.build_request(config, prompt)
+                response = _post_json(url, {}, payload, timeout=timeout)
+        except (gpu_guard.GpuBusy, RuntimeError) as error:
+            raise GenerationError(str(error)) from error
         try:
             text = ollama.extract_text(response)
         except ValueError as error:
@@ -605,8 +618,18 @@ def generate_text(
         )
 
     if backend == "llama-server":
-        url, payload = llama_server.build_request(config, prompt)
-        response = _post_json(url, {}, payload, timeout=timeout)
+        output_settings = _output_section(settings)
+        try:
+            with gpu_guard.local_gpu_session(
+                "llama-server", output_settings, owner="generate_text", wait_seconds=timeout,
+            ):
+                guard = output_settings.get("gpu_guard")
+                if isinstance(guard, Mapping):
+                    gpu_guard.wait_until_cool(guard.get("thermal"))
+                url, payload = llama_server.build_request(config, prompt)
+                response = _post_json(url, {}, payload, timeout=timeout)
+        except (gpu_guard.GpuBusy, RuntimeError) as error:
+            raise GenerationError(str(error)) from error
         try:
             text = llama_server.extract_text(response)
         except ValueError as error:
