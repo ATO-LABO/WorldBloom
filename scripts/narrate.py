@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from execution.provenance import atomic_json
-from gapengine.gpu_guard import local_gpu_session
+from gapengine.gpu_guard import GpuBusy, local_gpu_session
 from gapengine.qd import Archive, read_rows
 from gapengine.scenes import extract_scenes
 from gapengine.synopsis import (
@@ -140,76 +140,80 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     settings, _settings_warning = load_settings(args.settings)
     output_settings = _output_section(settings)
-    with local_gpu_session(args.backend, output_settings, owner="narrate", wait_seconds=args.timeout):
-        for cell_key in selected:
-            parts = cell_key.split("|")
-            entry: dict[str, Any] = {
-                "cell": cell_key,
-                "status": "error",
-                "story_path": None,
-            }
-            if len(parts) != 2 or (parts[0], parts[1]) not in archive.cells:
-                entry["error"] = "selected cell is not present in archive"
-                entries.append(entry)
-                atomic_json(index_path, payload)
-                continue
+    try:
+        with local_gpu_session(args.backend, output_settings, owner="narrate", wait_seconds=args.timeout):
+            for cell_key in selected:
+                parts = cell_key.split("|")
+                entry: dict[str, Any] = {
+                    "cell": cell_key,
+                    "status": "error",
+                    "story_path": None,
+                }
+                if len(parts) != 2 or (parts[0], parts[1]) not in archive.cells:
+                    entry["error"] = "selected cell is not present in archive"
+                    entries.append(entry)
+                    atomic_json(index_path, payload)
+                    continue
 
-            elite = archive.cells[(parts[0], parts[1])]
-            elite_payload = elite.to_dict()
-            elite_payload["cell"] = cell_key
-            stem = _safe_cell_name(cell_key)
-            prompt_path = prompts_dir / f"narration-{stem}.txt"
-            story_path = output_dir / f"{stem}.md"
-            entry["prompt_path"] = prompt_path.relative_to(
-                output_dir.parent
-            ).as_posix()
+                elite = archive.cells[(parts[0], parts[1])]
+                elite_payload = elite.to_dict()
+                elite_payload["cell"] = cell_key
+                stem = _safe_cell_name(cell_key)
+                prompt_path = prompts_dir / f"narration-{stem}.txt"
+                story_path = output_dir / f"{stem}.md"
+                entry["prompt_path"] = prompt_path.relative_to(
+                    output_dir.parent
+                ).as_posix()
 
-            try:
-                rows = read_rows(
-                    runs_root / str(elite.exemplar["layers_path"])
-                )
-                scenes = extract_scenes(rows, world_meta)
-                prompt = build_narration_prompt(
-                    elite_payload,
-                    scenes,
-                    world_meta,
-                    synopsis=synopses.get(cell_key),
-                )
-                prompt_path.parent.mkdir(parents=True, exist_ok=True)
-                prompt_path.write_text(
-                    prompt,
-                    encoding="utf-8",
-                    newline="\n",
-                )
-                result = generate_text(
-                    args.backend,
-                    prompt,
-                    settings_path=args.settings,
-                    timeout=args.timeout,
-                )
-                entry["status"] = result.status
-                if result.text is not None:
-                    story_path.parent.mkdir(parents=True, exist_ok=True)
-                    story_path.write_text(
-                        result.text.rstrip() + "\n",
+                try:
+                    rows = read_rows(
+                        runs_root / str(elite.exemplar["layers_path"])
+                    )
+                    scenes = extract_scenes(rows, world_meta)
+                    prompt = build_narration_prompt(
+                        elite_payload,
+                        scenes,
+                        world_meta,
+                        synopsis=synopses.get(cell_key),
+                    )
+                    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+                    prompt_path.write_text(
+                        prompt,
                         encoding="utf-8",
                         newline="\n",
                     )
-                    entry["story_path"] = story_path.relative_to(
-                        output_dir
-                    ).as_posix()
-                if result.warning and result.warning not in reported_warnings:
-                    print(f"warning: {result.warning}", file=sys.stderr)
-                    reported_warnings.add(result.warning)
-            except (OSError, ValueError, GenerationError) as error:
-                entry["error"] = str(error)
-                print(
-                    f"warning: {cell_key}: {error}",
-                    file=sys.stderr,
-                )
+                    result = generate_text(
+                        args.backend,
+                        prompt,
+                        settings_path=args.settings,
+                        timeout=args.timeout,
+                    )
+                    entry["status"] = result.status
+                    if result.text is not None:
+                        story_path.parent.mkdir(parents=True, exist_ok=True)
+                        story_path.write_text(
+                            result.text.rstrip() + "\n",
+                            encoding="utf-8",
+                            newline="\n",
+                        )
+                        entry["story_path"] = story_path.relative_to(
+                            output_dir
+                        ).as_posix()
+                    if result.warning and result.warning not in reported_warnings:
+                        print(f"warning: {result.warning}", file=sys.stderr)
+                        reported_warnings.add(result.warning)
+                except (OSError, ValueError, GenerationError) as error:
+                    entry["error"] = str(error)
+                    print(
+                        f"warning: {cell_key}: {error}",
+                        file=sys.stderr,
+                    )
 
-            entries.append(entry)
-            atomic_json(index_path, payload)
+                entries.append(entry)
+                atomic_json(index_path, payload)
+    except (GpuBusy, RuntimeError) as error:
+        print(f"warning: {error}", file=sys.stderr)
+        return 1
 
     atomic_json(index_path, payload)
     print(f"stories={output_dir} selected={len(selected)}")

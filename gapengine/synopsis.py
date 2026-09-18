@@ -606,6 +606,8 @@ def generate_text(
                     gpu_guard.wait_until_cool(guard.get("thermal"))
                 url, payload = ollama.build_request(config, prompt)
                 response = _post_json(url, {}, payload, timeout=timeout)
+        except GenerationError:
+            raise
         except (gpu_guard.GpuBusy, RuntimeError) as error:
             raise GenerationError(str(error)) from error
         try:
@@ -628,6 +630,8 @@ def generate_text(
                     gpu_guard.wait_until_cool(guard.get("thermal"))
                 url, payload = llama_server.build_request(config, prompt)
                 response = _post_json(url, {}, payload, timeout=timeout)
+        except GenerationError:
+            raise
         except (gpu_guard.GpuBusy, RuntimeError) as error:
             raise GenerationError(str(error)) from error
         try:

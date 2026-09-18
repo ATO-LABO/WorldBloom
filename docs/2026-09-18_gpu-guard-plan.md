@@ -55,17 +55,18 @@ Bonsai 2 27B（llama-server バックエンド、main bd8812d）を既定にし�
 - `class GpuBusy(Exception)`: `.holder`（dict、`owner`/`pid`/`since` を持ちうる）を持つ。`str()` は人が読める 1 行。
 - `lease_dir() -> Path`。
 - `gpu_lease(owner, *, wait_seconds, poll_seconds=5.0, sleep=time.sleep, clock=time.monotonic)`: コンテキストマネージャ。`<lease_dir>/gpu.lock` を非ブロッキングで取りに行き、取れなければ `poll_seconds` ごとに再試行、`wait_seconds` 超過で `GpuBusy(holder=保持者ファイルの内容)`。取得後に `<lease_dir>/gpu.holder.json` へ `{"owner", "pid", "since"}` を書く（best effort、失敗しても続行）。**同一プロセス内では再入可能**（モジュール変数の深さカウンタ。内側の取得は何もしない）。解放時にロックを外す（保持者ファイルは残してよい——ロックが真実）。
-- `record_managed_server(pid | None)` / `reap_orphan_server()`: 保持者ファイルの `managed_server_pid` の読み書きと、生存していれば終了させる処理（Windows: `taskkill /PID <pid> /T /F` を subprocess で、POSIX: `os.kill`）。pid の生存確認は `os.kill(pid, 0)` 相当（Windows では `tasklist /FI "PID eq ..."` か `OpenProcess`。実装しやすい方でよいが、自プロセスの pid を誤って殺さないこと）。
+- `record_managed_server(pid | None, image=None)` / `reap_orphan_server()`: 保持者ファイルの `managed_server_pid`・`managed_server_image`（起動コマンド `launch[0]` の `os.path.basename`）の読み書きと、生存していれば終了させる処理（Windows: `taskkill /PID <pid> /T /F` を subprocess で、POSIX: `os.kill`）。pid の生存確認は `os.kill(pid, 0)` 相当（Windows では `tasklist /FI "PID eq ..."` か `OpenProcess`。実装しやすい方でよいが、自プロセスの pid を誤って殺さないこと）。（2026-09-18 Opus レビュー追記: pid は再利用されうるため、pid の生存確認だけでは別プロセスを誤って `taskkill` しうる。`reap_orphan_server()` は記録された `managed_server_image` と、現在その pid で動いているプロセスの実行イメージ名（Windows: 生存確認に使う `tasklist` の1フィールド目。POSIX: `/proc/<pid>/comm`）を大文字小文字無視で突き合わせ、**一致したときだけ** `taskkill`/`kill` する。image が未記録（旧形式の保持者ファイル）・確認不能・不一致のいずれでも kill はせず `record_managed_server(None)` で記録だけ消す）。
 - `ollama_models(base_url, *, timeout=2.0) -> list[dict]`: `GET /api/ps` の `models`。到達不能・不正 JSON は `[]`。
 - `ollama_is_active(base_url, *, observe_seconds, sleep=time.sleep) -> bool`: モデルが 1 つも載っていなければ False（観察せず即返す）。載っていれば `observe_seconds` 空けて再読し、いずれかのモデルの `expires_at` が変化していれば True。
 - `unload_ollama(base_url, names)`: 各モデルに `POST /api/generate {"model": name, "keep_alive": 0}`。失敗は握りつぶす（best effort）。
 - `local_gpu_session(backend, output_settings, *, owner, wait_seconds, on_status=None)`: コンテキストマネージャ。`output_settings` は settings の output 節（Mapping）。
   1. `backend not in ("ollama", "llama-server")` または `output_settings.get("gpu_guard")` が Mapping でなければ、**何もせず yield**。
-  2. `gpu_lease(owner, wait_seconds=...)` を取る。以降の待ちも同じ締め切り（取得開始からの `wait_seconds`）を共有する。`on_status("gpu")` を待ち始めに 1 回呼ぶ（on_status が None でなければ）。
-  3. `reap_orphan_server()`。
-  4. `backend == "llama-server"` のとき: `ollama_is_active` が True の間は `poll_seconds` ごとに再判定して待ち、締め切り超過で `GpuBusy(holder={"owner": "ollama (in use)"})`。遊休でモデルが載っていれば `unload_ollama`。その後 `llama_server.managed_server(config, on_started=record_managed_server)` に入る（`config` は `output_settings["llama-server"]`）。`on_status("server_start")` を起動待ちの前に呼ぶ。
-  5. `backend == "ollama"` のとき: `output_settings` に `llama-server` 節があり、その `base_url` の llama-server が到達可能なら（人が起動したサーバーが VRAM を持っている）`GpuBusy(holder={"owner": "llama-server (running)"})`。
-  6. yield。finally でサーバー停止（自分が起動した場合のみ）→ `record_managed_server(None)` → リース解放。
+  2. **同一プロセス内で既に外側の `local_gpu_session`（または裸の `gpu_lease`）がリースを持っている（モジュールの再入深さ > 0）場合も、何もせず yield**（2026-09-18 Opus レビュー追記: `scripts/synopsize.py`/`narrate.py` の外側セッション＋セル毎の `generate_text()` 内側セッションの二重呼び出しで、内側が「外側の起動したサーバー」を孤児と誤認して `taskkill` し、毎セルでサーバー再起動＋Ollama 観察が入っていた。外側が既にサーバー起動・Ollama 調停を済ませているときは、内側は reap も Ollama 判定も server 起動も一切行わない）。
+  3. `gpu_lease(owner, wait_seconds=...)` を取る。**締め切り（`time.monotonic() + wait_seconds`）はリースに入る前に1回だけ計算し、以降のOllama待ちループも同じ締め切りを共有する**（2026-09-18 Opus レビュー追記: 当初はリース取得後に締め切りを取り直しており、最悪リース待ち+Ollama待ちで2倍待ちうる不具合があった）。`on_status("gpu")` を待ち始めに 1 回呼ぶ（on_status が None でなければ）。
+  4. `reap_orphan_server()`。
+  5. `backend == "llama-server"` のとき: `ollama_is_active`（`observe_seconds` に下限 1.0 秒。2026-09-18 追記: 設定値 0 でのビジースピンを防ぐ）が True の間は再判定して待ち、締め切り超過で `GpuBusy(holder={"owner": "ollama (in use)"})`。遊休でモデルが載っていれば `unload_ollama`。その後 `llama_server.managed_server(config, on_started=<pidと起動コマンドのimageの両方をrecord_managed_serverへ渡すラッパー>)` に入る（`config` は `output_settings["llama-server"]`）。`on_status("server_start")` を起動待ちの前に呼ぶ。
+  6. `backend == "ollama"` のとき: `output_settings` に `llama-server` 節があり、その `base_url` の llama-server が到達可能なら（人が起動したサーバーが VRAM を持っている）`GpuBusy(holder={"owner": "llama-server (running)"})`。
+  7. yield。finally でサーバー停止（自分が起動した場合のみ）→ `record_managed_server(None)` → リース解放。
 
 ### 2. `gapengine/llama_server.py`
 
@@ -114,3 +115,5 @@ Bonsai 2 27B（llama-server バックエンド、main bd8812d）を既定にし�
 ## 範囲外（メインが後で行う）
 
 この機体の settings.json への `gpu_guard`・`launch` の記入、実 GPU での実機検証（隣のセッションの GA 実験と調整のうえ）、Jev 側（`feat/jev-rationality`）へのリース適用の依頼、UI への「GPU 待ち」表示。
+
+**引き継ぎメモ（2026-09-18 Opus レビュー後追記）**: UI で `waiting`（`"gpu"`/`"server_start"`/`"cooldown"`/`None`）を表示する際は、`execution/jobs.py` の `PUBLIC_FIELDS`（外部公開するジョブフィールドの許可リスト）に `"waiting"` を追加する必要がある。現状は `job.json` 内部にしか書かれておらず、`/api/jobs`・`/jobs/<id>` 等の公開経路には出てこない。

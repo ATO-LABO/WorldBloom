@@ -37,7 +37,7 @@ def _output_settings(path):
 
 
 def run(control, output_id):
-    from gapengine.gpu_guard import GpuBusy, local_gpu_session, wait_until_cool
+    from gapengine.gpu_guard import DEFAULT_THERMAL, GpuBusy, local_gpu_session, wait_until_cool
 
     store = OutputStore(control)
     request = store.request(output_id)
@@ -61,6 +61,7 @@ def run(control, output_id):
         preflight_error = error
 
     guard = output_settings.get("gpu_guard") if isinstance(output_settings, dict) else None
+    guard_enabled = isinstance(guard, dict)
     deadline = job["created_at"] + job["wall_seconds"]
     session = local_gpu_session(request["backend"], output_settings, owner=f"output:{output_id}",
         wait_seconds=max(0, deadline - time.time()),
@@ -72,8 +73,10 @@ def run(control, output_id):
                 stack.enter_context(session)
             except (GpuBusy, RuntimeError) as error:
                 preflight_error = error
+                if guard_enabled:
+                    change(jobs, folder, job["nonce"], waiting=None)
             else:
-                if guard is not None:
+                if guard_enabled:
                     change(jobs, folder, job["nonce"], waiting=None)
         for cid in request["candidate_ids"]:
             sink = store.sink(output_id, cid, request=request)
@@ -88,10 +91,15 @@ def run(control, output_id):
                 sink.finish(result(sink.identity, "error", "preflight_failed", stage="preflight",
                     cause_type=type(preflight_error).__name__, retry_policy="safe_new_request"))
             else:
-                if isinstance(guard, dict):
-                    change(jobs, folder, job["nonce"], waiting="cooldown")
-                    wait_until_cool(guard.get("thermal"))
-                    change(jobs, folder, job["nonce"], waiting=None)
+                if guard_enabled:
+                    remaining = job["created_at"] + job["wall_seconds"] - time.time()
+                    if remaining > 0:
+                        thermal = dict(guard.get("thermal") or {})
+                        cap = thermal.get("max_wait_seconds", DEFAULT_THERMAL["max_wait_seconds"])
+                        thermal["max_wait_seconds"] = min(cap, remaining)
+                        change(jobs, folder, job["nonce"], waiting="cooldown")
+                        wait_until_cool(thermal)
+                        change(jobs, folder, job["nonce"], waiting=None)
                 call = sink.call_request(auth)
                 call["deadline"] = job["created_at"] + job["wall_seconds"]
                 run_generation(call, sink)

@@ -204,17 +204,44 @@ def gpu_lease(
         yield
     finally:
         _lease_depth = 0
-        _unlock_file(handle)
-        handle.close()
+        try:
+            _unlock_file(handle)
+        finally:
+            handle.close()
 
 
-def record_managed_server(pid: int | None) -> None:
-    """Record (or clear) the pid of a llama-server this machine's lease holder started."""
+def record_managed_server(pid: int | None, image: str | None = None) -> None:
+    """Record (or clear) the pid+image of a llama-server this machine's lease holder started.
+
+    The image (executable basename) is what reap_orphan_server() checks before
+    ever terminating a recorded pid -- a bare pid is not trustworthy evidence
+    on its own, since pids get reused by unrelated processes.
+    """
 
     directory = lease_dir()
     holder = _read_holder(directory)
     holder["managed_server_pid"] = pid
+    holder["managed_server_image"] = None if pid is None else image
     _write_holder(directory, holder)
+
+
+def _tasklist_row(pid: int) -> str | None:
+    """The raw `tasklist /FO CSV /NH` line for pid, or None if not found/unavailable."""
+
+    try:
+        completed = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = completed.stdout.strip().splitlines()
+    if not lines or str(pid) not in lines[0]:
+        return None
+    return lines[0]
 
 
 def _process_alive(pid: int) -> bool:
@@ -222,17 +249,7 @@ def _process_alive(pid: int) -> bool:
         # Never mistake our own process for an orphan to reap.
         return True
     if os.name == "nt":
-        try:
-            completed = subprocess.run(
-                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        return str(pid) in completed.stdout
+        return _tasklist_row(pid) is not None
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -240,6 +257,29 @@ def _process_alive(pid: int) -> bool:
     except OSError:
         return True
     return True
+
+
+def _process_image(pid: int) -> str | None:
+    """The basename of the executable currently running as pid, or None if it
+    cannot be confirmed (process gone, tasklist/proc unavailable, ...)."""
+
+    if pid == os.getpid():
+        return None
+    if os.name == "nt":
+        row = _tasklist_row(pid)
+        if row is None:
+            return None
+        import csv
+
+        try:
+            fields = next(csv.reader([row]))
+        except (StopIteration, csv.Error):
+            return None
+        return fields[0] if fields else None
+    try:
+        return Path(f"/proc/{pid}/comm").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
 
 
 def _terminate_process(pid: int) -> None:
@@ -262,15 +302,24 @@ def _terminate_process(pid: int) -> None:
 
 
 def reap_orphan_server() -> None:
-    """Terminate a previous lease holder's llama-server if it never cleaned up."""
+    """Terminate a previous lease holder's llama-server if it never cleaned up.
+
+    Only terminates when the process currently running as the recorded pid
+    still has the recorded executable image -- a pid alone can be reused by
+    an unrelated process, so an unconfirmed or mismatched image is never
+    killed, only forgotten.
+    """
 
     directory = lease_dir()
     holder = _read_holder(directory)
     pid = holder.get("managed_server_pid")
     if not isinstance(pid, int):
         return
-    if _process_alive(pid):
-        _terminate_process(pid)
+    recorded_image = holder.get("managed_server_image")
+    if isinstance(recorded_image, str) and _process_alive(pid):
+        current_image = _process_image(pid)
+        if isinstance(current_image, str) and current_image.casefold() == recorded_image.casefold():
+            _terminate_process(pid)
     record_managed_server(None)
 
 
@@ -343,12 +392,22 @@ def local_gpu_session(
         yield
         return
 
+    if _lease_depth > 0:
+        # An outer local_gpu_session (or a bare gpu_lease) in this same
+        # process already holds the lease and owns the server's lifecycle.
+        # Re-running reap/Ollama-arbitration/managed_server here would treat
+        # the outer session's own server as an orphan and restart it on
+        # every nested call (e.g. once per cell in scripts/synopsize.py).
+        yield
+        return
+
     def status(name: str) -> None:
         if on_status is not None:
             on_status(name)
 
     status("gpu")
-    with gpu_lease(owner, wait_seconds=wait_seconds):
+    deadline = time.monotonic() + wait_seconds
+    with gpu_lease(owner, wait_seconds=max(0.0, deadline - time.monotonic())):
         reap_orphan_server()
 
         if backend == "ollama":
@@ -359,8 +418,7 @@ def local_gpu_session(
             return
 
         ollama_url = str(guard.get("ollama_base_url", ollama.DEFAULT_BASE_URL))
-        observe_seconds = float(guard.get("observe_seconds", 15))
-        deadline = time.monotonic() + wait_seconds
+        observe_seconds = max(1.0, float(guard.get("observe_seconds", 15)))
         while ollama_is_active(ollama_url, observe_seconds=observe_seconds):
             if time.monotonic() >= deadline:
                 raise GpuBusy({"owner": "ollama (in use)"})
@@ -371,8 +429,13 @@ def local_gpu_session(
 
         status("server_start")
         config = settings.get("llama-server", {})
+        launch = config.get("launch") if isinstance(config, Mapping) else None
+        image = (os.path.basename(launch[0])
+                 if isinstance(launch, list) and launch and isinstance(launch[0], str) else None)
         try:
-            with llama_server.managed_server(config, on_started=record_managed_server):
+            with llama_server.managed_server(
+                config, on_started=lambda pid: record_managed_server(pid, image=image),
+            ):
                 yield
         finally:
             record_managed_server(None)

@@ -22,6 +22,19 @@ from gapengine.synopsis import GenerationError, generate_text
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _reap_process(process: subprocess.Popen) -> None:
+    """Kill (if still running) and always wait -- an unwaited Windows child can
+    leave its temp/working directory locked, turning cleanup into a flaky
+    PermissionError on the next test's TemporaryDirectory teardown."""
+
+    if process.poll() is None:
+        process.kill()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 class _EnvIsolatedTestCase(unittest.TestCase):
     """Every test points WORLDBLOOM_GPU_LEASE_DIR at a private temp dir."""
 
@@ -101,7 +114,7 @@ class GpuLeaseCrossProcessTests(_EnvIsolatedTestCase):
             env=os.environ.copy(),
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
-        self.addCleanup(lambda: process.poll() is None and process.kill())
+        self.addCleanup(_reap_process, process)
         deadline = time.monotonic() + 10
         while not marker.exists():
             if time.monotonic() >= deadline:
@@ -207,24 +220,52 @@ class UnloadOllamaTests(_EnvIsolatedTestCase):
 
 
 class ReapOrphanServerTests(_EnvIsolatedTestCase):
-    def test_no_recorded_pid_is_a_noop(self) -> None:
-        gpu_guard.reap_orphan_server()
-
-    def test_terminates_a_recorded_live_process(self) -> None:
+    def _spawn_sleeper(self):
         process = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(300)"],
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
-        self.addCleanup(lambda: process.poll() is None and process.kill())
-        gpu_guard.record_managed_server(process.pid)
+        self.addCleanup(_reap_process, process)
+        return process
+
+    def test_no_recorded_pid_is_a_noop(self) -> None:
+        gpu_guard.reap_orphan_server()
+
+    def test_terminates_when_image_matches(self) -> None:
+        process = self._spawn_sleeper()
+        image = os.path.basename(sys.executable)
+        gpu_guard.record_managed_server(process.pid, image=image)
         gpu_guard.reap_orphan_server()
         process.wait(timeout=10)
         self.assertIsNotNone(process.poll())
         holder = gpu_guard._read_holder(gpu_guard.lease_dir())
         self.assertIsNone(holder.get("managed_server_pid"))
+        self.assertIsNone(holder.get("managed_server_image"))
+
+    def test_does_not_terminate_when_image_mismatches(self) -> None:
+        # A reused pid legitimately running a different executable must
+        # never be killed -- only forgotten.
+        process = self._spawn_sleeper()
+        gpu_guard.record_managed_server(process.pid, image="totally-unrelated.exe")
+        gpu_guard.reap_orphan_server()
+        time.sleep(0.2)
+        self.assertIsNone(process.poll())
+        holder = gpu_guard._read_holder(gpu_guard.lease_dir())
+        self.assertIsNone(holder.get("managed_server_pid"))
+
+    def test_does_not_terminate_when_image_was_never_recorded(self) -> None:
+        # An older-format holder file (pid only, no image) is not trustworthy
+        # evidence on its own.
+        process = self._spawn_sleeper()
+        gpu_guard.record_managed_server(process.pid)
+        gpu_guard.reap_orphan_server()
+        time.sleep(0.2)
+        self.assertIsNone(process.poll())
+        holder = gpu_guard._read_holder(gpu_guard.lease_dir())
+        self.assertIsNone(holder.get("managed_server_pid"))
 
     def test_never_terminates_its_own_process(self) -> None:
-        gpu_guard.record_managed_server(os.getpid())
+        gpu_guard.record_managed_server(os.getpid(), image="python.exe")
         with mock.patch("gapengine.gpu_guard.subprocess.run") as run:
             gpu_guard.reap_orphan_server()
         run.assert_not_called()
@@ -332,6 +373,31 @@ class LocalGpuSessionTests(_EnvIsolatedTestCase):
                 pass
         reap.assert_called_once()
 
+    def test_nested_session_in_same_process_is_a_complete_noop(self) -> None:
+        # scripts/synopsize.py wraps its whole cell loop in one outer session,
+        # and each cell's generate_text() opens its own (nested) session. The
+        # inner one must not re-run reap/Ollama-arbitration/managed_server --
+        # doing so would treat the outer session's own server as an orphan
+        # and restart it on every single cell.
+        with mock.patch("gapengine.gpu_guard.reap_orphan_server") as reap, \
+                mock.patch("gapengine.gpu_guard.ollama_is_active", return_value=False) as active, \
+                mock.patch("gapengine.gpu_guard.ollama_models", return_value=[]), \
+                mock.patch("gapengine.gpu_guard.unload_ollama") as unload, \
+                self._fake_managed_server() as managed:
+            with gpu_guard.local_gpu_session("llama-server", {"gpu_guard": {}}, owner="outer", wait_seconds=5):
+                reap.reset_mock()
+                active.reset_mock()
+                unload.reset_mock()
+                managed.reset_mock()
+                entered = []
+                with gpu_guard.local_gpu_session("llama-server", {"gpu_guard": {}}, owner="inner", wait_seconds=5):
+                    entered.append(True)
+                self.assertEqual(entered, [True])
+        reap.assert_not_called()
+        active.assert_not_called()
+        unload.assert_not_called()
+        managed.assert_not_called()
+
     def test_ollama_backend_busy_when_llama_server_reachable(self) -> None:
         settings = {"gpu_guard": {}, "llama-server": {"base_url": "http://x"}}
         with mock.patch("gapengine.llama_server.is_ready", return_value=True):
@@ -411,7 +477,7 @@ class OutputWorkerGpuBusyTests(_EnvIsolatedTestCase):
     def test_gpu_busy_fails_all_candidates_without_sending(self) -> None:
         settings_path = self._settings_path({})
         ids = self._make_output()
-        self._make_job("out-test", settings_path)
+        jobs, folder = self._make_job("out-test", settings_path)
 
         with mock.patch("gapengine.gpu_guard.gpu_lease", side_effect=gpu_guard.GpuBusy({"owner": "someone-else"})), \
                 mock.patch("execution.output_worker.run_generation") as fake_generation:
@@ -426,6 +492,36 @@ class OutputWorkerGpuBusyTests(_EnvIsolatedTestCase):
             self.assertEqual(entry["code"], "preflight_failed")
             self.assertEqual(entry["cause_type"], "GpuBusy")
             self.assertEqual(entry["retry_policy"], "safe_new_request")
+        # A GpuBusy at session entry must not leave the job stuck showing
+        # waiting="gpu" forever.
+        job = json.loads((folder / "job.json").read_text(encoding="utf-8"))
+        self.assertIsNone(job.get("waiting"))
+
+    def test_server_startup_failure_fails_all_candidates_without_sending(self) -> None:
+        settings_path = self._settings_path({})
+        ids = self._make_output(output_id="out-startup")
+        jobs, folder = self._make_job("out-startup", settings_path)
+
+        with mock.patch("gapengine.gpu_guard.ollama_is_active", return_value=False), \
+                mock.patch("gapengine.gpu_guard.ollama_models", return_value=[]), \
+                mock.patch(
+                    "gapengine.llama_server.managed_server",
+                    side_effect=RuntimeError("llama-server failed to start"),
+                ), \
+                mock.patch("execution.output_worker.run_generation") as fake_generation:
+            from execution.output_worker import run
+            run(str(self.control), "out-startup")
+
+        fake_generation.assert_not_called()
+        payload = self.store.project("out-startup")
+        self.assertEqual(len(payload["entries"]), len(ids))
+        for entry in payload["entries"]:
+            self.assertEqual(entry["status"], "error")
+            self.assertEqual(entry["code"], "preflight_failed")
+            self.assertEqual(entry["cause_type"], "RuntimeError")
+            self.assertEqual(entry["retry_policy"], "safe_new_request")
+        job = json.loads((folder / "job.json").read_text(encoding="utf-8"))
+        self.assertIsNone(job.get("waiting"))
 
 
 class GenerateTextGpuBusyTests(_EnvIsolatedTestCase):
