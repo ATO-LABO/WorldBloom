@@ -256,6 +256,21 @@ class Simulation:
     def _protagonist_policy(self) -> Any | None:
         return self.subjects[self.world.protagonist].policy
 
+    def _rationality_meta(self) -> dict[str, Any] | None:
+        """WB-JEV-001 Stage 2: the protagonist policy's Rationality.meta, or
+        None when there is no policy, no Rationality, or it is disabled
+        (kappa<=0) -- in every one of those cases the header must omit the
+        "rationality" key entirely so pre-Stage-2 runs stay byte-identical."""
+
+        policy = self._protagonist_policy()
+        if policy is None:
+            return None
+        rationality = getattr(policy, "rationality", None)
+        if rationality is None or not getattr(rationality, "enabled", False):
+            return None
+        meta = getattr(rationality, "meta", None)
+        return dict(meta) if isinstance(meta, dict) else None
+
     def _genome_dict(self) -> dict[str, Any] | None:
         policy = self._protagonist_policy()
         if policy is None:
@@ -315,6 +330,9 @@ class Simulation:
             header["explanation_recording"] = {"version": VERSION, "rule": RULE, "cost_baseline_version": 1}
         if self.world.drawn_truth:
             header["truth"] = _plain(self.world.drawn_truth)
+        rationality_meta = self._rationality_meta()
+        if rationality_meta is not None:
+            header["rationality"] = rationality_meta
         return header
 
     def _event_row(

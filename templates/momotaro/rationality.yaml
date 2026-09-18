@@ -1,4 +1,10 @@
-kappa: 1.0          # Stage 2 で使う。Stage 1 では読むだけ
+kappa: 0.0          # Stage 2 既定は OFF。GPU 復旧後の計測で method と合わせて決める
+method: noul
+backend:
+  type: ollama
+  model: qwen3.6:35b
+  base_url: http://localhost:11434
+  timeout: 300
 key_items:
   - きびだんご
 common_knowledge:

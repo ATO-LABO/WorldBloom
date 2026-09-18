@@ -30,19 +30,21 @@ the mean of calls #2-15.
 Engine/gapengine/templates/projects are read-only here. Output (including
 the throwaway layers.jsonl from the Mode A run) goes under
 --out/<model with ':' -> '_'>/, never under the Drive-mounted repo.
+
+Stage 2 (design by Fable, 2026-09-18) moved the Ollama call plumbing
+(``_ollama_call``/``_p_yes``/the choice-mode label and chunking logic) into
+``gapengine/rationality.py``, where ``Rationality``'s ``OllamaLogprobJudge``
+now shares it; this module imports those names instead of redefining them.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
 import statistics
-import string
 import sys
 import time
 import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -68,117 +70,16 @@ from gapengine.knowledge_text import (
 )
 from gapengine.ollama import DEFAULT_BASE_URL, build_request
 from gapengine.policy import Policy
-
-QUESTION = (
-    "質問: 本人の知る限りで、この行動は目的に近づく手段として筋が通っているか。"
-    "yes か no の1語だけで答えよ。"
+from gapengine.rationality import (
+    CHOICE_QUESTION,
+    LABELS,
+    QUESTION,
+    _label_masses,
+    _measure_top_logprobs_limit,
+    _normalize,
+    _ollama_call,
+    _p_yes,
 )
-CHOICE_QUESTION = (
-    "質問: 本人の知る限りで、目的に近づく手段として最も筋が通っているのはどれか。"
-    "記号1文字だけで答えよ。"
-)
-LABELS = tuple(string.ascii_uppercase + string.ascii_lowercase)  # A..Z, a..z
-
-# ---------------------------------------------------------------------------
-# Ollama call + logprob readout (plan §2)
-# ---------------------------------------------------------------------------
-
-
-def _ollama_call(
-    model: str,
-    prompt: str,
-    *,
-    base_url: str,
-    timeout: float,
-    top_logprobs: int = 10,
-) -> dict[str, Any]:
-    url, payload = build_request(
-        {
-            "base_url": base_url,
-            "model": model,
-            "think": False,
-            "options": {"num_predict": 1, "temperature": 0, "seed": 0},
-        },
-        prompt,
-    )
-    payload["logprobs"] = True
-    payload["top_logprobs"] = top_logprobs
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-
-def _top_logprobs(data: dict[str, Any]) -> list[Any]:
-    logprobs = data.get("logprobs")
-    if not isinstance(logprobs, list) or not logprobs:
-        return []
-    top = logprobs[0].get("top_logprobs")
-    return top if isinstance(top, list) else []
-
-
-def _p_yes(data: dict[str, Any]) -> tuple[float | None, list[Any]]:
-    """(p_yes, raw top_logprobs). None when neither a yes- nor no-token is
-    among the top logprobs at all (plan §2 "欠測")."""
-
-    top = _top_logprobs(data)
-    yes_mass = no_mass = 0.0
-    found_yes = found_no = False
-    for entry in top:
-        token = entry.get("token")
-        logprob = entry.get("logprob")
-        if not isinstance(token, str) or not isinstance(logprob, (int, float)):
-            continue
-        normalized = token.strip().lower()
-        if normalized == "yes":
-            yes_mass += math.exp(logprob)
-            found_yes = True
-        elif normalized == "no":
-            no_mass += math.exp(logprob)
-            found_no = True
-
-    if not found_yes and not found_no:
-        return None, top
-    total = yes_mass + no_mass
-    return (yes_mass / total if total > 0 else 0.0), top
-
-
-def _label_masses(data: dict[str, Any], labels: Sequence[str]) -> dict[str, float]:
-    """exp(logprob) mass per label token actually seen in top_logprobs (plan
-    §2.3 "choice"). A label absent from top_logprobs gets 0.0."""
-
-    mass = {label: 0.0 for label in labels}
-    label_set = set(labels)
-    for entry in _top_logprobs(data):
-        token = entry.get("token")
-        logprob = entry.get("logprob")
-        if not isinstance(token, str) or not isinstance(logprob, (int, float)):
-            continue
-        normalized = token.strip()
-        if normalized in label_set:
-            mass[normalized] += math.exp(logprob)
-    return mass
-
-
-def _normalize(mass: dict[str, float]) -> dict[str, float]:
-    total = sum(mass.values())
-    if total <= 0.0:
-        return {label: 0.0 for label in mass}
-    return {label: value / total for label, value in mass.items()}
-
-
-def _measure_top_logprobs_limit(model: str, *, base_url: str, timeout: float) -> int:
-    """One throwaway call with top_logprobs=50 to see how many entries the
-    server actually returns (plan §2.3: "事前に top_logprobs の上限を実測して
-    から choice 方式を実装する"). Used to size choice-mode candidate chunks."""
-
-    probe_prompt = "質問: 「A」か「B」か。記号1文字だけで答えよ。\n\n答え:"
-    data = _ollama_call(model, probe_prompt, base_url=base_url, timeout=timeout, top_logprobs=50)
-    return len(_top_logprobs(data))
-
 
 # ---------------------------------------------------------------------------
 # Action classes for the report's "行動クラス別の相対値" table (plan §2.3)
