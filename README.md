@@ -73,6 +73,40 @@ pip install -r requirements.txt
 
 `options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は思考トークンを抑えるため既定で `false`。`settings.json` は `.gitignore` 対象（APIキーを含み得るため）。
 
+### Bonsai 2 27B（llama-server）
+
+PrismML の Ternary Bonsai 2 27B は独自量子化形式のため Ollama では動かず、PrismML フォーク版 llama.cpp の `llama-server`（OpenAI 互換 API）でのみ動く。
+
+1. フォーク版バイナリを入手する: [PrismML-Eng/llama.cpp の releases](https://github.com/PrismML-Eng/llama.cpp/releases) から Windows なら `win-cuda-12.4` の `llama-...-bin-...zip` と `cudart-...zip` の両方（CUDA ランタイムが別 zip なので片方だけでは動かない）
+2. GGUF を入手する: Hugging Face `prism-ml/Ternary-Bonsai-2-27B-gguf` の `PTQ1_0`
+3. サーバーを起動する:
+
+```
+llama-server.exe -m Ternary-Bonsai-2-27B-PTQ1_0.gguf --alias bonsai2-27b -ngl 99 -np 1 -c 10240 -fa on --port 8089 --host 127.0.0.1 --reasoning-budget 2048 --reasoning-budget-message "思考の上限に達した。ここで思考を終え、直ちに最終回答の本文だけを書く。"
+```
+
+`--alias` は必須（省略するとモデル名がファイルパスになり、`settings.json` の `model` と一致しなくなる）。`--reasoning-budget` も必須（思考トークンの上限はサーバー起動フラグでしか効かず、リクエスト側で送っても無視されるため、これが無いと `finish_reason: "length"` で応答が打ち切られ、WorldBloom 側は失敗として扱う）。
+
+`settings.json`:
+
+```json
+{
+  "output": {
+    "default_backend": "llama-server",
+    "llama-server": {
+      "base_url": "http://127.0.0.1:8089",
+      "model": "bonsai2-27b",
+      "think": true,
+      "options": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.0, "max_tokens": 8192}
+    }
+  }
+}
+```
+
+注意:
+- VRAM 8GB では Ollama のモデルと同居できない。生成前に `ollama ps` で Ollama 側のモデルが退避済み（unloaded）か確認する
+- ノート GPU は連続生成で 86℃ に達することがある。長時間連続実行する場合は休止を挟む
+
 ### (c) サンプルをビューアで見る
 
 同梱の `samples/`（桃太郎・探偵・恋愛の3実験、格子・あらすじ・本文入り）をブラウザで見る:

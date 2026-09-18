@@ -158,6 +158,12 @@ def generation_availability(generation, settings_path=None):
         # Allowlisted facts only: the probe's raw error string is dropped.
         return {**base, "available": bool(probe["available"]),
                 "authentication": "not_required", "reason": probe["reason"]}
+    if backend == "llama-server":
+        from gapengine import llama_server
+        probe = llama_server.availability({**config, "model": model})
+        # Allowlisted facts only: the probe's raw error string is dropped.
+        return {**base, "available": bool(probe["available"]),
+                "authentication": "not_required", "reason": probe["reason"]}
     key = config.get("api_key")
     available = isinstance(key, str) and bool(key.strip())
     return {**base, "available": available,

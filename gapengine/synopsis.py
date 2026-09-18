@@ -16,7 +16,7 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from gapengine import ollama
+from gapengine import llama_server, ollama
 from gapengine.qd import Elite
 
 
@@ -26,6 +26,7 @@ BACKENDS = (
     "anthropic",
     "openai",
     "ollama",
+    "llama-server",
     "none",
 )
 
@@ -596,6 +597,18 @@ def generate_text(
         response = _post_json(url, {}, payload, timeout=timeout)
         try:
             text = ollama.extract_text(response)
+        except ValueError as error:
+            raise GenerationError(str(error)) from error
+        return GenerationResult(
+            status="ok",
+            text=_validate_response(text),
+        )
+
+    if backend == "llama-server":
+        url, payload = llama_server.build_request(config, prompt)
+        response = _post_json(url, {}, payload, timeout=timeout)
+        try:
+            text = llama_server.extract_text(response)
         except ValueError as error:
             raise GenerationError(str(error)) from error
         return GenerationResult(
