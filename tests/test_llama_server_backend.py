@@ -10,16 +10,26 @@ from pathlib import Path
 from unittest import mock
 
 from gapengine import llama_server
-import gapengine.synopsis as synopsis_module
 from gapengine.synopsis import GenerationError, generate_text
 
 
 class BuildRequestTests(unittest.TestCase):
+    def test_options_cannot_override_fixed_keys(self) -> None:
+        _url, payload = llama_server.build_request(
+            {"model": "m", "options": {"model": "evil", "stream": True, "messages": [],
+                                       "chat_template_kwargs": {"enable_thinking": False}}},
+            "p",
+        )
+        self.assertEqual(payload["model"], "m")
+        self.assertIs(payload["stream"], False)
+        self.assertEqual(payload["messages"], [{"role": "user", "content": "p"}])
+        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": True})
+
     def test_default_payload_shape(self) -> None:
         url, payload = llama_server.build_request({}, "prompt text")
 
         self.assertEqual(url, "http://127.0.0.1:8089/v1/chat/completions")
-        self.assertEqual(payload["model"], llama_server.DEFAULT_MODEL)
+        self.assertEqual(payload["model"], "bonsai2-27b")
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": True})
         self.assertEqual(payload["temperature"], 0.7)
@@ -60,6 +70,14 @@ class BuildRequestTests(unittest.TestCase):
 
 
 class ExtractTextTests(unittest.TestCase):
+    def test_non_list_choices_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            llama_server.extract_text({"choices": {}})
+
+    def test_non_mapping_first_choice_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            llama_server.extract_text({"choices": ["x"]})
+
     def test_incomplete_response_raises(self) -> None:
         with self.assertRaises(ValueError):
             llama_server.extract_text(

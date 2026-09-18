@@ -58,7 +58,8 @@ def _model_reachable(backend, section, model, *, timeout=6.0):
     codex-cli/claude-cli already get a genuine check (the executable exists);
     verifying their exact model name would mean actually invoking the CLI,
     which costs real time/tokens -- out of scope for a quick test button.
-    Ollama's own generation_availability() probe already lists real models.
+    Ollama's and llama-server's own generation_availability() probe already
+    lists real models.
     """
     if backend not in _MODEL_LIST_ENDPOINTS:
         return True, None

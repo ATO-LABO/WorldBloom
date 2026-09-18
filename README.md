@@ -73,7 +73,7 @@ pip install -r requirements.txt
 
 `options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は思考トークンを抑えるため既定で `false`。`settings.json` は `.gitignore` 対象（APIキーを含み得るため）。
 
-### Bonsai 2 27B（llama-server）
+### (b-2) Bonsai 2 27B（llama-server）を使う場合
 
 PrismML の Ternary Bonsai 2 27B は独自量子化形式のため Ollama では動かず、PrismML フォーク版 llama.cpp の `llama-server`（OpenAI 互換 API）でのみ動く。
 
