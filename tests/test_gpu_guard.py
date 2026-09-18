@@ -497,6 +497,27 @@ class OutputWorkerGpuBusyTests(_EnvIsolatedTestCase):
         job = json.loads((folder / "job.json").read_text(encoding="utf-8"))
         self.assertIsNone(job.get("waiting"))
 
+    def test_unexpected_session_error_still_ends_the_job_and_clears_waiting(self) -> None:
+        # A malformed gpu_guard value (or any other surprise while entering the
+        # session) must fail the candidates, never leave the job stuck on waiting="gpu".
+        settings_path = self._settings_path({"observe_seconds": None})
+        ids = self._make_output(output_id="out-surprise")
+        jobs, folder = self._make_job("out-surprise", settings_path)
+
+        with mock.patch("gapengine.gpu_guard.ollama_models", return_value=[]),                 mock.patch("execution.output_worker.run_generation") as fake_generation:
+            from execution.output_worker import run
+            run(str(self.control), "out-surprise")
+
+        fake_generation.assert_not_called()
+        payload = self.store.project("out-surprise")
+        self.assertEqual(len(payload["entries"]), len(ids))
+        for entry in payload["entries"]:
+            self.assertEqual(entry["status"], "error")
+            self.assertEqual(entry["code"], "preflight_failed")
+            self.assertEqual(entry["cause_type"], "TypeError")
+        from execution.worker import read_job
+        self.assertIsNone(read_job(jobs, folder).get("waiting"))
+
     def test_server_startup_failure_fails_all_candidates_without_sending(self) -> None:
         settings_path = self._settings_path({})
         ids = self._make_output(output_id="out-startup")
