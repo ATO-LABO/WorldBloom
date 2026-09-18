@@ -37,7 +37,7 @@ def _output_settings(path):
 
 
 def run(control, output_id):
-    from gapengine.gpu_guard import DEFAULT_THERMAL, GpuBusy, local_gpu_session, wait_until_cool
+    from gapengine.gpu_guard import DEFAULT_THERMAL, local_gpu_session, wait_until_cool
 
     store = OutputStore(control)
     request = store.request(output_id)
@@ -71,7 +71,7 @@ def run(control, output_id):
         if preflight_error is None:
             try:
                 stack.enter_context(session)
-            except (GpuBusy, RuntimeError) as error:
+            except Exception as error:  # GpuBusy, server start failure, or a bad gpu_guard value
                 preflight_error = error
                 if guard_enabled:
                     change(jobs, folder, job["nonce"], waiting=None)

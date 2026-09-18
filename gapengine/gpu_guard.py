@@ -46,10 +46,11 @@ def read_gpu_temperature(*, timeout: float = 5.0) -> float | None:
             ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=timeout,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
     if completed.returncode != 0:
         return None
@@ -199,8 +200,8 @@ def gpu_lease(
     holder = _read_holder(directory)
     holder.update(owner=owner, pid=os.getpid(), since=time.time())
     _write_holder(directory, holder)
-    _lease_depth = 1
     try:
+        _lease_depth = 1
         yield
     finally:
         _lease_depth = 0
@@ -233,10 +234,11 @@ def _tasklist_row(pid: int) -> str | None:
             ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=5,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
     lines = completed.stdout.strip().splitlines()
     if not lines or str(pid) not in lines[0]:
@@ -308,6 +310,10 @@ def reap_orphan_server() -> None:
     still has the recorded executable image -- a pid alone can be reused by
     an unrelated process, so an unconfirmed or mismatched image is never
     killed, only forgotten.
+
+    An image match does not fully rule out pid reuse (a same-named exe that
+    got the same pid would still be hit). That window is tiny and the damage
+    is bounded to one llama.cpp server being stopped.
     """
 
     directory = lease_dir()
