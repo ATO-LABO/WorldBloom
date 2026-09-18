@@ -95,6 +95,16 @@ def build_parser() -> argparse.ArgumentParser:
             "<out>/rationality.json)."
         ),
     )
+    parser.add_argument(
+        "--rationality-max-calls",
+        type=non_negative_int,
+        default=None,
+        help=(
+            "Cap on judge calls (candidates for noul, chunks for choice) "
+            "per simulation run; overrides rationality.yaml's "
+            "max_judge_calls_per_run (default: unlimited)."
+        ),
+    )
     return parser
 
 
@@ -116,6 +126,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "kappa": args.kappa,
                 "backend": args.rationality_backend,
                 "table": args.rationality_table,
+                "max_judge_calls_per_run": args.rationality_max_calls,
             },
             "seed_base": args.seed_base,
             "seeds": args.seeds,

@@ -256,11 +256,26 @@ class Simulation:
     def _protagonist_policy(self) -> Any | None:
         return self.subjects[self.world.protagonist].policy
 
+    # WB-JEV-001 Stage 2 (Opus review R1): the header is written before the
+    # run happens, so a "judge_calls"/"budget_exhausted"/"judge_disabled"
+    # here would always read as 0/absent regardless of what actually
+    # happened during the run -- misleadingly implying nothing was ever
+    # called. Those belong on the per-seed run_result and the generation
+    # summary (gapengine.evolve), not the header.
+    _RATIONALITY_HEADER_KEYS = (
+        "kappa",
+        "method",
+        "backend",
+        "model",
+        "table_hash_at_start",
+    )
+
     def _rationality_meta(self) -> dict[str, Any] | None:
-        """WB-JEV-001 Stage 2: the protagonist policy's Rationality.meta, or
-        None when there is no policy, no Rationality, or it is disabled
-        (kappa<=0) -- in every one of those cases the header must omit the
-        "rationality" key entirely so pre-Stage-2 runs stay byte-identical."""
+        """WB-JEV-001 Stage 2: the protagonist policy's Rationality.meta
+        (filtered to the static config subset above), or None when there is
+        no policy, no Rationality, or it is disabled (kappa<=0) -- in every
+        one of those cases the header must omit the "rationality" key
+        entirely so pre-Stage-2 runs stay byte-identical."""
 
         policy = self._protagonist_policy()
         if policy is None:
@@ -269,7 +284,13 @@ class Simulation:
         if rationality is None or not getattr(rationality, "enabled", False):
             return None
         meta = getattr(rationality, "meta", None)
-        return dict(meta) if isinstance(meta, dict) else None
+        if not isinstance(meta, dict):
+            return None
+        return {
+            key: meta[key]
+            for key in self._RATIONALITY_HEADER_KEYS
+            if key in meta
+        }
 
     def _genome_dict(self) -> dict[str, Any] | None:
         policy = self._protagonist_policy()

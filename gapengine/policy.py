@@ -262,7 +262,24 @@ class Policy:
             for action, weight in weighted
         ]
 
-        if self.rationality is not None and self.rationality.enabled:
+        # WB-JEV-001 Stage 2 (Opus review P2): a genuinely neutral, rule-free
+        # genome is annotation-only *unless* rationality is enabled --
+        # rationality is a constraint on plausibility, not a personality
+        # trait, so it must still steer even a personality-less genome. An
+        # explicit annotate_only=True (e.g. the probe's read-only recording
+        # policy) always wins and, per the multipliers() gate just below,
+        # never spends a judge call either.
+        annotation_only = self.annotate_only or (
+            self.genome.is_neutral()
+            and not self.rules
+            and not (self.rationality is not None and self.rationality.enabled)
+        )
+
+        if (
+            self.rationality is not None
+            and self.rationality.enabled
+            and not annotation_only
+        ):
             m_rats, p_rats = self.rationality.multipliers(
                 subject,
                 world,
@@ -281,10 +298,6 @@ class Policy:
             normalize_act(value) for value in candidate_acts
         )
         self_history = self._history_table(subject)
-        annotation_only = (
-            self.annotate_only
-            or (self.genome.is_neutral() and not self.rules)
-        )
 
         turn_namespace = world.namespace(
             subject,
