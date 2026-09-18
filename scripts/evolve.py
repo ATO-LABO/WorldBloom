@@ -70,6 +70,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--record-explanations", action=argparse.BooleanOptionalAction, default=True,
                         help="Record bounded choice candidates for the explanation viewer (default: on).")
+    parser.add_argument(
+        "--kappa",
+        type=float,
+        default=None,
+        help=(
+            "WB-JEV-001 Stage 2: override templates/<genre>/rationality.yaml's "
+            "kappa (0 disables the rationality layer; that is the template "
+            "default)."
+        ),
+    )
+    parser.add_argument(
+        "--rationality-backend",
+        choices=("ollama", "none"),
+        default=None,
+        help="Override rationality.yaml's judge backend.",
+    )
+    parser.add_argument(
+        "--rationality-table",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the persisted rationality table JSON (default: "
+            "<out>/rationality.json)."
+        ),
+    )
     return parser
 
 
@@ -87,6 +112,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "population": args.population,
             "processes": args.processes,
             "project": args.project,
+            "rationality": {
+                "kappa": args.kappa,
+                "backend": args.rationality_backend,
+                "table": args.rationality_table,
+            },
             "seed_base": args.seed_base,
             "seeds": args.seeds,
             "target_ending": args.target_ending,

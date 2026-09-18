@@ -17,6 +17,9 @@ from engine.sim import Simulation
 from engine.subject import Subject
 from engine.world import World
 from gapengine.genome import Genome
+from gapengine.knowledge_text import load_common_knowledge, load_key_items
+from gapengine.ollama import DEFAULT_BASE_URL as RATIONALITY_DEFAULT_BASE_URL
+from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
 from gapengine.policy import Policy
 from gapengine.precedent import PrecedentTable, from_runs, load_canon
 from gapengine.qd import (
@@ -32,6 +35,7 @@ from gapengine.qd import (
     sequence_dissimilarity,
     shaped,
 )
+from gapengine.rationality import NullJudge, OllamaLogprobJudge, Rationality, RationalityTable
 
 
 def _json_write(path: Path, value: Any) -> None:
@@ -49,6 +53,56 @@ def _json_write(path: Path, value: Any) -> None:
 
 class EvolutionCancelled(Exception):
     """Cooperative stop at a seed, individual or generation boundary."""
+
+
+def _build_rationality_judge(rationality_cfg: Mapping[str, Any]) -> Any:
+    """WB-JEV-001 Stage 2: the judge for a run_individual job's Rationality,
+    picked by ``rationality_cfg["backend"]`` ("ollama" or "none")."""
+
+    backend = str(rationality_cfg.get("backend", "none"))
+    if backend == "ollama":
+        return OllamaLogprobJudge(
+            model=str(rationality_cfg.get("model", RATIONALITY_DEFAULT_MODEL)),
+            base_url=str(rationality_cfg.get("base_url", RATIONALITY_DEFAULT_BASE_URL)),
+            timeout=float(rationality_cfg.get("timeout", 300.0)),
+            method=str(rationality_cfg.get("method", "noul")),
+        )
+    return NullJudge()
+
+
+def _append_rationality_entries(path: Path, entries: Mapping[str, float]) -> None:
+    """Append this seed's newly-learned (key, p) rows -- one job/individual's
+    file accumulates across its own seeds; never touched by another
+    individual (WB-JEV-001 Stage 2 plan §1.6)."""
+
+    if not entries:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        for key, value in sorted(entries.items()):
+            handle.write(json.dumps({"key": key, "p": value}, ensure_ascii=False) + "\n")
+
+
+def _merge_rationality_table(
+    generation_dir: Path,
+    table_path: Path,
+) -> RationalityTable:
+    """Fold every individual's ``rationality-new.jsonl`` from one generation
+    into the experiment-wide table at ``table_path`` (the "正本"), then save
+    it back so the next generation's jobs read the merged table. Same key
+    appearing in more than one file is harmless -- the judge runs at
+    temperature 0, so every writer computes the same value for it."""
+
+    table = RationalityTable.load(table_path)
+    for path in sorted(generation_dir.glob("ind-*/rationality-new.jsonl")):
+        rows = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        table.update({str(row["key"]): float(row["p"]) for row in rows})
+    table.save(table_path)
+    return table
 
 
 def _seed_event(job, seed, kind, run=None):
@@ -230,6 +284,23 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         else None
     )
 
+    # WB-JEV-001 Stage 2: only the protagonist ever gets a Rationality (the
+    # antagonist is out of scope). Table and judge are built once per job so
+    # entries learned in an earlier seed of this same job are reused by a
+    # later one; the judge's own caches (e.g. choice mode's measured
+    # top_logprobs limit) likewise persist across this job's seeds.
+    rationality_cfg = job.get("rationality_cfg")
+    rationality_table: RationalityTable | None = None
+    rationality_judge: Any = None
+    rationality_new_path: Path | None = None
+    rationality_total_judge_calls = 0
+    if rationality_cfg is not None:
+        rationality_table = RationalityTable.load(
+            Path(str(job["rationality_table_path"]))
+        )
+        rationality_judge = _build_rationality_judge(rationality_cfg)
+        rationality_new_path = out_dir / "rationality-new.jsonl"
+
     runs: list[dict[str, Any]] = []
     for seed in seeds:
         _seed_checkpoint(job)
@@ -243,6 +314,19 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         subjects = _load_subjects(subjects_dir)
         seed_dir = out_dir / f"seed-{seed}"
 
+        rationality = None
+        if rationality_cfg is not None and genome is not None:
+            assert rationality_table is not None and rationality_judge is not None
+            rationality = Rationality(
+                kappa=float(rationality_cfg["kappa"]),
+                table=rationality_table,
+                judge=rationality_judge,
+                common_knowledge=rationality_cfg.get("common_knowledge", []),
+                method=str(rationality_cfg.get("method", "noul")),
+                key_items=rationality_cfg.get("key_items", []),
+                max_judge_calls=rationality_cfg.get("max_judge_calls"),
+            )
+
         policies: dict[str, Policy] = {}
         if genome is not None:
             policies[protagonist] = Policy(
@@ -250,6 +334,7 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
                 precedent,
                 rules,
                 cfg=action_cfg,
+                rationality=rationality,
             )
         if antagonist_genome is not None:
             policies[antagonist] = Policy(
@@ -269,6 +354,11 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             record_explanations=bool(job.get("record_explanations", False)),
         ).run()
         rows = read_rows(layer_path)
+
+        if rationality is not None:
+            assert rationality_new_path is not None
+            _append_rationality_entries(rationality_new_path, rationality.new_entries)
+            rationality_total_judge_calls += rationality.meta["judge_calls"]
 
         if antagonist_genome is not None:
             rows[0]["antagonist_genome"] = antagonist_genome.to_dict()
@@ -359,6 +449,8 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             / len(runs),
             12,
         )
+    if rationality_cfg is not None:
+        result["rationality_judge_calls"] = rationality_total_judge_calls
     return result
 
 
@@ -829,6 +921,58 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     rule_ids = _rule_ids(rules) if meta_evolution else ()
     canon = load_canon(template_dir / "canon.yaml")
 
+    # WB-JEV-001 Stage 2: rationality.yaml's kappa/method/backend are the
+    # template's defaults; cfg["rationality"] (scripts/evolve.py's
+    # --kappa/--rationality-backend/... CLI flags) overrides individual
+    # fields. kappa<=0 (the momotaro template's default) disables the whole
+    # apparatus -- no table file, no per-job rationality_cfg, no judge calls,
+    # no "rationality" header key, no p_rat/m_rat meta -- so pre-Stage-2 runs
+    # stay byte-identical (plan §0/§1.6).
+    rationality_yaml = dict(_load_yaml(template_dir / "rationality.yaml", {}) or {})
+    rationality_yaml_backend = dict(rationality_yaml.get("backend") or {})
+    rationality_override = dict(cfg.get("rationality") or {})
+
+    def _rationality_pick(name: str, default: Any) -> Any:
+        value = rationality_override.get(name)
+        return default if value is None else value
+
+    rationality_kappa = float(
+        _rationality_pick("kappa", rationality_yaml.get("kappa", 0.0)) or 0.0
+    )
+    rationality_enabled = rationality_kappa > 0.0
+    rationality_cfg: dict[str, Any] | None = None
+    rationality_table_path: Path | None = None
+    if rationality_enabled:
+        rationality_cfg = {
+            "kappa": rationality_kappa,
+            "method": str(
+                _rationality_pick("method", rationality_yaml.get("method", "noul"))
+            ),
+            "backend": str(
+                _rationality_pick("backend", rationality_yaml_backend.get("type", "none"))
+            ),
+            "model": str(
+                _rationality_pick(
+                    "model", rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
+                )
+            ),
+            "base_url": str(
+                _rationality_pick(
+                    "base_url",
+                    rationality_yaml_backend.get("base_url", RATIONALITY_DEFAULT_BASE_URL),
+                )
+            ),
+            "timeout": float(
+                _rationality_pick("timeout", rationality_yaml_backend.get("timeout", 300.0))
+            ),
+            "max_judge_calls": _rationality_pick("max_judge_calls_per_run", None),
+            "common_knowledge": load_common_knowledge(template_dir),
+            "key_items": load_key_items(template_dir),
+        }
+        rationality_table_path = Path(
+            str(rationality_override.get("table") or (out_dir / "rationality.json"))
+        )
+
     world_model = World.from_yaml(
         world_path,
         action_graph_path=action_graph_path,
@@ -1020,9 +1164,25 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         for job in jobs:
             job["record_explanations"] = bool(cfg.get("record_explanations", False))
             job["target_ending"] = world_model.target_ending
+            if rationality_enabled:
+                job["rationality_cfg"] = rationality_cfg
+                job["rationality_table_path"] = str(rationality_table_path)
         if observer is not None:
             observer.bind(jobs, generation, "protagonist")
         raw_results = _evaluate_jobs(jobs, processes, observer)
+
+        rationality_table_size: int | None = None
+        rationality_generation_judge_calls: int | None = None
+        if rationality_enabled:
+            assert rationality_table_path is not None
+            rationality_generation_judge_calls = sum(
+                int(result.get("rationality_judge_calls", 0))
+                for result in raw_results
+            )
+            merged_table = _merge_rationality_table(
+                generation_dir, rationality_table_path
+            )
+            rationality_table_size = len(merged_table)
 
         if archive.volatility_thresholds is None:
             archive.freeze_thresholds(
@@ -1196,6 +1356,9 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             "occupied_cells": len(archive.cells),
             "reach_rate": reached_runs / total_runs,
         }
+        if rationality_enabled:
+            generation_summary["rationality_judge_calls"] = rationality_generation_judge_calls
+            generation_summary["rationality_table_size"] = rationality_table_size
 
         antagonist_archive_dissimilarity: float | None = None
         if coevolve:

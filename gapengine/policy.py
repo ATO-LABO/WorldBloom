@@ -172,6 +172,7 @@ class Policy:
         self_table: PrecedentTable | None = None,
         cfg: Mapping[str, Any] | None = None,
         annotate_only: bool = False,
+        rationality: Any = None,
     ) -> None:
         self.genome = genome
         self.precedent = precedent
@@ -185,6 +186,11 @@ class Policy:
         self.self_table = self_table or PrecedentTable()
         self.cfg = dict(cfg or {"nodes": [], "edges": []})
         self.annotate_only = bool(annotate_only)
+        # WB-JEV-001 Stage 2: an optional gapengine.rationality.Rationality
+        # (duck-typed via .enabled/.multipliers -- no import here, to keep
+        # policy.py free of a dependency on the rationality module). Only the
+        # protagonist's Policy ever gets one; antagonists are out of scope.
+        self.rationality = rationality
 
     @property
     def precedent_hash(self) -> str | None:
@@ -255,6 +261,18 @@ class Policy:
             )
             for action, weight in weighted
         ]
+
+        if self.rationality is not None and self.rationality.enabled:
+            m_rats, p_rats = self.rationality.multipliers(
+                subject,
+                world,
+                present,
+                [action for action, _, _ in classified],
+            )
+        else:
+            m_rats = [1.0] * len(classified)
+            p_rats = [None] * len(classified)
+
         candidate_acts = {
             act_key(classification, action)
             for action, _, classification in classified
@@ -294,7 +312,9 @@ class Policy:
         ]
 
         output: list[tuple[Action, float]] = []
-        for action, weight, classification in classified:
+        for index, (action, weight, classification) in enumerate(classified):
+            m_rat = m_rats[index]
+            p_rat = p_rats[index]
             if candidate_rules:
                 target = _candidate_target(action, subject, world)
                 candidate_namespace = world.namespace(
@@ -382,12 +402,20 @@ class Policy:
                 "m_stance": round(m_stance, 12),
                 "p_prec": round(p_prec, 12),
             }
+            # κ=0 (or no Rationality at all) must not add these keys: existing
+            # fixed-hash/golden tests depend on the meta dict staying exactly
+            # as it was before Stage 2 (WB-JEV-001 plan §1.4/§4).
+            if self.rationality is not None and self.rationality.enabled:
+                action.meta["policy"]["m_rat"] = round(m_rat, 12)
+                action.meta["policy"]["p_rat"] = (
+                    round(p_rat, 12) if p_rat is not None else None
+                )
 
             if not annotation_only:
                 output.append(
                     (
                         action,
-                        weight * m_cat * m_risk * m_stance * m_nov,
+                        weight * m_rat * m_cat * m_risk * m_stance * m_nov,
                     )
                 )
 
