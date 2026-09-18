@@ -15,13 +15,16 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from execution.provenance import atomic_json
+from gapengine.gpu_guard import GpuBusy, local_gpu_session
 from gapengine.qd import Archive, read_rows
 from gapengine.scenes import extract_scenes
 from gapengine.synopsis import (
     BACKENDS,
     GenerationError,
+    _output_section,
     build_synopsis_prompt,
     generate_text,
+    load_settings,
     load_world_meta,
 )
 
@@ -94,71 +97,78 @@ def main(argv: Sequence[str] | None = None) -> int:
                "entries": entries, "world": world_meta["name"]}
     reported_warnings: set[str] = set()
 
-    for cell in sorted(archive.cells):
-        cell_key = "|".join(cell)
-        if selected is not None and cell_key not in selected:
-            continue
-        elite = archive.cells[cell]
-        elite_payload = elite.to_dict()
-        elite_payload["cell"] = cell_key
-        layers_path = runs_root / str(
-            elite.exemplar["layers_path"]
-        )
-        prompt_path = (
-            prompts_dir
-            / f"synopsis-{_safe_cell_name(cell_key)}.txt"
-        )
+    settings, _settings_warning = load_settings(args.settings)
+    output_settings = _output_section(settings)
+    try:
+        with local_gpu_session(args.backend, output_settings, owner="synopsize", wait_seconds=args.timeout):
+            for cell in sorted(archive.cells):
+                cell_key = "|".join(cell)
+                if selected is not None and cell_key not in selected:
+                    continue
+                elite = archive.cells[cell]
+                elite_payload = elite.to_dict()
+                elite_payload["cell"] = cell_key
+                layers_path = runs_root / str(
+                    elite.exemplar["layers_path"]
+                )
+                prompt_path = (
+                    prompts_dir
+                    / f"synopsis-{_safe_cell_name(cell_key)}.txt"
+                )
 
-        entry: dict[str, Any] = {
-            "cell": cell_key,
-            "descriptor": elite.descriptor.to_dict(),
-            "generation": elite.generation,
-            "layers_path": elite.exemplar["layers_path"],
-            "prompt_path": prompt_path.relative_to(
-                output_path.parent
-            ).as_posix(),
-            "quality": elite.quality,
-            "reach_rate": elite.reach_rate,
-            "seed": elite.exemplar.get("seed"),
-            "status": "error",
-            "synopsis": None,
-        }
+                entry: dict[str, Any] = {
+                    "cell": cell_key,
+                    "descriptor": elite.descriptor.to_dict(),
+                    "generation": elite.generation,
+                    "layers_path": elite.exemplar["layers_path"],
+                    "prompt_path": prompt_path.relative_to(
+                        output_path.parent
+                    ).as_posix(),
+                    "quality": elite.quality,
+                    "reach_rate": elite.reach_rate,
+                    "seed": elite.exemplar.get("seed"),
+                    "status": "error",
+                    "synopsis": None,
+                }
 
-        try:
-            rows = read_rows(layers_path)
-            scenes = extract_scenes(rows, world_meta)
-            prompt = build_synopsis_prompt(
-                elite_payload,
-                scenes,
-                world_meta,
-            )
-            prompt_path.parent.mkdir(parents=True, exist_ok=True)
-            prompt_path.write_text(
-                prompt,
-                encoding="utf-8",
-                newline="\n",
-            )
-            result = generate_text(
-                args.backend,
-                prompt,
-                settings_path=args.settings,
-                timeout=args.timeout,
-            )
-            entry["status"] = result.status
-            entry["synopsis"] = result.text
-            if result.warning and result.warning not in reported_warnings:
-                print(f"warning: {result.warning}", file=sys.stderr)
-                reported_warnings.add(result.warning)
-        except (OSError, ValueError, GenerationError) as error:
-            entry["error"] = str(error)
-            print(
-                f"warning: {cell_key}: {error}",
-                file=sys.stderr,
-            )
+                try:
+                    rows = read_rows(layers_path)
+                    scenes = extract_scenes(rows, world_meta)
+                    prompt = build_synopsis_prompt(
+                        elite_payload,
+                        scenes,
+                        world_meta,
+                    )
+                    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+                    prompt_path.write_text(
+                        prompt,
+                        encoding="utf-8",
+                        newline="\n",
+                    )
+                    result = generate_text(
+                        args.backend,
+                        prompt,
+                        settings_path=args.settings,
+                        timeout=args.timeout,
+                    )
+                    entry["status"] = result.status
+                    entry["synopsis"] = result.text
+                    if result.warning and result.warning not in reported_warnings:
+                        print(f"warning: {result.warning}", file=sys.stderr)
+                        reported_warnings.add(result.warning)
+                except (OSError, ValueError, GenerationError) as error:
+                    entry["error"] = str(error)
+                    print(
+                        f"warning: {cell_key}: {error}",
+                        file=sys.stderr,
+                    )
 
-        entries.append(entry)
-        entries.sort(key=lambda item: item["cell"])
-        atomic_json(output_path, payload)
+                entries.append(entry)
+                entries.sort(key=lambda item: item["cell"])
+                atomic_json(output_path, payload)
+    except (GpuBusy, RuntimeError) as error:
+        print(f"warning: {error}", file=sys.stderr)
+        return 1
 
     payload = {
         "archive": archive_path.as_posix(),

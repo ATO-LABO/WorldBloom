@@ -76,6 +76,7 @@ GENERATION_BACKEND_OPTIONS = (
     ("anthropic", "Anthropic API（api_key が必要）"),
     ("openai", "OpenAI API（api_key が必要）"),
     ("ollama", "ローカル Ollama"),
+    ("llama-server", "ローカル llama-server（OpenAI互換。Bonsai 2 など）"),
     ("none", "生成しない（プロンプト保存のみ）"),
 )
 GENERATION_REASON_LABELS = {
