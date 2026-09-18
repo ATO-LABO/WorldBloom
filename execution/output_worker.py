@@ -1,6 +1,7 @@
 """Frozen generation runner. One dispatch per durable attempt, no restart retry."""
 from __future__ import annotations
 import argparse
+from contextlib import ExitStack
 from pathlib import Path
 import sys
 import time
@@ -27,7 +28,17 @@ def credentials(path, backend):
     return {key: config[key] for key in keys if key in config}
 
 
+def _output_settings(path):
+    from gapengine.synopsis import _output_section
+    settings = read_json(Path(path)) if path is not None else {}
+    if not isinstance(settings, dict):
+        raise ValueError("invalid local settings")
+    return _output_section(settings)
+
+
 def run(control, output_id):
+    from gapengine.gpu_guard import GpuBusy, local_gpu_session, wait_until_cool
+
     store = OutputStore(control)
     request = store.request(output_id)
     jobs = Path(control) / "jobs"
@@ -41,33 +52,55 @@ def run(control, output_id):
     write_bytes(store.folder(output_id) / "worker-started.json", b'{"schema_version":1}')
     preflight_error = None
     auth = None
+    output_settings = {}
     try:
         store.verify_artifacts(output_id)
         auth = credentials(job.get("settings_path"), request["backend"])
+        output_settings = _output_settings(job.get("settings_path"))
     except (OSError, ValueError, ConfigError) as error:
         preflight_error = error
-    for cid in request["candidate_ids"]:
-        sink = store.sink(output_id, cid, request=request)
-        job = read_job(jobs, folder)
-        if job["state"] in TERMINAL or job.get("cancel_requested_at") is not None:
-            sink.finish(result(sink.identity, "skipped_cancelled", "cancelled_before_start", retry_policy="safe_new_request"))
-            continue
-        if time.time() >= job["created_at"] + job["wall_seconds"]:
-            sink.finish(result(sink.identity, "skipped_limit", "limit_reached", retry_policy="new_budget_request"))
-            continue
-        if preflight_error is not None:
-            sink.finish(result(sink.identity, "error", "preflight_failed", stage="preflight",
-                cause_type=type(preflight_error).__name__, retry_policy="safe_new_request"))
-        else:
-            call = sink.call_request(auth)
-            call["deadline"] = job["created_at"] + job["wall_seconds"]
-            run_generation(call, sink)
-        payload = store.project(output_id)
-        counts = {}
-        for entry in payload["entries"]:
-            counts[entry["status"]] = counts.get(entry["status"], 0) + 1
-        change(jobs, folder, job["nonce"], progress={"total":len(request["candidate_ids"]),
-            "completed":sum(v for k,v in counts.items() if k not in ("pending", "running")), "counts":counts})
+
+    guard = output_settings.get("gpu_guard") if isinstance(output_settings, dict) else None
+    deadline = job["created_at"] + job["wall_seconds"]
+    session = local_gpu_session(request["backend"], output_settings, owner=f"output:{output_id}",
+        wait_seconds=max(0, deadline - time.time()),
+        on_status=lambda name: change(jobs, folder, job["nonce"], waiting=name))
+
+    with ExitStack() as stack:
+        if preflight_error is None:
+            try:
+                stack.enter_context(session)
+            except (GpuBusy, RuntimeError) as error:
+                preflight_error = error
+            else:
+                if guard is not None:
+                    change(jobs, folder, job["nonce"], waiting=None)
+        for cid in request["candidate_ids"]:
+            sink = store.sink(output_id, cid, request=request)
+            job = read_job(jobs, folder)
+            if job["state"] in TERMINAL or job.get("cancel_requested_at") is not None:
+                sink.finish(result(sink.identity, "skipped_cancelled", "cancelled_before_start", retry_policy="safe_new_request"))
+                continue
+            if time.time() >= job["created_at"] + job["wall_seconds"]:
+                sink.finish(result(sink.identity, "skipped_limit", "limit_reached", retry_policy="new_budget_request"))
+                continue
+            if preflight_error is not None:
+                sink.finish(result(sink.identity, "error", "preflight_failed", stage="preflight",
+                    cause_type=type(preflight_error).__name__, retry_policy="safe_new_request"))
+            else:
+                if isinstance(guard, dict):
+                    change(jobs, folder, job["nonce"], waiting="cooldown")
+                    wait_until_cool(guard.get("thermal"))
+                    change(jobs, folder, job["nonce"], waiting=None)
+                call = sink.call_request(auth)
+                call["deadline"] = job["created_at"] + job["wall_seconds"]
+                run_generation(call, sink)
+            payload = store.project(output_id)
+            counts = {}
+            for entry in payload["entries"]:
+                counts[entry["status"]] = counts.get(entry["status"], 0) + 1
+            change(jobs, folder, job["nonce"], progress={"total":len(request["candidate_ids"]),
+                "completed":sum(v for k,v in counts.items() if k not in ("pending", "running")), "counts":counts})
     store.project(output_id)
 
 
