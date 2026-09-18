@@ -266,7 +266,7 @@
         datalist.appendChild(option);
       });
     };
-    // Ollama/anthropic/openai expose a real "list models" API -- ask it for
+    // Ollama/llama-server/anthropic/openai expose a real "list models" API -- ask it for
     // this backend's actual catalog so the model field's dropdown offers only
     // models that really exist, instead of whatever the user remembers to
     // type. codex-cli/claude-cli have no such API (live: false); their

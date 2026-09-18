@@ -34,12 +34,14 @@ def build_request(
     if isinstance(raw_options, Mapping):
         options.update(raw_options)
 
+    # Fixed keys come last so a settings.json "options" entry can never
+    # override the recorded model or the request shape.
     payload = {
+        **options,
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "chat_template_kwargs": {"enable_thinking": think},
-        **options,
     }
     seed = config.get("seed")
     if isinstance(seed, int):

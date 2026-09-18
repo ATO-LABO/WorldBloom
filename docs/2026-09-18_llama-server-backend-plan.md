@@ -29,7 +29,7 @@ Bonsai 2 は独自量子化形式のため Ollama では動かず、PrismML フ�
 ### 1. 新規 `gapengine/llama_server.py`
 `gapengine/ollama.py` を手本に、標準ライブラリのみで次の 4 関数を持つ。docstring・型注釈の粒度も合わせる。
 
-- `build_request(config, prompt) -> tuple[str, dict]`: `base_url`（末尾スラッシュ除去）、`model`、`think`（既定 True）、`options`（`DEFAULT_OPTIONS` に config の `options` を上書きマージ）、`seed`（int のときだけ payload に `"seed"` として入れる）。payload は `{"model", "messages": [{"role": "user", "content": prompt}], "stream": False, "chat_template_kwargs": {"enable_thinking": think}, **options}`。URL は `{base_url}/v1/chat/completions`。
+- `build_request(config, prompt) -> tuple[str, dict]`: `base_url`（末尾スラッシュ除去）、`model`、`think`（既定 True）、`options`（`DEFAULT_OPTIONS` に config の `options` を上書きマージ）、`seed`（int のときだけ payload に `"seed"` として入れる）。payload は `{"model", "messages": [{"role": "user", "content": prompt}], "stream": False, "chat_template_kwargs": {"enable_thinking": think}, **options}`（※レビュー後訂正: 実装は `{**options, "model": ..., ...}` の順とし、固定キーが `options` に勝つ。`options` に `model` 等を書かれても来歴に記録した model と実呼び出しが乖離しないため）。URL は `{base_url}/v1/chat/completions`。
 - `extract_text(data) -> str`: `choices` が空でないリストで先頭が Mapping であること、`finish_reason == "stop"` でなければ `ValueError("incomplete response")`、`message.content` が str でなければ `ValueError("invalid response content")`。
 - `list_models(config, *, timeout=2.0) -> tuple[list[str], str | None]`: `GET {base_url}/v1/models` の `data[].id` をソートして返す。到達不能・JSON 不正は `([], "server_unreachable")`。
 - `availability(config, *, timeout=2.0) -> dict`: ollama.py と同じ形（`available` / `reason` / `model`、`model_missing` / `server_unreachable`）。
