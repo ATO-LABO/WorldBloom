@@ -146,8 +146,18 @@ def _measure_top_logprobs_limit(model: str, *, base_url: str, timeout: float) ->
     server actually returns. Used to size choice-mode candidate chunks."""
 
     probe_prompt = "質問: 「A」か「B」か。記号1文字だけで答えよ。\n\n答え:"
-    data = _ollama_call(model, probe_prompt, base_url=base_url, timeout=timeout, top_logprobs=50)
-    return len(_top_logprobs(data))
+    # Ollama rejects an over-limit top_logprobs with HTTP 400 (observed: 50 ->
+    # 400 on 0.34.1; 20 is the OpenAI-convention maximum), so step down.
+    for requested in (20, 10, 5):
+        try:
+            data = _ollama_call(
+                model, probe_prompt, base_url=base_url, timeout=timeout,
+                top_logprobs=requested,
+            )
+        except urllib.error.HTTPError:
+            continue
+        return len(_top_logprobs(data))
+    return 10
 
 
 def _read_gpu_temperature() -> float | None:
