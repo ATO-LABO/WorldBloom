@@ -26,6 +26,7 @@ from gapengine.evolve import _merge_rationality_table, evolve
 from gapengine.genome import Genome
 from gapengine.policy import Policy
 from gapengine.rationality import (
+    NullJudge,
     OllamaLogprobJudge,
     Rationality,
     RationalityTable,
@@ -402,6 +403,43 @@ class RationalityTableRoundTripTests(unittest.TestCase):
                 json.dumps({"a": 0.1, "b": 0.2}, ensure_ascii=False, sort_keys=True) + "\n",
             )
 
+    def test_save_is_atomic_and_leaves_no_temp_file_on_success(self) -> None:
+        """Stage 2 re-review item 1: ``save`` writes a same-directory temp
+        file and ``os.replace``s it into place, so Stage 3's several
+        experiments reading/writing one shared table never observe a
+        partially written file."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "rationality.json"
+            RationalityTable({"k0": 0.1}).save(path)
+            RationalityTable({"k0": 0.1, "k1": 0.4}).save(path)
+
+            self.assertEqual(
+                RationalityTable.load(path).to_dict(), {"k0": 0.1, "k1": 0.4}
+            )
+            leftovers = list(Path(temporary).glob("rationality.json.tmp-*"))
+            self.assertEqual(leftovers, [])
+
+    def test_save_failure_never_corrupts_the_existing_file(self) -> None:
+        """A write that fails partway through (disk full, permission error,
+        ...) must leave whatever was already on disk untouched -- the
+        replace only happens after the temp file is fully written."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "rationality.json"
+            RationalityTable({"k0": 0.1}).save(path)
+            original_bytes = path.read_bytes()
+
+            with patch(
+                "gapengine.rationality.Path.write_text",
+                side_effect=OSError("disk full"),
+            ):
+                with self.assertRaises(OSError):
+                    RationalityTable({"k0": 0.1, "k1": 0.9}).save(path)
+
+            self.assertEqual(path.read_bytes(), original_bytes)
+            self.assertEqual(RationalityTable.load(path).to_dict(), {"k0": 0.1})
+
     def test_evolve_merges_per_individual_new_entries_into_master_table(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             generation_dir = Path(temporary) / "g0"
@@ -710,8 +748,50 @@ class RationalityEvolveWiringTests(unittest.TestCase):
             summary_payload = json.loads(
                 (out_dir / "summary.json").read_text(encoding="utf-8")
             )
-            self.assertNotIn("rationality_judge_calls", summary_payload["generations"][0])
+            generation0 = summary_payload["generations"][0]
+            self.assertNotIn("rationality_judge_calls", generation0)
+            self.assertNotIn("rationality_budget_exhausted_runs", generation0)
+            self.assertNotIn("rationality_judge_disabled_runs", generation0)
             self.assertFalse((out_dir / "rationality.json").exists())
+
+    def test_budget_exhaustion_is_counted_in_the_generation_summary(self) -> None:
+        """Stage 2 re-review item 2: run_individual already tallies
+        rationality_budget_exhausted_runs/rationality_judge_disabled_runs
+        per job; generation_summary must sum them across every job (main
+        pass here, since this fixture doesn't coevolve) the same way it
+        already does for rationality_judge_calls."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            out_dir = Path(temporary) / "out"
+            evolve(
+                {
+                    "project": PROJECT,
+                    "template": TEMPLATE,
+                    "out": out_dir,
+                    "generations": 1,
+                    "population": 2,
+                    "seeds": 1,
+                    "keep": "all",
+                    "rationality": {
+                        "kappa": 1.0,
+                        "backend": "fake",
+                        "method": "noul",
+                        # 1: FakeJudge always returns real values for the
+                        # candidates it scores, so a single-call budget
+                        # truncates without ever making the "all candidates
+                        # came back None" circuit-breaker condition true --
+                        # isolating budget_exhausted from judge_disabled.
+                        "max_judge_calls_per_run": 1,
+                    },
+                }
+            )
+
+            summary_payload = json.loads(
+                (out_dir / "summary.json").read_text(encoding="utf-8")
+            )
+            generation0 = summary_payload["generations"][0]
+            self.assertGreater(generation0["rationality_budget_exhausted_runs"], 0)
+            self.assertEqual(generation0["rationality_judge_disabled_runs"], 0)
 
 
 class RationalityNonNeutralGenomeTests(unittest.TestCase):
@@ -802,6 +882,28 @@ class RationalityCircuitBreakerTests(unittest.TestCase):
         self.assertEqual(judge.calls, 3)
         self.assertTrue(rationality.meta["judge_disabled"])
         self.assertEqual(rationality.meta["judge_calls"], 3)
+
+    def test_null_judge_never_trips_the_circuit_breaker(self) -> None:
+        """Stage 2 re-review item 3: NullJudge (backend "none") always
+        returns all-None by design -- that is the intended "layer enabled,
+        no judge" control condition, not a systemic failure, so it must
+        never set judge_disabled even after many decision points."""
+
+        world, subjects = load_fixture()
+        actor = subjects[world.protagonist]
+        present = world.present_subjects(actor.zone)
+        judge = NullJudge()
+        rationality = Rationality(
+            kappa=1.0, table=RationalityTable(), judge=judge, method="noul"
+        )
+        actions = [Action("rest")]
+
+        for _ in range(10):
+            m_list, p_list = rationality.multipliers(actor, world, present, actions)
+
+        self.assertFalse(rationality.meta.get("judge_disabled", False))
+        self.assertEqual(p_list, [None])
+        self.assertEqual(m_list, [1.0])
 
 
 class RationalityNeutralGenomeAppliesTests(unittest.TestCase):
@@ -939,6 +1041,156 @@ class ThermalGuardTests(unittest.TestCase):
             rationality.multipliers(actor, world, present, actions)
 
         self.assertEqual(rationality.meta["thermal_wait_seconds"], 10.0)
+
+
+class RationalityCliMethodFlagTests(unittest.TestCase):
+    """Stage 2 re-review item 4: ``--rationality-method`` lets an experiment
+    pick noul vs choice without editing the template's rationality.yaml."""
+
+    def test_rationality_method_flag_reaches_evolve_cfg(self) -> None:
+        import scripts.evolve as evolve_script
+
+        args = evolve_script.build_parser().parse_args(
+            [
+                "--project", str(PROJECT),
+                "--template", str(TEMPLATE),
+                "--out", "unused",
+                "--rationality-method", "choice",
+            ]
+        )
+        self.assertEqual(args.rationality_method, "choice")
+
+        captured: dict[str, Any] = {}
+
+        def fake_evolve(cfg, *, observer=None):
+            captured.update(cfg)
+            from gapengine.qd import Archive
+
+            return Archive()
+
+        with patch.object(evolve_script, "evolve", fake_evolve):
+            evolve_script.main(
+                [
+                    "--project", str(PROJECT),
+                    "--template", str(TEMPLATE),
+                    "--out", "unused",
+                    "--rationality-method", "choice",
+                ]
+            )
+
+        self.assertEqual(captured["rationality"]["method"], "choice")
+
+    def test_rationality_method_flag_defaults_to_none(self) -> None:
+        import scripts.evolve as evolve_script
+
+        args = evolve_script.build_parser().parse_args(
+            [
+                "--project", str(PROJECT),
+                "--template", str(TEMPLATE),
+                "--out", "unused",
+            ]
+        )
+        self.assertIsNone(args.rationality_method)
+
+
+class RationalityCoevolveWiringTests(unittest.TestCase):
+    """Stage 2 re-review item 5: coevolve's antagonist-evaluation pass
+    builds a run_individual job whose "genome" is a *protagonist* sample and
+    "antagonist_genome" is the coevolving individual under evaluation (see
+    evolve()'s antagonist_jobs construction) -- Rationality must attach to
+    that job's protagonist-role Policy (Opus review R4), the same as a
+    main-pass job.
+
+    This drives run_individual directly with such a job instead of going
+    through a full evolve() run: momotaro's default multi-day template
+    already gives RationalityHeaderTests/RationalityNonNeutralGenomeTests
+    etc. several genuine decision points per run, so starting from an empty
+    table (nothing cached yet) deterministically forces real judge calls on
+    the *first* run regardless of which genome/antagonist pairing is used --
+    unlike a full evolve() generation 0, where the antagonist pass always
+    re-visits exactly the same (genome, seed) pair the main pass already
+    scored moments earlier under the same coarse-situation cache, so it
+    reliably writes *zero* new entries (verified empirically; the coarse,
+    name/number-free situation rendering is deliberate cache-sharing design,
+    not a bug). Using the real out_dir path shape
+    (`generation_dir/antagonist/ind-0/`) still exercises the exact file this
+    test needs to prove exists, and folds it through the real
+    _merge_rationality_table -- the same two functions evolve() itself
+    calls for this wiring."""
+
+    def test_antagonist_shaped_job_writes_and_merges_protagonist_rationality(
+        self,
+    ) -> None:
+        from gapengine.evolve import run_individual
+        from gapengine.precedent import PrecedentTable
+
+        world, _subjects = load_fixture()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            generation_dir = root / "g0"
+            table_path = root / "rationality.json"  # doesn't exist yet: empty table
+
+            job = {
+                "action_cfg": action_cfg(),
+                "action_graph_path": None,
+                "antagonist": world.antagonist,
+                "antagonist_action_cfg": action_cfg(),
+                # The coevolving individual under evaluation this pass --
+                # never given a Rationality (only the protagonist role is).
+                "antagonist_genome": Genome.random(random.Random(11)).to_dict(),
+                "antagonist_precedent_json": PrecedentTable().to_json(),
+                # The protagonist-archive sample being re-scored.
+                "genome": Genome.neutral().to_dict(),
+                "index": 0,
+                "logical_root": str(root),
+                "out_dir": str(generation_dir / "antagonist" / "ind-0"),
+                "parents": [],
+                "precedent_json": PrecedentTable().to_json(),
+                "protagonist": world.protagonist,
+                "qd_cfg": {
+                    "categories": ["I", "II", "III", "IV", "V", "VI"],
+                    "volatility_bins": ["low", "mid", "high"],
+                },
+                "record_explanations": False,
+                "rules": rules_cfg(),
+                "seeds": [0],
+                "subjects_dir": str(PROJECT / "subjects"),
+                "target_ending": None,
+                "world_path": str(PROJECT / "world.yaml"),
+                "rationality_cfg": {
+                    "kappa": 1.0,
+                    "method": "noul",
+                    "backend": "fake",
+                    "common_knowledge": [],
+                    "key_items": [],
+                    "max_judge_calls": None,
+                },
+                "rationality_table_path": str(table_path),
+            }
+
+            result = run_individual(job)
+
+            self.assertGreater(result["rationality_judge_calls"], 0)
+            new_entries_path = (
+                generation_dir / "antagonist" / "ind-0" / "rationality-new.jsonl"
+            )
+            self.assertTrue(
+                new_entries_path.is_file(),
+                "expected the antagonist pass's protagonist-sample job to "
+                "have written rationality-new.jsonl",
+            )
+            new_rows = [
+                json.loads(line)
+                for line in new_entries_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertGreater(len(new_rows), 0)
+
+            merged = _merge_rationality_table(generation_dir, table_path).to_dict()
+            for row in new_rows:
+                self.assertIn(row["key"], merged)
+                self.assertEqual(merged[row["key"]], row["p"])
 
 
 if __name__ == "__main__":
