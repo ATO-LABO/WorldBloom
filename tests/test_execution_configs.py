@@ -387,6 +387,112 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             self.store.verify_run("run-test")
 
+    # ------------------------------------------------------- WB-JEV-002
+
+    def _momotaro_spec(self, **evolution):
+        return {"label": "桃太郎 合理性", "project_id": "momotaro", "template_id": "momotaro",
+                "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all",
+                              **evolution}}
+
+    def test_reject_invalid_kappa_and_rationality_fields(self):
+        for bad in (True, False, -0.01, 1.01, "0.5", [0.5]):
+            with self.subTest(bad=bad), self.assertRaises(ConfigError):
+                self.store.preview({**self.spec, "evolution": {"kappa": bad}})
+        for field, bad in (
+            ("rationality_backend", "openai"),
+            ("rationality_method", "bad"),
+            ("rationality_max_calls", 0),
+            ("rationality_max_calls", 1.5),
+            ("rationality_max_calls", True),
+            ("rationality_table", "rationality.json"),
+            ("rationality_table", "../escape.json"),
+        ):
+            with self.subTest(field=field, bad=bad), self.assertRaises(ConfigError):
+                self.store.preview({**self.spec, "evolution": {field: bad}})
+        # In-range values, and a legitimate backend/method/max_calls override,
+        # are all accepted.
+        for kappa in (0, 0.0, 1, 1.0, 0.5, None):
+            with self.subTest(kappa=kappa):
+                self.store.preview({**self.spec, "evolution": {"kappa": kappa}})
+        self.store.preview({**self.spec, "evolution": {
+            "rationality_backend": "none", "rationality_method": "choice",
+            "rationality_max_calls": 3}})
+
+    def test_kappa_zero_normalizes_to_none_like_legacy(self):
+        zero = self.store.save(self._momotaro_spec(kappa=0), config_id="cfg-kappa-zero")
+        none = self.store.save(self._momotaro_spec(kappa=None), config_id="cfg-kappa-none")
+        absent = self.store.save(self._momotaro_spec(), config_id="cfg-kappa-absent")
+        self.assertIsNone(zero["evolution"]["kappa"])
+        self.assertIsNone(none["evolution"]["kappa"])
+        self.assertIsNone(absent["evolution"]["kappa"])
+        # A pre-WB-JEV-002 spec (no rationality.* keys at all in "evolution")
+        # still normalizes fine -- every new key is defaulted to None.
+        legacy = self.store.save(self.spec, config_id="cfg-legacy-evolution")
+        for key in ("kappa", "rationality_backend", "rationality_method",
+                    "rationality_table", "rationality_max_calls"):
+            self.assertIsNone(legacy["evolution"][key])
+
+    def test_prepare_run_kappa_none_or_zero_argv_matches_legacy_cli(self):
+        self.runtime()
+        direct = self.base / "direct-momotaro"
+        args = [sys.executable, "-B", str(self.repo / "scripts/evolve.py"),
+                "--project", str(self.repo / "projects/momotaro"),
+                "--template", str(self.repo / "templates/momotaro"), "--out", str(direct),
+                "--generations", "1", "--population", "2", "--seeds", "1", "--keep", "all"]
+        subprocess.run(args, check=True, capture_output=True, timeout=60)
+        direct_logs = {p.relative_to(direct).as_posix(): p.read_bytes() for p in direct.rglob("layers.jsonl")}
+        self.assertTrue(direct_logs)
+        for kappa in (None, 0):
+            with self.subTest(kappa=kappa):
+                cid, rid, jid = f"cfg-momo-{kappa}", f"run-momo-{kappa}", f"job-momo-{kappa}"
+                self.store.save(self._momotaro_spec(kappa=kappa), config_id=cid)
+                manifest = self.store.prepare_run(cid, run_id=rid, job_id=jid)
+                self.assertNotIn("--kappa", manifest["argv"])
+                self.assertNotIn("--rationality-table", manifest["argv"])
+                result = subprocess.run(manifest["argv"], capture_output=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+                fixed = self.store.runs / rid
+                fixed_logs = {p.relative_to(fixed).as_posix(): p.read_bytes() for p in fixed.rglob("layers.jsonl")}
+                self.assertEqual(fixed_logs, direct_logs)
+
+    def test_prepare_run_kappa_positive_adds_rationality_table_under_control(self):
+        self.runtime()
+        self.store.save(self._momotaro_spec(kappa=0.6), config_id="cfg-momo-on")
+        manifest = self.store.prepare_run("cfg-momo-on", run_id="run-on", job_id="job-on")
+        self.assertIn("--kappa", manifest["argv"])
+        self.assertIn("0.6", manifest["argv"])
+        self.assertIn("--rationality-table", manifest["argv"])
+        table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1])
+        self.assertTrue(table_path.is_relative_to(self.store.control / "rationality"))
+        # momotaro's rationality.yaml: method=choice, backend.model=qwen3.6:35b
+        # (":" is not filename-safe, so it is folded into "_").
+        self.assertEqual(table_path.name, "momotaro.qwen3.6_35b.choice.json")
+        self.assertTrue(table_path.parent.is_dir())
+
+    def test_prepare_run_kappa_positive_honors_rationality_method_override(self):
+        self.runtime()
+        self.store.save(self._momotaro_spec(kappa=0.6, rationality_method="noul"), config_id="cfg-momo-noul")
+        manifest = self.store.prepare_run("cfg-momo-noul", run_id="run-noul", job_id="job-noul")
+        table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1])
+        self.assertEqual(table_path.name, "momotaro.qwen3.6_35b.noul.json")
+
+    def test_prepare_run_rationality_table_path_survives_hostile_model_name(self):
+        """A rationality.yaml model name containing ".." or a path separator
+        must never let --rationality-table escape the control root -- this is
+        a security boundary (WB-JEV-002 plan §2), not just a display detail."""
+        self.runtime()
+        path = self.repo / "templates/momotaro/rationality.yaml"
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        doc["backend"]["model"] = "../../../evil/model"
+        path.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+        self.store.save(self._momotaro_spec(kappa=0.6), config_id="cfg-momo-hostile")
+        manifest = self.store.prepare_run("cfg-momo-hostile", run_id="run-hostile", job_id="job-hostile")
+        table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1]).resolve()
+        control_rationality = (self.store.control / "rationality").resolve()
+        self.assertEqual(control_rationality, table_path.parent)
+        self.assertTrue(table_path.is_relative_to(control_rationality))
+        self.assertNotIn("..", table_path.parts)
+
 
 if __name__ == "__main__":
     unittest.main()

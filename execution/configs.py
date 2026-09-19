@@ -20,8 +20,9 @@ import yaml
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.world import World
-from gapengine.evolve import _load_yaml, _rule_ids
+from gapengine.evolve import _load_yaml, _rationality_backend_cfg, _rule_ids
 from gapengine.genome import Genome
+from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
 from gapengine.policy import _compile_rules
 from gapengine.precedent import load_canon
 from gapengine.synopsis import _backend_config
@@ -30,6 +31,15 @@ from execution.provenance import (
     ConfigError, atomic_json, canonical, code_snapshot, contained, directory_lock,
     identifier, materialize, publish_directory, python_executable, read_json, sha256, verify_files,
 )
+
+
+def _safe_path_token(value):
+    """Collapse anything but [A-Za-z0-9._-] to "_" -- used only to turn a
+    rationality.yaml model name into one filename component (WB-JEV-002).
+    template_id is already identifier()-safe; this covers the model/method
+    names, which come from repo content rather than the API, so a stray "/"
+    or ".." in a hand-edited rationality.yaml still can't leave the token."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", str(value)) or "_"
 
 
 def _now():
@@ -108,6 +118,28 @@ def normalize(spec):
             or any(not isinstance(x, str) or not x for x in endings)
             or len(set(endings)) != len(endings)):
         raise ConfigError("evolution.target_ending", "結末IDの重複しない配列を指定してください")
+    # WB-JEV-002: kappa is the only rationality field the UI/API may set.
+    # rationality_table is never accepted here -- it would let a caller point
+    # GA at an arbitrary write path -- prepare_run() alone decides it, always
+    # under this config's own control root (see below).
+    kappa = values["kappa"]
+    if kappa is not None:
+        if (type(kappa) is bool or not isinstance(kappa, (int, float))
+                or not (0 <= kappa <= 1)):
+            raise ConfigError("evolution.kappa", "0〜1の数値を指定してください")
+        # 0 means "off", same as never having set it -- normalizing it away
+        # here keeps a kappa=0 config byte-identical to a pre-WB-JEV-002 one,
+        # so prepare_run()'s CLI argv (and the frozen-runtime tests that
+        # compare it against a hand-typed invocation) never see --kappa 0.
+        values["kappa"] = None if kappa == 0 else float(kappa)
+    if values["rationality_backend"] not in (None, "ollama", "none"):
+        raise ConfigError("evolution.rationality_backend", "backendの指定が不正です")
+    if values["rationality_method"] not in (None, "noul", "choice"):
+        raise ConfigError("evolution.rationality_method", "methodの指定が不正です")
+    if values["rationality_max_calls"] is not None:
+        _integer(values["rationality_max_calls"], "evolution.rationality_max_calls", 1)
+    if values["rationality_table"] is not None:
+        raise ConfigError("evolution.rationality_table", "表の保存先はサーバーが決めます")
     result["evolution"] = deepcopy(values)
     limits = spec.get("execution_limits", {})
     _keys(limits, {"wall_seconds"}, "execution_limits")
@@ -436,6 +468,28 @@ class ConfigStore:
                 elif value is not None:
                     argv.append(flag)
                     argv.extend(value if isinstance(value, list) else [str(value)])
+            kappa = config["evolution"]["kappa"]
+            if kappa is not None:
+                # WB-JEV-002: the shared table lives under this store's own
+                # control root, one file per (template, model, method) so
+                # unrelated genres/backends never collide or overwrite each
+                # other's accumulated judgments. rationality_table itself is
+                # never accepted from the API (normalize(), above) -- this is
+                # the only place a --rationality-table flag is ever built.
+                # Read from the frozen inputs just materialized above (not
+                # self.repo): a live repo edit after this config was saved
+                # must never change which table a prepared run points at,
+                # same guarantee as --project/--template/--out above.
+                rationality_yaml, rationality_yaml_backend, rationality_override = (
+                    _rationality_backend_cfg(
+                        {"rationality": {"method": config["evolution"]["rationality_method"]}},
+                        staging / "inputs/templates" / config["template_id"]))
+                method = rationality_override.get("method") or rationality_yaml.get("method", "noul")
+                model = rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
+                table_path = contained(self.control, "rationality/{}.{}.{}.json".format(
+                    config["template_id"], _safe_path_token(model), _safe_path_token(method)))
+                table_path.parent.mkdir(parents=True, exist_ok=True)
+                argv.extend(["--rationality-table", str(table_path)])
             manifest = {"schema_version": 1, "run_id": rid, "job_id": job_id,
                         "config_id": config_id, "created_at": _now(),
                         "input_manifest_sha256": config["input_manifest_sha256"],
