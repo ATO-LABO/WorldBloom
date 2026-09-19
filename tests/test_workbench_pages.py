@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 
@@ -284,6 +285,110 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('data-parent="cfg-test"', body)
         self.assertGreaterEqual(body.count('type="hidden"'), 2)
         self.assertIn('data-summary', body)
+
+    # ------------------------------------------------------- WB-JEV-002
+
+    def test_no_rationality_section_for_genre_without_rationality_yaml(self):
+        # "romance" has no templates/romance/rationality.yaml -- the section,
+        # the κ field and its default must all be absent.
+        status, body, _ = self.get_status("/configs/new?project=romance&template=romance")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn('data-field="evolution.kappa"', body)
+        self.assertNotIn("合理性（主人公がどれだけ筋の通った手を選ぶか）", body)
+
+    def test_kappa_slider_defaults_to_0_6_and_raises_wall_seconds_when_judge_available(self):
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}):
+            status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertIn('data-field="evolution.kappa"', body)
+        self.assertIn('type="range" name="evolution.kappa"', body)
+        self.assertIn('value="0.6"', body)
+        # 6h default when the judge is reachable, so the default estimate
+        # (20*100*3 runs * ~90s/run ≈ 150h) is compared against 21600, not
+        # the plain 3600 default -- and still trips the warning either way.
+        self.assertIn('value="21600"', body)
+        self.assertIn("判定器: Ollama qwen3.6:35b — 利用可", body)
+        self.assertIn("判定器の見込み", body)
+        self.assertIn("見込みが実行時間の上限を超えています", body)
+
+    def test_kappa_slider_defaults_to_0_and_shows_reason_when_judge_unavailable(self):
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": False, "reason": "server_unreachable"}):
+            status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertIn('value="0"', body)
+        self.assertIn("利用不可（サーバーに接続できません）。κ は 0 で保存されます", body)
+        # kappa=0 -> no ETA/warning line at all (no judge calls expected).
+        self.assertNotIn("判定器の見込み", body)
+        # The judge being unreachable must never raise the wall-clock default.
+        self.assertNotIn('name="execution_limits.wall_seconds"', "")  # sanity: field always present
+        self.assertIn('value="3600"', body)
+
+    def test_kappa_duplicate_form_shows_saved_value_not_a_fresh_default(self):
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}):
+            self.configs.save(
+                {"label": "桃太郎 κ0.3", "project_id": "momotaro", "template_id": "momotaro",
+                 "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all", "kappa": 0.3}},
+                config_id="cfg-momo-duplicate",
+            )
+            status, body, _ = self.get_status("/configs/new?from=cfg-momo-duplicate")
+        self.assertEqual(status, 200, body)
+        self.assertIn('value="0.3"', body)
+
+    def test_config_detail_and_run_plan_show_rationality_summary(self):
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}):
+            self.configs.save(
+                {"label": "桃太郎 κ0.6", "project_id": "momotaro", "template_id": "momotaro",
+                 "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all", "kappa": 0.6}},
+                config_id="cfg-momo-on",
+            )
+        status, body, _ = self.get_status("/configs/cfg-momo-on")
+        self.assertEqual(status, 200, body)
+        self.assertIn("合理性 κ", body)
+        self.assertIn("0.6 (choice / qwen3.6:35b)", body)
+
+        status, body, _ = self.get_status("/configs/cfg-test")
+        self.assertEqual(status, 200, body)
+        self.assertIn("合理性 κ", body)
+        self.assertIn("無効", body)
+
+        self.fake.add(_job("job-momo-on", "run-momo-on", "running", config_id="cfg-momo-on"))
+        status, body, _ = self.get_status("/jobs/job-momo-on")
+        self.assertEqual(status, 200, body)
+        self.assertIn("0.6 (choice / qwen3.6:35b)", body)
+
+    def test_quick_start_hint_shown_only_for_rationality_genre(self):
+        status, body, _ = self.get_status("/worlds/momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertIn("合理性（κ）は実行設定で指定します。", body)
+
+        status, body, _ = self.get_status("/worlds/romance")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn("合理性（κ）は実行設定で指定します。", body)
+
+    def test_run_progress_panel_shows_rationality_totals_and_judge_disabled_warning(self):
+        run_id = "run-rationality-progress"
+        self._hand_published_run(run_id, "cfg-test", summary={
+            "generations": [
+                {"generation": 0, "rationality_judge_calls": 5, "rationality_table_size": 5,
+                 "rationality_thermal_wait_seconds": 12.0, "rationality_budget_exhausted_runs": 0,
+                 "rationality_judge_disabled_runs": 0},
+                {"generation": 1, "rationality_judge_calls": 3, "rationality_table_size": 8,
+                 "rationality_thermal_wait_seconds": 0.0, "rationality_budget_exhausted_runs": 1,
+                 "rationality_judge_disabled_runs": 1},
+            ],
+        })
+        self.fake.add(_job("job-rationality", run_id, "succeeded", publication_revision=1))
+        status, body, _ = self.get_status("/jobs/job-rationality")
+        self.assertEqual(status, 200, body)
+        self.assertIn("判定コール 8 回（累計）", body)
+        self.assertIn("表サイズ 8", body)
+        self.assertIn("熱待機 12 秒", body)
+        self.assertIn("予算切れ 1 件", body)
+        self.assertIn("判定器が途中で使えなくなり、以降は合理性が効いていません。", body)
 
     def test_output_settings_api_round_trip(self):
         status, before = self.http("GET", "/api/settings/output")

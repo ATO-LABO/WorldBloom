@@ -75,7 +75,7 @@
         value = el.value;
       } else if (el.type === "checkbox") {
         value = el.checked;
-      } else if (el.type === "number") {
+      } else if (el.type === "number" || el.type === "range") {
         value = el.value === "" ? null : Number(el.value);
       } else if (el.dataset.field === "evolution.target_ending") {
         const parts = el.value.split(",").map((part) => part.trim()).filter(Boolean);
@@ -210,6 +210,17 @@
     if (genreSelect) {
       genreSelect.addEventListener("input", updateSummary);
       genreSelect.addEventListener("change", updateSummary);
+    }
+
+    // WB-JEV-002: the κ slider's live numeric readout. Server-rendered
+    // hints (judge status, ETA) stay static until the next full page load --
+    // only this <output> display updates as the slider moves.
+    const kappaInput = form.querySelector('[data-field="evolution.kappa"]');
+    const kappaOutput = form.querySelector("[data-kappa-output]");
+    if (kappaInput && kappaOutput) {
+      kappaInput.addEventListener("input", () => {
+        kappaOutput.textContent = kappaInput.value;
+      });
     }
 
     form.addEventListener("submit", async (event) => {

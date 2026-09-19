@@ -17,6 +17,10 @@ from execution.configs import evolution_defaults, generation_availability, quick
 from execution.output_settings import API_KEY_BACKENDS, read_output_settings
 from execution.provenance import ConfigError, contained
 from execution.worker import TERMINAL
+from gapengine.evolve import _load_yaml, _rationality_backend_cfg
+from gapengine.ollama import DEFAULT_BASE_URL as RATIONALITY_DEFAULT_BASE_URL
+from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
+from gapengine.ollama import availability as _ollama_availability
 from viewer import data, explanation_ui, job_api, pages, world_graph
 
 
@@ -88,6 +92,21 @@ GENERATION_REASON_LABELS = {
     "model_missing": "そのモデルは見つかりません",
     "server_unreachable": "サーバーに接続できません",
 }
+
+# WB-JEV-002: the config form's κ slider section. Description/note text is
+# used verbatim (plan §3).
+RATIONALITY_DESCRIPTION = (
+    "毎ターン、判定器が候補の行動それぞれに「本人の知る限りで目的に近づく手か」の確率を付けます。"
+    "κ はその判定にどれだけ従うかの強さです。0 で無効（従来と同じ動き）、大きいほど筋の通った手を"
+    "選びやすくなります。性格（遺伝子）の違いはこの範囲の中で効きます。"
+)
+RATIONALITY_NOTE = "κ を 0 より大きくすると判定器（ローカル LLM）を呼ぶため、実行に時間がかかります。"
+# Stage 3 measured ~90s/run at kappa>0 (one Ollama /api/chat call per
+# candidate action, roughly 4.2s x ~20 calls) -- used only for the config
+# form's ETA hint below, never for anything that gates or blocks a save.
+# ponytail: fixed constant estimate; could instead be derived from recent
+# generation_summary judge-call timings if this proves too rough in practice.
+JUDGE_SECONDS_PER_RUN = 90
 
 
 def availability_label(availability):
@@ -347,11 +366,108 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
     values["evolution.keep"] = evolution["keep"]
     for key in ("coevolve", "meta_evolution", "record_explanations"):
         values[f"evolution.{key}"] = evolution[key]
+    # .get(), not [...]: a config saved before WB-JEV-002 added "kappa" to
+    # evolution_defaults() has no such key at all.
+    values["evolution.kappa"] = evolution.get("kappa")
     values["evolution.target_ending"] = (
         ", ".join(evolution["target_ending"]) if evolution.get("target_ending") else ""
     )
     values["execution_limits.wall_seconds"] = execution_limits["wall_seconds"]
     return values
+
+
+def _rationality_form_context(repo, template_id):
+    """Whether templates/<template_id>/rationality.yaml exists, and the local
+    judge's live reachability (WB-JEV-002). None when the template has no
+    rationality.yaml at all -- render_config_form then leaves the κ slider
+    out of the form entirely and kappa stays None. Only ever reads Ollama's
+    /api/tags (gapengine.ollama.availability); never calls /api/chat or
+    /api/generate."""
+    if not template_id:
+        return None
+    path = repo / "templates" / template_id / "rationality.yaml"
+    if not path.is_file():
+        return None
+    doc = _load_yaml(path, {}) or {}
+    if not isinstance(doc, dict):
+        return None
+    backend = dict(doc.get("backend") or {})
+    method = str(doc.get("method", "noul"))
+    model = str(backend.get("model", RATIONALITY_DEFAULT_MODEL))
+    if str(backend.get("type", "none")) != "ollama":
+        return {"model": model, "method": method, "available": False, "reason": None}
+    probe = _ollama_availability(
+        {"model": model, "base_url": backend.get("base_url", RATIONALITY_DEFAULT_BASE_URL)},
+        timeout=2.0,
+    )
+    return {"model": model, "method": method,
+            "available": bool(probe["available"]), "reason": probe["reason"]}
+
+
+def _rationality_summary(repo, template_id, evolution):
+    """"合理性 κ: 0.6（choice / qwen3.6:35b）" or "無効", for the saved-config
+    detail page and the run screen's config summary (WB-JEV-002). Reuses
+    gapengine.evolve._rationality_backend_cfg's own override precedence so
+    this text can never disagree with what a run would actually do."""
+    kappa = evolution.get("kappa")
+    if kappa is None:
+        return "無効"
+    rationality_yaml, rationality_yaml_backend, override = _rationality_backend_cfg(
+        {"rationality": {"method": evolution.get("rationality_method")}},
+        repo / "templates" / template_id,
+    )
+    method = override.get("method") or rationality_yaml.get("method", "noul")
+    model = rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
+    return f"{kappa} ({method} / {model})"
+
+
+def _kappa_field(value):
+    return (
+        '<div class="field">'
+        '<label for="f-evolution.kappa">κ（0〜1）<span class="key">kappa</span></label>'
+        '<div class="kappa-row">'
+        f'<input id="f-evolution.kappa" type="range" name="evolution.kappa" '
+        f'data-field="evolution.kappa" min="0" max="1" step="0.05" value="{_escape(value)}" '
+        'aria-describedby="kappa-desc kappa-status">'
+        f'<output for="f-evolution.kappa" data-kappa-output>{_escape(value)}</output>'
+        "</div>"
+        '<span class="field-error" data-error-for="evolution.kappa" role="alert"></span>'
+        "</div>"
+    )
+
+
+def _rationality_section(values, ctx, *, total_runs, wall_seconds):
+    kappa_value = values.get("evolution.kappa") or 0
+    if ctx["available"]:
+        status = f'判定器: Ollama {ctx["model"]} — 利用可'
+    else:
+        reason = GENERATION_REASON_LABELS.get(ctx["reason"], ctx["reason"] or "不明")
+        status = f'判定器: Ollama {ctx["model"]} — 利用不可（{reason}）。κ は 0 で保存されます'
+    eta_html = ""
+    if kappa_value and total_runs:
+        seconds = total_runs * JUDGE_SECONDS_PER_RUN
+        eta_text = f"約{math.ceil(seconds / 60)}分" if seconds >= 60 else f"約{round(seconds)}秒"
+        eta_html = (
+            f'<p class="hint">判定器の見込み: {_escape(eta_text)}'
+            "（1 ラン約90秒で概算。表が育つほど短くなります）</p>"
+        )
+        if wall_seconds is not None and seconds > wall_seconds:
+            eta_html += (
+                '<p class="warning">判定器の見込みが実行時間の上限を超えています。'
+                "上限を見直すか、規模を小さくしてください。</p>"
+            )
+    return (
+        '<section class="cfg-sec"><div class="cfg-sec-head">'
+        "<h2>合理性（主人公がどれだけ筋の通った手を選ぶか）</h2>"
+        f'<p class="desc" id="kappa-desc">{_escape(RATIONALITY_DESCRIPTION)}</p>'
+        '</div><div class="cfg-sec-body">'
+        + _kappa_field(kappa_value)
+        + '<p class="hint">0 無効 / 0.3 穏やか / 0.6 推奨 / 1.0 ほぼ判定器どおり</p>'
+        + f'<p class="hint" id="kappa-status">{_escape(status)}</p>'
+        + f'<p class="hint">{_escape(RATIONALITY_NOTE)}</p>'
+        + eta_html
+        + "</div></section>"
+    )
 
 
 def _new_config_values():
@@ -363,7 +479,8 @@ def _new_config_values():
     )
 
 
-def render_config_form(values, *, projects, templates, parent_config_id=None, world_genres=None):
+def render_config_form(values, *, projects, templates, parent_config_id=None, world_genres=None,
+                        rationality=None):
     duplicate = parent_config_id is not None
     if duplicate:
         # No data-field here: project_id/template_id are fixed by the parent
@@ -447,6 +564,14 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
         + "</div>",
     )
 
+    section4 = (
+        _rationality_section(
+            values, rationality, total_runs=total,
+            wall_seconds=_as_int(values["execution_limits.wall_seconds"]),
+        )
+        if rationality is not None else ""
+    )
+
     section5a = _section(
         "乱数と並列", "同じ値なら同じ結果になります（決定論）。",
         '<div class="cols">'
@@ -476,7 +601,7 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
     return (
         f'<form data-wb="config-form"{parent_attr} class="cfg-form">'
         '<p class="form-error" data-form-error role="alert"></p>'
-        + section1 + section2 + section3
+        + section1 + section2 + section3 + section4
         + '<details class="cfg-adv"><summary>詳細設定 '
           '<small>乱数・並列・時間上限。通常は変更不要。</small></summary>'
         + section5a + section5b
@@ -527,7 +652,7 @@ def render_configs_list(configs):
     return '<section class="card"><h2>実行設定</h2>' + table + "</section>"
 
 
-def render_config_detail(config):
+def render_config_detail(config, repo):
     preview = config["preview"]
     ev = config["evolution"]
     parent = config.get("parent_config_id")
@@ -555,6 +680,7 @@ def render_config_detail(config):
         ("説明記録", _escape(ev["record_explanations"])),
         ("結末", _escape(ending_text)),
         ("実行時間上限（秒）", _escape(config["execution_limits"]["wall_seconds"])),
+        ("合理性 κ", _escape(_rationality_summary(repo, config["template_id"], ev))),
     ]) + '<p class="muted">列の値は次の版で変更可</p>'
     fixed = preview["fixed_parameters"]
     fixed_section = _dl([
@@ -772,7 +898,7 @@ def _config_aux_links(config, world):
     )
 
 
-def _run_plan(config, estimate, *, open_detail=False):
+def _run_plan(config, estimate, repo, *, open_detail=False):
     ev = config["evolution"]
     preview = config["preview"]
     coevolve = "あり" if ev.get("coevolve") else "なし"
@@ -782,6 +908,7 @@ def _run_plan(config, estimate, *, open_detail=False):
          f'{_escape(preview["planned_individual_evaluations"])} / {_escape(preview["planned_seed_evaluations"])}'),
         ("保存方針", _escape(ev["keep"])),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
+        ("合理性 κ", _escape(_rationality_summary(repo, config["template_id"], ev))),
     ])
     # A running job's page reloads on every publication_revision change
     # (workbench.js's poll loop), which would otherwise re-collapse this
@@ -868,7 +995,7 @@ def _run_prep(view):
     if job is None:
         parts.append(_run_config_picker(world, configs, config))
         parts.append(_config_aux_links(config, world))
-        parts.append(_run_plan(config, view["estimate"]))
+        parts.append(_run_plan(config, view["estimate"], view["repo"]))
         if view["blocking_job"] is not None:
             parts.append(_blocking_notice(view["blocking_job"]))
         else:
@@ -876,7 +1003,7 @@ def _run_prep(view):
         parts.append('<p class="muted">GA は LLM を呼び出しません。</p>')
     else:
         parts.append(f'<p>設定: <a href="/configs/{_url(config["config_id"])}">{_escape(config["label"])}</a></p>')
-        parts.append(_run_plan(config, view["estimate"], open_detail=True))
+        parts.append(_run_plan(config, view["estimate"], view["repo"], open_detail=True))
         if job["state"] in RUNNING_STATES:
             parts.append(_cancel_controls(job))
             parts.append('<p class="muted">停止すると、閉じた世代までの結果は残ります。</p>')
@@ -991,6 +1118,40 @@ def _generation_trend_table(generations):
     )
 
 
+def _rationality_totals(generations):
+    """Fold a job's per-generation rationality_* summary fields (WB-JEV-001's
+    gapengine.evolve, only present on kappa>0 runs) into the progress panel's
+    one-line total (WB-JEV-002). judge_calls/thermal_wait/budget_exhausted/
+    judge_disabled accumulate across generations; table_size is already a
+    running total by construction (RationalityTable.load(...) at that point),
+    so the latest generation's own value is the right one to show."""
+    if not generations or "rationality_judge_calls" not in generations[-1]:
+        return None
+    return {
+        "judge_calls": sum(int(g.get("rationality_judge_calls", 0)) for g in generations),
+        "table_size": generations[-1].get("rationality_table_size", 0),
+        "thermal_wait_seconds": sum(
+            float(g.get("rationality_thermal_wait_seconds", 0.0)) for g in generations),
+        "budget_exhausted_runs": sum(
+            int(g.get("rationality_budget_exhausted_runs", 0)) for g in generations),
+        "judge_disabled_runs": sum(
+            int(g.get("rationality_judge_disabled_runs", 0)) for g in generations),
+    }
+
+
+def _rationality_progress_line(totals):
+    line = (
+        '<p class="run-rationality">合理性: '
+        f'判定コール {_escape(totals["judge_calls"])} 回（累計） ・ '
+        f'表サイズ {_escape(totals["table_size"])} ・ '
+        f'熱待機 {_escape(round(totals["thermal_wait_seconds"]))} 秒 ・ '
+        f'予算切れ {_escape(totals["budget_exhausted_runs"])} 件</p>'
+    )
+    if totals["judge_disabled_runs"] > 0:
+        line += '<p class="warning">判定器が途中で使えなくなり、以降は合理性が効いていません。</p>'
+    return line
+
+
 def _run_vessel_progress(view):
     job, config = view["job"], view["config"]
     ghost = job is None
@@ -1028,7 +1189,11 @@ def _run_vessel_progress(view):
     if job is not None:
         parts.append(_run_detail(job, progress))
         live = view.get("live")
-        parts.append(_generation_trend_table((live or {}).get("generations") or []))
+        generations = (live or {}).get("generations") or []
+        totals = _rationality_totals(generations)
+        if totals is not None:
+            parts.append(_rationality_progress_line(totals))
+        parts.append(_generation_trend_table(generations))
     parts.append("</section>")
     return "".join(parts)
 
@@ -1387,6 +1552,7 @@ def _run_view(handler, *, world_id=None, config_id=None, job=None):
         "world": world, "configs": world_configs, "config": config, "job": job,
         "blocking_job": blocking_job, "run_name": run_name, "live": live, "axes": axes,
         "estimate": estimate, "history_count": history_count, "request_id": request_id,
+        "repo": job_store.configs.repo,
     }
 
 
@@ -1875,8 +2041,10 @@ def _configs_new(handler):
             label=parent["label"], project_id=parent["project_id"], template_id=parent["template_id"],
             evolution=parent["evolution"], execution_limits=parent["execution_limits"],
         )
+        rationality_ctx = _rationality_form_context(repo, values["template_id"])
         body = render_config_form(values, projects=projects, templates=templates,
-                                   parent_config_id=from_id, world_genres=world_genres)
+                                   parent_config_id=from_id, world_genres=world_genres,
+                                   rationality=rationality_ctx)
         title = "実行設定を複製"
     else:
         values = _new_config_values()
@@ -1892,11 +2060,23 @@ def _configs_new(handler):
             genre = world_genres.get(project_preset)
             if genre in templates:
                 values["template_id"] = genre
+        # WB-JEV-002: a brand new form defaults kappa to 0.6 when the genre's
+        # judge is actually reachable right now, else 0 -- never touching a
+        # duplicate/edit's own saved value (handled above). A judge-enabled
+        # default also needs headroom in the wall-clock limit (~90s/run vs.
+        # the usual few seconds), so its default rises with it.
+        rationality_ctx = _rationality_form_context(repo, values["template_id"])
+        if rationality_ctx is not None:
+            if rationality_ctx["available"]:
+                values["evolution.kappa"] = 0.6
+                values["execution_limits.wall_seconds"] = 21600
+            else:
+                values["evolution.kappa"] = 0
         if values["project_id"] and values["template_id"]:
             values["label"] = quick_label(
                 world_names.get(values["project_id"], values["project_id"]), values["template_id"])
         body = render_config_form(values, projects=projects, templates=templates,
-                                   world_genres=world_genres)
+                                   world_genres=world_genres, rationality=rationality_ctx)
         title = "新しい実行設定"
     handler._send_html(pages.document(
         title, body, crumbs=[("実行設定", "/configs"), (title, "/configs/new")], phase="world",
@@ -1913,7 +2093,7 @@ def _configs_detail(handler, cid):
     config = job_store.configs.get(cid)
     label = config["label"]
     handler._send_html(pages.document(
-        f"実行設定: {label}", render_config_detail(config),
+        f"実行設定: {label}", render_config_detail(config, job_store.configs.repo),
         crumbs=[("実行設定", "/configs"), (label, f"/configs/{_url(cid)}")],
         phase="world", world=_config_world(config),
         lead="この設定版の内容を確認して実行します。",

@@ -763,7 +763,13 @@ def quick_start_actions(world_id, genre, world_name, run_href, *, css_class="", 
         f'data-project="{_escape(world_id)}" data-template="{_escape(genre)}" '
         f'data-world-name="{_escape(world_name)}">{_escape(text)}</a>'
     )
-    return quick + f' <a href="{_escape(run_href)}">設定を変更して実行</a>'
+    result = quick + f' <a href="{_escape(run_href)}">設定を変更して実行</a>'
+    if (data.ROOT / "templates" / genre / "rationality.yaml").is_file():
+        # WB-JEV-002: this button always saves kappa=None (rationality off,
+        # same as leaving the field untouched) -- the default scale
+        # (20*100*3=6,000 runs) would take ~150h at kappa=0.6.
+        result += '<p class="hint">合理性（κ）は実行設定で指定します。</p>'
+    return result
 
 
 def _project_info(job_store: Any) -> dict[str, dict[str, str]]:
