@@ -116,6 +116,22 @@ def normalize(spec):
     return result
 
 
+def _auto_launchable(settings, config, model):
+    """True when the GPU guard is on and llama-server's launch command can start `model`."""
+    from gapengine.synopsis import _output_section
+    if not isinstance(_output_section(settings).get("gpu_guard"), dict):
+        return False
+    launch = config.get("launch")
+    if not isinstance(launch, list) or not launch or not all(isinstance(x, str) for x in launch):
+        return False
+    if shutil.which(launch[0]) is None and not Path(launch[0]).is_file():
+        return False
+    # A launch command that names a different --alias would serve another model name.
+    if "--alias" in launch[:-1] and launch[launch.index("--alias") + 1] != model:
+        return False
+    return True
+
+
 def generation_availability(generation, settings_path=None):
     """Return only allowlisted facts. Never return credentials or raw errors."""
     backend = generation["backend"]
@@ -161,6 +177,12 @@ def generation_availability(generation, settings_path=None):
     if backend == "llama-server":
         from gapengine import llama_server
         probe = llama_server.availability({**config, "model": model})
+        if probe["reason"] == "server_unreachable" and _auto_launchable(settings, config, model):
+            # The GPU guard starts the server itself when generation runs, so a
+            # stopped server is not a reason to refuse the request -- the same
+            # way a CLI backend is available when its executable exists.
+            return {**base, "available": True, "authentication": "not_required",
+                    "reason": None, "startup": "auto_launch"}
         # Allowlisted facts only: the probe's raw error string is dropped.
         return {**base, "available": bool(probe["available"]),
                 "authentication": "not_required", "reason": probe["reason"]}
