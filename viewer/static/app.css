@@ -2776,6 +2776,35 @@ details {
   outline-offset: 2px;
 }
 
+/* 行動図鑑タブ (WB-UI-025) */
+details.catalog-verb {
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+details.catalog-verb.is-off {
+  opacity: 0.6;
+}
+details.catalog-verb summary {
+  cursor: pointer;
+}
+table.catalog-kinds {
+  margin-top: 0.5rem;
+}
+table.catalog-kinds code {
+  white-space: nowrap;
+}
+.badge-unimplemented {
+  display: inline-block;
+  font-size: 0.85em;
+  font-style: italic;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  padding: 0 0.4rem;
+}
+
 /* Home hub tabs (世界/ジャンル, WB-UI-023): same zero-JS pattern, 2 panels. */
 .tabs-home .tab-input:nth-of-type(1):checked ~ .tab-panels .tab-panel:nth-of-type(1),
 .tabs-home .tab-input:nth-of-type(2):checked ~ .tab-panels .tab-panel:nth-of-type(2) {
