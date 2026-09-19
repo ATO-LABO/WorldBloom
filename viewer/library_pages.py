@@ -14,7 +14,7 @@ import yaml
 
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
-from viewer import data, pages, job_api, world_graph
+from viewer import action_catalog, data, pages, job_api, world_graph
 from viewer.workbench_pages import _guidance_page, _job_store, _query
 
 _escape = pages._escape
@@ -397,6 +397,7 @@ def render_world_detail(world, store, job_store):
         ("概要", _overview_panel(world, world_yaml, subjects)),
         ("登場人物", _characters_panel(world, world_yaml, subjects, store, editors_html)),
         ("初期物語", _canon_panel(world, subjects, store)),
+        ("行動図鑑", action_catalog.catalog_panel_html(world, store.repo)),
         ("場所", _places_panel(world_yaml)),
         ("期間", _period_panel(world_yaml)),
     ]
