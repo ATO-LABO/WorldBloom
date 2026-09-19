@@ -38,8 +38,10 @@ def _safe_path_token(value):
     rationality.yaml model name into one filename component (WB-JEV-002).
     template_id is already identifier()-safe; this covers the model/method
     names, which come from repo content rather than the API, so a stray "/"
-    or ".." in a hand-edited rationality.yaml still can't leave the token."""
-    return re.sub(r"[^A-Za-z0-9._-]", "_", str(value)) or "_"
+    or ".." in a hand-edited rationality.yaml still can't leave the token.
+    Truncated to 80 chars (Opus review) -- a pathologically long model name
+    could otherwise approach Windows' MAX_PATH once joined under control."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", str(value))[:80] or "_"
 
 
 def _now():
@@ -387,6 +389,17 @@ class ConfigStore:
                 raise ConfigError("parent_config_id", "複製元と異なる入力は新規設定として保存してください")
             blobs = {r["path"]: contained(root / "inputs", r["path"]).read_bytes()
                      for r in manifest["files"]}
+        # Opus review: a genre switch (client-side, before submit) must not
+        # silently carry another genre's kappa along -- if this template has
+        # no rationality.yaml at all, kappa can never mean anything for it,
+        # so force it off here rather than trust the client to have cleared
+        # the field. Checked against the just-captured blobs (this save's own
+        # frozen snapshot), not a fresh disk read, so it can't race a
+        # concurrent repo edit.
+        if spec["evolution"]["kappa"] is not None:
+            key = f"templates/{spec['template_id']}/rationality.yaml"
+            if key not in blobs:
+                spec["evolution"]["kappa"] = None
         with tempfile.TemporaryDirectory(prefix="wb-config-preview-") as temp:
             materialize(Path(temp), blobs)
             try:
@@ -490,7 +503,11 @@ class ConfigStore:
                 elif value is not None:
                     argv.append(flag)
                     argv.extend(value if isinstance(value, list) else [str(value)])
-            kappa = config["evolution"]["kappa"]
+            # .get(), not [...]: a config.json saved before WB-JEV-002 added
+            # these keys to evolution_defaults() has none of them at all, and
+            # this manifest-derived "evolution" dict is read straight off
+            # disk here (not renormalized), unlike normalize()'s own inputs.
+            kappa = config["evolution"].get("kappa")
             if kappa is not None:
                 # WB-JEV-002: the shared table lives under this store's own
                 # control root, one file per (template, model, method) so
@@ -504,7 +521,7 @@ class ConfigStore:
                 # same guarantee as --project/--template/--out above.
                 rationality_yaml, rationality_yaml_backend, rationality_override = (
                     _rationality_backend_cfg(
-                        {"rationality": {"method": config["evolution"]["rationality_method"]}},
+                        {"rationality": {"method": config["evolution"].get("rationality_method")}},
                         staging / "inputs/templates" / config["template_id"]))
                 method = rationality_override.get("method") or rationality_yaml.get("method", "noul")
                 model = rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)

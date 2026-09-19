@@ -101,6 +101,13 @@ RATIONALITY_DESCRIPTION = (
     "選びやすくなります。性格（遺伝子）の違いはこの範囲の中で効きます。"
 )
 RATIONALITY_NOTE = "κ を 0 より大きくすると判定器（ローカル LLM）を呼ぶため、実行に時間がかかります。"
+# Opus review: reasons specific to the rationality judge probe (not
+# generation_availability()'s vocabulary, which GENERATION_REASON_LABELS
+# above covers) -- kept separate so the two reason namespaces never collide.
+RATIONALITY_REASON_LABELS = {
+    "invalid_base_url": "設定の base_url が不正です",
+    "non_ollama_backend": "ollama 以外の判定器は画面から使えません",
+}
 # Stage 3 measured ~90s/run at kappa>0 (one Ollama /api/chat call per
 # candidate action, roughly 4.2s x ~20 calls) -- used only for the config
 # form's ETA hint below, never for anything that gates or blocks a save.
@@ -395,30 +402,47 @@ def _rationality_form_context(repo, template_id):
     method = str(doc.get("method", "noul"))
     model = str(backend.get("model", RATIONALITY_DEFAULT_MODEL))
     if str(backend.get("type", "none")) != "ollama":
-        return {"model": model, "method": method, "available": False, "reason": None}
-    probe = _ollama_availability(
-        {"model": model, "base_url": backend.get("base_url", RATIONALITY_DEFAULT_BASE_URL)},
-        timeout=2.0,
-    )
+        return {"model": model, "method": method, "available": False,
+                "reason": "non_ollama_backend"}
+    base_url = str(backend.get("base_url", RATIONALITY_DEFAULT_BASE_URL))
+    if not base_url.startswith(("http://", "https://")):
+        # Opus review: rationality.yaml is editable from the genre/template
+        # editor, so a malformed base_url must be caught here -- never
+        # attempt a connection just from opening this form.
+        return {"model": model, "method": method, "available": False,
+                "reason": "invalid_base_url"}
+    probe = _ollama_availability({"model": model, "base_url": base_url}, timeout=2.0)
     return {"model": model, "method": method,
             "available": bool(probe["available"]), "reason": probe["reason"]}
 
 
-def _rationality_summary(repo, template_id, evolution):
-    """"合理性 κ: 0.6（choice / qwen3.6:35b）" or "無効", for the saved-config
-    detail page and the run screen's config summary (WB-JEV-002). Reuses
+def _frozen_template_dir(control, config):
+    """The template snapshot frozen into this config at save time (WB-JEV-002
+    Opus review), under this config's own control/configs/<id>/inputs --
+    never the live repo, which may have been edited since. Every saved
+    config has this directory (ConfigStore._capture_inputs freezes the whole
+    template), whether or not rationality.yaml happened to be among its
+    files."""
+    return control / "configs" / config["config_id"] / "inputs" / "templates" / config["template_id"]
+
+
+def _rationality_summary(template_dir, evolution):
+    """"0.6（choice / qwen3.6:35b）" or "無効", for the saved-config detail
+    page and the run screen's config summary (WB-JEV-002). template_dir must
+    be the FROZEN per-config template snapshot (see _frozen_template_dir),
+    not the live repo -- a template edited after this config was saved must
+    never change what this text says a run would do. Reuses
     gapengine.evolve._rationality_backend_cfg's own override precedence so
     this text can never disagree with what a run would actually do."""
     kappa = evolution.get("kappa")
     if kappa is None:
         return "無効"
     rationality_yaml, rationality_yaml_backend, override = _rationality_backend_cfg(
-        {"rationality": {"method": evolution.get("rationality_method")}},
-        repo / "templates" / template_id,
+        {"rationality": {"method": evolution.get("rationality_method")}}, template_dir,
     )
     method = override.get("method") or rationality_yaml.get("method", "noul")
     model = rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
-    return f"{kappa} ({method} / {model})"
+    return f"{kappa}（{method} / {model}）"
 
 
 def _kappa_field(value):
@@ -440,9 +464,13 @@ def _rationality_section(values, ctx, *, total_runs, wall_seconds):
     kappa_value = values.get("evolution.kappa") or 0
     if ctx["available"]:
         status = f'判定器: Ollama {ctx["model"]} — 利用可'
+    elif ctx["reason"] == "non_ollama_backend":
+        # Not actually Ollama -- "判定器: Ollama <model>" would be misleading.
+        status = f'判定器: 利用不可（{RATIONALITY_REASON_LABELS["non_ollama_backend"]}）。既定は 0 です'
     else:
-        reason = GENERATION_REASON_LABELS.get(ctx["reason"], ctx["reason"] or "不明")
-        status = f'判定器: Ollama {ctx["model"]} — 利用不可（{reason}）。κ は 0 で保存されます'
+        reason = {**GENERATION_REASON_LABELS, **RATIONALITY_REASON_LABELS}.get(
+            ctx["reason"], ctx["reason"] or "不明")
+        status = f'判定器: Ollama {ctx["model"]} — 利用不可（{reason}）。既定は 0 です'
     eta_html = ""
     if kappa_value and total_runs:
         seconds = total_runs * JUDGE_SECONDS_PER_RUN
@@ -566,7 +594,11 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
 
     section4 = (
         _rationality_section(
-            values, rationality, total_runs=total,
+            values, rationality,
+            # Opus review: match execution/configs.py's _describe()
+            # planned_seed_evaluations, which is what a coevolve run actually
+            # judges (protagonist pass + a separate antagonist pass).
+            total_runs=total * (2 if values["evolution.coevolve"] else 1),
             wall_seconds=_as_int(values["execution_limits.wall_seconds"]),
         )
         if rationality is not None else ""
@@ -652,7 +684,7 @@ def render_configs_list(configs):
     return '<section class="card"><h2>実行設定</h2>' + table + "</section>"
 
 
-def render_config_detail(config, repo):
+def render_config_detail(config, control):
     preview = config["preview"]
     ev = config["evolution"]
     parent = config.get("parent_config_id")
@@ -680,7 +712,7 @@ def render_config_detail(config, repo):
         ("説明記録", _escape(ev["record_explanations"])),
         ("結末", _escape(ending_text)),
         ("実行時間上限（秒）", _escape(config["execution_limits"]["wall_seconds"])),
-        ("合理性 κ", _escape(_rationality_summary(repo, config["template_id"], ev))),
+        ("合理性 κ", _escape(_rationality_summary(_frozen_template_dir(control, config), ev))),
     ]) + '<p class="muted">列の値は次の版で変更可</p>'
     fixed = preview["fixed_parameters"]
     fixed_section = _dl([
@@ -898,7 +930,7 @@ def _config_aux_links(config, world):
     )
 
 
-def _run_plan(config, estimate, repo, *, open_detail=False):
+def _run_plan(config, estimate, control, *, open_detail=False):
     ev = config["evolution"]
     preview = config["preview"]
     coevolve = "あり" if ev.get("coevolve") else "なし"
@@ -908,7 +940,7 @@ def _run_plan(config, estimate, repo, *, open_detail=False):
          f'{_escape(preview["planned_individual_evaluations"])} / {_escape(preview["planned_seed_evaluations"])}'),
         ("保存方針", _escape(ev["keep"])),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
-        ("合理性 κ", _escape(_rationality_summary(repo, config["template_id"], ev))),
+        ("合理性 κ", _escape(_rationality_summary(_frozen_template_dir(control, config), ev))),
     ])
     # A running job's page reloads on every publication_revision change
     # (workbench.js's poll loop), which would otherwise re-collapse this
@@ -995,7 +1027,7 @@ def _run_prep(view):
     if job is None:
         parts.append(_run_config_picker(world, configs, config))
         parts.append(_config_aux_links(config, world))
-        parts.append(_run_plan(config, view["estimate"], view["repo"]))
+        parts.append(_run_plan(config, view["estimate"], view["control"]))
         if view["blocking_job"] is not None:
             parts.append(_blocking_notice(view["blocking_job"]))
         else:
@@ -1003,7 +1035,7 @@ def _run_prep(view):
         parts.append('<p class="muted">GA は LLM を呼び出しません。</p>')
     else:
         parts.append(f'<p>設定: <a href="/configs/{_url(config["config_id"])}">{_escape(config["label"])}</a></p>')
-        parts.append(_run_plan(config, view["estimate"], view["repo"], open_detail=True))
+        parts.append(_run_plan(config, view["estimate"], view["control"], open_detail=True))
         if job["state"] in RUNNING_STATES:
             parts.append(_cancel_controls(job))
             parts.append('<p class="muted">停止すると、閉じた世代までの結果は残ります。</p>')
@@ -1552,7 +1584,7 @@ def _run_view(handler, *, world_id=None, config_id=None, job=None):
         "world": world, "configs": world_configs, "config": config, "job": job,
         "blocking_job": blocking_job, "run_name": run_name, "live": live, "axes": axes,
         "estimate": estimate, "history_count": history_count, "request_id": request_id,
-        "repo": job_store.configs.repo,
+        "control": job_store.configs.control,
     }
 
 
@@ -2093,7 +2125,7 @@ def _configs_detail(handler, cid):
     config = job_store.configs.get(cid)
     label = config["label"]
     handler._send_html(pages.document(
-        f"実行設定: {label}", render_config_detail(config, job_store.configs.repo),
+        f"実行設定: {label}", render_config_detail(config, job_store.configs.control),
         crumbs=[("実行設定", "/configs"), (label, f"/configs/{_url(cid)}")],
         phase="world", world=_config_world(config),
         lead="この設定版の内容を確認して実行します。",
