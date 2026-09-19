@@ -268,6 +268,63 @@ class ConfigsAvailabilityTests(unittest.TestCase):
         self.assertEqual(result["authentication"], "not_required")
         self.assertNotIn("error", result)
 
+    def _settings_with_launch(self, *, guard=True, launch=None):
+        import sys
+        folder = Path(tempfile.mkdtemp(prefix="worldbloom-llama-avail-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(folder, ignore_errors=True))
+        section = {"model": "bonsai2-27b",
+                   "launch": launch if launch is not None else [sys.executable, "--alias", "bonsai2-27b"]}
+        output = {"llama-server": section}
+        if guard:
+            output["gpu_guard"] = {}
+        path = folder / "settings.json"
+        path.write_text(json.dumps({"output": output}), encoding="utf-8")
+        return path
+
+    def _unreachable(self):
+        return mock.patch("gapengine.llama_server.availability", return_value={
+            "available": False, "reason": "server_unreachable", "model": "bonsai2-27b", "error": "refused"})
+
+    def test_stopped_server_is_available_when_the_guard_can_launch_it(self) -> None:
+        from execution.configs import generation_availability
+
+        with self._unreachable():
+            result = generation_availability(self._generation(), self._settings_with_launch())
+
+        self.assertTrue(result["available"])
+        self.assertIsNone(result["reason"])
+        self.assertEqual(result["startup"], "auto_launch")
+        # The launch command itself (a local executable path) must never surface.
+        self.assertNotIn("launch", result)
+        self.assertNotIn(Path(__import__("sys").executable).name, json.dumps(result))
+        self.assertNotIn("error", result)
+
+    def test_stopped_server_stays_unavailable_without_guard_or_usable_launch(self) -> None:
+        from execution.configs import generation_availability
+
+        cases = {
+            "guard off": self._settings_with_launch(guard=False),
+            "missing executable": self._settings_with_launch(launch=["Z:/no/such/llama-server.exe"]),
+            "alias serves another model": self._settings_with_launch(
+                launch=[__import__("sys").executable, "--alias", "other-model"]),
+            "empty launch": self._settings_with_launch(launch=[]),
+        }
+        for name, settings_path in cases.items():
+            with self.subTest(name), self._unreachable():
+                result = generation_availability(self._generation(), settings_path)
+            self.assertFalse(result["available"], name)
+            self.assertEqual(result["reason"], "server_unreachable", name)
+
+    def test_model_missing_is_never_masked_by_auto_launch(self) -> None:
+        from execution.configs import generation_availability
+
+        probe = {"available": False, "reason": "model_missing", "model": "bonsai2-27b"}
+        with mock.patch("gapengine.llama_server.availability", return_value=probe):
+            result = generation_availability(self._generation(), self._settings_with_launch())
+
+        self.assertFalse(result["available"])
+        self.assertEqual(result["reason"], "model_missing")
+
     def test_unreachable_server_is_reported(self) -> None:
         from execution.configs import generation_availability
 
