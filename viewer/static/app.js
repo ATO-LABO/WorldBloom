@@ -167,15 +167,6 @@
     });
   });
 
-  // Home's "n 件" link points to /worlds/<id>#experiments; land on the
-  // 実行履歴 tab (tab-world-5) instead of the default 概要 tab.
-  if (location.hash === "#experiments") {
-    const experimentsTab = document.getElementById("tab-world-5");
-    if (experimentsTab) {
-      experimentsTab.checked = true;
-    }
-  }
-
   const deleteRun = async (button) => {
     const endpoint = button.dataset.endpoint;
     const name = button.dataset.run;

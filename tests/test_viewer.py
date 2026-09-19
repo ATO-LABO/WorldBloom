@@ -376,12 +376,13 @@ class ViewerServerTests(unittest.TestCase):
                 self.assertIn("世界を選ぶ", index)
                 self.assertIn("桃太郎", index)
 
-                # exp-viewer only appears inside its own world's detail page
-                # now (WB-UI-016); this request also runs without --control,
-                # so it doubles as a check that the read-only world page
-                # still renders.
+                # The world page no longer lists its runs (WB-UI-024 moved
+                # 実行履歴 to the ② 実行 screen); this request runs without
+                # --control, so it checks that the read-only world page still
+                # renders with its single end-of-page CTA and no editor root.
                 world_page = _wait_for_page(base_url + "/worlds/momotaro")
-                self.assertIn("exp-viewer", world_page)
+                self.assertIn('class="actions world-cta"', world_page)
+                self.assertNotIn('data-wb="library"', world_page)
 
                 grid = _wait_for_page(base_url + "/exp/exp-viewer")
                 self.assertIn("III|high", grid)

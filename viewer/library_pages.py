@@ -203,19 +203,64 @@ def _genre_yaml(repo, genre_id, filename):
         return None
 
 
-def _overview_panel(world, subjects):
+def _overview_panel(world, world_yaml, subjects):
+    protagonist_id = world["protagonist"]
+    antagonist_id = world["antagonist"]
+    protagonist_subject = next((s for s in subjects if str(s.get("id")) == protagonist_id), None)
+    goal = (protagonist_subject or {}).get("goal") or {}
+    target = goal.get("target") if isinstance(goal, dict) else None
+    deliver_to = goal.get("deliver_to") if isinstance(goal, dict) else None
+    protagonist_label = _escape(protagonist_id) if protagonist_id else "主人公"
+
+    if target:
+        intro = f"{protagonist_label}が「{_escape(target)}」を求める物語"
+        if deliver_to:
+            intro += f"（届け先: {_escape(deliver_to)}）"
+        intro += "。"
+    else:
+        intro = f"{protagonist_label}の物語。"
+    if antagonist_id:
+        intro += f" 立ちはだかるのは{_escape(antagonist_id)}。"
+
+    time_info = world_yaml.get("time") or {}
+    days = time_info.get("days")
+    day_text = _escape(days) if days else "—"
+    zones = world_yaml.get("zones") or []
+    intro += f" {day_text}日間・{len(zones)}か所・{_escape(world['subjects'])}人。"
+
+    genre = world["genre"]
+    genre_html = f'<a href="/genres/{_url(genre)}">{_escape(genre)}</a>' if genre else "—"
+    characters_html = (
+        f'{_escape(world["subjects"])}人（主人公: {_escape(protagonist_id)} '
+        f'／ 敵役: {_escape(antagonist_id)}）'
+    )
+    zone_names = "・".join(
+        _escape(zone["name"]) for zone in zones if isinstance(zone, dict) and zone.get("name")
+    )
+    places_html = f"{len(zones)}か所: {zone_names}" if zone_names else f"{len(zones)}か所"
+    slots = time_info.get("slots") or []
+    period_html = day_text + "日間" + (f"・{'・'.join(_escape(s) for s in slots)}" if slots else "")
+
+    facts = (
+        '<dl class="world-summary world-facts">'
+        f"<dt>ジャンル</dt><dd>{genre_html}</dd>"
+        f"<dt>登場人物</dt><dd>{characters_html}</dd>"
+        f"<dt>場所</dt><dd>{places_html}</dd>"
+        f"<dt>期間</dt><dd>{period_html}</dd>"
+        "</dl>"
+    )
     goals = world_graph.world_summary(
-        subjects, protagonist=world["protagonist"], antagonist=world["antagonist"],
+        subjects, protagonist=protagonist_id, antagonist=antagonist_id,
     )
     return (
-        f'<p>名前: {_escape(world["name"])} · ジャンル: {_escape(world["genre"]) if world["genre"] else "—"}'
-        f' · 人物数: {_escape(world["subjects"])}'
-        f' · 主人公/敵役: {_escape(world["protagonist"])} / {_escape(world["antagonist"])}</p>'
-        + goals
+        f'<p class="world-intro">{intro}</p>'
+        + facts
+        + "<h3>目的</h3>" + goals
+        + '<p class="muted edit-hint"><a href="#world-files">world.yaml を直接編集</a>（名前・主人公・敵役）</p>'
     )
 
 
-def _characters_panel(world, world_yaml, subjects, store):
+def _characters_panel(world, world_yaml, subjects, store, editors_html):
     svg = world_graph.relation_svg(subjects, protagonist=world["protagonist"], antagonist=world["antagonist"])
     table = world_graph.character_table(subjects, protagonist=world["protagonist"], antagonist=world["antagonist"])
     effects = _genre_yaml(store.repo, world.get("genre"), "effects.yaml")
@@ -232,6 +277,7 @@ def _characters_panel(world, world_yaml, subjects, store):
         "太さ=好感度の強さ、濃さ=認知度。"
         "線にカーソルを合わせると双方向の値が出ます。</p>"
         + readout_html
+        + editors_html
     )
 
 
@@ -247,6 +293,11 @@ def _canon_panel(world, subjects, store):
         world_graph.canon_table_html(canon, objective=objective) if isinstance(canon, dict)
         else '<p class="muted">このジャンルに正典データがありません。</p>'
     )
+    genre = world.get("genre")
+    hint = (
+        f'<p class="muted edit-hint">定石はジャンル側の設定です → '
+        f'<a href="/genres/{_url(genre)}">ジャンル「{_escape(genre)}」を編集</a></p>'
+    ) if genre else ""
     return (
         "<h3>状況別の定石 早見表（GA はここから離れる）</h3>"
         + '<p class="muted">上から順に読む筋書きではありません。GA 実行中の各瞬間に、'
@@ -255,13 +306,17 @@ def _canon_panel(world, subjects, store):
         "GA の主人公は遺伝子 novelty_drive が高いほど、右の行動を選びにくくなります。"
         "定石の強さは相対的な重みで、いちばん大きい行をいっぱいとして描きます。</p>"
         + canon_html
+        + hint
     )
 
 
 def _places_panel(world_yaml):
     zones = world_yaml.get("zones") or []
     routes = world_yaml.get("routes") or {}
-    return world_graph.zone_list_html(zones) + world_graph.zone_svg(zones, routes)
+    return (
+        world_graph.zone_list_html(zones) + world_graph.zone_svg(zones, routes)
+        + '<p class="muted edit-hint"><a href="#world-files">world.yaml を直接編集</a>（zones ／ routes）</p>'
+    )
 
 
 def _period_panel(world_yaml):
@@ -272,6 +327,7 @@ def _period_panel(world_yaml):
     return (
         "<h3>1日の時間帯</h3>" + world_graph.day_cycle_svg(slots)
         + f"<h3>日程（{day_count}日間）</h3>" + world_graph.calendar_grid_html(days)
+        + '<p class="muted edit-hint"><a href="#world-files">world.yaml を直接編集</a>（time）</p>'
     )
 
 
@@ -279,10 +335,8 @@ def _editor_group(store, world, job_store):
     if job_store is None:
         return '<p class="library-note">編集・検証には <code>--control</code> 付きで起動してください。</p>'
     world_id = world["id"]
-    files = store.world_files(world_id)
-    contents = {rel: store.read("world", world_id, rel) for rel in files}
-    subject_files = [rel for rel in files if rel.startswith("subjects/")]
-    template_content = contents[subject_files[0]] if subject_files else ""
+    other_files = [rel for rel in store.world_files(world_id) if not rel.startswith("subjects/")]
+    contents = {rel: store.read("world", world_id, rel) for rel in other_files}
     genre_options = "".join(
         f'<option value="{_escape(g["id"])}"{" selected" if g["id"] == world["genre"] else ""}>{_escape(g["id"])}</option>'
         for g in store.genres()
@@ -295,7 +349,24 @@ def _editor_group(store, world, job_store):
         '<div data-field="validation" class="validation"></div>'
         "</form>"
     )
-    editors = "".join(_editor_block(rel, contents[rel]) for rel in files)
+    editors = "".join(_editor_block(rel, contents[rel]) for rel in other_files)
+    return (
+        '<details class="editor-group">'
+        "<summary>world.yaml を直接編集</summary>"
+        + validate_form
+        + f'<section class="card" id="world-files"><h2>ファイル</h2>{editors}</section>'
+        + "</details>"
+    )
+
+
+def _subject_editors_html(store, world, job_store):
+    if job_store is None:
+        return ""
+    world_id = world["id"]
+    subject_files = [rel for rel in store.world_files(world_id) if rel.startswith("subjects/")]
+    contents = {rel: store.read("world", world_id, rel) for rel in subject_files}
+    template_content = contents[subject_files[0]] if subject_files else ""
+    editors = "".join(_editor_block(rel, contents[rel]) for rel in subject_files)
     add_subject = (
         '<section class="card"><h2>人物を追加</h2>'
         '<div class="field"><label for="f-subject-name">ファイル名（subjects/ 以下、拡張子なし）</label>'
@@ -307,43 +378,41 @@ def _editor_group(store, world, job_store):
         "</section>"
     )
     return (
-        f'<div data-wb="library" data-kind="world" data-owner="{_escape(world_id)}">'
-        '<details class="editor-group">'
-        "<summary>ファイルを編集（world.yaml と subjects/…）</summary>"
-        + validate_form
-        + f'<section class="card"><h2>ファイル</h2>{editors}</section>'
-        + add_subject
-        + "</details></div>"
+        '<details class="editor-group" id="subject-files">'
+        "<summary>人物ファイルを編集（subjects/…）</summary>"
+        + editors + add_subject + "</details>"
     )
 
 
-def render_world_detail(repository, world, store, job_store):
+def render_world_detail(world, store, job_store):
     run_href = (
         f"/configs/new?project={_url(world['id'])}&template={_url(world['genre'])}"
         if world["genre"] else f"/configs/new?project={_url(world['id'])}"
     )
     world_yaml = _world_yaml_mapping(store.repo, world["id"])
     subjects = world_graph.load_subjects(store.repo / "projects" / world["id"])
-    world_name = str(world["name"] or world["id"])
-    runs_html, run_count = pages.world_runs_block(repository, world_name, job_store)
+    world_id = world["id"]
+    editors_html = _subject_editors_html(store, world, job_store)
     panels = [
-        ("概要", _overview_panel(world, subjects)),
-        ("登場人物", _characters_panel(world, world_yaml, subjects, store)),
+        ("概要", _overview_panel(world, world_yaml, subjects)),
+        ("登場人物", _characters_panel(world, world_yaml, subjects, store, editors_html)),
         ("初期物語", _canon_panel(world, subjects, store)),
         ("場所", _places_panel(world_yaml)),
         ("期間", _period_panel(world_yaml)),
-        (f"実行履歴 ({run_count})", '<div id="experiments">' + runs_html + "</div>"),
     ]
-    run_actions = pages.quick_start_actions(
-        world["id"], world["genre"], world["name"] or world["id"], run_href, css_class="button primary",
+    card = f'<section class="card world-detail">{pages.tabs("world", panels)}</section>'
+    files_block = _editor_group(store, world, job_store)
+    cta = pages.quick_start_actions(
+        world["id"], world["genre"], world["name"] or world["id"], run_href,
+        css_class="button primary", text="この世界で実験を回す",
     )
-    overview_card = (
-        '<section class="card">'
-        f'<p class="actions">{run_actions}</p>'
-        + pages.tabs("world", panels)
-        + "</section>"
+    cta_html = f'<p class="actions world-cta">{cta}</p>'
+    if job_store is None:
+        return card + files_block + cta_html
+    return (
+        f'<div data-wb="library" data-kind="world" data-owner="{_escape(world_id)}">'
+        + card + files_block + "</div>" + cta_html
     )
-    return overview_card + _editor_group(store, world, job_store)
 
 
 def render_genre_detail(genre, contents, worlds):
@@ -413,17 +482,12 @@ def _worlds_detail(handler, world_id):
     if world is None:
         raise ConfigError("world_id", "世界がありません", code="not_found")
     label = world["name"] or world_id
-    genre = world.get("genre")
-    run_href = f"/configs/new?project={_url(world_id)}"
-    if genre:
-        run_href += f"&template={_url(genre)}"
-    body = render_world_detail(handler.repository, world, store, job_store)
+    body = render_world_detail(world, store, job_store)
     handler._send_html(pages.document(
         f"世界: {label}", body,
         crumbs=[(label, f"/worlds/{_url(world_id)}")],
         phase="world", world={"id": world_id, "name": label},
-        lead="GA 実行前のベース設定です。人物と関係を確かめ、必要なら編集してから実験に使います。",
-        next_action=("この世界で実験を回す →", run_href),
+        lead="この世界の人物・場所・期間・定石を確かめ、必要なら編集してから実験へ進みます。",
         job_store=job_store, pin=data.pinned_target(job_store),
     ))
 
