@@ -116,6 +116,22 @@ RATIONALITY_REASON_LABELS = {
 JUDGE_SECONDS_PER_RUN = 90
 
 
+def _format_eta_seconds(seconds):
+    """"約90秒" / "約9分" / "約2時間30分" (no "0分" when the hour count is
+    exact) -- shared by the config form's initial server render and
+    workbench.js's live recompute (coordinator review), so the two can never
+    disagree on wording."""
+    if seconds < 60:
+        return f"約{round(seconds)}秒"
+    minutes = math.ceil(seconds / 60)
+    if minutes < 60:
+        return f"約{minutes}分"
+    hours, remaining_minutes = divmod(minutes, 60)
+    if remaining_minutes:
+        return f"約{hours}時間{remaining_minutes}分"
+    return f"約{hours}時間"
+
+
 def availability_label(availability):
     """Japanese text for a generation_availability()-shaped result.
 
@@ -471,21 +487,28 @@ def _rationality_section(values, ctx, *, total_runs, wall_seconds):
         reason = {**GENERATION_REASON_LABELS, **RATIONALITY_REASON_LABELS}.get(
             ctx["reason"], ctx["reason"] or "不明")
         status = f'判定器: Ollama {ctx["model"]} — 利用不可（{reason}）。既定は 0 です'
-    eta_html = ""
-    if kappa_value and total_runs:
-        seconds = total_runs * JUDGE_SECONDS_PER_RUN
-        eta_text = f"約{math.ceil(seconds / 60)}分" if seconds >= 60 else f"約{round(seconds)}秒"
-        eta_html = (
-            f'<p class="hint">判定器の見込み: {_escape(eta_text)}'
-            "（1 ラン約90秒で概算。表が育つほど短くなります）</p>"
-        )
-        if wall_seconds is not None and seconds > wall_seconds:
-            eta_html += (
-                '<p class="warning">判定器の見込みが実行時間の上限を超えています。'
-                "上限を見直すか、規模を小さくしてください。</p>"
-            )
+    # WB-JEV-002 coordinator review: kappa/generations/population/seeds/
+    # coevolve/wall_seconds can all change client-side without a reload, so
+    # this eta/warning pair is always rendered (never omitted), toggled via
+    # the "hidden" attribute -- workbench.js's updateRationality() flips the
+    # same attribute and rewrites [data-kappa-eta-text] on every input event,
+    # using this section's own data-judge-seconds-per-run so the 90s/run
+    # constant is never hardcoded twice. JS-off: this initial render (computed
+    # the same way, see _format_eta_seconds) is exactly what stays visible.
+    show_eta = bool(kappa_value and total_runs)
+    seconds = total_runs * JUDGE_SECONDS_PER_RUN if show_eta else 0
+    show_warning = show_eta and wall_seconds is not None and seconds > wall_seconds
+    eta_html = (
+        f'<p class="hint" data-kappa-eta{"" if show_eta else " hidden"}>判定器の見込み: '
+        f'<span data-kappa-eta-text>{_escape(_format_eta_seconds(seconds) if show_eta else "")}</span>'
+        "（1 ラン約90秒で概算。表が育つほど短くなります）</p>"
+        f'<p class="warning" data-kappa-warning{"" if show_warning else " hidden"}>'
+        "判定器の見込みが実行時間の上限を超えています。"
+        "上限を見直すか、規模を小さくしてください。</p>"
+    )
     return (
-        '<section class="cfg-sec"><div class="cfg-sec-head">'
+        '<section class="cfg-sec" data-wb="rationality" '
+        f'data-judge-seconds-per-run="{JUDGE_SECONDS_PER_RUN}"><div class="cfg-sec-head">'
         "<h2>合理性（主人公がどれだけ筋の通った手を選ぶか）</h2>"
         f'<p class="desc" id="kappa-desc">{_escape(RATIONALITY_DESCRIPTION)}</p>'
         '</div><div class="cfg-sec-body">'

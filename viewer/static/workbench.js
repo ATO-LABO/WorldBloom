@@ -168,12 +168,14 @@
       String(text).replace(/[&<>"']/g, (ch) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
       }[ch]));
+    // Shared by updateSummary() and updateRationality() below -- any
+    // data-field number/range/checkbox input's current value.
+    const num = (name) => {
+      const el = form.querySelector(`[data-field="${name}"]`);
+      const n = el ? Number(el.value) : NaN;
+      return Number.isFinite(n) ? n : 0;
+    };
     const updateSummary = () => {
-      const num = (name) => {
-        const el = form.querySelector(`[data-field="${name}"]`);
-        const n = el ? Number(el.value) : NaN;
-        return Number.isFinite(n) ? n : 0;
-      };
       const generations = num("evolution.generations");
       const population = num("evolution.population");
       const seeds = num("evolution.seeds");
@@ -212,14 +214,72 @@
       genreSelect.addEventListener("change", updateSummary);
     }
 
-    // WB-JEV-002: the κ slider's live numeric readout. Server-rendered
-    // hints (judge status, ETA) stay static until the next full page load --
-    // only this <output> display updates as the slider moves.
+    // WB-JEV-002: the κ slider's live numeric readout.
     const kappaInput = form.querySelector('[data-field="evolution.kappa"]');
     const kappaOutput = form.querySelector("[data-kappa-output]");
     if (kappaInput && kappaOutput) {
       kappaInput.addEventListener("input", () => {
         kappaOutput.textContent = kappaInput.value;
+      });
+    }
+
+    // WB-JEV-002 (coordinator review): the judge-time estimate and
+    // wall-limit warning, recomputed live -- mirrors
+    // execution/configs.py's planned_seed_evaluations math (coevolve
+    // doubles the run count) and viewer/workbench_pages.py's
+    // _format_eta_seconds() wording exactly, so JS-on and the server's own
+    // initial render (JS-off) never disagree. JUDGE_SECONDS_PER_RUN comes
+    // from the section's own data attribute -- never hardcoded here.
+    const rationalitySection = form.querySelector('[data-wb="rationality"]');
+    const formatEta = (seconds) => {
+      if (seconds < 60) {
+        return `約${Math.round(seconds)}秒`;
+      }
+      const minutes = Math.ceil(seconds / 60);
+      if (minutes < 60) {
+        return `約${minutes}分`;
+      }
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      return remainingMinutes ? `約${hours}時間${remainingMinutes}分` : `約${hours}時間`;
+    };
+    const updateRationality = () => {
+      if (!rationalitySection) {
+        return;
+      }
+      const etaLine = rationalitySection.querySelector("[data-kappa-eta]");
+      const etaText = rationalitySection.querySelector("[data-kappa-eta-text]");
+      const warningLine = rationalitySection.querySelector("[data-kappa-warning]");
+      if (!etaLine || !etaText || !warningLine) {
+        return;
+      }
+      const judgeSecondsPerRun = Number(rationalitySection.dataset.judgeSecondsPerRun) || 0;
+      const kappa = num("evolution.kappa");
+      const coevolveEl = form.querySelector('[data-field="evolution.coevolve"]');
+      const coevolve = coevolveEl ? coevolveEl.checked : false;
+      const totalRuns = num("evolution.generations") * num("evolution.population") * num("evolution.seeds")
+        * (coevolve ? 2 : 1);
+      const show = kappa > 0 && totalRuns > 0;
+      etaLine.hidden = !show;
+      if (!show) {
+        warningLine.hidden = true;
+        return;
+      }
+      const seconds = totalRuns * judgeSecondsPerRun;
+      etaText.textContent = formatEta(seconds);
+      const wallSeconds = num("execution_limits.wall_seconds");
+      warningLine.hidden = !(wallSeconds > 0 && seconds > wallSeconds);
+    };
+    if (rationalitySection) {
+      [
+        "evolution.generations", "evolution.population", "evolution.seeds",
+        "evolution.coevolve", "evolution.kappa", "execution_limits.wall_seconds",
+      ].forEach((name) => {
+        const el = form.querySelector(`[data-field="${name}"]`);
+        if (el) {
+          el.addEventListener("input", updateRationality);
+          el.addEventListener("change", updateRationality);
+        }
       });
     }
 

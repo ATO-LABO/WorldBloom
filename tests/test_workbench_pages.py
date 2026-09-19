@@ -164,6 +164,16 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIsNotNone(match, f'no <input data-field="{data_field}"> in body')
         return match.group(0)
 
+    def _tag(self, body, bare_attr):
+        """The single element's own opening tag carrying a bare attribute
+        (e.g. "data-kappa-eta"), for hidden-attribute assertions -- the eta/
+        warning lines are always in the markup now (coordinator review: JS
+        toggles "hidden" live), so a plain text-presence check no longer
+        tells "shown" from "hidden"."""
+        match = re.search(rf'<[a-z]+[^>]*\b{re.escape(bare_attr)}\b[^>]*>', body)
+        self.assertIsNotNone(match, f"no element with {bare_attr} in body")
+        return match.group(0)
+
     def http(self, method, path, body=None, headers=None, *, port=None):
         port = port or self.server.server_port
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
@@ -318,13 +328,20 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('type="range"', kappa_tag)
         self.assertIn('value="0.6"', kappa_tag)
         # 6h default when the judge is reachable, so the default estimate
-        # (20*100*3 runs * ~90s/run ≈ 150h) is compared against 21600, not
+        # (20*100*3 runs * ~90s/run = 150h) is compared against 21600, not
         # the plain 3600 default -- and still trips the warning either way.
         wall_tag = self._input_tag(body, "execution_limits.wall_seconds")
         self.assertIn('value="21600"', wall_tag)
         self.assertIn("判定器: Ollama qwen3.6:35b — 利用可", body)
-        self.assertIn("判定器の見込み", body)
-        self.assertIn("見込みが実行時間の上限を超えています", body)
+        # Coordinator review: the eta/warning <p>s are always in the markup
+        # now (JS toggles "hidden" live) -- both must be shown (not hidden)
+        # here, and the hour-scale wording (150h, not "9000分") must match.
+        self.assertNotIn("hidden", self._tag(body, "data-kappa-eta"))
+        self.assertNotIn("hidden", self._tag(body, "data-kappa-warning"))
+        self.assertIn("約150時間", body)
+        # JUDGE_SECONDS_PER_RUN reaches the page as data, not a JS literal.
+        self.assertIn(
+            'data-wb="rationality" data-judge-seconds-per-run="90"', body)
 
     def test_kappa_slider_defaults_to_0_and_shows_reason_when_judge_unavailable(self):
         with patch("viewer.workbench_pages._ollama_availability",
@@ -335,8 +352,10 @@ class WorkbenchTests(unittest.TestCase):
         # slider itself (Opus review), not the whole page.
         self.assertIn('value="0"', self._input_tag(body, "evolution.kappa"))
         self.assertIn("利用不可（サーバーに接続できません）。既定は 0 です", body)
-        # kappa=0 -> no ETA/warning line at all (no judge calls expected).
-        self.assertNotIn("判定器の見込み", body)
+        # kappa=0 -> both the eta and warning lines are hidden (no judge
+        # calls expected either way).
+        self.assertIn("hidden", self._tag(body, "data-kappa-eta"))
+        self.assertIn("hidden", self._tag(body, "data-kappa-warning"))
         # The judge being unreachable must never raise the wall-clock default.
         self.assertIn('value="3600"', self._input_tag(body, "execution_limits.wall_seconds"))
 
@@ -394,6 +413,15 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("約2分", solo)
         self.assertNotIn("約3分", solo)
         self.assertIn("約3分", coevolved)
+
+    def test_format_eta_seconds_all_three_scales(self):
+        """Coordinator review: 1 hour and over reads "約N時間M分" (or just
+        "約N時間" on an exact hour) -- both workbench.js's live formatEta()
+        and this Python helper must render the same wording."""
+        self.assertEqual(workbench_pages._format_eta_seconds(45), "約45秒")
+        self.assertEqual(workbench_pages._format_eta_seconds(90), "約2分")
+        self.assertEqual(workbench_pages._format_eta_seconds(3600), "約1時間")
+        self.assertEqual(workbench_pages._format_eta_seconds(5400), "約1時間30分")
 
     def test_kappa_duplicate_form_shows_saved_value_not_a_fresh_default(self):
         with patch("viewer.workbench_pages._ollama_availability",
