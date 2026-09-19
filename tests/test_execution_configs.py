@@ -14,7 +14,7 @@ from unittest.mock import patch
 import yaml
 
 from execution.configs import ConfigStore, evolution_defaults, normalize
-from execution.provenance import ConfigError, canonical, directory_lock, sha256
+from execution.provenance import ConfigError, atomic_json, canonical, directory_lock, read_json, sha256
 from scripts.evolve import build_parser
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -418,6 +418,23 @@ class ConfigTests(unittest.TestCase):
             "rationality_backend": "none", "rationality_method": "choice",
             "rationality_max_calls": 3}})
 
+    def test_kappa_forced_to_none_when_template_lacks_rationality_yaml(self):
+        """Opus review: a genre switch client-side (world/genre <select>
+        snapping) followed by submit without a reload must never carry
+        another genre's kappa onto a template that has no rationality.yaml
+        at all -- romance has none, so even an explicit kappa must not
+        survive save()."""
+        saved = self.store.save(
+            {**self.spec, "evolution": {**self.spec["evolution"], "kappa": 0.5}},
+            config_id="cfg-romance-kappa")
+        self.assertIsNone(saved["evolution"]["kappa"])
+        previewed = self.store.preview(
+            {**self.spec, "evolution": {**self.spec["evolution"], "kappa": 0.5}})
+        self.assertIsNone(previewed["evolution"]["kappa"])
+        duplicated = self.store.duplicate(
+            "cfg-romance-kappa", {"evolution": {"kappa": 0.7}}, new_id="cfg-romance-kappa-dup")
+        self.assertIsNone(duplicated["evolution"]["kappa"])
+
     def test_kappa_zero_normalizes_to_none_like_legacy(self):
         zero = self.store.save(self._momotaro_spec(kappa=0), config_id="cfg-kappa-zero")
         none = self.store.save(self._momotaro_spec(kappa=None), config_id="cfg-kappa-none")
@@ -431,6 +448,45 @@ class ConfigTests(unittest.TestCase):
         for key in ("kappa", "rationality_backend", "rationality_method",
                     "rationality_table", "rationality_max_calls"):
             self.assertIsNone(legacy["evolution"][key])
+
+    def test_prepare_run_reads_a_genuinely_pre_wb_jev_002_config_json(self):
+        """Opus review: prepare_run() reads config["evolution"] straight off
+        disk (never through normalize()), so a config.json saved before
+        --kappa existed -- evolution has no kappa/rationality_* keys at all,
+        not even as None -- must not KeyError. All 9 configs under this
+        machine's C:\\Projects\\WorldBloom-local\\control\\configs predate
+        WB-JEV-002 this way."""
+        self.runtime()
+        self.store.save(self._momotaro_spec(), config_id="cfg-genuinely-legacy")
+        config_dir = self.store.control / "configs" / "cfg-genuinely-legacy"
+
+        # Baseline: prepare_run() while config.json is still a normal,
+        # normalize()-produced document (kappa=None present as a real key).
+        baseline = self.store.prepare_run("cfg-genuinely-legacy", run_id="run-baseline", job_id="job-baseline")
+
+        # Now rewrite config.json (and complete.json's seal, so _bundle()'s
+        # integrity check still accepts it) to drop every WB-JEV-002 key
+        # entirely -- a genuinely pre-existing config.json, not something
+        # normalize() would ever produce.
+        config = read_json(config_dir / "config.json")
+        for key in ("kappa", "rationality_backend", "rationality_method",
+                    "rationality_table", "rationality_max_calls"):
+            self.assertIn(key, config["evolution"])
+            del config["evolution"][key]
+        config_bytes = canonical(config)
+        (config_dir / "config.json").write_bytes(config_bytes)
+        seal = read_json(config_dir / "complete.json")
+        seal["config_sha256"] = sha256(config_bytes)
+        atomic_json(config_dir / "complete.json", seal)
+
+        manifest = self.store.prepare_run("cfg-genuinely-legacy", run_id="run-legacy", job_id="job-legacy")
+        self.assertNotIn("--kappa", manifest["argv"])
+        self.assertNotIn("--rationality-table", manifest["argv"])
+        # Byte-identical CLI argv apart from the run-id baked into the paths.
+        self.assertEqual(
+            [a.replace("run-baseline", "<rid>") for a in baseline["argv"]],
+            [a.replace("run-legacy", "<rid>") for a in manifest["argv"]],
+        )
 
     def test_prepare_run_kappa_none_or_zero_argv_matches_legacy_cli(self):
         self.runtime()

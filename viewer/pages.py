@@ -768,7 +768,12 @@ def quick_start_actions(world_id, genre, world_name, run_href, *, css_class="", 
         # WB-JEV-002: this button always saves kappa=None (rationality off,
         # same as leaving the field untouched) -- the default scale
         # (20*100*3=6,000 runs) would take ~150h at kappa=0.6.
-        result += '<p class="hint">合理性（κ）は実行設定で指定します。</p>'
+        # Opus review: a <span>, not a <p> -- render_world_detail() (in
+        # library_pages.py) wraps this whole result in its own <p
+        # class="actions">, and a nested <p> would break there. "muted" (not
+        # just "hint", which app.css only styles under .cfg-form) so this
+        # also looks right on the world page, outside any config form.
+        result += ' <span class="hint muted">合理性（κ）は実行設定で指定します。</span>'
     return result
 
 

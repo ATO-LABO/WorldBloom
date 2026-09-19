@@ -12,6 +12,7 @@ import http.client
 import json
 from pathlib import Path
 import re
+import shutil
 import tempfile
 import threading
 import time
@@ -19,6 +20,8 @@ import unittest
 from unittest.mock import patch
 import urllib.error
 import urllib.request
+
+import yaml
 
 from execution.configs import ConfigStore
 from execution.provenance import ConfigError, atomic_json, canonical, sha256, write_bytes
@@ -151,6 +154,15 @@ class WorkbenchTests(unittest.TestCase):
                 return response.status, response.read().decode("utf-8"), response.headers
         except urllib.error.HTTPError as error:
             return error.code, error.read().decode("utf-8"), error.headers
+
+    def _input_tag(self, body, data_field):
+        """The single <input data-field="..."> tag's own markup, so a
+        value="..." assertion checks that one field -- not some unrelated
+        field elsewhere on the page that happens to share the same value
+        (e.g. seed_base's own default is also "0"; Opus review)."""
+        match = re.search(rf'<input[^>]*data-field="{re.escape(data_field)}"[^>]*>', body)
+        self.assertIsNotNone(match, f'no <input data-field="{data_field}"> in body')
+        return match.group(0)
 
     def http(self, method, path, body=None, headers=None, *, port=None):
         port = port or self.server.server_port
@@ -302,12 +314,14 @@ class WorkbenchTests(unittest.TestCase):
             status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
         self.assertEqual(status, 200, body)
         self.assertIn('data-field="evolution.kappa"', body)
-        self.assertIn('type="range" name="evolution.kappa"', body)
-        self.assertIn('value="0.6"', body)
+        kappa_tag = self._input_tag(body, "evolution.kappa")
+        self.assertIn('type="range"', kappa_tag)
+        self.assertIn('value="0.6"', kappa_tag)
         # 6h default when the judge is reachable, so the default estimate
         # (20*100*3 runs * ~90s/run ≈ 150h) is compared against 21600, not
         # the plain 3600 default -- and still trips the warning either way.
-        self.assertIn('value="21600"', body)
+        wall_tag = self._input_tag(body, "execution_limits.wall_seconds")
+        self.assertIn('value="21600"', wall_tag)
         self.assertIn("判定器: Ollama qwen3.6:35b — 利用可", body)
         self.assertIn("判定器の見込み", body)
         self.assertIn("見込みが実行時間の上限を超えています", body)
@@ -317,13 +331,69 @@ class WorkbenchTests(unittest.TestCase):
                    return_value={"available": False, "reason": "server_unreachable"}):
             status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('value="0"', body)
-        self.assertIn("利用不可（サーバーに接続できません）。κ は 0 で保存されます", body)
+        # seed_base's own default is also "0" -- scope this to the kappa
+        # slider itself (Opus review), not the whole page.
+        self.assertIn('value="0"', self._input_tag(body, "evolution.kappa"))
+        self.assertIn("利用不可（サーバーに接続できません）。既定は 0 です", body)
         # kappa=0 -> no ETA/warning line at all (no judge calls expected).
         self.assertNotIn("判定器の見込み", body)
         # The judge being unreachable must never raise the wall-clock default.
-        self.assertNotIn('name="execution_limits.wall_seconds"', "")  # sanity: field always present
-        self.assertIn('value="3600"', body)
+        self.assertIn('value="3600"', self._input_tag(body, "execution_limits.wall_seconds"))
+
+    def _rationality_context_with_backend(self, backend_overrides):
+        """A temp-copied repo (never ROOT) whose templates/momotaro/
+        rationality.yaml's backend: block is overridden, for unit-testing
+        _rationality_form_context() directly without the HTTP server."""
+        temp = Path(tempfile.mkdtemp(prefix="wb-jev002-backend-"))
+        self.addCleanup(shutil.rmtree, temp, ignore_errors=True)
+        shutil.copytree(ROOT / "templates", temp / "templates")
+        path = temp / "templates/momotaro/rationality.yaml"
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        doc["backend"].update(backend_overrides)
+        path.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+        return temp
+
+    def test_rationality_form_context_rejects_non_http_base_url_without_connecting(self):
+        """Opus review item 8: rationality.yaml's base_url is editable from
+        the genre/template editor. A non-http(s) value must be rejected
+        before ever calling gapengine.ollama.availability -- opening the
+        config form must not be able to trigger e.g. a file:// read."""
+        temp = self._rationality_context_with_backend({"base_url": "file:///etc/passwd"})
+        with patch("viewer.workbench_pages._ollama_availability") as probe:
+            ctx = workbench_pages._rationality_form_context(temp, "momotaro")
+        probe.assert_not_called()
+        self.assertFalse(ctx["available"])
+        self.assertEqual(ctx["reason"], "invalid_base_url")
+
+    def test_rationality_form_context_flags_non_ollama_backend(self):
+        """Opus review item 10: backend.type other than "ollama" must not be
+        shown as "判定器: Ollama <model>" -- that backend was never Ollama."""
+        temp = self._rationality_context_with_backend({"type": "none"})
+        ctx = workbench_pages._rationality_form_context(temp, "momotaro")
+        self.assertFalse(ctx["available"])
+        self.assertEqual(ctx["reason"], "non_ollama_backend")
+
+    def test_kappa_eta_doubles_for_coevolve(self):
+        """Opus review item 2: the judge-call estimate must match
+        execution/configs.py's planned_seed_evaluations, which doubles for
+        coevolve (a separate antagonist-side judged pass)."""
+        ctx = {"model": "qwen3.6:35b", "method": "choice", "available": True, "reason": None}
+        base_values = workbench_pages._new_config_values()
+        base_values.update({
+            "project_id": "momotaro", "template_id": "momotaro",
+            "evolution.kappa": 0.6, "evolution.generations": 1,
+            "evolution.population": 1, "evolution.seeds": 1,
+            "execution_limits.wall_seconds": 10 ** 9,
+        })
+        solo = workbench_pages.render_config_form(
+            base_values, projects=["momotaro"], templates=["momotaro"], rationality=ctx)
+        coevolved = workbench_pages.render_config_form(
+            {**base_values, "evolution.coevolve": True},
+            projects=["momotaro"], templates=["momotaro"], rationality=ctx)
+        # 1 run * 90s = 90s -> "約2分"; coevolve doubles to 2 runs * 90s = 180s -> "約3分".
+        self.assertIn("約2分", solo)
+        self.assertNotIn("約3分", solo)
+        self.assertIn("約3分", coevolved)
 
     def test_kappa_duplicate_form_shows_saved_value_not_a_fresh_default(self):
         with patch("viewer.workbench_pages._ollama_availability",
@@ -335,7 +405,7 @@ class WorkbenchTests(unittest.TestCase):
             )
             status, body, _ = self.get_status("/configs/new?from=cfg-momo-duplicate")
         self.assertEqual(status, 200, body)
-        self.assertIn('value="0.3"', body)
+        self.assertIn('value="0.3"', self._input_tag(body, "evolution.kappa"))
 
     def test_config_detail_and_run_plan_show_rationality_summary(self):
         with patch("viewer.workbench_pages._ollama_availability",
@@ -348,7 +418,7 @@ class WorkbenchTests(unittest.TestCase):
         status, body, _ = self.get_status("/configs/cfg-momo-on")
         self.assertEqual(status, 200, body)
         self.assertIn("合理性 κ", body)
-        self.assertIn("0.6 (choice / qwen3.6:35b)", body)
+        self.assertIn("0.6（choice / qwen3.6:35b）", body)
 
         status, body, _ = self.get_status("/configs/cfg-test")
         self.assertEqual(status, 200, body)
@@ -358,7 +428,35 @@ class WorkbenchTests(unittest.TestCase):
         self.fake.add(_job("job-momo-on", "run-momo-on", "running", config_id="cfg-momo-on"))
         status, body, _ = self.get_status("/jobs/job-momo-on")
         self.assertEqual(status, 200, body)
-        self.assertIn("0.6 (choice / qwen3.6:35b)", body)
+        self.assertIn("0.6（choice / qwen3.6:35b）", body)
+
+    def test_rationality_summary_uses_frozen_snapshot_not_live_repo(self):
+        """Opus review: editing rationality.yaml after a config is saved must
+        never change what the summary says -- it reads the config's own
+        frozen snapshot, not the live repo. Uses an isolated temp copy of the
+        repo (never ROOT/the real working tree) so this test can freely edit
+        "the live template" without touching real files."""
+        temp = Path(tempfile.mkdtemp(prefix="wb-jev002-frozen-"))
+        self.addCleanup(shutil.rmtree, temp, ignore_errors=True)
+        temp_repo = temp / "repo"
+        for name in ("projects", "templates"):
+            shutil.copytree(ROOT / name, temp_repo / name)
+        store = ConfigStore(temp_repo, temp / "control", temp / "runs")
+        config = store.save(
+            {"label": "凍結テスト", "project_id": "momotaro", "template_id": "momotaro",
+             "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all", "kappa": 0.6}},
+            config_id="cfg-frozen",
+        )
+        # Edit the (isolated, temp-copy) repo's live template after the
+        # config was already saved/frozen.
+        path = temp_repo / "templates/momotaro/rationality.yaml"
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        doc["backend"]["model"] = "edited-after-save"
+        path.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+
+        summary = workbench_pages._rationality_summary(
+            workbench_pages._frozen_template_dir(store.control, config), config["evolution"])
+        self.assertEqual(summary, "0.6（choice / qwen3.6:35b）")
 
     def test_quick_start_hint_shown_only_for_rationality_genre(self):
         status, body, _ = self.get_status("/worlds/momotaro")
