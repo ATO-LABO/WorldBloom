@@ -303,7 +303,10 @@ class WorldPatchCliTests(unittest.TestCase):
             try:
                 approve_patch(self.project, self.template, pid, "測定結果を確認しテストとして承認する")
                 return True
-            except (ValueError, OSError):
+            except PatchError:
+                # R5: the loser here races the winner's os.replace() of this
+                # same _proposed/<id>.yaml -- a plain FileNotFoundError from
+                # that race must not leak past approve() as a bare OSError.
                 return False
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda _: attempt(), range(2)))
@@ -340,6 +343,40 @@ class WorldPatchCliTests(unittest.TestCase):
                     approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
             finally:
                 path.write_bytes(original)
+
+    def test_approve_rejects_a_gate_whose_status_was_rewritten_to_hide_too_few_individuals(self):
+        # R1: gate_status/trial_state must derive "insufficient" from
+        # len(evidence["individuals"]), not the self-reported trial["runs"]
+        # counter or the gate's own stored status -- both of those a
+        # rewritten gate.json could set independently of what evidence was
+        # actually recorded.
+        pid = self._holdout()
+        gate_path = self.project / "patches/_proposed" / f"{pid}.gate.json"
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(gate["trial"]["evidence"]["individuals"]), 3)
+        gate["trial"]["evidence"]["individuals"] = gate["trial"]["evidence"]["individuals"][:1]
+        gate["trial"]["runs"] = 999  # self-reported counter, left untouched
+        gate["status"] = "reviewable"  # stored status, left untouched
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaises(PatchError):
+            approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_individuals_padded_past_what_the_archive_backs(self):
+        # R1 continued: even once the derived status is legitimately
+        # "reviewable" (padding real individuals up, rather than truncating
+        # them), approve()'s existing per-individual archive/genome-hash
+        # cross-check must still catch a fabricated entry.
+        pid = self._holdout()
+        gate_path = self.project / "patches/_proposed" / f"{pid}.gate.json"
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        individuals = gate["trial"]["evidence"]["individuals"]
+        forged = dict(individuals[0], genome_sha256="0" * 64)
+        gate["trial"]["evidence"]["individuals"] = individuals + [forged]
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaises(PatchError):
+            approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+        self.assertEqual(approved_patches(self.project), [])
 
     def test_holdout_counter_and_exploration_cannot_be_approved(self):
         pid = self._holdout()

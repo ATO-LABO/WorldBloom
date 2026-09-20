@@ -1524,6 +1524,7 @@ def lineage_view(
     way for the same malformed input."""
 
     from gapengine import lineage as lineage_engine
+    from gapengine.world_patch import PatchError
 
     repository.validate_segment(cell_key)
     if cell_key.count("|") != 1 or not all(cell_key.split("|", 1)):
@@ -1534,7 +1535,14 @@ def lineage_view(
     if not isinstance(cells.get(cell_key), Mapping):
         raise MissingResource(f"cell not found: {cell_key}")
 
-    return lineage_engine.build_lineage_report(repository, experiment, cell_key)
+    try:
+        return lineage_engine.build_lineage_report(repository, experiment, cell_key)
+    except PatchError as error:
+        # R3: resolve_experiment_inputs fails closed (ValueError/PatchError)
+        # when a frozen experiment's sealed inputs don't verify -- correct,
+        # but left uncaught it fell through to the generic except in
+        # do_GET() as an unexplained 500. Surface it as a 400 instead.
+        raise BadRequest(f"この実験の凍結入力の封印を検証できません（入力が変更されています）: {error}") from error
 
 
 @lru_cache(maxsize=128)

@@ -95,8 +95,15 @@ def verify_frozen(experiment) -> dict:
         raise PatchError(f"凍結入力の封印を検証できません: {error}") from error
 
 
-def resolve_experiment_inputs(experiment_dir, *, template_dir=None) -> dict:
+def resolve_experiment_inputs(experiment_dir, *, template_dir=None, repo_root=None) -> dict:
     experiment = Path(experiment_dir)
+    # R4: propose/check/approve all resolve a world's gapengine action_graph/
+    # effects references relative to some repo root when they aren't found
+    # relative to the project itself -- default to this module's own repo
+    # only when the caller doesn't say otherwise (e.g. a control-side repo
+    # copy elsewhere, as execution/configs.py already passes for the
+    # equivalent expanded_snapshot() case).
+    fallback_repo = Path(repo_root) if repo_root else ROOT
     if (experiment / "manifest.json").exists():
         config = verify_frozen(experiment)
         project = contained(experiment, f"inputs/projects/{config['project_id']}")
@@ -111,9 +118,12 @@ def resolve_experiment_inputs(experiment_dir, *, template_dir=None) -> dict:
         if not template.is_dir() or (not template_dir and (
                 not record or digest(template_data(template)) != record.get("template_digest"))):
             raise PatchError("拡張実験のtemplateを確認できません。--template を指定してください")
-        source, repo = "expanded_project", ROOT
+        source, repo = "expanded_project", fallback_repo
     else:
         # Keep legacy genre lookup identical to lineage's former fallback.
+        # R7: intentional layer inversion, function-local -- only a run with
+        # no frozen/expanded inputs needs viewer.data's RunRepository/
+        # resolve_genre; this module has no viewer/ dependency at load time.
         from viewer import data
         repository = data.RunRepository(experiment.parent)
         archive = json.loads(repository.safe_path(experiment, "archive.json").read_text(encoding="utf-8"))
@@ -124,7 +134,7 @@ def resolve_experiment_inputs(experiment_dir, *, template_dir=None) -> dict:
         _, project, template = resolved
         if template_dir:
             template = Path(template_dir)
-        source, repo = "repository", ROOT
+        source, repo = "repository", fallback_repo
     world_path = project / "world.yaml"
     world = yaml.safe_load(world_path.read_text(encoding="utf-8"))
     refs = resolve_references(world, project, repo)

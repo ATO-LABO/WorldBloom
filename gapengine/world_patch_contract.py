@@ -12,7 +12,7 @@ def contract_check(world_path, subjects_dir, patch, *, action_graph_path=None):
         people = [Subject.from_yaml(p) for p in sorted(Path(subjects_dir).glob("*.yaml"))]
         world.bind_subjects({p.id: p for p in people})
         return world, people
-    violations = []
+    violations, notes = [], []
     try:
         world, people = instance()
         for zone in patch.get("add", {}).get("zones", []):
@@ -28,27 +28,48 @@ def contract_check(world_path, subjects_dir, patch, *, action_graph_path=None):
                 if {parent, branch}.intersection(rule.get("zones", [])) and rule.get("until_item"):
                     person.inventory[rule["until_item"]] = 1
             if branch not in world.reachable_paths(person):
-                violations.append(f"親から枝へ入れません: {branch}")
+                violations.append(f"親から枝へ入れません: {branch}（試した人物: {person.id}）")
+
+            # R6: every subject with an exclude rule that targets `parent`
+            # is a candidate for the negative check -- try each in turn (not
+            # just the first) and only give up with a note (not a
+            # violation) if none of them has a usable starting position.
             negative_world, negatives = instance()
+            tried_someone, no_start_for = False, []
             for person in negatives:
                 rules = [r for r in person.range_exclude if parent in r.get("zones", [])]
                 if not rules:
                     continue
-                neighbors = [n for n, routes in negative_world.routes.items() if n not in (parent, branch)
-                             and any(r.destination == parent for r in routes)]
+                # Only start from a neighbor this person is themselves
+                # allowed into and not excluded from -- an out-of-range or
+                # self-excluded start leaves reachable_paths nearly empty
+                # regardless of the branch's own exclusion, so the check
+                # would pass for the wrong reason (WB-WORLDGROW-001 R6).
+                excluded_zones = {z for r in person.range_exclude for z in (r.get("zones") or [])}
+                neighbors = sorted(
+                    n for n, routes in negative_world.routes.items()
+                    if n not in (parent, branch) and any(r.destination == parent for r in routes)
+                    and n in person.range_zones and n not in excluded_zones
+                )
                 if not neighbors:
-                    violations.append(f"陰性検査の開始場所がありません: {parent}")
+                    no_start_for.append(person.id)
                     continue
-                person.zone, person.stamina = sorted(neighbors)[0], person.stamina_max
+                tried_someone = True
+                person.zone, person.stamina = neighbors[0], person.stamina_max
                 for rule in rules:
                     if rule.get("until_item"):
                         person.inventory.pop(rule["until_item"], None)
                 paths = negative_world.reachable_paths(person)
                 if parent in paths or branch in paths:
                     violations.append(f"入場条件を回避できます: {person.id}/{branch}")
+            if not tried_someone and no_start_for:
+                notes.append(f"陰性検査の開始場所がありません: {'、'.join(no_start_for)}")
     except Exception as error:
         violations.append(f"世界と人物の契約検査に失敗: {error}")
-    return {"violations": violations}
+    result = {"violations": violations}
+    if notes:
+        result["notes"] = notes
+    return result
 
 
 def new_usage(paths, patch, protagonist):

@@ -19,6 +19,7 @@ from gapengine.world_patch import (
     patch_id_for,
     validate_patch,
 )
+from gapengine.world_patch_contract import contract_check
 
 ROOT = Path(__file__).resolve().parents[1]
 WORLD_PATH = ROOT / "projects" / "momotaro" / "world.yaml"
@@ -230,6 +231,29 @@ class WorldPatchTests(unittest.TestCase):
             {"name": "小屋の裏庭", "parent": "船大工の小屋"},
         ]))
 
+    def test_parent_cannot_be_a_previously_added_branch(self):
+        # R2: a branch is one hop off a *base* zone only -- contract_check's
+        # admission tests never look past that one hop, so a branch of a
+        # branch would ship with an unverified entry condition.
+        world = load_world()
+        world["zones"] = list(world["zones"]) + [{"name": "船大工の小屋"}]
+        world["routes"]["海"] = list(world["routes"]["海"]) + [{"to": "船大工の小屋"}]
+        world["routes"]["船大工の小屋"] = [{"to": "海"}]
+        world["expansion"] = {"base": world.get("name"), "patches": [
+            {"id": "p-existing1", "title": "既存パッチ",
+             "added": {"zones": ["船大工の小屋"], "items": [], "facts": []}},
+        ]}
+        patch = sample_patch()
+        patch["add"]["zones"][0].update(name="小屋の裏庭", parent="船大工の小屋")
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("枝は1段まで" in v for v in violations), violations)
+
+        # A previously added branch remains usable as an item/fact source
+        # zone (not as a parent) -- this must stay unaffected.
+        unaffected = sample_patch()
+        unaffected["add"]["zones"] = []
+        self.assertEqual(validate_patch(world, unaffected), [])
+
     def test_item_with_objective_flag(self):
         self.assert_invalid(lambda p: p["add"]["items"][0].update(objective=True))
 
@@ -433,6 +457,82 @@ class WorldPatchTests(unittest.TestCase):
                 Path(world["gapengine"]["effects"]),
                 (repo_root / "templates" / "x" / "effects.yaml").resolve(),
             )
+
+
+def _minimal_contract_world(temp: Path, *, subject_range_zones: list[str]) -> tuple[Path, Path]:
+    """A hand-built, four-zone world for gapengine.world_patch_contract.
+    contract_check's negative-check unit tests (WB-WORLDGROW-001 R6) --
+    lighter than a real momotaro copy since contract_check never runs a
+    simulation, just World/Subject binding and reachable_paths.
+
+    Topology: 拠点(parent) -- 小屋(branch) -- ZZZ_valid -- 拠点 (a second,
+    direct route back to parent that bypasses the parent hop entirely), and
+    拠点 -- AAA_isolated -- 拠点 (a dead end, only connected to parent).
+    AAA_isolated sorts before ZZZ_valid, so naively taking whichever
+    zone-with-a-route-to-parent sorts first (the pre-fix behavior) picks the
+    dead end; the real bypass only shows up starting from ZZZ_valid.
+    """
+    world = {
+        "name": "test", "protagonist": "サブ", "antagonist": "サブ",
+        "time": {"days": 1, "slots": ["朝"]},
+        "zones": [{"name": "拠点"}, {"name": "小屋"}, {"name": "AAA_isolated"}, {"name": "ZZZ_valid"}],
+        "routes": {
+            "拠点": [{"to": "AAA_isolated"}, {"to": "小屋"}],
+            "AAA_isolated": [{"to": "拠点"}],
+            "小屋": [{"to": "拠点"}, {"to": "ZZZ_valid"}],
+            "ZZZ_valid": [{"to": "小屋"}, {"to": "拠点"}],
+        },
+        "movement": {"action_weight": 1.0, "hop_decay": 0.6, "destination_weights": {}},
+        "stamina": {"default_max": 10, "default_recover_per_slot": 1.0, "exhausted_ratio": 0.2},
+        "thresholds": [], "items": [{"name": "鍵"}], "facts": [],
+        "ending": [{"id": "done", "when": "False", "label": "x"}], "target_ending": ["done"],
+    }
+    world_path = temp / "world.yaml"
+    world_path.write_text(yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+
+    person = {
+        "id": "サブ",
+        "traits": {"social": 0.5, "stubbornness": 0.5, "curiosity": 0.5, "diligence": 0.5, "temper": 0.5},
+        "base": 50, "modifiers": [], "beliefs_about": {},
+        "knowledge": [], "inventory": {}, "reputation": 0.0, "phase": [],
+        "verbs": ["move"], "identity": {"true": "サブ", "displayed": "サブ"},
+        "goal": {"target": None, "deliver_to": None, "obstacles": [], "outcome": None},
+        "relations": {}, "stamina": {"max": 10, "recover_per_slot": 1.0},
+        "range": {"zones": subject_range_zones, "entry": "拠点",
+                  "exclude": [{"zones": ["拠点"], "until_item": "鍵"}]},
+        "companions": [], "ally_value": 0, "objective_claimant": True,
+    }
+    subjects_dir = temp / "subjects"
+    subjects_dir.mkdir()
+    (subjects_dir / "sub.yaml").write_text(yaml.safe_dump(person, allow_unicode=True), encoding="utf-8")
+    return world_path, subjects_dir
+
+
+class ContractCheckNegativeStartTests(unittest.TestCase):
+    """WB-WORLDGROW-001 R6: the negative admission check must start from a
+    neighbor the excluded subject is themselves allowed into, not just
+    whichever zone happens to route to `parent`."""
+
+    def test_catches_a_bypass_only_visible_from_an_in_range_neighbor(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "ZZZ_valid"])
+            patch = {"add": {"zones": [{"name": "小屋", "parent": "拠点"}]}}
+            result = contract_check(world_path, subjects_dir, patch, action_graph_path=None)
+        # Starting from AAA_isolated (in range only via the earlier,
+        # unfiltered pick) reaches nothing and would have missed this
+        # entirely -- ZZZ_valid -> 小屋 bypasses the excluded 拠点 hop.
+        self.assertEqual(result["violations"], ["入場条件を回避できます: サブ/小屋"])
+        self.assertNotIn("notes", result)
+
+    def test_no_in_range_neighbor_leaves_a_note_not_a_violation_or_crash(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋"])
+            patch = {"add": {"zones": [{"name": "小屋", "parent": "拠点"}]}}
+            result = contract_check(world_path, subjects_dir, patch, action_graph_path=None)
+        self.assertEqual(result["violations"], [])
+        self.assertEqual(result["notes"], ["陰性検査の開始場所がありません: サブ"])
 
 
 if __name__ == "__main__":

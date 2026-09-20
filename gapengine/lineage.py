@@ -352,7 +352,7 @@ def _has_recorded_explanations(rows: Sequence[Mapping[str, Any]]) -> bool:
 def _resolve_world_context(
     repository: Any,
     experiment: Path,
-    *, template_dir=None,
+    *, template_dir=None, repo_root=None,
 ) -> dict[str, Any]:
     """cfg needed to rerun any node: project/template dirs, action/qd/rules
     config, target ending and protagonist/antagonist. Restored either from a
@@ -373,7 +373,7 @@ def _resolve_world_context(
     """
 
     from gapengine.world_patch_inputs import resolve_experiment_inputs
-    resolved = resolve_experiment_inputs(experiment, template_dir=template_dir)
+    resolved = resolve_experiment_inputs(experiment, template_dir=template_dir, repo_root=repo_root)
     project_dir = resolved["world_path"].parent
     template_dir = resolved["template_dir"]
 

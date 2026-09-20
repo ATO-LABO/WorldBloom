@@ -40,7 +40,10 @@ def trial_state(trial):
             or reproduction.get("checked") != reproduction.get("identical")
             or reproduction.get("mismatched")):
         return "reference_only"
-    if trial.get("runs", 0) < 3 or len(evidence.get("seeds", [])) < 4:
+    # R1: counted from the sealed evidence lists, not trial["runs"] -- a
+    # self-reported counter a rewritten gate.json could inflate independently
+    # of the individuals/seeds actually recorded as evidence.
+    if len(evidence.get("individuals", [])) < 3 or len(evidence.get("seeds", [])) < 4:
         return "insufficient"
     return "measured"
 
@@ -107,6 +110,10 @@ def _trigger_counts(report: dict, zones: set[str], verb: str) -> dict[str, int]:
 
 def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, max_runs=5,
               seeds_per_run=8, seed_set="exploration"):
+    # R7: intentional layer inversion, function-local -- a legacy/non-frozen
+    # experiment's project+template are resolved through viewer.data's
+    # existing RunRepository/resolve_genre; gapengine's module load never
+    # depends on viewer/, only this one call path does.
     from viewer.data import RunRepository
     experiment, work = Path(experiment_dir).resolve(), Path(work_dir).resolve()
     if work == experiment or work.is_relative_to(experiment):

@@ -373,6 +373,15 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
         seen_new_names.add(name)
         return True
 
+    # R2: a branch can only be one hop off a *base* zone -- contract_check's
+    # negative/positive admission tests only ever look one hop from parent to
+    # branch, so a branch-of-a-branch's own entry condition would never
+    # actually get exercised.
+    expansion_branch_names = {
+        name for entry in (existing_expansion or {}).get("patches", []) if isinstance(entry, dict)
+        for name in ((entry.get("added") or {}).get("zones") or [])
+    }
+
     for zone in raw_zones:
         if not isinstance(zone, dict):
             violations.append("zones の要素はオブジェクトで指定してください")
@@ -384,6 +393,8 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
         parent = zone.get("parent")
         if not (isinstance(parent, str) and parent in existing["zones"]):
             violations.append(f"parent が既存ゾーンではありません: {parent!r}")
+        elif parent in expansion_branch_names:
+            violations.append(f"拡張で足した場所を親にはできません（枝は1段まで）: {parent}")
         note = zone.get("note")
         if note is not None and not isinstance(note, str):
             violations.append("note は文字列で指定してください")

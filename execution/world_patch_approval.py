@@ -23,7 +23,15 @@ def _sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def approve(project, template, patch_id, reason):
+def approve(project, template, patch_id, reason, *, repo_root=None):
+    """Human approval of a proposed patch.
+
+    Note: this only re-derives gate.status from the *stored* gate.json's own
+    static/trial/evidence fields (see R1) -- it never re-runs the static or
+    trial gates, so a gate.json whose `contract`/`reproduction` records were
+    themselves rewritten to look consistent cannot be caught here. Re-run
+    `check` before approving anything you don't trust the provenance of.
+    """
     project, template = Path(project), Path(template)
     if not isinstance(reason, str) or len(reason.strip()) < 10:
         raise PatchError("承認理由を10文字以上で指定してください")
@@ -31,13 +39,24 @@ def approve(project, template, patch_id, reason):
         raise PatchError("パッチ ID の形式が不正です")
     folder = project / "patches"
     with patch_lock(project):
-        verified, stack, world, people, refs, root_digest = applicable_snapshot(project, template)
+        verified, stack, world, people, refs, root_digest = applicable_snapshot(project, template, repo_root=repo_root)
         source = folder / "_proposed" / f"{patch_id}.yaml"
         gate_path = source.with_suffix(".gate.json")
+        if not source.is_file() or not gate_path.is_file():
+            # R5: a losing concurrent approve() can reach here after the
+            # winner already moved this same proposal out of _proposed/.
+            raise PatchError("提案が見つかりません（別の処理が先に承認・却下した可能性があります）")
         raw = source.read_bytes()
         patch = yaml.safe_load(raw)
         gate = json.loads(gate_path.read_text(encoding="utf-8"))
-        if gate.get("status") != "reviewable" or gate_status(gate) != "reviewable":
+        # R1: re-derive status from the gate's own recorded static/trial
+        # evidence rather than trusting either the stored `status` field or
+        # trial["runs"] -- both are values a rewritten gate.json could set
+        # independently of the individuals/seeds actually recorded.
+        derived_status = gate_status(gate)
+        if gate.get("status") != derived_status:
+            raise PatchError("ゲート結果が書き換えられています。check をやり直してください")
+        if derived_status != "reviewable":
             raise PatchError("承認できる状態は reviewable のみです")
         evidence = gate["trial"]["evidence"]
         if evidence.get("seed_set") != "holdout":
@@ -58,6 +77,10 @@ def approve(project, template, patch_id, reason):
         if any(evidence.get(k) != v for k, v in expected.items()):
             raise PatchError("入力・実行コード・規約が検査時と一致しません。check をやり直してください")
         # Revalidate the sealed source and the explicit target override at approval.
+        # R7: intentional layer inversion, function-local -- resolving a legacy/
+        # non-frozen experiment's project+template needs viewer.data's existing
+        # RunRepository/resolve_genre; this module isn't imported at module load
+        # time, so execution/ doesn't depend on viewer/ just to be imported.
         from gapengine.lineage import _resolve_world_context
         from viewer.data import RunRepository
         experiment = Path(evidence["experiment"])
