@@ -12,7 +12,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Sequence
+from typing import Iterable, Sequence
 
 import yaml
 
@@ -33,10 +33,19 @@ from gapengine.world_patch import (
     apply_patches,
     approved_patches,
     patch_id_for,
+    template_identifiers,
     validate_patch,
 )
-from gapengine.world_patch_propose import build_prompt, check_trigger_coverage, make_patch, parse_proposal
+from gapengine.world_patch_propose import MAX_PROMPT_CHARS, build_prompt, check_trigger_coverage, make_patch, parse_proposal
 from gapengine.world_patch_trial import run_trial
+
+# Exceptions an LLM's malformed JSON/shape can realistically trigger while a
+# proposal is parsed and gated (WB-WORLDGROW-001 R6): parse_proposal/make_patch/
+# validate_patch/check_trigger_coverage never raise ValueError, but a caller
+# building on top of them (this module) can still hit these from an unexpected
+# shape slipping past a `.get()` chain -- treat that the same as a validation
+# failure (a violation to fix on retry) instead of crashing the CLI.
+_PROPOSAL_ERRORS = (ValueError, TypeError, KeyError, AttributeError)
 
 
 def _resolve_ctx(experiment: Path):
@@ -96,9 +105,9 @@ def _check_parent_rev(base_world: dict, project: Path) -> str | None:
 
 
 def _gate(experiment: Path, project: Path, patch: dict, ctx: dict, subject_ids: list[str],
-          *, skip_trial: bool, max_runs: int, seeds_per_run: int) -> dict:
+          *, skip_trial: bool, max_runs: int, seeds_per_run: int, reserved: Iterable[str] = ()) -> dict:
     base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
-    violations = validate_patch(base_world, patch, subject_ids=subject_ids)
+    violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved)
     violations += check_trigger_coverage(patch.get("add", {}), patch.get("trigger", {}))
     static_passed = not violations
     trial_result = None
@@ -138,6 +147,22 @@ def _print_gate_summary(patch: dict, gate: dict) -> None:
         print("試走: スキップ")
 
 
+def _retry_prompt(original_prompt: str, last_proposal_text: str | None,
+                   last_response_text: str, violations: list[str]) -> str:
+    """Rebuild the retry prompt from `original_prompt` fresh each attempt
+    (WB-WORLDGROW-001 R9) instead of appending onto an ever-growing prompt:
+    the original prompt, a quote of the last attempt (its parsed JSON, or --
+    when parsing itself failed -- the first 1500 chars of the raw response),
+    and only *this* attempt's violations (never a cumulative list)."""
+    quote_source = last_proposal_text if last_proposal_text is not None else (last_response_text or "")[:1500]
+    header = "\n\n# 前回の提案\n"
+    footer = ("\n\n前回の提案は次の理由で不採用でした: " + "、".join(violations)
+              + "。これらを直したJSONを出力してください。")
+    budget = max(MAX_PROMPT_CHARS - len(original_prompt) - len(header) - len(footer), 0)
+    quote = quote_source if len(quote_source) <= budget else quote_source[:budget]
+    return original_prompt + header + quote + footer
+
+
 def cmd_propose(args: argparse.Namespace) -> int:
     experiment = args.experiment.resolve()
     project = args.project.resolve()
@@ -159,6 +184,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
 
     subject_ids = _subject_ids(Path(ctx["subjects_dir"]))
     zone_verbs = _zone_verbs(report, trigger["zone"])
+    reserved = template_identifiers(args.template) if args.template else ()
     try:
         prompt = build_prompt(base_world, subject_ids, trigger, zone_verbs)
     except ValueError as error:
@@ -195,13 +221,15 @@ def cmd_propose(args: argparse.Namespace) -> int:
                 return 1
             response_text = result.text
 
+        last_proposal_text = None
         try:
             proposal = parse_proposal(response_text)
+            last_proposal_text = json.dumps(proposal, ensure_ascii=False, indent=2, sort_keys=False)
             patch = make_patch(proposal, trigger=trigger, parent_rev=world_parent_rev, author=author)
-            violations = validate_patch(base_world, patch, subject_ids=subject_ids)
+            violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved)
             violations += check_trigger_coverage(patch["add"], trigger)
-        except ValueError as error:
-            violations = [str(error)]
+        except _PROPOSAL_ERRORS as error:
+            violations = [f"提案の形式を検査できませんでした: {error}"]
             patch = make_patch(
                 {"title": "(解析失敗)", "rationale": str(error)[:300], "add": {}},
                 trigger=trigger, parent_rev=world_parent_rev, author=author,
@@ -209,10 +237,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
 
         if not violations or args.from_file or attempt == max_attempts:
             break
-        current_prompt = (
-            current_prompt
-            + f"\n\n前回の提案は次の理由で不採用でした: {'、'.join(violations)}。これらを直したJSONを出力してください。"
-        )
+        current_prompt = _retry_prompt(prompt, last_proposal_text, response_text, violations)
 
     gate = {
         "schema_version": 1,
@@ -262,8 +287,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         return 1
 
     subject_ids = _subject_ids(Path(ctx["subjects_dir"]))
-    gate = _gate(experiment, project, patch, ctx, subject_ids,
-                 skip_trial=args.skip_trial, max_runs=args.max_runs, seeds_per_run=args.seeds_per_run)
+    reserved = template_identifiers(args.template) if args.template else ()
+    gate = _gate(experiment, project, patch, ctx, subject_ids, skip_trial=args.skip_trial,
+                 max_runs=args.max_runs, seeds_per_run=args.seeds_per_run, reserved=reserved)
     gate["patch_sha256"] = hashlib.sha256(patch_path.read_bytes()).hexdigest()
     gate_path = proposed_dir / f"{args.patch}.gate.json"
     gate_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -316,9 +342,10 @@ def cmd_approve(args: argparse.Namespace) -> int:
 
     world = yaml.safe_load((project / "world.yaml").read_text(encoding="utf-8"))
     subject_ids = _subject_ids(project / "subjects")
+    reserved = template_identifiers(args.template) if args.template else ()
     try:
-        world = apply_patches(world, current_approved)
-        violations = validate_patch(world, patch, subject_ids=subject_ids)
+        world = apply_patches(world, current_approved, reserved=reserved)
+        violations = validate_patch(world, patch, subject_ids=subject_ids, reserved=reserved)
     except PatchError as error:
         print(f"現在の世界に対する検証に失敗しました: {error}")
         return 1
@@ -425,6 +452,7 @@ def build_parser() -> argparse.ArgumentParser:
     propose.add_argument("--max-runs", type=int, default=5)
     propose.add_argument("--seeds-per-run", type=int, default=8)
     propose.add_argument("--retries", type=int, default=2)
+    propose.add_argument("--template", type=Path)
     propose.set_defaults(func=cmd_propose)
 
     check = sub.add_parser("check")
@@ -434,6 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--skip-trial", action="store_true")
     check.add_argument("--max-runs", type=int, default=5)
     check.add_argument("--seeds-per-run", type=int, default=8)
+    check.add_argument("--template", type=Path)
     check.set_defaults(func=cmd_check)
 
     approve = sub.add_parser("approve")

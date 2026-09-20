@@ -222,6 +222,19 @@ class WorldDemandTest(unittest.TestCase):
         self.assertEqual(sea["verbs"], [("investigate", 2, 0.5)])
         self.assertEqual(sea["ineffective_rate"], 0.5)
 
+    def test_all_mode_excludes_lineage_rerun_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            experiment_dir = Path(tmp)
+            run_path = experiment_dir / "g0" / "ind-0" / "seed-1" / "layers.jsonl"
+            _write_layers(run_path)
+            lineage_path = experiment_dir / "lineage" / "x" / "seed-1" / "layers.jsonl"
+            _write_layers(lineage_path)
+
+            report = world_demand.build_report(experiment_dir, use_all=True)
+
+            self.assertEqual(report["files"], 1)
+            self.assertEqual(report["population"], {"mode": "all", "files": 1, "skipped": 0})
+
     def test_build_report_adds_schema_and_thresholds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             experiment_dir = Path(tmp)

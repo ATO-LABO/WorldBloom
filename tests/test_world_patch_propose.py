@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from copy import deepcopy
+
 from gapengine.world_patch_propose import build_prompt, check_trigger_coverage, make_patch, parse_proposal
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +38,20 @@ class BuildPromptTests(unittest.TestCase):
         trigger = {**TRIGGER, "verb": "observe"}
         with self.assertRaises(ValueError):
             build_prompt(WORLD, SUBJECT_IDS, trigger, [])
+
+    def test_huge_zone_notes_still_fit_and_keep_rules_and_output_and_example(self):
+        world = deepcopy(WORLD)
+        for zone in world["zones"]:
+            zone["note"] = "え" * 3000
+        prompt = build_prompt(world, SUBJECT_IDS, TRIGGER, [("craft", 40, 0.1), ("move", 20, 0.0)])
+        self.assertLessEqual(len(prompt), 12000)
+        for expected in ("# 拡張のルール", "# 出力", "228", "craft×40", "move×20",
+                          "灯台守の記録", "この例に出てくる名前"):
+            self.assertIn(expected, prompt)
+
+    def test_normal_momotaro_world_drops_nothing(self):
+        prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [("craft", 40, 0.1), ("move", 20, 0.0)])
+        self.assertNotIn("ほか", prompt)
 
 
 class ParseProposalTests(unittest.TestCase):
@@ -122,6 +138,19 @@ class CheckTriggerCoverageTests(unittest.TestCase):
             "facts": [{"id": "何かの噂", "label": "詳細不明"}],
         }
         self.assertTrue(check_trigger_coverage(add, TRIGGER))
+
+    def test_malformed_add_shapes_never_raise(self):
+        for add in (
+            {"items": {"a": 1}},  # items is a dict, not a list
+            {"items": [{"name": "x", "sources": "not-a-list"}]},  # sources is a str
+            {"zones": "not-a-list", "items": [{"name": "x", "sources": [{"zone": ["海"]}]}]},
+            {"items": [{"name": "x", "sources": [{"zone": {"nested": True}}]}]},
+            "not-a-dict",
+            None,
+        ):
+            with self.subTest(add=add):
+                self.assertEqual(check_trigger_coverage(add, TRIGGER), check_trigger_coverage(add, TRIGGER))
+                self.assertTrue(check_trigger_coverage(add, TRIGGER))
 
 
 if __name__ == "__main__":

@@ -349,6 +349,82 @@ class WorldPatchTests(unittest.TestCase):
             # Neither candidate exists for effects -- left untouched.
             self.assertEqual(world["gapengine"]["effects"], "missing/effects.yaml")
 
+    # -- R6: malformed-type inputs must produce violations, never raise ----
+
+    def test_item_source_zone_empty_list_does_not_raise(self):
+        self.assert_invalid(lambda p: p["add"]["items"][0]["sources"][0].update(zone=[]))
+
+    def test_item_source_zone_empty_dict_does_not_raise(self):
+        self.assert_invalid(lambda p: p["add"]["items"][0]["sources"][0].update(zone={}))
+
+    def test_fact_source_zone_empty_list_does_not_raise(self):
+        self.assert_invalid(lambda p: p["add"]["facts"][0]["sources"][0].update(zone=[]))
+
+    def test_requires_knowledge_empty_list_does_not_raise(self):
+        self.assert_invalid(lambda p: p["add"]["items"][0].update(requires={"knowledge": []}))
+
+    def test_parent_empty_dict_does_not_raise(self):
+        self.assert_invalid(lambda p: p["add"]["zones"][0].update(parent={}))
+
+    def test_made_from_material_key_is_numeric_does_not_raise(self):
+        self.assert_invalid(lambda p: p["add"]["items"][0].update(sources=None, made_from={123: 1}))
+
+    def test_item_source_count_true_is_rejected_not_accepted_as_one(self):
+        self.assert_invalid(lambda p: p["add"]["items"][0]["sources"][0].update(count=True))
+
+    def test_item_source_count_float_one_is_rejected(self):
+        self.assert_invalid(lambda p: p["add"]["items"][0]["sources"][0].update(count=1.0))
+
+    def test_fact_source_count_true_is_rejected(self):
+        self.assert_invalid(lambda p: p["add"]["facts"][0]["sources"][0].update(count=True))
+
+    def test_item_source_max_float_is_rejected(self):
+        self.assert_invalid(lambda p: p["add"]["items"][0]["sources"][0].update(max=2.0))
+
+    def test_implies_fact_is_list_does_not_raise(self):
+        self.assert_invalid(lambda p: p["add"]["facts"][0].update(
+            implies={"fact": ["oni_weakness"], "value": "金棒", "confidence": 0.3}))
+
+    def test_unknown_top_level_key_numeric_does_not_raise(self):
+        self.assert_invalid(lambda p: p.update({123: "x"}))
+
+    def test_check_trigger_coverage_survives_malformed_add(self):
+        from gapengine.world_patch_propose import check_trigger_coverage
+        broken = {"items": {"name": "x"}, "facts": "not-a-list"}
+        self.assertEqual(
+            check_trigger_coverage(broken, {"zone": "海"}),
+            ["きっかけの場所に調べて得られるものが足されていません"])
+
+    # -- R10: names reserved by the engine ----------------------------------
+
+    def test_reserved_fact_id_gossip_is_rejected(self):
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "items": [], "daily_events": [],
+            "facts": [{"id": "雑談", "label": "他愛のない世間話",
+                       "sources": [{"type": "investigate", "zone": "海", "count": 1}]}],
+        })
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("予約された名前は使えません" in v for v in violations), violations)
+
+    def test_reserved_argument_name_is_rejected(self):
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [{"name": "見張り台", "parent": "海"}], "items": [], "facts": [], "daily_events": [],
+        })
+        violations = validate_patch(world, patch, reserved=("見張り台",))
+        self.assertTrue(any("予約された名前は使えません: 見張り台" in v for v in violations), violations)
+
+    def test_template_identifiers_reads_verb_and_rule_ids_from_momotaro(self):
+        from gapengine.world_patch import template_identifiers
+        identifiers = template_identifiers(ROOT / "templates" / "momotaro")
+        self.assertIn("investigate", identifiers)
+
+    def test_template_identifiers_missing_dir_returns_empty(self):
+        from gapengine.world_patch import template_identifiers
+        with tempfile.TemporaryDirectory() as temp:
+            self.assertEqual(template_identifiers(Path(temp) / "nope"), set())
+
     def test_absolutize_references_falls_back_to_repo_root(self):
         with tempfile.TemporaryDirectory() as temp:
             project_dir = Path(temp) / "project"

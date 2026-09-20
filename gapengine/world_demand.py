@@ -19,6 +19,7 @@ gapengine/evolve.py's world_expansion="detect").
 from __future__ import annotations
 
 import json
+import re
 import statistics
 from collections import Counter
 from pathlib import Path
@@ -47,20 +48,30 @@ def _mean(values):
     return _round(statistics.fmean(values)) if values else None
 
 
-def _load_paths(experiment_dir: Path, use_all: bool) -> tuple[list[Path], dict | None]:
-    """Return (layers paths to read, parsed archive.json or None)."""
+# A GA run's protagonist layers land at exactly this shape (gapengine/evolve.py's
+# run_individual: out_dir=g<gen>/ind-<index>, seed_dir=out_dir/seed-<seed>).
+# rglob("layers.jsonl") also picks up gapengine/lineage.py's rerun cache
+# (lineage/<ref>/seed-N/layers.jsonl) and other non-population copies -- opening
+# the lineage screen must not change what a "demand" scan counts.
+_RUN_LAYERS_RE = re.compile(r"^g\d+/ind-\d+/seed-\d+/layers\.jsonl$")
+
+
+def _load_paths(experiment_dir: Path, use_all: bool) -> tuple[list[Path], dict | None, str]:
+    """Return (layers paths to read, parsed archive.json or None, population mode)."""
 
     archive_path = experiment_dir / "archive.json"
     archive = json.loads(archive_path.read_text(encoding="utf-8")) if archive_path.is_file() else None
     if use_all or archive is None:
-        return sorted(experiment_dir.rglob("layers.jsonl")), archive
+        found = [p for p in experiment_dir.rglob("layers.jsonl")
+                 if _RUN_LAYERS_RE.match(p.relative_to(experiment_dir).as_posix())]
+        return sorted(found), archive, "all"
     seen = []
     for key in sorted(archive.get("cells", {})):
         exemplar = archive["cells"][key].get("exemplar", {})
         layers_path = exemplar.get("layers_path")
         if layers_path and layers_path not in seen:
             seen.append(layers_path)
-    return [experiment_dir / p for p in seen], archive
+    return [experiment_dir / p for p in seen], archive, "exemplars"
 
 
 def _zone_after(row: dict, subject: str, current: str | None) -> str | None:
@@ -249,10 +260,11 @@ def build_report(experiment_dir: Path, *, use_all: bool = False, subject: str | 
     """Load an experiment's layers.jsonl files and build the full report
     (aggregates + archive summary + schema/thresholds metadata)."""
 
-    paths, archive = _load_paths(experiment_dir, use_all)
+    paths, archive, mode = _load_paths(experiment_dir, use_all)
     report = collect(paths, subject=subject)
     report["archive"] = _archive_summary(experiment_dir, archive)
     report["schema_version"] = 1
     report["thresholds"] = {"whiff_rate_min": WHIFF_RATE_MIN, "wasted_share_min": WASTED_SHARE_MIN,
                             "whiffs_min": WHIFFS_MIN}
+    report["population"] = {"mode": mode, "files": report["files"], "skipped": report["skipped_paths"]}
     return report

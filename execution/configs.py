@@ -25,7 +25,7 @@ from gapengine.genome import Genome
 from gapengine.policy import _compile_rules
 from gapengine.precedent import load_canon
 from gapengine.synopsis import _backend_config
-from gapengine.world_patch import PatchError, apply_patches, approved_patches
+from gapengine.world_patch import PatchError, apply_patches, approved_patches, template_identifiers
 from scripts.evolve import build_parser
 from execution.provenance import (
     ConfigError, atomic_json, canonical, code_snapshot, contained, directory_lock,
@@ -271,7 +271,8 @@ def _capture_inputs(repo, spec):
                 if isinstance(subject_data, dict) and isinstance(subject_data.get("id"), str):
                     subject_ids.append(subject_data["id"])
             try:
-                world = apply_patches(world, patches, subject_ids=subject_ids)
+                world = apply_patches(world, patches, subject_ids=subject_ids,
+                                       reserved=template_identifiers(template))
             except PatchError as error:
                 raise ConfigError("inputs.world_patches", str(error)) from error
             blobs[world_key] = yaml.safe_dump(world, allow_unicode=True,
@@ -382,7 +383,7 @@ class ConfigStore:
             prior, manifest, root = self._bundle(parent)
             if any(prior[k] != spec[k] for k in ("project_id", "template_id")):
                 raise ConfigError("parent_config_id", "複製元と異なる入力は新規設定として保存してください")
-            prior_expand = prior["evolution"]["world_expansion"] == "expand"
+            prior_expand = prior["evolution"].get("world_expansion", "off") == "expand"
             spec_expand = spec["evolution"]["world_expansion"] == "expand"
             if prior_expand != spec_expand:
                 raise ConfigError("parent_config_id", "複製元と異なる入力は新規設定として保存してください")
