@@ -139,10 +139,13 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
 
                 effective = row.get("effective")
                 result = row.get("result")
-                if effective is False or result == "invalid":
+                details = row.get("details") or {}
+                # Learning a plain fact leaves no trace in the layer snapshot, so
+                # the engine logs it as effective=False; it still found something.
+                found = bool(details.get("learned") or details.get("gathered"))
+                if (effective is False and not found) or result == "invalid":
                     bucket["ineffective"] += 1
                     bucket["verb_whiffs"][verb] += 1
-                    details = row.get("details") or {}
                     reason = details.get("reason") or result
                     bucket["ineffective_reasons"][reason] += 1
 
