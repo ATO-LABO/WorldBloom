@@ -246,6 +246,9 @@ class WorkbenchTests(unittest.TestCase):
         # WB-UI-021: generation moved off the execution config entirely --
         # nothing about it is shown on the config detail page any more.
         self.assertNotIn("生成設定", body)
+        # WB-WORLDGROW-001 stage 3a: the detail dl shows the Japanese label,
+        # not the raw evolution.world_expansion value ("off").
+        self.assertIn("しない", body)
 
         status, body, _ = self.get_status("/configs/absent")
         self.assertEqual(status, 404, body)
@@ -280,6 +283,13 @@ class WorkbenchTests(unittest.TestCase):
             'value="off" data-field="evolution.world_expansion" checked',
             body,
         )
+        # WB-WORLDGROW-001 stage 3a: third "expand" choice alongside off/detect.
+        self.assertIn(
+            'type="radio" id="f-evolution.world_expansion-expand" name="evolution.world_expansion" '
+            'value="expand" data-field="evolution.world_expansion"',
+            body,
+        )
+        self.assertIn("承認済みの拡張を適用", body)
         # The fixture's "romance" world resolves to the "romance" genre
         # (templates/romance exists), so its <option> carries data-genre.
         self.assertIn('data-genre="', body)
@@ -290,6 +300,14 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('data-parent="cfg-test"', body)
         self.assertGreaterEqual(body.count('type="hidden"'), 2)
         self.assertIn('data-summary', body)
+
+    def test_world_expansion_label_helper_covers_all_values_and_unknown(self):
+        # Shared by render_config_form's detail dl and _run_plan's job-screen
+        # summary (WB-WORLDGROW-001 stage 3a) -- one place to keep them in sync.
+        self.assertEqual(workbench_pages._world_expansion_label("off"), "しない")
+        self.assertEqual(workbench_pages._world_expansion_label("detect"), "検知のみ")
+        self.assertEqual(workbench_pages._world_expansion_label("expand"), "承認済みの拡張を適用")
+        self.assertEqual(workbench_pages._world_expansion_label("bogus"), "bogus")
 
     def test_output_settings_api_round_trip(self):
         status, before = self.http("GET", "/api/settings/output")

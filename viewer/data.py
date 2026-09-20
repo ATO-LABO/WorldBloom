@@ -313,6 +313,54 @@ def world_demand(repository: "RunRepository", experiment: Path) -> dict[str, Any
     return dict(raw)
 
 
+def world_expansion_info(repository: "RunRepository", experiment: Path) -> list[dict[str, Any]]:
+    """expansion.patches applied to this experiment's frozen world
+    (WB-WORLDGROW-001 stage 3a).
+
+    Reads <experiment>/inputs/projects/<project_id>/world.yaml (project_id
+    from <experiment>/config.json -- the job_api/ConfigStore.prepare_run
+    layout), or <experiment>/expanded-project/world.yaml (a direct
+    scripts/evolve.py --world-expansion=expand CLI run). Missing or
+    malformed input never raises -- callers show "no expansion" instead.
+    Not cached (unlike _cached_world_meta): a run's frozen world never
+    changes, but re-reading it once per page view keeps this function
+    simple and its cost is one small YAML file.
+    """
+
+    candidates: list[Path] = []
+    try:
+        config_path = repository.safe_path(experiment, "config.json")
+        if config_path.is_file():
+            config = _read_json(config_path)
+            project_id = config.get("project_id") if isinstance(config, Mapping) else None
+            if isinstance(project_id, str) and project_id:
+                candidates.append(repository.safe_path(
+                    experiment, f"inputs/projects/{project_id}/world.yaml"))
+    except (ForbiddenPath, OSError, ValueError):
+        pass
+    try:
+        candidates.append(repository.safe_path(experiment, "expanded-project/world.yaml"))
+    except ForbiddenPath:
+        pass
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            world = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(world, Mapping):
+            continue
+        expansion = world.get("expansion")
+        if not isinstance(expansion, Mapping):
+            continue
+        patches = expansion.get("patches")
+        if isinstance(patches, list) and patches:
+            return [p for p in patches if isinstance(p, Mapping)]
+    return []
+
+
 RUNNING_JOB_STATES = frozenset({"queued", "running", "stopping"})
 
 
