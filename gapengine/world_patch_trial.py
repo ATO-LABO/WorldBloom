@@ -1,4 +1,9 @@
-"""Paired measurements and sealed evidence; v1 never claims statistical safety."""
+"""Paired measurements plus the evidence approve() re-checks them against.
+
+That evidence is a trusted local check record, not an authenticated one: its
+hashes let approve() detect drift between this record and the experiment it
+names -- not forgery by a party that can rewrite every file at once (N4,
+Astra review). v1 never claims statistical safety from these measurements."""
 from __future__ import annotations
 import copy
 import hashlib

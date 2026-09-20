@@ -35,8 +35,14 @@ def approve(project, template, patch_id, reason, *, repo_root=None):
     construction + subject bind + contract re-check of the materialized
     world. What it does *not* re-run: the original measurement itself (the
     base-vs-patched simulated runs) or the reproduction check -- those are
-    trusted from the sealed gate.json's own trial record. Re-run `check`
-    before approving anything you don't trust the provenance of.
+    taken from gate.json, which is a *trusted local check record*, not an
+    authenticated one: `check` wrote it with the same privileges anything
+    else here has, so its hashes detect accidental drift (a re-run, a synced
+    copy, an edit) and not a party able to rewrite every file at once. The
+    hash this records into stack.json at approval pins what was approved
+    from here on; it says nothing about how the measurement was produced.
+    Re-run `check` before approving anything you don't trust the provenance
+    of (N4, Astra review).
     """
     project, template = Path(project), Path(template)
     if not isinstance(reason, str) or len(reason.strip()) < 10:
