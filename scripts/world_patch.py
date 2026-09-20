@@ -52,11 +52,12 @@ from execution.world_patch_approval import approve, reopen, repair
 _PROPOSAL_ERRORS = (ValueError, TypeError, KeyError, AttributeError)
 
 
-def _resolve_ctx(experiment: Path, template_dir=None):
+def _resolve_ctx(experiment: Path, template_dir=None, repo_root=None):
     from viewer.data import RunRepository
 
     repository = RunRepository(experiment.parent)
-    return repository, lineage._resolve_world_context(repository, experiment, template_dir=template_dir)
+    return repository, lineage._resolve_world_context(
+        repository, experiment, template_dir=template_dir, repo_root=repo_root)
 
 
 def _subject_ids(subjects_dir: Path) -> list[str]:
@@ -137,6 +138,18 @@ def _save_gate(project, patch_path, raw, gate):
         atomic_json(path, gate)
 
 
+# Optional (WB-WORLDGROW-001 review): Japanese explanation for every
+# non-reviewable status, so the CLI's last line always says why a patch
+# can't be approved yet instead of only ever printing the reviewable caveat.
+_STATUS_EXPLANATIONS = {
+    "static_failed": "静的ゲートの違反",
+    "trial_pending": "試走がまだ",
+    "contract_failed": "契約検査の違反",
+    "reference_only": "参考試走のみ（凍結入力なし・engine不一致・再現確認なし）",
+    "insufficient": "試走の規模が足りません（個体3以上・seed4以上が必要）",
+}
+
+
 def _print_gate_summary(patch, gate):
     print(f"題: {patch.get('title')} / status: {gate.get('status')}")
     print(f"理由: {patch.get('rationale')}")
@@ -150,7 +163,11 @@ def _print_gate_summary(patch, gate):
         if key in trial:
             print(f"{key}: {json.dumps(trial[key], ensure_ascii=False)}")
     print(f"holdout_checks: {gate.get('holdout_checks', 0)}")
-    print("reviewable は人が検討できる状態です。統計的な合格ではありません")
+    status = gate.get("status")
+    if status == "reviewable":
+        print("reviewable は人が検討できる状態です。統計的な合格ではありません")
+    else:
+        print(f"承認できる状態ではありません: {_STATUS_EXPLANATIONS.get(status, status)}")
 
 
 def _retry_prompt(original_prompt: str, last_proposal_text: str | None,
@@ -180,7 +197,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
     trigger = dict(triggers[args.trigger])
     trigger["experiment"] = experiment.name
 
-    repository, ctx = _resolve_ctx(experiment, args.template)
+    repository, ctx = _resolve_ctx(experiment, args.template, repo_root=args.repo)
     base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
     mismatch = _check_parent_rev(base_world, project)
     if mismatch:
@@ -266,7 +283,7 @@ def cmd_check(args):
     if not ID_RE.fullmatch(args.patch):
         raise PatchError("パッチ ID の形式が不正です")
     experiment, project = args.experiment.resolve(), args.project.resolve()
-    _, ctx = _resolve_ctx(experiment, args.template)
+    _, ctx = _resolve_ctx(experiment, args.template, repo_root=args.repo)
     path = project / "patches" / "_proposed" / f"{args.patch}.yaml"
     with patch_lock(project):
         raw = path.read_bytes()
@@ -287,7 +304,8 @@ def cmd_check(args):
 
 
 def cmd_approve(args):
-    revision = approve(args.project.resolve(), args.template.resolve(), args.patch, args.reason)
+    revision = approve(args.project.resolve(), args.template.resolve(), args.patch, args.reason,
+                        repo_root=args.repo)
     print(f"承認しました: {args.patch}（rev={revision['rev']}）")
     return 0
 
@@ -331,6 +349,9 @@ def cmd_list(args):
 
 def cmd_reopen(args):
     print("再検査に戻しました: " + ", ".join(reopen(args.project.resolve())))
+    # Optional (WB-WORLDGROW-001 review): rev2 以降は parent_digest が古い
+    # head のままなので、まとめて再承認はできない。
+    print("元の順序どおり、1枚ずつ check → approve をやり直してください。")
     return 0
 
 
@@ -355,6 +376,10 @@ def build_parser() -> argparse.ArgumentParser:
     propose.add_argument("--seeds-per-run", type=int, default=8)
     propose.add_argument("--retries", type=int, default=2)
     propose.add_argument("--template", type=Path)
+    # R4: default None keeps resolve_experiment_inputs's own repo default;
+    # only needed when the project/template referenced by the experiment
+    # live outside this repo (e.g. under a control-side repo copy).
+    propose.add_argument("--repo", type=Path)
     propose.set_defaults(func=cmd_propose)
 
     check = sub.add_parser("check")
@@ -365,6 +390,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--max-runs", type=int, default=5)
     check.add_argument("--seeds-per-run", type=int, default=8)
     check.add_argument("--template", type=Path)
+    check.add_argument("--repo", type=Path)
     check.add_argument("--seed-set", choices=("exploration", "holdout"), default="holdout")
     check.set_defaults(func=cmd_check)
 
@@ -373,6 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--patch", required=True)
     approve.add_argument("--template", type=Path, required=True)
     approve.add_argument("--reason", required=True)
+    approve.add_argument("--repo", type=Path)
     approve.set_defaults(func=cmd_approve)
 
     reject = sub.add_parser("reject")

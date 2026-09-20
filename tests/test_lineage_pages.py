@@ -9,6 +9,7 @@ without paying for a second sim run.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tempfile
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from gapengine.evolve import evolve
 from viewer import data, pages
+from world_patch_fixtures import frozen_experiment
 
 
 def _momotaro_paths() -> tuple[Path, Path]:
@@ -144,6 +146,31 @@ class LineagePageTests(unittest.TestCase):
         experiment = self.repository.experiment("exp1")
         with self.assertRaises(data.BadRequest):
             data.lineage_view(self.repository, experiment, "no-pipe-here")
+
+
+class FrozenLineageInputSealTests(unittest.TestCase):
+    def test_lineage_view_reports_a_broken_seal_as_bad_request_not_500(self) -> None:
+        # R3 (WB-WORLDGROW-001): gapengine.lineage now routes through
+        # resolve_experiment_inputs, so a frozen experiment whose sealed
+        # inputs don't verify raises PatchError (fail closed -- correct).
+        # Left uncaught, viewer.server's do_GET falls through its generic
+        # except to an unexplained 500. viewer.data.lineage_view must
+        # translate that into a BadRequest with an explanation instead.
+        # Must run with no lineage/ cache present, or the corrupted read
+        # never happens.
+        with tempfile.TemporaryDirectory() as root:
+            experiment, _project, _template = frozen_experiment(Path(root), explanations=False)
+            self.assertFalse((experiment / "lineage").exists())
+            repository = data.RunRepository(experiment.parent)
+            archive = json.loads((experiment / "archive.json").read_text(encoding="utf-8"))
+            cell_key = next(iter(archive["cells"]))
+
+            frozen_world = experiment / "inputs/projects/momotaro/world.yaml"
+            frozen_world.write_bytes(frozen_world.read_bytes() + b"# changed")
+
+            with self.assertRaises(data.BadRequest) as caught:
+                data.lineage_view(repository, experiment, cell_key)
+        self.assertIn("封印", str(caught.exception))
 
 
 if __name__ == "__main__":
