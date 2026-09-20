@@ -393,31 +393,31 @@ class WorkbenchTests(unittest.TestCase):
         self.assertGreater(history_at, running_at)
         self.assertLess(body.index("run-a"), history_at)
         self.assertGreater(body.index("run-b"), history_at)
-        self.assertGreater(body.index("<td>run-c</td>"), history_at)
+        self.assertGreater(body.index("<code>run-c</code>"), history_at)
         self.assertLess(body.index("run-d"), history_at)
 
         status, body, _ = self.get_status("/jobs/job-run")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-poll="1"', body)
-        self.assertIn('data-terminal="false"', body)
-        self.assertIn('data-action="cancel"', body)
-        self.assertNotIn('data-action="cancel" disabled', body)
+        self.assertIn('data-run-workspace', body)
+        self.assertIn('&quot;state&quot;:&quot;running&quot;', body)
+        self.assertIn('data-stop', body)
+        self.assertNotIn('data-stop disabled', body)
 
         status, body, _ = self.get_status("/jobs/job-fail")
         self.assertEqual(status, 200, body)
         self.assertIn("監視プロセスが消失しました", body)
         self.assertIn("同じ設定で新しく実行できます", body)
-        self.assertIn("/jobs?world=romance&amp;config=cfg-test", body)
+        self.assertIn("/configs/cfg-test", body)
 
         status, body, _ = self.get_status("/jobs/job-ok")
         self.assertEqual(status, 200, body)
-        self.assertIn("Sifting で候補を選ぶ", body)
+        self.assertIn("保存済みの候補を見る", body)
         self.assertIn("/exp/run-c", body)
-        self.assertIn("/runs/run-c/candidates", body)
+        self.assertIn("&quot;candidate_count&quot;:0", body)
 
         status, body, _ = self.get_status("/jobs/job-unknown")
         self.assertEqual(status, 200, body)
-        self.assertIn("状態確認中", body)
+        self.assertIn("&quot;reconciliation&quot;:&quot;unknown&quot;", body)
 
         status, body, _ = self.get_status("/jobs/absent")
         self.assertEqual(status, 404, body)
@@ -484,10 +484,10 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('data-wb="start"', body)
         self.assertIn('<select name="config"', body)
         self.assertIn("この設定で GA を回す", body)
-        # romance's QD axes are I/II/III x low/mid/high -- 9 cells, all empty
-        # before any run has published.
-        self.assertEqual(body.count("qd-cell empty"), 9)
-        self.assertEqual(body.count("vbox ghost"), 3)
+        # Before running, show the saved conditions and cost summary.
+        self.assertIn("どのくらい探索するか", body)
+        self.assertIn("今回の探索", body)
+        self.assertIn('data-request-id=', body)
         self.assertNotIn("<h2>履歴</h2>", body)
 
     def test_run_page_blocked_by_other_world(self):
@@ -507,10 +507,10 @@ class WorkbenchTests(unittest.TestCase):
         self.fake.add(_job("job-run", "run-a", "running"))
         status, body, _ = self.get_status("/jobs/job-run")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-poll="1"', body)
-        self.assertEqual(body.count("<progress"), 3)
-        self.assertIn('data-action="cancel"', body)
-        self.assertIn("data-revision=", body)
+        self.assertIn('data-run-workspace', body)
+        self.assertEqual(body.count("<progress"), 1)
+        self.assertIn('data-stop', body)
+        self.assertIn("&quot;publication_revision&quot;", body)
 
     def test_run_page_done_reads_publication(self):
         run_id = "run-handcrafted-done"
@@ -524,10 +524,12 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/job-ok2")
         self.assertEqual(status, 200, body)
-        self.assertGreaterEqual(body.count("qd-cell f"), 1)
-        self.assertIn('<b data-field="metric_occupied">1</b>', body)
-        self.assertIn('class="exit on"', body)
-        self.assertIn('data-revision="1"', body)
+        status, raw, _ = self.get_status("/jobs/job-ok2?view-data=1")
+        observed = json.loads(raw)["observation"]
+        self.assertEqual(status, 200)
+        self.assertEqual(len(observed["cells"]), 1)
+        self.assertEqual(observed["generations"][0]["occupied_cells"], 1)
+        self.assertEqual(observed["revision"], 1)
 
     def test_run_page_shows_generation_trend_table(self):
         # WB-LINEAGE-001: reach rate / allies-at-contest / the biggest
@@ -559,6 +561,8 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/job-trend")
         self.assertEqual(status, 200, body)
+        snapshot = workbench_pages._live_map(type("Handler", (), {"repository": self.server.repository})(), self.fake.get("job-trend"))
+        body = workbench_pages._generation_trend_table(snapshot["generations"])
         self.assertIn("世代の推移", body)
         self.assertIn("<td>g0</td>", body)
         self.assertIn("<td>g1</td>", body)
@@ -611,6 +615,8 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/job-role-collision")
         self.assertEqual(status, 200, body)
+        snapshot = workbench_pages._live_map(type("Handler", (), {"repository": self.server.repository})(), self.fake.get("job-role-collision"))
+        body = workbench_pages._generation_trend_table(snapshot["generations"])
         second_row = body[body.index("<td>g1</td>"):]
         self.assertIn("譲渡→味方 20%→80%", second_row)
         self.assertIn("譲渡→敵対相手 60%→10%", second_row)
@@ -629,7 +635,11 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/job-legacy")
         self.assertEqual(status, 200, body)
-        self.assertNotIn("世代の推移", body)
+        self.assertIn('role="tab"', body)
+        status, raw, _ = self.get_status("/jobs/job-legacy?view-data=1")
+        generations = json.loads(raw)["observation"]["generations"]
+        self.assertEqual(generations[0]["generation"], 0)
+        self.assertNotIn("action_share", generations[0])
 
     def test_history_page_lists_tables(self):
         status, body, _ = self.get_status("/history")
@@ -882,9 +892,8 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)
-        self.assertIn('<p class="page-lead">', body)
-        # No records yet -> the empty-jobs CTA from WB-UI-012 §2.3.
-        self.assertIn('class="next-cta" href="/configs/new">次: 実行設定を作る →</a>', body)
+        self.assertIn("実行した探索を振り返り", body)
+        self.assertIn('href="/jobs">実行条件を確認 →</a>', body)
 
     def test_raw_log(self):
         self._legacy_experiment("exp-raw")
@@ -977,9 +986,9 @@ class WorkbenchTests(unittest.TestCase):
         self.fake.add(_job("job-eta", "run-eta", "running"))
         status, body, _ = self.get_status("/jobs/job-eta")
         self.assertEqual(status, 200, body)
-        self.assertIn('<span data-field="eta">—</span>', body)
-        self.assertIn('data-field="updated-at"', body)
-        self.assertIn('data-field="delta"', body)
+        self.assertIn('data-overview-progress', body)
+        self.assertIn('data-last-update', body)
+        self.assertIn('data-connection', body)
 
     def test_state_vocabulary(self):
         for state, label in workbench_pages.STATE_LABELS.items():

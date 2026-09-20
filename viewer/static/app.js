@@ -802,3 +802,153 @@ document.addEventListener("click", (event) => {
     input.value = "";
   }
 });
+
+
+// WB-UI-029: preserve existing save controls while putting reading first.
+document.addEventListener("DOMContentLoaded", () => {
+  const workspace = document.querySelector(".world-editorial .world-workspace");
+  if (!workspace) return;
+  const panels = workspace.querySelector(".tab-panels");
+  const people = workspace.querySelector(".world-people");
+  const links = [...workspace.querySelectorAll("[data-world-person]")];
+  const articles = [...workspace.querySelectorAll("[data-person-panel]")];
+  const radios = [...workspace.querySelectorAll(".tab-input")];
+  const detail = workspace.querySelector(".world-people-detail");
+  const tabPanels = [...panels.children];
+  const setTab = () => {
+    const index = radios.findIndex((radio) => radio.checked);
+    tabPanels.forEach((panel, i) => { panel.hidden = i !== index; });
+    panels.classList.toggle("is-people", index === 1 && links.length > 0);
+    panels.scrollTop = 0;
+  };
+  radios.forEach((radio) => radio.addEventListener("change", setTab));
+  setTab();
+  const selectPerson = (index, moveFocus = false) => {
+    links.forEach((link) => link.setAttribute("aria-current", String(link.dataset.worldPerson === index)));
+    articles.forEach((article) => { article.hidden = article.dataset.personPanel !== index; });
+    if (detail) detail.scrollTop = 0;
+    const selected = articles.find((article) => article.dataset.personPanel === index);
+    if (moveFocus && selected) {
+      selected.focus({preventScroll: true});
+      if (matchMedia("(max-width: 1023px)").matches) selected.scrollIntoView({block: "start"});
+    }
+  };
+  if (links.length) {
+    people.classList.add("is-interactive");
+    selectPerson(links[0].dataset.worldPerson);
+    links.forEach((link) => link.addEventListener("click", (event) => {
+      event.preventDefault();
+      selectPerson(link.dataset.worldPerson, true);
+    }));
+  }
+  workspace.querySelectorAll("[data-world-sheet]").forEach((button) => {
+    button.addEventListener("click", () => document.getElementById(button.dataset.worldSheet)?.showModal());
+  });
+
+  const library = workspace.matches('[data-wb="library"]') ? workspace : null;
+  const editorGroups = [...workspace.querySelectorAll(".editor-group")];
+  if (!library) {
+    workspace.querySelectorAll('a[href="#world-files"]').forEach((link) => {
+      link.replaceWith(document.createTextNode("編集はStudioで利用できます"));
+    });
+    return;
+  }
+  const dialog = document.createElement("dialog");
+  dialog.className = "world-editor-dialog";
+  dialog.setAttribute("aria-labelledby", "world-editor-title");
+  const header = document.createElement("header");
+  const title = document.createElement("h2");
+  title.id = "world-editor-title";
+  title.textContent = "世界の内容を編集";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "button";
+  close.textContent = "閉じる";
+  close.addEventListener("click", () => dialog.close());
+  header.append(title, close);
+  dialog.append(header);
+  const note = document.createElement("p");
+  note.textContent = "設定ファイルを編集します。保存した内容を本文へ反映するには再読み込みしてください。閉じても入力は残ります。";
+  dialog.append(note);
+  const reload = document.createElement("button");
+  reload.type = "button";
+  reload.className = "button";
+  reload.textContent = "保存した内容を再読み込み";
+  dialog.append(reload);
+  library.append(dialog);
+  const openEditor = (group, textarea = null) => {
+    editorGroups.forEach((item) => { item.hidden = item !== group; });
+    group.open = true;
+    if (textarea) {
+      const editor = textarea.closest("details");
+      if (editor) editor.open = true;
+    }
+    if (!dialog.open) dialog.showModal();
+    if (textarea) { textarea.focus(); textarea.scrollIntoView({block: "center"}); }
+  };
+  editorGroups.forEach((group) => {
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "button world-edit-trigger";
+    trigger.textContent = group.id === "subject-files" ? "人物の追加・設定ファイルを編集" : "世界の設定ファイルを編集";
+    group.before(trigger);
+    dialog.append(group);
+    trigger.addEventListener("click", () => openEditor(group));
+  });
+  const worldGroup = editorGroups.find((group) => group.querySelector("#world-files"));
+  workspace.querySelectorAll('a[href="#world-files"]').forEach((link) => {
+    link.textContent = "この内容を編集";
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (worldGroup) openEditor(worldGroup, worldGroup.querySelector('[data-file="world.yaml"]'));
+    });
+  });
+  // Subject file order is not a stable identifier: match the saved YAML id.
+  const subjectGroup = editorGroups.find((group) => group.id === "subject-files");
+  const subjectAreas = [...dialog.querySelectorAll('textarea[data-file^="subjects/"]')];
+  workspace.querySelectorAll("[data-world-edit-subject]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = subjectAreas.find((area) => area.dataset.subjectId === button.dataset.worldEditSubject);
+      if (subjectGroup) openEditor(subjectGroup, target || null);
+    });
+  });
+  const areas = [...dialog.querySelectorAll("textarea")];
+  const saved = new Map(areas.map((area) => [area, area.value]));
+  const dirty = () => areas.some((area) => area.value !== saved.get(area));
+  areas.forEach((area) => area.addEventListener("input", () => {
+    const status = area.closest(".editor")?.querySelector("[data-save-status]");
+    if (status) status.textContent = area.value === saved.get(area) ? "変更なし" : "未保存の変更があります";
+  }));
+  dialog.querySelectorAll('[data-action="save-file"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const editor = button.closest(".editor");
+      const area = editor?.querySelector("textarea");
+      const status = editor?.querySelector("[data-save-status]");
+      if (!area || !status) return;
+      const submitted = area.value;
+      status.textContent = "保存中…";
+      const observer = new MutationObserver(() => {
+        if (status.textContent.startsWith("保存しました")) {
+          saved.set(area, submitted);
+          observer.disconnect();
+          if (area.value !== submitted) status.textContent += "（追加の変更は未保存）";
+        } else if (!button.disabled) observer.disconnect();
+      });
+      observer.observe(status, {childList: true, subtree: true, characterData: true});
+      const completion = new MutationObserver(() => {
+        if (!button.disabled) {
+          if (status.textContent === "保存中…") status.textContent = "保存できませんでした";
+          completion.disconnect();
+          observer.disconnect();
+        }
+      });
+      completion.observe(button, {attributes: true, attributeFilter: ["disabled"]});
+    });
+  });
+  reload.addEventListener("click", () => {
+    if (!dirty() || window.confirm("未保存の変更があります。変更を破棄して再読み込みしますか？")) location.reload();
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if (dirty()) { event.preventDefault(); event.returnValue = ""; }
+  });
+});
