@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 import yaml
+from world_patch_fixtures import write_approved
+from gapengine.world_patch import EMPTY_STACK_DIGEST
 
 from engine.world import World
 from gapengine.world_patch import (
@@ -32,7 +34,7 @@ def sample_patch(**overrides) -> dict:
         "id": "p-1a2b3c4d",
         "title": "海辺の船大工小屋",
         "rationale": "海での investigate が空振りし続けている",
-        "parent_rev": [],
+        "parent_digest": EMPTY_STACK_DIGEST,
         "trigger": {"experiment": "run-xxxx", "zone": "海", "verb": "investigate",
                     "count": 228, "whiffs": 228},
         "add": {
@@ -42,8 +44,6 @@ def sample_patch(**overrides) -> dict:
             "facts": [{"id": "船大工の噂", "label": "小屋の主は昔ながらの船大工らしい",
                        "secrecy": 0.2, "share_min_affinity": 0.1,
                        "sources": [{"type": "investigate", "zone": "船大工の小屋", "count": 1}]}],
-            "daily_events": [{"id": "sail_repair", "label": "帆の繕いを手伝った",
-                               "weight": 1, "stress_delta": -0.2}],
         },
     }
     patch.update(overrides)
@@ -61,7 +61,7 @@ def _world_with_applied_modifier(value: float) -> dict:
     }]
     world["expansion"] = {"base": world.get("name"), "patches": [
         {"id": "p-existing1", "title": "既存パッチ",
-         "added": {"zones": [], "items": [name], "facts": [], "daily_events": []}},
+         "added": {"zones": [], "items": [name], "facts": []}},
     ]}
     return world
 
@@ -85,7 +85,7 @@ class WorldPatchTests(unittest.TestCase):
         fact_ids = {f["id"] for f in patched["facts"]}
         self.assertIn("船大工の噂", fact_ids)
         event_ids = {e["id"] for e in patched["daily_events"]["events"]}
-        self.assertIn("sail_repair", event_ids)
+        self.assertNotIn("sail_repair", event_ids)
         self.assertEqual(patched["movement"]["destination_weights"]["船大工の小屋"], 1.0)
         self.assertEqual(patched["expansion"]["base"], "桃太郎")
         self.assertEqual(len(patched["expansion"]["patches"]), 1)
@@ -95,7 +95,7 @@ class WorldPatchTests(unittest.TestCase):
         self.assertEqual(entry["added"]["zones"], ["船大工の小屋"])
         self.assertEqual(entry["added"]["items"], ["古びた帆布"])
         self.assertEqual(entry["added"]["facts"], ["船大工の噂"])
-        self.assertEqual(entry["added"]["daily_events"], ["sail_repair"])
+        self.assertEqual(entry["added"]["daily_events"], [])
 
     def test_patched_world_loads_into_engine(self):
         world = load_world()
@@ -115,7 +115,7 @@ class WorldPatchTests(unittest.TestCase):
             id="p-2b3c4d5e", title="小屋裏の物置",
             add={"zones": [], "items": [{"name": "使い古しの縄",
                     "sources": [{"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 1}]}],
-                 "facts": [], "daily_events": []},
+                 "facts": []},
         )
         result = apply_patches(world, [first, second])
         item_names = {i["name"] for i in result["items"]}
@@ -130,7 +130,7 @@ class WorldPatchTests(unittest.TestCase):
 
     def test_apply_patches_raises_patch_error_with_id_prefix(self):
         world = load_world()
-        bad = sample_patch(add={"zones": [], "items": [], "facts": [], "daily_events": []})
+        bad = sample_patch(add={"zones": [], "items": [], "facts": []})
         with self.assertRaises(PatchError) as caught:
             apply_patches(world, [bad])
         self.assertTrue(str(caught.exception).startswith("p-1a2b3c4d:"))
@@ -149,7 +149,7 @@ class WorldPatchTests(unittest.TestCase):
         self.assert_invalid(lambda p: p["add"].update(objective=True))
 
     def test_empty_add(self):
-        self.assert_invalid(lambda p: p.update(add={"zones": [], "items": [], "facts": [], "daily_events": []}))
+        self.assert_invalid(lambda p: p.update(add={"zones": [], "items": [], "facts": []}))
 
     def test_budget_exceeded(self):
         self.assert_invalid(lambda p: p["add"].update(zones=[
@@ -158,7 +158,7 @@ class WorldPatchTests(unittest.TestCase):
     def test_modifier_budget_exceeded_within_single_patch(self):
         world = load_world()
         patch = sample_patch(add={
-            "zones": [], "facts": [], "daily_events": [],
+            "zones": [], "facts": [],
             "items": [
                 {"name": "光る飾り玉その一", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
                  "modifier": {"id": "item:光る飾り玉その一", "value": 6, "kind": "item", "visible": True}},
@@ -172,7 +172,7 @@ class WorldPatchTests(unittest.TestCase):
     def test_modifier_budget_cumulative_exceeded(self):
         world = _world_with_applied_modifier(15)
         patch = sample_patch(add={
-            "zones": [], "facts": [], "daily_events": [],
+            "zones": [], "facts": [],
             "items": [{"name": "新しい強化アイテム", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
                        "modifier": {"id": "item:新しい強化アイテム", "value": 6, "kind": "item", "visible": True}}],
         })
@@ -182,7 +182,7 @@ class WorldPatchTests(unittest.TestCase):
     def test_modifier_budget_cumulative_exactly_at_limit_passes(self):
         world = _world_with_applied_modifier(14)
         patch = sample_patch(add={
-            "zones": [], "facts": [], "daily_events": [],
+            "zones": [], "facts": [],
             "items": [{"name": "新しい強化アイテム", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
                        "modifier": {"id": "item:新しい強化アイテム", "value": 6, "kind": "item", "visible": True}}],
         })
@@ -191,7 +191,7 @@ class WorldPatchTests(unittest.TestCase):
     def test_made_from_self_reference_cycle(self):
         world = load_world()
         patch = sample_patch(add={
-            "zones": [], "facts": [], "daily_events": [],
+            "zones": [], "facts": [],
             "items": [{"name": "甲片", "made_from": {"甲片": 1}}],
         })
         violations = validate_patch(world, patch)
@@ -200,7 +200,7 @@ class WorldPatchTests(unittest.TestCase):
     def test_made_from_two_item_cycle(self):
         world = load_world()
         patch = sample_patch(add={
-            "zones": [], "facts": [], "daily_events": [],
+            "zones": [], "facts": [],
             "items": [
                 {"name": "甲片", "made_from": {"乙片": 1}},
                 {"name": "乙片", "made_from": {"甲片": 1}},
@@ -273,6 +273,7 @@ class WorldPatchTests(unittest.TestCase):
         world = load_world()
         world["daily_events"] = None
         patch = sample_patch()
+        patch["add"]["daily_events"] = [{"id": "forbidden"}]
         violations = validate_patch(world, patch)
         self.assertTrue(violations)
 
@@ -283,26 +284,20 @@ class WorldPatchTests(unittest.TestCase):
         # "鬼ヶ島の宝物" (an existing item name referenced by the ending's
         # `deliver`/predicate) contains "宝物" as a substring.
         self.assert_invalid(lambda p: p["add"].update(
-            zones=[], items=[], daily_events=[],
+            zones=[], items=[],
             facts=[{"id": "宝物", "label": "何かの噂",
                     "sources": [{"type": "investigate", "zone": "海", "count": 1}]}]))
 
-    def test_approved_patches_ignores_proposed_and_sorts_by_seq(self):
+    def test_approved_patches_ignores_proposed_and_uses_manifest_order(self):
         with tempfile.TemporaryDirectory() as temp:
             project = Path(temp)
-            patches_dir = project / "patches"
-            proposed_dir = patches_dir / "_proposed"
-            proposed_dir.mkdir(parents=True)
-            (patches_dir / "p-second-seq.yaml").write_text(
-                yaml.safe_dump({**sample_patch(id="p-second-seq"), "approved_seq": 2}, allow_unicode=True),
-                encoding="utf-8")
-            (patches_dir / "p-first-seq.yaml").write_text(
-                yaml.safe_dump({**sample_patch(id="p-first-seq"), "approved_seq": 1}, allow_unicode=True),
-                encoding="utf-8")
-            (proposed_dir / "p-pending.yaml").write_text(
-                yaml.safe_dump(sample_patch(id="p-pending-seq"), allow_unicode=True), encoding="utf-8")
-            patches = approved_patches(project)
-        self.assertEqual([p["id"] for p in patches], ["p-first-seq", "p-second-seq"])
+            first = write_approved(project, sample_patch())
+            other = sample_patch(add={"zones": [{"name": "second", "parent": "海"}]})
+            second = write_approved(project, other)
+            proposed = project / "patches/_proposed"
+            proposed.mkdir()
+            (proposed / "p-pending.yaml").write_text("invalid", encoding="utf-8")
+            self.assertEqual([p["id"] for p in approved_patches(project)], [first["id"], second["id"]])
 
     def test_approved_patches_rejects_an_id_that_differs_from_the_file_name(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -400,7 +395,7 @@ class WorldPatchTests(unittest.TestCase):
     def test_reserved_fact_id_gossip_is_rejected(self):
         world = load_world()
         patch = sample_patch(add={
-            "zones": [], "items": [], "daily_events": [],
+            "zones": [], "items": [],
             "facts": [{"id": "雑談", "label": "他愛のない世間話",
                        "sources": [{"type": "investigate", "zone": "海", "count": 1}]}],
         })
@@ -410,7 +405,7 @@ class WorldPatchTests(unittest.TestCase):
     def test_reserved_argument_name_is_rejected(self):
         world = load_world()
         patch = sample_patch(add={
-            "zones": [{"name": "見張り台", "parent": "海"}], "items": [], "facts": [], "daily_events": [],
+            "zones": [{"name": "見張り台", "parent": "海"}], "items": [], "facts": [],
         })
         violations = validate_patch(world, patch, reserved=("見張り台",))
         self.assertTrue(any("予約された名前は使えません: 見張り台" in v for v in violations), violations)

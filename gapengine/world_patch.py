@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any, Iterable
@@ -22,23 +23,33 @@ ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}$")
 _NAME_FORBIDDEN_CHARS = frozenset("'\"\n{}")
 
 # ponytail: budgets are placeholders; tune once real proposals have been reviewed.
-MAX_ZONES = 2
-MAX_ITEMS = 4
-MAX_FACTS = 4
+PATCH_RULES_VERSION = 2
+MAX_ZONES = 1
+MAX_ITEMS = 2
+MAX_FACTS = 2
 MAX_DAILY_EVENTS = 3
 MAX_TOTAL_PATCHES = 8
 MAX_MODIFIER_PER_PATCH = 10
 MAX_MODIFIER_TOTAL = 20
+MAX_GIVE_PER_PATCH = 0.6
+MAX_GIVE_TOTAL = 1.2
+MAX_IMPLIES_CONFIDENCE = 0.3
+MAX_IMPLIES_TOTAL = 0.6
+# engine/verbs.py::_give_item defaults, including partially specified give.
+# This bounds definitions, not affinity accumulated by repeated gifts.
+DEFAULT_RECEIVER_AFFINITY = 0.2
+DEFAULT_GIVER_AFFINITY = 0.05
+EMPTY_STACK_DIGEST = hashlib.sha256(b"worldbloom-patch-stack-v1").hexdigest()
 
-TOP_LEVEL_KEYS = frozenset({"id", "title", "rationale", "parent_rev", "approved_seq", "trigger", "author", "add"})
-ADD_KEYS = frozenset({"zones", "items", "facts", "daily_events"})
+TOP_LEVEL_KEYS = frozenset({"id", "title", "rationale", "parent_digest", "trigger", "author", "add"})
+ADD_KEYS = frozenset({"zones", "items", "facts"})
 ZONE_KEYS = frozenset({"name", "parent", "note"})
 ITEM_KEYS = frozenset({"name", "sources", "lootable", "keepsake", "give", "modifier", "made_from", "craft_zone", "requires"})
 ITEM_SOURCE_KEYS = frozenset({"type", "zone", "count", "max"})
 GIVE_KEYS = frozenset({"receiver_affinity", "giver_affinity"})
 MODIFIER_KEYS = frozenset({"id", "value", "kind", "visible"})
 REQUIRES_KEYS = frozenset({"knowledge"})
-FACT_KEYS = frozenset({"id", "label", "secrecy", "share_min_affinity", "sources", "implies", "refutes"})
+FACT_KEYS = frozenset({"id", "label", "secrecy", "share_min_affinity", "sources", "implies"})
 FACT_SOURCE_KEYS = frozenset({"type", "zone", "count"})
 FACT_RELATION_KEYS = frozenset({"fact", "value", "confidence"})
 DAILY_EVENT_KEYS = frozenset({"id", "label", "weight", "stress_delta"})
@@ -117,24 +128,82 @@ def load_patch(path) -> dict:
 
 
 def approved_patches(project_dir) -> list[dict]:
-    """Approved patches under <project_dir>/patches/*.yaml, in approved_seq order.
+    """Data-only verification; IO callers hold their project lock once."""
+    return [patch for patch, raw in verify_stack(project_dir)]
 
-    Never descends into patches/_proposed/ (glob is non-recursive).
+
+def read_stack(project_dir) -> dict:
+    path = Path(project_dir) / "patches" / "stack.json"
+    if not path.exists():
+        return {"schema_version": 1, "revisions": [], "head": EMPTY_STACK_DIGEST}
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(result, dict) or result.get("schema_version") != 1
+                or not isinstance(result.get("revisions"), list)):
+            raise ValueError("manifest schema")
+        return result
+    except (OSError, ValueError) as error:
+        raise PatchError(f"スタックmanifestが破損しています: {error}") from error
+
+
+def stack_head(project_dir) -> str:
+    verify_stack(project_dir)
+    return read_stack(project_dir)["head"]
+
+
+def next_digest(parent: str, patch_sha256: str) -> str:
+    return hashlib.sha256((parent + patch_sha256).encode()).hexdigest()
+
+
+def verify_stack(project_dir) -> list[tuple[dict, bytes]]:
+    """Validate a manifest snapshot, returning the exact verified patch bytes.
+
+    Callers taking part in publication hold the external directory lock.
+    This module intentionally never imports execution or engine.
     """
     folder = Path(project_dir) / "patches"
-    if not folder.is_dir():
-        return []
-    patches = []
-    for path in sorted(folder.glob("*.yaml")):
-        patch = load_patch(path)
-        if patch.get("id") != path.stem:
-            raise PatchError(f"{path.name}: id がファイル名と一致しません")
-        seq = patch.get("approved_seq")
-        if type(seq) is not int:
-            raise PatchError(f"{path.name}: approved_seq が整数ではありません")
-        patches.append(patch)
-    patches.sort(key=lambda p: (p["approved_seq"], str(p.get("id", ""))))
-    return patches
+    stack = read_stack(project_dir)
+    head, seen, result = EMPTY_STACK_DIGEST, set(), []
+    try:
+        for seq, entry in enumerate(stack["revisions"], 1):
+            pid = entry["patch_id"]
+            if not isinstance(pid, str) or not ID_RE.fullmatch(pid) or pid in seen:
+                raise ValueError("patch_id の不正または重複")
+            raw = (folder / f"{pid}.yaml").read_bytes()
+            sha = hashlib.sha256(raw).hexdigest()
+            patch = yaml.safe_load(raw)
+            gate_raw = (folder / f"{pid}.gate.json").read_bytes()
+            gate = json.loads(gate_raw)
+            if (patch["id"] != pid or patch_id_for(patch["add"]) != pid
+                    or entry["patch_sha256"] != sha
+                    or entry["gate_sha256"] != hashlib.sha256(gate_raw).hexdigest()
+                    or entry["rev"] != seq or type(entry["rev"]) is not int
+                    or entry["parent_digest"] != head or patch["parent_digest"] != head
+                    or entry["digest"] != next_digest(head, sha)
+                    or gate["patch_id"] != pid or gate["patch_sha256"] != sha
+                    or gate["status"] != "reviewable"
+                    or gate["trial"]["evidence"]["seed_set"] != "holdout"
+                    or len(gate["approval"]["reason"].strip()) < 10
+                    or gate["approval"] != entry["approval"]
+                    or gate["trial"]["evidence"]["patched_inputs_digest"] != entry["patched_inputs_digest"]
+                    or gate["trial"]["evidence"]["patch_rules_version"] != entry["rules_version"]
+                    or gate["trial"]["evidence"]["trial_rules_version"] != entry["trial_rules_version"]):
+                raise ValueError(f"revision {seq} の証拠が一致しません")
+            head = entry["digest"]
+            seen.add(pid)
+            result.append((patch, raw))
+        if stack["head"] != head:
+            raise ValueError("head が一致しません")
+        if result and (not stack.get("base_inputs_digest") or not stack.get("template_id")):
+            raise ValueError("基準入力が記録されていません")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError) as error:
+        raise PatchError(f"承認スタックが破損しています（repair不可）: {error}") from error
+    extra = {p.stem for p in folder.glob("*.yaml")} - seen
+    if extra:
+        pid = sorted(extra)[0]
+        state = "yaml と gate が移動済みで manifest 未更新" if (folder / f"{pid}.gate.json").exists() else "yaml だけ移動済み"
+        raise PatchError(f"manifest に無いパッチ {pid}: {state}。repair を実行してください")
+    return result
 
 
 def _is_name(value: Any) -> bool:
@@ -143,7 +212,7 @@ def _is_name(value: Any) -> bool:
 
 
 def _is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _existing_names(world: dict) -> dict[str, set[str]]:
@@ -177,7 +246,7 @@ def _all_strings(value: Any):
 
 
 def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
-                    reserved: Iterable[str] = ()) -> list[str]:
+                    reserved: Iterable[str] = (), check_budgets: bool = True) -> list[str]:
     """Static gate. Returns a list of Japanese violation strings (empty = pass).
 
     Never raises -- a malformed patch just accumulates violations instead of
@@ -232,11 +301,11 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
     if not (raw_zones or raw_items or raw_facts or raw_events):
         violations.append("何も足していません")
 
-    if len(raw_zones) > MAX_ZONES:
+    if check_budgets and len(raw_zones) > MAX_ZONES:
         violations.append(f"ゾーンの追加数が上限（{MAX_ZONES}）を超えています")
-    if len(raw_items) > MAX_ITEMS:
+    if check_budgets and len(raw_items) > MAX_ITEMS:
         violations.append(f"アイテムの追加数が上限（{MAX_ITEMS}）を超えています")
-    if len(raw_facts) > MAX_FACTS:
+    if check_budgets and len(raw_facts) > MAX_FACTS:
         violations.append(f"事実の追加数が上限（{MAX_FACTS}）を超えています")
     if len(raw_events) > MAX_DAILY_EVENTS:
         violations.append(f"日々の出来事の追加数が上限（{MAX_DAILY_EVENTS}）を超えています")
@@ -244,7 +313,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
     existing_expansion = world.get("expansion")
     existing_patch_count = (len(existing_expansion.get("patches", []))
                              if isinstance(existing_expansion, dict) else 0)
-    if existing_patch_count + 1 > MAX_TOTAL_PATCHES:
+    if check_budgets and existing_patch_count + 1 > MAX_TOTAL_PATCHES:
         violations.append(f"適用後のパッチ総数が上限（{MAX_TOTAL_PATCHES}）を超えます")
 
     items_by_name = {i.get("name"): i for i in (world.get("items") or []) if isinstance(i, dict)}
@@ -260,9 +329,9 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
         if isinstance(item, dict) and isinstance(item.get("modifier"), dict)
         and _is_number(item["modifier"].get("value"))
     )
-    if patch_modifier_total > MAX_MODIFIER_PER_PATCH:
+    if check_budgets and patch_modifier_total > MAX_MODIFIER_PER_PATCH:
         violations.append(f"強化値の合計が上限（{MAX_MODIFIER_PER_PATCH}）を超えています")
-    if applied_modifier_total + patch_modifier_total > MAX_MODIFIER_TOTAL:
+    if check_budgets and applied_modifier_total + patch_modifier_total > MAX_MODIFIER_TOTAL:
         violations.append(f"強化値の合計が上限（{MAX_MODIFIER_TOTAL}）を超えています")
 
     existing = _existing_names(world)
@@ -487,8 +556,10 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
                 if not isinstance(value, str) or value not in valued_facts[target]:
                     violations.append(f"{relation}.value が対象事実の値にありません: {value!r}")
             confidence = rel.get("confidence")
-            if not (_is_number(confidence) and 0 < confidence <= 0.5):
-                violations.append(f"{relation}.confidence は0より大きく0.5以下で指定してください: {fact_id!r}")
+            if not (_is_number(confidence) and 0 < confidence <= 1):
+                violations.append(f"{relation}.confidence は0より大きく1以下で指定してください: {fact_id!r}")
+            elif check_budgets and confidence > MAX_IMPLIES_CONFIDENCE:
+                violations.append(f"{relation}.confidence は{MAX_IMPLIES_CONFIDENCE}以下で指定してください: {fact_id!r}")
 
     if raw_events and not has_daily_slot:
         violations.append("この世界には日々の出来事の枠がありません")
@@ -511,6 +582,43 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
         if not (_is_number(stress_delta) and -1 <= stress_delta <= 1):
             violations.append(f"stress_delta は-1〜1で指定してください: {event_id!r}")
 
+    if check_budgets:
+        applied = {key: set() for key in ADD_KEYS}
+        for entry in (existing_expansion or {}).get("patches", []):
+            for key in ADD_KEYS:
+                applied[key].update((entry.get("added") or {}).get(key, []))
+        for key, new in (("zones", raw_zones), ("items", raw_items), ("facts", raw_facts)):
+            base_count = len(existing[key] - applied[key])
+            cap = min(4 if key == "zones" else 8,
+                      max(1, math.ceil(base_count * (0.4 if key == "zones" else 0.5))))
+            if len(applied[key]) + len(new) > cap:
+                violations.append(f"{key} の累積追加数が上限（{cap}）を超えています")
+        def give_total(items):
+            total = 0.0
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                give = item.get("give") or {}
+                if isinstance(give, dict):
+                    for key, default in (("receiver_affinity", DEFAULT_RECEIVER_AFFINITY),
+                                         ("giver_affinity", DEFAULT_GIVER_AFFINITY)):
+                        value = give.get(key, default)
+                        if _is_number(value):
+                            total += value
+            return total
+        given = give_total(raw_items)
+        prior_given = give_total([i for i in world.get("items", []) if i.get("name") in applied["items"]])
+        if given > MAX_GIVE_PER_PATCH + 1e-12 or given + prior_given > MAX_GIVE_TOTAL + 1e-12:
+            violations.append("give の効果総量が上限を超えています")
+        totals = {}
+        for fact in [f for f in world.get("facts", []) if f.get("id") in applied["facts"]] + raw_facts:
+            relation = fact.get("implies") if isinstance(fact, dict) else None
+            if isinstance(relation, dict) and _is_number(relation.get("confidence")):
+                target = (relation.get("fact"), relation.get("value"))
+                if all(isinstance(v, str) for v in target):
+                    totals[target] = totals.get(target, 0) + relation["confidence"]
+        if any(v > MAX_IMPLIES_TOTAL + 1e-12 for v in totals.values()):
+            violations.append("implies の対象ごとの累積効果が上限を超えています")
     return violations
 
 
@@ -607,15 +715,41 @@ def patch_id_for(add: dict) -> str:
 
 
 def apply_patches(world: dict, patches: list[dict], *, subject_ids: Iterable[str] = (),
-                   reserved: Iterable[str] = ()) -> dict:
+                   reserved: Iterable[str] = (), check_budgets: bool = True) -> dict:
     """Validate and apply each patch in order. Returns `world` unchanged
     (same object, no `expansion` key added) when `patches` is empty."""
     if not patches:
         return world
     current = world
     for patch in patches:
-        violations = validate_patch(current, patch, subject_ids=subject_ids, reserved=reserved)
+        violations = validate_patch(current, patch, subject_ids=subject_ids, reserved=reserved,
+                                    check_budgets=check_budgets)
         if violations:
             raise PatchError(f"{patch.get('id')}: {violations[0]}")
         current = apply_patch(current, patch)
     return current
+
+
+def materialize(world: dict, subjects: dict[str, dict], patches: list[dict], *,
+                reserved=(), check_budgets: bool = True) -> tuple[dict, dict[str, dict]]:
+    """Expand both data sets together, preserving exclusion and entry rules."""
+    if not patches:
+        return world, subjects
+    current, people = world, copy.deepcopy(subjects)
+    ids = [p.get("id") for p in people.values() if isinstance(p, dict)]
+    for patch in patches:
+        current = apply_patches(current, [patch], subject_ids=ids, reserved=reserved,
+                                check_budgets=check_budgets)
+        for zone in patch.get("add", {}).get("zones", []):
+            parent, name = zone["parent"], zone["name"]
+            for subject in people.values():
+                limits = subject.get("range") if isinstance(subject, dict) else None
+                if not isinstance(limits, dict) or not isinstance(limits.get("zones"), list):
+                    continue
+                if parent in limits["zones"] and name not in limits["zones"]:
+                    limits["zones"].append(name)
+                for rule in limits.get("exclude", []) or []:
+                    if isinstance(rule, dict) and isinstance(rule.get("zones"), list) and parent in rule["zones"]:
+                        if name not in rule["zones"]:
+                            rule["zones"].append(name)
+    return current, people
