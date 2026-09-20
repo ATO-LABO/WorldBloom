@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
 
 from gapengine.evolve import evolve
 from gapengine.qd import Archive
-from gapengine.world_patch import PatchError, apply_patches, approved_patches
+from gapengine.world_patch import PatchError, absolutize_references, apply_patches, approved_patches
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,25 +84,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _rebase_gapengine_reference(world: dict, field: str, project_dir: Path, repo_root: Path) -> None:
-    """Point world["gapengine"][field] at an absolute path so it still
-    resolves once the patched world.yaml is written under <out>/expanded-project
-    (a different directory than `project_dir`). Mirrors the two candidates
-    engine/world.py and engine/phase2.py already try (project-relative, then
-    repo-root-relative); left untouched if neither exists, so the engine's own
-    error message still fires later."""
-    gapengine = world.get("gapengine")
-    if not isinstance(gapengine, dict):
-        return
-    value = gapengine.get(field)
-    if not isinstance(value, str) or not value or Path(value).is_absolute():
-        return
-    for candidate in (project_dir / value, repo_root / value):
-        if candidate.is_file():
-            gapengine[field] = str(candidate.resolve())
-            return
-
-
 def _expanded_project(project: Path, out: Path) -> Path:
     """Materialize <out>/expanded-project: `project`'s approved patches
     (WB-WORLDGROW-001 stage 3a) applied to world.yaml, plus an unchanged copy
@@ -124,8 +105,7 @@ def _expanded_project(project: Path, out: Path) -> Path:
         world = apply_patches(world, patches, subject_ids=subject_ids)
     except PatchError as error:
         raise SystemExit(f"world-expansion patches invalid: {error}") from error
-    for field in ("action_graph", "effects"):
-        _rebase_gapengine_reference(world, field, project, ROOT)
+    absolutize_references(world, project, ROOT)
     expanded = out / "expanded-project"
     expanded.mkdir(parents=True, exist_ok=True)
     (expanded / "world.yaml").write_text(

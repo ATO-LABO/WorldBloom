@@ -203,12 +203,22 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
         })
     report_zones.sort(key=lambda z: (-(z["dwell_share"] or 0.0), z["zone"]))
 
+    # Every (zone, verb) pair's [count, whiffs] -- report_zones["verbs"] only
+    # keeps the top 5 per zone, but callers computing a specific trigger's
+    # before/after counts (gapengine/world_patch_trial.py) need the exact
+    # pair regardless of rank.
+    verb_counts = {
+        zone: {verb: [count, b["verb_whiffs"][verb]] for verb, count in b["verbs"].items()}
+        for zone, b in zones.items()
+    }
+
     return {
         "files": files_read,
         "skipped_paths": skipped_paths,
         "subject_decisions": subject_decisions,
         "zones": report_zones,
         "triggers": triggers,
+        "verb_counts": verb_counts,
     }
 
 

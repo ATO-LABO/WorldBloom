@@ -117,6 +117,28 @@ class WorldDemandTest(unittest.TestCase):
             second = world_demand.collect([layers_path])
             self.assertEqual(first, second)
 
+    def test_verb_counts_keeps_every_verb_not_just_the_top_five(self) -> None:
+        rows = [{"kind": "header", "protagonist": "たろう"}]
+        verbs = ["investigate", "craft", "trade", "haggle", "train", "forage"]
+        for i, verb in enumerate(verbs):
+            # descending counts so a top-5 cutoff would have to drop exactly one.
+            count = len(verbs) - i
+            for _ in range(count):
+                rows.append(_row(kind="decision", subject="たろう", verb=verb,
+                                  effective=(verb != "forage"),
+                                  result="invalid" if verb == "forage" else "ok",
+                                  explanation={"zone": "海"}))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "layers.jsonl"
+            path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                            encoding="utf-8")
+            report = world_demand.collect([path])
+
+        zone = next(z for z in report["zones"] if z["zone"] == "海")
+        self.assertEqual(len(zone["verbs"]), 5)  # report_zones["verbs"] caps at the top 5
+        self.assertEqual(set(report["verb_counts"]["海"]), set(verbs))  # verb_counts keeps all 6
+        self.assertEqual(report["verb_counts"]["海"]["forage"], [1, 1])  # count=1, whiffs=1
+
     def test_triggers_require_both_thresholds_and_exclude_unknown_zone(self) -> None:
         # 500 total dwell decisions spread over three zones so wasted_share is
         # easy to control: 海 has 50 investigate, all whiffs (rate=1.0,

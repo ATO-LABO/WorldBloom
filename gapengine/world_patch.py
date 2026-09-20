@@ -10,6 +10,8 @@ engine or execution, so it can be validated well before a run touches either.
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any, Iterable
@@ -25,6 +27,8 @@ MAX_ITEMS = 4
 MAX_FACTS = 4
 MAX_DAILY_EVENTS = 3
 MAX_TOTAL_PATCHES = 8
+MAX_MODIFIER_PER_PATCH = 10
+MAX_MODIFIER_TOTAL = 20
 
 TOP_LEVEL_KEYS = frozenset({"id", "title", "rationale", "parent_rev", "approved_seq", "trigger", "author", "add"})
 ADD_KEYS = frozenset({"zones", "items", "facts", "daily_events"})
@@ -178,6 +182,24 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
     if existing_patch_count + 1 > MAX_TOTAL_PATCHES:
         violations.append(f"適用後のパッチ総数が上限（{MAX_TOTAL_PATCHES}）を超えます")
 
+    items_by_name = {i.get("name"): i for i in (world.get("items") or []) if isinstance(i, dict)}
+    applied_modifier_total = 0.0
+    if isinstance(existing_expansion, dict):
+        for entry in existing_expansion.get("patches", []) or []:
+            for name in ((entry.get("added") or {}).get("items") or []):
+                modifier = (items_by_name.get(name) or {}).get("modifier")
+                if isinstance(modifier, dict) and _is_number(modifier.get("value")):
+                    applied_modifier_total += modifier["value"]
+    patch_modifier_total = sum(
+        item["modifier"]["value"] for item in raw_items
+        if isinstance(item, dict) and isinstance(item.get("modifier"), dict)
+        and _is_number(item["modifier"].get("value"))
+    )
+    if patch_modifier_total > MAX_MODIFIER_PER_PATCH:
+        violations.append(f"強化値の合計が上限（{MAX_MODIFIER_PER_PATCH}）を超えています")
+    if applied_modifier_total + patch_modifier_total > MAX_MODIFIER_TOTAL:
+        violations.append(f"強化値の合計が上限（{MAX_MODIFIER_TOTAL}）を超えています")
+
     existing = _existing_names(world)
     subject_id_set = {str(s) for s in subject_ids}
     valued_facts = _valued_facts(world)
@@ -315,6 +337,32 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
         for boolean_key in ("lootable", "keepsake"):
             if boolean_key in item and not isinstance(item[boolean_key], bool):
                 violations.append(f"{boolean_key} は真偽値で指定してください: {name!r}")
+
+    made_from_graph: dict[str, set] = {
+        item["name"]: set(item["made_from"])
+        for item in raw_items
+        if isinstance(item, dict) and isinstance(item.get("name"), str) and isinstance(item.get("made_from"), dict)
+    }
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    cyclic: set[str] = set()
+
+    def visit_made_from(node: str) -> None:
+        if node in visiting:
+            cyclic.add(node)
+            return
+        if node in visited:
+            return
+        visiting.add(node)
+        for material in made_from_graph.get(node, ()):
+            visit_made_from(material)
+        visiting.discard(node)
+        visited.add(node)
+
+    for node in made_from_graph:
+        visit_made_from(node)
+    for name in sorted(cyclic):
+        violations.append(f"made_from が循環しています: {name}")
 
     def check_fact_source(source: Any, fact_id: Any) -> None:
         if not isinstance(source, dict) or set(source) != FACT_SOURCE_KEYS:
@@ -459,6 +507,33 @@ def apply_patch(world: dict, patch: dict) -> dict:
         result["expansion"] = expansion
 
     return result
+
+
+def absolutize_references(world: dict, project_dir: Path, repo_root: Path) -> None:
+    """Point world["gapengine"]'s action_graph/effects paths at absolute paths
+    so they still resolve once a patched world.yaml is written to some other
+    directory than `project_dir` (e.g. <out>/expanded-project, or a trial's
+    scratch work_dir). Mirrors the two candidates engine/world.py and
+    engine/phase2.py already try (project-relative, then repo-root-relative);
+    a field is left untouched if neither exists, so the engine's own error
+    message still fires later. Moved here from scripts/evolve.py so
+    world_patch_trial can reuse it without importing scripts/."""
+    gapengine = world.get("gapengine")
+    if not isinstance(gapengine, dict):
+        return
+    for field in ("action_graph", "effects"):
+        value = gapengine.get(field)
+        if not isinstance(value, str) or not value or Path(value).is_absolute():
+            continue
+        for candidate in (project_dir / value, repo_root / value):
+            if candidate.is_file():
+                gapengine[field] = str(candidate.resolve())
+                break
+
+
+def patch_id_for(add: dict) -> str:
+    payload = json.dumps(add, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "p-" + hashlib.sha256(payload).hexdigest()[:8]
 
 
 def apply_patches(world: dict, patches: list[dict], *, subject_ids: Iterable[str] = ()) -> dict:
