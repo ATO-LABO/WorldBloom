@@ -1039,6 +1039,62 @@ def _cell_markup(
     )
 
 
+def _world_demand_block(
+    repository: data.RunRepository,
+    experiment: Any,
+) -> str:
+    """世界の需要（WB-WORLDGROW-001 段階2）: この実験が world_expansion=detect
+    で回っていれば、ゾーン別の空振りトリガーを平文で見せる。無ければ案内文のみ。"""
+
+    report = data.world_demand(repository, experiment)
+    if report is None:
+        return (
+            '<section class="card"><h2>世界の需要</h2>'
+            '<p class="muted">この実験は世界の需要を集計していません'
+            '（実行設定の「世界の拡張」を「検知のみ」にして回した実験で出ます）。</p></section>'
+        )
+
+    triggers = data._as_list(report.get("triggers"))
+    if triggers:
+        trigger_html = "<ul>" + "".join(
+            "<li>"
+            f'<strong>{_escape(t.get("zone"))}</strong> で'
+            f'「{_escape(t.get("verb"))}」: '
+            f'{_escape(t.get("count"))} 回中 {_escape(t.get("whiffs"))} 回が空振り'
+            f'（全滞在決定の {data._number(t.get("wasted_share")) * 100:.1f}%）'
+            "</li>"
+            for t in triggers
+            if isinstance(t, Mapping)
+        ) + "</ul>"
+    else:
+        trigger_html = "<p>拡張が必要そうな場所は見つかりませんでした。</p>"
+
+    zone_rows = "".join(
+        "<tr>"
+        f"<td>{_escape(z.get('zone'))}</td>"
+        f"<td>{_escape(z.get('dwell_share'))}</td>"
+        f"<td>{_escape(z.get('repeat_rate'))}</td>"
+        f"<td>{_escape(z.get('ineffective_rate'))}</td>"
+        f"<td>{_escape('、'.join(f'{e[0]}×{e[1]}' for e in data._as_list(z.get('verbs')) if isinstance(e, list) and len(e) >= 2))}</td>"
+        "</tr>"
+        for z in data._as_list(report.get("zones"))
+        if isinstance(z, Mapping)
+    )
+    zone_table = (
+        "<details><summary>ゾーン別の詳細</summary>"
+        '<table class="wb-table"><thead><tr>'
+        "<th>ゾーン</th><th>滞在シェア</th><th>繰り返し率</th><th>空振り率</th><th>主な行動</th>"
+        f"</tr></thead><tbody>{zone_rows}</tbody></table></details>"
+    )
+
+    return (
+        '<section class="card"><h2>世界の需要</h2>'
+        '<p class="muted">主人公がよく滞在するのに、行動が空振りしている場所です。'
+        "世界の解像度が足りていない候補として読みます。</p>"
+        f"{trigger_html}{zone_table}</section>"
+    )
+
+
 def experiment_page(
     repository: data.RunRepository,
     experiment_name: str,
@@ -1168,6 +1224,7 @@ def experiment_page(
         f'<thead><tr><th scope="col">カテゴリ</th>{headings}</tr></thead>'
         f'<tbody>{"".join(body_rows)}</tbody>'
         "</table></section>"
+        f"{_world_demand_block(repository, experiment)}"
         f"{_command_block(repository, meta)}"
         f"{tray}"
     )

@@ -2142,6 +2142,70 @@ class Phase4GapEngineTests(unittest.TestCase):
                 True,
             )
 
+    def test_world_expansion_detect_writes_report_and_off_is_byte_identical(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = {
+                "ga_seed": 29,
+                "generations": 2,
+                "keep": "all",
+                "population": 5,
+                "processes": 1,
+                "project": project,
+                "seed_base": 31,
+                "seeds": 1,
+                "template": TEMPLATE,
+            }
+
+            evolve({**common, "out": root / "legacy"})
+            evolve({**common, "world_expansion": "off", "out": root / "explicit-off"})
+            evolve({**common, "world_expansion": "detect", "out": root / "detect"})
+
+            def snapshot(name: str) -> dict[Path, bytes]:
+                base = root / name
+                return {
+                    path.relative_to(base): path.read_bytes()
+                    for path in base.rglob("*")
+                    if path.is_file()
+                }
+
+            legacy_files = snapshot("legacy")
+            off_files = snapshot("explicit-off")
+            detect_files = snapshot("detect")
+
+            world_demand_path = Path("world_demand.json")
+            summary_path = Path("summary.json")
+
+            # (1) off and unspecified are byte-identical everywhere, including
+            # summary.json, and neither ever writes world_demand.json.
+            self.assertEqual(legacy_files, off_files)
+            self.assertNotIn(world_demand_path, legacy_files)
+            legacy_summary = json.loads(legacy_files[summary_path].decode("utf-8"))
+            self.assertNotIn("world_expansion", legacy_summary)
+
+            # (2) detect writes a schema_version=1 report and records the
+            # setting in summary.json.
+            self.assertIn(world_demand_path, detect_files)
+            report = json.loads(detect_files[world_demand_path].decode("utf-8"))
+            self.assertEqual(report["schema_version"], 1)
+            detect_summary = json.loads(detect_files[summary_path].decode("utf-8"))
+            self.assertEqual(detect_summary["world_expansion"], "detect")
+
+            # (3) detect adds exactly world_demand.json and touches only
+            # summary.json otherwise -- every layers.jsonl, archive.json,
+            # population.json, ... is byte-identical to the off run.
+            self.assertEqual(
+                set(legacy_files) | {world_demand_path},
+                set(detect_files),
+            )
+            for key in legacy_files:
+                if key == summary_path:
+                    continue
+                self.assertEqual(legacy_files[key], detect_files[key], key)
+
     def test_meta_evolution_cli_flag(self) -> None:
         required = [
             "--project",

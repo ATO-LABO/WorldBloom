@@ -10,6 +10,7 @@ from pathlib import Path
 from test_viewer import (
     _create_experiment,
     _fixture_rows,
+    _write_json,
     _write_jsonl,
 )
 from viewer import data, pages, server
@@ -72,6 +73,74 @@ class ViewerPageTests(unittest.TestCase):
             ),
             1,
         )
+
+    def test_experiment_page_without_world_demand_shows_guidance(self) -> None:
+        rendered = pages.experiment_page(self.repository, "exp-viewer")
+        self.assertIn("世界の需要", rendered)
+        self.assertIn(
+            "この実験は世界の需要を集計していません",
+            rendered,
+        )
+
+    def test_experiment_page_with_world_demand_shows_triggers_and_zone_table(
+        self,
+    ) -> None:
+        _write_json(
+            self.experiment / "world_demand.json",
+            {
+                "schema_version": 1,
+                "files": 1,
+                "skipped_paths": 0,
+                "subject_decisions": 4,
+                "zones": [
+                    {
+                        "zone": "海",
+                        "decisions": 3,
+                        "dwell": 3,
+                        "dwell_share": 1.0,
+                        "verbs": [["investigate", 3, 1.0]],
+                        "repeat_rate": 0.0,
+                        "ineffective_rate": 1.0,
+                        "ineffective_reasons": [["invalid", 3]],
+                        "mean_p_prec": None,
+                        "mean_m_nov": None,
+                        "mean_candidates": None,
+                    },
+                ],
+                "triggers": [
+                    {
+                        "zone": "海",
+                        "verb": "investigate",
+                        "count": 3,
+                        "whiffs": 3,
+                        "whiff_rate": 1.0,
+                        "wasted_share": 0.5,
+                        "zone_dwell_share": 1.0,
+                    },
+                ],
+                "archive": None,
+                "thresholds": {"whiff_rate_min": 0.5, "wasted_share_min": 0.02},
+            },
+        )
+        rendered = pages.experiment_page(self.repository, "exp-viewer")
+        self.assertIn("世界の需要", rendered)
+        self.assertNotIn("この実験は世界の需要を集計していません", rendered)
+        self.assertIn("investigate", rendered)
+        self.assertIn("50.0%", rendered)
+        self.assertIn("ゾーン別の詳細", rendered)
+
+    def test_experiment_page_survives_a_malformed_world_demand_report(self) -> None:
+        _write_json(
+            self.experiment / "world_demand.json",
+            {
+                "schema_version": 1,
+                "zones": [{"zone": "海", "verbs": [["investigate", 3], "junk", None]}, "junk"],
+                "triggers": [{"zone": "海", "verb": "investigate", "wasted_share": None}, 7],
+            },
+        )
+        rendered = pages.experiment_page(self.repository, "exp-viewer")
+        self.assertIn("世界の需要", rendered)
+        self.assertIn("investigate×3", rendered)
 
     def test_cell_page_structure(self) -> None:
         rendered = pages.cell_page(

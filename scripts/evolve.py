@@ -70,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--record-explanations", action=argparse.BooleanOptionalAction, default=True,
                         help="Record bounded choice candidates for the explanation viewer (default: on).")
+    parser.add_argument(
+        "--world-expansion",
+        choices=("off", "detect"),
+        default="off",
+        help="Off leaves the world unchanged; detect aggregates zone/verb whiff triggers after evolution ends.",
+    )
     return parser
 
 
@@ -91,6 +97,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "seeds": args.seeds,
             "target_ending": args.target_ending,
             "template": args.template,
+            "world_expansion": args.world_expansion,
         }
     )
     message = (

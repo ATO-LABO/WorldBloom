@@ -8,6 +8,7 @@ import os
 import uuid
 import multiprocessing
 import random
+import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -19,6 +20,7 @@ from engine.world import World
 from gapengine.genome import Genome
 from gapengine.policy import Policy
 from gapengine.precedent import PrecedentTable, from_runs, load_canon
+from gapengine.world_demand import build_report as build_world_demand_report
 from gapengine.qd import (
     Archive,
     Descriptor,
@@ -793,6 +795,7 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     keep = str(cfg.get("keep", "reached"))
     coevolve = bool(cfg.get("coevolve", False))
     meta_evolution = bool(cfg.get("meta_evolution", False))
+    world_expansion = str(cfg.get("world_expansion", "off"))
     if generations < 1 or population_size < 1 or seed_count < 1:
         raise ValueError(
             "generations, population, and seeds must be positive"
@@ -805,6 +808,8 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         raise ValueError(
             "keep must be one of: all, reached, exemplar"
         )
+    if world_expansion not in {"off", "detect"}:
+        raise ValueError("world_expansion must be one of: off, detect")
 
     if observer is not None:
         observer.checkpoint(phase="preparing")
@@ -1293,6 +1298,8 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         }
         if meta_evolution:
             summary_payload["meta_evolution"] = True
+        if world_expansion != "off":
+            summary_payload["world_expansion"] = world_expansion
         if coevolve:
             summary_payload.update(
                 {
@@ -1311,5 +1318,18 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             previous_antagonist_results = (
                 antagonist_generation_results
             )
+
+    if world_expansion == "detect":
+        # Post-evolution only: never touches sim state, rng, candidate
+        # generation or the Policy. Runs after the last summary/publish, and a
+        # report that cannot be built must not turn a finished run into a
+        # failed job -- the viewer then just says nothing was collected.
+        try:
+            _json_write(
+                out_dir / "world_demand.json",
+                build_world_demand_report(out_dir),
+            )
+        except Exception as error:
+            print(f"world_demand report skipped: {error!r}", file=sys.stderr)
 
     return archive

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts import world_demand
+from gapengine import world_demand
 
 
 def _row(**fields):
@@ -73,9 +73,14 @@ class WorldDemandTest(unittest.TestCase):
             self.assertEqual(unknown["decisions"], 2)  # move + observe
             self.assertEqual(unknown["dwell"], 1)  # move is excluded from dwell
 
-            # demand-descending order, ties broken by zone name.
+            # dwell-share-descending order, ties broken by zone name. Total
+            # dwell is 海=3, 村=1, unknown=1 -- unknown and 村 tie on share
+            # and are broken alphabetically ("(unknown)" < "村").
             self.assertEqual([z["zone"] for z in report["zones"]],
                               ["海", world_demand.UNKNOWN_ZONE, "村"])
+
+            # 海's craft whiffs once out of 3 (33%): below WHIFF_RATE_MIN, no trigger.
+            self.assertEqual(report["triggers"], [])
 
     def test_zone_is_tracked_from_snapshots_and_deltas_without_explanations(self) -> None:
         rows = [
@@ -111,6 +116,86 @@ class WorldDemandTest(unittest.TestCase):
             first = world_demand.collect([layers_path])
             second = world_demand.collect([layers_path])
             self.assertEqual(first, second)
+
+    def test_triggers_require_both_thresholds_and_exclude_unknown_zone(self) -> None:
+        # 500 total dwell decisions spread over three zones so wasted_share is
+        # easy to control: 海 has 50 investigate, all whiffs (rate=1.0,
+        # wasted_share=50/500=0.10 -- every threshold cleared, triggers).
+        # 村 has 10 investigate, all whiffs (rate=1.0, wasted_share=10/500=0.02
+        # -- exactly at WASTED_SHARE_MIN and WHIFFS_MIN, still triggers: inclusive).
+        # (unknown) has 25 investigate, all whiffs (rate=1.0, wasted_share=0.05)
+        # but must never trigger -- it isn't a real zone to expand.
+        rows = [{"kind": "header", "protagonist": "たろう"}]
+        for _ in range(50):
+            rows.append(_row(kind="decision", subject="たろう", verb="investigate",
+                              effective=False, result="invalid", explanation={"zone": "海"}))
+        for _ in range(10):
+            rows.append(_row(kind="decision", subject="たろう", verb="investigate",
+                              effective=False, result="invalid", explanation={"zone": "村"}))
+        for _ in range(25):
+            rows.append(_row(kind="decision", subject="たろう", verb="investigate",
+                              effective=False, result="invalid"))
+        # 390 more dwell decisions elsewhere, all effective, to pad total_dwell to 500
+        # (50 + 10 + 25 investigate + 390 trade + 25 haggle below = 500).
+        for _ in range(390):
+            rows.append(_row(kind="decision", subject="たろう", verb="trade",
+                              explanation={"zone": "町"}))
+        # A verb below the whiff-rate threshold (50% exactly is the boundary;
+        # 40% must not trigger even though it clears wasted_share).
+        for i in range(25):
+            rows.append(_row(kind="decision", subject="たろう", verb="haggle",
+                              effective=(i >= 10), result="ok" if i >= 10 else "invalid",
+                              explanation={"zone": "町"}))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "layers.jsonl"
+            path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                            encoding="utf-8")
+            report = world_demand.collect([path])
+
+        triggers = {(t["zone"], t["verb"]) for t in report["triggers"]}
+        self.assertEqual(triggers, {("海", "investigate"), ("村", "investigate")})
+        self.assertNotIn((world_demand.UNKNOWN_ZONE, "investigate"), triggers)
+        self.assertNotIn(("町", "haggle"), triggers)  # whiff_rate 40% < 50% minimum
+
+        # order: -wasted_share, then zone, then verb.
+        self.assertEqual([(t["zone"], t["verb"]) for t in report["triggers"]],
+                          [("海", "investigate"), ("村", "investigate")])
+        sea_trigger = next(t for t in report["triggers"] if t["zone"] == "海")
+        self.assertEqual(sea_trigger["whiff_rate"], 1.0)
+        self.assertEqual(sea_trigger["wasted_share"], 0.1)
+        self.assertEqual(sea_trigger["count"], 50)
+        self.assertEqual(sea_trigger["whiffs"], 50)
+
+    def test_a_handful_of_whiffs_never_triggers(self) -> None:
+        def triggers(whiffs):
+            rows = [{"kind": "header", "protagonist": "たろう"}] + [
+                _row(kind="decision", subject="たろう", verb="investigate",
+                     effective=False, explanation={"zone": "海"}) for _ in range(whiffs)]
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "layers.jsonl"
+                path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                                encoding="utf-8")
+                return world_demand.collect([path])["triggers"]
+
+        self.assertEqual(triggers(world_demand.WHIFFS_MIN - 1), [])
+        self.assertEqual(len(triggers(world_demand.WHIFFS_MIN)), 1)
+
+    def test_build_report_adds_schema_and_thresholds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            experiment_dir = Path(tmp)
+            layers_path = experiment_dir / "g0" / "ind-0" / "seed-1" / "layers.jsonl"
+            _write_layers(layers_path)
+
+            report = world_demand.build_report(experiment_dir, use_all=True)
+
+            self.assertEqual(report["schema_version"], 1)
+            self.assertEqual(report["thresholds"], {
+                "whiff_rate_min": world_demand.WHIFF_RATE_MIN,
+                "wasted_share_min": world_demand.WASTED_SHARE_MIN,
+                "whiffs_min": world_demand.WHIFFS_MIN,
+            })
+            self.assertIsNone(report["archive"])  # no archive.json in this fixture
 
 
 if __name__ == "__main__":

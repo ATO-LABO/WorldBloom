@@ -71,7 +71,8 @@ class ConfigTests(unittest.TestCase):
         for changes in ({"seed_base": -1}, {"ga_seed": True}, {"keep": "bad"},
                         {"coevolve": 1}, {"record_explanations": "true"},
                         {"target_ending": []}, {"target_ending": "mutual"},
-                        {"target_ending": ["mutual", "mutual"]}, {"mutation": 0.9}):
+                        {"target_ending": ["mutual", "mutual"]}, {"mutation": 0.9},
+                        {"world_expansion": "bogus"}, {"world_expansion": "propose"}):
             with self.subTest(changes=changes), self.assertRaises(ConfigError):
                 self.store.preview({**self.spec, "evolution": changes})
         for key in ("out", "api_key", "runtime", "argv"):
