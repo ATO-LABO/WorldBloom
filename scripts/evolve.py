@@ -120,6 +120,16 @@ def build_parser() -> argparse.ArgumentParser:
             "<out>/ga_state.json instead of starting over."
         ),
     )
+    parser.add_argument(
+        "--resume-allow-code-change",
+        action="store_true",
+        help=(
+            "WB-GA-RESUME: with --resume, downgrade an engine_hash/"
+            "gapengine_hash mismatch to a warning instead of refusing "
+            "(for an intentional mid-run code change). cfg_fingerprint "
+            "mismatches -- a different experiment -- are always refused."
+        ),
+    )
     return parser
 
 
@@ -173,6 +183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "max_judge_calls_per_run": args.rationality_max_calls,
             },
             "resume": args.resume,
+            "resume_allow_code_change": args.resume_allow_code_change,
             "seed_base": args.seed_base,
             "seeds": args.seeds,
             "target_ending": args.target_ending,

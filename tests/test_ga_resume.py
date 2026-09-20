@@ -19,7 +19,51 @@ from gapengine.evolve import evolve
 from gapengine.genome import Genome
 from gapengine.qd import Archive, Descriptor, Elite
 from scripts.evolve import build_parser
-from test_gapengine import TEMPLATE, make_reaching_project
+from test_gapengine import ROOT, TEMPLATE, make_reaching_project
+
+
+def _rewrite_json(path: Path, value) -> None:
+    path.write_text(
+        json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _patch_crash_after_write(filename: str, *, min_generation: int, require_new_cell: bool = False):
+    """A ``gapengine.evolve._json_write`` replacement (Opus review probe
+    pattern) that writes normally, then raises exactly once, right after
+    the first ``min_generation``-or-later write of ``filename`` -- the
+    non-atomic archive.json/summary.json/ga_state.json window a crash can
+    land in mid-generation. Returns (patcher, triggered) -- ``triggered["done"]``
+    must be True after the call, or the window was never hit."""
+
+    import gapengine.evolve as evolve_module
+
+    real_write = evolve_module._json_write
+    triggered = {"done": False}
+
+    def fake_write(path: Path, value) -> None:
+        real_write(path, value)
+        if triggered["done"] or path.name != filename:
+            return
+        state_file = path.parent / "ga_state.json"
+        completed = (
+            json.loads(state_file.read_text(encoding="utf-8"))["completed_generations"]
+            if state_file.is_file()
+            else 0
+        )
+        if completed < min_generation:
+            return
+        if require_new_cell and not any(
+            int(cell["generation"]) == completed for cell in value["cells"].values()
+        ):
+            return
+        triggered["done"] = True
+        raise RuntimeError(
+            f"simulated crash right after {filename} of generation {completed}"
+        )
+
+    return patch("gapengine.evolve._json_write", side_effect=fake_write), triggered
 
 
 def _files_under(root: Path) -> dict[str, Path]:
@@ -201,6 +245,265 @@ class CrashRecoveryTests(unittest.TestCase):
             )
 
             _assert_same_output(self, root / "full", root / "resumed")
+
+    def test_crash_during_generation_zero_then_resume_matches_fresh_run(self) -> None:
+        """Opus review follow-up (recommended item 5): generation 0 has no
+        prior checkpoint to fall back to, so a crash there must still be
+        recoverable, not a permanent dead end."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = {
+                "ga_seed": 53,
+                "keep": "all",
+                "population": 4,
+                "processes": 1,
+                "project": project,
+                "seed_base": 59,
+                "seeds": 1,
+                "template": TEMPLATE,
+            }
+
+            evolve({**common, "generations": 2, "out": root / "full"})
+
+            def flaky(jobs, processes, observer=None):
+                raise RuntimeError("simulated crash during generation 0")
+
+            with patch("gapengine.evolve._evaluate_jobs", side_effect=flaky):
+                with self.assertRaises(RuntimeError):
+                    evolve({**common, "generations": 2, "out": root / "resumed"})
+
+            self.assertFalse((root / "resumed" / "ga_state.json").exists())
+            self.assertTrue((root / "resumed" / "g0").exists())
+
+            evolve(
+                {**common, "generations": 2, "out": root / "resumed", "resume": True}
+            )
+
+            _assert_same_output(self, root / "full", root / "resumed")
+
+
+class NonAtomicCheckpointWindowTests(unittest.TestCase):
+    """Opus review: a generation writes archive.json -> summary.json ->
+    ga_state.json in that order, none of them atomic with each other. A
+    crash in either gap must not corrupt a later resume -- version 2's
+    embedded archive and the summaries[:start_generation] truncation are
+    exactly what makes that true regardless of where the crash lands."""
+
+    _ROMANCE_COMMON = {
+        "ga_seed": 5,
+        "keep": "all",
+        "population": 8,
+        "processes": 1,
+        "project": ROOT / "projects" / "romance",
+        "seed_base": 2,
+        "seeds": 2,
+        "template": ROOT / "templates" / "romance",
+        "generations": 6,
+    }
+
+    def test_crash_right_after_archive_json_of_a_cell_winning_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            common = self._ROMANCE_COMMON
+
+            evolve({**common, "out": root / "full"})
+
+            patcher, triggered = _patch_crash_after_write(
+                "archive.json", min_generation=1, require_new_cell=True
+            )
+            with patcher:
+                with self.assertRaises(RuntimeError):
+                    evolve({**common, "out": root / "crashed"})
+            self.assertTrue(
+                triggered["done"],
+                "never hit the archive.json-then-crash window -- test is inconclusive",
+            )
+
+            evolve({**common, "out": root / "crashed", "resume": True})
+            _assert_same_output(self, root / "full", root / "crashed")
+
+    def test_crash_right_after_summary_json_before_ga_state_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            common = {
+                "ga_seed": 5,
+                "keep": "all",
+                "population": 6,
+                "processes": 1,
+                "project": ROOT / "projects" / "romance",
+                "seed_base": 2,
+                "seeds": 1,
+                "template": ROOT / "templates" / "romance",
+                "generations": 5,
+            }
+
+            evolve({**common, "out": root / "full"})
+
+            patcher, triggered = _patch_crash_after_write(
+                "summary.json", min_generation=1
+            )
+            with patcher:
+                with self.assertRaises(RuntimeError):
+                    evolve({**common, "out": root / "crashed"})
+            self.assertTrue(
+                triggered["done"],
+                "never hit the summary.json-then-crash window -- test is inconclusive",
+            )
+            # The stray summary.json entry for the crashed generation must
+            # not have made it into a resumed run's final output.
+            evolve({**common, "out": root / "crashed", "resume": True})
+            _assert_same_output(self, root / "full", root / "crashed")
+
+
+class LegacyVersion1CheckpointTests(unittest.TestCase):
+    """Plan item: a version-1 ga_state.json (WB-GA-RESUME's first cut,
+    HEAD 03106ae -- no embedded archive, no gapengine_hash) must still be
+    resumable, and an archive.json that got ahead of that checkpoint (the
+    exact bug this fix addresses) must be refused with a clear message."""
+
+    def _common(self, project: Path) -> dict:
+        return {
+            "ga_seed": 61,
+            "keep": "all",
+            "population": 4,
+            "processes": 1,
+            "project": project,
+            "seed_base": 67,
+            "seeds": 1,
+            "template": TEMPLATE,
+        }
+
+    @staticmethod
+    def _downgrade_to_version1(state_path: Path) -> None:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        legacy = {
+            key: value
+            for key, value in state.items()
+            if key not in ("archive", "antagonist_archive", "gapengine_hash")
+        }
+        legacy["version"] = 1
+        _rewrite_json(state_path, legacy)
+
+    def test_version1_state_without_embedded_archive_still_resumes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = self._common(project)
+
+            evolve({**common, "generations": 4, "out": root / "full"})
+            evolve({**common, "generations": 2, "out": root / "resumed"})
+            self._downgrade_to_version1(root / "resumed" / "ga_state.json")
+
+            # No gapengine_hash key in this state -- must not be checked
+            # (item 6a), so this succeeds even though the *current*
+            # gapengine_hash of course differs from "absent".
+            evolve(
+                {**common, "generations": 4, "out": root / "resumed", "resume": True}
+            )
+
+            _assert_same_output(self, root / "full", root / "resumed")
+
+    def test_archive_json_ahead_of_checkpoint_refuses_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = self._common(project)
+
+            evolve({**common, "generations": 2, "out": root / "resumed"})
+            self._downgrade_to_version1(root / "resumed" / "ga_state.json")
+
+            archive_path = root / "resumed" / "archive.json"
+            archive_raw = json.loads(archive_path.read_text(encoding="utf-8"))
+            self.assertTrue(archive_raw["cells"], "fixture produced no elites to corrupt")
+            any_cell = next(iter(archive_raw["cells"]))
+            archive_raw["cells"][any_cell]["generation"] = 99
+            _rewrite_json(archive_path, archive_raw)
+
+            with self.assertRaises(ValueError):
+                evolve(
+                    {**common, "generations": 4, "out": root / "resumed", "resume": True}
+                )
+
+    def test_unknown_state_version_refuses_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = self._common(project)
+
+            evolve({**common, "generations": 2, "out": root / "out"})
+            state_path = root / "out" / "ga_state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["version"] = 3
+            _rewrite_json(state_path, state)
+
+            with self.assertRaises(ValueError):
+                evolve(
+                    {**common, "generations": 3, "out": root / "out", "resume": True}
+                )
+
+
+class GapengineHashGuardTests(unittest.TestCase):
+    """Plan item 6: gapengine/*.py's content hash is checked like
+    engine_hash, downgradable to a warning with resume_allow_code_change."""
+
+    def _common(self, project: Path) -> dict:
+        return {
+            "ga_seed": 71,
+            "keep": "all",
+            "population": 4,
+            "processes": 1,
+            "project": project,
+            "seed_base": 73,
+            "seeds": 1,
+            "template": TEMPLATE,
+        }
+
+    def test_gapengine_hash_mismatch_refuses_resume_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = self._common(project)
+            evolve({**common, "generations": 2, "out": root / "out"})
+
+            state_path = root / "out" / "ga_state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["gapengine_hash"] = "deadbeefdead"
+            _rewrite_json(state_path, state)
+
+            with self.assertRaises(ValueError):
+                evolve(
+                    {**common, "generations": 3, "out": root / "out", "resume": True}
+                )
+
+    def test_gapengine_hash_mismatch_continues_with_resume_allow_code_change(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = self._common(project)
+            evolve({**common, "generations": 2, "out": root / "out"})
+
+            state_path = root / "out" / "ga_state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["gapengine_hash"] = "deadbeefdead"
+            _rewrite_json(state_path, state)
+
+            archive = evolve(
+                {
+                    **common,
+                    "generations": 3,
+                    "out": root / "out",
+                    "resume": True,
+                    "resume_allow_code_change": True,
+                }
+            )
+
+            self.assertGreaterEqual(len(archive.cells), 1)
+            after = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(after["completed_generations"], 3)
 
 
 class ArchiveRoundTripTests(unittest.TestCase):
@@ -401,11 +704,14 @@ class ResumeGuardrailTests(unittest.TestCase):
             self.assertGreaterEqual(len(archive.cells), 1)
             self.assertFalse((root / "out" / "g2").exists())
 
-    def test_missing_state_with_generation_directories_refuses_resume(self) -> None:
+    def test_missing_state_with_generation_directories_beyond_g0_refuses_resume(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             out_dir = root / "out"
             (out_dir / "g0").mkdir(parents=True)
+            (out_dir / "g1").mkdir(parents=True)
             project = make_reaching_project(root)
             with self.assertRaises(ValueError):
                 evolve(
@@ -416,6 +722,31 @@ class ResumeGuardrailTests(unittest.TestCase):
                         "resume": True,
                     }
                 )
+
+    def test_missing_state_with_only_generation_zero_clears_it_and_starts_fresh(
+        self,
+    ) -> None:
+        """Opus review follow-up: generation 0 crashing before its own
+        first checkpoint ever existed must not refuse resume forever, since
+        the caller always launches with --resume from the start."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = self._common(project)
+
+            evolve({**common, "generations": 2, "out": root / "baseline"})
+
+            out_dir = root / "crashed-g0"
+            (out_dir / "g0" / "leftover").mkdir(parents=True)
+            (out_dir / "g0" / "leftover" / "junk.txt").write_text(
+                "half-written generation 0\n", encoding="utf-8"
+            )
+            evolve(
+                {**common, "generations": 2, "out": out_dir, "resume": True}
+            )
+
+            _assert_same_output(self, root / "baseline", out_dir)
 
     def test_missing_state_with_empty_out_dir_starts_fresh(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

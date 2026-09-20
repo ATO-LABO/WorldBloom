@@ -75,13 +75,15 @@ def _model(value):
 
 def evolution_defaults():
     parser = build_parser()
-    # "resume" (WB-GA-RESUME) is a CLI-only, run-mode flag with no bearing on
-    # what a saved config *means* -- excluding its dest here (same treatment
-    # as project/template/out) keeps it out of normalize()'s allowed
-    # evolution.* keys, prepare_run()'s generated argv, and legacy_settings(),
-    # so existing configs/argv/tests are byte-for-byte unaffected.
+    # "resume"/"resume_allow_code_change" (WB-GA-RESUME) are CLI-only,
+    # run-mode flags with no bearing on what a saved config *means* --
+    # excluding their dests here (same treatment as project/template/out)
+    # keeps them out of normalize()'s allowed evolution.* keys,
+    # prepare_run()'s generated argv, and legacy_settings(), so existing
+    # configs/argv/tests are byte-for-byte unaffected.
     return {a.dest: deepcopy(a.default) for a in parser._actions
-            if a.dest not in {"help", "project", "template", "out", "resume"}}
+            if a.dest not in {"help", "project", "template", "out",
+                               "resume", "resume_allow_code_change"}}
 
 
 def quick_label(world_name, genre):
