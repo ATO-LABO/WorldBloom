@@ -12,6 +12,8 @@ import unittest
 from unittest.mock import patch
 
 import yaml
+from world_patch_fixtures import write_approved
+from gapengine.world_patch import patch_id_for
 
 from execution.configs import ConfigStore, evolution_defaults, normalize
 from execution.provenance import ConfigError, atomic_json, canonical, directory_lock, sha256
@@ -395,20 +397,24 @@ class ConfigTests(unittest.TestCase):
                 "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all", **evolution}}
 
     def _write_patch(self, patch, *, proposed=False):
-        folder = self.repo / "projects/momotaro/patches" / ("_proposed" if proposed else "")
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / f"{patch['id']}.yaml").write_text(
-            yaml.safe_dump(patch, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        project = self.repo / "projects/momotaro"
+        if not proposed:
+            write_approved(project, patch, self.repo / "templates/momotaro", self.repo)
+        else:
+            folder = project / "patches/_proposed"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"{patch['id']}.yaml").write_text(yaml.safe_dump(patch, allow_unicode=True), encoding="utf-8")
 
     @staticmethod
     def _sample_patch(**overrides):
         patch = {
-            "id": "p-1a2b3c4d", "title": "海辺の船大工小屋", "approved_seq": 1,
+            "id": "placeholder", "title": "海辺の船大工小屋",
             "trigger": {"zone": "海", "verb": "investigate"},
             "add": {"zones": [{"name": "船大工の小屋", "parent": "海", "note": "船具を扱う小屋"}],
-                    "items": [], "facts": [], "daily_events": []},
+                    "items": [], "facts": []},
         }
         patch.update(overrides)
+        patch["id"] = patch_id_for(patch["add"])
         return patch
 
     def test_expand_with_approved_patch_adds_zone_and_records_manifest(self):
@@ -418,11 +424,11 @@ class ConfigTests(unittest.TestCase):
         world = yaml.safe_load(
             (self.store.control / "configs/cfg-expand/inputs/projects/momotaro/world.yaml").read_bytes())
         self.assertIn("船大工の小屋", {z["name"] for z in world["zones"]})
-        self.assertEqual(world["expansion"]["patches"][0]["id"], "p-1a2b3c4d")
+        self.assertEqual(world["expansion"]["patches"][0]["id"], self._sample_patch()["id"])
         manifest = json.loads((self.store.control / "configs/cfg-expand/input-manifest.json").read_text(encoding="utf-8"))
         record = next(r for r in manifest["files"] if r["path"] == "projects/momotaro/world.yaml")
-        self.assertEqual(record["world_patches"], [{"id": "p-1a2b3c4d", "sha256": sha256(
-            (self.repo / "projects/momotaro/patches/p-1a2b3c4d.yaml").read_bytes())}])
+        self.assertEqual(record["world_patches"], [{"id": self._sample_patch()["id"], "sha256": sha256(
+            (self.repo / "projects/momotaro/patches" / (self._sample_patch()["id"] + ".yaml")).read_bytes())}])
         self.assertIn("船大工の小屋", {z["name"] for z in saved["preview"]["world"]["zones"]})
 
     def test_off_and_detect_freeze_byte_identical_world_even_with_patches_present(self):
@@ -443,7 +449,7 @@ class ConfigTests(unittest.TestCase):
                 self.assertNotIn("world_patches", record)
 
     def test_invalid_approved_patch_rejected_as_config_error(self):
-        self._write_patch(self._sample_patch(add={"zones": [], "items": [], "facts": [], "daily_events": []}))
+        self._write_patch(self._sample_patch(add={"zones": [], "items": [], "facts": []}))
         spec = self._momotaro_spec(world_expansion="expand")
         with self.assertRaises(ConfigError) as caught:
             self.store.preview(spec)
@@ -453,7 +459,7 @@ class ConfigTests(unittest.TestCase):
         # "hostile_lean" is a rule id in templates/momotaro/rules.yaml -- not
         # in RESERVED_NAMES itself, only reachable via template_identifiers().
         self._write_patch(self._sample_patch(add={
-            "zones": [{"name": "hostile_lean", "parent": "海"}], "items": [], "facts": [], "daily_events": [],
+            "zones": [{"name": "hostile_lean", "parent": "海"}], "items": [], "facts": [],
         }))
         spec = self._momotaro_spec(world_expansion="expand")
         with self.assertRaises(ConfigError) as caught:
@@ -461,7 +467,7 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("inputs.world_patches", caught.exception.field_errors)
 
     def test_invalid_approved_patch_does_not_block_off(self):
-        self._write_patch(self._sample_patch(add={"zones": [], "items": [], "facts": [], "daily_events": []}))
+        self._write_patch(self._sample_patch(add={"zones": [], "items": [], "facts": []}))
         spec = self._momotaro_spec(world_expansion="off")
         self.store.preview(spec)  # must not raise
 

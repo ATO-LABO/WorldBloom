@@ -260,31 +260,25 @@ def _capture_inputs(repo, spec):
     except (yaml.YAMLError, AttributeError, TypeError) as error:
         raise ConfigError("inputs.world", "世界の入力形式が不正です") from error
     if spec["evolution"]["world_expansion"] == "expand":
+        from execution.world_patches import expanded_snapshot
         try:
-            patches = approved_patches(project)
+            world, expanded_people, verified = expanded_snapshot(project, template, repo_root=repo)
         except PatchError as error:
             raise ConfigError("inputs.world_patches", str(error)) from error
-        if patches:
-            subject_ids = []
+        if verified:
+            # Preserve the already rebased references captured above.
+            rebased = yaml.safe_load(blobs[world_key]).get("gapengine")
+            if rebased is not None:
+                world["gapengine"] = rebased
             for p in subjects:
-                subject_data = yaml.safe_load(blobs[p.relative_to(repo).as_posix()])
-                if isinstance(subject_data, dict) and isinstance(subject_data.get("id"), str):
-                    subject_ids.append(subject_data["id"])
-            try:
-                world = apply_patches(world, patches, subject_ids=subject_ids,
-                                       reserved=template_identifiers(template))
-            except PatchError as error:
-                raise ConfigError("inputs.world_patches", str(error)) from error
+                key = p.relative_to(repo).as_posix()
+                if yaml.safe_load(blobs[key]) != expanded_people[p.name]:
+                    blobs[key] = yaml.safe_dump(expanded_people[p.name], allow_unicode=True,
+                                               sort_keys=False).encode("utf-8")
+                    records[key]["transformation"] = "world_patches_extend_range"
             blobs[world_key] = yaml.safe_dump(world, allow_unicode=True,
                                               sort_keys=False).encode("utf-8")
-            patch_records = []
-            for patch in patches:
-                patch_path = project / "patches" / f"{patch['id']}.yaml"
-                try:
-                    patch_bytes = patch_path.read_bytes()
-                except OSError as error:
-                    raise ConfigError("inputs.world_patches", "パッチファイルが読み取れません") from error
-                patch_records.append({"id": patch["id"], "sha256": sha256(patch_bytes)})
+            patch_records = [{"id": patch["id"], "sha256": sha256(raw)} for patch, raw in verified]
             records[world_key]["world_patches"] = patch_records
     entries = [{**records[p], "sha256": sha256(b), "bytes": len(b)}
                for p, b in sorted(blobs.items())]
