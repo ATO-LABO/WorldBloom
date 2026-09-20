@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import shutil
 import uuid
 import multiprocessing
 import random
@@ -13,7 +15,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import yaml
 
-from engine.sim import Simulation
+from engine.sim import Simulation, _engine_source_hash
 from engine.subject import Subject
 from engine.world import World
 from gapengine import gpu_guard
@@ -43,6 +45,9 @@ from gapengine.rationality import (
     Rationality,
     RationalityTable,
 )
+
+
+_ENGINE_DIR = Path(__file__).resolve().parents[1] / "engine"
 
 
 def _json_write(path: Path, value: Any) -> None:
@@ -936,6 +941,125 @@ def _generation_lineage_summary(
     }
 
 
+def _rng_state_to_json(rng: random.Random) -> Any:
+    """``random.Random.getstate()`` is a tuple of (possibly nested) tuples;
+    JSON has no tuple type, so recursively turn every tuple into a list for
+    ``_json_write`` (WB-GA-RESUME). ``_rng_state_from_json`` is the inverse."""
+
+    def convert(value: Any) -> Any:
+        return [convert(item) for item in value] if isinstance(value, tuple) else value
+
+    return convert(rng.getstate())
+
+
+def _rng_state_from_json(value: Any) -> tuple[Any, ...]:
+    def convert(item: Any) -> Any:
+        return tuple(convert(x) for x in item) if isinstance(item, list) else item
+
+    return convert(value)
+
+
+def _content_fingerprint(project_dir: Path, template_dir: Path) -> str:
+    """Hash of every project/template file's *content* (WB-GA-RESUME) --
+    moving the project/template directory elsewhere must not change this,
+    only editing a project.yaml/subject/template file should. Covers
+    project_dir/world.yaml, project_dir/subjects/*.yaml, and every file
+    under template_dir (rules.yaml, qd.yaml, rationality.yaml, canon.yaml,
+    action graphs, ...)."""
+
+    entries: list[tuple[str, bytes]] = []
+    world_path = project_dir / "world.yaml"
+    if world_path.is_file():
+        entries.append(("project/world.yaml", world_path.read_bytes()))
+    subjects_dir = project_dir / "subjects"
+    if subjects_dir.is_dir():
+        for path in sorted(subjects_dir.glob("*.yaml"), key=lambda value: value.name):
+            entries.append((f"project/subjects/{path.name}", path.read_bytes()))
+    if template_dir.is_dir():
+        for path in sorted(
+            (candidate for candidate in template_dir.rglob("*") if candidate.is_file()),
+            key=lambda value: value.relative_to(template_dir).as_posix(),
+        ):
+            label = f"template/{path.relative_to(template_dir).as_posix()}"
+            entries.append((label, path.read_bytes()))
+
+    digest = hashlib.sha256()
+    for label, data in entries:
+        digest.update(label.encode("utf-8"))
+        digest.update(b"\x00")
+        digest.update(hashlib.sha256(data).digest())
+    return digest.hexdigest()
+
+
+def _cfg_fingerprint(
+    *,
+    project_dir: Path,
+    template_dir: Path,
+    population_size: int,
+    seed_count: int,
+    seed_base: int,
+    ga_seed: int,
+    keep: str,
+    coevolve: bool,
+    meta_evolution: bool,
+    target_ending: Any,
+    record_explanations: bool,
+    rationality_cfg: Mapping[str, Any] | None,
+) -> str:
+    """WB-GA-RESUME: sha256 of every setting that changes what the GA
+    computes -- resuming with a different value here is a bug (or a
+    different experiment), so it raises rather than silently continuing.
+    Deliberately excludes generations/out/processes and rationality's
+    table path/gpu_lease_wait_seconds/thermal_guard: those are operational
+    knobs that never change a run's results (plan §2.1)."""
+
+    payload: dict[str, Any] = {
+        "content_hash": _content_fingerprint(project_dir, template_dir),
+        "coevolve": coevolve,
+        "ga_seed": ga_seed,
+        "keep": keep,
+        "meta_evolution": meta_evolution,
+        "population": population_size,
+        "record_explanations": record_explanations,
+        "seed_base": seed_base,
+        "seeds": seed_count,
+        "target_ending": target_ending,
+    }
+    if rationality_cfg is not None:
+        payload["rationality"] = {
+            "backend": rationality_cfg["backend"],
+            "kappa": rationality_cfg["kappa"],
+            "max_judge_calls": rationality_cfg.get("max_judge_calls"),
+            "method": rationality_cfg["method"],
+            "model": rationality_cfg["model"],
+        }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def _clear_stale_generations(out_dir: Path, start_generation: int) -> None:
+    """WB-GA-RESUME: a run that crashed mid-generation leaves ``g<N>``
+    (N == the last recorded ``completed_generations``, or later) half
+    written -- delete just those directories before recomputing them.
+    Every candidate is resolved and checked to still be out_dir's own
+    direct child before it is ever removed."""
+
+    if not out_dir.is_dir():
+        return
+    resolved_out = out_dir.resolve()
+    for path in sorted(out_dir.iterdir()):
+        if not path.is_dir():
+            continue
+        match = re.fullmatch(r"g(\d+)", path.name)
+        if match is None or int(match.group(1)) < start_generation:
+            continue
+        resolved_path = path.resolve()
+        if resolved_path.parent != resolved_out:
+            continue
+        shutil.rmtree(resolved_path)
+
+
 def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     project_dir = Path(str(cfg["project"])).resolve()
     template_dir = Path(str(cfg["template"])).resolve()
@@ -960,6 +1084,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     keep = str(cfg.get("keep", "reached"))
     coevolve = bool(cfg.get("coevolve", False))
     meta_evolution = bool(cfg.get("meta_evolution", False))
+    resume = bool(cfg.get("resume", False))
     if generations < 1 or population_size < 1 or seed_count < 1:
         raise ValueError(
             "generations, population, and seeds must be positive"
@@ -1086,23 +1211,86 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         if antagonist_canon_path.is_file():
             antagonist_canon = load_canon(antagonist_canon_path)
 
+    # WB-GA-RESUME: the fingerprint covers every setting that changes what
+    # the GA computes (plan §2.1); resuming a run whose fingerprint or
+    # engine differs from the one recorded in ga_state.json is refused
+    # below rather than silently continuing with mismatched assumptions.
+    record_explanations = bool(cfg.get("record_explanations", False))
+    cfg_fingerprint = _cfg_fingerprint(
+        project_dir=project_dir,
+        template_dir=template_dir,
+        population_size=population_size,
+        seed_count=seed_count,
+        seed_base=seed_base,
+        ga_seed=ga_seed,
+        keep=keep,
+        coevolve=coevolve,
+        meta_evolution=meta_evolution,
+        target_ending=world_model.target_ending,
+        record_explanations=record_explanations,
+        rationality_cfg=rationality_cfg,
+    )
+    engine_hash = _engine_source_hash(_ENGINE_DIR)
+
+    state_path = out_dir / "ga_state.json"
+    start_generation = 0
     archive = Archive()
     antagonist_archive = Archive() if coevolve else None
     summaries: list[dict[str, Any]] = []
     previous_results: list[dict[str, Any]] = []
     previous_antagonist_results: list[dict[str, Any]] = []
-    population = [
-        (
-            Genome.random(
-                ga_rng,
-                rule_ids=rule_ids,
-            ),
-            [],
-        )
-        for _ in range(population_size)
-    ]
-    antagonist_population = (
-        [
+    if resume:
+        if state_path.is_file():
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            mismatches = [
+                name
+                for name, expected in (
+                    ("cfg_fingerprint", cfg_fingerprint),
+                    ("engine_hash", engine_hash),
+                )
+                if state.get(name) != expected
+            ]
+            if mismatches:
+                raise ValueError(
+                    "Cannot resume "
+                    + str(out_dir)
+                    + ": "
+                    + ", ".join(mismatches)
+                    + " no longer match the run recorded in "
+                    + str(state_path)
+                )
+            start_generation = int(state["completed_generations"])
+            archive = Archive.load(out_dir / "archive.json")
+            if coevolve:
+                antagonist_archive = Archive.load(
+                    out_dir / "archive_antagonist.json"
+                )
+            summaries = list(
+                json.loads(
+                    (out_dir / "summary.json").read_text(encoding="utf-8")
+                )["generations"]
+            )
+            previous_results = list(state["previous_results"])
+            if coevolve:
+                previous_antagonist_results = list(
+                    state.get("previous_antagonist_results", [])
+                )
+            ga_rng.setstate(_rng_state_from_json(state["ga_rng_state"]))
+            _clear_stale_generations(out_dir, start_generation)
+        elif out_dir.is_dir() and any(
+            path.is_dir() and re.fullmatch(r"g\d+", path.name)
+            for path in out_dir.iterdir()
+        ):
+            raise ValueError(
+                "Cannot resume "
+                + str(out_dir)
+                + ": generation directories exist without "
+                + state_path.name
+                + " (a run from before WB-GA-RESUME cannot be resumed)"
+            )
+
+    if start_generation == 0:
+        population = [
             (
                 Genome.random(
                     ga_rng,
@@ -1112,11 +1300,29 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             )
             for _ in range(population_size)
         ]
-        if coevolve
-        else []
-    )
+        antagonist_population = (
+            [
+                (
+                    Genome.random(
+                        ga_rng,
+                        rule_ids=rule_ids,
+                    ),
+                    [],
+                )
+                for _ in range(population_size)
+            ]
+            if coevolve
+            else []
+        )
+    else:
+        # Set inside the loop below by _next_population() on its first
+        # iteration (generation == start_generation > 0) -- building a
+        # random initial population here would consume ga_rng draws that
+        # the checkpointed state never accounted for (plan §2.2 step 2).
+        population = []
+        antagonist_population = []
 
-    for generation in range(generations):
+    for generation in range(start_generation, generations):
         if observer is not None:
             observer.checkpoint(phase="preparing", generation=generation, role=None)
         generation_dir = out_dir / f"g{generation}"
@@ -1595,6 +1801,21 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             previous_antagonist_results = (
                 antagonist_generation_results
             )
+
+        # WB-GA-RESUME: written every generation (resumed or not) so any
+        # run can later be resumed -- a non-resuming run's other output is
+        # unaffected (plan §2.1).
+        state_payload: dict[str, Any] = {
+            "cfg_fingerprint": cfg_fingerprint,
+            "completed_generations": generation + 1,
+            "engine_hash": engine_hash,
+            "ga_rng_state": _rng_state_to_json(ga_rng),
+            "previous_results": previous_results,
+            "version": 1,
+        }
+        if coevolve:
+            state_payload["previous_antagonist_results"] = previous_antagonist_results
+        _json_write(out_dir / "ga_state.json", state_payload)
 
     return archive
 

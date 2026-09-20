@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -111,11 +112,47 @@ def build_parser() -> argparse.ArgumentParser:
             "max_judge_calls_per_run (default: unlimited)."
         ),
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "WB-GA-RESUME: resume from the last generation completed in "
+            "<out>/ga_state.json instead of starting over."
+        ),
+    )
     return parser
+
+
+def _print_resume_status(out: Path, generations: int) -> None:
+    """A CLI-only preview of scripts/evolve.py's ``--resume``: reads
+    ga_state.json (if any) just to report where a resumed run will pick up.
+    evolve() does its own, authoritative fingerprint check regardless of
+    what is printed here."""
+
+    state_path = out / "ga_state.json"
+    if not state_path.is_file():
+        return
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        completed = int(state["completed_generations"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return
+    if completed >= generations:
+        print(
+            f"already completed {completed} generation(s) (of {generations})",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"resuming from generation {completed} (of {generations})",
+            file=sys.stderr,
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.resume:
+        _print_resume_status(args.out, args.generations)
     archive = evolve(
         {
             "record_explanations": args.record_explanations,
@@ -135,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "table": args.rationality_table,
                 "max_judge_calls_per_run": args.rationality_max_calls,
             },
+            "resume": args.resume,
             "seed_base": args.seed_base,
             "seeds": args.seeds,
             "target_ending": args.target_ending,
