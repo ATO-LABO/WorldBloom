@@ -1422,3 +1422,23 @@ class LlamaServerCallTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoopbackRewriteTests(unittest.TestCase):
+    """Windows resolves ``localhost`` to ::1 first; Ollama listens on IPv4
+    only, so each judge call paid a ~2 s connect fallback until the base URL
+    was rewritten (measured 2026-09-20)."""
+
+    def test_localhost_becomes_ipv4_loopback_and_others_are_untouched(self):
+        from gapengine.rationality import _loopback
+
+        cases = {
+            "http://localhost:11434": "http://127.0.0.1:11434",
+            "http://localhost": "http://127.0.0.1",
+            "https://localhost/x": "https://127.0.0.1/x",
+            "http://127.0.0.1:8089": "http://127.0.0.1:8089",
+            "http://localhost.example.com:1": "http://localhost.example.com:1",
+            "http://myhost:11434": "http://myhost:11434",
+        }
+        for given, expected in cases.items():
+            self.assertEqual(_loopback(given), expected)

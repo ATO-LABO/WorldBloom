@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import math
 import os
 import string
@@ -57,6 +58,24 @@ LABELS = tuple(string.ascii_uppercase + string.ascii_lowercase)  # A..Z, a..z
 # ---------------------------------------------------------------------------
 
 
+def _loopback(base_url: str) -> str:
+    """Rewrite a ``localhost`` base URL to ``127.0.0.1``.
+
+    On Windows ``localhost`` resolves to ``::1`` first while Ollama and
+    llama-server listen on IPv4 only, so every request pays a ~2 s connect
+    fallback (measured 2026-09-20: 2.15 s vs 0.09 s per one-token judge call
+    on qwen3.5:9b). The judge makes thousands of calls per GA run, so that
+    stall was roughly half of the total run time. The model's answer is
+    unchanged -- this only affects how the socket is opened.
+    """
+
+    return re.sub(
+        r"^(https?://)localhost(?=[:/]|$)",
+        lambda m: m.group(1) + "127.0.0.1",
+        base_url.strip(),
+    )
+
+
 def _ollama_call(
     model: str,
     prompt: str,
@@ -67,7 +86,7 @@ def _ollama_call(
 ) -> dict[str, Any]:
     url, payload = build_request(
         {
-            "base_url": base_url,
+            "base_url": _loopback(base_url),
             "model": model,
             "think": False,
             "options": {"num_predict": 1, "temperature": 0, "seed": 0},
@@ -102,7 +121,7 @@ def _llama_server_call(
 
     url, payload = _llama_server_build_request(
         {
-            "base_url": base_url,
+            "base_url": _loopback(base_url),
             "model": model,
             "think": False,
             "seed": 0,
