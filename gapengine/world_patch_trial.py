@@ -1,43 +1,57 @@
-"""Trial gate for a proposed world-expansion patch (WB-WORLDGROW-001, stage 3b).
-
-Reruns a handful of the experiment's best archived individuals under the
-world both before and after the patch, using each one's exact (genome,
-precedent) -- the same "reproduce a pruned run" mechanism as
-gapengine/lineage.py, but without lineage's on-disk cache: a trial never
-writes into the experiment directory, only into a caller-owned scratch
-`work_dir`.
-
-Seeds are *not* the archive's own exemplar seed: an archived individual was
-selected because some seed of it reached the ending, so rerunning it on that
-same seed makes `base` reach almost by construction while `patched` (a
-different random path) regresses to the individual's ordinary reach rate --
-a comparison biased against every patch, not just bad ones. Instead each
-individual is rerun on a fixed block of seeds that were never part of
-selection, on both worlds, so the comparison is apples-to-apples.
-"""
+"""Paired measurements and sealed evidence; v1 never claims statistical safety."""
 from __future__ import annotations
-
+import copy
+import hashlib
 import json
-import math
 from pathlib import Path
-from typing import Any
-
 import yaml
-
+from engine.sim import _engine_source_hash
 from gapengine import lineage
 from gapengine.evolve import run_individual
 from gapengine.qd import read_rows
 from gapengine.world_demand import collect
-from gapengine.world_patch import PatchError, absolutize_references, apply_patches
-
+from gapengine.world_patch import PATCH_RULES_VERSION, PatchError, materialize, template_identifiers
+from gapengine.world_patch_inputs import digest, inputs_digest, read_subjects, runtime_digest, verify_frozen
+from gapengine.world_patch_contract import contract_check, new_usage, milestones
 REPO_ROOT = Path(__file__).resolve().parents[1]
+TRIAL_RULES_VERSION = 3
+EXPLORATION_SEED_BASE = TRIAL_SEED_BASE = 100000
+HOLDOUT_SEED_BASE = 200000
 
-TRIAL_SEED_BASE = 100000
+def seed_sets(original, count):
+    if type(count) is not int or count < 1:
+        raise PatchError("seed数は正の整数で指定してください")
+    occupied, result = set(original), {}
+    for name, first in (("exploration", EXPLORATION_SEED_BASE), ("holdout", HOLDOUT_SEED_BASE)):
+        while occupied.intersection(range(first, first + count)):
+            first += 1000000
+        result[name] = list(range(first, first + count))
+        occupied.update(result[name])
+    return result
 
-TRIAL_TOLERANCE_SHARE = 0.2
-TRIAL_TOLERANCE_MIN = 2
-# ponytail: tolerance is ~2 sd of the reach-count difference at n=40, p~0.3; recalibrate per world.
+def trial_state(trial):
+    if trial.get("errors") or trial.get("contract", {}).get("violations"):
+        return "contract_failed"
+    evidence, reproduction = trial.get("evidence") or {}, trial.get("reproduction") or {}
+    if (evidence.get("base_source") != "frozen_inputs"
+            or not evidence.get("engine_hash_experiment")
+            or evidence.get("engine_hash_experiment") != evidence.get("engine_hash_trial")
+            or reproduction.get("checked", 0) < 1
+            or reproduction.get("checked") != reproduction.get("identical")
+            or reproduction.get("mismatched")):
+        return "reference_only"
+    if trial.get("runs", 0) < 3 or len(evidence.get("seeds", [])) < 4:
+        return "insufficient"
+    return "measured"
 
+def gate_status(gate):
+    if not gate.get("static", {}).get("passed") or gate.get("static", {}).get("violations"):
+        return "static_failed"
+    trial = gate.get("trial")
+    if trial is None:
+        return "trial_pending"
+    state = trial_state(trial)
+    return "reviewable" if state == "measured" else state
 
 def _subject_ids(subjects_dir: Path) -> list[str]:
     ids = []
@@ -91,206 +105,153 @@ def _trigger_counts(report: dict, zones: set[str], verb: str) -> dict[str, int]:
     return {"count": count, "whiffs": whiffs}
 
 
-def run_trial(experiment_dir: Path, patch: dict, *, work_dir: Path, max_runs: int = 5,
-              seeds_per_run: int = 8) -> dict:
-    """Rerun up to `max_runs` archived individuals under `patch`, base vs
-    patched, each on `seeds_per_run` fresh seeds. Never writes into
-    `experiment_dir` -- everything lands under `work_dir` (caller-owned,
-    typically a TemporaryDirectory)."""
-
+def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, max_runs=5,
+              seeds_per_run=8, seed_set="exploration"):
     from viewer.data import RunRepository
-
-    experiment_dir = Path(experiment_dir)
-    work_dir = Path(work_dir)
-    repository = RunRepository(experiment_dir.parent)
-    ctx = lineage._resolve_world_context(repository, experiment_dir)
-    base_source = "frozen_inputs" if (experiment_dir / "manifest.json").is_file() else "repository"
-
-    world_path = Path(ctx["world_path"])
-    base = yaml.safe_load(world_path.read_text(encoding="utf-8"))
-    subject_ids = _subject_ids(Path(ctx["subjects_dir"]))
-
-    try:
-        # Apply before absolutizing base's own references: absolutize_references
-        # can inject absolute-path strings into the world, and validate_patch's
-        # name-collision scan (`_all_strings`) must never see those.
-        patched = apply_patches(base, [patch], subject_ids=subject_ids)
-    except PatchError as error:
-        return {
-            "schema_version": 1,
-            "runs": 0,
-            "skipped": 0,
-            "reached_base": 0,
-            "reached_patched": 0,
-            "errors": [{"world": "patched", "error": repr(error)}],
-            "trigger": None,
-            "used_new": 0,
-            "passed": False,
-            "reasons": [f"パッチを適用できません: {error}"],
-            "total_runs": 0,
-            "seeds_per_run": seeds_per_run,
-            "tolerance": TRIAL_TOLERANCE_MIN,
-            "base_source": base_source,
-            "easier": False,
-        }
-    absolutize_references(base, world_path.parent, REPO_ROOT)
-    absolutize_references(patched, world_path.parent, REPO_ROOT)
-
-    base_world_path = work_dir / "base" / "world.yaml"
-    patched_world_path = work_dir / "patched" / "world.yaml"
-    base_world_path.parent.mkdir(parents=True, exist_ok=True)
-    patched_world_path.parent.mkdir(parents=True, exist_ok=True)
-    base_world_path.write_text(yaml.safe_dump(base, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    patched_world_path.write_text(yaml.safe_dump(patched, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    world_paths = {"base": base_world_path, "patched": patched_world_path}
-
-    archive = json.loads(repository.safe_path(experiment_dir, "archive.json").read_text(encoding="utf-8"))
-    selected = _select_cells(archive, max_runs)
-
-    runs = 0
-    skipped = 0
-    total_runs = 0
-    errors: list[dict[str, Any]] = []
-    reached: dict[str, int] = {"base": 0, "patched": 0}
-    shaped_sum: dict[str, float] = {"base": 0.0, "patched": 0.0}
-    layers_paths: dict[str, list[Path]] = {"base": [], "patched": []}
-
-    for cell_key, elite in selected:
-        generation = elite["generation"]
-        precedent_path = repository.safe_path(experiment_dir, f"g{generation}/precedent.json")
-        if not precedent_path.is_file():
-            skipped += 1
-            continue
-        exemplar = elite.get("exemplar", {})
-        match = lineage._EXEMPLAR_PATH.match(str(exemplar.get("layers_path", "")))
+    experiment, work = Path(experiment_dir).resolve(), Path(work_dir).resolve()
+    if work == experiment or work.is_relative_to(experiment):
+        raise PatchError("試走先を既存実験の中には置けません")
+    if type(max_runs) is not int or max_runs < 1 or seed_set not in ("exploration", "holdout"):
+        raise PatchError("試走の個体数またはseed集合が不正です")
+    repository = RunRepository(experiment.parent)
+    ctx = lineage._resolve_world_context(repository, experiment, template_dir=template_dir)
+    summary = json.loads((experiment / "summary.json").read_text(encoding="utf-8"))
+    archive = json.loads((experiment / "archive.json").read_text(encoding="utf-8"))
+    base = yaml.safe_load(ctx["world_path"].read_text(encoding="utf-8"))
+    people = read_subjects(ctx["subjects_dir"])
+    patched, patched_people = materialize(base, people, [patch], reserved=template_identifiers(ctx["template_dir"]))
+    seeds = seed_sets(summary.get("seeds", []), seeds_per_run)[seed_set]
+    runtime_before = runtime_digest()
+    evidence = {"base_inputs_digest": inputs_digest(base, people, ctx["template_dir"], ctx["references"]),
+                "patched_inputs_digest": inputs_digest(patched, patched_people, ctx["template_dir"], ctx["references"]),
+                "runtime_digest": runtime_before, "target_ending": ctx["target_ending"], "individuals": [],
+                "seeds": seeds, "seed_set": seed_set, "trial_rules_version": TRIAL_RULES_VERSION,
+                "patch_rules_version": PATCH_RULES_VERSION, "base_source": ctx["source"],
+                "engine_hash_experiment": None, "engine_hash_trial": _engine_source_hash(REPO_ROOT / "engine"),
+                "experiment": str(experiment)}
+    paths = {}
+    for label, definition, subjects in (("base", base, people), ("patched", patched, patched_people)):
+        folder = work / label
+        (folder / "subjects").mkdir(parents=True, exist_ok=True)
+        definition = copy.deepcopy(definition)
+        for role, ref in ctx["references"].items():
+            definition.setdefault("gapengine", {})[role] = str(ref)
+        path = folder / "world.yaml"
+        path.write_text(yaml.safe_dump(definition, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        for name, person in subjects.items():
+            (folder / "subjects" / name).write_text(yaml.safe_dump(person, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        paths[label] = path
+    trial = {"schema_version": 2, "evidence": evidence, "runs": 0, "skipped": 0, "errors": [],
+             "reproduction": {"checked": 0, "identical": 0, "mismatched": []},
+             "contract": contract_check(paths["patched"], paths["patched"].parent / "subjects", patch,
+                                         action_graph_path=ctx["action_graph_path"]),
+             "pairs": [], "passed": False, "statistics": {"defined": False,
+                "note": "v1 は統計的な合否を出さない。規約は複数世界で較正してから導入する"}}
+    layers = {"base": [], "patched": []}
+    engine_hashes, seen = set(), set()
+    for cell, elite in _select_cells(archive, len(archive.get("cells", {}))):
+        match = lineage._EXEMPLAR_PATH.fullmatch(str(elite.get("exemplar", {}).get("layers_path", "")))
         if not match:
-            skipped += 1
+            trial["skipped"] += 1
             continue
-        index = int(match.group(2))
-        seeds = [TRIAL_SEED_BASE + j for j in range(seeds_per_run)]
-        antagonist_genome = exemplar.get("antagonist_genome")
-
-        antagonist_precedent_json = None
-        antagonist_precedent_path = repository.safe_path(
-            experiment_dir, f"g{generation}/precedent.antagonist.json")
-        if antagonist_precedent_path.is_file():
-            antagonist_precedent_json = antagonist_precedent_path.read_text(encoding="utf-8")
-        precedent_json = precedent_path.read_text(encoding="utf-8")
-
-        runs += 1
-        out_dirs: dict[str, Path] = {}
-        side_runs: dict[str, list[dict]] = {}
-        individual_failed = False
-        for label, world_path_for_label in world_paths.items():
-            out_dir = work_dir / label / f"run-{runs}"
-            out_dirs[label] = out_dir
-            job = _job(
-                ctx=ctx, world_path=world_path_for_label, out_dir=out_dir, elite=elite,
-                index=index, seeds=seeds, precedent_json=precedent_json,
-                antagonist_precedent_json=antagonist_precedent_json,
-                antagonist_genome=antagonist_genome,
-            )
+        generation, index, original_seed = map(int, match.groups())
+        if (generation, index) in seen:
+            continue
+        if len(seen) >= max_runs:
+            break
+        seen.add((generation, index))
+        precedent = repository.safe_path(experiment, f"g{generation}/precedent.json")
+        if not precedent.is_file():
+            trial["skipped"] += 1
+            continue
+        opponent_path = repository.safe_path(experiment, f"g{generation}/precedent.antagonist.json")
+        opponent_text = opponent_path.read_text(encoding="utf-8") if opponent_path.is_file() else None
+        opponent = elite["exemplar"].get("antagonist_genome")
+        original = repository.safe_path(experiment, elite["exemplar"]["layers_path"])
+        original_rows = read_rows(original) if original.is_file() else []
+        header = original_rows[0] if original_rows else elite["exemplar"]
+        engine_hashes.add(header.get("engine_hash"))
+        precedent_text = precedent.read_text(encoding="utf-8")
+        individual = {"cell": cell, "generation": generation, "index": index,
+                      "genome_sha256": digest(elite["genome"]),
+                      "precedent_sha256": hashlib.sha256(precedent.read_bytes()).hexdigest(),
+                      "antagonist_genome_sha256": digest(opponent) if opponent is not None else None,
+                      "antagonist_precedent_sha256": hashlib.sha256(opponent_path.read_bytes()).hexdigest() if opponent_text else None}
+        common = dict(ctx=ctx, elite=elite, index=index, precedent_json=precedent_text,
+                      antagonist_precedent_json=opponent_text, antagonist_genome=opponent)
+        # Generation zero may have no opponent yet, even in a coevolving run.
+        # Explicit null is a recorded matchup, not missing evidence.
+        if opponent_text and "antagonist_genome" not in elite["exemplar"]:
+            trial["errors"].append({"cell": cell, "error": "敵役genomeがありません"})
+            continue
+        if original_rows:
+            trial["reproduction"]["checked"] += 1
             try:
+                recorded = "explanation_recording" in header
+                manifest_path = experiment / "manifest.json"
+                if manifest_path.is_file():
+                    recorded = json.loads(manifest_path.read_text(encoding="utf-8")).get("evolution", {}).get("record_explanations", recorded)
+                out = work / "reproduction" / f"g{generation}-ind-{index}"
+                job = _job(**common, world_path=paths["base"], out_dir=out, seeds=[original_seed])
+                job["record_explanations"] = recorded
+                rerun = run_individual(job)
+                if (out / rerun["runs"][0]["layers_path"]).read_bytes() == original.read_bytes():
+                    trial["reproduction"]["identical"] += 1
+                else:
+                    trial["reproduction"]["mismatched"].append(cell)
+            except Exception as error:
+                trial["reproduction"]["mismatched"].append(cell)
+                trial["errors"].append({"cell": cell, "world": "reproduction", "error": repr(error)})
+        sides = {}
+        for label in paths:
+            try:
+                out = paths[label].parent / f"g{generation}-ind-{index}"
+                job = _job(**common, world_path=paths[label], out_dir=out, seeds=seeds)
+                job["subjects_dir"] = str(paths[label].parent / "subjects")
                 result = run_individual(job)
-            except Exception as error:  # noqa: BLE001 -- a bad rerun must not abort the whole trial
-                errors.append({"cell": cell_key, "world": label, "error": repr(error)})
-                individual_failed = True
-                continue
-            side_runs[label] = result["runs"]
-
-        if individual_failed:
+                sides[label] = (result["runs"], out)
+            except Exception as error:
+                trial["errors"].append({"cell": cell, "world": label, "error": repr(error)})
+        if len(sides) != 2:
             continue
-        total_runs += seeds_per_run
-        for label in ("base", "patched"):
-            for run_result in side_runs[label]:
-                if run_result["reached"]:
-                    reached[label] += 1
-                shaped_sum[label] += float(run_result.get("shaped") or 0.0)
-                layers_paths[label].append(out_dirs[label] / run_result["layers_path"])
-
-    trigger = None
-    patch_trigger = patch.get("trigger")
-    if isinstance(patch_trigger, dict) and patch_trigger.get("zone") and patch_trigger.get("verb"):
-        trigger_zone = patch_trigger["zone"]
-        trigger_verb = patch_trigger["verb"]
-        branch_zones = {
-            z.get("name") for z in (patch.get("add", {}).get("zones") or [])
-            if isinstance(z, dict) and z.get("parent") == trigger_zone
-        }
-        zones_to_sum = {trigger_zone} | branch_zones
-        base_report = collect(layers_paths["base"], subject=ctx["protagonist"])
-        patched_report = collect(layers_paths["patched"], subject=ctx["protagonist"])
-        trigger = {
-            "zone": trigger_zone, "verb": trigger_verb,
-            "base": _trigger_counts(base_report, zones_to_sum, trigger_verb),
-            "patched": _trigger_counts(patched_report, zones_to_sum, trigger_verb),
-        }
-
-    new_names: set[str] = set()
-    for zone in (patch.get("add", {}).get("zones") or []):
-        if isinstance(zone, dict) and isinstance(zone.get("name"), str):
-            new_names.add(zone["name"])
-    for item in (patch.get("add", {}).get("items") or []):
-        if isinstance(item, dict) and isinstance(item.get("name"), str):
-            new_names.add(item["name"])
-    for fact in (patch.get("add", {}).get("facts") or []):
-        if isinstance(fact, dict) and isinstance(fact.get("id"), str):
-            new_names.add(fact["id"])
-
-    used_new = 0
-    protagonist = ctx["protagonist"]
-    for path in layers_paths["patched"]:
-        for row in read_rows(path):
-            if row.get("kind") != "decision" or row.get("subject") != protagonist:
-                continue
-            blob = json.dumps([row.get("args"), row.get("details")], ensure_ascii=False)
-            if any(name in blob for name in new_names):
-                used_new += 1
-
-    tolerance = max(TRIAL_TOLERANCE_MIN, math.ceil(TRIAL_TOLERANCE_SHARE * total_runs))
-    passed = total_runs >= 1 and not errors and reached["patched"] >= reached["base"] - tolerance
-    # Recorded only: where almost no fresh-seed rerun reaches the ending, reach
-    # counts cannot show harm, but the mean distance-to-ending proxy still moves.
-    shaped_mean = {label: round(shaped_sum[label] / total_runs, 4) if total_runs else None
-                   for label in ("base", "patched")}
-    easier = reached["patched"] > reached["base"] + tolerance
-
-    reasons = []
-    if base_source == "repository":
-        reasons.append("この実験は凍結入力を持たないため、現在の projects/ の世界を基準にしています")
-    if total_runs == 0:
-        reasons.append("再実行できる個体がありませんでした")
-    else:
-        reasons.append(f"到達 {reached['base']}→{reached['patched']}（{total_runs}本中、許容差 {tolerance}）")
-        reasons.append(f"結末への近さ（shaped の平均）{shaped_mean['base']}→{shaped_mean['patched']}")
-    if easier:
-        reasons.append("到達が大きく増えています（結末が易しくなった可能性）")
-    if trigger is not None and (trigger["base"]["count"] or trigger["patched"]["count"]):
-        reasons.append(
-            f"『{trigger['zone']}』の『{trigger['verb']}』空振り "
-            f"{trigger['base']['whiffs']}→{trigger['patched']['whiffs']}"
-        )
-    if used_new:
-        reasons.append(f"新要素を使った決定 {used_new} 件")
-    if errors:
-        reasons.append(f"再実行エラー {len(errors)} 件")
-
-    return {
-        "schema_version": 1,
-        "runs": runs,
-        "skipped": skipped,
-        "shaped_base": shaped_mean["base"],
-        "shaped_patched": shaped_mean["patched"],
-        "reached_base": reached["base"],
-        "reached_patched": reached["patched"],
-        "errors": errors,
-        "trigger": trigger,
-        "used_new": used_new,
-        "passed": passed,
-        "reasons": reasons,
-        "total_runs": total_runs,
-        "seeds_per_run": seeds_per_run,
-        "tolerance": tolerance,
-        "base_source": base_source,
-        "easier": easier,
-    }
+        trial["runs"] += 1
+        evidence["individuals"].append(individual)
+        for a, b in zip(sides["base"][0], sides["patched"][0]):
+            if a["seed"] != b["seed"]:
+                raise PatchError("対応試走のseedが一致しません")
+            trial["pairs"].append({"cell": cell, "seed": a["seed"], "base": a, "patched": b})
+        for label, (runs, out) in sides.items():
+            layers[label].extend(out / run["layers_path"] for run in runs)
+    evidence["engine_hash_experiment"] = next(iter(engine_hashes)) if len(engine_hashes) == 1 else None
+    pairs = trial["pairs"]
+    trial["total_runs"], trial["seeds_per_run"], trial["base_source"] = len(pairs), len(seeds), ctx["source"]
+    for label in layers:
+        trial[f"reached_{label}"] = sum(bool(p[label]["reached"]) for p in pairs)
+        trial[f"shaped_{label}"] = sum(p[label].get("shaped", 0) for p in pairs) / len(pairs) if pairs else None
+    def differences(key, values):
+        result = []
+        for value in values:
+            selected = [p for p in pairs if p[key] == value]
+            if selected:
+                result.append({key: value, "mean_diff": sum(int(p["patched"]["reached"]) - int(p["base"]["reached"]) for p in selected) / len(selected)})
+        return result
+    trial["by_seed"] = differences("seed", seeds)
+    trial["by_individual"] = differences("cell", [i["cell"] for i in evidence["individuals"]])
+    trial["new_usage"] = new_usage(layers["patched"], patch, ctx["protagonist"])
+    trial["trigger"] = None
+    trigger = patch.get("trigger") or {}
+    if trigger.get("zone") and trigger.get("verb"):
+        zones = {trigger["zone"]} | {z["name"] for z in patch.get("add", {}).get("zones", []) if z["parent"] == trigger["zone"]}
+        trial["trigger"] = {"zone": trigger["zone"], "verb": trigger["verb"], **{
+            label: _trigger_counts(collect(paths_, subject=ctx["protagonist"]), zones, trigger["verb"])
+            for label, paths_ in layers.items()}}
+    trial["milestones"] = {label: milestones(logs) for label, logs in layers.items()}
+    if ctx["source"] == "frozen_inputs":
+        verify_frozen(experiment)
+    if runtime_digest() != runtime_before:
+        raise PatchError("試走中に実行コードが変わりました。再検査してください")
+    trial["state"] = trial_state(trial)
+    trial["reasons"] = [f"到達 {trial['reached_base']}→{trial['reached_patched']}（{len(pairs)}本）",
+                         "shaped は枝の追加で尺度が変わるため参考値", trial["statistics"]["note"],
+                         f"再現確認 {trial['reproduction']['identical']}/{trial['reproduction']['checked']}"]
+    return trial

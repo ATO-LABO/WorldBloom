@@ -24,7 +24,7 @@ VALID_ADD = {
     "zones": [{"name": "船大工の小屋", "parent": "海", "note": "船具を扱う小屋"}],
     "items": [{"name": "古びた帆布", "sources": [
         {"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 2}]}],
-    "facts": [], "daily_events": [],
+    "facts": [],
 }
 
 
@@ -72,7 +72,8 @@ class RunTrialTests(unittest.TestCase):
 
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["total_runs"], 4)  # 2 individuals x 2 seeds, none failed
-        self.assertEqual(result["tolerance"], 2)  # max(2, ceil(0.2*4)) == 2
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["state"], "reference_only")
         self.assertEqual(result["seeds_per_run"], 2)
         self.assertEqual(result["base_source"], "repository")  # no manifest.json for this fixture
         self.assertIsNone(result["trigger"])

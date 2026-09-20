@@ -352,6 +352,7 @@ def _has_recorded_explanations(rows: Sequence[Mapping[str, Any]]) -> bool:
 def _resolve_world_context(
     repository: Any,
     experiment: Path,
+    *, template_dir=None,
 ) -> dict[str, Any]:
     """cfg needed to rerun any node: project/template dirs, action/qd/rules
     config, target ending and protagonist/antagonist. Restored either from a
@@ -371,41 +372,10 @@ def _resolve_world_context(
     action_graph.antagonist.yaml the same way when coevolve is on).
     """
 
-    manifest_path = repository.safe_path(experiment, "manifest.json")
-    if manifest_path.is_file():
-        config = json.loads(
-            repository.safe_path(experiment, "config.json").read_text(
-                encoding="utf-8",
-            )
-        )
-        project_dir = repository.safe_path(
-            experiment,
-            f"inputs/projects/{config['project_id']}",
-        )
-        template_dir = repository.safe_path(
-            experiment,
-            f"inputs/templates/{config['template_id']}",
-        )
-    else:
-        from viewer import data as viewer_data
-
-        archive = json.loads(
-            repository.safe_path(experiment, "archive.json").read_text(
-                encoding="utf-8",
-            )
-        )
-        header = viewer_data._first_header(
-            repository,
-            experiment,
-            archive.get("cells") or {},
-        )
-        world_name = str(header.get("world", ""))
-        resolved = viewer_data.resolve_genre(world_name)
-        if resolved is None:
-            raise LineageError(
-                f"cannot resolve project/template for world {world_name!r}"
-            )
-        _, project_dir, template_dir = resolved
+    from gapengine.world_patch_inputs import resolve_experiment_inputs
+    resolved = resolve_experiment_inputs(experiment, template_dir=template_dir)
+    project_dir = resolved["world_path"].parent
+    template_dir = resolved["template_dir"]
 
     world_path = project_dir / "world.yaml"
     subjects_dir = project_dir / "subjects"
@@ -448,6 +418,9 @@ def _resolve_world_context(
         world.set_target_ending(target_ending)
 
     return {
+        "source": resolved["source"],
+        "template_dir": template_dir,
+        "references": resolved["references"],
         "action_cfg": action_cfg,
         "action_graph_path": action_graph_path,
         "antagonist": world.antagonist,

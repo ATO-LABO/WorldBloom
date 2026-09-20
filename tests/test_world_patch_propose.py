@@ -22,7 +22,7 @@ def sample_add() -> dict:
         "zones": [{"name": "船大工の小屋", "parent": "海", "note": "船具を扱う小屋"}],
         "items": [{"name": "古びた帆布", "sources": [
             {"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 2}]}],
-        "facts": [], "daily_events": [],
+        "facts": [],
     }
 
 
@@ -90,29 +90,29 @@ class ParseProposalTests(unittest.TestCase):
 class MakePatchTests(unittest.TestCase):
     def test_id_is_content_addressed_and_deterministic(self):
         proposal = {"title": "海辺の船大工小屋", "rationale": "海でのinvestigateが空振りし続けている", "add": sample_add()}
-        first = make_patch(proposal, trigger=TRIGGER, parent_rev=[], author={"backend": "none"})
-        second = make_patch(dict(proposal), trigger=TRIGGER, parent_rev=[], author={"backend": "none"})
+        first = make_patch(proposal, trigger=TRIGGER, parent_digest="a" * 64, author={"backend": "none"})
+        second = make_patch(dict(proposal), trigger=TRIGGER, parent_digest="a" * 64, author={"backend": "none"})
         self.assertEqual(first["id"], second["id"])
 
         different = make_patch(
-            {**proposal, "add": {**sample_add(), "daily_events": []}},
-            trigger=TRIGGER, parent_rev=[], author={"backend": "none"},
+            {**proposal, "add": {**sample_add()}},
+            trigger=TRIGGER, parent_digest="a" * 64, author={"backend": "none"},
         )
         self.assertEqual(first["id"], different["id"])  # same add content -> same id
 
         changed_add = dict(sample_add())
         changed_add["items"] = []
         changed = make_patch(
-            {**proposal, "add": changed_add}, trigger=TRIGGER, parent_rev=[], author={"backend": "none"})
+            {**proposal, "add": changed_add}, trigger=TRIGGER, parent_digest="a" * 64, author={"backend": "none"})
         self.assertNotEqual(first["id"], changed["id"])
 
     def test_trigger_is_slimmed_and_parent_rev_and_author_preserved(self):
         proposal = {"title": "t", "rationale": "r", "add": sample_add()}
         trigger = {**TRIGGER, "experiment": "run-xxxx", "wasted_share": 0.5, "zone_dwell_share": 0.9}
-        patch = make_patch(proposal, trigger=trigger, parent_rev=["p-aaaaaaaa"], author={"backend": "codex-cli"})
+        patch = make_patch(proposal, trigger=trigger, parent_digest="b" * 64, author={"backend": "codex-cli"})
         self.assertEqual(patch["trigger"], {"experiment": "run-xxxx", "zone": "海", "verb": "investigate",
                                              "count": 228, "whiffs": 228})
-        self.assertEqual(patch["parent_rev"], ["p-aaaaaaaa"])
+        self.assertEqual(patch["parent_digest"], "b" * 64)
         self.assertEqual(patch["author"], {"backend": "codex-cli"})
 
 

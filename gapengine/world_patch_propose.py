@@ -20,23 +20,23 @@ _INTRO = """あなたは物語シミュレーションの世界設定を拡張�
 その場所を少しだけ豊かにする「拡張パッチ」を1つ提案してください。"""
 
 _RULES_TEMPLATE = """# 拡張のルール
-- 足せるのは add.zones / add.items / add.facts / add.daily_events だけです。既存のものは変更も削除もできません。
-- zones（最大2）: {{"name","parent","note"}}。parent は既存の場所。新しい場所は parent からしか行けない行き止まりになります。
-- items（最大4）: {{"name","sources":[{{"type":"investigate","zone":場所,"count":1,"max":1〜3}}],"lootable":真偽,"keepsake":真偽,"give":{{"receiver_affinity":0〜0.5,"giver_affinity":0〜0.5}},"modifier":{{"id":"item:名前","value":0〜10,"kind":"item","visible":真偽}}}}。name と sources 以外は省略できます。
-- facts（最大4）: {{"id","label"(60文字以内),"secrecy":0〜1,"share_min_affinity":-1〜1,"sources":[{{"type":"investigate","zone":場所,"count":1}}]}}。値付きの事実に対する手がかりにしたいときだけ "implies" か "refutes": {{"fact":既存の値付き事実のid,"value":その値のどれか,"confidence":0.5以下}} を足せます。
-- daily_events（最大3）: {{"id","label","weight":0より大きく3以下,"stress_delta":-1〜1}}。
+- 足せるのは add.zones / add.items / add.facts だけです。既存のものは変更も削除もできません。1つの仕組みに絞ってください。
+- zones（最大1）: {{"name","parent","note"}}。parent は既存の場所。親の入場条件を継承する枝になります。
+- items（最大2）: {{"name","sources":[{{"type":"investigate","zone":場所,"count":1,"max":1〜3}}],"give":{{"receiver_affinity":0〜0.5,"giver_affinity":0〜0.5}}}}。give は両方の値を明示してください。省略時は受け手0.2・渡し手0.05。全追加アイテムの合計は1パッチ0.6・累積1.2以下。
+- facts（最大2）: {{"id","label"(60文字以内),"sources":[{{"type":"investigate","zone":場所,"count":1}}]}}。値付き事実への implies: {{"fact":既存id,"value":既存値,"confidence":0より大きく0.3以下}} のみ。対象ごとの累積は0.6以下。
+- 累積追加数は基準世界のゾーン40%（絶対上限4）、アイテム・事実50%（絶対上限8）。切り上げ、基準数0でも最低1件。パッチ総数8以下。
 - 名前とidは30文字以内。新しい名前は、この世界の説明文（上の一覧を含む world.yaml 全体）のどこかに含まれる文字列であってはいけません（既存の語をそのまま名前にしない）。
 - modifier.value の合計は1つの提案で10までです。
 - 結末、目的の品、乗り物、道の通行条件には触れられません。
 - 必ず「{zone}」またはその枝の場所をsourcesのzoneにしたitemsかfactsを1つ以上入れてください。
-- 物語として意味のあるものにしてください。なぜそれがそこにあるのか、主人公や仲間の選択をどう変えうるかをrationaleに書いてください。"""
+- rationale に「新たに何を選べるか／何を失う可能性があるか／既存のどの関係へ作用するか」を書いてください。"""
 
 _OUTPUT = """# 出力
 次の形のJSONだけを、読みやすく複数行で出力してください。説明文やコードフェンスは要りません。
 {
   "title": "20文字程度の題",
   "rationale": "200文字以内",
-  "add": { "zones": [...], "items": [...], "facts": [...], "daily_events": [...] }
+  "add": { "zones": [...], "items": [...], "facts": [...] }
 }
 
 例（この世界とは無関係な架空の設定です。この例に出てくる名前「灯台守の記録」「色あせた航海日誌」「岬」「灯台守の失踪」は真似しないでください）:
@@ -46,7 +46,7 @@ _OUTPUT = """# 出力
   "add": {
     "zones": [],
     "items": [
-      {"name": "色あせた航海日誌", "sources": [{"type": "investigate", "zone": "岬", "count": 1, "max": 1}]}
+      {"name": "色あせた航海日誌", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}, "sources": [{"type": "investigate", "zone": "岬", "count": 1, "max": 1}]}
     ],
     "facts": [
       {"id": "灯台守の失踪", "label": "先代の灯台守が三年前に姿を消したらしい",
@@ -236,14 +236,14 @@ def parse_proposal(text: str) -> dict:
     return value
 
 
-def make_patch(proposal: dict, *, trigger: dict, parent_rev: list, author: dict) -> dict:
+def make_patch(proposal: dict, *, trigger: dict, parent_digest: str, author: dict) -> dict:
     add = proposal["add"]
     trigger_slim = {k: trigger[k] for k in ("experiment", "zone", "verb", "count", "whiffs") if k in trigger}
     return {
         "id": patch_id_for(add),
         "title": proposal["title"],
         "rationale": proposal["rationale"],
-        "parent_rev": list(parent_rev),
+        "parent_digest": parent_digest,
         "trigger": trigger_slim,
         "author": author,
         "add": add,

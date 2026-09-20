@@ -313,7 +313,7 @@ def world_demand(repository: "RunRepository", experiment: Path) -> dict[str, Any
     return dict(raw)
 
 
-def world_expansion_info(repository: "RunRepository", experiment: Path) -> list[dict[str, Any]]:
+def world_expansion_state(repository: "RunRepository", experiment: Path) -> dict[str, Any]:
     """expansion.patches applied to this experiment's frozen world
     (WB-WORLDGROW-001 stage 3a).
 
@@ -354,11 +354,24 @@ def world_expansion_info(repository: "RunRepository", experiment: Path) -> list[
             continue
         expansion = world.get("expansion")
         if not isinstance(expansion, Mapping):
-            continue
+            return {"state": "base", "patches": []}
         patches = expansion.get("patches")
         if isinstance(patches, list) and patches:
-            return [p for p in patches if isinstance(p, Mapping)]
-    return []
+            return {"state": "expanded", "patches": [p for p in patches if isinstance(p, Mapping)]}
+    try:
+        summary = _read_json(repository.safe_path(experiment, "summary.json"))
+        details = summary.get("world_expansion_patches")
+        if isinstance(details, list) and details:
+            return {"state": "expanded", "patches": [p for p in details if isinstance(p, Mapping)]}
+        if summary.get("world_patches"):
+            return {"state": "unknown", "patches": []}
+    except (ForbiddenPath, OSError, ValueError, AttributeError):
+        pass
+    return {"state": "base", "patches": []}
+
+
+def world_expansion_info(repository: "RunRepository", experiment: Path) -> list[dict[str, Any]]:
+    return world_expansion_state(repository, experiment)["patches"]
 
 
 RUNNING_JOB_STATES = frozenset({"queued", "running", "stopping"})
