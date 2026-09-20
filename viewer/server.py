@@ -36,6 +36,11 @@ STATIC_FILES = {
     "app.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
     "workbench.js": "text/javascript; charset=utf-8",
+    "run-workspace.css": "text/css; charset=utf-8",
+    "run-workspace.js": "text/javascript; charset=utf-8",
+    "ga_replay.js": "text/javascript; charset=utf-8",
+    "world-prototype.css": "text/css; charset=utf-8",
+    "world-prototype.js": "text/javascript; charset=utf-8",
 }
 
 
@@ -175,6 +180,16 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 STATIC_FILES[name],
                 payload,
             )
+            return
+        if len(parts) == 3 and parts[0] == "exp" and parts[2] == "monitor":
+            from viewer import run_workspace
+            run_workspace.experiment_page(self, parts[1])
+            return
+        if len(parts) == 3 and parts[0] == "exp" and parts[2] == "river":
+            from viewer import lineage_river
+            query = parse_qs(urlsplit(self.path).query)
+            html = lineage_river.river_page(self.repository, parts[1], selected_cell=query.get("cell", [None])[0], job_store=job_store)
+            self._send_html(html.replace("</head>", '<link rel="stylesheet" href="/static/run-workspace.css"></head>'))
             return
         if len(parts) == 3 and parts[0] == "exp" and parts[2] == "compare":
             query = parse_qs(urlsplit(self.path).query)

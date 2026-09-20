@@ -612,7 +612,9 @@ def _job_row(record):
     config_cell = f'<a href="/configs/{_url(cid)}">{_escape(cid)}</a>' if cid else "未記録"
     actions = []
     if record.get("job_id"):
-        actions.append(f'<a href="/jobs/{_url(record["job_id"])}">処理画面</a>')
+        actions.append(f'<a href="/jobs/{_url(record["job_id"])}">詳細を見る</a>')
+    elif record["state"] == "legacy":
+        actions.append(f'<a href="/exp/{_url(record["experiment_name"])}/monitor">詳細を見る</a>')
     if record["state"] == "legacy" or revision is not None:
         actions.append(f'<a href="/exp/{_url(record["experiment_name"])}">結果</a>')
         actions.append(f'<a href="/runs/{_url(record["run_id"])}/candidates">候補一覧</a>')
@@ -1169,7 +1171,8 @@ def _run_vessel_exits(view):
     parts.append(_exit_card("3 Sifting で候補を選ぶ →", "公開版の候補を並べ、上映する個体を決める", sifting_href))
     parts.append(_exit_card("4 上映を生成する →", "選んだ候補からあらすじ・本文を作る", stage_href))
     if sifting_on and run_id:
-        parts.append(f'<p class="actions"><a href="/runs/{_url(run_id)}/candidates">候補一覧</a></p>')
+        parts.append(f'<p class="actions"><a href="/runs/{_url(run_id)}/candidates">候補一覧</a>'
+                     + (f'<a href="/exp/{_url(run_name)}/river">系譜の川</a>' if run_name else "") + "</p>")
     parts.append("</section>")
     return "".join(parts)
 
@@ -1959,15 +1962,8 @@ def _configs_detail(handler, cid):
         handler._send_html(_guidance_page(phase="world"))
         return
     config = job_store.configs.get(cid)
-    label = config["label"]
-    handler._send_html(pages.document(
-        f"実行設定: {label}", render_config_detail(config),
-        crumbs=[("実行設定", "/configs"), (label, f"/configs/{_url(cid)}")],
-        phase="world", world=_config_world(config),
-        lead="この設定版の内容を確認して実行します。",
-        next_action=("この設定でGAを実行 →", f"/configs/{_url(cid)}/start"),
-        job_store=job_store, pin=data.pinned_target(job_store),
-    ))
+    from viewer import run_browse
+    return run_browse.conditions(handler, config=config)
 
 
 def _configs_start(handler, cid):
@@ -2033,18 +2029,8 @@ def _history(handler):
             generation_jobs = [j for j in job_store.list() if j.get("kind") in ("synopsize", "narrate")]
         except (ConfigError, OSError, ValueError, KeyError, TypeError):
             generation_jobs = []
-    from viewer import output_pages
-    # No duplicate empty-state CTA here: _jobs_next_action() already covers
-    # "records is empty" -> "実行設定を作る" via the page-level next_action
-    # below (WB-UI-012 §2.3's "1 つだけ").
-    body = render_jobs_list(records) + output_pages.render_generation_jobs_section(generation_jobs)
-    body += pages.glossary(("job_state", "phase", "publication_revision", "config_id", "run"))
-    handler._send_html(pages.document(
-        "実行履歴", body, phase="run",
-        job_store=job_store, pin=data.pinned_target(job_store),
-        lead="実行中と過去のジョブを見ます。",
-        next_action=_jobs_next_action(records),
-    ))
+    from viewer import run_browse
+    return run_browse.history(handler, records, generation_jobs)
 
 
 def _jobs_list(handler):
@@ -2068,17 +2054,11 @@ def _jobs_list(handler):
         ))
         return
     job = view["job"]
-    lead, next_action = _run_lead(view)
-    # Idle worlds have no run_name of their own (view["run_name"] mirrors the
-    # displayed job, and there is none yet) -- pin here only backs the header
-    # phase band's ③④ tabs, and document()'s own world-id check keeps it from
-    # leaking a different world's pinned run onto this page.
-    handler._send_html(pages.document(
-        f'{view["world"]["name"]} を GA で回す', render_run_page(view), phase="run",
-        world=view["world"], run=view["run_name"],
-        output_run=(job.get("run_id") if job is not None else None),
-        job_store=job_store, pin=data.pinned_target(job_store), lead=lead, next_action=next_action,
-    ))
+    if job is not None:
+        from viewer import run_workspace
+        return run_workspace.render(handler, view)
+    from viewer import run_browse
+    return run_browse.conditions(handler, view)
 
 
 def _jobs_detail(handler, jid):
@@ -2113,12 +2093,8 @@ def _jobs_detail(handler, jid):
         ))
         return
     view = _run_view(handler, job=job)
-    lead, next_action = _run_lead(view)
-    handler._send_html(pages.document(
-        f'{view["world"]["name"]} を GA で回す', render_run_page(view), phase="run",
-        world=view["world"], run=view["run_name"], output_run=job.get("run_id"),
-        job_store=job_store, lead=lead, next_action=next_action,
-    ))
+    from viewer import run_workspace
+    return run_workspace.render(handler, view)
 
 
 def _candidates_list(handler, run_id):

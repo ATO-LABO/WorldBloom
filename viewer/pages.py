@@ -178,6 +178,7 @@ def document(
     pin: Mapping[str, Any] | None = None,
     show_phase_band: bool = True,
     is_home: bool = False,
+    page_class: str | None = None,
 ) -> str:
     # pin (data.pinned_target()) fills in world/run/output_run for callers
     # that don't already know their own (Home, /configs, /jobs): the run is
@@ -208,6 +209,13 @@ def document(
                 f"次: {_escape(next_label)}</a>"
             )
         lead_html = f'<p class="page-lead">{lead_text}{cta}</p>'
+    safe_page_class = _escape(page_class or "standard-workspace")
+    body_class = f' class="layout-{safe_page_class}"'
+    main_html = (
+        f'<main class="page-shell {safe_page_class}">'
+        f'<header class="page-heading"><h1>{_escape(title)}</h1>{lead_html}</header>'
+        f'<div class="page-content">{body}</div></main>'
+    )
     return (
         "<!doctype html>"
         '<html lang="ja"><head>'
@@ -217,7 +225,7 @@ def document(
         '<link rel="stylesheet" href="/static/app.css">'
         '<script src="/static/app.js" defer></script>'
         '<script src="/static/workbench.js" defer></script>'
-        "</head><body>"
+        f"</head><body{body_class}>"
         '<div class="app-shell">'
         '<header class="site-header">'
         + _header_pickers(
@@ -226,8 +234,8 @@ def document(
         + (_phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
            if show_phase_band else "")
         + "</header>"
-        f'<main class="page-shell"><h1>{_escape(title)}</h1>{lead_html}{body}</main>'
-        '<div id="toast" role="status" aria-live="polite"></div>'
+        + main_html
+        + '<div id="toast" role="status" aria-live="polite"></div>'
         "</div>"
         "</body></html>"
     )
@@ -908,7 +916,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
             '<p class="muted">各実験ディレクトリに '
             "<code>archive.json</code> が必要です。</p></section>",
             phase="world",
-            job_store=job_store, show_phase_band=False, is_home=True,
+            job_store=job_store, show_phase_band=False, is_home=True, page_class="home-workspace",
         )
 
     body = (
@@ -919,7 +927,7 @@ def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
     )
     return document(
         "世界を選ぶ", body, phase="world",
-        job_store=job_store, show_phase_band=False, is_home=True,
+        job_store=job_store, show_phase_band=False, is_home=True, page_class="home-workspace",
     )
 
 

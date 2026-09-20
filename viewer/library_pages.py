@@ -34,11 +34,12 @@ NOTE = ('<p class="library-note">保存しても過去の実行設定と実験�
 # Small render helpers
 # --------------------------------------------------------------------------
 
-def _editor_block(rel, content, *, label=None):
+def _editor_block(rel, content, *, label=None, subject_id=None):
     heading = f"{label}（{rel}）" if label else rel
+    subject_attr = f' data-subject-id="{_escape(subject_id)}"' if subject_id is not None else ""
     return (
         f'<details open class="editor"><summary>{_escape(heading)}</summary>'
-        f'<textarea data-file="{_escape(rel)}" rows="16" spellcheck="false">{_escape(content)}</textarea>'
+        f'<textarea data-file="{_escape(rel)}"{subject_attr} aria-label="{_escape(heading)}" rows="16" spellcheck="false">{_escape(content)}</textarea>'
         f'<button type="button" data-action="save-file" data-path="{_escape(rel)}">保存</button>'
         f'<span data-save-status data-for="{_escape(rel)}"></span>'
         f'<span class="field-error" data-error-for="{_escape(rel)}" role="alert"></span>'
@@ -268,16 +269,50 @@ def _characters_panel(world, world_yaml, subjects, store, editors_html):
         world_yaml, subjects, effects if isinstance(effects, list) else [],
         protagonist=world["protagonist"], antagonist=world["antagonist"],
     )
+    people, articles = [], []
+    for index, subject in enumerate(subjects):
+        name = str(subject.get("id") or "")
+        if not name:
+            continue
+        role = "主人公" if name == world["protagonist"] else "敵役" if name == world["antagonist"] else "登場人物"
+        goal = subject.get("goal") or {}
+        goal = goal if isinstance(goal, dict) else {}
+        target = goal.get("target")
+        purpose = f'「{_escape(target)}」を求めている。' if target else "目的は設定されていません。"
+        if goal.get("deliver_to"):
+            purpose += f' 届け先は{_escape(goal["deliver_to"])}。'
+        identity = subject.get("identity") or {}
+        identity = identity if isinstance(identity, dict) else {}
+        identity_text = identity.get("true", identity.get(True)) or identity.get("displayed")
+        intro = f'<p>{_escape(identity_text)}</p>' if identity_text else ""
+        inventory = subject.get("inventory") or {}
+        inventory_text = "、".join(f'{_escape(k)} × {_escape(v)}' for k, v in inventory.items()) if isinstance(inventory, dict) else ""
+        knowledge = subject.get("knowledge") or []
+        knowledge_text = "、".join(_escape(item) for item in knowledge) if isinstance(knowledge, list) else ""
+        people.append(
+            f'<a class="world-person-link" href="#world-person-{index}" data-world-person="{index}">'
+            f'<strong>{_escape(name)}</strong><span>{role}</span></a>'
+        )
+        edit = (f'<button type="button" class="button" data-world-edit-subject="{_escape(name)}">この人物を編集</button>'
+                if editors_html else "")
+        articles.append(
+            f'<article class="world-person" id="world-person-{index}" data-person-panel="{index}" tabindex="-1">'
+            f'<p class="world-eyebrow">{role}</p><h3>{_escape(name)}</h3>{intro}'
+            f'<h4>この人物が求めるもの</h4><p>{purpose}</p>'
+            f'<h4>持ち物と知識</h4><p>{inventory_text or "持ち物は設定されていません。"}</p>'
+            f'<p>{knowledge_text or "知識は設定されていません。"}</p>'
+            '<div class="world-person-actions">' + edit
+            + f'<button type="button" class="button" data-world-sheet="sheet-{index}">能力・秘密・伏線を読む</button></div>'
+            '</article>'
+        )
     return (
-        f'<p class="muted">人物数: {_escape(world["subjects"])}</p>'
-        + svg + table
-        + '<p class="muted">表の行をクリックすると、その人物のパラメータ（9 指標）と'
-        "隠れた強化・秘密・伏線の読み下しが開きます。</p>"
-        + '<p class="muted">線の色: 緑=好意 / 赤=敵意 / 灰=中立。'
-        "太さ=好感度の強さ、濃さ=認知度。"
-        "線にカーソルを合わせると双方向の値が出ます。</p>"
-        + readout_html
-        + editors_html
+        '<div class="world-people"><nav class="world-people-list" aria-label="登場人物一覧">'
+        + ("".join(people) or '<p>人物がいません。</p>') + '</nav>'
+        + '<div class="world-people-detail">' + "".join(articles)
+        + '<details class="world-support"><summary>人物の相関図と比較表</summary>' + svg
+        + '<p>線の色: 緑=好意 / 赤=敵意 / 灰=中立。太さ=好感度の強さ、濃さ=認知度。'
+        '線にカーソルを合わせると双方向の値が出ます。</p>' + table + '</details>'
+        + editors_html + '</div></div>' + readout_html
     )
 
 
@@ -333,7 +368,7 @@ def _period_panel(world_yaml):
 
 def _editor_group(store, world, job_store):
     if job_store is None:
-        return '<p class="library-note">編集・検証には <code>--control</code> 付きで起動してください。</p>'
+        return '<p class="library-note">閲覧専用です。編集・検証はWorldBloom Studioで利用できます。</p>'
     world_id = world["id"]
     other_files = [rel for rel in store.world_files(world_id) if not rel.startswith("subjects/")]
     contents = {rel: store.read("world", world_id, rel) for rel in other_files}
@@ -366,7 +401,15 @@ def _subject_editors_html(store, world, job_store):
     subject_files = [rel for rel in store.world_files(world_id) if rel.startswith("subjects/")]
     contents = {rel: store.read("world", world_id, rel) for rel in subject_files}
     template_content = contents[subject_files[0]] if subject_files else ""
-    editors = "".join(_editor_block(rel, contents[rel]) for rel in subject_files)
+    editors = []
+    for rel in subject_files:
+        try:
+            subject = yaml.safe_load(contents[rel])
+        except yaml.YAMLError:
+            subject = None
+        subject_id = subject.get("id") if isinstance(subject, dict) else None
+        editors.append(_editor_block(rel, contents[rel], subject_id=subject_id))
+    editors = "".join(editors)
     add_subject = (
         '<section class="card"><h2>人物を追加</h2>'
         '<div class="field"><label for="f-subject-name">ファイル名（subjects/ 以下、拡張子なし）</label>'
@@ -401,17 +444,19 @@ def render_world_detail(world, store, job_store):
         ("場所", _places_panel(world_yaml)),
         ("期間", _period_panel(world_yaml)),
     ]
-    card = f'<section class="card world-detail">{pages.tabs("world", panels)}</section>'
+    panels = [(label, f'<h2 class="visually-hidden">{label}</h2>' + content) for label, content in panels]
+    card = f'<section class="world-detail">{pages.tabs("world", panels)}</section>'
     files_block = _editor_group(store, world, job_store)
     cta = pages.quick_start_actions(
         world["id"], world["genre"], world["name"] or world["id"], run_href,
         css_class="button primary", text="この世界で実験を回す",
     )
-    cta_html = f'<p class="actions world-cta">{cta}</p>'
+    cta_html = f'<p class="actions world-cta"><span>世界を確かめたら、実験へ。</span>{cta}</p>'
     if job_store is None:
-        return card + files_block + cta_html
+        return ('<div class="world-workspace">' + card + files_block + '</div>'
+                + '<p class="actions world-cta">実験を始めるにはWorldBloom Studioでこの世界を開いてください。</p>')
     return (
-        f'<div data-wb="library" data-kind="world" data-owner="{_escape(world_id)}">'
+        f'<div class="world-workspace" data-wb="library" data-kind="world" data-owner="{_escape(world_id)}">'
         + card + files_block + "</div>" + cta_html
     )
 
@@ -483,11 +528,20 @@ def _worlds_detail(handler, world_id):
     if world is None:
         raise ConfigError("world_id", "世界がありません", code="not_found")
     label = world["name"] or world_id
+    if _query(handler).get("preview") == ["editorial"]:
+        from viewer import world_prototype
+        handler._send_html(world_prototype.render(
+            world, _world_yaml_mapping(repo, world_id),
+            world_graph.load_subjects(repo / "projects" / world_id),
+            job_store=job_store, pin=data.pinned_target(job_store),
+        ))
+        return
     body = render_world_detail(world, store, job_store)
     handler._send_html(pages.document(
         f"世界: {label}", body,
         crumbs=[(label, f"/worlds/{_url(world_id)}")],
         phase="world", world={"id": world_id, "name": label},
+        page_class="world-editorial",
         lead="この世界の人物・場所・期間・定石を確かめ、必要なら編集してから実験へ進みます。",
         job_store=job_store, pin=data.pinned_target(job_store),
     ))
