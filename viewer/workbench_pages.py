@@ -1504,71 +1504,80 @@ def _candidate_row(candidate, run_id, experiment_name, is_representative, runnin
     )
     checkbox = ""
     if candidate.get("screenable"):
-        # form="generate-form" lets the checkbox live in the table body while
-        # submitting into the <form> rendered above the table (§2/WB-UI-008).
         checkbox_disabled = " disabled" if running else ""
         checkbox = (
+            '<label class="candidate-generate-check">'
             f'<input type="checkbox" name="candidate" value="{_escape(cid)}" form="generate-form" '
-            f'aria-label="候補 {_escape(short)} を選択"{checkbox_disabled}>'
+            f'aria-label="候補 {_escape(short)} を生成対象にする"{checkbox_disabled}>'
+            '<span>生成</span></label>'
         )
     quality = candidate.get("quality")
     quality_text = f"{quality:.4f}" if isinstance(quality, (int, float)) else "—"
-
-    # WB-UI-014: the identity/generation-provenance columns (世代/個体/seed/
-    # 役割/原記録/稿) and the grid/raw-log/output links move into a collapsed
-    # detail row -- Sifting judges by cell/quality/reached/screenable/state
-    # first, and only opens these to confirm identity or generation options.
+    synopsis = _synopsis_snippet(synopsis_text)
+    reached_text = _reached_text(candidate.get("reached"))
     detail_id = f"detail-{_escape(cid)}"
     links = []
+    primary_href = f'/outputs?run={_url(run_id)}'
+    primary_label = "作品を見る"
     if is_representative:
         cell = candidate.get("cell_key")
-        links.append(
-            f'<a href="/exp/{_url(experiment_name)}/cell/{_url(cell)}">格子で見る</a>'
-        )
+        primary_href = f'/exp/{_url(experiment_name)}/cell/{_url(cell)}'
+        primary_label = "物語と根拠を詳しく読む"
+        links.append(f'<a href="{primary_href}">格子で見る</a>')
     if candidate["log"]["availability"] == "present":
-        links.append(f'<a href="/runs/{_url(run_id)}/candidates/{_url(cid)}/raw">原ログ</a>')
+        raw_href = f'/runs/{_url(run_id)}/candidates/{_url(cid)}/raw'
+        if not is_representative:
+            primary_href, primary_label = raw_href, "原ログを読む"
+        links.append(f'<a href="{raw_href}">原ログ</a>')
     links.append(f'<a href="/outputs?run={_url(run_id)}">作品</a>')
 
     counts = (output_summary or {}).get(cid, {})
     syn_ok, nar_ok = counts.get("synopsize", 0), counts.get("narrate", 0)
     draft_text = f"あらすじ ok {syn_ok} / 上映 ok {nar_ok}" if (syn_ok or nar_ok) else "—"
-
     row = (
-        f'<tr data-candidate-id="{_escape(cid)}">'
-        f'<td>{checkbox}</td>'
-        f'<td title="{_escape(cid)}">{_escape(short)}</td>'
-        f'<td>{_escape(candidate.get("cell_key"))}</td>'
-        f'<td class="synopsis"><span>{_escape(_synopsis_snippet(synopsis_text))}</span></td>'
-        f'<td>{_escape(quality_text)}</td>'
-        f'<td>{_escape(_reached_text(candidate.get("reached")))}</td>'
-        f'<td>{_escape(candidate.get("screenable"))}</td>'
-        f'<td><select data-field="state" class="state-select state-sel-{_escape(candidate["state"])}" '
-        f'aria-label="選定状態 {_escape(short)}"{disabled}>'
-        f'{state_options}</select></td>'
-        f'<td><input data-field="note" aria-label="メモ {_escape(short)}" '
-        f'value="{_escape(candidate.get("note", ""))}"{disabled}></td>'
+        f'<tr class="candidate-list-row" data-candidate-id="{_escape(cid)}" '
+        f'data-candidate-label="{_escape(short)}" data-title="{_escape(candidate.get("cell_key"))}" '
+        f'data-synopsis="{_escape(synopsis)}" data-quality="{_escape(quality_text)}" '
+        f'data-reached="{_escape(reached_text)}" data-screenable="{_escape(candidate.get("screenable"))}" '
+        f'data-generation="{_escape(candidate.get("generation"))}" data-seed="{_escape(candidate.get("seed"))}" '
+        f'data-state="{_escape(candidate["state"])}" data-primary-href="{_escape(primary_href)}" '
+        f'data-primary-label="{_escape(primary_label)}">'
+        f'<td class="candidate-check">{checkbox}</td>'
+        '<td class="candidate-story-cell">'
+        f'<button type="button" class="candidate-open" aria-label="候補 {_escape(short)} の概要を見る">'
+        f'<span class="candidate-row-title"><small>{_escape(short)}</small><strong>{_escape(candidate.get("cell_key"))}</strong></span>'
+        f'<span class="candidate-row-synopsis">{_escape(synopsis)}</span>'
+        '<span class="candidate-row-traits">'
+        f'<span>品質 {_escape(quality_text)}</span><span>到達 {_escape(reached_text)}</span>'
+        f'<span>g{_escape(candidate.get("generation"))}</span></span>'
+        '</button></td>'
+        f'<td class="candidate-number">{_escape(quality_text)}</td>'
+        f'<td class="candidate-reach">{_escape(reached_text)}</td>'
+        f'<td class="candidate-row-state"><select data-field="state" class="state-select state-sel-{_escape(candidate["state"])}" '
+        f'aria-label="選定状態 {_escape(short)}"{disabled}>{state_options}</select></td>'
+        '<td class="candidate-note-save">'
+        f'<input data-field="note" aria-label="メモ {_escape(short)}" placeholder="メモ" '
+        f'value="{_escape(candidate.get("note", ""))}"{disabled}>'
+        f'<button type="button" data-action="save-candidate"{disabled}>保存</button>'
+        '<span data-save-status></span></td>'
         '<td class="wb-actions">'
-        f'<button type="button" data-action="save-candidate"{disabled}>保存</button> '
-        f'<button type="button" class="row-toggle" aria-expanded="false" aria-controls="{detail_id}">詳細</button>'
-        '<span data-save-status></span>'
-        "</td></tr>"
+        f'<button type="button" class="row-toggle" aria-expanded="false" aria-controls="{detail_id}">技術詳細</button>'
+        '</td></tr>'
     )
     detail = (
-        f'<tr id="{detail_id}" class="detail-row" hidden><td colspan="10">'
+        f'<tr id="{detail_id}" class="detail-row" hidden><td colspan="7">'
         '<dl class="metric">'
         f'<dt>{pages.term("candidate_generation", "世代")}</dt><dd>{_escape(candidate.get("generation"))}</dd>'
         f'<dt>{pages.term("individual", "個体")}</dt><dd>{_escape(candidate.get("individual_index"))}</dd>'
         f'<dt>{pages.term("candidate_seed", "seed")}</dt><dd>{_escape(candidate.get("seed"))}</dd>'
         f'<dt>{pages.term("role", "役割")}</dt><dd>{_escape(candidate.get("role"))}</dd>'
-        f'<dt>{pages.term("log", "原記録")}</dt><dd>'
-        f'{_escape(AVAILABILITY_LABELS.get(candidate["log"]["availability"], candidate["log"]["availability"]))}</dd>'
+        f'<dt>{pages.term("log", "原記録")}</dt><dd>{_escape(AVAILABILITY_LABELS.get(candidate["log"]["availability"], candidate["log"]["availability"]))}</dd>'
         f'<dt>{pages.term("draft", "稿")}</dt><dd>{_escape(draft_text)}</dd>'
-        "</dl>"
+        '</dl>'
         f'<p class="detail-links">{" ".join(links)}</p>'
-        "</td></tr>"
+        '</td></tr>'
     )
     return row + detail
-
 
 def _candidates_filter_form(run_id, query):
     def val(name):
@@ -1637,72 +1646,111 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
                             candidates, representatives, running, query, representatives_error=False,
                             output_summary=None, output_summary_error=False, has_adopted=None,
                             sort_key=None, sort_dir="asc", running_job_id=None, synopses=None):
-    header = (
-        f'<p>{pages.term("run", "実験")}: {_escape(experiment_name)} · '
-        f'{pages.term("publication_revision", "公開版")} {_escape(revision)} · '
-        f'{pages.term("selection_revision", "選定版")} {_escape(selection_revision)} · '
-        f'{len(candidates)}件</p>'
-        '<p class="related">関連: '
-        f'<a href="/exp/{_url(experiment_name)}">格子へ</a>'
+    adopted_count = sum(1 for candidate in candidates if candidate["state"] == "adopted")
+    state_filter = (query.get("state") or [""])[0]
+    def quick_filter(label, value):
+        active = state_filter == value
+        href = f'/runs/{_url(run_id)}/candidates' + (f'?state={_url(value)}' if value else '')
+        return f'<a class="candidate-filter-pill{" is-active" if active else ""}" href="{href}">{label}</a>'
+
+    context = (
+        '<div class="candidate-context">'
+        f'<p><strong>{_escape(experiment_name)}</strong>'
+        f'<span>公開版 {_escape(revision)}</span><span>選定版 {_escape(selection_revision)}</span>'
+        f'<span>{len(candidates)}件</span></p>'
+        '<nav class="candidate-related" aria-label="関連ページ">'
+        f'<a href="/exp/{_url(experiment_name)}">格子</a>'
         + (f'<a href="/configs/{_url(config_id)}">実行設定</a>' if config_id else "")
-        + '<a href="/selected">横断 Sifting トレイ</a>'
-        + '<a href="/outputs?run=' + _url(run_id) + '">作品一覧</a>'
-        "</p>"
+        + '<a href="/selected">Sifting トレイ</a>'
+        + '<a href="/outputs?run=' + _url(run_id) + '">作品</a>'
+        + '</nav></div>'
     )
+    notices = ""
     if running:
         job_link = f' <a href="/jobs/{_url(running_job_id)}">進捗を見る →</a>' if running_job_id else ""
-        header += f'<p class="warning">実行中のため選定は保存できません{job_link}</p>'
+        notices += f'<p class="warning">実行中のため選定は保存できません{job_link}</p>'
     if representatives_error:
-        header += '<p class="warning">代表セルを解決できないため［格子で見る］は表示しません</p>'
+        notices += '<p class="warning">代表セルを解決できないため格子へのリンクは表示しません</p>'
     if output_summary_error:
-        header += '<p class="warning">稿の記録を読み取れないため件数を表示できません</p>'
-    # has_adopted must reflect the *unfiltered* selection (the candidates
-    # list here may be narrowed by the filter form), otherwise a filter that
-    # hides every adopted row would wrongly grey out the narrate button.
+        notices += '<p class="warning">稿の記録を読み取れないため件数を表示できません</p>'
     if has_adopted is None:
-        has_adopted = any(c["state"] == "adopted" for c in candidates)
+        has_adopted = adopted_count > 0
     generate_form = _generate_form(run_id, has_adopted, running)
     if candidates:
         rows = "".join(
-            _candidate_row(c, run_id, experiment_name, c["candidate_id"] in representatives, running, output_summary,
-                            synopsis_text=(synopses or {}).get(c.get("cell_key")))
-            for c in candidates
-        )
-        def th(key, term_key=None):
-            return _sort_th(_SORT_LABELS[key], key, query=query, active_sort=sort_key, active_dir=sort_dir,
-                             term_key=term_key)
-
-        headers = (
-            "<th>選択</th>"
-            f'<th title="{_th_title("candidate_id")}">候補ID</th>'
-            + th("cell_key", "cell") + "<th>あらすじ</th>" + th("quality", "quality") + th("reached", "reached")
-            + f'<th title="{_th_title("screenable")}">採用可</th>'
-            + th("state", "state")
-            + f'<th title="{_th_title("note")}">メモ</th>'
-            + "<th>操作</th>"
+            _candidate_row(
+                candidate, run_id, experiment_name,
+                candidate["candidate_id"] in representatives,
+                running, output_summary,
+                synopsis_text=(synopses or {}).get(candidate.get("cell_key")),
+            )
+            for candidate in candidates
         )
         table = (
-            '<div class="grid-wrap"><table id="candidate-table" class="wb-table"><thead><tr>'
-            f"{headers}"
-            f"</tr></thead><tbody>{rows}</tbody></table></div>"
+            '<div class="candidate-table-scroll"><table id="candidate-table" class="wb-table candidate-table-modern">'
+            '<thead><tr><th>生成</th><th>候補</th><th>品質</th><th>到達</th><th>選定状態</th><th>メモ</th><th>操作</th></tr></thead>'
+            f'<tbody>{rows}</tbody></table></div>'
+        )
+        toolbar = (
+            '<div class="candidate-list-toolbar">'
+            + quick_filter("すべて", "") + quick_filter("採用", "adopted") + quick_filter("保留", "held")
+            + '<details class="candidate-filters"><summary>詳しい絞り込み</summary>'
+            + _candidates_filter_form(run_id, query) + '</details></div>'
+        )
+        list_region = (
+            '<section class="candidate-list-region" aria-label="候補一覧">'
+            + toolbar + table + pages.glossary(CANDIDATES_GLOSSARY_KEYS) + '</section>'
+        )
+        state_options = "".join(
+            f'<option value="{option}">{_escape(CANDIDATE_STATE_LABELS.get(option, option))}</option>'
+            for option in CANDIDATE_STATE_OPTIONS
+        )
+        inspector = (
+            '<aside class="candidate-inspector candidate-inspector-final" aria-label="選択候補の概要">'
+            '<header class="candidate-inspector-head"><div>'
+            '<div class="candidate-inspector-kicker"><span data-inspector-id>候補</span>'
+            '<span class="state-badge" data-inspector-state-label>未分類</span>'
+            '<span>品質 <strong data-inspector-quality>—</strong></span></div>'
+            '<h2 data-inspector-title>候補を選択</h2>'
+            '<p>物語を先に読み、必要なときだけ選択理由と実験値を確認します。</p>'
+            '</div></header>'
+            '<div class="candidate-inspector-tabs" role="tablist" aria-label="候補情報">'
+            '<button type="button" class="candidate-inspector-tab is-active" data-inspector-tab="story" aria-selected="true">物語</button>'
+            '<button type="button" class="candidate-inspector-tab" data-inspector-tab="selection" aria-selected="false">選択とメモ</button>'
+            '<button type="button" class="candidate-inspector-tab" data-inspector-tab="data" aria-selected="false">実験データ</button>'
+            '</div>'
+            '<div class="candidate-inspector-body" aria-live="polite">'
+            '<section data-inspector-panel="story"><h3>あらすじ</h3>'
+            '<p class="candidate-inspector-lead" data-inspector-synopsis>左の一覧から候補を選択してください。</p>'
+            '<a class="candidate-inspector-primary" data-inspector-primary href="#candidate-table">物語と根拠を詳しく読む</a></section>'
+            '<section data-inspector-panel="selection" hidden><h3>この候補の扱い</h3>'
+            f'<label class="inspector-field">選定状態<select data-inspector-state>{state_options}</select></label>'
+            '<label class="inspector-field">メモ<input type="text" data-inspector-note placeholder="判断理由を残す"></label>'
+            '<div class="inspector-save-row"><button type="button" class="button primary" data-inspector-save>状態とメモを保存</button>'
+            '<span data-inspector-save-status></span></div></section>'
+            '<section data-inspector-panel="data" hidden><h3>実験データ</h3>'
+            '<dl class="candidate-inspector-metrics"><div><dt>品質</dt><dd data-inspector-quality>—</dd></div>'
+            '<div><dt>到達</dt><dd data-inspector-reached>—</dd></div>'
+            '<div><dt>世代</dt><dd data-inspector-generation>—</dd></div>'
+            '<div><dt>seed</dt><dd data-inspector-seed>—</dd></div></dl>'
+            '<button type="button" class="button" data-inspector-detail-toggle>技術詳細を一覧に表示</button></section>'
+            '</div>'
+            '<footer class="candidate-inspector-footer"><div><strong>採用候補 <span data-adopted-count>'
+            f'{adopted_count}</span>件</strong><span data-generate-count>生成対象 0件</span></div>'
+            '<button type="button" class="button primary" data-inspector-adopt>この候補を採用</button></footer>'
+            '</aside>'
         )
     else:
-        # No duplicate CTA here: the page-level next_action (set by the
-        # caller from the run's *unfiltered* candidate count) already covers
-        # "候補がありません" -> "実行する" (WB-UI-012 §2.3's "1 つだけ").
-        table = "<p>候補がありません。</p>"
+        list_region = '<section class="candidate-list-region"><p class="candidate-empty">候補がありません。</p></section>'
+        inspector = '<aside class="candidate-inspector candidate-inspector-empty"><h2>候補を待っています</h2><p>実行が完了すると、ここで物語候補を比較できます。</p></aside>'
     return (
-        f'<section id="candidates" data-wb="candidates" data-run-id="{_escape(run_id)}" '
+        f'<section id="candidates" class="candidate-final" data-wb="candidates" data-run-id="{_escape(run_id)}" '
         f'data-revision="{_escape(selection_revision)}">'
-        + header + generate_form + _candidates_filter_form(run_id, query) + table
-        + pages.glossary(CANDIDATES_GLOSSARY_KEYS)
-        + "</section>"
+        + context + notices
+        + '<div class="candidate-layout candidate-layout-final">' + list_region + inspector + '</div>'
+        + '<footer class="candidate-generation-bar">' + generate_form + '</footer>'
+        + '</section>'
     )
-
-
-# --------------------------------------------------------------------------
-# Cross-run tray
-# --------------------------------------------------------------------------
 
 def _tray_row(entry):
     cid = entry["candidate_id"]
@@ -2143,15 +2191,16 @@ def _candidates_list(handler, run_id):
     else:
         next_action = ("作品を読む →", f"/outputs?run={_url(run_id)}")
     handler._send_html(pages.document(
-        f"候補: {experiment_name}", page,
+        "物語の候補を読む", page,
         crumbs=[(experiment_name, f"/exp/{_url(experiment_name)}"), ("候補一覧", f"/runs/{_url(run_id)}/candidates")],
         # run_id here is the catalog run_id (from the URL); it's what
         # /outputs?run= must use, while `run` (the experiment folder name)
         # drives the header's picker and its /exp/ link.
         phase="sifting", run=experiment_name, output_run=run_id,
-        lead="候補に選定状態を付け、採用した候補から本文を生成します。",
+        lead="候補を読み、判断理由を残して上映候補を選びます。",
         next_action=next_action,
         job_store=_job_store(handler),
+        page_class="candidate-workspace",
     ))
 
 
