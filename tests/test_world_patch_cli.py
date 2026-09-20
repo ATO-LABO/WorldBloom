@@ -1,0 +1,382 @@
+"""End-to-end CLI acceptance tests for scripts/world_patch.py
+(WB-WORLDGROW-001, stage 3b): propose/check/approve/reject/list against a
+real (small, fast) experiment. No real LLM is ever called -- --from-file or a
+stubbed gapengine.synopsis.generate_text stand in for the backend.
+"""
+from __future__ import annotations
+
+import contextlib
+import hashlib
+import io
+import json
+import math
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+import yaml
+
+import scripts.world_patch as wpc
+from gapengine.evolve import evolve
+from gapengine.synopsis import GenerationResult
+from gapengine.world_patch import approved_patches
+from gapengine.world_patch_trial import TRIAL_TOLERANCE_MIN, TRIAL_TOLERANCE_SHARE
+
+ROOT = Path(__file__).resolve().parents[1]
+PROJECT = ROOT / "projects" / "momotaro"
+TEMPLATE = ROOT / "templates" / "momotaro"
+
+VALID_ADD = {
+    "zones": [{"name": "船大工の小屋", "parent": "海", "note": "船具を扱う小屋"}],
+    "items": [{"name": "古びた帆布", "sources": [
+        {"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 2}]}],
+    "facts": [], "daily_events": [],
+}
+COLLIDING_ADD = {"zones": [{"name": "村", "parent": "海"}], "items": [], "facts": [], "daily_events": []}
+
+
+def _make_fast_project(root: Path) -> Path:
+    """A 1-day, guaranteed-homecoming momotaro copy -- keeps the fixture
+    experiment's *own* evolve() run fast and non-flaky. (The propose/check
+    commands under test still resolve the *real* projects/momotaro as the
+    base world for gating/trial, per gapengine.lineage's legacy-run fallback
+    when no manifest.json is present -- this fixture only needs to produce a
+    valid, non-empty archive quickly.)"""
+    project = root / "fast-project"
+    shutil.copytree(PROJECT, project)
+    world_path = project / "world.yaml"
+    world_raw = yaml.safe_load(world_path.read_text(encoding="utf-8"))
+    world_raw["time"] = {"days": 1, "slots": ["朝"]}
+    world_raw["daily_events"] = None
+    world_raw["scheduled_events"] = [{
+        "id": "test_guaranteed_homecoming", "day": 1, "slot": "朝", "targets": ["桃太郎"],
+        "label": "決定性テスト用の帰還", "grants_item": {"name": "鬼ヶ島の宝物", "count": 1}, "move_to": "村",
+    }]
+    world_path.write_text(yaml.safe_dump(world_raw, allow_unicode=True, sort_keys=False),
+                           encoding="utf-8", newline="\n")
+    return project
+
+
+def _write_world_demand(experiment: Path) -> None:
+    payload = {
+        "schema_version": 1, "files": 1, "skipped_paths": 0, "subject_decisions": 30,
+        "triggers": [{"zone": "海", "verb": "investigate", "count": 30, "whiffs": 30,
+                       "whiff_rate": 1.0, "wasted_share": 0.3, "zone_dwell_share": 0.5}],
+        "zones": [{"zone": "海", "decisions": 30, "dwell": 30, "dwell_share": 0.5,
+                    "verbs": [["investigate", 30, 1.0]], "repeat_rate": 0.0, "ineffective_rate": 1.0,
+                    "ineffective_reasons": [], "mean_p_prec": None, "mean_m_nov": None, "mean_candidates": None}],
+        "archive": None,
+        "thresholds": {"whiff_rate_min": 0.5, "wasted_share_min": 0.02, "whiffs_min": 10},
+        "verb_counts": {"海": {"investigate": [30, 30]}},
+    }
+    (experiment / "world_demand.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def _write_proposal_file(path: Path, *, add: dict | None = None, title: str = "海辺の船大工小屋") -> None:
+    payload = {"title": title, "rationale": "海でのinvestigateが空振りし続けている",
+               "add": VALID_ADD if add is None else add}
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+class WorldPatchCliTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._experiment_tmp = tempfile.TemporaryDirectory()
+        root = Path(cls._experiment_tmp.name)
+        fast_project = _make_fast_project(root)
+        evolve({
+            "ga_seed": 29, "generations": 2, "keep": "all", "population": 5, "processes": 1,
+            "project": fast_project, "seed_base": 31, "seeds": 1, "template": TEMPLATE,
+            "out": root / "experiment",
+        })
+        cls.experiment = root / "experiment"
+        _write_world_demand(cls.experiment)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._experiment_tmp.cleanup()
+
+    def setUp(self) -> None:
+        self._scratch = tempfile.TemporaryDirectory()
+        scratch = Path(self._scratch.name)
+        self.project = scratch / "momotaro"
+        shutil.copytree(PROJECT, self.project)
+        # patches/ is untracked (git status confirms projects/momotaro/patches
+        # is entirely `??`); a stray proposal left in the real momotaro project
+        # by manual CLI use (or a prior test run against it) must not leak into
+        # this scratch copy and break "exactly one proposed patch" assertions.
+        patches_dir = self.project / "patches"
+        if patches_dir.exists():
+            shutil.rmtree(patches_dir)
+        self.proposal_path = scratch / "proposal.json"
+
+    def tearDown(self) -> None:
+        self._scratch.cleanup()
+
+    def _run(self, argv: list[str]) -> int:
+        args = wpc.build_parser().parse_args(argv)
+        return args.func(args)
+
+    def _propose_from_file(self, *, add=None, extra: list[str] | None = None) -> int:
+        _write_proposal_file(self.proposal_path, add=add)
+        argv = ["propose", "--experiment", str(self.experiment), "--project", str(self.project),
+                "--from-file", str(self.proposal_path)]
+        # Keep trials tiny here: the gate's own arithmetic is covered in
+        # test_world_patch_trial.py, and the default 5x8 reruns would add minutes.
+        if "--skip-trial" not in (extra or []):
+            argv += ["--max-runs", "1", "--seeds-per-run", "2"]
+        return self._run(argv + (extra or []))
+
+    def _proposed_files(self):
+        return sorted((self.project / "patches" / "_proposed").glob("*.yaml"))
+
+    def test_propose_from_file_creates_proposal_with_passing_gates_and_leaves_experiment_untouched(self):
+        before = sorted(p.relative_to(self.experiment) for p in self.experiment.rglob("*"))
+
+        code = self._propose_from_file()
+
+        after = sorted(p.relative_to(self.experiment) for p in self.experiment.rglob("*"))
+        self.assertEqual(before, after)  # no lineage/ cache, nothing written into the experiment
+
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        gate_path = proposed[0].with_name(proposed[0].stem + ".gate.json")
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        self.assertTrue(gate["static"]["passed"])
+        trial = gate["trial"]
+        self.assertIsNotNone(trial)
+        self.assertGreaterEqual(trial["total_runs"], 1)
+        self.assertEqual(trial["errors"], [])
+        expected_tolerance = max(TRIAL_TOLERANCE_MIN, math.ceil(TRIAL_TOLERANCE_SHARE * trial["total_runs"]))
+        self.assertEqual(trial["tolerance"], expected_tolerance)
+        self.assertTrue(gate["passed"])
+        self.assertEqual(code, 0)
+
+    def test_propose_from_file_with_colliding_zone_fails_static_gate(self):
+        self._propose_from_file(add=COLLIDING_ADD)
+
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        gate = json.loads(proposed[0].with_name(proposed[0].stem + ".gate.json").read_text(encoding="utf-8"))
+        self.assertFalse(gate["passed"])
+        self.assertTrue(gate["static"]["violations"])
+
+    def test_propose_retries_on_bad_json_then_succeeds(self):
+        good_text = json.dumps(
+            {"title": "海辺の船大工小屋", "rationale": "海でのinvestigateが空振りし続けている", "add": VALID_ADD},
+            ensure_ascii=False,
+        )
+        responses = [GenerationResult(status="ok", text="これはJSONではありません"),
+                     GenerationResult(status="ok", text=good_text)]
+        prompts_seen: list[str] = []
+
+        def fake_generate_text(backend, prompt, *, settings_path, timeout=600):
+            prompts_seen.append(prompt)
+            return responses[len(prompts_seen) - 1]
+
+        with mock.patch("scripts.world_patch.generate_text", side_effect=fake_generate_text):
+            code = self._run(["propose", "--experiment", str(self.experiment), "--project", str(self.project),
+                               "--backend", "ollama", "--retries", "2", "--skip-trial"])
+
+        self.assertEqual(len(prompts_seen), 2)
+        self.assertIn("不採用でした", prompts_seen[1])
+        self.assertEqual(code, 0)
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        patch = yaml.safe_load(proposed[0].read_text(encoding="utf-8"))
+        self.assertEqual(patch["title"], "海辺の船大工小屋")
+
+    def test_propose_reports_a_generation_failure_without_writing_anything(self):
+        from gapengine.synopsis import GenerationError
+
+        with mock.patch("scripts.world_patch.generate_text",
+                        side_effect=GenerationError("GPU is busy: held by another-run")):
+            code = self._run(["propose", "--experiment", str(self.experiment), "--project", str(self.project),
+                               "--backend", "ollama", "--skip-trial"])
+
+        self.assertEqual(code, 2)
+        self.assertEqual(self._proposed_files(), [])
+
+    def test_propose_backend_none_prints_prompt_only(self):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = self._run(["propose", "--experiment", str(self.experiment), "--project", str(self.project),
+                               "--backend", "none"])
+        self.assertEqual(code, 0)
+        self.assertIn("海", buffer.getvalue())
+        self.assertEqual(self._proposed_files(), [])
+
+    def test_propose_rejects_mismatched_parent_rev(self):
+        # A patch staged as "already approved" in --project that the resolved
+        # world's own expansion.patches never actually applied -- the
+        # experiment was run against an earlier/different world version.
+        patches_dir = self.project / "patches"
+        patches_dir.mkdir(parents=True, exist_ok=True)
+        stray = {
+            "id": "p-stray001", "title": "t", "rationale": "r", "approved_seq": 1, "parent_rev": [],
+            "trigger": {"zone": "海", "verb": "investigate", "count": 1, "whiffs": 1},
+            "add": {"zones": [{"name": "余所のゾーン", "parent": "海"}], "items": [], "facts": [], "daily_events": []},
+        }
+        (patches_dir / "p-stray001.yaml").write_text(yaml.safe_dump(stray, allow_unicode=True), encoding="utf-8")
+
+        code = self._run(["propose", "--experiment", str(self.experiment), "--project", str(self.project),
+                           "--backend", "none"])
+        self.assertEqual(code, 1)
+        self.assertEqual(self._proposed_files(), [])
+
+    def test_check_rewrites_gate_for_an_existing_proposal(self):
+        self._propose_from_file(extra=["--skip-trial"])
+        patch_id = self._proposed_files()[0].stem
+        gate_path = self.project / "patches" / "_proposed" / f"{patch_id}.gate.json"
+        self.assertIsNone(json.loads(gate_path.read_text(encoding="utf-8"))["trial"])
+
+        code = self._run(["check", "--experiment", str(self.experiment), "--project", str(self.project),
+                           "--patch", patch_id])
+        self.assertEqual(code, 0)
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        self.assertIsNotNone(gate["trial"])
+        self.assertGreaterEqual(gate["trial"]["runs"], 1)
+
+    def test_propose_gate_fails_when_trial_fails(self):
+        # A stubbed run_trial -- exercising the actual regression (base vs.
+        # patched reach diverging beyond tolerance) would need a patch that
+        # measurably hurts reach, which this fixture's data-only additions don't.
+        stub_trial = {
+            "schema_version": 1, "runs": 1, "skipped": 0, "reached_base": 5, "reached_patched": 0,
+            "errors": [], "trigger": None, "used_new": 0, "passed": False,
+            "reasons": ["到達 5→0（8本中、許容差 2）"], "total_runs": 8, "seeds_per_run": 8,
+            "tolerance": 2, "base_source": "repository", "easier": False,
+        }
+        with mock.patch("scripts.world_patch.run_trial", return_value=stub_trial):
+            code = self._propose_from_file()
+
+        self.assertEqual(code, 1)
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        gate = json.loads(proposed[0].with_name(proposed[0].stem + ".gate.json").read_text(encoding="utf-8"))
+        self.assertFalse(gate["passed"])
+        self.assertFalse(gate["trial"]["passed"])
+
+        patch_id = proposed[0].stem
+        approve_code = self._run(["approve", "--project", str(self.project), "--patch", patch_id])
+        self.assertEqual(approve_code, 1)
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_moves_a_passing_patch_and_records_seq(self):
+        self._propose_from_file()
+        patch_id = self._proposed_files()[0].stem
+
+        code = self._run(["approve", "--project", str(self.project), "--patch", patch_id])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self._proposed_files(), [])
+        approved = approved_patches(self.project)
+        self.assertEqual([p["id"] for p in approved], [patch_id])
+        self.assertEqual(approved[0]["approved_seq"], 1)
+
+        approved_patch_path = self.project / "patches" / f"{patch_id}.yaml"
+        approved_gate = json.loads((self.project / "patches" / f"{patch_id}.gate.json").read_text(encoding="utf-8"))
+        self.assertEqual(approved_gate["patch_sha256"],
+                          hashlib.sha256(approved_patch_path.read_bytes()).hexdigest())
+
+    def test_approve_rejects_a_failed_gate(self):
+        self._propose_from_file(add=COLLIDING_ADD)
+        patch_id = self._proposed_files()[0].stem
+
+        code = self._run(["approve", "--project", str(self.project), "--patch", patch_id])
+
+        self.assertEqual(code, 1)
+        self.assertEqual(len(self._proposed_files()), 1)
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_a_patch_tampered_after_check(self):
+        self._propose_from_file()
+        patch_id = self._proposed_files()[0].stem
+        patch_path = self.project / "patches" / "_proposed" / f"{patch_id}.yaml"
+        patch = yaml.safe_load(patch_path.read_text(encoding="utf-8"))
+        patch["add"]["items"].append({
+            "name": "こっそり足したアイテム",
+            "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
+        })
+        patch_path.write_text(yaml.safe_dump(patch, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+        code = self._run(["approve", "--project", str(self.project), "--patch", patch_id])
+        self.assertEqual(code, 1)
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_when_internal_id_does_not_match_filename(self):
+        self._propose_from_file()
+        patch_id = self._proposed_files()[0].stem
+        patch_path = self.project / "patches" / "_proposed" / f"{patch_id}.yaml"
+        gate_path = self.project / "patches" / "_proposed" / f"{patch_id}.gate.json"
+        patch = yaml.safe_load(patch_path.read_text(encoding="utf-8"))
+        patch["id"] = "p-notthesameid"
+        patch_path.write_text(yaml.safe_dump(patch, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        # Keep the gate's recorded hash in sync with the tampered file, so
+        # this isolates the id/filename check from the sha256 check.
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        gate["patch_sha256"] = hashlib.sha256(patch_path.read_bytes()).hexdigest()
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+
+        code = self._run(["approve", "--project", str(self.project), "--patch", patch_id])
+        self.assertEqual(code, 1)
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_a_path_traversal_patch_id(self):
+        code = self._run(["approve", "--project", str(self.project), "--patch", "../x"])
+        self.assertEqual(code, 1)
+
+    def test_check_rejects_a_path_traversal_patch_id(self):
+        code = self._run(["check", "--experiment", str(self.experiment), "--project", str(self.project),
+                           "--patch", "../x"])
+        self.assertEqual(code, 1)
+
+    def test_approve_rejects_item_name_colliding_with_a_subject_id(self):
+        add = {
+            "zones": [], "facts": [], "daily_events": [],
+            "items": [{"name": "桃太郎", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}]}],
+        }
+        self._propose_from_file(add=add, extra=["--skip-trial"])
+        patch_id = self._proposed_files()[0].stem
+        gate_path = self.project / "patches" / "_proposed" / f"{patch_id}.gate.json"
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        # Simulate a gate that (wrongly) passed this -- approve's own
+        # revalidation against the current world + subject ids is the backstop.
+        gate["passed"] = True
+        gate["static"] = {"passed": True, "violations": []}
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+
+        code = self._run(["approve", "--project", str(self.project), "--patch", patch_id])
+        self.assertEqual(code, 1)
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_reject_moves_both_files_to_rejected(self):
+        self._propose_from_file()
+        patch_id = self._proposed_files()[0].stem
+
+        code = self._run(["reject", "--project", str(self.project), "--patch", patch_id])
+
+        self.assertEqual(code, 0)
+        rejected_dir = self.project / "patches" / "_rejected"
+        self.assertTrue((rejected_dir / f"{patch_id}.yaml").is_file())
+        self.assertTrue((rejected_dir / f"{patch_id}.gate.json").is_file())
+        self.assertEqual(self._proposed_files(), [])
+
+    def test_list_shows_approved_and_proposed_without_crashing(self):
+        self._propose_from_file()
+        patch_id = self._proposed_files()[0].stem
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = self._run(["list", "--project", str(self.project)])
+
+        self.assertEqual(code, 0)
+        self.assertIn(patch_id, buffer.getvalue())
+        self.assertIn("承認済み", buffer.getvalue())
+        self.assertIn("提案中", buffer.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()

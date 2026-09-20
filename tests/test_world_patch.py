@@ -10,9 +10,11 @@ import yaml
 from engine.world import World
 from gapengine.world_patch import (
     PatchError,
+    absolutize_references,
     apply_patch,
     apply_patches,
     approved_patches,
+    patch_id_for,
     validate_patch,
 )
 
@@ -46,6 +48,22 @@ def sample_patch(**overrides) -> dict:
     }
     patch.update(overrides)
     return patch
+
+
+def _world_with_applied_modifier(value: float) -> dict:
+    """A momotaro world with one earlier expansion patch already applied,
+    having added a single item worth `value` modifier points."""
+    world = load_world()
+    name = "既存強化アイテム"
+    world["items"] = list(world["items"]) + [{
+        "name": name, "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
+        "modifier": {"id": f"item:{name}", "value": value, "kind": "item", "visible": True},
+    }]
+    world["expansion"] = {"base": world.get("name"), "patches": [
+        {"id": "p-existing1", "title": "既存パッチ",
+         "added": {"zones": [], "items": [name], "facts": [], "daily_events": []}},
+    ]}
+    return world
 
 
 class WorldPatchTests(unittest.TestCase):
@@ -136,6 +154,60 @@ class WorldPatchTests(unittest.TestCase):
     def test_budget_exceeded(self):
         self.assert_invalid(lambda p: p["add"].update(zones=[
             {"name": f"新ゾーン{i}", "parent": "海"} for i in range(3)]))
+
+    def test_modifier_budget_exceeded_within_single_patch(self):
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "facts": [], "daily_events": [],
+            "items": [
+                {"name": "光る飾り玉その一", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
+                 "modifier": {"id": "item:光る飾り玉その一", "value": 6, "kind": "item", "visible": True}},
+                {"name": "光る飾り玉その二", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
+                 "modifier": {"id": "item:光る飾り玉その二", "value": 5, "kind": "item", "visible": True}},
+            ],
+        })
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("強化値の合計が上限（10）を超えています" in v for v in violations), violations)
+
+    def test_modifier_budget_cumulative_exceeded(self):
+        world = _world_with_applied_modifier(15)
+        patch = sample_patch(add={
+            "zones": [], "facts": [], "daily_events": [],
+            "items": [{"name": "新しい強化アイテム", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
+                       "modifier": {"id": "item:新しい強化アイテム", "value": 6, "kind": "item", "visible": True}}],
+        })
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("強化値の合計が上限（20）を超えています" in v for v in violations), violations)
+
+    def test_modifier_budget_cumulative_exactly_at_limit_passes(self):
+        world = _world_with_applied_modifier(14)
+        patch = sample_patch(add={
+            "zones": [], "facts": [], "daily_events": [],
+            "items": [{"name": "新しい強化アイテム", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}],
+                       "modifier": {"id": "item:新しい強化アイテム", "value": 6, "kind": "item", "visible": True}}],
+        })
+        self.assertEqual(validate_patch(world, patch), [])
+
+    def test_made_from_self_reference_cycle(self):
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "facts": [], "daily_events": [],
+            "items": [{"name": "甲片", "made_from": {"甲片": 1}}],
+        })
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("made_from が循環しています" in v for v in violations), violations)
+
+    def test_made_from_two_item_cycle(self):
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "facts": [], "daily_events": [],
+            "items": [
+                {"name": "甲片", "made_from": {"乙片": 1}},
+                {"name": "乙片", "made_from": {"甲片": 1}},
+            ],
+        })
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("made_from が循環しています" in v for v in violations), violations)
 
     def test_name_collides_with_existing_zone(self):
         self.assert_invalid(lambda p: p["add"]["zones"][0].update(name="村"))
@@ -254,6 +326,42 @@ class WorldPatchTests(unittest.TestCase):
                 yaml.safe_dump(sample_patch(), allow_unicode=True), encoding="utf-8")
             with self.assertRaises(PatchError):
                 approved_patches(Path(temp))
+
+    def test_patch_id_for_is_content_addressed(self):
+        add = {"zones": [{"name": "船大工の小屋", "parent": "海"}]}
+        self.assertEqual(patch_id_for(add), patch_id_for(dict(add)))
+        self.assertNotEqual(patch_id_for(add), patch_id_for({"zones": []}))
+        self.assertTrue(patch_id_for(add).startswith("p-"))
+
+    def test_absolutize_references_prefers_project_relative_candidate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            project_dir = Path(temp) / "project"
+            repo_root = Path(temp) / "repo"
+            (project_dir / "local").mkdir(parents=True)
+            (project_dir / "local" / "action_graph.yaml").write_text("nodes: []\nedges: []\n", encoding="utf-8")
+            repo_root.mkdir()
+            world = {"gapengine": {"action_graph": "local/action_graph.yaml", "effects": "missing/effects.yaml"}}
+            absolutize_references(world, project_dir, repo_root)
+            self.assertEqual(
+                Path(world["gapengine"]["action_graph"]),
+                (project_dir / "local" / "action_graph.yaml").resolve(),
+            )
+            # Neither candidate exists for effects -- left untouched.
+            self.assertEqual(world["gapengine"]["effects"], "missing/effects.yaml")
+
+    def test_absolutize_references_falls_back_to_repo_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            project_dir = Path(temp) / "project"
+            project_dir.mkdir()
+            repo_root = Path(temp) / "repo"
+            (repo_root / "templates" / "x").mkdir(parents=True)
+            (repo_root / "templates" / "x" / "effects.yaml").write_text("[]\n", encoding="utf-8")
+            world = {"gapengine": {"effects": "templates/x/effects.yaml"}}
+            absolutize_references(world, project_dir, repo_root)
+            self.assertEqual(
+                Path(world["gapengine"]["effects"]),
+                (repo_root / "templates" / "x" / "effects.yaml").resolve(),
+            )
 
 
 if __name__ == "__main__":
