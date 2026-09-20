@@ -14,6 +14,7 @@ import os
 import random
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from typing import Any, Sequence
 from unittest.mock import patch
@@ -34,7 +35,9 @@ from gapengine.rationality import (
     Rationality,
     RationalityTable,
     _even_chunks,
+    _llama_server_call,
     _read_gpu_temperature,
+    _top_logprobs,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1305,6 +1308,116 @@ class ReadGpuTemperatureDelegationTests(unittest.TestCase):
         with patch("gapengine.rationality.gpu_guard.read_gpu_temperature", return_value=71.5) as mock_read:
             self.assertEqual(_read_gpu_temperature(), 71.5)
         mock_read.assert_called_once_with()
+
+
+class LlamaServerCallTests(unittest.TestCase):
+    """WB-JEV-003: ``_llama_server_call`` is ``_ollama_call``'s twin against
+    a local llama-server (OpenAI-compatible) endpoint instead. No network or
+    GPU -- ``urllib.request.urlopen`` is mocked throughout."""
+
+    class _FakeResponse:
+        def __init__(self, body: bytes) -> None:
+            self._body = body
+
+        def __enter__(self) -> "LlamaServerCallTests._FakeResponse":
+            return self
+
+        def __exit__(self, *exc_info: Any) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return self._body
+
+    def _response(self, payload: dict[str, Any]) -> "LlamaServerCallTests._FakeResponse":
+        return self._FakeResponse(json.dumps(payload).encode("utf-8"))
+
+    def test_payload_shape(self) -> None:
+        captured: dict[str, Any] = {}
+
+        def fake_urlopen(request: Any, timeout: float) -> "LlamaServerCallTests._FakeResponse":
+            captured["url"] = request.full_url
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            captured["timeout"] = timeout
+            return self._response(
+                {
+                    "choices": [
+                        {
+                            "logprobs": {
+                                "content": [
+                                    {
+                                        "top_logprobs": [
+                                            {"token": "A", "logprob": -0.1},
+                                            {"token": "B", "logprob": -2.0},
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            )
+
+        with patch(
+            "gapengine.rationality.urllib.request.urlopen", side_effect=fake_urlopen
+        ):
+            data = _llama_server_call(
+                "bonsai2-27b",
+                "prompt text",
+                base_url="http://127.0.0.1:8089",
+                timeout=5.0,
+                top_logprobs=15,
+            )
+
+        self.assertEqual(captured["url"], "http://127.0.0.1:8089/v1/chat/completions")
+        self.assertEqual(captured["timeout"], 5.0)
+        payload = captured["payload"]
+        self.assertEqual(payload["model"], "bonsai2-27b")
+        self.assertEqual(
+            payload["messages"], [{"role": "user", "content": "prompt text"}]
+        )
+        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": False})
+        self.assertEqual(payload["max_tokens"], 1)
+        self.assertEqual(payload["temperature"], 0)
+        self.assertEqual(payload["seed"], 0)
+        self.assertIs(payload["logprobs"], True)
+        self.assertEqual(payload["top_logprobs"], 15)
+        self.assertIs(payload["cache_prompt"], True)
+        self.assertIs(payload["stream"], False)
+
+        # Normalized into the same {"logprobs": [{"top_logprobs": [...]}]}
+        # envelope _ollama_call returns, so _top_logprobs works unchanged.
+        self.assertEqual(
+            _top_logprobs(data),
+            [{"token": "A", "logprob": -0.1}, {"token": "B", "logprob": -2.0}],
+        )
+
+    def test_malformed_response_normalizes_to_empty_top_logprobs(self) -> None:
+        for body in ({"choices": []}, {"choices": [{"logprobs": None}]}, {}):
+            with self.subTest(body=body):
+                with patch(
+                    "gapengine.rationality.urllib.request.urlopen",
+                    return_value=self._response(body),
+                ):
+                    data = _llama_server_call(
+                        "m", "p", base_url="http://x", timeout=1.0
+                    )
+                self.assertEqual(_top_logprobs(data), [])
+
+    def test_http_error_is_a_urlerror_subclass_callers_already_catch(self) -> None:
+        with patch(
+            "gapengine.rationality.urllib.request.urlopen",
+            side_effect=urllib.error.HTTPError("http://x", 400, "bad request", None, None),
+        ):
+            with self.assertRaises(urllib.error.URLError):
+                _llama_server_call("m", "p", base_url="http://x", timeout=1.0)
+
+    def test_invalid_json_raises_value_error(self) -> None:
+        with patch(
+            "gapengine.rationality.urllib.request.urlopen",
+            return_value=self._FakeResponse(b"not json"),
+        ):
+            with self.assertRaises(ValueError):
+                _llama_server_call("m", "p", base_url="http://x", timeout=1.0)
 
 
 if __name__ == "__main__":
