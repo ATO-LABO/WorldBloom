@@ -1,0 +1,29 @@
+kappa: 0.0          # Stage 2 既定は OFF。GPU 復旧後の計測で method と合わせて決める
+method: choice       # Stage 1 計測で決定: noul 比 1/13 のコール数、順位相関 0.55。分布が尖るので kappa は 0.3〜0.6 を目安に
+backend:
+  type: ollama
+  model: qwen3.6:35b
+  base_url: http://localhost:11434
+  timeout: 300
+  thermal_guard:  # 2026-09-19追記: このマシンは連続負荷で86℃・GPU lostを起こした実績がある
+    max_temp: 78   # 2026-09-19夜の疎通実験で86℃到達を確認。82では遅すぎたため引き下げ
+    cooldown_seconds: 45
+    check_every: 5
+  gpu_lease_wait_seconds: 600  # WB-JEV-001: 機体全体のGPUリースが取れるまで待つ秒数(GA実行1回分)
+max_judge_calls_per_run: null  # 1 run(seed)あたりの判定器呼び出し上限。null=無制限（--rationality-max-calls で上書き可）
+key_items:
+  - きびだんご
+  - 小判
+  - 鉄砲
+  - 弟の手紙
+describe_trial_grants: true  # WB-JEV-004: 試練の候補記述に、その試練が与えるもの（弟の手紙など）を添える
+common_knowledge:
+  - きびだんごを渡すと相手は仲間になりやすい
+  - 仲間は戦いで力を貸してくれる
+  - 鬼ヶ島へ渡るには船が要る
+  - 鬼は宝物を守っており、倒すか説得しなければ宝物は手に入らない
+  - 相手を観察すると弱点や隠し持つ力が分かることがある
+  - 村の店では小判3枚で鉄砲が買える。鉄砲があれば鬼と互角以上に戦える
+  - 小判は村や道中を調べると手に入る
+  - 鬼には生き別れの弟がいて、森で木こりをしている
+  - 弟と親しくなれば手紙を書いてもらえる。弟の手紙か値打ちのある品を差し出せば、鬼は宝を譲ることがある

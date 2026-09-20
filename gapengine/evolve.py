@@ -21,7 +21,11 @@ from engine.subject import Subject
 from engine.world import World
 from gapengine import gpu_guard
 from gapengine.genome import Genome
-from gapengine.knowledge_text import load_common_knowledge, load_key_items
+from gapengine.knowledge_text import (
+    load_common_knowledge,
+    load_describe_trial_grants,
+    load_key_items,
+)
 from gapengine.ollama import DEFAULT_BASE_URL as RATIONALITY_DEFAULT_BASE_URL
 from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
 from gapengine.policy import Policy
@@ -382,6 +386,9 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
                 method=str(rationality_cfg.get("method", "noul")),
                 key_items=rationality_cfg.get("key_items", []),
                 max_judge_calls=rationality_cfg.get("max_judge_calls"),
+                describe_trial_grants=bool(
+                    rationality_cfg.get("describe_trial_grants", False)
+                ),
             )
 
         policies: dict[str, Policy] = {}
@@ -1215,6 +1222,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             ),
             "common_knowledge": load_common_knowledge(template_dir),
             "key_items": load_key_items(template_dir),
+            "describe_trial_grants": load_describe_trial_grants(template_dir),
         }
         rationality_table_path = Path(
             str(rationality_override.get("table") or (out_dir / "rationality.json"))
