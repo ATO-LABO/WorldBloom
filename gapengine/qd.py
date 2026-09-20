@@ -968,8 +968,14 @@ class Archive:
         return destination
 
     @classmethod
-    def load(cls, path: str | Path) -> Archive:
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    def from_dict(cls, raw: Mapping[str, Any]) -> Archive:
+        """WB-GA-RESUME: the same reconstruction ``load()`` does from a
+        parsed archive.json, but from an already-parsed mapping -- used to
+        restore an archive embedded directly in ga_state.json (version>=2),
+        so a resumed run's archive comes from the same atomic checkpoint as
+        everything else, not from a separately (and non-atomically)
+        written archive.json."""
+
         archive = cls()
         thresholds = raw.get("volatility_thresholds")
         if thresholds is not None:
@@ -985,3 +991,7 @@ class Archive:
                 raw["cells"][cell_text]
             )
         return archive
+
+    @classmethod
+    def load(cls, path: str | Path) -> Archive:
+        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))

@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import uuid
 import multiprocessing
 import random
@@ -48,6 +49,7 @@ from gapengine.rationality import (
 
 
 _ENGINE_DIR = Path(__file__).resolve().parents[1] / "engine"
+_GAPENGINE_DIR = Path(__file__).resolve().parent
 
 
 def _json_write(path: Path, value: Any) -> None:
@@ -1060,6 +1062,41 @@ def _clear_stale_generations(out_dir: Path, start_generation: int) -> None:
         shutil.rmtree(resolved_path)
 
 
+def _refuse_stale_archive(
+    archive: Archive,
+    start_generation: int,
+    *,
+    out_dir: Path,
+    state_path: Path,
+    role: str = "protagonist",
+) -> None:
+    """WB-GA-RESUME backward-compat path (a version-1 ga_state.json has no
+    embedded archive, so the archive is loaded from archive.json instead):
+    each generation writes archive.json *before* ga_state.json, so a crash
+    between those two writes can leave archive.json holding elites from a
+    generation the checkpoint never recorded as completed -- exactly the
+    generation whose layers.jsonl _clear_stale_generations() is about to
+    delete. Loading that archive silently would keep cells pointing at
+    files that no longer exist; refuse instead (Opus review)."""
+
+    ahead = sorted(
+        {
+            elite.generation
+            for elite in archive.cells.values()
+            if elite.generation >= start_generation
+        }
+    )
+    if not ahead:
+        return
+    label = "archive_antagonist.json" if role == "antagonist" else "archive.json"
+    raise ValueError(
+        f"resume失敗: {out_dir} の {label} に、チェックポイント"
+        f"（{state_path.name} の completed_generations={start_generation}）"
+        f"より先に進んだ世代{ahead}のエリートが残っています。"
+        "<out> を作り直すか、その世代を巻き戻すこと。"
+    )
+
+
 def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     project_dir = Path(str(cfg["project"])).resolve()
     template_dir = Path(str(cfg["template"])).resolve()
@@ -1085,6 +1122,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     coevolve = bool(cfg.get("coevolve", False))
     meta_evolution = bool(cfg.get("meta_evolution", False))
     resume = bool(cfg.get("resume", False))
+    resume_allow_code_change = bool(cfg.get("resume_allow_code_change", False))
     if generations < 1 or population_size < 1 or seed_count < 1:
         raise ValueError(
             "generations, population, and seeds must be positive"
@@ -1231,6 +1269,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         rationality_cfg=rationality_cfg,
     )
     engine_hash = _engine_source_hash(_ENGINE_DIR)
+    gapengine_hash = _engine_source_hash(_GAPENGINE_DIR)
 
     state_path = out_dir / "ga_state.json"
     start_generation = 0
@@ -1242,34 +1281,92 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     if resume:
         if state_path.is_file():
             state = json.loads(state_path.read_text(encoding="utf-8"))
-            mismatches = [
-                name
-                for name, expected in (
-                    ("cfg_fingerprint", cfg_fingerprint),
-                    ("engine_hash", engine_hash),
-                )
-                if state.get(name) != expected
-            ]
-            if mismatches:
+            state_version = int(state.get("version", 1))
+            if state_version not in (1, 2):
                 raise ValueError(
                     "Cannot resume "
                     + str(out_dir)
+                    + f": unknown {state_path.name} version {state_version}"
+                )
+            if state.get("cfg_fingerprint") != cfg_fingerprint:
+                raise ValueError(
+                    "Cannot resume "
+                    + str(out_dir)
+                    + ": cfg_fingerprint no longer matches the run recorded in "
+                    + str(state_path)
+                )
+            # engine_hash/gapengine_hash: absent from a version-1 state
+            # (WB-GA-RESUME follow-up) means "not checked" rather than
+            # "mismatched" -- a version-1 checkpoint never recorded
+            # gapengine_hash at all. resume_allow_code_change downgrades
+            # both to a warning for an intentional mid-run code change.
+            code_mismatches = [
+                name
+                for name, expected in (
+                    ("engine_hash", engine_hash),
+                    ("gapengine_hash", gapengine_hash),
+                )
+                if name in state and state[name] != expected
+            ]
+            if code_mismatches:
+                message = (
+                    "Cannot resume "
+                    + str(out_dir)
                     + ": "
-                    + ", ".join(mismatches)
+                    + ", ".join(code_mismatches)
                     + " no longer match the run recorded in "
                     + str(state_path)
                 )
+                if resume_allow_code_change:
+                    print(
+                        "WB-GA-RESUME: continuing despite changed "
+                        + ", ".join(code_mismatches)
+                        + " (resume_allow_code_change=True): "
+                        + str(out_dir),
+                        file=sys.stderr,
+                    )
+                else:
+                    raise ValueError(message)
             start_generation = int(state["completed_generations"])
-            archive = Archive.load(out_dir / "archive.json")
-            if coevolve:
-                antagonist_archive = Archive.load(
-                    out_dir / "archive_antagonist.json"
+            if state_version >= 2 and "archive" in state:
+                # The checkpoint's own embedded archive is the ground
+                # truth (written atomically with everything else here) --
+                # archive.json is kept only as a separate, human-facing
+                # display copy and is never read back.
+                archive = Archive.from_dict(state["archive"])
+                if coevolve:
+                    antagonist_archive = Archive.from_dict(
+                        state["antagonist_archive"]
+                    )
+            else:
+                archive = Archive.load(out_dir / "archive.json")
+                _refuse_stale_archive(
+                    archive,
+                    start_generation,
+                    out_dir=out_dir,
+                    state_path=state_path,
                 )
+                if coevolve:
+                    antagonist_archive = Archive.load(
+                        out_dir / "archive_antagonist.json"
+                    )
+                    _refuse_stale_archive(
+                        antagonist_archive,
+                        start_generation,
+                        out_dir=out_dir,
+                        state_path=state_path,
+                        role="antagonist",
+                    )
+            # summary.json is written before ga_state.json each generation
+            # (display-only, like archive.json), so a crash in that window
+            # can leave one extra, uncommitted entry past start_generation
+            # -- drop anything the checkpoint doesn't vouch for, regardless
+            # of state_version, rather than duplicating that generation.
             summaries = list(
                 json.loads(
                     (out_dir / "summary.json").read_text(encoding="utf-8")
                 )["generations"]
-            )
+            )[:start_generation]
             previous_results = list(state["previous_results"])
             if coevolve:
                 previous_antagonist_results = list(
@@ -1277,17 +1374,34 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 )
             ga_rng.setstate(_rng_state_from_json(state["ga_rng_state"]))
             _clear_stale_generations(out_dir, start_generation)
-        elif out_dir.is_dir() and any(
-            path.is_dir() and re.fullmatch(r"g\d+", path.name)
-            for path in out_dir.iterdir()
-        ):
-            raise ValueError(
-                "Cannot resume "
-                + str(out_dir)
-                + ": generation directories exist without "
-                + state_path.name
-                + " (a run from before WB-GA-RESUME cannot be resumed)"
+        else:
+            generation_indices = sorted(
+                int(match.group(1))
+                for match in (
+                    re.fullmatch(r"g(\d+)", path.name)
+                    for path in (out_dir.iterdir() if out_dir.is_dir() else ())
+                    if path.is_dir()
+                )
+                if match is not None
             )
+            if not generation_indices:
+                pass  # brand-new run: <out> is empty (or doesn't exist yet)
+            elif generation_indices == [0]:
+                # Generation 0 crashed before its own first checkpoint ever
+                # existed, so nothing completed is at risk -- clear the
+                # leftover and start over instead of refusing forever (the
+                # caller always launches with --resume, even for a
+                # brand-new experiment).
+                _clear_stale_generations(out_dir, 0)
+            else:
+                raise ValueError(
+                    "resume失敗: "
+                    + str(out_dir)
+                    + " に "
+                    + state_path.name
+                    + " がありません"
+                    + "（WB-GA-RESUME以前の実行か、stateが失われています）"
+                )
 
     if start_generation == 0:
         population = [
@@ -1635,7 +1749,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             len(result["runs"]) for result in raw_results
         )
         average_quality = (
-            sum(elite.quality for elite in archive.cells.values())
+            sum(archive.cells[cell].quality for cell in sorted(archive.cells))
             / len(archive.cells)
             if archive.cells
             else None
@@ -1723,8 +1837,8 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             )
             antagonist_average_quality = (
                 sum(
-                    elite.quality
-                    for elite in antagonist_archive.cells.values()
+                    antagonist_archive.cells[cell].quality
+                    for cell in sorted(antagonist_archive.cells)
                 )
                 / len(antagonist_archive.cells)
                 if antagonist_archive.cells
@@ -1804,16 +1918,23 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
 
         # WB-GA-RESUME: written every generation (resumed or not) so any
         # run can later be resumed -- a non-resuming run's other output is
-        # unaffected (plan §2.1).
+        # unaffected (plan §2.1). version 2 (Opus review): the archive is
+        # embedded here too, so resuming never depends on archive.json
+        # (written separately, earlier, non-atomically with this file) --
+        # archive.json/archive_antagonist.json remain as display-only
+        # copies of exactly the same data, never read back on resume.
         state_payload: dict[str, Any] = {
+            "archive": archive.to_dict(),
             "cfg_fingerprint": cfg_fingerprint,
             "completed_generations": generation + 1,
             "engine_hash": engine_hash,
             "ga_rng_state": _rng_state_to_json(ga_rng),
+            "gapengine_hash": gapengine_hash,
             "previous_results": previous_results,
-            "version": 1,
+            "version": 2,
         }
         if coevolve:
+            state_payload["antagonist_archive"] = antagonist_archive.to_dict()
             state_payload["previous_antagonist_results"] = previous_antagonist_results
         _json_write(out_dir / "ga_state.json", state_payload)
 
