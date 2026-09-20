@@ -63,14 +63,23 @@ def load_key_items(template_dir: Path) -> list[str]:
     return _load_rationality_yaml(template_dir).get("key_items", [])
 
 
-def _load_rationality_yaml(template_dir: Path) -> dict[str, list[str]]:
+def load_describe_trial_grants(template_dir: Path) -> bool:
+    """``templates/<genre>/rationality.yaml``'s ``describe_trial_grants`` flag
+    (WB-JEV-004) -- default False, so a template that doesn't set it (every
+    template before momotaro_plus) renders exactly as before."""
+
+    return bool(_load_rationality_yaml(template_dir).get("describe_trial_grants", False))
+
+
+def _load_rationality_yaml(template_dir: Path) -> dict[str, Any]:
     path = Path(template_dir) / "rationality.yaml"
     if not path.is_file():
-        return {"common_knowledge": [], "key_items": []}
+        return {"common_knowledge": [], "key_items": [], "describe_trial_grants": False}
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return {
         "common_knowledge": [str(v) for v in raw.get("common_knowledge", []) or []],
         "key_items": [str(v) for v in raw.get("key_items", []) or []],
+        "describe_trial_grants": bool(raw.get("describe_trial_grants", False)),
     }
 
 
@@ -353,12 +362,19 @@ def describe_candidate_coarse(
     subject: Subject,
     world: World,
     present: Sequence[Any],
+    *,
+    describe_trial_grants: bool = False,
 ) -> str:
     """Like describe_candidate, but every companion name becomes a role
     (味方/中立/敵対) and every decimal is dropped (e.g. mislead's fabricated
     strength value) -- so genuinely-equivalent candidates ("give kibidango
     to whichever ally") collapse to one description instead of minting a
-    new one per name."""
+    new one per name.
+
+    ``describe_trial_grants`` (WB-JEV-004, default False so every template
+    predating momotaro_plus renders byte-identically) appends what a
+    ``trial`` candidate grants -- e.g. "試練に挑んだ（中立、弟の手紙を得る）"
+    -- so the judge/policy can tell two trials with the same giver apart."""
 
     label = VERB_LABELS.get(action.verb, action.verb)
     if action.verb == "mislead":
@@ -379,4 +395,20 @@ def describe_candidate_coarse(
             for value in action.args
             if not isinstance(value, float)
         ]
+
+    if describe_trial_grants and action.verb == "trial":
+        trial_id = action.meta.get("trial_id")
+        trial = next(
+            (t for t in world.trials if str(t["id"]) == str(trial_id)),
+            None,
+        )
+        if trial is not None:
+            grants = trial.get("grants") or {}
+            granted_fact = grants.get("fact")
+            if granted_fact is not None:
+                pieces.append(f"{_fact_topic_text(subject, world, str(granted_fact))}を得る")
+            granted_item = grants.get("item")
+            if granted_item is not None:
+                pieces.append(f"{granted_item}を得る")
+
     return f"{label}{('（' + '、'.join(pieces) + '）') if pieces else ''}"

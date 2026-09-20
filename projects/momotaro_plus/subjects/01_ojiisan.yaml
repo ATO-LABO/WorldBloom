@@ -1,0 +1,48 @@
+id: おじいさん
+
+traits:
+  social: 0.55
+  stubbornness: 0.45
+  curiosity: 0.35
+  diligence: 0.75
+  temper: 0.30
+
+base: 10
+modifiers: []
+beliefs_about: {}
+knowledge: []
+inventory: {}
+reputation: 0.0
+phase: []
+
+verbs:
+  - share_knowledge
+  - give_item
+  - rest
+
+identity:
+  "true": 山へ芝刈りに行くおじいさん
+  displayed: おじいさん
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: null
+
+relations:
+  桃太郎: {affinity: 0.85, awareness: 1.0}
+  おばあさん: {affinity: 0.80, awareness: 1.0}
+  鬼の弟: {affinity: 0.0, awareness: 0.1}
+
+stamina:
+  max: 6
+  recover_per_slot: 0.5
+
+range:
+  zones: [村]
+  entry: 村
+
+companions: []
+ally_value: 0
+objective_claimant: false

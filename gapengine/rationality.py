@@ -614,6 +614,7 @@ class Rationality:
         method: str = "noul",
         key_items: Sequence[str] = (),
         max_judge_calls: int | None = None,
+        describe_trial_grants: bool = False,
     ) -> None:
         self.kappa = float(kappa)
         self.table = table
@@ -622,6 +623,7 @@ class Rationality:
         self.method = method
         self.key_items = list(key_items)
         self.max_judge_calls = max_judge_calls
+        self.describe_trial_grants = bool(describe_trial_grants)
         self._judge_calls = 0
         self._budget_exhausted = False
         self._judge_disabled = False
@@ -696,7 +698,13 @@ class Rationality:
             self._map_line = knowledge_map_line(world)
 
         descs = [
-            describe_candidate_coarse(action, subject, world, present)
+            describe_candidate_coarse(
+                action,
+                subject,
+                world,
+                present,
+                describe_trial_grants=self.describe_trial_grants,
+            )
             for action in actions
         ]
         sit = situation(subject, world, present, key_items=self.key_items)
