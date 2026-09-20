@@ -2676,6 +2676,31 @@ details {
   margin: 0;
 }
 
+.world-detail .card {
+  box-shadow: none;
+}
+
+.world-cta {
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+}
+
+.world-cta .button.primary {
+  font-size: 1rem;
+  padding: 0.6rem 1.2rem;
+}
+
+.world-intro {
+  font-size: 1.05rem;
+  margin: 0 0 0.8rem;
+}
+
+.edit-hint {
+  margin-top: 1rem;
+}
+
 .editor-group > summary {
   cursor: pointer;
   font-weight: 700;
@@ -2701,14 +2726,19 @@ details {
 }
 
 .tab-label {
-  border-bottom: 3px solid transparent;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
   color: var(--muted);
   cursor: pointer;
+  margin-bottom: -1px;
   padding: 0.5rem 0.9rem;
 }
 
 .tab-label:hover {
   background: var(--accent-soft);
+  color: var(--text);
 }
 
 .tab-panels .tab-panel {
@@ -2730,8 +2760,9 @@ details {
 .tabs-world .tab-input:nth-of-type(4):checked ~ .tab-list .tab-label:nth-of-type(4),
 .tabs-world .tab-input:nth-of-type(5):checked ~ .tab-list .tab-label:nth-of-type(5),
 .tabs-world .tab-input:nth-of-type(6):checked ~ .tab-list .tab-label:nth-of-type(6) {
-  border-bottom-color: var(--accent);
-  color: var(--text);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-dark);
   font-weight: 700;
 }
 
@@ -2745,6 +2776,35 @@ details {
   outline-offset: 2px;
 }
 
+/* 行動図鑑タブ (WB-UI-025) */
+details.catalog-verb {
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+details.catalog-verb.is-off {
+  opacity: 0.6;
+}
+details.catalog-verb summary {
+  cursor: pointer;
+}
+table.catalog-kinds {
+  margin-top: 0.5rem;
+}
+table.catalog-kinds code {
+  white-space: nowrap;
+}
+.badge-unimplemented {
+  display: inline-block;
+  font-size: 0.85em;
+  font-style: italic;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  padding: 0 0.4rem;
+}
+
 /* Home hub tabs (世界/ジャンル, WB-UI-023): same zero-JS pattern, 2 panels. */
 .tabs-home .tab-input:nth-of-type(1):checked ~ .tab-panels .tab-panel:nth-of-type(1),
 .tabs-home .tab-input:nth-of-type(2):checked ~ .tab-panels .tab-panel:nth-of-type(2) {
@@ -2753,8 +2813,9 @@ details {
 
 .tabs-home .tab-input:nth-of-type(1):checked ~ .tab-list .tab-label:nth-of-type(1),
 .tabs-home .tab-input:nth-of-type(2):checked ~ .tab-list .tab-label:nth-of-type(2) {
-  border-bottom-color: var(--accent);
-  color: var(--text);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-dark);
   font-weight: 700;
 }
 
