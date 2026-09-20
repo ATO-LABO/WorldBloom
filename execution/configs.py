@@ -103,6 +103,8 @@ def normalize(spec):
             raise ConfigError("evolution." + name, "真偽値を指定してください")
     if values["keep"] not in ("all", "reached", "exemplar"):
         raise ConfigError("evolution.keep", "保存方針が不正です")
+    if values["world_expansion"] not in ("off", "detect"):
+        raise ConfigError("evolution.world_expansion", "世界の拡張の指定が不正です")
     endings = values["target_ending"]
     if endings is not None and (not isinstance(endings, list) or not endings
             or any(not isinstance(x, str) or not x for x in endings)

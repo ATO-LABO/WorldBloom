@@ -345,6 +345,7 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
     for key in ("generations", "population", "seeds", "seed_base", "ga_seed", "processes"):
         values[f"evolution.{key}"] = evolution[key]
     values["evolution.keep"] = evolution["keep"]
+    values["evolution.world_expansion"] = evolution.get("world_expansion", "off")
     for key in ("coevolve", "meta_evolution", "record_explanations"):
         values[f"evolution.{key}"] = evolution[key]
     values["evolution.target_ending"] = (
@@ -444,7 +445,16 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
             "説明記録", "evolution.record_explanations", values["evolution.record_explanations"],
             desc="各手番の「選択・根拠・代償・転機」を記録する。上映で使う。",
         )
-        + "</div>",
+        + "</div>"
+        + _radio_field(
+            "世界の拡張", "evolution.world_expansion",
+            (
+                ("off", "しない（既定）。世界は設定したまま固定。"),
+                ("detect", "検知のみ。進化の後に、世界の解像度が足りない場所"
+                           "（よく滞在するのに行動が空振りする場所）を集計して実験画面に出す。世界は変えない。"),
+            ),
+            values["evolution.world_expansion"],
+        ),
     )
 
     section5a = _section(
@@ -550,6 +560,7 @@ def render_config_detail(config):
         ("ga_seed", _escape(ev["ga_seed"])),
         ("processes", _escape(ev["processes"])),
         ("保存方針", _escape(ev["keep"])),
+        ("世界の拡張", _escape(ev.get("world_expansion", "off"))),
         ("共進化", _escape(ev["coevolve"])),
         ("メタ進化", _escape(ev["meta_evolution"])),
         ("説明記録", _escape(ev["record_explanations"])),
@@ -781,6 +792,7 @@ def _run_plan(config, estimate, *, open_detail=False):
         ("評価する個体 / seed",
          f'{_escape(preview["planned_individual_evaluations"])} / {_escape(preview["planned_seed_evaluations"])}'),
         ("保存方針", _escape(ev["keep"])),
+        ("世界の拡張", _escape(ev.get("world_expansion", "off"))),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
     ])
     # A running job's page reloads on every publication_revision change

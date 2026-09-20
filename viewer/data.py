@@ -293,6 +293,26 @@ class RunRepository:
         return destination
 
 
+def world_demand(repository: "RunRepository", experiment: Path) -> dict[str, Any] | None:
+    """Load <experiment>/world_demand.json (WB-WORLDGROW-001 stage 2).
+
+    Returns None when the experiment never ran with world_expansion=detect,
+    or the file is missing/malformed -- callers render a plain "not
+    collected" message in that case rather than failing.
+    """
+
+    path = repository.safe_path(experiment, "world_demand.json")
+    if not path.is_file():
+        return None
+    try:
+        raw = _read_json(path)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, Mapping) or raw.get("schema_version") != 1:
+        return None
+    return dict(raw)
+
+
 RUNNING_JOB_STATES = frozenset({"queued", "running", "stopping"})
 
 

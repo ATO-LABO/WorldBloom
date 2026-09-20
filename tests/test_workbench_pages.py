@@ -257,7 +257,8 @@ class WorkbenchTests(unittest.TestCase):
             "label", "project_id", "template_id",
             "evolution.generations", "evolution.population", "evolution.seeds",
             "evolution.seed_base", "evolution.ga_seed", "evolution.processes",
-            "evolution.keep", "evolution.coevolve", "evolution.meta_evolution",
+            "evolution.keep", "evolution.world_expansion",
+            "evolution.coevolve", "evolution.meta_evolution",
             "evolution.record_explanations", "evolution.target_ending",
             "execution_limits.wall_seconds",
         ):
@@ -272,6 +273,11 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn(
             'type="radio" id="f-evolution.keep-reached" name="evolution.keep" value="reached" '
             'data-field="evolution.keep" checked',
+            body,
+        )
+        self.assertIn(
+            'type="radio" id="f-evolution.world_expansion-off" name="evolution.world_expansion" '
+            'value="off" data-field="evolution.world_expansion" checked',
             body,
         )
         # The fixture's "romance" world resolves to the "romance" genre
