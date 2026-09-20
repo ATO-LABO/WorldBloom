@@ -16,14 +16,15 @@ from engine.actions import Action, candidates
 from engine.subject import Subject
 from engine.verbs import VerbEngine
 from engine.world import World
-from execution.world_patch_approval import repair, reopen
+from execution.world_patch_approval import approve as approve_patch, repair, reopen
 from execution.world_patches import applicable_snapshot, expanded_snapshot, patch_lock
 from gapengine.world_patch import (EMPTY_STACK_DIGEST, PatchError, materialize, patch_id_for,
                                   read_stack, validate_patch, verify_stack)
 from gapengine.world_patch_contract import contract_check, new_usage
 from gapengine.world_patch_inputs import inputs_digest, read_subjects, resolve_references, runtime_digest
 from gapengine.world_patch_trial import gate_status, seed_sets, run_trial
-from world_patch_fixtures import ROOT, branch_entry_experiment, frozen_experiment, write_approved
+from world_patch_fixtures import (ROOT, branch_entry_experiment, external_repo_experiment, frozen_experiment,
+                                  frozen_experiment_with_external_reference, write_approved)
 
 
 def proposal(parent="海"):
@@ -94,6 +95,33 @@ class Boundaries(unittest.TestCase):
         path, folder = self.write_materialized(proposal("村"))
         self.assertEqual(contract_check(path, folder, proposal("村"), action_graph_path=self.template / "action_graph.yaml")["violations"], [])
 
+    def test_negative_check_is_not_poisoned_by_an_already_satisfied_unrelated_exclude(self):
+        # N3 (WB-WORLDGROW-001, Astra review), real momotaro data: 桃太郎
+        # already excludes 村 until he holds 鬼ヶ島の宝物 (active: he starts
+        # without it). Adding an unrelated, already-satisfied exclude rule
+        # (until_item: きびだんご, which he starts holding x3) targeting 道中
+        # -- the *only* route neighbor of 村 -- must not exclude 道中 from
+        # the negative check's start-location search for the unrelated 村
+        # rule; he can freely enter 道中.
+        people = deepcopy(self.people)
+        momotaro_key = next(k for k, v in people.items() if v.get("id") == "桃太郎")
+        people[momotaro_key]["range"]["exclude"].append({"zones": ["道中"], "until_item": "きびだんご"})
+        p = proposal("村")
+        world, materialized_people = materialize(self.world, people, [p])
+        path = self.root / "patched_n3.yaml"
+        path.write_text(yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+        folder = self.root / "subjects_n3"
+        folder.mkdir()
+        for name, person in materialized_people.items():
+            (folder / name).write_text(yaml.safe_dump(person, allow_unicode=True), encoding="utf-8")
+        result = contract_check(path, folder, p, action_graph_path=self.template / "action_graph.yaml")
+        self.assertEqual(result["violations"], [])
+        momotaro_entries = [n for n in result["negative"] if n["subject"] == "桃太郎"]
+        checked = [n for n in momotaro_entries if n["status"] == "checked"]
+        self.assertTrue(checked, momotaro_entries)
+        self.assertEqual(checked[0]["start"], "道中")
+        self.assertFalse([n for n in momotaro_entries if n["status"] == "skipped"], momotaro_entries)
+
     def test_budgets_effective_defaults_and_bypass_keeps_safety(self):
         p = proposal()
         p["add"]["items"] *= 3
@@ -149,7 +177,7 @@ class Boundaries(unittest.TestCase):
         self.assertIsNone(gate["trial"])
         self.assertTrue(list((self.project / "patches/_history").glob("*/stack.json")))
 
-    def test_approve_resolves_gapengine_references_via_repo_root(self):
+    def test_applicable_snapshot_resolves_gapengine_references_via_repo_root(self):
         # R4: applicable_snapshot (and approve(), which now forwards its own
         # repo_root the same way execution/configs.py's expanded_snapshot()
         # call already did) must resolve a project's gapengine action_graph/
@@ -174,6 +202,63 @@ class Boundaries(unittest.TestCase):
         self.assertEqual(verified, [])
         self.assertEqual(refs["action_graph"], (other_template / "action_graph.yaml").resolve())
 
+    def test_check_reaches_external_repo_action_graph_and_effects_via_repo_root(self):
+        # N2 (WB-WORLDGROW-001, Astra review): --repo/repo_root is resolved
+        # fine by the CLI's own initial ctx (_resolve_ctx), but check/
+        # propose used to re-resolve everything themselves without
+        # forwarding it, silently falling back to this checkout's own repo.
+        # Reproduces both failure modes named in Astra's review: a
+        # world.gapengine.action_graph reference resolve_references can't
+        # find without repo_root (raises "参照先がありません: action_graph"
+        # straight out of check), and a world.gapengine.effects reference
+        # the *engine* can only load once the world file actually written
+        # for it carries the absolute path (raises "Effect library does not
+        # exist" from inside run_individual, even once resolve_references
+        # itself succeeds) -- both action_graph.yaml and effects.yaml here
+        # exist only under `control`, not under this checkout's own ROOT.
+        #
+        # This fixture is necessarily an "expanded_project"-sourced
+        # experiment (not frozen), the only source repo_root ever affects --
+        # trial_state() requires base_source == "frozen_inputs" to ever
+        # reach "reviewable", and a frozen experiment's own repo is always
+        # experiment/inputs regardless of repo_root. So the reachable,
+        # meaningful assertion here is that the trial actually *runs* to a
+        # clean reference_only (engine constructed successfully against the
+        # external effects.yaml, reproduction matched) instead of failing
+        # on a reference lookup -- not "reviewable" itself.
+        import scripts.world_patch as wpc
+        with tempfile.TemporaryDirectory() as root:
+            experiment, project, template, control = external_repo_experiment(Path(root), individuals=3)
+            self.assertFalse((ROOT / "lib" / "action_graph.yaml").exists())
+            add = {"zones": [{"name": "祠", "parent": "村"}],
+                   "items": [{"name": "石版", "sources": [{"type": "investigate", "zone": "祠", "count": 1, "max": 1}]}]}
+            patch = {"id": patch_id_for(add), "title": "外部repo参照試験", "add": add,
+                     "trigger": {"zone": "村", "verb": "investigate"}, "parent_digest": EMPTY_STACK_DIGEST}
+            subject_ids = wpc._subject_ids(project / "subjects")
+            _, ctx = wpc._resolve_ctx(experiment, template, repo_root=control)
+
+            # Today's actual bug, reproduced directly: _gate (exactly as
+            # cmd_check/cmd_propose call it) drops repo_root even though the
+            # ctx above already resolved it correctly.
+            with self.assertRaisesRegex(PatchError, "action_graph"):
+                wpc._gate(experiment, project, patch, ctx, subject_ids, skip_trial=False,
+                          max_runs=3, seeds_per_run=4, seed_set="holdout", template_dir=template)
+
+            # Fixed: forwarding repo_root all the way through reaches a
+            # real, error-free trial -- which requires the engine to have
+            # actually constructed and run against the external
+            # effects.yaml too, not just resolved the reference for the
+            # inputs digest.
+            gate = wpc._gate(experiment, project, patch, ctx, subject_ids, skip_trial=False,
+                              max_runs=3, seeds_per_run=4, seed_set="holdout", template_dir=template,
+                              repo_root=control)
+            self.assertEqual(gate["status"], "reference_only", gate)
+            trial = gate["trial"]
+            self.assertEqual(trial["errors"], [])
+            self.assertGreater(trial["reproduction"]["checked"], 0)
+            self.assertEqual(trial["reproduction"]["checked"], trial["reproduction"]["identical"])
+            self.assertEqual(trial["contract"]["violations"], [])
+
     def test_repair_does_not_move_committed_files_or_overwrite_proposals(self):
         p = write_approved(self.project, proposal(), self.template)
         folder = self.project / "patches"
@@ -192,7 +277,7 @@ class Boundaries(unittest.TestCase):
 
     def test_status_and_disjoint_seeds(self):
         self.assertEqual(gate_status({"static": {"passed": True}, "trial": None}), "trial_pending")
-        individuals = [{"cell": f"c{n}"} for n in range(3)]
+        individuals = [{"cell": f"c{n}", "generation": 0, "index": n} for n in range(3)]
         trial = {"runs": 999, "errors": [], "contract": {"violations": []},
                  "reproduction": {"checked": 1, "identical": 1}, "evidence": {
                     "base_source": "frozen_inputs", "engine_hash_experiment": "x", "engine_hash_trial": "x",
@@ -202,6 +287,9 @@ class Boundaries(unittest.TestCase):
         # R1: a self-reported runs=999 must not paper over too few individuals
         # actually recorded as evidence.
         trial["evidence"]["individuals"] = individuals[:2]
+        self.assertEqual(gate_status(gate), "insufficient")
+        # N1: nor does padding with copies of the same (generation, index).
+        trial["evidence"]["individuals"] = [individuals[0]] * 3
         self.assertEqual(gate_status(gate), "insufficient")
         trial["evidence"]["individuals"] = individuals
         trial["reproduction"]["checked"] = 0
@@ -443,3 +531,111 @@ class FrozenReplay(unittest.TestCase):
             self.assertTrue(any(i["antagonist_genome_sha256"] is None for i in result["evidence"]["individuals"]))
             for individual in result["evidence"]["individuals"]:
                 self.assertTrue(individual["antagonist_precedent_sha256"])
+
+
+class ExternalRepoApproval(unittest.TestCase):
+    """N2 (WB-WORLDGROW-001, Astra re-review): approve()'s *own* repo_root
+    use is a second, separate resolution from run_trial's -- it recomputes
+    base/patched inputs digests from the *live* --project's own world.yaml
+    via applicable_snapshot(project, template, repo_root=...), not from the
+    frozen experiment's self-contained inputs/ (which never needs repo_root
+    at all). Builds both frozen fixtures once per class (each is a real,
+    if small, evolve() run) and drives propose/check/approve through the
+    same argparse entry points scripts/world_patch.py's CLI uses."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        root = Path(cls.temp.name)
+        (cls.ext_experiment, cls.ext_project, cls.ext_template,
+         cls.ext_repo) = frozen_experiment_with_external_reference(root / "external", mode="external_only")
+        (cls.col_experiment, cls.col_project, cls.col_template,
+         cls.col_repo) = frozen_experiment_with_external_reference(root / "collision", mode="collision")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def _run(self, argv):
+        import scripts.world_patch as wpc
+        args = wpc.build_parser().parse_args(argv)
+        return args.func(args)
+
+    def _propose_check(self, experiment, project, template, repo):
+        proposal_path = Path(project).parent / "proposal.json"
+        add = {"zones": [{"name": "祠", "parent": "海"}],
+               "items": [{"name": "石版", "sources": [{"type": "investigate", "zone": "祠", "count": 1, "max": 1}]}]}
+        proposal_path.write_text(json.dumps({"title": "外部repo受入試験", "rationale": "試験", "add": add},
+                                             ensure_ascii=False), encoding="utf-8")
+        code = self._run(["propose", "--experiment", str(experiment), "--project", str(project),
+                           "--from-file", str(proposal_path), "--template", str(template), "--repo", str(repo),
+                           "--max-runs", "5", "--seeds-per-run", "4"])
+        self.assertEqual(code, 0)
+        patch_id = next((project / "patches" / "_proposed").glob("*.yaml")).stem
+        code = self._run(["check", "--experiment", str(experiment), "--project", str(project), "--patch", patch_id,
+                           "--template", str(template), "--repo", str(repo), "--max-runs", "5", "--seeds-per-run", "4"])
+        self.assertEqual(code, 0)
+        gate = json.loads((project / "patches" / "_proposed" / f"{patch_id}.gate.json").read_text(encoding="utf-8"))
+        self.assertEqual(gate["status"], "reviewable", gate)
+        return patch_id, gate
+
+    def test_action_graph_and_effects_only_in_external_repo_round_trip_via_repo_root(self):
+        # Point 1 (Astra re-review): action_graph/effects exist only under
+        # `ext_repo`'s templates/_only_in_external/ -- not under this
+        # checkout's own ROOT.
+        self.assertFalse((ROOT / "templates" / "_only_in_external").exists())
+        experiment, project, template, repo = (self.ext_experiment, self.ext_project,
+                                                self.ext_template, self.ext_repo)
+        patch_id, gate = self._propose_check(experiment, project, template, repo)
+
+        # Without --repo, approve() re-resolves the *live* project's own
+        # gapengine reference against this checkout's own default repo and
+        # must not succeed -- either it can't resolve the reference at all,
+        # or (covered by the collision test below) it resolves the wrong
+        # file's content.
+        with self.assertRaises(PatchError):
+            approve_patch(project, template, patch_id, "外部repo参照の受入試験として確認する")
+        self.assertTrue((project / "patches" / "_proposed" / f"{patch_id}.yaml").is_file())
+        self.assertFalse((project / "patches" / "stack.json").is_file())
+
+        # With --repo, it must actually publish.
+        revision = approve_patch(project, template, patch_id,
+                                  "外部repo参照の受入試験として確認する", repo_root=repo)
+        self.assertEqual(revision["rev"], 1)
+        self.assertEqual(len(verify_stack(project)), 1)
+
+        # Point 3: the sealed base_inputs_digest matches an independent
+        # applicable_snapshot(..., repo_root=repo) computation against the
+        # same live project/template -- project_inputs()'s own base_digest
+        # is computed from the project's raw world.yaml/subjects regardless
+        # of what's since been approved, so this still recomputes the same
+        # base the trial measured (approve() never touches world.yaml).
+        with patch_lock(project):
+            _, _, _, _, _, base_digest = applicable_snapshot(project, template, repo_root=repo)
+        self.assertEqual(gate["trial"]["evidence"]["base_inputs_digest"], base_digest)
+
+    def test_same_relative_path_colliding_with_this_checkouts_own_repo_is_not_mixed_up(self):
+        # Point 2 (Astra re-review): gapengine.effects keeps the normal
+        # templates/momotaro/effects.yaml path, which also exists verbatim
+        # under this checkout's own ROOT -- only the *content* differs
+        # (col_repo's own copy has one effect's modifier value changed).
+        self.assertNotEqual(
+            (self.col_repo / "templates/momotaro/effects.yaml").read_bytes(),
+            (ROOT / "templates/momotaro/effects.yaml").read_bytes())
+        experiment, project, template, repo = (self.col_experiment, self.col_project,
+                                                self.col_template, self.col_repo)
+        patch_id, gate = self._propose_check(experiment, project, template, repo)
+
+        # Without --repo, resolve_references *can* find a same-named file
+        # under this checkout's own ROOT -- it must not silently accept
+        # that wrong-content file; the input digest comparison must catch
+        # the mismatch and reject with the "inputs changed" reason, not a
+        # bare reference-not-found error.
+        with self.assertRaisesRegex(PatchError, "入力"):
+            approve_patch(project, template, patch_id, "取り違え検知の受入試験として確認する")
+        self.assertTrue((project / "patches" / "_proposed" / f"{patch_id}.yaml").is_file())
+
+        revision = approve_patch(project, template, patch_id,
+                                  "取り違え検知の受入試験として確認する", repo_root=repo)
+        self.assertEqual(revision["rev"], 1)
+        self.assertEqual(len(verify_stack(project)), 1)

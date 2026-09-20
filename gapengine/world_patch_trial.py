@@ -10,7 +10,8 @@ from gapengine import lineage
 from gapengine.evolve import run_individual
 from gapengine.qd import read_rows
 from gapengine.world_demand import collect
-from gapengine.world_patch import PATCH_RULES_VERSION, PatchError, materialize, template_identifiers
+from gapengine.world_patch import (PATCH_RULES_VERSION, PatchError, absolutize_references, materialize,
+                                   template_identifiers)
 from gapengine.world_patch_inputs import digest, inputs_digest, read_subjects, runtime_digest, verify_frozen
 from gapengine.world_patch_contract import contract_check, new_usage, milestones
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,14 @@ def seed_sets(original, count):
         occupied.update(result[name])
     return result
 
+def individual_count(individuals):
+    """De-duplicated by (generation, index) -- the same real individual
+    repeated under padded/relabeled entries (WB-WORLDGROW-001 N1: e.g. the
+    same row copied 3x, or the same cell re-listed at fabricated indices)
+    must not inflate the count trial_state/approve() gate reviewability on."""
+    return len({(i.get("generation"), i.get("index")) for i in individuals})
+
+
 def trial_state(trial):
     if trial.get("errors") or trial.get("contract", {}).get("violations"):
         return "contract_failed"
@@ -42,8 +51,10 @@ def trial_state(trial):
         return "reference_only"
     # R1: counted from the sealed evidence lists, not trial["runs"] -- a
     # self-reported counter a rewritten gate.json could inflate independently
-    # of the individuals/seeds actually recorded as evidence.
-    if len(evidence.get("individuals", [])) < 3 or len(evidence.get("seeds", [])) < 4:
+    # of the individuals/seeds actually recorded as evidence. N1: de-duplicated
+    # by (generation, index), not raw list length -- padding with copies of the
+    # same real individual must not read as more individuals than it is.
+    if individual_count(evidence.get("individuals", [])) < 3 or len(evidence.get("seeds", [])) < 4:
         return "insufficient"
     return "measured"
 
@@ -108,7 +119,7 @@ def _trigger_counts(report: dict, zones: set[str], verb: str) -> dict[str, int]:
     return {"count": count, "whiffs": whiffs}
 
 
-def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, max_runs=5,
+def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=None, max_runs=5,
               seeds_per_run=8, seed_set="exploration"):
     # R7: intentional layer inversion, function-local -- a legacy/non-frozen
     # experiment's project+template are resolved through viewer.data's
@@ -121,9 +132,16 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, max_runs=5,
     if type(max_runs) is not int or max_runs < 1 or seed_set not in ("exploration", "holdout"):
         raise PatchError("試走の個体数またはseed集合が不正です")
     repository = RunRepository(experiment.parent)
-    ctx = lineage._resolve_world_context(repository, experiment, template_dir=template_dir)
+    # N2 (WB-WORLDGROW-001, Astra review): forward the caller's repo_root
+    # (e.g. scripts/world_patch.py's --repo) into this re-resolution -- it
+    # used to always fall back to this module's own repo, so a
+    # gapengine.action_graph/effects reference that exists only under an
+    # external repo_root resolved fine in the CLI's own initial ctx but
+    # failed here with "参照先がありません".
+    ctx = lineage._resolve_world_context(repository, experiment, template_dir=template_dir, repo_root=repo_root)
     summary = json.loads((experiment / "summary.json").read_text(encoding="utf-8"))
-    archive = json.loads((experiment / "archive.json").read_text(encoding="utf-8"))
+    archive_bytes = (experiment / "archive.json").read_bytes()
+    archive = json.loads(archive_bytes)
     base = yaml.safe_load(ctx["world_path"].read_text(encoding="utf-8"))
     people = read_subjects(ctx["subjects_dir"])
     patched, patched_people = materialize(base, people, [patch], reserved=template_identifiers(ctx["template_dir"]))
@@ -135,14 +153,21 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, max_runs=5,
                 "seeds": seeds, "seed_set": seed_set, "trial_rules_version": TRIAL_RULES_VERSION,
                 "patch_rules_version": PATCH_RULES_VERSION, "base_source": ctx["source"],
                 "engine_hash_experiment": None, "engine_hash_trial": _engine_source_hash(REPO_ROOT / "engine"),
-                "experiment": str(experiment)}
+                "experiment": str(experiment),
+                # N1: sealed alongside the individuals so approve() can
+                # detect a rewritten archive.json out from under a gate.
+                "archive_sha256": hashlib.sha256(archive_bytes).hexdigest()}
     paths = {}
     for label, definition, subjects in (("base", base, people), ("patched", patched, patched_people)):
         folder = work / label
         (folder / "subjects").mkdir(parents=True, exist_ok=True)
         definition = copy.deepcopy(definition)
-        for role, ref in ctx["references"].items():
-            definition.setdefault("gapengine", {})[role] = str(ref)
+        # N2: write the already-resolved absolute reference paths into the
+        # copy on disk -- engine/phase2.py's effects loader has no override
+        # parameter (unlike action_graph_path), so it only ever finds an
+        # external-repo effects file if the world file itself already
+        # carries the absolute path.
+        absolutize_references(definition, folder, references=ctx["references"])
         path = folder / "world.yaml"
         path.write_text(yaml.safe_dump(definition, allow_unicode=True, sort_keys=False), encoding="utf-8")
         for name, person in subjects.items():
@@ -258,7 +283,14 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, max_runs=5,
     if runtime_digest() != runtime_before:
         raise PatchError("試走中に実行コードが変わりました。再検査してください")
     trial["state"] = trial_state(trial)
+    negative = trial["contract"].get("negative", [])
+    checked = sum(1 for n in negative if n["status"] == "checked")
+    skipped = [n for n in negative if n["status"] == "skipped"]
     trial["reasons"] = [f"到達 {trial['reached_base']}→{trial['reached_patched']}（{len(pairs)}本）",
                          "shaped は枝の追加で尺度が変わるため参考値", trial["statistics"]["note"],
-                         f"再現確認 {trial['reproduction']['identical']}/{trial['reproduction']['checked']}"]
+                         f"再現確認 {trial['reproduction']['identical']}/{trial['reproduction']['checked']}",
+                         f"陰性検査: 実行 {checked} 件／省略 {len(skipped)} 件"]
+    if skipped:
+        trial["reasons"].append("陰性検査省略: " + "、".join(
+            f"{n['subject']}(規則{n['rule_index']})" for n in skipped))
     return trial

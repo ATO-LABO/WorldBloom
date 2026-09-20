@@ -111,7 +111,7 @@ def _check_parent_rev(base_world: dict, project: Path) -> str | None:
 
 
 def _gate(experiment, project, patch, ctx, subject_ids, *, skip_trial, max_runs,
-          seeds_per_run, reserved=(), seed_set="exploration", template_dir=None):
+          seeds_per_run, reserved=(), seed_set="exploration", template_dir=None, repo_root=None):
     base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
     violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved)
     violations += check_trigger_coverage(patch.get("add", {}), patch.get("trigger", {}))
@@ -120,8 +120,13 @@ def _gate(experiment, project, patch, ctx, subject_ids, *, skip_trial, max_runs,
             "passed": False, "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
     if not violations and not skip_trial:
         with tempfile.TemporaryDirectory() as tmp:
+            # N2 (WB-WORLDGROW-001, Astra review): forward --repo here too --
+            # `ctx` above was already resolved with it, but run_trial used to
+            # re-resolve everything itself and silently drop back to this
+            # repo's own default when repo_root wasn't threaded this far.
             gate["trial"] = run_trial(experiment, patch, work_dir=Path(tmp), template_dir=template_dir,
-                                     max_runs=max_runs, seeds_per_run=seeds_per_run, seed_set=seed_set)
+                                     repo_root=repo_root, max_runs=max_runs, seeds_per_run=seeds_per_run,
+                                     seed_set=seed_set)
     gate["status"] = gate_status(gate)
     return gate
 
@@ -162,6 +167,21 @@ def _print_gate_summary(patch, gate):
     for key in ("reproduction", "contract", "new_usage", "errors"):
         if key in trial:
             print(f"{key}: {json.dumps(trial[key], ensure_ascii=False)}")
+    # Optional (WB-WORLDGROW-001 review): a 2x2 到達 transition table from
+    # the actual paired runs -- the aggregate reached_base/reached_patched
+    # totals can be unchanged while individuals still flipped both ways.
+    pairs = trial.get("pairs") or []
+    if pairs:
+        table = {"成功維持": 0, "悪化": 0, "改善": 0, "失敗維持": 0}
+        for pair in pairs:
+            before, after = bool(pair["base"]["reached"]), bool(pair["patched"]["reached"])
+            table["成功維持" if before and after else "悪化" if before else
+                  "改善" if after else "失敗維持"] += 1
+        print("到達の変化: " + "、".join(f"{label}={count}" for label, count in table.items()))
+    for entry in trial.get("by_individual", []):
+        print(f"  個体差 {entry['cell']}: {entry['mean_diff']:+.2f}")
+    for entry in trial.get("by_seed", []):
+        print(f"  seed差 {entry['seed']}: {entry['mean_diff']:+.2f}")
     print(f"holdout_checks: {gate.get('holdout_checks', 0)}")
     status = gate.get("status")
     if status == "reviewable":
@@ -273,7 +293,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
         patch_path.write_bytes(raw)
     gate = _gate(experiment, project, patch, ctx, subject_ids, skip_trial=args.skip_trial,
                  max_runs=args.max_runs, seeds_per_run=args.seeds_per_run, reserved=reserved,
-                 seed_set="exploration", template_dir=args.template)
+                 seed_set="exploration", template_dir=args.template, repo_root=args.repo)
     _save_gate(project, patch_path, raw, gate)
     _print_gate_summary(patch, gate)
     return 1 if gate["status"] in ("static_failed", "contract_failed") else 0
@@ -297,7 +317,7 @@ def cmd_check(args):
     gate = _gate(experiment, project, patch, ctx, _subject_ids(ctx["subjects_dir"]),
                  skip_trial=args.skip_trial, max_runs=args.max_runs, seeds_per_run=args.seeds_per_run,
                  seed_set=args.seed_set, template_dir=args.template,
-                 reserved=template_identifiers(ctx["template_dir"]))
+                 reserved=template_identifiers(ctx["template_dir"]), repo_root=args.repo)
     _save_gate(project, path, raw, gate)
     _print_gate_summary(patch, gate)
     return 1 if gate["status"] in ("static_failed", "contract_failed") else 0
@@ -352,6 +372,7 @@ def cmd_reopen(args):
     # Optional (WB-WORLDGROW-001 review): rev2 以降は parent_digest が古い
     # head のままなので、まとめて再承認はできない。
     print("元の順序どおり、1枚ずつ check → approve をやり直してください。")
+    print("基準の世界を変えた場合や2枚目以降は、その時点の世界で回した実験が再checkに必要です。")
     return 0
 
 

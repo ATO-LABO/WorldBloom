@@ -698,16 +698,33 @@ def apply_patch(world: dict, patch: dict) -> dict:
     return result
 
 
-def absolutize_references(world: dict, project_dir: Path, repo_root: Path) -> None:
+def absolutize_references(world: dict, project_dir: Path, repo_root: Path = None, *,
+                          references: dict | None = None) -> None:
     """Point world["gapengine"]'s action_graph/effects paths at absolute paths
     so they still resolve once a patched world.yaml is written to some other
     directory than `project_dir` (e.g. <out>/expanded-project, or a trial's
-    scratch work_dir). Mirrors the two candidates engine/world.py and
+    scratch work_dir).
+
+    With `references` (a role -> already-resolved absolute Path mapping, as
+    `gapengine.world_patch_inputs.resolve_experiment_inputs` returns) this
+    just writes those paths in directly -- no filesystem search -- so a
+    caller that already resolved references against a caller-supplied
+    repo_root (WB-WORLDGROW-001 N2: e.g. a --repo control-side copy) doesn't
+    get silently overridden by this function's own, unrelated repo_root
+    fallback search.
+
+    Without `references`, mirrors the two candidates engine/world.py and
     engine/phase2.py already try (project-relative, then repo-root-relative);
     a field is left untouched if neither exists, so the engine's own error
     message still fires later. Moved here from scripts/evolve.py so
     world_patch_trial can reuse it without importing scripts/."""
     gapengine = world.get("gapengine")
+    if references is not None:
+        if not isinstance(gapengine, dict):
+            gapengine = world.setdefault("gapengine", {})
+        for role, path in references.items():
+            gapengine[role] = str(path)
+        return
     if not isinstance(gapengine, dict):
         return
     for field in ("action_graph", "effects"):
