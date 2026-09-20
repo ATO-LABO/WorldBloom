@@ -14,7 +14,7 @@ from unittest.mock import patch
 import yaml
 
 from execution.configs import ConfigStore, evolution_defaults, normalize
-from execution.provenance import ConfigError, canonical, directory_lock, sha256
+from execution.provenance import ConfigError, atomic_json, canonical, directory_lock, sha256
 from scripts.evolve import build_parser
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -449,6 +449,17 @@ class ConfigTests(unittest.TestCase):
             self.store.preview(spec)
         self.assertIn("inputs.world_patches", caught.exception.field_errors)
 
+    def test_expand_rejects_patch_colliding_with_template_identifier(self):
+        # "hostile_lean" is a rule id in templates/momotaro/rules.yaml -- not
+        # in RESERVED_NAMES itself, only reachable via template_identifiers().
+        self._write_patch(self._sample_patch(add={
+            "zones": [{"name": "hostile_lean", "parent": "海"}], "items": [], "facts": [], "daily_events": [],
+        }))
+        spec = self._momotaro_spec(world_expansion="expand")
+        with self.assertRaises(ConfigError) as caught:
+            self.store.preview(spec)
+        self.assertIn("inputs.world_patches", caught.exception.field_errors)
+
     def test_invalid_approved_patch_does_not_block_off(self):
         self._write_patch(self._sample_patch(add={"zones": [], "items": [], "facts": [], "daily_events": []}))
         spec = self._momotaro_spec(world_expansion="off")
@@ -472,6 +483,44 @@ class ConfigTests(unittest.TestCase):
     def test_normalize_accepts_expand(self):
         result = normalize({**self.spec, "evolution": {"world_expansion": "expand"}})
         self.assertEqual(result["evolution"]["world_expansion"], "expand")
+
+    # -- R5: duplicating a config saved before world_expansion existed -----
+
+    def _strip_world_expansion_key(self, config_id):
+        """Rewrite an already-saved config's on-disk files to the pre-WB-WORLDGROW-001
+        shape (no evolution.world_expansion key at all) and refresh complete.json's
+        seal to match, so _bundle()'s integrity check still passes. Production code
+        never does this -- it only reconstructs a legacy on-disk shape for the test."""
+        root = self.store.control / "configs" / config_id
+        document = json.loads((root / "config.json").read_text(encoding="utf-8"))
+        del document["evolution"]["world_expansion"]
+        atomic_json(root / "config.json", document)
+        seal = json.loads((root / "complete.json").read_text(encoding="utf-8"))
+        seal["config_sha256"] = sha256(canonical(document))
+        atomic_json(root / "complete.json", seal)
+
+    def test_duplicate_legacy_config_missing_world_expansion_key_succeeds(self):
+        self.store.save(self._momotaro_spec(world_expansion="off"), config_id="cfg-legacy")
+        self._strip_world_expansion_key("cfg-legacy")
+        clone = self.store.duplicate("cfg-legacy", {"label": "複製"}, new_id="cfg-legacy-clone")
+        self.assertEqual(clone["parent_config_id"], "cfg-legacy")
+        self.assertEqual(clone["evolution"]["world_expansion"], "off")
+
+    def test_duplicate_legacy_config_to_detect_succeeds(self):
+        self.store.save(self._momotaro_spec(world_expansion="off"), config_id="cfg-legacy2")
+        self._strip_world_expansion_key("cfg-legacy2")
+        clone = self.store.duplicate(
+            "cfg-legacy2", {"evolution": {"world_expansion": "detect"}}, new_id="cfg-legacy2-detect")
+        self.assertEqual(clone["parent_config_id"], "cfg-legacy2")
+        self.assertEqual(clone["evolution"]["world_expansion"], "detect")
+
+    def test_duplicate_legacy_config_to_expand_saves_as_new_config(self):
+        self.store.save(self._momotaro_spec(world_expansion="off"), config_id="cfg-legacy3")
+        self._strip_world_expansion_key("cfg-legacy3")
+        clone = self.store.duplicate(
+            "cfg-legacy3", {"evolution": {"world_expansion": "expand"}}, new_id="cfg-legacy3-expand")
+        self.assertIsNone(clone["parent_config_id"])
+        self.assertEqual(clone["evolution"]["world_expansion"], "expand")
 
 
 if __name__ == "__main__":

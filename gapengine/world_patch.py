@@ -43,6 +43,67 @@ FACT_SOURCE_KEYS = frozenset({"type", "zone", "count"})
 FACT_RELATION_KEYS = frozenset({"fact", "value", "confidence"})
 DAILY_EVENT_KEYS = frozenset({"id", "label", "weight", "stress_delta"})
 
+# WB-WORLDGROW-001 R10: literals the engine (engine/verbs.py, engine/actions.py,
+# engine/world.py, engine/phase2.py) treats specially by exact string match. A
+# zone/item/fact/daily_event named exactly one of these would silently change
+# engine behavior instead of adding inert content -- validate_patch rejects
+# them regardless of whether they happen to collide with existing world text.
+RESERVED_NAMES: frozenset[str] = frozenset({
+    # engine/verbs.py::_share_knowledge and engine/actions.py's share_knowledge
+    # candidate builder both hardcode "雑談" as the "no real topic shared" small
+    # talk sentinel; a fact id equal to it would be silently un-learnable.
+    "雑談",
+    # engine/verbs.py::HANDLED_VERBS -- the literal verb names the action
+    # dispatcher recognizes. No confirmed path today from a patch-created
+    # name into verb dispatch (patches can't write action_graph.yaml/
+    # rules.yaml), but reserved so a future rule/effect that keys off a bare
+    # name can't be quietly shadowed by a same-named zone/item/fact.
+    "move", "rest", "investigate", "observe", "neutralize", "sabotage",
+    "sacrifice", "mislead", "rethink", "confront", "share_knowledge",
+    "give_item", "persuade", "pledge", "negotiate", "concede", "craft",
+    "fight", "train", "rescue", "withdraw", "guard", "plant", "payoff",
+    "disguise", "grand_gesture", "trial", "donate",
+    # engine/phase2.py::_effect_reference's literal effect-target tokens, and
+    # engine/world.py's truth-relative value tokens ($truth/$innocent:1/2 in
+    # _validate_fact_sources's fact_truth_tokens). Same precautionary
+    # reasoning: not reachable from a patch today (effects.yaml/canon.yaml
+    # are template-authored, not patch-authored), reserved regardless.
+    "target", "$target", "self", "$self", "planter", "$planter",
+    "$truth", "$innocent:1", "$innocent:2",
+})
+
+_TEMPLATE_IDENTIFIER_KEYS = frozenset({"id", "verb", "fact", "item", "zone", "subtype", "category"})
+_TEMPLATE_FILES = ("rules.yaml", "effects.yaml", "canon.yaml", "action_graph.yaml")
+
+
+def _collect_identifiers(node: Any, out: set) -> None:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(key, str):
+                out.add(key)
+                if key in _TEMPLATE_IDENTIFIER_KEYS and isinstance(value, str):
+                    out.add(value)
+            _collect_identifiers(value, out)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_identifiers(item, out)
+
+
+def template_identifiers(template_dir) -> set:
+    """Every dict key, plus every string value under an id/verb/fact/item/
+    zone/subtype/category key, found across a template's rules.yaml/
+    effects.yaml/canon.yaml/action_graph.yaml (WB-WORLDGROW-001 R10) -- extra
+    names a world-expansion patch for that template must not reuse, on top of
+    RESERVED_NAMES. Returns an empty set when template_dir doesn't exist."""
+    identifiers: set = set()
+    for name in _TEMPLATE_FILES:
+        path = Path(template_dir) / name
+        if not path.is_file():
+            continue
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        _collect_identifiers(data, identifiers)
+    return identifiers
+
 
 class PatchError(ValueError):
     """A patch could not be loaded or applied."""
@@ -115,19 +176,23 @@ def _all_strings(value: Any):
             yield from _all_strings(v)
 
 
-def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ()) -> list[str]:
+def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
+                    reserved: Iterable[str] = ()) -> list[str]:
     """Static gate. Returns a list of Japanese violation strings (empty = pass).
 
     Never raises -- a malformed patch just accumulates violations instead of
-    crashing the caller.
+    crashing the caller. `reserved` (e.g. from template_identifiers()) is
+    merged with RESERVED_NAMES; any new zone/item/fact/daily_event name that
+    exactly matches one is a violation (WB-WORLDGROW-001 R10).
     """
     violations: list[str] = []
     if not isinstance(patch, dict):
         return ["パッチはオブジェクトである必要があります"]
+    reserved_names = RESERVED_NAMES | {str(r) for r in reserved}
 
     unknown_top = set(patch) - TOP_LEVEL_KEYS
     if unknown_top:
-        violations.append("未対応のトップレベル項目があります: " + "、".join(sorted(unknown_top)))
+        violations.append("未対応のトップレベル項目があります: " + "、".join(sorted(str(k) for k in unknown_top)))
 
     patch_id = patch.get("id")
     if not (isinstance(patch_id, str) and ID_RE.fullmatch(patch_id)):
@@ -144,7 +209,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
     else:
         unknown_add = set(add) - ADD_KEYS
         if unknown_add:
-            violations.append("add に未対応の項目があります: " + "、".join(sorted(unknown_add)))
+            violations.append("add に未対応の項目があります: " + "、".join(sorted(str(k) for k in unknown_add)))
 
     raw_zones, raw_items, raw_facts, raw_events = [], [], [], []
     for key, bucket_name, target in (
@@ -218,6 +283,9 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
         if not _is_name(name):
             violations.append(f"{kind}名の形式が不正です: {name!r}")
             return False
+        if name in reserved_names:
+            violations.append(f"予約された名前は使えません: {name}")
+            return False
         if (name in existing["zones"] or name in existing["items"]
                 or name in existing["facts"] or name in existing["daily_events"]):
             violations.append(f"既存の名前と重複しています: {name}")
@@ -242,7 +310,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
             continue
         unknown = set(zone) - ZONE_KEYS
         if unknown:
-            violations.append("zones に未対応の項目があります: " + "、".join(sorted(unknown)))
+            violations.append("zones に未対応の項目があります: " + "、".join(sorted(str(k) for k in unknown)))
         check_name(zone.get("name"), "ゾーン")
         parent = zone.get("parent")
         if not (isinstance(parent, str) and parent in existing["zones"]):
@@ -257,12 +325,13 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
             return
         if source.get("type") != "investigate":
             violations.append(f"sources.type は investigate のみです: {item_name!r}")
-        if source.get("zone") not in valid_zone_names:
-            violations.append(f"sources.zone が存在しません: {source.get('zone')!r}")
-        if source.get("count") != 1:
+        zone = source.get("zone")
+        if not isinstance(zone, str) or zone not in valid_zone_names:
+            violations.append(f"sources.zone が存在しません: {zone!r}")
+        if type(source.get("count")) is not int or source.get("count") != 1:
             violations.append(f"sources.count は1のみです: {item_name!r}")
         mx = source.get("max")
-        if not (isinstance(mx, int) and not isinstance(mx, bool) and 1 <= mx <= 3):
+        if type(mx) is not int or not (1 <= mx <= 3):
             violations.append(f"sources.max は1〜3の整数で指定してください: {item_name!r}")
 
     for item in raw_items:
@@ -271,7 +340,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
             continue
         unknown = set(item) - ITEM_KEYS
         if unknown:
-            violations.append("items に未対応の項目があります: " + "、".join(sorted(unknown)))
+            violations.append("items に未対応の項目があります: " + "、".join(sorted(str(k) for k in unknown)))
         name = item.get("name")
         check_name(name, "アイテム")
 
@@ -316,13 +385,13 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
                 violations.append(f"made_from はオブジェクトで指定してください: {name!r}")
             else:
                 for material, count in made_from.items():
-                    if material not in provisional_item_names:
+                    if not isinstance(material, str) or material not in provisional_item_names:
                         violations.append(f"made_from の素材は同じパッチで追加する新アイテムのみです: {material!r}")
-                    if not (isinstance(count, int) and not isinstance(count, bool) and 1 <= count <= 3):
+                    if type(count) is not int or not (1 <= count <= 3):
                         violations.append(f"made_from の個数は1〜3で指定してください: {material!r}")
 
         craft_zone = item.get("craft_zone")
-        if craft_zone is not None and craft_zone not in valid_zone_names:
+        if craft_zone is not None and (not isinstance(craft_zone, str) or craft_zone not in valid_zone_names):
             violations.append(f"craft_zone が存在しません: {craft_zone!r}")
 
         requires = item.get("requires")
@@ -331,7 +400,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
                 violations.append(f"requires のキーが不正です: {name!r}")
             else:
                 knowledge = requires.get("knowledge")
-                if knowledge not in valid_fact_ids:
+                if not isinstance(knowledge, str) or knowledge not in valid_fact_ids:
                     violations.append(f"requires.knowledge が存在しません: {knowledge!r}")
 
         for boolean_key in ("lootable", "keepsake"):
@@ -370,9 +439,10 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
             return
         if source.get("type") != "investigate":
             violations.append(f"sources.type は investigate のみです: {fact_id!r}")
-        if source.get("zone") not in valid_zone_names:
-            violations.append(f"sources.zone が存在しません: {source.get('zone')!r}")
-        if source.get("count") != 1:
+        zone = source.get("zone")
+        if not isinstance(zone, str) or zone not in valid_zone_names:
+            violations.append(f"sources.zone が存在しません: {zone!r}")
+        if type(source.get("count")) is not int or source.get("count") != 1:
             violations.append(f"sources.count は1のみです: {fact_id!r}")
 
     for fact in raw_facts:
@@ -381,7 +451,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
             continue
         unknown = set(fact) - FACT_KEYS
         if unknown:
-            violations.append("facts に未対応の項目があります: " + "、".join(sorted(unknown)))
+            violations.append("facts に未対応の項目があります: " + "、".join(sorted(str(k) for k in unknown)))
         fact_id = fact.get("id")
         check_name(fact_id, "事実")
 
@@ -410,11 +480,11 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
                 violations.append(f"{relation} のキーが不正です: {fact_id!r}")
                 continue
             target = rel.get("fact")
-            if target not in valued_facts:
+            if not isinstance(target, str) or target not in valued_facts:
                 violations.append(f"{relation}.fact が値付きの既存事実ではありません: {target!r}")
             else:
                 value = rel.get("value")
-                if value not in valued_facts[target]:
+                if not isinstance(value, str) or value not in valued_facts[target]:
                     violations.append(f"{relation}.value が対象事実の値にありません: {value!r}")
             confidence = rel.get("confidence")
             if not (_is_number(confidence) and 0 < confidence <= 0.5):
@@ -428,7 +498,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = ())
             continue
         unknown = set(event) - DAILY_EVENT_KEYS
         if unknown:
-            violations.append("daily_events に未対応の項目があります: " + "、".join(sorted(unknown)))
+            violations.append("daily_events に未対応の項目があります: " + "、".join(sorted(str(k) for k in unknown)))
         event_id = event.get("id")
         check_name(event_id, "日々の出来事")
         label = event.get("label")
@@ -536,14 +606,15 @@ def patch_id_for(add: dict) -> str:
     return "p-" + hashlib.sha256(payload).hexdigest()[:8]
 
 
-def apply_patches(world: dict, patches: list[dict], *, subject_ids: Iterable[str] = ()) -> dict:
+def apply_patches(world: dict, patches: list[dict], *, subject_ids: Iterable[str] = (),
+                   reserved: Iterable[str] = ()) -> dict:
     """Validate and apply each patch in order. Returns `world` unchanged
     (same object, no `expansion` key added) when `patches` is empty."""
     if not patches:
         return world
     current = world
     for patch in patches:
-        violations = validate_patch(current, patch, subject_ids=subject_ids)
+        violations = validate_patch(current, patch, subject_ids=subject_ids, reserved=reserved)
         if violations:
             raise PatchError(f"{patch.get('id')}: {violations[0]}")
         current = apply_patch(current, patch)
