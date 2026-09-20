@@ -406,6 +406,14 @@ class ConfigTests(unittest.TestCase):
             ("rationality_max_calls", True),
             ("rationality_table", "rationality.json"),
             ("rationality_table", "../escape.json"),
+            ("rationality_model", ""),
+            ("rationality_model", "../escape"),
+            ("rationality_model", 3),
+            ("rationality_model", "x" * 201),
+            ("rationality_num_ctx", 255),
+            ("rationality_num_ctx", 131073),
+            ("rationality_num_ctx", 2048.0),
+            ("rationality_num_ctx", True),
         ):
             with self.subTest(field=field, bad=bad), self.assertRaises(ConfigError):
                 self.store.preview({**self.spec, "evolution": {field: bad}})
@@ -417,6 +425,8 @@ class ConfigTests(unittest.TestCase):
         self.store.preview({**self.spec, "evolution": {
             "rationality_backend": "none", "rationality_method": "choice",
             "rationality_max_calls": 3}})
+        self.store.preview({**self.spec, "evolution": {
+            "rationality_model": "qwen3.5:9b", "rationality_num_ctx": 2048}})
 
     def test_kappa_forced_to_none_when_template_lacks_rationality_yaml(self):
         """Opus review: a genre switch client-side (world/genre <select>
@@ -446,7 +456,8 @@ class ConfigTests(unittest.TestCase):
         # still normalizes fine -- every new key is defaulted to None.
         legacy = self.store.save(self.spec, config_id="cfg-legacy-evolution")
         for key in ("kappa", "rationality_backend", "rationality_method",
-                    "rationality_table", "rationality_max_calls"):
+                    "rationality_table", "rationality_max_calls",
+                    "rationality_model", "rationality_num_ctx"):
             self.assertIsNone(legacy["evolution"][key])
 
     def test_prepare_run_reads_a_genuinely_pre_wb_jev_002_config_json(self):
@@ -470,7 +481,8 @@ class ConfigTests(unittest.TestCase):
         # normalize() would ever produce.
         config = read_json(config_dir / "config.json")
         for key in ("kappa", "rationality_backend", "rationality_method",
-                    "rationality_table", "rationality_max_calls"):
+                    "rationality_table", "rationality_max_calls",
+                    "rationality_model", "rationality_num_ctx"):
             self.assertIn(key, config["evolution"])
             del config["evolution"][key]
         config_bytes = canonical(config)
@@ -531,6 +543,40 @@ class ConfigTests(unittest.TestCase):
         manifest = self.store.prepare_run("cfg-momo-noul", run_id="run-noul", job_id="job-noul")
         table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1])
         self.assertEqual(table_path.name, "momotaro.qwen3.6_35b.noul.json")
+
+    def test_prepare_run_kappa_positive_honors_rationality_model_override(self):
+        """WB-JEV-003: --rationality-model changes which judge answers, so an
+        override must land its own table file -- never share qwen3.6:35b's
+        accumulated judgments with a different model's."""
+        self.runtime()
+        self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_model="qwen3.5:9b"),
+            config_id="cfg-momo-model-override",
+        )
+        manifest = self.store.prepare_run(
+            "cfg-momo-model-override", run_id="run-model-override", job_id="job-model-override"
+        )
+        self.assertIn("--rationality-model", manifest["argv"])
+        self.assertIn("qwen3.5:9b", manifest["argv"])
+        table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1])
+        self.assertEqual(table_path.name, "momotaro.qwen3.5_9b.choice.json")
+
+    def test_prepare_run_rationality_num_ctx_argv_and_no_table_path_effect(self):
+        """--rationality-num-ctx is an operational knob (WB-GA-RESUME plan
+        §2.1 treats it like table path/thermal_guard): it reaches argv but
+        never changes which table file a run reads/writes."""
+        self.runtime()
+        self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_num_ctx=2048),
+            config_id="cfg-momo-num-ctx",
+        )
+        manifest = self.store.prepare_run(
+            "cfg-momo-num-ctx", run_id="run-num-ctx", job_id="job-num-ctx"
+        )
+        self.assertIn("--rationality-num-ctx", manifest["argv"])
+        self.assertIn("2048", manifest["argv"])
+        table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1])
+        self.assertEqual(table_path.name, "momotaro.qwen3.6_35b.choice.json")
 
     def test_prepare_run_rationality_table_path_survives_hostile_model_name(self):
         """A rationality.yaml model name containing ".." or a path separator

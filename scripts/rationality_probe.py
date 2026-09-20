@@ -407,10 +407,14 @@ def _score_points(
     probe_path: Path,
     stats: dict[str, Any],
     call: Any = _ollama_call,
+    num_ctx: int | None = None,
 ) -> dict[tuple[str, str], float | None]:
-    """``--method noul``: one yes/no call per candidate."""
+    """``--method noul``: one yes/no call per candidate. ``num_ctx`` is only
+    ever meaningful for ``_ollama_call`` -- callers must leave it None when
+    ``call`` is ``_llama_server_call``."""
 
     existing = _read_existing(probe_path)
+    call_kwargs = {"num_ctx": num_ctx} if num_ctx is not None else {}
     scores: dict[tuple[str, str], float | None] = {}
     for point in points:
         for desc, chosen in point["candidates"]:
@@ -424,7 +428,7 @@ def _score_points(
             stats["calls"] += 1
             started = time.monotonic()
             try:
-                data = call(model, prompt, base_url=base_url, timeout=timeout)
+                data = call(model, prompt, base_url=base_url, timeout=timeout, **call_kwargs)
             except (OSError, urllib.error.URLError, ValueError) as error:
                 stats["errors"] += 1
                 print(
@@ -466,13 +470,17 @@ def _score_points_choice(
     stats: dict[str, Any],
     chunk_size: int,
     call: Any = _ollama_call,
+    num_ctx: int | None = None,
 ) -> dict[tuple[str, str], float | None]:
     """``--method choice``: one call per decision point (or per chunk, when a
     point has more candidates than the server's top_logprobs will return in
     one call -- plan §2.3). Chunk-internal normalization only; cross-chunk
-    values are not comparable (noted in the report)."""
+    values are not comparable (noted in the report). ``num_ctx`` is only
+    ever meaningful for ``_ollama_call`` -- callers must leave it None when
+    ``call`` is ``_llama_server_call``."""
 
     existing = _read_existing(probe_path)
+    call_kwargs = {"num_ctx": num_ctx} if num_ctx is not None else {}
     scores: dict[tuple[str, str], float | None] = {}
     for point in points:
         descs = [desc for desc, _chosen in point["candidates"]]
@@ -521,6 +529,7 @@ def _score_points_choice(
                     base_url=base_url,
                     timeout=timeout,
                     top_logprobs=max(len(labels), 10),
+                    **call_kwargs,
                 )
             except (OSError, urllib.error.URLError, ValueError) as error:
                 stats["errors"] += 1
@@ -1326,6 +1335,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", type=Path, default=ROOT / "projects" / "momotaro")
     parser.add_argument("--template", type=Path, default=ROOT / "templates" / "momotaro")
     parser.add_argument("--method", choices=["noul", "choice"], default="noul")
+    parser.add_argument(
+        "--num-ctx", type=int, default=None,
+        help="WB-JEV-003: Ollama judge context window size (num_ctx). "
+        "Ignored for --backend llama-server (no per-request equivalent).",
+    )
     parser.add_argument("--stats", action="store_true")
     parser.add_argument("--bench", action="store_true")
     parser.add_argument("--selftest", action="store_true")
@@ -1365,6 +1379,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     call = _call_fn(args.backend)
+    # WB-JEV-003: num_ctx is an Ollama-only option; llama-server has no
+    # per-request equivalent, so it's silently dropped for that backend.
+    num_ctx = args.num_ctx if args.backend == "ollama" else None
     out_dir = args.out.resolve() / _out_dir_name(args.backend, args.model)
     probe_path = out_dir / "probe.jsonl"
     run_out = out_dir / "run"
@@ -1393,6 +1410,7 @@ def main(argv: list[str] | None = None) -> int:
                     probe_path=probe_path,
                     stats=stats,
                     call=call,
+                    num_ctx=num_ctx,
                 )
             )
             scores.update(
@@ -1404,6 +1422,7 @@ def main(argv: list[str] | None = None) -> int:
                     probe_path=probe_path,
                     stats=stats,
                     call=call,
+                    num_ctx=num_ctx,
                 )
             )
         _write_report(
@@ -1421,6 +1440,7 @@ def main(argv: list[str] | None = None) -> int:
         with gpu_guard.gpu_lease(f"jev-probe:{args.model}", wait_seconds=600):
             limit = _measure_top_logprobs_limit(
                 args.model, base_url=args.base_url, timeout=args.timeout, call=call,
+                num_ctx=num_ctx,
             )
             # Capped at len(LABELS): a chunk larger than the label alphabet
             # would silently drop the tail candidates in zip(labels, chunk_descs).
@@ -1436,6 +1456,7 @@ def main(argv: list[str] | None = None) -> int:
                 stats=stats,
                 chunk_size=chunk_size,
                 call=call,
+                num_ctx=num_ctx,
             )
         _write_choice_report(
             report_path,
