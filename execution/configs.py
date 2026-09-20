@@ -149,6 +149,17 @@ def normalize(spec):
         _integer(values["rationality_max_calls"], "evolution.rationality_max_calls", 1)
     if values["rationality_table"] is not None:
         raise ConfigError("evolution.rationality_table", "表の保存先はサーバーが決めます")
+    # WB-JEV-003: same model-name shape as generation.model (_model()'s
+    # regex, inlined rather than reusing that helper's hardcoded field name).
+    if values["rationality_model"] is not None and (
+        not isinstance(values["rationality_model"], str)
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}", values["rationality_model"])
+    ):
+        raise ConfigError("evolution.rationality_model", "モデル名を明示してください")
+    if values["rationality_num_ctx"] is not None:
+        if (type(values["rationality_num_ctx"]) is not int
+                or not (256 <= values["rationality_num_ctx"] <= 131072)):
+            raise ConfigError("evolution.rationality_num_ctx", "256〜131072の整数を指定してください")
     result["evolution"] = deepcopy(values)
     limits = spec.get("execution_limits", {})
     _keys(limits, {"wall_seconds"}, "execution_limits")
@@ -528,10 +539,14 @@ class ConfigStore:
                 # same guarantee as --project/--template/--out above.
                 rationality_yaml, rationality_yaml_backend, rationality_override = (
                     _rationality_backend_cfg(
-                        {"rationality": {"method": config["evolution"].get("rationality_method")}},
+                        {"rationality": {
+                            "method": config["evolution"].get("rationality_method"),
+                            "model": config["evolution"].get("rationality_model"),
+                        }},
                         staging / "inputs/templates" / config["template_id"]))
                 method = rationality_override.get("method") or rationality_yaml.get("method", "noul")
-                model = rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
+                model = (rationality_override.get("model")
+                         or rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL))
                 table_path = contained(self.control, "rationality/{}.{}.{}.json".format(
                     config["template_id"], _safe_path_token(model), _safe_path_token(method)))
                 table_path.parent.mkdir(parents=True, exist_ok=True)

@@ -601,6 +601,108 @@ class RationalityHeaderTests(unittest.TestCase):
             # does carry it.
             self.assertGreater(rationality.meta["judge_calls"], 0)
 
+    def test_num_ctx_appears_in_header_and_meta_only_when_set(self) -> None:
+        """WB-JEV-003: a judge with no num_ctx override must render exactly
+        the same header set as before this field existed."""
+        with tempfile.TemporaryDirectory() as temporary:
+            plain_judge = OllamaLogprobJudge(model="fake-model", method="noul")
+            plain_rationality = Rationality(
+                kappa=1.0, table=RationalityTable(), judge=plain_judge, method="noul",
+            )
+            self.assertNotIn("num_ctx", plain_rationality.meta)
+
+            ctx_judge = OllamaLogprobJudge(model="fake-model", method="noul", num_ctx=2048)
+            ctx_rationality = Rationality(
+                kappa=1.0, table=RationalityTable(), judge=ctx_judge, method="noul",
+            )
+            empty_response = {"logprobs": [{"top_logprobs": [{"token": "yes", "logprob": -0.1}]}]}
+            actor, world, present, weighted = _three_candidates()
+            actions = [action for action, _ in weighted]
+            with patch("gapengine.rationality._ollama_call", return_value=empty_response):
+                path = _run(seed=153, out_dir=Path(temporary), rationality=ctx_rationality)
+            self.assertEqual(ctx_rationality.meta["num_ctx"], 2048)
+            header = read_rows(path)[0]
+            self.assertEqual(header["rationality"]["num_ctx"], 2048)
+
+
+class OllamaLogprobJudgeNumCtxTests(unittest.TestCase):
+    """WB-JEV-003: num_ctx must reach every Ollama call an OllamaLogprobJudge
+    makes (noul, choice, and the choice-mode top_logprobs measurement) so a
+    judge never triggers a mid-run model reload from a changing context
+    size, and must never be sent at all when unset (Ollama's own
+    DEFAULT_OPTIONS num_ctx then applies, matching pre-WB-JEV-003 behavior)."""
+
+    def test_ollama_call_puts_num_ctx_in_options_only_when_set(self) -> None:
+        from gapengine.rationality import _ollama_call
+
+        captured: dict[str, Any] = {}
+
+        class _FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+            def read(self):
+                return json.dumps({"logprobs": []}).encode("utf-8")
+
+        def fake_urlopen(request, timeout):
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return _FakeResponse()
+
+        with patch("gapengine.rationality.urllib.request.urlopen", side_effect=fake_urlopen):
+            _ollama_call("m", "p", base_url="http://x", timeout=1.0, num_ctx=2048)
+        self.assertEqual(captured["payload"]["options"]["num_ctx"], 2048)
+
+        with patch("gapengine.rationality.urllib.request.urlopen", side_effect=fake_urlopen):
+            _ollama_call("m", "p", base_url="http://x", timeout=1.0)
+        # num_ctx=None never adds an override -- Ollama's own DEFAULT_OPTIONS
+        # num_ctx (16384) still comes through build_request unchanged.
+        from gapengine.ollama import DEFAULT_OPTIONS
+
+        self.assertEqual(captured["payload"]["options"]["num_ctx"], DEFAULT_OPTIONS["num_ctx"])
+
+    def test_noul_mode_passes_num_ctx_through(self) -> None:
+        judge = OllamaLogprobJudge(model="fake-model", method="noul", num_ctx=2048)
+        captured: dict[str, Any] = {}
+
+        def fake_call(model, prompt, *, base_url, timeout, top_logprobs=10, num_ctx=None):
+            captured["num_ctx"] = num_ctx
+            return {"logprobs": [{"top_logprobs": [{"token": "yes", "logprob": -0.1}]}]}
+
+        with patch("gapengine.rationality._ollama_call", side_effect=fake_call):
+            judge.score("ctx", ["a"])
+        self.assertEqual(captured["num_ctx"], 2048)
+
+    def test_choice_mode_passes_num_ctx_to_both_the_measurement_and_scoring_calls(self) -> None:
+        judge = OllamaLogprobJudge(model="fake-model", method="choice", num_ctx=2048)
+        seen: list[int | None] = []
+
+        def fake_call(model, prompt, *, base_url, timeout, top_logprobs=10, num_ctx=None):
+            seen.append(num_ctx)
+            return {
+                "logprobs": [
+                    {"top_logprobs": [{"token": "A", "logprob": -0.1}, {"token": "B", "logprob": -0.2}]}
+                ]
+            }
+
+        with patch("gapengine.rationality._ollama_call", side_effect=fake_call):
+            judge.score("ctx", ["c1", "c2"])
+        self.assertEqual(seen, [2048, 2048])  # measurement call, then the scoring call
+
+    def test_num_ctx_unset_never_reaches_the_ollama_call(self) -> None:
+        judge = OllamaLogprobJudge(model="fake-model", method="noul")
+        captured: dict[str, Any] = {}
+
+        def fake_call(model, prompt, *, base_url, timeout, top_logprobs=10, num_ctx=None):
+            captured["num_ctx"] = num_ctx
+            return {"logprobs": [{"top_logprobs": [{"token": "yes", "logprob": -0.1}]}]}
+
+        with patch("gapengine.rationality._ollama_call", side_effect=fake_call):
+            judge.score("ctx", ["a"])
+        self.assertIsNone(captured["num_ctx"])
+
 
 class ChoiceJudgeTests(unittest.TestCase):
     """Opus review P3/P4 item 3: choice-mode key/label order independence,

@@ -83,13 +83,20 @@ def _ollama_call(
     base_url: str,
     timeout: float,
     top_logprobs: int = 10,
+    num_ctx: int | None = None,
 ) -> dict[str, Any]:
+    options: dict[str, Any] = {"num_predict": 1, "temperature": 0, "seed": 0}
+    if num_ctx is not None:
+        # WB-JEV-003: a smaller context window keeps a 9B-class judge model
+        # fully on GPU instead of spilling into CPU offload (measured
+        # 2026-09-20: 16384 -> 84% GPU, 2048 -> 100% GPU on this machine).
+        options["num_ctx"] = num_ctx
     url, payload = build_request(
         {
             "base_url": _loopback(base_url),
             "model": model,
             "think": False,
-            "options": {"num_predict": 1, "temperature": 0, "seed": 0},
+            "options": options,
         },
         prompt,
     )
@@ -209,16 +216,26 @@ def _normalize(mass: dict[str, float]) -> dict[str, float]:
 
 
 def _measure_top_logprobs_limit(
-    model: str, *, base_url: str, timeout: float, call: Any = None,
+    model: str,
+    *,
+    base_url: str,
+    timeout: float,
+    call: Any = None,
+    num_ctx: int | None = None,
 ) -> int:
     """One throwaway call with top_logprobs=50 to see how many entries the
     server actually returns. Used to size choice-mode candidate chunks.
     ``call`` defaults to ``_ollama_call`` -- pass ``_llama_server_call`` to
-    measure a llama-server backend instead (WB-JEV-003)."""
+    measure a llama-server backend instead (WB-JEV-003). ``num_ctx`` is only
+    ever meaningful for ``_ollama_call`` -- callers must leave it None when
+    ``call`` is ``_llama_server_call`` (it has no such parameter)."""
 
     if call is None:
         call = _ollama_call
     probe_prompt = "質問: 「A」か「B」か。記号1文字だけで答えよ。\n\n答え:"
+    kwargs: dict[str, Any] = {}
+    if num_ctx is not None:
+        kwargs["num_ctx"] = num_ctx
     # Ollama (and llama-server) reject an over-limit top_logprobs with HTTP
     # 400 (observed: 50 -> 400 on Ollama 0.34.1; 20 is the OpenAI-convention
     # maximum), so step down.
@@ -226,7 +243,7 @@ def _measure_top_logprobs_limit(
         try:
             data = call(
                 model, probe_prompt, base_url=base_url, timeout=timeout,
-                top_logprobs=requested,
+                top_logprobs=requested, **kwargs,
             )
         except urllib.error.HTTPError:
             continue
@@ -441,6 +458,7 @@ class OllamaLogprobJudge:
         timeout: float = 300.0,
         method: str = "noul",
         thermal_guard: Mapping[str, Any] | None = None,
+        num_ctx: int | None = None,
     ) -> None:
         if method not in ("noul", "choice"):
             raise ValueError(f"Unknown rationality judge method: {method}")
@@ -448,6 +466,11 @@ class OllamaLogprobJudge:
         self.base_url = base_url
         self.timeout = timeout
         self.method = method
+        # WB-JEV-003: None keeps Ollama's own default (DEFAULT_OPTIONS'
+        # num_ctx) -- every call this judge makes uses the same value, so a
+        # run never triggers a mid-run model reload from a changing context
+        # size.
+        self.num_ctx = num_ctx
         self._chunk_size: int | None = None
         self._thermal_guard = (
             {
@@ -509,7 +532,8 @@ class OllamaLogprobJudge:
             prompt = f"{context_text}\n\n候補: {desc}\n\n{QUESTION}"
             try:
                 data = _ollama_call(
-                    self.model, prompt, base_url=self.base_url, timeout=self.timeout
+                    self.model, prompt, base_url=self.base_url, timeout=self.timeout,
+                    num_ctx=self.num_ctx,
                 )
             except (OSError, urllib.error.URLError, ValueError):
                 results.append(None)
@@ -532,7 +556,8 @@ class OllamaLogprobJudge:
         if self._chunk_size is None:
             try:
                 limit = _measure_top_logprobs_limit(
-                    self.model, base_url=self.base_url, timeout=self.timeout
+                    self.model, base_url=self.base_url, timeout=self.timeout,
+                    num_ctx=self.num_ctx,
                 )
             except (OSError, urllib.error.URLError, ValueError):
                 limit = 10
@@ -563,6 +588,7 @@ class OllamaLogprobJudge:
                     base_url=self.base_url,
                     timeout=self.timeout,
                     top_logprobs=max(len(labels), 10),
+                    num_ctx=self.num_ctx,
                 )
             except (OSError, urllib.error.URLError, ValueError):
                 calls_made += 1
@@ -664,6 +690,11 @@ class Rationality:
             "table_hash_at_start": self._table_hash_at_start,
             "judge_calls": self._judge_calls,
         }
+        judge_num_ctx = getattr(self.judge, "num_ctx", None)
+        if judge_num_ctx is not None:
+            # Only added when set (WB-JEV-003): a run with no override must
+            # stay byte-identical to a pre-WB-JEV-003 one.
+            value["num_ctx"] = judge_num_ctx
         if self._budget_exhausted:
             value["budget_exhausted"] = True
         if self._judge_disabled:

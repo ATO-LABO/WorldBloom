@@ -85,6 +85,7 @@ def _build_rationality_judge(rationality_cfg: Mapping[str, Any]) -> Any:
             timeout=float(rationality_cfg.get("timeout", 300.0)),
             method=str(rationality_cfg.get("method", "noul")),
             thermal_guard=rationality_cfg.get("thermal_guard"),
+            num_ctx=rationality_cfg.get("num_ctx"),
         )
     if backend == "fake":
         return FakeJudge()
@@ -1035,6 +1036,13 @@ def _cfg_fingerprint(
             "method": rationality_cfg["method"],
             "model": rationality_cfg["model"],
         }
+        # WB-JEV-003: only included when set, so a run with no num_ctx
+        # override (the common case, and every pre-WB-JEV-003 experiment)
+        # fingerprints identically to before this field existed -- an
+        # in-flight experiment's ga_state.json must keep resuming.
+        num_ctx = rationality_cfg.get("num_ctx")
+        if num_ctx is not None:
+            payload["rationality"]["num_ctx"] = num_ctx
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -1206,6 +1214,12 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             "max_judge_calls": _rationality_pick(
                 "max_judge_calls_per_run",
                 rationality_yaml.get("max_judge_calls_per_run"),
+            ),
+            # WB-JEV-003: cfg override (--rationality-num-ctx) -> rationality.yaml's
+            # backend.num_ctx -> None (Ollama's own default). Lives under
+            # rationality.yaml's backend, like model/base_url/timeout.
+            "num_ctx": _rationality_pick(
+                "num_ctx", rationality_yaml_backend.get("num_ctx")
             ),
             # 2026-09-19 thermal-guard addendum: {"max_temp",
             # "cooldown_seconds", "check_every"} or None (disabled). Lives

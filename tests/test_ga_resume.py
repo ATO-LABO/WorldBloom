@@ -19,7 +19,7 @@ from gapengine.evolve import evolve
 from gapengine.genome import Genome
 from gapengine.qd import Archive, Descriptor, Elite
 from scripts.evolve import build_parser
-from test_gapengine import ROOT, TEMPLATE, make_reaching_project
+from test_gapengine import PROJECT, ROOT, TEMPLATE, make_reaching_project
 
 
 def _rewrite_json(path: Path, value) -> None:
@@ -791,6 +791,52 @@ class ExecutionConfigsResumeExclusionTests(unittest.TestCase):
         )
         self.assertFalse(args.resume)
         self.assertNotIn("resume", evolution_defaults())
+
+
+class CfgFingerprintNumCtxTests(unittest.TestCase):
+    """WB-JEV-003: ``num_ctx`` is an operational knob like table path/
+    thermal_guard, not a knob that changes what the GA computes -- but
+    unlike those two, its presence/absence must fingerprint identically to
+    a run with no ``num_ctx`` key at all (the pre-WB-JEV-003 shape), so an
+    already in-flight experiment's ga_state.json keeps resuming after this
+    change lands."""
+
+    def _fingerprint(self, rationality_cfg):
+        from gapengine.evolve import _cfg_fingerprint
+
+        return _cfg_fingerprint(
+            project_dir=PROJECT,
+            template_dir=TEMPLATE,
+            population_size=2,
+            seed_count=1,
+            seed_base=0,
+            ga_seed=1,
+            keep="all",
+            coevolve=False,
+            meta_evolution=False,
+            target_ending=None,
+            record_explanations=True,
+            rationality_cfg=rationality_cfg,
+        )
+
+    def _base_cfg(self):
+        return {
+            "backend": "fake", "kappa": 1.0, "max_judge_calls": None,
+            "method": "noul", "model": "fake-v1",
+        }
+
+    def test_num_ctx_none_fingerprints_the_same_as_the_key_being_absent(self) -> None:
+        without_key = self._fingerprint(self._base_cfg())
+        with_none = self._fingerprint({**self._base_cfg(), "num_ctx": None})
+        self.assertEqual(without_key, with_none)
+
+    def test_num_ctx_value_changes_the_fingerprint(self) -> None:
+        without_key = self._fingerprint(self._base_cfg())
+        with_value = self._fingerprint({**self._base_cfg(), "num_ctx": 2048})
+        self.assertNotEqual(without_key, with_value)
+
+    def test_no_rationality_cfg_at_all_is_unaffected(self) -> None:
+        self.assertEqual(self._fingerprint(None), self._fingerprint(None))
 
 
 if __name__ == "__main__":
