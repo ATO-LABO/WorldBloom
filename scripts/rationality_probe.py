@@ -69,6 +69,7 @@ from gapengine.knowledge_text import (
     render_situation,
     situation,
 )
+from gapengine.llama_server import DEFAULT_BASE_URL as LLAMA_SERVER_DEFAULT_BASE_URL
 from gapengine.ollama import DEFAULT_BASE_URL, build_request
 from gapengine.policy import Policy
 from gapengine.rationality import (
@@ -76,11 +77,29 @@ from gapengine.rationality import (
     LABELS,
     QUESTION,
     _label_masses,
+    _llama_server_call,
     _measure_top_logprobs_limit,
     _normalize,
     _ollama_call,
     _p_yes,
 )
+
+# ---------------------------------------------------------------------------
+# Backend selection (WB-JEV-003: bake-off between judge models/backends)
+# ---------------------------------------------------------------------------
+
+
+def _call_fn(backend: str) -> Any:
+    return _llama_server_call if backend == "llama-server" else _ollama_call
+
+
+def _out_dir_name(backend: str, model: str) -> str:
+    """Ollama keeps its pre-existing bare ``<model>`` directory name (so old
+    results stay readable); llama-server gets a ``llama-server__<model>``
+    prefix so the two backends' results never collide in the same --out."""
+
+    normalized = model.replace(":", "_")
+    return normalized if backend == "ollama" else f"{backend}__{normalized}"
 
 # ---------------------------------------------------------------------------
 # Action classes for the report's "行動クラス別の相対値" table (plan §2.3)
@@ -387,6 +406,7 @@ def _score_points(
     timeout: float,
     probe_path: Path,
     stats: dict[str, Any],
+    call: Any = _ollama_call,
 ) -> dict[tuple[str, str], float | None]:
     """``--method noul``: one yes/no call per candidate."""
 
@@ -404,7 +424,7 @@ def _score_points(
             stats["calls"] += 1
             started = time.monotonic()
             try:
-                data = _ollama_call(model, prompt, base_url=base_url, timeout=timeout)
+                data = call(model, prompt, base_url=base_url, timeout=timeout)
             except (OSError, urllib.error.URLError, ValueError) as error:
                 stats["errors"] += 1
                 print(
@@ -413,7 +433,8 @@ def _score_points(
                     file=sys.stderr,
                 )
                 continue
-            stats["elapsed"] += time.monotonic() - started
+            elapsed = time.monotonic() - started
+            stats["elapsed"] += elapsed
 
             p_yes, top = _p_yes(data)
             if p_yes is None:
@@ -427,6 +448,7 @@ def _score_points(
                 "p_yes": p_yes,
                 "raw_top_logprobs": top,
                 "chosen": bool(chosen),
+                "elapsed_seconds": elapsed,
             }
             _append_jsonl(probe_path, row)
             existing[key] = row
@@ -443,6 +465,7 @@ def _score_points_choice(
     probe_path: Path,
     stats: dict[str, Any],
     chunk_size: int,
+    call: Any = _ollama_call,
 ) -> dict[tuple[str, str], float | None]:
     """``--method choice``: one call per decision point (or per chunk, when a
     point has more candidates than the server's top_logprobs will return in
@@ -492,7 +515,7 @@ def _score_points_choice(
             stats["calls"] += 1
             started = time.monotonic()
             try:
-                data = _ollama_call(
+                data = call(
                     model,
                     prompt,
                     base_url=base_url,
@@ -507,12 +530,13 @@ def _score_points_choice(
                     file=sys.stderr,
                 )
                 continue
-            stats["elapsed"] += time.monotonic() - started
+            elapsed_call = time.monotonic() - started
+            stats["elapsed"] += elapsed_call
 
             probs = _normalize(_label_masses(data, labels))
             if all(value == 0.0 for value in probs.values()):
                 stats["missing"] += 1
-            for label, desc in zip(labels, chunk_descs):
+            for offset, (label, desc) in enumerate(zip(labels, chunk_descs)):
                 p_choice = probs[label]
                 row = {
                     "mode": point["mode"],
@@ -523,6 +547,12 @@ def _score_points_choice(
                     "p_choice": p_choice,
                     "chosen": bool(chosen_by_desc.get(desc)),
                 }
+                # One call scores a whole chunk of candidates -- attach the
+                # call's elapsed time to only the chunk's first row so a
+                # later mean over "elapsed_seconds" is a per-call average,
+                # not a per-candidate one (WB-JEV-003 --compare item d).
+                if offset == 0:
+                    row["elapsed_seconds"] = elapsed_call
                 _append_jsonl(probe_path, row)
                 existing[("choice", pair_of[desc])] = row
                 scores[(point["point_id"], desc)] = p_choice
@@ -966,33 +996,40 @@ def _run_bench(args: argparse.Namespace) -> int:
     shared prefix (revised plan §"--bench"). Always calls fresh -- this is a
     timing measurement, not something the probe.jsonl cache should shortcut."""
 
+    out_dir_name = _out_dir_name(args.backend, args.model)
     points = _run_mode_a(
         project=args.project.resolve(),
         template=args.template.resolve(),
         seed=args.seed,
         turns=args.turns,
-        run_out=args.out.resolve() / args.model.replace(":", "_") / "bench_run",
+        run_out=args.out.resolve() / out_dir_name / "bench_run",
     )
     point = max(points, key=lambda candidate: len(candidate["candidates"]))
     descs = [desc for desc, _chosen in point["candidates"]][:15]
+    call = _call_fn(args.backend)
 
     timings: list[float] = []
+    first_prompt = ""
     with gpu_guard.gpu_lease(f"jev-probe:{args.model}", wait_seconds=600):
         for desc in descs:
             prompt = f"{point['state_text']}\n\n候補: {desc}\n\n{QUESTION}"
+            first_prompt = first_prompt or prompt
             started = time.monotonic()
-            _ollama_call(args.model, prompt, base_url=args.base_url, timeout=args.timeout)
+            call(args.model, prompt, base_url=args.base_url, timeout=args.timeout)
             timings.append(time.monotonic() - started)
 
     first = timings[0] if timings else None
     rest = timings[1:]
     rest_mean = statistics.mean(rest) if rest else None
     check = rest_mean is not None and rest_mean <= 1.5
+    # ponytail: 概算（文字数 / 1.5）。トークナイザは呼ばない。
+    approx_tokens = len(first_prompt) / 1.5
 
     lines = [
-        f"# Jev Stage1 --bench — model: {args.model}",
+        f"# Jev Stage1 --bench — backend: {args.backend} model: {args.model}",
         "",
         f"文脈: {point['label']}（候補 {len(descs)} 件を連続呼び出し）",
+        f"プロンプト概算トークン数={approx_tokens:.0f}（文字数÷1.5の概算）",
         f"1件目所要秒={_fmt(first)}",
         f"2件目以降の平均所要秒={_fmt(rest_mean)}（n={len(rest)}）",
         f"全呼び出し秒: {[round(value, 3) for value in timings]}",
@@ -1000,10 +1037,175 @@ def _run_bench(args: argparse.Namespace) -> int:
         f"合格条件（2件目以降の平均 <= 1.5秒/コール）: {_judge(check)}",
     ]
 
-    out_path = args.out.resolve() / args.model.replace(":", "_") / "bench.md"
+    out_path = args.out.resolve() / out_dir_name / "bench.md"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# --compare: model bake-off report from already-recorded probe.jsonl files
+# (WB-JEV-003 item 3). Makes no model calls -- only reruns the network-free
+# Mode A simulation (for each decision point's candidate list and action
+# class) and reads each directory's choice-method rows.
+# ---------------------------------------------------------------------------
+
+
+def _read_probe_choice_rows(dir_path: Path) -> list[dict[str, Any]]:
+    probe_path = dir_path / "probe.jsonl"
+    if not probe_path.is_file():
+        return []
+    rows = []
+    for line in probe_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        row = json.loads(line)
+        if row.get("method") == "choice":
+            rows.append(row)
+    return rows
+
+
+def _compare_metrics(
+    mode_a_points: list[dict[str, Any]],
+    baseline_scores: dict[tuple[str, str], float | None],
+    candidate_scores: dict[tuple[str, str], float | None],
+) -> dict[str, Any]:
+    """(a) per-point Spearman rank correlation and its mean, (b) top-1 match
+    rate, (c) baseline's bottom-3-per-point candidates' hit rate against the
+    candidate judge's own bottom half at that same point."""
+
+    rhos: list[float] = []
+    top1_matches = top1_total = 0
+    bottom_hits = bottom_total = 0
+    for point in mode_a_points:
+        pid = point["point_id"]
+        descs = [desc for desc, _chosen in point["candidates"]]
+        paired = [
+            (desc, baseline_scores.get((pid, desc)), candidate_scores.get((pid, desc)))
+            for desc in descs
+        ]
+        paired = [row for row in paired if row[1] is not None and row[2] is not None]
+        if len(paired) < 2:
+            continue
+
+        rho = _spearman([row[1] for row in paired], [row[2] for row in paired])
+        if rho is not None:
+            rhos.append(rho)
+
+        top1_total += 1
+        baseline_top = max(paired, key=lambda row: row[1])[0]
+        candidate_top = max(paired, key=lambda row: row[2])[0]
+        if baseline_top == candidate_top:
+            top1_matches += 1
+
+        bottom3 = sorted(paired, key=lambda row: row[1])[:3]
+        half = -(-len(paired) // 2)  # ceil: "下位半分" for an odd count rounds up.
+        candidate_bottom_half = {
+            row[0] for row in sorted(paired, key=lambda row: row[2])[:half]
+        }
+        for desc, _baseline_p, _candidate_p in bottom3:
+            bottom_total += 1
+            if desc in candidate_bottom_half:
+                bottom_hits += 1
+
+    return {
+        "mean_spearman": statistics.mean(rhos) if rhos else None,
+        "spearman_n": len(rhos),
+        "top1_match_rate": (top1_matches / top1_total) if top1_total else None,
+        "top1_n": top1_total,
+        "bottom3_hit_rate": (bottom_hits / bottom_total) if bottom_total else None,
+        "bottom3_n": bottom_total,
+    }
+
+
+def _write_compare_report(
+    path: Path,
+    *,
+    baseline_dir: Path,
+    mode_a_points: list[dict[str, Any]],
+    baseline_scores: dict[tuple[str, str], float | None],
+    candidates: list[tuple[Path, dict[tuple[str, str], float | None], list[float]]],
+) -> None:
+    lines = [
+        "# Jev bake-off モデル比較レポート（--compare, モデル呼び出しなし）",
+        "",
+        f"baseline: {baseline_dir}",
+        "",
+    ]
+    baseline_relative = _class_relative_values(mode_a_points, baseline_scores)
+    for candidate_dir, candidate_scores, elapsed in candidates:
+        metrics = _compare_metrics(mode_a_points, baseline_scores, candidate_scores)
+        per_call = statistics.mean(elapsed) if elapsed else None
+        lines.append(f"## {candidate_dir.name}")
+        lines.append(
+            f"- 決定点平均Spearman順位相関={_fmt(metrics['mean_spearman'])}"
+            f"（n={metrics['spearman_n']}）"
+        )
+        lines.append(
+            f"- 最上位候補一致率={_fmt(metrics['top1_match_rate'])}"
+            f"（n={metrics['top1_n']}）"
+        )
+        lines.append(
+            "- baseline下位3候補がこの判定器でも下位半分に入った割合="
+            f"{_fmt(metrics['bottom3_hit_rate'])}（n={metrics['bottom3_n']}）"
+        )
+        lines.append(
+            "- 1コールあたりの所要秒="
+            + ("不明" if per_call is None else f"{per_call:.3f}")
+        )
+        lines.append("")
+        lines.append("### 行動クラス別の相対値（baseline との並置）")
+        relative = _class_relative_values(mode_a_points, candidate_scores)
+        lines.append(f"| クラス | baseline | {candidate_dir.name} |")
+        lines.append("|---|---|---|")
+        for name in CLASS_ORDER:
+            lines.append(
+                f"| {name} | {_fmt(baseline_relative.get(name))} | "
+                f"{_fmt(relative.get(name))} |"
+            )
+        lines.append("")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _run_compare(args: argparse.Namespace) -> int:
+    mode_a_points = _run_mode_a(
+        project=args.project.resolve(),
+        template=args.template.resolve(),
+        seed=args.seed,
+        turns=args.turns,
+        run_out=args.out.resolve() / "compare_run",
+    )
+
+    def _scores_and_elapsed(
+        dir_path: Path,
+    ) -> tuple[dict[tuple[str, str], float | None], list[float]]:
+        scores: dict[tuple[str, str], float | None] = {}
+        elapsed: list[float] = []
+        for row in _read_probe_choice_rows(dir_path):
+            scores[(row["turn"], row["candidate"])] = row.get("p_choice")
+            value = row.get("elapsed_seconds")
+            if isinstance(value, (int, float)):
+                elapsed.append(value)
+        return scores, elapsed
+
+    baseline_scores, _baseline_elapsed = _scores_and_elapsed(args.baseline)
+    candidates = [
+        (dir_path, *_scores_and_elapsed(dir_path)) for dir_path in args.compare
+    ]
+
+    report_path = args.out.resolve() / "compare.md"
+    _write_compare_report(
+        report_path,
+        baseline_dir=args.baseline,
+        mode_a_points=mode_a_points,
+        baseline_scores=baseline_scores,
+        candidates=candidates,
+    )
+    print(f"report={report_path}")
     return 0
 
 
@@ -1081,6 +1283,26 @@ def _selftest() -> None:
     assert _action_class(Action("mislead", ("犬",)), None, None) == "誤った情報へ誘導"
     assert _action_class(Action("disguise", ()), None, None) == "変装"
     assert _action_class(Action("move", ("村",)), None, None) is None
+
+    assert _out_dir_name("ollama", "qwen3.6:35b") == "qwen3.6_35b"
+    assert _out_dir_name("llama-server", "bonsai2-27b") == "llama-server__bonsai2-27b"
+
+    fake_points = [
+        {"point_id": "0", "candidates": [("a", False), ("b", False), ("c", True), ("d", False)]},
+    ]
+    baseline = {("0", "a"): 0.1, ("0", "b"): 0.2, ("0", "c"): 0.9, ("0", "d"): 0.05}
+    same = dict(baseline)
+    metrics_same = _compare_metrics(fake_points, baseline, same)
+    assert metrics_same["mean_spearman"] == 1.0
+    assert metrics_same["top1_match_rate"] == 1.0
+    # n=4 -> "下位半分" is only 2 of the 4, so even an identical judge's
+    # bottom-3 (d,a,b) only 2/3-overlaps its own bottom half (d,a).
+    assert metrics_same["bottom3_hit_rate"] == 2 / 3
+
+    reversed_scores = {("0", "a"): 0.9, ("0", "b"): 0.8, ("0", "c"): 0.05, ("0", "d"): 0.95}
+    metrics_reversed = _compare_metrics(fake_points, baseline, reversed_scores)
+    assert metrics_reversed["mean_spearman"] < 0
+    assert metrics_reversed["top1_match_rate"] == 0.0
     print("selftest ok")
 
 
@@ -1095,7 +1317,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--turns", type=int, default=12)
     parser.add_argument("--out", type=Path, required=False)
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
+    parser.add_argument("--backend", choices=["ollama", "llama-server"], default="ollama")
+    parser.add_argument(
+        "--base-url", default=None,
+        help="default: Ollama's or llama-server's own default, per --backend",
+    )
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--project", type=Path, default=ROOT / "projects" / "momotaro")
     parser.add_argument("--template", type=Path, default=ROOT / "templates" / "momotaro")
@@ -1103,14 +1329,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stats", action="store_true")
     parser.add_argument("--bench", action="store_true")
     parser.add_argument("--selftest", action="store_true")
+    parser.add_argument(
+        "--compare", type=Path, nargs="+", default=None,
+        help="one or more probe output dirs (as produced by --method choice) to "
+        "compare against --baseline; makes no model calls",
+    )
+    parser.add_argument("--baseline", type=Path, default=None)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.base_url is None:
+        args.base_url = (
+            LLAMA_SERVER_DEFAULT_BASE_URL if args.backend == "llama-server" else DEFAULT_BASE_URL
+        )
     if args.selftest:
         _selftest()
         return 0
+    if args.compare:
+        if not args.baseline or not args.out:
+            build_parser().error("--baseline and --out are required for --compare")
+        return _run_compare(args)
     if args.stats:
         if not args.out:
             build_parser().error("--out is required for --stats")
@@ -1121,10 +1361,11 @@ def main(argv: list[str] | None = None) -> int:
         return _run_bench(args)
     if not args.model or not args.out:
         build_parser().error(
-            "--model and --out are required unless --selftest/--stats/--bench"
+            "--model and --out are required unless --selftest/--stats/--bench/--compare"
         )
 
-    out_dir = args.out.resolve() / args.model.replace(":", "_")
+    call = _call_fn(args.backend)
+    out_dir = args.out.resolve() / _out_dir_name(args.backend, args.model)
     probe_path = out_dir / "probe.jsonl"
     run_out = out_dir / "run"
 
@@ -1151,6 +1392,7 @@ def main(argv: list[str] | None = None) -> int:
                     timeout=args.timeout,
                     probe_path=probe_path,
                     stats=stats,
+                    call=call,
                 )
             )
             scores.update(
@@ -1161,6 +1403,7 @@ def main(argv: list[str] | None = None) -> int:
                     timeout=args.timeout,
                     probe_path=probe_path,
                     stats=stats,
+                    call=call,
                 )
             )
         _write_report(
@@ -1177,7 +1420,7 @@ def main(argv: list[str] | None = None) -> int:
         report_path = out_dir / "report-choice.md"
         with gpu_guard.gpu_lease(f"jev-probe:{args.model}", wait_seconds=600):
             limit = _measure_top_logprobs_limit(
-                args.model, base_url=args.base_url, timeout=args.timeout
+                args.model, base_url=args.base_url, timeout=args.timeout, call=call,
             )
             # Capped at len(LABELS): a chunk larger than the label alphabet
             # would silently drop the tail candidates in zip(labels, chunk_descs).
@@ -1192,6 +1435,7 @@ def main(argv: list[str] | None = None) -> int:
                 probe_path=probe_path,
                 stats=stats,
                 chunk_size=chunk_size,
+                call=call,
             )
         _write_choice_report(
             report_path,
