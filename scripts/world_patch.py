@@ -37,7 +37,11 @@ from gapengine.world_patch import (
     validate_patch,
 )
 from gapengine.world_patch_propose import MAX_PROMPT_CHARS, build_prompt, check_trigger_coverage, make_patch, parse_proposal
-from gapengine.world_patch_trial import run_trial
+from gapengine.world_patch_trial import run_trial, gate_status
+from gapengine.world_patch import stack_head, verify_stack, read_stack
+from execution.provenance import atomic_json
+from execution.world_patches import patch_lock
+from execution.world_patch_approval import approve, reopen, repair
 
 # Exceptions an LLM's malformed JSON/shape can realistically trigger while a
 # proposal is parsed and gated (WB-WORLDGROW-001 R6): parse_proposal/make_patch/
@@ -48,11 +52,11 @@ from gapengine.world_patch_trial import run_trial
 _PROPOSAL_ERRORS = (ValueError, TypeError, KeyError, AttributeError)
 
 
-def _resolve_ctx(experiment: Path):
+def _resolve_ctx(experiment: Path, template_dir=None):
     from viewer.data import RunRepository
 
     repository = RunRepository(experiment.parent)
-    return repository, lineage._resolve_world_context(repository, experiment)
+    return repository, lineage._resolve_world_context(repository, experiment, template_dir=template_dir)
 
 
 def _subject_ids(subjects_dir: Path) -> list[str]:
@@ -96,7 +100,8 @@ def _check_parent_rev(base_world: dict, project: Path) -> str | None:
     must refuse to gate a patch against a world state the experiment never
     actually ran under."""
     try:
-        current_approved = approved_patches(project)
+        with patch_lock(project):
+            current_approved = approved_patches(project)
     except PatchError as error:
         return f"承認済みパッチの読み込みに失敗しました: {error}"
     if _world_parent_rev(base_world) != [p["id"] for p in current_approved]:
@@ -104,47 +109,48 @@ def _check_parent_rev(base_world: dict, project: Path) -> str | None:
     return None
 
 
-def _gate(experiment: Path, project: Path, patch: dict, ctx: dict, subject_ids: list[str],
-          *, skip_trial: bool, max_runs: int, seeds_per_run: int, reserved: Iterable[str] = ()) -> dict:
+def _gate(experiment, project, patch, ctx, subject_ids, *, skip_trial, max_runs,
+          seeds_per_run, reserved=(), seed_set="exploration", template_dir=None):
     base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
     violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved)
     violations += check_trigger_coverage(patch.get("add", {}), patch.get("trigger", {}))
-    static_passed = not violations
-    trial_result = None
-    passed = static_passed
-    if static_passed and not skip_trial:
+    gate = {"schema_version": 2, "patch_id": patch["id"],
+            "static": {"passed": not violations, "violations": violations}, "trial": None,
+            "passed": False, "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    if not violations and not skip_trial:
         with tempfile.TemporaryDirectory() as tmp:
-            trial_result = run_trial(experiment, patch, work_dir=Path(tmp), max_runs=max_runs,
-                                      seeds_per_run=seeds_per_run)
-        passed = trial_result["passed"]
-    return {
-        "schema_version": 1,
-        "patch_id": patch["id"],
-        "static": {"passed": static_passed, "violations": violations},
-        "trial": trial_result,
-        "passed": passed,
-        "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    }
+            gate["trial"] = run_trial(experiment, patch, work_dir=Path(tmp), template_dir=template_dir,
+                                     max_runs=max_runs, seeds_per_run=seeds_per_run, seed_set=seed_set)
+    gate["status"] = gate_status(gate)
+    return gate
 
 
-def _print_gate_summary(patch: dict, gate: dict) -> None:
-    print(f"題: {patch.get('title')}")
+def _save_gate(project, patch_path, raw, gate):
+    with patch_lock(project):
+        if patch_path.read_bytes() != raw:
+            raise PatchError("検査中にパッチが変わりました。check をやり直してください")
+        path = patch_path.with_suffix(".gate.json")
+        previous = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        holdout = (gate.get("trial") or {}).get("evidence", {}).get("seed_set") == "holdout"
+        gate["holdout_checks"] = previous.get("holdout_checks", 0) + int(holdout)
+        gate["patch_sha256"] = hashlib.sha256(raw).hexdigest()
+        atomic_json(path, gate)
+
+
+def _print_gate_summary(patch, gate):
+    print(f"題: {patch.get('title')} / status: {gate.get('status')}")
     print(f"理由: {patch.get('rationale')}")
     print(f"足したもの: {_added_summary(patch.get('add', {}))}")
-    static = gate["static"]
-    if static["passed"]:
-        print("静的ゲート: 合格")
-    else:
-        print("静的ゲート: 不合格 -- " + "; ".join(static["violations"]))
-    trial = gate.get("trial")
-    if trial is not None:
-        print(f"試走: {'合格' if trial.get('passed') else '不合格'}")
-        for reason in trial.get("reasons", []):
-            print(f"  - {reason}")
-        if trial.get("errors"):
-            print(f"  - 再実行エラー: {trial['errors']}")
-    elif static["passed"]:
-        print("試走: スキップ")
+    for reason in gate["static"].get("violations", []):
+        print(f"  - {reason}")
+    trial = gate.get("trial") or {}
+    for reason in trial.get("reasons", []):
+        print(f"  - {reason}")
+    for key in ("reproduction", "contract", "new_usage", "errors"):
+        if key in trial:
+            print(f"{key}: {json.dumps(trial[key], ensure_ascii=False)}")
+    print(f"holdout_checks: {gate.get('holdout_checks', 0)}")
+    print("reviewable は人が検討できる状態です。統計的な合格ではありません")
 
 
 def _retry_prompt(original_prompt: str, last_proposal_text: str | None,
@@ -174,17 +180,18 @@ def cmd_propose(args: argparse.Namespace) -> int:
     trigger = dict(triggers[args.trigger])
     trigger["experiment"] = experiment.name
 
-    repository, ctx = _resolve_ctx(experiment)
+    repository, ctx = _resolve_ctx(experiment, args.template)
     base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
     mismatch = _check_parent_rev(base_world, project)
     if mismatch:
         print(mismatch)
         return 1
-    world_parent_rev = _world_parent_rev(base_world)
+    with patch_lock(project):
+        parent_digest = stack_head(project)
 
     subject_ids = _subject_ids(Path(ctx["subjects_dir"]))
     zone_verbs = _zone_verbs(report, trigger["zone"])
-    reserved = template_identifiers(args.template) if args.template else ()
+    reserved = template_identifiers(ctx['template_dir'])
     try:
         prompt = build_prompt(base_world, subject_ids, trigger, zone_verbs)
     except ValueError as error:
@@ -225,215 +232,110 @@ def cmd_propose(args: argparse.Namespace) -> int:
         try:
             proposal = parse_proposal(response_text)
             last_proposal_text = json.dumps(proposal, ensure_ascii=False, indent=2, sort_keys=False)
-            patch = make_patch(proposal, trigger=trigger, parent_rev=world_parent_rev, author=author)
+            patch = make_patch(proposal, trigger=trigger, parent_digest=parent_digest, author=author)
             violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved)
             violations += check_trigger_coverage(patch["add"], trigger)
         except _PROPOSAL_ERRORS as error:
             violations = [f"提案の形式を検査できませんでした: {error}"]
             patch = make_patch(
                 {"title": "(解析失敗)", "rationale": str(error)[:300], "add": {}},
-                trigger=trigger, parent_rev=world_parent_rev, author=author,
+                trigger=trigger, parent_digest=parent_digest, author=author,
             )
 
         if not violations or args.from_file or attempt == max_attempts:
             break
         current_prompt = _retry_prompt(prompt, last_proposal_text, response_text, violations)
 
-    gate = {
-        "schema_version": 1,
-        "patch_id": patch["id"],
-        "static": {"passed": not violations, "violations": violations},
-        "trial": None,
-        "passed": not violations,
-        "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    }
-    if not violations and not args.skip_trial:
-        with tempfile.TemporaryDirectory() as tmp:
-            gate["trial"] = run_trial(experiment, patch, work_dir=Path(tmp), max_runs=args.max_runs,
-                                       seeds_per_run=args.seeds_per_run)
-        gate["passed"] = gate["trial"]["passed"]
-
     proposed_dir = project / "patches" / "_proposed"
-    proposed_dir.mkdir(parents=True, exist_ok=True)
-    patch_path = proposed_dir / f"{patch['id']}.yaml"
-    gate_path = proposed_dir / f"{patch['id']}.gate.json"
-    patch_path.write_text(yaml.safe_dump(patch, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    gate["patch_sha256"] = hashlib.sha256(patch_path.read_bytes()).hexdigest()
-    gate_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    _print_gate_summary(patch, gate)
-    print(f"保存先: {patch_path}")
-    return 0 if gate["passed"] else 1
-
-
-def cmd_check(args: argparse.Namespace) -> int:
-    if not ID_RE.fullmatch(args.patch):
-        print("パッチ ID の形式が不正です")
-        return 1
-    experiment = args.experiment.resolve()
-    project = args.project.resolve()
-    proposed_dir = project / "patches" / "_proposed"
-    patch_path = proposed_dir / f"{args.patch}.yaml"
-    if not patch_path.is_file():
-        print(f"提案が見つかりません: {patch_path}")
-        return 1
-    patch = yaml.safe_load(patch_path.read_text(encoding="utf-8"))
-
-    _, ctx = _resolve_ctx(experiment)
-    base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
-    mismatch = _check_parent_rev(base_world, project)
-    if mismatch:
-        print(mismatch)
-        return 1
-
-    subject_ids = _subject_ids(Path(ctx["subjects_dir"]))
-    reserved = template_identifiers(args.template) if args.template else ()
+    raw = yaml.safe_dump(patch, allow_unicode=True, sort_keys=False).encode("utf-8")
+    with patch_lock(project):
+        if stack_head(project) != parent_digest:
+            raise PatchError("提案中に承認スタックが変わりました")
+        proposed_dir.mkdir(parents=True, exist_ok=True)
+        patch_path = proposed_dir / f"{patch['id']}.yaml"
+        patch_path.write_bytes(raw)
     gate = _gate(experiment, project, patch, ctx, subject_ids, skip_trial=args.skip_trial,
-                 max_runs=args.max_runs, seeds_per_run=args.seeds_per_run, reserved=reserved)
-    gate["patch_sha256"] = hashlib.sha256(patch_path.read_bytes()).hexdigest()
-    gate_path = proposed_dir / f"{args.patch}.gate.json"
-    gate_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
+                 max_runs=args.max_runs, seeds_per_run=args.seeds_per_run, reserved=reserved,
+                 seed_set="exploration", template_dir=args.template)
+    _save_gate(project, patch_path, raw, gate)
     _print_gate_summary(patch, gate)
-    return 0 if gate["passed"] else 1
+    return 1 if gate["status"] in ("static_failed", "contract_failed") else 0
 
 
-def cmd_approve(args: argparse.Namespace) -> int:
+def cmd_check(args):
     if not ID_RE.fullmatch(args.patch):
-        print("パッチ ID の形式が不正です")
-        return 1
-    project = args.project.resolve()
-    proposed_dir = project / "patches" / "_proposed"
-    patch_path = proposed_dir / f"{args.patch}.yaml"
-    gate_path = proposed_dir / f"{args.patch}.gate.json"
-    if not patch_path.is_file() or not gate_path.is_file():
-        print("提案またはゲート結果が見つかりません")
-        return 1
-    patch = yaml.safe_load(patch_path.read_text(encoding="utf-8"))
-    gate = json.loads(gate_path.read_text(encoding="utf-8"))
-    if not gate.get("passed"):
-        print("ゲートに合格していません")
-        return 1
+        raise PatchError("パッチ ID の形式が不正です")
+    experiment, project = args.experiment.resolve(), args.project.resolve()
+    _, ctx = _resolve_ctx(experiment, args.template)
+    path = project / "patches" / "_proposed" / f"{args.patch}.yaml"
+    with patch_lock(project):
+        raw = path.read_bytes()
+        patch = yaml.safe_load(raw)
+        if patch.get("parent_digest") != stack_head(project):
+            raise PatchError("parent_digest が現在のスタックと一致しません")
+    world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
+    mismatch = _check_parent_rev(world, project)
+    if mismatch:
+        raise PatchError(mismatch)
+    gate = _gate(experiment, project, patch, ctx, _subject_ids(ctx["subjects_dir"]),
+                 skip_trial=args.skip_trial, max_runs=args.max_runs, seeds_per_run=args.seeds_per_run,
+                 seed_set=args.seed_set, template_dir=args.template,
+                 reserved=template_identifiers(ctx["template_dir"]))
+    _save_gate(project, path, raw, gate)
+    _print_gate_summary(patch, gate)
+    return 1 if gate["status"] in ("static_failed", "contract_failed") else 0
 
-    # Every check below closes a way `approve` could be tricked into
-    # accepting a patch the gate never actually vetted.
-    if patch.get("id") != args.patch:
-        print("パッチの id がファイル名と一致しません")
-        return 1
-    if gate.get("patch_id") != args.patch:
-        print("ゲート結果の patch_id がファイル名と一致しません")
-        return 1
-    current_sha256 = hashlib.sha256(patch_path.read_bytes()).hexdigest()
-    if gate.get("patch_sha256") != current_sha256:
-        print("ゲート検査の後にパッチが変更されています。check をやり直してください")
-        return 1
-    if patch_id_for(patch.get("add", {})) != patch.get("id"):
-        print("パッチの内容と ID が一致しません。propose --from-file で作り直してください")
-        return 1
 
-    try:
-        current_approved = approved_patches(project)
-    except PatchError as error:
-        print(f"承認済みパッチの読み込みに失敗しました: {error}")
-        return 1
-    current_ids = [p["id"] for p in current_approved]
-    if list(patch.get("parent_rev") or []) != current_ids:
-        print("parent_rev が現在の承認済みスタックと一致しません")
-        return 1
-
-    world = yaml.safe_load((project / "world.yaml").read_text(encoding="utf-8"))
-    subject_ids = _subject_ids(project / "subjects")
-    reserved = template_identifiers(args.template) if args.template else ()
-    try:
-        world = apply_patches(world, current_approved, reserved=reserved)
-        violations = validate_patch(world, patch, subject_ids=subject_ids, reserved=reserved)
-    except PatchError as error:
-        print(f"現在の世界に対する検証に失敗しました: {error}")
-        return 1
-    if violations:
-        print("現在の世界に対する検証に失敗しました: " + "; ".join(violations))
-        return 1
-
-    # Last gate: the current approved stack + this patch must actually build
-    # in the engine, not just pass the data-only static checks.
-    full_world = apply_patch(world, patch)
-    absolutize_references(full_world, project, ROOT)
-    action_graph_path = (args.template / "action_graph.yaml") if args.template else None
-    with tempfile.TemporaryDirectory() as tmp:
-        world_path = Path(tmp) / "world.yaml"
-        world_path.write_text(yaml.safe_dump(full_world, allow_unicode=True, sort_keys=False), encoding="utf-8")
-        try:
-            World.from_yaml(world_path, action_graph_path=action_graph_path)
-        except Exception as error:  # noqa: BLE001 -- surface as a rejection, not a crash
-            print(f"世界を構築できません: {error}")
-            return 1
-
-    seq = max((p.get("approved_seq", 0) for p in current_approved), default=0) + 1
-    approved_patch = {**patch, "approved_seq": seq}
-    patches_dir = project / "patches"
-    patches_dir.mkdir(parents=True, exist_ok=True)
-    approved_patch_path = patches_dir / f"{args.patch}.yaml"
-    approved_patch_path.write_text(
-        yaml.safe_dump(approved_patch, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    gate["patch_sha256"] = hashlib.sha256(approved_patch_path.read_bytes()).hexdigest()
-    (patches_dir / f"{args.patch}.gate.json").write_text(
-        json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
-    patch_path.unlink()
-    gate_path.unlink()
-    print(f"承認しました: {args.patch}（approved_seq={seq}）")
+def cmd_approve(args):
+    revision = approve(args.project.resolve(), args.template.resolve(), args.patch, args.reason)
+    print(f"承認しました: {args.patch}（rev={revision['rev']}）")
     return 0
 
 
-def cmd_reject(args: argparse.Namespace) -> int:
+def cmd_reject(args):
     if not ID_RE.fullmatch(args.patch):
-        print("パッチ ID の形式が不正です")
-        return 1
+        raise PatchError("パッチ ID の形式が不正です")
     project = args.project.resolve()
-    proposed_dir = project / "patches" / "_proposed"
-    rejected_dir = project / "patches" / "_rejected"
-    moved = False
-    for suffix in (".yaml", ".gate.json"):
-        src = proposed_dir / f"{args.patch}{suffix}"
-        if src.is_file():
-            rejected_dir.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src), str(rejected_dir / src.name))
-            moved = True
-    if not moved:
-        print("提案が見つかりません")
-        return 1
-    print(f"却下しました: {args.patch}")
+    with patch_lock(project):
+        proposed = project / "patches" / "_proposed"
+        destination = project / "patches" / "_rejected"
+        files = [proposed / f"{args.patch}{suffix}" for suffix in (".yaml", ".gate.json")]
+        files = [p for p in files if p.is_file()]
+        if not files:
+            raise PatchError("提案が見つかりません")
+        if any((destination / p.name).exists() for p in files):
+            raise PatchError("却下済みの同名ファイルがあります")
+        destination.mkdir(exist_ok=True)
+        for path in files:
+            shutil.move(str(path), str(destination / path.name))
     return 0
 
 
-def cmd_list(args: argparse.Namespace) -> int:
+def cmd_list(args):
     project = args.project.resolve()
-    try:
-        approved = approved_patches(project)
-    except PatchError as error:
-        print(f"承認済みパッチの読み込みに失敗しました: {error}")
-        return 1
+    with patch_lock(project):
+        verified = verify_stack(project)
+        stack = read_stack(project)
+        print("承認済み:")
+        for (patch, _), revision in zip(verified, stack["revisions"]):
+            print(f"  rev={revision['rev']} {patch['id']} {patch.get('title')} / {revision['approval']['reason']}")
+        print("提案中:")
+        for path in sorted((project / "patches" / "_proposed").glob("*.yaml")):
+            patch = yaml.safe_load(path.read_text(encoding="utf-8"))
+            gate_path = path.with_suffix(".gate.json")
+            gate = json.loads(gate_path.read_text(encoding="utf-8")) if gate_path.is_file() else {}
+            reasons = gate.get("static", {}).get("violations") or gate.get("trial", {}).get("reasons", []) if gate.get("trial") else gate.get("static", {}).get("violations", [])
+            print(f"  {patch.get('id')}: {patch.get('title')} / {gate.get('status', 'trial_pending')} / {(reasons or [''])[0]}")
+    return 0
 
-    print("承認済み:")
-    if not approved:
-        print("  (なし)")
-    for patch in approved:
-        print(f"  {patch['approved_seq']}: {patch['id']} {patch.get('title')} "
-              f"({_added_summary(patch.get('add', {}))})")
 
-    print("提案中:")
-    proposed_dir = project / "patches" / "_proposed"
-    proposals = sorted(proposed_dir.glob("*.yaml")) if proposed_dir.is_dir() else []
-    if not proposals:
-        print("  (なし)")
-    for path in proposals:
-        patch = yaml.safe_load(path.read_text(encoding="utf-8"))
-        gate_path = path.parent / f"{path.stem}.gate.json"
-        if gate_path.is_file():
-            gate = json.loads(gate_path.read_text(encoding="utf-8"))
-            violations = (gate.get("static") or {}).get("violations") or []
-            note = "合格" if gate.get("passed") else ("不合格: " + violations[0] if violations else "不合格")
-        else:
-            note = "未検査"
-        print(f"  {patch.get('id')}: {patch.get('title')} ({note})")
+def cmd_reopen(args):
+    print("再検査に戻しました: " + ", ".join(reopen(args.project.resolve())))
+    return 0
+
+
+def cmd_repair(args):
+    print("回復しました: " + ", ".join(repair(args.project.resolve())))
     return 0
 
 
@@ -463,12 +365,14 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--max-runs", type=int, default=5)
     check.add_argument("--seeds-per-run", type=int, default=8)
     check.add_argument("--template", type=Path)
+    check.add_argument("--seed-set", choices=("exploration", "holdout"), default="holdout")
     check.set_defaults(func=cmd_check)
 
     approve = sub.add_parser("approve")
     approve.add_argument("--project", type=Path, required=True)
     approve.add_argument("--patch", required=True)
-    approve.add_argument("--template", type=Path)
+    approve.add_argument("--template", type=Path, required=True)
+    approve.add_argument("--reason", required=True)
     approve.set_defaults(func=cmd_approve)
 
     reject = sub.add_parser("reject")
@@ -480,13 +384,29 @@ def build_parser() -> argparse.ArgumentParser:
     list_cmd.add_argument("--project", type=Path, required=True)
     list_cmd.set_defaults(func=cmd_list)
 
+    for name, func in (("reopen", cmd_reopen), ("repair", cmd_repair)):
+        command = sub.add_parser(name)
+        command.add_argument("--project", type=Path, required=True)
+        command.set_defaults(func=func)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    args = build_parser().parse_args(argv)
-    return args.func(args)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    try:
+        args = build_parser().parse_args(arguments)
+    except SystemExit as error:
+        # Approval prerequisites, including missing required options, use 1.
+        # Preserve normal argparse help and other commands' usage behavior.
+        if error.code == 2 and arguments[:1] == ["approve"]:
+            return 1
+        raise
+    try:
+        return args.func(args)
+    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as error:
+        print(f"処理できません: {error}")
+        return 1
 
 
 if __name__ == "__main__":

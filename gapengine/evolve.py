@@ -1312,6 +1312,7 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             summary_payload["world_expansion"] = world_expansion
         if world_patch_ids:
             summary_payload["world_patches"] = world_patch_ids
+            summary_payload["world_expansion_patches"] = raw_world_patches
         if coevolve:
             summary_payload.update(
                 {

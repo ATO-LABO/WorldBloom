@@ -1043,6 +1043,10 @@ def _world_expansion_line(patches: list) -> str:
     """1行サマリ + パッチごとの<li>（WB-WORLDGROW-001 段階3a）。パッチが無ければ
     「ベース（拡張なし）」の1行のみ。要素の型が違っても落ちない。"""
 
+    if isinstance(patches, Mapping):
+        if patches.get("state") == "unknown":
+            return "<p>この実験の世界: 不明（拡張の情報が欠けています）</p>"
+        patches = patches.get("patches", [])
     if not patches:
         return "<p>この実験の世界: ベース（拡張なし）</p>"
 
@@ -1088,7 +1092,7 @@ def _world_demand_block(
     を常に1行で示し、world_expansion=detect/expand で回っていればゾーン別の
     空振りトリガーも平文で見せる。集計が無ければ案内文のみ。"""
 
-    expansion_line = _world_expansion_line(data.world_expansion_info(repository, experiment))
+    expansion_line = _world_expansion_line(data.world_expansion_state(repository, experiment))
     report = data.world_demand(repository, experiment)
     if report is None:
         return (
