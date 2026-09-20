@@ -181,6 +181,25 @@ class WorldDemandTest(unittest.TestCase):
         self.assertEqual(triggers(world_demand.WHIFFS_MIN - 1), [])
         self.assertEqual(len(triggers(world_demand.WHIFFS_MIN)), 1)
 
+    def test_an_investigation_that_found_something_is_not_a_whiff(self) -> None:
+        # The engine reports effective=False for a learned plain fact (knowledge
+        # is not part of the layer snapshot); details still say what was found.
+        rows = [
+            {"kind": "header", "protagonist": "たろう"},
+            _row(kind="decision", subject="たろう", verb="investigate", effective=False,
+                 details={"learned": ["潮の知識"], "gathered": []}, explanation={"zone": "海"}),
+            _row(kind="decision", subject="たろう", verb="investigate", effective=False,
+                 details={"learned": [], "gathered": []}, explanation={"zone": "海"}),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "layers.jsonl"
+            path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                            encoding="utf-8")
+            sea = world_demand.collect([path])["zones"][0]
+
+        self.assertEqual(sea["verbs"], [("investigate", 2, 0.5)])
+        self.assertEqual(sea["ineffective_rate"], 0.5)
+
     def test_build_report_adds_schema_and_thresholds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             experiment_dir = Path(tmp)
