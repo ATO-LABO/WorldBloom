@@ -378,6 +378,85 @@ class WorldPatchCliTests(unittest.TestCase):
             approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
         self.assertEqual(approved_patches(self.project), [])
 
+    def test_approve_rejects_a_gate_that_triples_the_same_individual_to_fake_a_minimum(self):
+        # N1 (WB-WORLDGROW-001, Astra review): the same real (generation,
+        # index) row repeated 3x (with the status forced back to
+        # "reviewable") must not count as 3 distinct individuals.
+        pid = self._holdout()
+        gate_path = self.project / "patches/_proposed" / f"{pid}.gate.json"
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        real = gate["trial"]["evidence"]["individuals"][0]
+        gate["trial"]["evidence"]["individuals"] = [dict(real) for _ in range(3)]
+        gate["status"] = "reviewable"
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaises(PatchError):
+            approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_the_same_cell_relabeled_to_fabricated_indices(self):
+        # N1 continued: relabeling one real row's index to 999/1000/1001
+        # (keeping the same real cell, so it dedups as 3 *distinct*
+        # individuals and reaches "reviewable") must still be caught --
+        # each fabricated index is cross-checked against the exemplar's
+        # actual index encoded in the archive's own layers_path.
+        pid = self._holdout()
+        gate_path = self.project / "patches/_proposed" / f"{pid}.gate.json"
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        real = gate["trial"]["evidence"]["individuals"][0]
+        gate["trial"]["evidence"]["individuals"] = [dict(real, index=999 + n) for n in range(3)]
+        gate["status"] = "reviewable"
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaises(PatchError):
+            approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_an_individual_referencing_a_cell_not_in_the_archive(self):
+        pid = self._holdout()
+        gate_path = self.project / "patches/_proposed" / f"{pid}.gate.json"
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        individuals = gate["trial"]["evidence"]["individuals"]
+        forged = dict(individuals[0], cell="no-such-cell")
+        gate["trial"]["evidence"]["individuals"] = individuals + [forged]
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaises(PatchError):
+            approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_pairs_missing_a_row_for_a_verified_individual(self):
+        pid = self._holdout()
+        gate_path = self.project / "patches/_proposed" / f"{pid}.gate.json"
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        gate["trial"]["pairs"].pop()
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaises(PatchError):
+            approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_pairs_with_a_duplicated_row(self):
+        pid = self._holdout()
+        gate_path = self.project / "patches/_proposed" / f"{pid}.gate.json"
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        gate["trial"]["pairs"].append(gate["trial"]["pairs"][0])
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaises(PatchError):
+            approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+        self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_a_gate_whose_archive_was_rewritten_after_check(self):
+        # N1: evidence["archive_sha256"] (sealed by run_trial) must be
+        # re-verified against the experiment's *current* archive.json, not
+        # just trusted.
+        pid = self._holdout()
+        archive_path = self.experiment / "archive.json"
+        original = archive_path.read_bytes()
+        try:
+            archive_path.write_bytes(original + b" ")
+            with self.assertRaises(PatchError):
+                approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+            self.assertEqual(approved_patches(self.project), [])
+        finally:
+            archive_path.write_bytes(original)
+
     def test_holdout_counter_and_exploration_cannot_be_approved(self):
         pid = self._holdout()
         gate_path = self.project / "patches/_proposed" / f"{pid}.gate.json"
@@ -416,6 +495,20 @@ class WorldPatchCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(len(self._proposed_files()), 1)
         self.assertEqual(approved_patches(self.project), [])
+
+    def test_approve_rejects_when_engine_construction_fails_after_all_static_checks_pass(self):
+        # Optional (WB-WORLDGROW-001 review): a patch that passes every
+        # static/archive/pairs check but fails at the engine construction +
+        # subject bind step (the last thing approve() does before writing
+        # anything) must not publish. No natural input reaches this --
+        # World.from_yaml is stubbed to raise instead.
+        pid = self._holdout()
+        with mock.patch("execution.world_patch_approval.World.from_yaml", side_effect=ValueError("boom")):
+            with self.assertRaises(ValueError):
+                approve_patch(self.project, self.template, pid, "測定値と契約検査の結果を確認した")
+        self.assertEqual(approved_patches(self.project), [])
+        self.assertTrue((self.project / "patches/_proposed" / f"{pid}.yaml").is_file())
+        self.assertFalse((self.project / "patches/stack.json").is_file())
 
     def test_approve_rejects_a_patch_tampered_after_check(self):
         self._propose_from_file()

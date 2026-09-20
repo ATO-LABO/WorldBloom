@@ -13,8 +13,10 @@ from engine.subject import Subject
 from engine.world import World
 from execution.provenance import atomic_json
 from execution.world_patches import applicable_snapshot, patch_lock
+from gapengine.lineage import _EXEMPLAR_PATH
 from gapengine.world_patch import (PATCH_RULES_VERSION, ID_RE, PatchError, materialize,
                                   next_digest, patch_id_for, read_stack, template_identifiers, verify_stack)
+from gapengine.world_patch_contract import contract_check
 from gapengine.world_patch_inputs import digest, inputs_digest, runtime_digest
 from gapengine.world_patch_trial import TRIAL_RULES_VERSION, gate_status, seed_sets
 
@@ -26,11 +28,15 @@ def _sha(raw):
 def approve(project, template, patch_id, reason, *, repo_root=None):
     """Human approval of a proposed patch.
 
-    Note: this only re-derives gate.status from the *stored* gate.json's own
-    static/trial/evidence fields (see R1) -- it never re-runs the static or
-    trial gates, so a gate.json whose `contract`/`reproduction` records were
-    themselves rewritten to look consistent cannot be caught here. Re-run
-    `check` before approving anything you don't trust the provenance of.
+    What this re-runs at approval time: the static gate (via materialize(),
+    which calls validate_patch() again), a cross-check of every evidence
+    individual against the experiment's own (freshly re-hashed) archive.json
+    and precedent files, the input/runtime/rules digests, and a full engine
+    construction + subject bind + contract re-check of the materialized
+    world. What it does *not* re-run: the original measurement itself (the
+    base-vs-patched simulated runs) or the reproduction check -- those are
+    trusted from the sealed gate.json's own trial record. Re-run `check`
+    before approving anything you don't trust the provenance of.
     """
     project, template = Path(project), Path(template)
     if not isinstance(reason, str) or len(reason.strip()) < 10:
@@ -84,17 +90,48 @@ def approve(project, template, patch_id, reason, *, repo_root=None):
         from gapengine.lineage import _resolve_world_context
         from viewer.data import RunRepository
         experiment = Path(evidence["experiment"])
-        ctx = _resolve_world_context(RunRepository(experiment.parent), experiment)
+        # N2 (WB-WORLDGROW-001, Astra review): forward repo_root here too --
+        # this used to always re-resolve against this module's own default
+        # repo, which could raise (or silently resolve against the wrong
+        # references) for a patch whose experiment was checked against a
+        # --repo control-side copy.
+        ctx = _resolve_world_context(RunRepository(experiment.parent), experiment, repo_root=repo_root)
         if ctx["source"] != "frozen_inputs" or ctx["target_ending"] != evidence.get("target_ending"):
             raise PatchError("対象結末または実験の証拠が変更されています")
         summary = json.loads((experiment / "summary.json").read_text(encoding="utf-8"))
         seeds = evidence.get("seeds", [])
         if seeds != seed_sets(summary.get("seeds", []), len(seeds))["holdout"]:
             raise PatchError("holdout seed の証拠が一致しません")
-        archive = json.loads((experiment / "archive.json").read_text(encoding="utf-8"))
+        # N1 (WB-WORLDGROW-001, Astra review): re-hash archive.json itself
+        # (not just trust evidence["archive_sha256"] blindly) so a rewritten
+        # archive cannot be paired with a gate.json that was never re-checked
+        # against it.
+        try:
+            archive_bytes = experiment.joinpath("archive.json").read_bytes()
+        except OSError as error:
+            raise PatchError("実験のアーカイブを読み込めません。check をやり直してください") from error
+        if evidence.get("archive_sha256") != _sha(archive_bytes):
+            raise PatchError("実験のアーカイブ記録が変更されています。check をやり直してください")
+        archive = json.loads(archive_bytes)
+        # Cross-check every evidence individual against the archive: the
+        # cell exists, its recorded generation matches both the individual
+        # and the cell's own record, its recorded index matches the actual
+        # index encoded in the exemplar's layers_path (not just an
+        # attacker-chosen number), and the genome/precedent/antagonist
+        # hashes match. De-duplicate by (generation, index) afterward -- the
+        # same real individual repeated under padded entries (identical, or
+        # relabeled to a different fabricated index that still fails the
+        # exemplar-path check above) must not count as several individuals.
+        verified_by_key = {}
         for individual in evidence["individuals"]:
-            elite = archive["cells"][individual["cell"]]
-            generation = individual["generation"]
+            elite = archive.get("cells", {}).get(individual.get("cell"))
+            if elite is None:
+                raise PatchError("試走個体または前例表の証拠が変更されています")
+            match = _EXEMPLAR_PATH.fullmatch(str((elite.get("exemplar") or {}).get("layers_path", "")))
+            generation, requested_index = individual.get("generation"), individual.get("index")
+            if (not match or elite.get("generation") != generation or int(match.group(1)) != generation
+                    or int(match.group(2)) != requested_index):
+                raise PatchError("試走個体または前例表の証拠が変更されています")
             precedent = experiment / f"g{generation}/precedent.json"
             opponent_path = experiment / f"g{generation}/precedent.antagonist.json"
             opponent = elite["exemplar"].get("antagonist_genome")
@@ -103,20 +140,46 @@ def approve(project, template, patch_id, reason, *, repo_root=None):
                     or (digest(opponent) if opponent is not None else None) != individual["antagonist_genome_sha256"]
                     or (_sha(opponent_path.read_bytes()) if opponent_path.is_file() else None) != individual["antagonist_precedent_sha256"]):
                 raise PatchError("試走個体または前例表の証拠が変更されています")
+            verified_by_key.setdefault((generation, requested_index), individual)
+        if len(verified_by_key) < 3:
+            raise PatchError("試走個体または前例表の証拠が変更されています")
+        # Structural check: the recorded pairs/runs/total_runs must be
+        # exactly what the verified, de-duplicated individuals x holdout
+        # seeds would produce -- catches padding that stays internally
+        # "consistent" (an inflated pairs/runs list) without needing a
+        # forged individual entry of its own.
+        trial = gate["trial"]
+        expected_cells = {row["cell"] for row in verified_by_key.values()}
+        expected_pairs = {(cell, seed) for cell in expected_cells for seed in seeds}
+        actual_pairs = [(pair.get("cell"), pair.get("seed")) for pair in trial.get("pairs", [])]
+        if (len(actual_pairs) != len(expected_pairs) or set(actual_pairs) != expected_pairs
+                or trial.get("runs") != len(verified_by_key)
+                or trial.get("total_runs") != len(verified_by_key) * len(seeds)):
+            raise PatchError("試走個体または前例表の証拠が変更されています")
         with tempfile.TemporaryDirectory() as temp:
             temp = Path(temp)
             for role, path in refs.items():
                 full.setdefault("gapengine", {})[role] = str(path)
             world_path = temp / "world.yaml"
             world_path.write_text(yaml.safe_dump(full, allow_unicode=True, sort_keys=False), encoding="utf-8")
+            subjects_dir = temp / "subjects"
+            subjects_dir.mkdir()
             subjects = []
             for name, person in full_people.items():
-                path = temp / name
+                path = subjects_dir / name
                 path.write_text(yaml.safe_dump(person, allow_unicode=True, sort_keys=False), encoding="utf-8")
                 subjects.append(Subject.from_yaml(path))
             graph = template / "action_graph.yaml"
             loaded = World.from_yaml(world_path, action_graph_path=graph if graph.is_file() else None)
             loaded.bind_subjects({p.id: p for p in subjects})
+            # Optional (WB-WORLDGROW-001 review): re-run the contract check
+            # against this same materialized world/subjects -- cheap (no
+            # simulation), and catches a gate.json whose own contract record
+            # was rewritten to hide a violation.
+            recheck = contract_check(world_path, subjects_dir, patch,
+                                      action_graph_path=graph if graph.is_file() else None)
+            if recheck["violations"]:
+                raise PatchError("承認時の契約再検査で違反が見つかりました: " + "、".join(recheck["violations"]))
         destinations = [folder / source.name, folder / gate_path.name]
         if any(p.exists() for p in destinations):
             raise PatchError("承認先に同名ファイルがあります")

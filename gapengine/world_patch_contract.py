@@ -12,7 +12,7 @@ def contract_check(world_path, subjects_dir, patch, *, action_graph_path=None):
         people = [Subject.from_yaml(p) for p in sorted(Path(subjects_dir).glob("*.yaml"))]
         world.bind_subjects({p.id: p for p in people})
         return world, people
-    violations, notes = [], []
+    violations, negative = [], []
     try:
         world, people = instance()
         for zone in patch.get("add", {}).get("zones", []):
@@ -30,45 +30,61 @@ def contract_check(world_path, subjects_dir, patch, *, action_graph_path=None):
             if branch not in world.reachable_paths(person):
                 violations.append(f"親から枝へ入れません: {branch}（試した人物: {person.id}）")
 
-            # R6: every subject with an exclude rule that targets `parent`
-            # is a candidate for the negative check -- try each in turn (not
-            # just the first) and only give up with a note (not a
-            # violation) if none of them has a usable starting position.
-            negative_world, negatives = instance()
-            tried_someone, no_start_for = False, []
-            for person in negatives:
-                rules = [r for r in person.range_exclude if parent in r.get("zones", [])]
-                if not rules:
+            # N3 (WB-WORLDGROW-001, Astra review): every subject with at
+            # least one exclude rule that targets `parent` is a candidate
+            # for the negative check, tested one rule at a time. Each rule
+            # gets its own fresh subject state (a new instance()) with only
+            # *that* rule's own until_item removed -- a different,
+            # already-satisfied exclude rule on the same subject must not
+            # shrink the pool of candidate starting zones (the previous R6
+            # fix still unioned every rule's zones regardless of whether
+            # that rule's condition currently held, so a currently-inert
+            # rule elsewhere could exclude the only real neighbor and
+            # silently skip the check instead of running it). Every subject
+            # gets a recorded status, not just the ones with no start (a
+            # subject skipped alongside others who *were* checked used to
+            # vanish from the output entirely).
+            for base_person in people:
+                rule_indices = [i for i, r in enumerate(base_person.range_exclude)
+                                 if parent in (r.get("zones") or [])]
+                if not rule_indices:
+                    negative.append({"subject": base_person.id, "rule_index": None,
+                                      "status": "not_applicable"})
                     continue
-                # Only start from a neighbor this person is themselves
-                # allowed into and not excluded from -- an out-of-range or
-                # self-excluded start leaves reachable_paths nearly empty
-                # regardless of the branch's own exclusion, so the check
-                # would pass for the wrong reason (WB-WORLDGROW-001 R6).
-                excluded_zones = {z for r in person.range_exclude for z in (r.get("zones") or [])}
-                neighbors = sorted(
-                    n for n, routes in negative_world.routes.items()
-                    if n not in (parent, branch) and any(r.destination == parent for r in routes)
-                    and n in person.range_zones and n not in excluded_zones
-                )
-                if not neighbors:
-                    no_start_for.append(person.id)
-                    continue
-                tried_someone = True
-                person.zone, person.stamina = neighbors[0], person.stamina_max
-                for rule in rules:
+                for rule_index in rule_indices:
+                    fresh_world, fresh_people = instance()
+                    subject = next(p for p in fresh_people if p.id == base_person.id)
+                    rule = subject.range_exclude[rule_index]
                     if rule.get("until_item"):
-                        person.inventory.pop(rule["until_item"], None)
-                paths = negative_world.reachable_paths(person)
-                if parent in paths or branch in paths:
-                    violations.append(f"入場条件を回避できます: {person.id}/{branch}")
-            if not tried_someone and no_start_for:
-                notes.append(f"陰性検査の開始場所がありません: {'、'.join(no_start_for)}")
+                        subject.inventory.pop(rule["until_item"], None)
+                    # The engine's own runtime notion of "currently
+                    # excluded" (an until_item rule only counts while the
+                    # item is actually missing) -- reused rather than
+                    # reimplemented so the candidate search agrees with how
+                    # the simulation itself would treat these zones.
+                    excluded_now = fresh_world._excluded_zones(subject)
+                    candidates = subject.range_zones - excluded_now - {parent, branch}
+                    neighbors = sorted(
+                        z for z in candidates
+                        if any(route.destination == parent for route in fresh_world.routes.get(z, ())))
+                    ordered = sorted(candidates)
+                    start = neighbors[0] if neighbors else (ordered[0] if ordered else None)
+                    if start is None:
+                        negative.append({"subject": base_person.id, "rule_index": rule_index,
+                                          "status": "skipped", "start": None,
+                                          "reason": "合法な開始場所を構成できません"})
+                        continue
+                    subject.zone, subject.stamina = start, subject.stamina_max
+                    paths = fresh_world.reachable_paths(subject)
+                    negative.append({"subject": base_person.id, "rule_index": rule_index,
+                                      "status": "checked", "start": start})
+                    if parent in paths or branch in paths:
+                        violations.append(f"入場条件を回避できます: {base_person.id}/{branch}")
     except Exception as error:
         violations.append(f"世界と人物の契約検査に失敗: {error}")
     result = {"violations": violations}
-    if notes:
-        result["notes"] = notes
+    if negative:
+        result["negative"] = negative
     return result
 
 

@@ -521,18 +521,77 @@ class ContractCheckNegativeStartTests(unittest.TestCase):
             result = contract_check(world_path, subjects_dir, patch, action_graph_path=None)
         # Starting from AAA_isolated (in range only via the earlier,
         # unfiltered pick) reaches nothing and would have missed this
-        # entirely -- ZZZ_valid -> 小屋 bypasses the excluded 拠点 hop.
+        # entirely -- ZZZ_valid -> 小屋 bypasses the excluded 拠点 hop. The
+        # branch also never inherited the parent's exclude rule here (it
+        # names only 拠点, not 小屋) -- WB-WORLDGROW-001 N3's last acceptance
+        # case, a patch applied without materialize()'s inheritance step.
         self.assertEqual(result["violations"], ["入場条件を回避できます: サブ/小屋"])
-        self.assertNotIn("notes", result)
+        self.assertEqual(result["negative"],
+                          [{"subject": "サブ", "rule_index": 0, "status": "checked", "start": "ZZZ_valid"}])
 
-    def test_no_in_range_neighbor_leaves_a_note_not_a_violation_or_crash(self):
+    def test_no_in_range_neighbor_is_skipped_not_a_violation_or_crash(self):
         with tempfile.TemporaryDirectory() as temp:
             world_path, subjects_dir = _minimal_contract_world(
                 Path(temp), subject_range_zones=["拠点", "小屋"])
             patch = {"add": {"zones": [{"name": "小屋", "parent": "拠点"}]}}
             result = contract_check(world_path, subjects_dir, patch, action_graph_path=None)
         self.assertEqual(result["violations"], [])
-        self.assertEqual(result["notes"], ["陰性検査の開始場所がありません: サブ"])
+        self.assertEqual(result["negative"],
+                          [{"subject": "サブ", "rule_index": 0, "status": "skipped", "start": None,
+                            "reason": "合法な開始場所を構成できません"}])
+
+    def test_not_applicable_for_a_subject_with_no_exclude_rule_on_parent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "ZZZ_valid"])
+            # A second subject with no range.exclude at all -- must show up
+            # as not_applicable, not silently vanish from the output.
+            other = yaml.safe_load((subjects_dir / "sub.yaml").read_text(encoding="utf-8"))
+            other = dict(other, id="他", range=dict(other["range"], exclude=[]))
+            (subjects_dir / "other.yaml").write_text(yaml.safe_dump(other, allow_unicode=True), encoding="utf-8")
+            patch = {"add": {"zones": [{"name": "小屋", "parent": "拠点"}]}}
+            result = contract_check(world_path, subjects_dir, patch, action_graph_path=None)
+        entries = {n["subject"]: n for n in result["negative"]}
+        self.assertEqual(entries["他"], {"subject": "他", "rule_index": None, "status": "not_applicable"})
+        self.assertEqual(entries["サブ"]["status"], "checked")
+
+    def test_permanent_exclude_rule_without_until_item_is_checked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "ZZZ_valid"])
+            person = yaml.safe_load((subjects_dir / "sub.yaml").read_text(encoding="utf-8"))
+            person["range"]["exclude"] = [{"zones": ["拠点"]}]  # no until_item: permanent
+            (subjects_dir / "sub.yaml").write_text(yaml.safe_dump(person, allow_unicode=True), encoding="utf-8")
+            patch = {"add": {"zones": [{"name": "小屋", "parent": "拠点"}]}}
+            result = contract_check(world_path, subjects_dir, patch, action_graph_path=None)
+        self.assertEqual(result["violations"], ["入場条件を回避できます: サブ/小屋"])
+        self.assertEqual(result["negative"],
+                          [{"subject": "サブ", "rule_index": 0, "status": "checked", "start": "ZZZ_valid"}])
+
+    def test_an_already_satisfied_different_exclude_rule_does_not_poison_the_start_search(self):
+        # N3 (WB-WORLDGROW-001, Astra review): サブ has two exclude rules
+        # targeting different zones -- one under test (拠点, still active:
+        # no 鍵) and one already satisfied (ZZZ_valid, has the item). The
+        # pre-fix code unioned every rule's zones regardless of whether that
+        # rule's own condition currently held, so the already-satisfied
+        # rule's zone (which happens to be the *only* real neighbor of 拠点)
+        # got excluded from the start search too, and the check was silently
+        # skipped instead of run.
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "ZZZ_valid"])
+            world = yaml.safe_load(world_path.read_text(encoding="utf-8"))
+            world["items"].append({"name": "通行証"})
+            world_path.write_text(yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+            person = yaml.safe_load((subjects_dir / "sub.yaml").read_text(encoding="utf-8"))
+            person["inventory"] = {"通行証": 1}
+            person["range"]["exclude"].append({"zones": ["ZZZ_valid"], "until_item": "通行証"})
+            (subjects_dir / "sub.yaml").write_text(yaml.safe_dump(person, allow_unicode=True), encoding="utf-8")
+            patch = {"add": {"zones": [{"name": "小屋", "parent": "拠点"}]}}
+            result = contract_check(world_path, subjects_dir, patch, action_graph_path=None)
+        self.assertEqual(result["violations"], ["入場条件を回避できます: サブ/小屋"])
+        rule0 = next(n for n in result["negative"] if n["rule_index"] == 0)
+        self.assertEqual(rule0, {"subject": "サブ", "rule_index": 0, "status": "checked", "start": "ZZZ_valid"})
 
 
 if __name__ == "__main__":

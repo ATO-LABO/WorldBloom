@@ -413,7 +413,18 @@ def _resolve_world_context(
     )
     target_ending = summary.get("target_ending")
 
-    world = World.from_yaml(world_path, action_graph_path=action_graph_path)
+    # N2 (WB-WORLDGROW-001, Astra review): construct World from an
+    # in-memory copy with gapengine.action_graph/effects already
+    # absolutized against `resolved["references"]` -- reading world_path
+    # directly (as World.from_yaml would) leaves those fields exactly as
+    # the project author wrote them, and effects has no action_graph_path-
+    # style override, so a reference resolvable only via a caller-supplied
+    # repo_root (e.g. --repo) would otherwise fail here even once
+    # resolve_experiment_inputs itself resolved it correctly.
+    from gapengine.world_patch import absolutize_references
+    raw_world = _load_yaml(world_path, {})
+    absolutize_references(raw_world, project_dir, references=resolved["references"])
+    world = World(raw_world, world_path, action_graph_path=action_graph_path)
     if target_ending is not None:
         world.set_target_ending(target_ending)
 
