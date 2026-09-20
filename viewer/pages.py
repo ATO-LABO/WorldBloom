@@ -1633,58 +1633,84 @@ def cell_page(
         else None
     )
 
-    body = (
-        '<div class="cell-navigation">'
-        f'<a href="{experiment_url}">← 格子</a>'
-        f'<span class="neighbors">{" ".join(nav_links)}</span></div>'
-        '<section class="card elite-summary">'
+    selection_bar = (
+        '<section class="candidate-statusbar">'
         '<label class="selection large">'
         f'<input type="checkbox" class="selection-toggle" '
         f'data-endpoint="{endpoint}" data-cell="{_escape(cell_key)}"{checked}>'
-        "<span>本文候補として選定する</span></label>"
-        '<dl class="metric">'
-        f'<dt>{_tip("quality", "q")}</dt>'
-        f'<dd>{model["quality"]:.4f}</dd>'
-        f'<dt>{_tip("elite_reach", "到達")}</dt><dd>'
-        f'{_reached_seeds(model["reach_rate"], len(model.get("seeds") or []))}'
-        "</dd>"
-        f'<dt>{_tip("generation", "世代")}</dt>'
-        f'<dd>g{model["generation"]}</dd>'
-        f'<dt>{_tip("seed", "seed")}</dt>'
-        f'<dd>{_escape(model["seed"])}</dd>'
-        f'<dt>{_tip("parents", "親")}</dt>'
-        f'<dd>{_escape(parents)}</dd>'
-        f'<dt>{_tip("layers", "layers")}</dt>'
-        f'<dd>{_escape(model["layers_path"])}</dd>'
-        "</dl></section>"
-        + ('' if model["explanation"].get("reader_summary") else
-           '<section class="card"><h2>選択から後続へのつながり</h2>'
-           + (reader_ui.generate_button(experiment_name, cell_key, url_segment=_url_segment)
-              if _reader_generation_backend(job_store) and data.is_summarizable(model["explanation"])
-              else '')
-           + explanation_ui.panel(model["explanation"]) + '</section>')
-        + f'{_genome_panel(model["genome"], model["categories"])}'
-        '<section class="card chart-card"><h2>7層の推移</h2>'
-        '<p class="muted">x = 日。▼ downed、▲ revived、● ending。</p>'
-        f'{layers_svg(model["layer_points"], model["markers"])}</section>'
-        '<section class="card story-section">'
-        '<div class="section-heading"><h2>物語</h2>'
-        f'<nav class="view-modes">{" ".join(mode_links)}</nav></div>'
-        f'{_timeline(model)}</section>'
-        + '<section class="card"><h2>場面ごとの四項目</h2>'
-        + "".join(f'<details><summary>T{_escape(item["turn"])} {_escape(explanation_ui.action_text(item))}</summary>' + explanation_ui.panel(model["explanation"], item, details=(item["line"] == (model["explanation"]["representative"] or {}).get("line") or item["turning"].get("confirmation") == "confirmed")) + "</details>" for item in model["explanation"]["decisions"] if view == "all" or item["subject"] == model["protagonist"])
-        + "</section>"
-        +
-        '<details class="raw">'
-        '<summary>模範ランのターン列（生ログ）</summary>'
-        f'{_raw_table(model["turn_rows"])}</details>'
-        '<div class="outputs-grid">'
+        '<span>上映候補として選定</span></label>'
+        '<dl class="candidate-status-metrics">'
+        f'<div><dt>{_tip("quality", "品質")}</dt><dd>{model["quality"]:.4f}</dd></div>'
+        f'<div><dt>{_tip("elite_reach", "到達")}</dt><dd>{_reached_seeds(model["reach_rate"], len(model.get("seeds") or []))}</dd></div>'
+        f'<div><dt>{_tip("generation", "世代")}</dt><dd>g{model["generation"]}</dd></div>'
+        '</dl></section>'
+    )
+    outputs = (
+        '<div class="outputs-grid story-outputs">'
         f'{_output_panel("あらすじ", synopsis_entry, synopsis_text, model["synopsis_backend"])}'
         f'{_output_panel("本文", model["story"], model["story_text"])}'
-        "</div>"
+        '</div>'
+    )
+    story_panel = (
+        outputs
+        + '<section class="card story-section"><div class="section-heading"><h2>物語の流れ</h2>'
+        f'<nav class="view-modes">{" ".join(mode_links)}</nav></div>'
+        f'{_timeline(model)}</section>'
     )
     if model["explanation"].get("reader_summary"):
-        body = '<section class="card reader-primary">' + reader_ui.panel(model["explanation"]) + "</section>" + body
+        reader_panel = '<section class="card reader-primary">' + reader_ui.panel(model["explanation"]) + '</section>'
+    else:
+        reader_panel = (
+            '<section class="card"><h2>選択から後続へのつながり</h2>'
+            + (reader_ui.generate_button(experiment_name, cell_key, url_segment=_url_segment)
+               if _reader_generation_backend(job_store) and data.is_summarizable(model["explanation"])
+               else '')
+            + explanation_ui.panel(model["explanation"]) + '</section>'
+        )
+    decisions = ''.join(
+        f'<details><summary>T{_escape(item["turn"])} {_escape(explanation_ui.action_text(item))}</summary>'
+        + explanation_ui.panel(
+            model["explanation"], item,
+            details=(item["line"] == (model["explanation"]["representative"] or {}).get("line")
+                     or item["turning"].get("confirmation") == "confirmed"),
+        ) + '</details>'
+        for item in model["explanation"]["decisions"]
+        if view == "all" or item["subject"] == model["protagonist"]
+    )
+    reason_panel = reader_panel + '<section class="card decision-list"><h2>場面ごとの四項目</h2>' + decisions + '</section>'
+    parents = " × ".join(str(parent) for parent in model["parents"]) or "—"
+    data_panel = (
+        '<section class="card elite-summary"><dl class="metric">'
+        f'<dt>{_tip("quality", "q")}</dt><dd>{model["quality"]:.4f}</dd>'
+        f'<dt>{_tip("elite_reach", "到達")}</dt><dd>{_reached_seeds(model["reach_rate"], len(model.get("seeds") or []))}</dd>'
+        f'<dt>{_tip("generation", "世代")}</dt><dd>g{model["generation"]}</dd>'
+        f'<dt>{_tip("seed", "seed")}</dt><dd>{_escape(model["seed"])}</dd>'
+        f'<dt>{_tip("parents", "親")}</dt><dd>{_escape(parents)}</dd>'
+        f'<dt>{_tip("layers", "layers")}</dt><dd>{_escape(model["layers_path"])}</dd>'
+        '</dl></section>'
+        + _genome_panel(model["genome"], model["categories"])
+        + '<section class="card chart-card"><h2>7層の推移</h2>'
+        '<p class="muted">x = 日。▼ downed、▲ revived、● ending。</p>'
+        f'{layers_svg(model["layer_points"], model["markers"])}</section>'
+        '<details class="raw"><summary>模範ランのターン列（生ログ）</summary>'
+        f'{_raw_table(model["turn_rows"])}</details>'
+    )
+    body = (
+        '<div class="candidate-detail-shell">'
+        '<div class="cell-navigation">'
+        f'<a href="{experiment_url}">← 格子</a>'
+        f'<span class="neighbors">{" ".join(nav_links)}</span></div>'
+        + selection_bar
+        + '<div class="candidate-detail-tabs" role="tablist" aria-label="候補情報">'
+        '<button type="button" class="candidate-detail-tab is-active" data-detail-tab="story" aria-selected="true">物語</button>'
+        '<button type="button" class="candidate-detail-tab" data-detail-tab="reason" aria-selected="false">選択と根拠</button>'
+        '<button type="button" class="candidate-detail-tab" data-detail-tab="data" aria-selected="false">実験データ</button>'
+        '</div><div class="candidate-detail-panels">'
+        f'<section class="candidate-detail-panel is-active" data-detail-panel="story">{story_panel}</section>'
+        f'<section class="candidate-detail-panel" data-detail-panel="reason" hidden>{reason_panel}</section>'
+        f'<section class="candidate-detail-panel" data-detail-panel="data" hidden>{data_panel}</section>'
+        '</div></div>'
+    )
     phases = data.phase_status(repository, experiment_name, job_store=job_store)
     return document(
         f"{experiment_name} / {cell_key}",
@@ -1699,6 +1725,7 @@ def cell_page(
         lead="この候補の経緯を四項目で確かめます。",
         next_action=("格子に戻る →", experiment_url),
         job_store=job_store,
+        page_class="candidate-detail-workspace",
     )
 
 
