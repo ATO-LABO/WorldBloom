@@ -2206,6 +2206,37 @@ class Phase4GapEngineTests(unittest.TestCase):
                     continue
                 self.assertEqual(legacy_files[key], detect_files[key], key)
 
+    def test_world_patches_recorded_in_summary_only_when_world_has_expansion(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            expanded_project = make_reaching_project(root / "expanded")
+            world_path = expanded_project / "world.yaml"
+            world_raw = yaml.safe_load(world_path.read_text(encoding="utf-8"))
+            world_raw["expansion"] = {
+                "base": "桃太郎",
+                "patches": [{"id": "p-test1234", "title": "テスト拡張",
+                             "added": {"zones": [], "items": [], "facts": [], "daily_events": []}}],
+            }
+            world_path.write_text(
+                yaml.safe_dump(world_raw, allow_unicode=True, sort_keys=False),
+                encoding="utf-8", newline="\n",
+            )
+            plain_project = make_reaching_project(root / "plain")
+
+            common = {
+                "ga_seed": 29, "generations": 1, "keep": "all", "population": 3,
+                "processes": 1, "seed_base": 31, "seeds": 1, "template": TEMPLATE,
+            }
+            evolve({**common, "project": expanded_project, "out": root / "with-expansion"})
+            evolve({**common, "project": plain_project, "out": root / "no-expansion"})
+
+            with_summary = json.loads((root / "with-expansion" / "summary.json").read_text(encoding="utf-8"))
+            no_summary = json.loads((root / "no-expansion" / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(with_summary["world_patches"], ["p-test1234"])
+            self.assertNotIn("world_patches", no_summary)
+
     def test_meta_evolution_cli_flag(self) -> None:
         required = [
             "--project",

@@ -388,6 +388,91 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             self.store.verify_run("run-test")
 
+    # -- WB-WORLDGROW-001 stage 3a: expansion patches -----------------------
+
+    def _momotaro_spec(self, **evolution):
+        return {"label": "拡張確認", "project_id": "momotaro", "template_id": "momotaro",
+                "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all", **evolution}}
+
+    def _write_patch(self, patch, *, proposed=False):
+        folder = self.repo / "projects/momotaro/patches" / ("_proposed" if proposed else "")
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{patch['id']}.yaml").write_text(
+            yaml.safe_dump(patch, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    @staticmethod
+    def _sample_patch(**overrides):
+        patch = {
+            "id": "p-1a2b3c4d", "title": "海辺の船大工小屋", "approved_seq": 1,
+            "trigger": {"zone": "海", "verb": "investigate"},
+            "add": {"zones": [{"name": "船大工の小屋", "parent": "海", "note": "船具を扱う小屋"}],
+                    "items": [], "facts": [], "daily_events": []},
+        }
+        patch.update(overrides)
+        return patch
+
+    def test_expand_with_approved_patch_adds_zone_and_records_manifest(self):
+        self._write_patch(self._sample_patch())
+        spec = self._momotaro_spec(world_expansion="expand")
+        saved = self.store.save(spec, config_id="cfg-expand")
+        world = yaml.safe_load(
+            (self.store.control / "configs/cfg-expand/inputs/projects/momotaro/world.yaml").read_bytes())
+        self.assertIn("船大工の小屋", {z["name"] for z in world["zones"]})
+        self.assertEqual(world["expansion"]["patches"][0]["id"], "p-1a2b3c4d")
+        manifest = json.loads((self.store.control / "configs/cfg-expand/input-manifest.json").read_text(encoding="utf-8"))
+        record = next(r for r in manifest["files"] if r["path"] == "projects/momotaro/world.yaml")
+        self.assertEqual(record["world_patches"], [{"id": "p-1a2b3c4d", "sha256": sha256(
+            (self.repo / "projects/momotaro/patches/p-1a2b3c4d.yaml").read_bytes())}])
+        self.assertIn("船大工の小屋", {z["name"] for z in saved["preview"]["world"]["zones"]})
+
+    def test_off_and_detect_freeze_byte_identical_world_even_with_patches_present(self):
+        # Baseline: no patches/ directory at all.
+        baseline = self.store.save(self._momotaro_spec(world_expansion="off"), config_id="cfg-baseline")
+        baseline_world = (self.store.control / "configs/cfg-baseline/inputs/projects/momotaro/world.yaml").read_bytes()
+        self._write_patch(self._sample_patch())
+        for world_expansion in ("off", "detect"):
+            with self.subTest(world_expansion=world_expansion):
+                spec = self._momotaro_spec(world_expansion=world_expansion)
+                saved = self.store.save(spec, config_id=f"cfg-{world_expansion}")
+                frozen = (self.store.control / f"configs/cfg-{world_expansion}/inputs/projects/momotaro/world.yaml").read_bytes()
+                self.assertEqual(frozen, baseline_world)
+                self.assertEqual(saved["input_manifest_sha256"], baseline["input_manifest_sha256"])
+                manifest = json.loads((self.store.control / f"configs/cfg-{world_expansion}/input-manifest.json")
+                    .read_text(encoding="utf-8"))
+                record = next(r for r in manifest["files"] if r["path"] == "projects/momotaro/world.yaml")
+                self.assertNotIn("world_patches", record)
+
+    def test_invalid_approved_patch_rejected_as_config_error(self):
+        self._write_patch(self._sample_patch(add={"zones": [], "items": [], "facts": [], "daily_events": []}))
+        spec = self._momotaro_spec(world_expansion="expand")
+        with self.assertRaises(ConfigError) as caught:
+            self.store.preview(spec)
+        self.assertIn("inputs.world_patches", caught.exception.field_errors)
+
+    def test_invalid_approved_patch_does_not_block_off(self):
+        self._write_patch(self._sample_patch(add={"zones": [], "items": [], "facts": [], "daily_events": []}))
+        spec = self._momotaro_spec(world_expansion="off")
+        self.store.preview(spec)  # must not raise
+
+    def test_proposed_patch_is_never_applied_even_under_expand(self):
+        self._write_patch(self._sample_patch(), proposed=True)
+        spec = self._momotaro_spec(world_expansion="expand")
+        self.store.save(spec, config_id="cfg-proposed-only")
+        world = yaml.safe_load(
+            (self.store.control / "configs/cfg-proposed-only/inputs/projects/momotaro/world.yaml").read_bytes())
+        self.assertNotIn("expansion", world)
+
+    def test_duplicate_toggling_expand_saves_as_new_config_not_dead_end(self):
+        self._write_patch(self._sample_patch())
+        base = self.store.save(self._momotaro_spec(world_expansion="off"), config_id="cfg-base")
+        clone = self.store.duplicate("cfg-base", {"evolution": {"world_expansion": "expand"}}, new_id="cfg-clone")
+        self.assertIsNone(clone["parent_config_id"])
+        self.assertEqual(clone["evolution"]["world_expansion"], "expand")
+
+    def test_normalize_accepts_expand(self):
+        result = normalize({**self.spec, "evolution": {"world_expansion": "expand"}})
+        self.assertEqual(result["evolution"]["world_expansion"], "expand")
+
 
 if __name__ == "__main__":
     unittest.main()

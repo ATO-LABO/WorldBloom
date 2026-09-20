@@ -808,8 +808,8 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         raise ValueError(
             "keep must be one of: all, reached, exemplar"
         )
-    if world_expansion not in {"off", "detect"}:
-        raise ValueError("world_expansion must be one of: off, detect")
+    if world_expansion not in {"off", "detect", "expand"}:
+        raise ValueError("world_expansion must be one of: off, detect, expand")
 
     if observer is not None:
         observer.checkpoint(phase="preparing")
@@ -833,6 +833,16 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     rules = list(_load_yaml(template_dir / "rules.yaml", []))
     rule_ids = _rule_ids(rules) if meta_evolution else ()
     canon = load_canon(template_dir / "canon.yaml")
+
+    # Read once, raw: World.from_yaml below parses world_path into typed
+    # attributes and drops any "expansion" key -- summary_payload needs the
+    # raw applied-patch ids (WB-WORLDGROW-001 stage 3a), not engine state.
+    raw_world_patches = (
+        (_load_yaml(world_path, {}).get("expansion") or {}).get("patches") or []
+    )
+    world_patch_ids = [
+        p["id"] for p in raw_world_patches if isinstance(p, dict) and "id" in p
+    ]
 
     world_model = World.from_yaml(
         world_path,
@@ -1300,6 +1310,8 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             summary_payload["meta_evolution"] = True
         if world_expansion != "off":
             summary_payload["world_expansion"] = world_expansion
+        if world_patch_ids:
+            summary_payload["world_patches"] = world_patch_ids
         if coevolve:
             summary_payload.update(
                 {
@@ -1319,7 +1331,7 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 antagonist_generation_results
             )
 
-    if world_expansion == "detect":
+    if world_expansion in ("detect", "expand"):
         # Post-evolution only: never touches sim state, rng, candidate
         # generation or the Policy. Runs after the last summary/publish, and a
         # report that cannot be built must not turn a finished run into a

@@ -68,6 +68,13 @@ CANDIDATE_STATE_LABELS = {
     "unclassified": "○ 未分類",
 }
 AVAILABILITY_LABELS = {"present": "あり", "pruned": "剪定済み", "missing": "不在", "stale": "不一致"}
+# WB-WORLDGROW-001 stage 3a: evolution.world_expansion's Japanese display value
+# (config form's radio + detail views). An unrecognized value is shown as-is.
+WORLD_EXPANSION_LABELS = {"off": "しない", "detect": "検知のみ", "expand": "承認済みの拡張を適用"}
+
+
+def _world_expansion_label(value):
+    return WORLD_EXPANSION_LABELS.get(value, value)
 
 # WB-UI-021: /configs's 文章生成 card (execution/output_settings.py's backend choices).
 GENERATION_BACKEND_OPTIONS = (
@@ -452,6 +459,7 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
                 ("off", "しない（既定）。世界は設定したまま固定。"),
                 ("detect", "検知のみ。進化の後に、世界の解像度が足りない場所"
                            "（よく滞在するのに行動が空振りする場所）を集計して実験画面に出す。世界は変えない。"),
+                ("expand", "承認済みの拡張を適用。この世界に承認済みの拡張パッチがあれば当てた世界で回し、需要の集計もする。"),
             ),
             values["evolution.world_expansion"],
         ),
@@ -560,7 +568,7 @@ def render_config_detail(config):
         ("ga_seed", _escape(ev["ga_seed"])),
         ("processes", _escape(ev["processes"])),
         ("保存方針", _escape(ev["keep"])),
-        ("世界の拡張", _escape(ev.get("world_expansion", "off"))),
+        ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("共進化", _escape(ev["coevolve"])),
         ("メタ進化", _escape(ev["meta_evolution"])),
         ("説明記録", _escape(ev["record_explanations"])),
@@ -792,7 +800,7 @@ def _run_plan(config, estimate, *, open_detail=False):
         ("評価する個体 / seed",
          f'{_escape(preview["planned_individual_evaluations"])} / {_escape(preview["planned_seed_evaluations"])}'),
         ("保存方針", _escape(ev["keep"])),
-        ("世界の拡張", _escape(ev.get("world_expansion", "off"))),
+        ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
     ])
     # A running job's page reloads on every publication_revision change

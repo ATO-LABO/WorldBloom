@@ -1039,19 +1039,63 @@ def _cell_markup(
     )
 
 
+def _world_expansion_line(patches: list) -> str:
+    """1行サマリ + パッチごとの<li>（WB-WORLDGROW-001 段階3a）。パッチが無ければ
+    「ベース（拡張なし）」の1行のみ。要素の型が違っても落ちない。"""
+
+    if not patches:
+        return "<p>この実験の世界: ベース（拡張なし）</p>"
+
+    kind_labels = (("zones", "ゾーン"), ("items", "アイテム"),
+                   ("facts", "事実"), ("daily_events", "日々の出来事"))
+    items = []
+    for patch in patches:
+        if not isinstance(patch, Mapping):
+            continue
+        trigger = patch.get("trigger")
+        zone = trigger.get("zone") if isinstance(trigger, Mapping) else None
+        verb = trigger.get("verb") if isinstance(trigger, Mapping) else None
+        if zone and verb:
+            trigger_text = f"きっかけ: {_escape(zone)} で {_escape(verb)}"
+        elif zone or verb:
+            trigger_text = f"きっかけ: {_escape(zone or verb)}"
+        else:
+            trigger_text = None
+
+        added = patch.get("added")
+        added_parts = []
+        if isinstance(added, Mapping):
+            for key, label in kind_labels:
+                names = [n for n in data._as_list(added.get(key)) if isinstance(n, str)]
+                if names:
+                    added_parts.append(f"{label} " + "、".join(_escape(n) for n in names))
+        added_text = "足したもの: " + "、".join(added_parts) if added_parts else None
+
+        detail = " ／ ".join(part for part in (trigger_text, added_text) if part)
+        suffix = f" — {detail}" if detail else ""
+        items.append(
+            f"<li><strong>{_escape(patch.get('title'))}</strong>"
+            f"（{_escape(patch.get('id'))}）{suffix}</li>"
+        )
+    return "<p>この実験の世界: 拡張あり</p><ul>" + "".join(items) + "</ul>"
+
+
 def _world_demand_block(
     repository: data.RunRepository,
     experiment: Any,
 ) -> str:
-    """世界の需要（WB-WORLDGROW-001 段階2）: この実験が world_expansion=detect
-    で回っていれば、ゾーン別の空振りトリガーを平文で見せる。無ければ案内文のみ。"""
+    """世界の需要（WB-WORLDGROW-001 段階2/3a）: この実験の世界（ベースか拡張ずみか）
+    を常に1行で示し、world_expansion=detect/expand で回っていればゾーン別の
+    空振りトリガーも平文で見せる。集計が無ければ案内文のみ。"""
 
+    expansion_line = _world_expansion_line(data.world_expansion_info(repository, experiment))
     report = data.world_demand(repository, experiment)
     if report is None:
         return (
             '<section class="card"><h2>世界の需要</h2>'
+            f"{expansion_line}"
             '<p class="muted">この実験は世界の需要を集計していません'
-            '（実行設定の「世界の拡張」を「検知のみ」にして回した実験で出ます）。</p></section>'
+            '（実行設定の「世界の拡張」を「検知のみ」か「承認済みの拡張を適用」にして回した実験で出ます）。</p></section>'
         )
 
     triggers = data._as_list(report.get("triggers"))
@@ -1089,6 +1133,7 @@ def _world_demand_block(
 
     return (
         '<section class="card"><h2>世界の需要</h2>'
+        f"{expansion_line}"
         '<p class="muted">主人公がよく滞在するのに、行動が空振りしている場所です。'
         "世界の解像度が足りていない候補として読みます。</p>"
         f"{trigger_html}{zone_table}</section>"
