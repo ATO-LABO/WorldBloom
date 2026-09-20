@@ -1,0 +1,433 @@
+# GapEngine 行動図鑑カタログ（ジャンル非依存）。
+#
+# 各 verb の precondition/target/effect は engine/actions.py・engine/verbs.py
+# の実装そのものの説明で、ジャンルを跨いで共通。{name} は世界の world.yaml から
+# 実際に解決される値のプレースホルダ（viewer/action_catalog.py の world_facts()
+# が埋める）。design.category/slot は、その世界の action_graph.yaml に対応
+# ノードが無い場合のフォールバック表示（設計書 §7.1 の位置）に使う。
+#
+# kinds は Action.meta の分岐（sacrifice の asset/bond 等）。同じ verb でも
+# ジャンルによって category/subtype は変わりうるので、ここには持たせない
+# （viewer 側が action_graph.yaml の nodes から都度引く）。node_when が無い
+# kind は「when 指定なしのノード」に対応する。
+
+version: 1
+
+categories:
+  I:
+    label: パラメータ変動系
+    desc: base / modifier を直接動かす
+    order: 1
+  II:
+    label: 認識・情報系
+    desc: 実際の力は動かさず、何が知られているかを動かす
+    order: 2
+  III:
+    label: 資格・関係構築系
+    desc: 他の行動を解放する前提条件、または関係性の進展
+    order: 3
+  IV:
+    label: 身分・役割の操作系
+    desc: ""
+    order: 4
+  V:
+    label: 通過儀礼・危機系
+    desc: ""
+    order: 5
+  VI:
+    label: 外部・結末系
+    desc: ""
+    order: 6
+  none:
+    label: 分類なし
+    desc: 遺伝子 category_weight（m_cat）の変調を受けない行動
+    order: 99
+
+verbs:
+  train:
+    design: {category: I, slot: "I-1"}
+    kinds:
+      - id: default
+        label: train
+        precondition: 同座に敵対者（hostile）がいないこと。
+        target: なし（自己対象）。
+        effect: >-
+          base = round(base + 4.0×(1 − base/100), 2)。100 に近づくほど増分が
+          減る漸近的なソフトキャップ。stamina −1、疲労判定を更新。
+
+  give_item:
+    design: {category: III, slot: "III-2"}
+    kinds:
+      - id: default
+        label: give_item
+        precondition: >-
+          objectives / recipes / vehicle / keepsake 以外の所持アイテムがあり、
+          素材アイテムなら相手がその完成品を作れる場合のみ候補化。
+        target: 同座の生存中の相手。
+        effect: >-
+          アイテムを1個移転。相手→自分・自分→相手の双方向に affinity と
+          awareness が上昇（量は item 定義の give 設定。未指定なら既定値）。
+          しきい値（{companionship_threshold}）を新規に超えると仲間化イベント
+          （ally_gained）を誘発しうる。
+
+  observe:
+    design: {category: II, slot: "II-1"}
+    kinds:
+      - id: default
+        label: observe
+        precondition: >-
+          対象が生存かつ自分以外。隠れ modifier が未知、または正体／
+          mislead が未解消。
+        target: 対象についての自分の BeliefAbout。
+        effect: >-
+          observe_progress += 0.5 + curiosity×0.5。1.0 到達で隠し modifier
+          を1件開示、base_estimate を真値に更新。正体判明／mislead 露見
+          なら exposure を発行。
+
+  investigate:
+    design: {category: II, slot: "II-1"}
+    kinds:
+      - id: gather
+        node_when: gather
+        label: investigate(gather)
+        precondition: >-
+          未所持のレシピ材料について、自ゾーンに investigate 型の資源
+          source が存在。
+        target: 自ゾーン（対人ターゲットなし）。
+        effect: >-
+          source 指定の回数（count）到達で1個獲得。上限（max）到達で
+          以降その資源は獲得なし。
+      - id: scout
+        node_when: null
+        label: investigate(scout)
+        precondition: investigate verb を保持していること。
+        target: 自ゾーン。
+        effect: >-
+          ゾーン／相手一致の fact source について進捗を蓄積し、必要回数
+          到達で knowledge に追加。
+
+  craft:
+    design: {category: I, slot: "I-3"}
+    kinds:
+      - id: default
+        label: craft
+        precondition: 必要知識を保有・craft_zone に滞在・レシピ材料を必要数以上所持。
+        target: なし（自分の在庫を操作）。
+        effect: レシピ材料を全消費し、アイテムを1個生成。回数ゲートはない。
+
+  fight:
+    design: {category: I, slot: "I-4"}
+    kinds:
+      - id: default
+        label: fight
+        precondition: >-
+          生存中の対象（行動グラフ有効時は許可された任意対象、無効時は
+          敵対者のみ）。
+        target: 選ばれた1名。
+        effect: >-
+          強さ差ベースの確率的勝敗判定＋loot移転（lootable かつ vehicle
+          でない敗者所持品を全数移転）。敗者→勝者の affinity −0.3・敗者
+          stress +1.2・downed へ遷移。開戦時 hostile 関係だった・勝者が
+          active な lethal modifier を持つ・敗者が lethal_exempt でない、
+          の3条件が揃えば追加で致死判定（modifier の lethal_chance で抽選）。
+
+  sabotage:
+    design: {category: I, slot: "I-4"}
+    kinds:
+      - id: default
+        label: sabotage
+        precondition: 観測・偵察で観察済み（known_modifiers または identity_seen）の生存対象。
+        target: 観察済みの対象1名。
+        effect: 対象の base −6.0・stress +1.0、対象→自分の affinity −0.4。
+
+  steal_credit:
+    design: {category: I, slot: "I-4 / IV-2"}
+    kinds:
+      - id: default
+        label: steal_credit
+        precondition: （構想のみ。engine に実装なし）
+        target: （構想のみ）
+        effect: （構想のみ）
+
+  neutralize:
+    design: {category: I, slot: "I-5"}
+    kinds:
+      - id: default
+        label: neutralize
+        precondition: >-
+          観測・偵察で known_modifiers に対象の modifier 発生源 source を
+          含む。かつ該当 modifier が active。
+        target: target と、無力化する modifier の発生源 source。
+        effect: >-
+          該当 modifier を非活性化（active=False）。対象→自分の affinity
+          −0.2。modifier が kind:item かつ lootable なら同時にアイテムを
+          奪取する追加効果が発生。
+
+  sacrifice:
+    design: {category: I, slot: "I-6"}
+    kinds:
+      - id: asset
+        label: sacrifice(asset)
+        precondition: >-
+          非keepsakeで、modifier保有 または（lootable かつ objective
+          ではない）資産を1つ以上所持。
+        target: なし（自分の所持品を手放す）。
+        effect: base +{sacrifice_asset_base}（固定重み0.05で候補化）。
+      - id: bond
+        label: sacrifice(bond)
+        precondition: >-
+          同座の相手のうち、相手→自分の stance が companionship 閾値
+          （{companionship_threshold}）以上の者が存在。
+        target: 該当者のうち stance が最大の1人。
+        effect: >-
+          相手→自分の affinity −0.5・自分の phase に
+          「{sacrifice_bond_phase}」付与・stress {sacrifice_bond_stress}
+          （固定重み0.05で候補化）。
+
+  mislead:
+    design: {category: II, slot: "II-4"}
+    kinds:
+      - id: strength
+        label: mislead(strength)
+        precondition: 対象が生存し観測可能（permission > 0）。
+        target: 相手の「自分の見かけの強さ」についての信念。
+        effect: >-
+          真の強さ×0.6 または ×1.4 の偽値（2候補生成）を、相手→自分の
+          affinity が相手の stubbornness×0.2 未満なら黙殺。それ以外は
+          trust 加重で base_estimate に補間注入（trust=1 で全面採用）。
+      - id: valued_fact
+        label: mislead(valued_fact)
+        precondition: 自分がその事実について信念を持っている。
+        target: 任意の fact_id（真値以外の値）。
+        effect: 相手の belief を trust 加重の confidence で偽の値に更新。
+
+  confront:
+    design: {category: II, slot: "II-5"}
+    kinds:
+      - id: correct
+        label: confront(正解)
+        precondition: >-
+          該当 fact の belief.confidence が act_threshold（既定0.6。fact
+          定義で上書き可）以上、belief が指す相手が同座。
+        target: belief が指す target と fact。
+        effect: >-
+          信じている値が world.truth と一致。自分＋目撃者全員に正体暴露
+          （exposure）、対象→自分の affinity −0.4。
+      - id: incorrect
+        label: confront(失敗)
+        precondition: 同じ候補生成条件だが、実際には world.truth と不一致。
+        target: 同上。
+        effect: reputation −0.1、対象→自分の affinity −0.3、自分の confidence が半減。
+
+  share_knowledge:
+    design: {category: III, slot: "III-2"}
+    kinds:
+      - id: fact
+        label: share_knowledge(fact)
+        precondition: 相手が未取得の知識を自分が持ち、affinity が share_min_affinity 以上。
+        target: 特定の fact。
+        effect: 相手の knowledge に追加（重みは fact の secrecy で減衰）。
+      - id: valued_fact
+        label: share_knowledge(valued_fact)
+        precondition: 自分の信念が相手と異なる／確信度が高く、affinity が share_min_affinity 以上。
+        target: 特定の fact_id。
+        effect: 相手の belief を値・確信度ごと更新。
+      - id: chat
+        label: share_knowledge(雑談)
+        precondition: なし（同座なら常に1件生成）。
+        target: 同座の相手1人。
+        effect: 知識移動なし。affinity のみ変化。
+
+  persuade:
+    design: {category: III, slot: "III-2"}
+    kinds:
+      - id: default
+        label: persuade
+        precondition: 同座の生存中の相手。
+        target: 選ばれた1名。
+        effect: 相手→自分の affinity +0.08×(1+social)、自分→相手の affinity +0.04。
+
+  rethink:
+    design: {category: II, slot: "II-6"}
+    kinds:
+      - id: default
+        label: rethink
+        precondition: >-
+          implies/refutes を持つ証拠を2件以上保持、かつ直近 fact を学んで
+          から既定 {rethink_stagnation_slots} スロット以上停滞。
+        target: 自分自身の信念群（対人ターゲットなし）。
+        effect: >-
+          証拠を再生し関連 belief を再導出。反証で選択肢が1つに絞られれば
+          確定採用。変化があれば "rethought"。
+
+  plant:
+    design: {category: II, slot: "II-2"}
+    kinds:
+      - id: default
+        label: plant
+        precondition: >-
+          effects.yaml で plant.verb:"plant" 指定の伏線のうち、when 述語を
+          満たし、同一 (library_id, target) が未 pending。
+        target: 自分自身。
+        effect: >-
+          world.pending_effects に登録
+          （id/planted_by/target/condition/effect/mode/resolved=False）。
+
+  payoff:
+    design: {category: II, slot: "II-3"}
+    kinds:
+      - id: default
+        label: payoff
+        precondition: >-
+          自分が設置した mode:chosen の pending 効果のうち、condition
+          述語が真になったもの。
+        target: 伏線設置時に固定された target。
+        effect: apply_effect() で効果を実行し resolved=True。payoff マーカー発行。
+
+  trial:
+    design: {category: III, slot: "III-1"}
+    kinds:
+      - id: default
+        label: trial
+        precondition: >-
+          giver が同座かつ試練未完了。giver→自分の stance が閾値以上
+          （world.yaml の trials 定義。例: stance≥0.4 かつ特定アイテム所持）。
+        target: giver（試練の出題者）。
+        effect: grants.fact/item を付与、双方向 affinity +0.1、phase に完了記録して再挑戦不可に。
+
+  pledge:
+    design: {category: III, slot: "III-3"}
+    kinds:
+      - id: default
+        label: pledge
+        precondition: 未誓約の相手で、双方の stance が0.4以上。
+        target: 条件を満たす同座の相手。
+        effect: 双方の phase に「誓約:相手id」追加、双方向 affinity +0.15、world.pledges に記録。
+
+  negotiate:
+    design: {category: III, slot: "III-2"}
+    kinds:
+      - id: default
+        label: negotiate
+        precondition: >-
+          自分が objective_claimant で goal.target をまだ所持していない。
+          goal.target を別の生存中の相手が保持し、同座している。
+        target: goal.target の holder。
+        effect: >-
+          world.offers に提示資産（lootable な手持ちアイテム）を登録する
+          だけ（所有移転はしない）。holder→自分の affinity +0.05。この
+          offer が成立すると holder 側に concede の候補が立つ。
+
+  concede:
+    design: {category: VI, slot: "VI-2"}
+    kinds:
+      - id: trade
+        label: concede(trade)
+        precondition: claimant からの offer があり、提示資産に自分が未所持の modifier 付きアイテムを含む。
+        target: offer を出した claimant。
+        effect: 目的物を譲渡し、提示資産を実際に受け取る。
+      - id: goodwill
+        label: concede(goodwill)
+        precondition: offer があり、stance が negotiate_threshold（{negotiate_threshold}）以上（魅力的な提示資産が無い場合）。
+        target: offer を出した claimant。
+        effect: 目的物の譲渡のみ。資産交換なし。
+
+  rescue:
+    design: {category: V, slot: "V-5"}
+    kinds:
+      - id: default
+        label: rescue
+        precondition: 対象が同座で downed、行為者→対象の affinity が0.3以上。
+        target: downed 状態の同座の相手。
+        effect: >-
+          経過スロットを無視して即時 revive（base ペナルティは自動 revive
+          と同じ）。対象→自分の affinity +0.2。
+
+  move:
+    design: {category: V, slot: "V-1"}
+    kinds:
+      - id: crossing
+        node_when: crossing
+        label: move(crossing)
+        precondition: "移動先で world.yaml の thresholds 述語（例: 特定ゾーンへの到達）を新たに満たす。"
+        target: 移動する自分自身。
+        effect: >-
+          移動を実行し、新たに満たした閾値の id をその場で phase に追加
+          （threshold_crossed マーカー発行）。候補メタにも crossing=true
+          が立つ。
+      - id: plain
+        node_when: null
+        label: move（通常）
+        precondition: 経路が requires_item 等の通行条件を満たす。
+        target: 移動する自分自身。
+        effect: ゾーンを移動する。仲間・目的地の引力（pulls）で重みが変わる。
+
+  rest:
+    design: {category: V, slot: "V-4"}
+    kinds:
+      - id: default
+        label: rest
+        precondition: downed 中は無条件で rest のみが唯一の候補。通常時は stamina_max>0 で候補化。
+        target: 自分自身。
+        effect: stamina_recover 分だけスタミナ回復。
+
+  withdraw:
+    design: {category: V, slot: "V-4"}
+    kinds:
+      - id: default
+        label: withdraw
+        precondition: 常時候補化（重みは stress と temper、敵対者の有無で変動）。
+        target: 自分自身。
+        effect: stress −0.5。
+
+  guard:
+    design: {category: none, slot: "—"}
+    kinds:
+      - id: default
+        label: guard
+        precondition: objectives のいずれか（目的物）を所持している（category は null、Policy の変調を受けない）。
+        target: 自分自身。
+        effect: 状態変化なし（守っている品目を保つだけ）。
+
+  disguise:
+    design: {category: IV, slot: "IV-1"}
+    kinds:
+      - id: default
+        label: disguise
+        precondition: >-
+          world.yaml の disguises に自分向けの変装先があり、現在の表示名と
+          異なり、when 述語が真。
+        target: なし（対象を取らない自己完結型）。
+        effect: awareness が0.5未満の観測者の identity_seen をリセット。表示名（identity_displayed）を変更。
+
+  grand_gesture:
+    design: {category: III, slot: "III-4"}
+    kinds:
+      - id: default
+        label: grand_gesture
+        precondition: objectives/vehicle/keepsake 以外の所持アイテムがある。相手の秘密（secret_of）を自分が知っている。
+        target: その秘密を持つ同座の相手。
+        effect: >-
+          アイテムを1個消費。相手→自分の affinity +0.6（大幅上昇）、
+          自分→同席 ally の affinity −0.2、reputation +0.1。
+
+  donate:
+    design: {category: VI, slot: "VI-2 / VI-3"}
+    kinds:
+      - id: default
+        label: donate
+        precondition: goal.target を所持し、まだ「還元」phase に入っていない。
+        target: なし（対人ロールを取らない）。
+        effect: >-
+          phase に「還元」追加、reputation +0.3。アイテムの譲渡・所有権
+          移転は発生しない（VI-2 個人報酬 と VI-3 共同体還元は実装上区別
+          されない）。
+
+  pursue_target:
+    design: {category: V, slot: "V-3"}
+    kinds:
+      - id: default
+        label: pursue_target
+        precondition: （構想のみ。専用verbは無く、move 候補の重み付け pulls.pursue のみ実在）
+        target: （構想のみ）
+        effect: （構想のみ）
