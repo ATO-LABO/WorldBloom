@@ -38,6 +38,7 @@ from gapengine.knowledge_text import (
     render_situation,
     situation,
 )
+from gapengine.llama_server import build_request as _llama_server_build_request
 from gapengine.ollama import DEFAULT_BASE_URL, DEFAULT_MODEL, build_request
 
 QUESTION = (
@@ -82,6 +83,52 @@ def _ollama_call(
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _llama_server_call(
+    model: str,
+    prompt: str,
+    *,
+    base_url: str,
+    timeout: float,
+    top_logprobs: int = 10,
+) -> dict[str, Any]:
+    """Same one-token, temperature-0 call as ``_ollama_call``, against a local
+    llama-server (OpenAI-compatible) /v1/chat/completions endpoint instead
+    (WB-JEV-003: bake-off between Ollama and llama-server backed judges). The
+    response is reshaped into the same ``{"logprobs": [{"top_logprobs":
+    [...]}]}`` envelope ``_ollama_call`` returns, so ``_top_logprobs``/
+    ``_p_yes``/``_label_masses`` keep working unchanged for either backend."""
+
+    url, payload = _llama_server_build_request(
+        {
+            "base_url": base_url,
+            "model": model,
+            "think": False,
+            "seed": 0,
+            "options": {"max_tokens": 1, "temperature": 0},
+        },
+        prompt,
+    )
+    payload["logprobs"] = True
+    payload["top_logprobs"] = top_logprobs
+    payload["cache_prompt"] = True
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return {"logprobs": []}
+    content = (choices[0].get("logprobs") or {}).get("content")
+    if not isinstance(content, list) or not content or not isinstance(content[0], dict):
+        return {"logprobs": []}
+    top = content[0].get("top_logprobs")
+    return {"logprobs": [{"top_logprobs": top if isinstance(top, list) else []}]}
 
 
 def _top_logprobs(data: dict[str, Any]) -> list[Any]:
@@ -142,16 +189,23 @@ def _normalize(mass: dict[str, float]) -> dict[str, float]:
     return {label: value / total for label, value in mass.items()}
 
 
-def _measure_top_logprobs_limit(model: str, *, base_url: str, timeout: float) -> int:
+def _measure_top_logprobs_limit(
+    model: str, *, base_url: str, timeout: float, call: Any = None,
+) -> int:
     """One throwaway call with top_logprobs=50 to see how many entries the
-    server actually returns. Used to size choice-mode candidate chunks."""
+    server actually returns. Used to size choice-mode candidate chunks.
+    ``call`` defaults to ``_ollama_call`` -- pass ``_llama_server_call`` to
+    measure a llama-server backend instead (WB-JEV-003)."""
 
+    if call is None:
+        call = _ollama_call
     probe_prompt = "質問: 「A」か「B」か。記号1文字だけで答えよ。\n\n答え:"
-    # Ollama rejects an over-limit top_logprobs with HTTP 400 (observed: 50 ->
-    # 400 on 0.34.1; 20 is the OpenAI-convention maximum), so step down.
+    # Ollama (and llama-server) reject an over-limit top_logprobs with HTTP
+    # 400 (observed: 50 -> 400 on Ollama 0.34.1; 20 is the OpenAI-convention
+    # maximum), so step down.
     for requested in (20, 10, 5):
         try:
-            data = _ollama_call(
+            data = call(
                 model, probe_prompt, base_url=base_url, timeout=timeout,
                 top_logprobs=requested,
             )
