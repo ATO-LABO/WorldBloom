@@ -382,6 +382,8 @@ class ViewerServerTests(unittest.TestCase):
                 # renders with its single end-of-page CTA and no editor root.
                 world_page = _wait_for_page(base_url + "/worlds/momotaro")
                 self.assertIn('data-world-prototype', world_page)
+                # Read-only viewers reach saved experiments from the world page.
+                self.assertIn('href="/exp/exp-viewer"', world_page)
                 self.assertNotIn('data-wb="library"', world_page)
 
                 grid = _wait_for_page(base_url + "/exp/exp-viewer")
