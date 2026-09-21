@@ -155,8 +155,10 @@ def _header_pickers(
         + leftmost
         + "".join(pickers)
         + '<span class="header-links">'
-        '<a href="/configs" title="設定" aria-label="設定">⚙</a>'
-        '<a href="/history" title="実行履歴" aria-label="実行履歴">📝</a>'
+        '<a href="/history" title="実行履歴" aria-label="実行履歴">'
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>実行履歴</span></a>'
+        '<a href="/configs" title="設定" aria-label="設定">'
+        '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M10 2h4l.6 3 2 .9 2.6-1.5 2 3.5-2.2 2v2.2l2.2 2-2 3.5-2.6-1.5-2 .9-.6 3h-4l-.6-3-2-.9-2.6 1.5-2-3.5 2.2-2V10L2.8 8l2-3.5 2.6 1.5 2-.9L10 2zm2 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg><span>設定</span></a>'
         "</span>"
         "</div>"
     )
@@ -889,46 +891,8 @@ def world_runs_block(
 
 
 def index_page(repository: data.RunRepository, *, job_store: Any = None) -> str:
-    from execution.library import LibraryStore
-    from viewer import library_pages  # deferred: library_pages imports pages
-
-    library_repo = job_store.configs.repo if job_store is not None else data.ROOT
-    try:
-        worlds = LibraryStore(library_repo).worlds()
-    except (ValueError, OSError, KeyError, TypeError, AttributeError):
-        worlds = []
-    try:
-        genres = LibraryStore(library_repo).genres()
-    except (ValueError, OSError, KeyError, TypeError, AttributeError):
-        genres = []
-
-    groups, minor = data.grouped_experiments(repository)
-    by_world: dict[str, list[Mapping[str, Any]]] = dict(groups)
-    minor_by_world: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for meta in minor:
-        minor_by_world[str(meta["world"])].append(meta)
-
-    if not worlds and not by_world and not minor_by_world:
-        return document(
-            "世界を選ぶ",
-            _home_actions(job_store is not None)
-            + '<section class="card"><p>表示できる世界も実験もありません。</p>'
-            '<p class="muted">各実験ディレクトリに '
-            "<code>archive.json</code> が必要です。</p></section>",
-            phase="world",
-            job_store=job_store, show_phase_band=False, is_home=True, page_class="home-workspace",
-        )
-
-    body = (
-        '<p class="lead">WorldBloom は 1 つの物語エンジンに、ジャンル'
-        "（行動の文法）と世界（人物と場所の初期設定）を差し込んで動かします。"
-        "世界を選び、実験を回し、Sifting で候補を選んで上映します。</p>"
-        + library_pages.render_home_tabs(worlds, genres, can_create=job_store is not None)
-    )
-    return document(
-        "世界を選ぶ", body, phase="world",
-        job_store=job_store, show_phase_band=False, is_home=True, page_class="home-workspace",
-    )
+    from viewer import home_pages
+    return home_pages.render(repository, job_store=job_store)
 
 
 def _threshold_text(thresholds: Mapping[str, Any]) -> str:
