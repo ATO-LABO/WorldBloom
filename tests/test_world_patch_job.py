@@ -242,6 +242,11 @@ class WorldPatchJobTests(unittest.TestCase):
         self.assertEqual(gate["status"], "static_failed")
         self.assertTrue(gate["static"]["violations"])
         self.assertIsNone(gate["trial"])  # never spent trial seeds on a rejected proposal
+        # The worker discards the child's stdout, so the CLI keeps its own copy:
+        # the only place the reason a proposal was sent back can be read later.
+        log = self.control / "jobs" / job["job_id"] / "scratch" / "world_patch.log"
+        self.assertTrue(log.is_file(), log)
+        self.assertIn("static_failed", log.read_text(encoding="utf-8"))
 
     # -- 2: normalize() rejections ----------------------------------------
 
