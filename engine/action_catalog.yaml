@@ -122,7 +122,8 @@ verbs:
         label: fight
         precondition: >-
           生存中の対象（行動グラフ有効時は許可された任意対象、無効時は
-          敵対者のみ）。
+          敵対者のみ）。ただし concede で和解済みの相手は、敵対（hostile）
+          に戻らない限り候補から除外される。
         target: 選ばれた1名。
         effect: >-
           強さ差ベースの確率的勝敗判定＋loot移転（lootable かつ vehicle
@@ -328,7 +329,8 @@ verbs:
         effect: >-
           目的物を譲渡し、提示資産を実際に受け取る。和解として双方の
           goal.obstacles から互いを外し、双方向 affinity を+0.2（結果が
-          0.0未満なら0.0まで引き上げ）する。
+          0.0未満なら0.0まで引き上げ）する。和解済みの相手には、敵対に
+          戻らない限り fight を仕掛けない。
       - id: goodwill
         label: concede(goodwill)
         precondition: offer があり、stance が negotiate_threshold（{negotiate_threshold}）以上（魅力的な提示資産が無い場合）。
@@ -336,7 +338,8 @@ verbs:
         effect: >-
           目的物の譲渡のみ。資産交換なし。和解として双方の goal.obstacles
           から互いを外し、双方向 affinity を+0.2（結果が0.0未満なら0.0まで
-          引き上げ）する。
+          引き上げ）する。和解済みの相手には、敵対に戻らない限り fight を
+          仕掛けない。
 
   rescue:
     design: {category: V, slot: "V-5"}

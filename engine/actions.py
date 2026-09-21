@@ -1297,6 +1297,11 @@ def _fight_candidates(
         )
         if permission <= 0.0:
             continue
+        if (
+            frozenset((subject.id, target.id)) in world.settled
+            and world.target_role(subject, target) != "hostile"
+        ):
+            continue
 
         perceived = believed_strength(
             subject,
