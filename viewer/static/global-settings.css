@@ -1,12 +1,12 @@
 /* Global settings: independently scrolling workspaces and persistent actions. */
 .run-observer > .page-content:has(.gs-shell) { display:flex; overflow:hidden; padding:0; }
-.gs-shell { --gs-green:#245c48; --gs-line:#d8dfd9; display:grid; grid-template-columns:var(--ws-side-w) minmax(0,1fr); flex:1; min-height:0; width:100%; background:#fcfcf8; color:#24352f; font-family:var(--font-ui, sans-serif); }
+.gs-shell { --gs-green:var(--ws-confirm); --gs-line:var(--ws-line); display:grid; grid-template-columns:var(--ws-side-w) minmax(0,1fr); flex:1; min-height:0; width:100%; background:#fcfcf8; color:var(--ws-text); font-family:var(--ws-font, sans-serif); }
 .gs-shell *, .gs-shell *::before, .gs-shell *::after { box-sizing:border-box; }
 .gs-shell [hidden] { display:none!important; }
 .gs-shell h1,.gs-shell h2,.gs-shell h3 { font-family:inherit; line-height:1.45; }
-.gs-shell h1 { font-size:1.45rem; margin:0; }
-.gs-shell h2 { font-size:1.05rem; margin:0 0 14px; }
-.gs-shell h3 { font-size:.95rem; margin:24px 0 10px; }
+.gs-shell h1 { font-size:var(--ws-fs-h1); margin:0; }
+.gs-shell h2 { font-size:var(--ws-fs-h2); margin:0 0 14px; }
+.gs-shell h3 { font-size:var(--ws-fs-h3); margin:24px 0 10px; }
 .gs-shell p { margin:8px 0; }
 .gs-shell a { color:var(--gs-green); text-decoration:none; }
 .gs-shell button,.gs-shell .gs-add,.gs-shell .gs-footer a { border:1px solid var(--ws-control-line); border-radius:var(--ws-radius); min-height:var(--ws-control-h); padding:8px 12px; background:var(--ws-surface); color:var(--ws-text); font:inherit; font-size:15px; cursor:pointer; text-align:center; }
@@ -19,12 +19,12 @@
 .gs-nav > a { padding:12px 22px; border-radius:0; border-left:5px solid transparent; font-size:var(--ws-fs-md); font-weight:600; color:var(--ws-text); }
 .gs-nav > a[aria-current] { background:var(--ws-select-bg); border-left-color:var(--ws-advance); font-weight:600; }
 .gs-nav-back { margin-top:18px; padding:14px 12px; border-top:1px solid var(--gs-line); font-size:.85rem; }
-.gs-nav small { margin-top:auto; padding:20px 12px 0; color:#6a7971; }
+.gs-nav small { margin-top:auto; padding:20px 12px 0; color:var(--ws-muted); }
 .gs-main,.gs-panel { min-width:0; min-height:0; height:100%; }
 .gs-panel { display:flex; flex-direction:column; }
 .gs-heading { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:22px 30px 18px; border-bottom:1px solid var(--gs-line); flex-shrink:0; }
-.gs-heading p { color:#6a7971; font-size:.88rem; margin:6px 0 0; }
-.gs-badge { display:inline-block; font-size:.72rem; vertical-align:middle; margin-left:10px; padding:4px 9px; border-radius:20px; background:#e4ede5; font-weight:500; }
+.gs-heading p { color:var(--ws-muted); font-size:.88rem; margin:6px 0 0; }
+.gs-badge { display:inline-block; font-size:12.5px; font-weight:600; vertical-align:middle; margin-left:10px; padding:3px 10px; border-radius:999px; background:var(--accent-soft); color:var(--ws-confirm); }
 .gs-badge.is-dirty { background:#f6e9c8; color:#775419; }
 .gs-panel form { display:flex; flex-direction:column; flex:1; min-height:0; margin:0; }
 .gs-output-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,32%); flex:1; min-height:0; }
@@ -59,7 +59,7 @@
 .gs-diff { margin-top:22px; padding:14px; background:#f8f5e8; border-radius:5px; font-size:.82rem; }
 .gs-diff:empty { display:none; }
 .gs-diff p { overflow-wrap:anywhere; }
-.gs-footer { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:12px; padding:14px 24px; border-top:1px solid var(--gs-line); background:#fcfcf8; flex-shrink:0; }
+.gs-footer { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:12px; min-height:var(--ws-bar-h); padding:8px var(--ws-gutter); border-top:1px solid var(--gs-line); background:var(--ws-surface); font-size:var(--ws-fs-sm); flex-shrink:0; }
 .gs-footer > p { margin:0 auto 0 0; color:#66776b; font-size:.82rem; }
 .gs-error,.gs-field small { color:#a13327; font-size:.82rem; }
 .gs-error:empty,.gs-field small:empty { display:none; }
@@ -82,7 +82,7 @@
 .gs-empty { padding:30px; }
 .gs-sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 @media(min-width:1500px) { .gs-editor { padding:30px 42px; } .gs-summary { padding:30px; } }
-@media(max-width:1000px) { .gs-shell { grid-template-columns:175px minmax(0,1fr); } .gs-heading { padding:16px 20px; } .gs-editor { padding:20px; } .gs-output-layout { grid-template-columns:minmax(0,1fr) 260px; } .gs-summary { padding:20px; } .gs-limit-fields { gap:8px; } .gs-input input { padding:10px 8px; } }
+@media(max-width:1000px) { .gs-shell { grid-template-columns:var(--ws-side-w-narrow) minmax(0,1fr); } .gs-heading { padding:16px 20px; } .gs-editor { padding:20px; } .gs-output-layout { grid-template-columns:minmax(0,1fr) 260px; } .gs-summary { padding:20px; } .gs-limit-fields { gap:8px; } .gs-input input { padding:10px 8px; } }
 @media(max-width:800px) { .gs-shell { display:flex; flex-direction:column; } .gs-nav { flex-shrink:0; flex-direction:row; flex-wrap:wrap; gap:4px; padding:8px 12px; border-right:0; border-bottom:1px solid var(--gs-line); overflow:visible; } .gs-nav h2,.gs-nav small,.gs-nav-back { display:none; } .gs-nav > a { font-size:.8rem; padding:9px; border-left:0; border-bottom:3px solid transparent; } .gs-nav > a[aria-current] { border-bottom-color:#c89c3c; } .gs-main { flex:1; } .gs-output-layout { display:block; overflow:auto; } .gs-editor,.gs-summary { overflow:visible; } .gs-summary { border-left:0; border-top:1px solid var(--gs-line); } .gs-heading h1 { font-size:1.2rem; } .gs-footer { padding:12px 16px; gap:8px; } .gs-footer > p { flex-basis:100%; } .gs-collection { grid-template-columns:42% minmax(0,1fr); } .gs-detail-scroll { padding:20px; } }
 @media(max-width:520px) { .gs-heading { padding:12px 16px; flex-wrap:wrap; } .gs-heading p { font-size:.8rem; } .gs-limit-fields { grid-template-columns:1fr; gap:16px; } .gs-editor { padding:20px 16px; } .gs-collection { display:flex; flex-direction:column; } .gs-list { flex:0 0 38%; border-right:0; border-bottom:1px solid var(--gs-line); padding-top:12px; } .gs-list > .gs-hint { margin:4px 0; } .gs-details { flex:1; } .gs-item { padding:12px 16px; } .gs-shell dl { gap:12px; grid-template-columns:105px minmax(0,1fr); } .gs-footer a { flex:1; } .gs-badge { margin-left:5px; } }
 
