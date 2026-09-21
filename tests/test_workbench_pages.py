@@ -193,9 +193,9 @@ class WorkbenchTests(unittest.TestCase):
         # nav links (home link replaces the former, Sifting トレイ is not
         # global anymore). Home leads with the brand (it already *is* home);
         # every other page leads with the ⌂ home link instead.
-        self.assertNotIn('<a class="home-cell" href="/">⌂ ホーム</a>', body)
+        self.assertNotIn('class="home-cell"', body)
         self.assertIn('<a class="brand" href="/">WorldBloom</a>', body)
-        self.assertIn('<a class="home-cell" href="/">⌂ ホーム</a>', configs_body)
+        self.assertIn('<a class="home-cell" href="/" aria-label="WorldBloom ホーム">WorldBloom</a>', configs_body)
         self.assertNotIn('<a class="brand" href="/">WorldBloom</a>', configs_body)
         for href, label, icon in (("/configs", "設定", "⚙"), ("/history", "実行履歴", "📝")):
             with self.subTest(href=href):
