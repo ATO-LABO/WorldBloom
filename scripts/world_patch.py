@@ -5,6 +5,7 @@ check (re-run the gates for an already-proposed patch), approve, reject, list.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import hashlib
 import json
@@ -22,7 +23,8 @@ if str(ROOT) not in sys.path:
 from engine.world import World
 from execution.output_settings import read_output_settings
 from gapengine import lineage
-from gapengine.synopsis import BACKENDS, GenerationError, generate_text
+from gapengine import gpu_guard
+from gapengine.synopsis import BACKENDS, GenerationError, generate_text, load_settings, _output_section
 from gapengine.world_demand import build_report
 from gapengine.world_patch import (
     ID_RE,
@@ -275,48 +277,65 @@ def cmd_propose(args: argparse.Namespace) -> int:
     current_prompt = prompt
     patch: dict = {}
     violations: list[str] = []
-    for attempt in range(1, max_attempts + 1):
-        progress(step="generate", attempt=attempt, attempts=max_attempts)
-        if args.from_file:
-            response_text = Path(args.from_file).read_text(encoding="utf-8")
-        else:
-            try:
-                # 900s, not the 600s default: a 27B local model measured 350-580s
-                # on this prompt, and the first call after a cold start ran over.
-                result = generate_text(backend_name, current_prompt, settings_path=args.settings,
-                                       timeout=900)
-            except GenerationError as error:
-                # e.g. the GPU lease is held by another run; nothing was written.
-                message = f"生成できませんでした: {error}"
-                print(message)
-                progress(step="failed", message=message)
-                return 2
-            if result.status != "ok":
-                message = f"生成に失敗しました: status={result.status} warning={result.warning}"
-                print(message)
-                progress(step="failed", message=message)
-                return 1
-            response_text = result.text
-
-        last_proposal_text = None
+    # One GPU session around every attempt: generate_text opens its own per
+    # call, and a session that has to launch llama-server also stops it on
+    # exit -- so without this, each regeneration paid the model load (about
+    # two minutes) again. The nested sessions inside generate_text are no-ops
+    # while this one is held.
+    session = contextlib.ExitStack()
+    if backend_name in ("llama-server", "ollama"):
+        settings, _warning = load_settings(args.settings)
         try:
-            proposal = parse_proposal(response_text)
-            last_proposal_text = json.dumps(proposal, ensure_ascii=False, indent=2, sort_keys=False)
-            patch = make_patch(proposal, trigger=trigger, parent_digest=parent_digest, author=author)
-            violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved,
-                                        give_available=give_available)
-            violations += check_trigger_coverage(patch["add"], trigger)
-            violations += check_proposal_rules(patch["add"], give_available=give_available)
-        except _PROPOSAL_ERRORS as error:
-            violations = [f"提案の形式を検査できませんでした: {error}"]
-            patch = make_patch(
-                {"title": "(解析失敗)", "rationale": str(error)[:300], "add": {}},
-                trigger=trigger, parent_digest=parent_digest, author=author,
-            )
+            session.enter_context(gpu_guard.local_gpu_session(
+                backend_name, _output_section(settings), owner="world_patch", wait_seconds=900))
+        except (gpu_guard.GpuBusy, RuntimeError) as error:
+            message = f"生成できませんでした: {error}"
+            print(message)
+            progress(step="failed", message=message)
+            return 2
+    with session:
+        for attempt in range(1, max_attempts + 1):
+            progress(step="generate", attempt=attempt, attempts=max_attempts)
+            if args.from_file:
+                response_text = Path(args.from_file).read_text(encoding="utf-8")
+            else:
+                try:
+                    # 900s, not the 600s default: a 27B local model measured 350-580s
+                    # on this prompt, and the first call after a cold start ran over.
+                    result = generate_text(backend_name, current_prompt, settings_path=args.settings,
+                                           timeout=900)
+                except GenerationError as error:
+                    # e.g. the GPU lease is held by another run; nothing was written.
+                    message = f"生成できませんでした: {error}"
+                    print(message)
+                    progress(step="failed", message=message)
+                    return 2
+                if result.status != "ok":
+                    message = f"生成に失敗しました: status={result.status} warning={result.warning}"
+                    print(message)
+                    progress(step="failed", message=message)
+                    return 1
+                response_text = result.text
 
-        if not violations or args.from_file or attempt == max_attempts:
-            break
-        current_prompt = _retry_prompt(prompt, last_proposal_text, response_text, violations)
+            last_proposal_text = None
+            try:
+                proposal = parse_proposal(response_text)
+                last_proposal_text = json.dumps(proposal, ensure_ascii=False, indent=2, sort_keys=False)
+                patch = make_patch(proposal, trigger=trigger, parent_digest=parent_digest, author=author)
+                violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved,
+                                            give_available=give_available)
+                violations += check_trigger_coverage(patch["add"], trigger)
+                violations += check_proposal_rules(patch["add"], give_available=give_available)
+            except _PROPOSAL_ERRORS as error:
+                violations = [f"提案の形式を検査できませんでした: {error}"]
+                patch = make_patch(
+                    {"title": "(解析失敗)", "rationale": str(error)[:300], "add": {}},
+                    trigger=trigger, parent_digest=parent_digest, author=author,
+                )
+
+            if not violations or args.from_file or attempt == max_attempts:
+                break
+            current_prompt = _retry_prompt(prompt, last_proposal_text, response_text, violations)
 
     proposed_dir = project / "patches" / "_proposed"
     raw = yaml.safe_dump(patch, allow_unicode=True, sort_keys=False).encode("utf-8")
@@ -498,6 +517,45 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+class _Tee:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, text):
+        for stream in self.streams:
+            stream.write(text)
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
+
+
+@contextlib.contextmanager
+def _job_log(args):
+    """With --job/--control, also copy everything printed to
+    <control>/jobs/<job>/scratch/world_patch.log: the job worker discards the
+    child's stdout, so this is the only record of why an attempt was sent back.
+    A no-op (and never an error) for plain CLI use."""
+    job, control = getattr(args, "job", None), getattr(args, "control", None)
+    if not job or not control:
+        yield
+        return
+    try:
+        folder = Path(control) / "jobs" / job / "scratch"
+        folder.mkdir(parents=True, exist_ok=True)
+        log = open(folder / "world_patch.log", "a", encoding="utf-8")
+    except OSError:
+        yield
+        return
+    original = sys.stdout
+    sys.stdout = _Tee(original, log)
+    try:
+        yield
+    finally:
+        sys.stdout = original
+        log.close()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     arguments = list(sys.argv[1:] if argv is None else argv)
@@ -509,17 +567,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         if error.code == 2 and arguments[:1] == ["approve"]:
             return 1
         raise
-    try:
-        return args.func(args)
-    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as error:
-        message = f"処理できません: {error}"
-        print(message)
-        # A safety net for any propose/check failure that raises instead of
-        # printing+returning (e.g. cmd_check's PatchErrors, or cmd_propose's
-        # "提案中に承認スタックが変わりました") -- _progress is a no-op
-        # without --job, so this never affects direct CLI/test use.
-        _progress(args, step="failed", message=message)
-        return 1
+    with _job_log(args):
+        try:
+            return args.func(args)
+        except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as error:
+            message = f"処理できません: {error}"
+            print(message)
+            # A safety net for any propose/check failure that raises instead of
+            # printing+returning (e.g. cmd_check's PatchErrors, or cmd_propose's
+            # "提案中に承認スタックが変わりました") -- _progress is a no-op
+            # without --job, so this never affects direct CLI/test use.
+            _progress(args, step="failed", message=message)
+            return 1
 
 
 if __name__ == "__main__":
