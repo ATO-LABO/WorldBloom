@@ -55,4 +55,4 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
                          phase="world", page_class="world-prototype", job_store=job_store, pin=pin)
     doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/world-prototype.css"><script src="/static/world-prototype.js" defer></script></head>')
     doc = doc.replace('data-wb="world-picker"', 'data-wb="world-picker" aria-label="世界"')
-    return doc.replace('<a class="home-cell" href="/">⌂ ホーム</a>', '<a class="home-cell" href="/" aria-label="WorldBloom ホーム">WorldBloom</a>')
+    return doc

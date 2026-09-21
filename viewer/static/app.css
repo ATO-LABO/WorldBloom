@@ -135,11 +135,22 @@ select {
   padding: 0.4rem 1rem;
 }
 
-.home-cell {
+.home-cell,
+.brand {
   color: #f8f4ec;
-  font-size: 0.85rem;
+  font-family: var(--ws-font);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: .01em;
   text-decoration: none;
   white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .home-cell,
+  .brand {
+    font-size: 21px;
+  }
 }
 
 .home-cell:hover {
@@ -198,14 +209,6 @@ select {
 
 .header-links a:hover {
   text-decoration: underline;
-}
-
-.brand {
-  color: #f8f4ec;
-  font-size: 1.05rem;
-  font-weight: 750;
-  text-decoration: none;
-  white-space: nowrap;
 }
 
 .phase-band {
@@ -5744,7 +5747,7 @@ main:has(.cfg-form) .form-actions {
 .header-pickers .picker-select{max-width:100%;min-width:0}
 .header-pickers .picker-value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .header-links{margin-left:auto;flex:none;gap:0;align-items:center;white-space:nowrap}
-.header-links a{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:36px;padding:4px 18px;color:#f8f4ec;font-family:var(--font-ui);font-size:14px;font-weight:600;text-decoration:none}
+.header-links a{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:36px;padding:4px 18px;color:#f8f4ec;font-family:var(--ws-font);font-size:14px;font-weight:600;text-decoration:none}
 .header-links a+a{border-left:1px solid rgba(255,255,255,.35)}
 .header-links a:last-child{padding-right:2px}
 .header-links svg{width:21px;height:21px;flex:none}
