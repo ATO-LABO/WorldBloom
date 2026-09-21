@@ -139,6 +139,68 @@ class WorldDemandViewTests(unittest.TestCase):
             "不明（拡張の情報が欠けています）",
         )
 
+    def _write_two_triggers(self) -> None:
+        # observe is not investigate -- the button must only appear on the
+        # investigate trigger, and data-trigger must stay the RAW index into
+        # this list (1), not an investigate-only count (0).
+        _write_json(
+            self.experiment / "world_demand.json",
+            {
+                "schema_version": 1,
+                "zones": [],
+                "triggers": [
+                    {"zone": "村", "verb": "observe", "count": 5, "whiffs": 2, "wasted_share": 0.1},
+                    {"zone": "海", "verb": "investigate", "count": 3, "whiffs": 3, "wasted_share": 0.5},
+                ],
+            },
+        )
+
+    def test_propose_run_adds_button_only_to_investigate_trigger_with_raw_index(self) -> None:
+        self._write_two_triggers()
+        rendered = world_demand_view.demand_block(self.repository, self.experiment, propose_run="exp-viewer")
+        self.assertIn(
+            'data-patch-action="propose" data-run="exp-viewer" data-trigger="1"',
+            rendered,
+        )
+        # The non-investigate (observe) trigger gets the note, not a button.
+        self.assertIn("「investigate」＝調べる、の空振りにだけ拡張を提案できます", rendered)
+        # Only one button total (for the investigate trigger).
+        self.assertEqual(rendered.count('data-patch-action="propose"'), 1)
+        # Time estimate line is present once, above the list.
+        self.assertIn("6〜11分かかります", rendered)
+        self.assertLess(rendered.index("6〜11分"), rendered.index("data-trigger=\"0\""))
+
+    def test_raw_index_survives_a_non_mapping_trigger(self) -> None:
+        # Entries that are not objects are skipped in the list but still count
+        # toward the index -- the server converts this same raw index.
+        _write_json(self.experiment / "world_demand.json", {
+            "schema_version": 1, "zones": [],
+            "triggers": [None, {"zone": "村", "verb": "observe", "count": 5, "whiffs": 2, "wasted_share": 0.1},
+                         {"zone": "海", "verb": "investigate", "count": 3, "whiffs": 3, "wasted_share": 0.5}]})
+        rendered = world_demand_view.demand_block(self.repository, self.experiment, propose_run="exp-viewer")
+        self.assertIn('data-patch-action="propose" data-run="exp-viewer" data-trigger="2"', rendered)
+
+    def test_time_estimate_needs_an_investigate_trigger(self) -> None:
+        _write_json(self.experiment / "world_demand.json", {
+            "schema_version": 1, "zones": [],
+            "triggers": [{"zone": "村", "verb": "observe", "count": 5, "whiffs": 2, "wasted_share": 0.1}]})
+        rendered = world_demand_view.demand_block(self.repository, self.experiment, propose_run="exp-viewer")
+        self.assertNotIn("6〜11分", rendered)
+        self.assertNotIn('data-patch-action="propose"', rendered)
+
+    def test_without_propose_run_no_button_or_note_appears(self) -> None:
+        self._write_two_triggers()
+        rendered = world_demand_view.demand_block(self.repository, self.experiment)
+        self.assertNotIn("data-patch-action", rendered)
+        self.assertNotIn("拡張を提案させる", rendered)
+        self.assertNotIn("6〜11分", rendered)
+
+    def test_propose_run_escapes_run_name(self) -> None:
+        self._write_two_triggers()
+        rendered = world_demand_view.demand_block(self.repository, self.experiment, propose_run='exp"<script>')
+        self.assertNotIn('exp"<script>', rendered)
+        self.assertIn("exp&quot;&lt;script&gt;", rendered)
+
     def test_sidebar_link_absent_without_report_present_with_trigger_count(self) -> None:
         self.assertEqual(world_demand_view.sidebar_link(self.repository, "exp-viewer"), "")
         _write_json(

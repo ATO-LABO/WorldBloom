@@ -367,7 +367,7 @@ def _trial_html(trial: dict) -> str:
 # --------------------------------------------------------------------------
 
 
-def proposal_card(proposal: dict, world: Any, *, world_id: str, can_write: bool) -> str:
+def proposal_card(proposal: dict, world: Any, *, world_id: str, can_write: bool, run_id: str | None = None) -> str:
     pid = proposal.get("id")
     patch = proposal.get("patch")
     if proposal.get("error") or not isinstance(patch, dict):
@@ -396,6 +396,9 @@ def proposal_card(proposal: dict, world: Any, *, world_id: str, can_write: bool)
         result_parts.append(_trial_html(trial))
     elif not violations:
         result_parts.append("<p>試走がまだです。</p>")
+    holdout_checks = gate.get("holdout_checks")
+    if isinstance(holdout_checks, int) and not isinstance(holdout_checks, bool) and holdout_checks >= 1:
+        result_parts.append(f"<p>holdout の検査: {_escape(holdout_checks)} 回</p>")
     results_html = "".join(result_parts) or "<p>検査結果がありません。</p>"
 
     # V3 (viewer review): the reason id exists regardless of can_write so
@@ -426,7 +429,18 @@ def proposal_card(proposal: dict, world: Any, *, world_id: str, can_write: bool)
             f'<button type="button" data-patch-action="reject" data-world="{_escape(world_id)}" '
             f'data-patch="{_escape(pid)}" data-patch-sha="{patch_sha}" data-gate-sha="{gate_sha}">却下</button>'
         )
-        actions_html = ('<div class="we-actions">' + approve_block + reject_block
+        check_block = ""
+        if run_id:
+            # WB-WORLDGROW-001 段階3b-3: re-run the holdout trial without
+            # touching approve/reject -- useful before a proposal is
+            # approvable at all (trial_pending) and after (rules changed,
+            # patch edited).
+            check_block = (
+                f'<button type="button" data-patch-action="check" data-run="{_escape(run_id)}" '
+                f'data-patch="{_escape(pid)}">検査をやり直す</button>'
+                '<p class="muted we-hint">承認に使う seed（holdout）でもう一度試走します。数分かかります。</p>'
+            )
+        actions_html = ('<div class="we-actions">' + approve_block + reject_block + check_block
                          + '<p class="we-message" data-patch-message role="alert"></p></div>')
     else:
         actions_html = '<p class="muted">閲覧モードです。承認や却下は実行管理を有効にして開いたときに行えます。</p>'
