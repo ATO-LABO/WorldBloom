@@ -11,11 +11,11 @@ from urllib.parse import parse_qs, urlsplit
 
 from execution.provenance import ConfigError
 from execution.worker import TERMINAL
-from viewer import data, pages, ga_replay, lineage_river
+from viewer import data, pages, ga_replay, lineage_river, world_demand_view
 
 
 TABS = (("overview", "概要"), ("replay", "進化のリプレイ"),
-        ("river", "系譜の川"), ("trends", "世代の推移"))
+        ("river", "系譜の川"), ("trends", "世代の推移"), ("demand", "世界の需要と拡張"))
 READ_ERRORS = (ConfigError, OSError, ValueError, KeyError, TypeError, data.MissingResource)
 E = pages._escape
 U = pages._url_segment
@@ -133,7 +133,41 @@ def observation(handler, view, generation=None):
     return result
 
 
-def _condition_html(view):
+def _world_state(handler, view):
+    """(experiment dir, world_expansion_state) read once per page render; either
+    may be None when the run isn't saved yet or can't be read."""
+    experiment = world_demand_view.resolve_root(handler.repository, view.get("run_name"))
+    if experiment is None:
+        return None, None
+    try:
+        return experiment, data.world_expansion_state(handler.repository, experiment)
+    except READ_ERRORS:
+        return experiment, None
+
+
+def _world_row_html(handler, state, setting):
+    """「世界の拡張」の1行: 選んだ設定と、実際に回った世界（ベース/拡張/不明）。
+    拡張ありなら5つ目のタブへリンクする。"""
+    from viewer import workbench_pages as wb
+    parts = [E(f"設定: {wb._world_expansion_label(setting or 'off')}")]
+    if state is not None:
+        parts.append(E(f"回った世界: {world_demand_view.summary_text(state)}"))
+        if state.get("state") == "expanded":
+            href = urlsplit(handler.path).path + "?tab=demand"
+            parts.append(f'<a href="{E(href)}">世界の需要と拡張を見る →</a>')
+    return "<br>".join(parts)
+
+
+def _demand_html(handler, experiment, state):
+    if experiment is None:
+        return '<p class="rw-empty">実験がまだ保存されていません。</p>'
+    try:
+        return world_demand_view.demand_block(handler.repository, experiment, state)
+    except READ_ERRORS:
+        return '<p class="rw-empty">世界の需要を読み込めませんでした。</p>'
+
+
+def _condition_html(handler, view, state):
     config = view.get("config") or {}
     preview = config.get("preview") or {}
     ev = config.get("evolution") or {}
@@ -145,8 +179,10 @@ def _condition_html(view):
     rows = [("世界", name), ("目指す結末", ending), ("探索規模", size),
             ("結果の保存", {"all": "すべて", "reached": "結末に到達した結果", "none": "ログを保存しない"}.get(ev.get("keep"), "実行時の条件を参照"))]
     cid = config.get("config_id")
+    dl_items = "".join(f"<dt>{E(k)}</dt><dd>{E(v)}</dd>" for k, v in rows)
+    dl_items += f"<dt>世界の拡張</dt><dd>{_world_row_html(handler, state, ev.get('world_expansion'))}</dd>"
     return ('<aside class="rw-conditions" id="rw-conditions"><h2>今回の条件</h2><dl>'
-            + "".join(f"<dt>{E(k)}</dt><dd>{E(v)}</dd>" for k, v in rows) + "</dl>"
+            + dl_items + "</dl>"
             + (f'<a href="/configs/{U(cid)}">実行時の条件を見る ↗</a>' if cid else "")
             + '<p class="muted">開始時点の条件です。</p></aside>')
 
@@ -180,12 +216,13 @@ def render(handler, view):
     empty = '<p class="rw-empty">保存済みの記録を読み込んでいます。</p>'
     initial_replay = observed.get("replay_html", empty).replace('class="ga-replay"', 'class="ga-replay" data-rw-managed="true" data-active="false"')
     terminal_message = wb._run_terminal_message(job) if job.get("state") in TERMINAL else ""
+    experiment, world_state = _world_state(handler, view)
     panels = (
         '<section id="rw-overview" role="tabpanel" aria-labelledby="rw-tab-overview">'
         '<div class="rw-overview"><div><h2>探索の進み具合</h2><div data-overview-progress></div>'
         '<h2>見つかっている物語</h2><div data-overview-metrics></div><div data-map></div>'
         '<div data-recent-saves></div><details><summary>処理の詳細・ログ</summary><div data-run-log></div></details></div>'
-        + _condition_html(view) + '</div></section>'
+        + _condition_html(handler, view, world_state) + '</div></section>'
         '<section id="rw-replay" role="tabpanel" aria-labelledby="rw-tab-replay" hidden>'
         '<div data-generation-controls="replay"></div><p>保存済みの世代を再生しています。計算の進捗は上部で確認できます。</p>'
         f'<div data-replay-host>{initial_replay}</div></section>'
@@ -201,6 +238,8 @@ def render(handler, view):
         '<option value="average_archive_quality">地図上の平均品質</option></select></label>'
         '<p data-metric-description></p><div data-trend-graph></div><div data-trend-detail></div>'
         '<details class="rw-trend-table"><summary>表で見る</summary><div data-trend-table></div></details></section>'
+        '<section id="rw-demand" role="tabpanel" aria-labelledby="rw-tab-demand" hidden>'
+        + _demand_html(handler, experiment, world_state) + '</section>'
     )
     from viewer.run_browse import navigation
     body = (
@@ -220,7 +259,7 @@ def render(handler, view):
         f'<a data-restart href="{E(config_href)}" hidden>この条件で新しく実行</a>'
         '<span data-stop-status role="status">保存済みの結果は残ります。</span></div>'
         '<a class="rw-primary" data-candidates>保存済みの候補を見る →</a></footer></div></div>'
-        '<noscript><p>4タブの操作にはJavaScriptが必要です。保存記録は既存の候補画面で閲覧できます。</p></noscript>'
+        '<noscript><p>5タブの操作にはJavaScriptが必要です。保存記録は既存の候補画面で閲覧できます。</p></noscript>'
     )
     doc = pages.document(title, body, phase="run", world=world, run=view.get("run_name"),
                          output_run=job.get("run_id"), job_store=getattr(handler.server, "job_store", None),

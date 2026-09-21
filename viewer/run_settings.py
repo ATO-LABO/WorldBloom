@@ -63,6 +63,14 @@ def render(handler, values, *, projects, templates, worlds, parent=None):
         '<select id="f-evolution.keep" name="evolution.keep" data-field="evolution.keep">'
         + ''.join(f'<option value="{k}"' + (' selected' if values["evolution.keep"] == k else '') + f'>{label}</option>' for k, label in keeps)
         + '</select><span class="field-error" data-error-for="evolution.keep" role="alert"></span></div>')
+    # WB-WORLDGROW-001 段階2/3a: 世界の自己拡張。既定は off（世界は固定のまま）。
+    expansions = (("off", "しない（既定）"),
+                  ("detect", "検知のみ（世界は変えず、足りない場所を集計する）"),
+                  ("expand", "承認済みの拡張を適用（需要の集計もする）"))
+    expansion = ('<div class="field rs-expansion"><label for="f-evolution.world_expansion">世界の拡張</label>'
+        '<select id="f-evolution.world_expansion" name="evolution.world_expansion" data-field="evolution.world_expansion">'
+        + ''.join(f'<option value="{k}"' + (' selected' if values["evolution.world_expansion"] == k else '') + f'>{label}</option>' for k, label in expansions)
+        + '</select><span class="field-error" data-error-for="evolution.world_expansion" role="alert"></span></div>')
     toggles = ''.join(wb._checkbox_field(label, f"evolution.{key}", values[f"evolution.{key}"])
         for label, key in (("説明記録", "record_explanations"), ("共進化", "coevolve"), ("メタ進化", "meta_evolution")))
     advanced = ('<details class="cfg-adv"><summary>詳細設定 <span data-limit-summary></span></summary>'
@@ -83,7 +91,7 @@ def render(handler, values, *, projects, templates, worlds, parent=None):
         + f'<a data-world-link href="{E(back)}">世界設定を見る ↗</a></div>' + ending + '<p data-world-facts class="rs-muted"></p></section>'
         '<section><h2>02. 探索の規模</h2><div class="rs-scale">' + scale
         + '</div><p class="rs-muted">同じ個体を、異なる初期条件で評価します。1世代あたり <span data-per-gen></span> 回。</p></section>'
-        '<section><h2>03. 保存と進化</h2>' + keep + '<div class="rs-toggles">' + toggles + '</div></section>' + advanced + '</div>'
+        '<section><h2>03. 保存と進化</h2>' + keep + expansion + '<div class="rs-toggles">' + toggles + '</div></section>' + advanced + '</div>'
         + run_summary.render({k.removeprefix("evolution."): v for k, v in values.items() if k.startswith("evolution.")}, editable=True)
         +
         '<footer class="rw-footer rs-footer">'
