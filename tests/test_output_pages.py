@@ -247,7 +247,7 @@ class OutputPagesTests(unittest.TestCase):
         self._finish(store_b, oid_b, cids_b[0], "ok", "completed", text="story")
         self.fake.add(_gen_job(job_b, rid_b, oid_b, "narrate", "succeeded"))
 
-        status, body, _ = self.get_status("/outputs")
+        status, body, _ = self.get_status("/outputs?view=history")
         self.assertEqual(status, 200, body)
         self.assertIn(rid_a, body)
         self.assertIn(rid_b, body)
@@ -258,7 +258,7 @@ class OutputPagesTests(unittest.TestCase):
         self.assertIn("上映生成", body)
         self.assertIn(f"/outputs/{oid_a}", body)
 
-        status, body, _ = self.get_status(f"/outputs?run={rid_a}")
+        status, body, _ = self.get_status(f"/outputs?run={rid_a}&view=history")
         self.assertEqual(status, 200, body)
         self.assertIn(oid_a, body)
         self.assertNotIn(oid_b, body)
@@ -266,7 +266,7 @@ class OutputPagesTests(unittest.TestCase):
         # Broken row: one output the store considers damaged must not take the
         # rest of the listing down, and must be shown distinctly (§ coordinator note).
         self.fake.broken_output_ids.add(oid_b)
-        status, body, _ = self.get_status("/outputs")
+        status, body, _ = self.get_status("/outputs?view=history")
         self.assertEqual(status, 200, body)
         self.assertIn("破損・要確認", body)
         self.assertIn(oid_b, body)
@@ -275,7 +275,7 @@ class OutputPagesTests(unittest.TestCase):
 
         # Total failure degrades to a 200 message instead of a 500.
         self.fake.outputs_raise = True
-        status, body, _ = self.get_status("/outputs")
+        status, body, _ = self.get_status("/outputs?view=history")
         self.assertEqual(status, 200, body)
         self.assertIn("作品一覧を読み込めません", body)
         self.fake.outputs_raise = False
@@ -288,7 +288,7 @@ class OutputPagesTests(unittest.TestCase):
         self._finish(store, oid, cids[0], "ok", "completed", text="p1")
         self.fake.add(_gen_job(jid, rid, oid, "synopsize", "succeeded"))
 
-        status, body, _ = self.get_status("/outputs")
+        status, body, _ = self.get_status("/outputs?view=history")
         self.assertEqual(status, 200, body)
         thead = body[body.index("<thead>"):body.index("</thead>")]
         # "<thead>" itself contains "<th", so match the column tag precisely.
@@ -301,7 +301,7 @@ class OutputPagesTests(unittest.TestCase):
         self.assertIn("対象数", detail)
         self.assertIn("/configs/cfg-test", detail)
         self.assertIn('<details class="glossary">', body)
-        self.assertIn('<p class="page-lead">', body)
+        self.assertIn('生成履歴', body)
 
     # ---------------------------------------------------------- output detail
 
@@ -318,7 +318,7 @@ class OutputPagesTests(unittest.TestCase):
                      call_state="response_received", retry_policy="local_recovery_only", cause_type="OSError")
         self.fake.add(_gen_job(jid, rid, oid, "narrate", "succeeded"))
 
-        status, body, _ = self.get_status(f"/outputs/{oid}")
+        status, body, _ = self.get_status(f"/outputs/{oid}?view=record")
         self.assertEqual(status, 200, body)
         self.assertIn("Once upon a time.", body)
         self.assertIn("The end.", body)
@@ -377,7 +377,7 @@ class OutputPagesTests(unittest.TestCase):
         self._finish(nar_store, nar_oid, cids[0], "ok", "completed", text="the story")
         self.fake.add(_gen_job(nar_jid, rid, nar_oid, "narrate", "succeeded"))
 
-        status, body, _ = self.get_status(f"/outputs/{nar_oid}")
+        status, body, _ = self.get_status(f"/outputs/{nar_oid}?view=record")
         self.assertEqual(status, 200, body)
         self.assertIn("入力あらすじ", body)
         self.assertIn("あらすじ稿を見る", body)
@@ -536,9 +536,8 @@ class OutputPagesTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/generate?kind=narrate&config=cfg-test")
         self.assertEqual(status, 200, body)
-        match = re.search(r'data-request="([^"]+)"', body)
-        self.assertIsNotNone(match, body)
-        request = json.loads(__import__("html").unescape(match.group(1)))
+        request = _sifting_initial(body)['request']
+        self.assertIsNotNone(request, body)
         self.assertEqual(request["candidate_ids"], [cids[0]])
         self.assertEqual(request["synopsis_refs"][cids[0]]["output_id"], oid)
 
@@ -582,15 +581,14 @@ class OutputPagesTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        self.assertIn('id="generate-form"', body)
-        self.assertIn('name="kind" value="synopsize"', body)
-        self.assertIn('name="kind" value="narrate"', body)
-        self.assertIn(f'name="candidate" value="{cids[0]}" form="generate-form"', body)
-        self.assertIn("あらすじ ok 1 / 上映 ok 0", body)
-        self.assertIn(f"/outputs?run={rid}", body)
-        # Narrate has no adopted candidates yet.
-        row = body[body.index(f'name="kind" value="narrate"'):]
-        self.assertIn("disabled", row.split("</button>")[0])
+        initial = _sifting_initial(body)
+        candidate = next(c for c in initial['items'] if c['candidate_id'] == cids[0])
+        self.assertEqual(candidate['synopsis'], 'text')
+        self.assertFalse(candidate['can_synopsis'])
+        self.assertIn('data-sf-mode="synopsis"', body)
+        self.assertIn('data-sf-proceed disabled>採用候補を確認（0件）', body)
+        self.assertNotIn('id="generate-form"', body)
+        self.assertEqual(self.fake.submitted, [])
 
     def test_candidates_page_output_summary_error_note(self):
         rid, _cids = self._legacy_run("exp-cand-err", count=1)
@@ -615,8 +613,72 @@ class OutputPagesTests(unittest.TestCase):
         status, body, _ = self.get_status(f"/runs/{rid}/candidates?generation=999")
         self.assertEqual(status, 200, body)
         self.assertNotIn(f'data-candidate-id="{cids[0]}"', body)  # filtered out of the table
-        row = body[body.index('name="kind" value="narrate"'):]
+        row = body[body.index('data-sf-proceed'):]
         self.assertNotIn("disabled", row.split("</button>")[0])
+
+    def test_sifting_tray_counts_only_eligible_targets(self):
+        rid, cids = self._legacy_run("exp-tray-eligible", count=3)
+        status, _ = self.http("POST", f"/api/runs/{rid}/selection", {
+            "expected_revision": 0, "changes": [{"candidate_id": c, "state": "adopted"} for c in cids]})
+        self.assertEqual(status, 200)
+        oid, jid, store = self._create_output(kind="narrate", run_id=rid, candidate_ids=cids[:2])
+        self._finish(store, oid, cids[0], "ok", "completed", text="既存本文")
+        self._finish(store, oid, cids[1], "unknown", "dispatch_unknown", stage="receive",
+                     call_state="started", retry_policy="explicit_confirmation")
+        self.fake.add(_gen_job(jid, rid, oid, "narrate", "succeeded"))
+        status, body, _ = self.get_status(f"/selected?run={rid}&config=cfg-test")
+        self.assertEqual(status, 200, body)
+        self.assertIn('採用 3件のうち、今回の対象', body)
+        self.assertIn('class="sf-total">1 件', body)
+        request = _sifting_initial(body)['request']
+        self.assertEqual(request['candidate_ids'], [cids[2]])
+        self.assertFalse(request['acknowledge_unknown'])
+        self.assertEqual(request['attempt_ids'], [])
+        from execution.output_requests import eligible
+        self.assertEqual(eligible(store, request), [cids[2]])
+        self.assertEqual(self.fake.submitted, [])
+
+    def test_sifting_held_and_all_runs_never_offer_generation(self):
+        rid, cids = self._legacy_run("exp-tray-held", count=1)
+        self.http("POST", f"/api/runs/{rid}/selection", {"expected_revision": 0,
+            "changes": [{"candidate_id": cids[0], "state": "held", "note": "見直す"}]})
+        for path in ('/selected', f'/selected?run={rid}&state=held'):
+            status, body, _ = self.get_status(path)
+            self.assertEqual(status, 200, body)
+            self.assertNotIn('data-sf-generate', body)
+            self.assertIn('保留', body)
+        self.assertEqual(self.fake.submitted, [])
+
+    def test_sifting_unknown_narration_retains_explicit_attempt(self):
+        rid, cids = self._legacy_run("exp-tray-unknown", count=1)
+        self.http("POST", f"/api/runs/{rid}/selection", {"expected_revision": 0,
+            "changes": [{"candidate_id": cids[0], "state": "adopted"}]})
+        oid, jid, store = self._create_output(kind="narrate", run_id=rid, candidate_ids=cids)
+        self._finish(store, oid, cids[0], "unknown", "dispatch_unknown", stage="receive",
+                     call_state="started", retry_policy="explicit_confirmation")
+        self.fake.add(_gen_job(jid, rid, oid, "narrate", "succeeded"))
+        status, body, _ = self.get_status(f'/selected?run={rid}&config=cfg-test')
+        self.assertEqual(status, 200, body)
+        self.assertIsNone(_sifting_initial(body)['request'])
+        status, body, _ = self.get_status(f'/runs/{rid}/generate?kind=narrate&mode=regenerate&config=cfg-test&ack=1&from_output={oid}')
+        self.assertEqual(status, 200, body)
+        request = _sifting_initial(body)['request']
+        self.assertTrue(request['acknowledge_unknown'])
+        self.assertEqual(request['mode'], 'regenerate')
+        self.assertEqual(request['attempt_ids'], [store.project(oid)['entries'][0]['attempt_id']])
+        self.assertIn('data-sf-ack', body)
+        self.assertIn('name="from_output"', body)
+        self.assertEqual(self.fake.submitted, [])
+
+    def test_sifting_damaged_output_ledger_blocks_new_generation(self):
+        rid, cids = self._legacy_run("exp-tray-damaged", count=1)
+        self.http("POST", f"/api/runs/{rid}/selection", {"expected_revision": 0,
+            "changes": [{"candidate_id": cids[0], "state": "adopted"}]})
+        self.fake.outputs_raise = True
+        status, body, _ = self.get_status(f'/selected?run={rid}&config=cfg-test')
+        self.assertEqual(status, 200, body)
+        self.assertIsNone(_sifting_initial(body)['request'])
+        self.assertIn('生成記録を確認できません', body)
 
     # -------------------------------------------------------------- jobs
 
@@ -629,7 +691,7 @@ class OutputPagesTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/jobs/{jid}")
         self.assertEqual(status, 200, body)
-        self.assertIn("上映生成", body)
+        self.assertIn("本文の生成", body)
         self.assertIn(f"/outputs/{oid}", body)
         self.assertIn(output_pages.COMPLETION_LABELS["generated"], body)
 
@@ -699,3 +761,8 @@ class OutputPagesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _sifting_initial(body):
+    import html
+    return json.loads(html.unescape(re.search(r'data-initial="([^"]+)"', body).group(1)))

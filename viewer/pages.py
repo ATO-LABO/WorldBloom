@@ -1901,95 +1901,15 @@ def lineage_page(
     *,
     turning_index: int | None = None,
     job_store: Any = None,
+    point: str | None = None,
+    tab: str = "choices",
+    view: str = "key",
+    expected_ref: str | None = None,
 ) -> str:
-    experiment = repository.experiment(experiment_name)
-    model = data.lineage_view(repository, experiment, cell_key)
-    experiment_url = f"/exp/{_url_segment(experiment_name)}"
-    cell_base = f"{experiment_url}/cell/{_url_segment(cell_key)}"
-    lineage_base = f"{cell_base}/lineage"
-
-    ancestry = model["ancestry"]
-    turnings = model["turnings"]
-    first_reach_index = model["first_reach_index"]
-    selected = (
-        turning_index
-        if turning_index is not None and 0 <= turning_index < len(turnings)
-        else (0 if turnings else None)
-    )
-
-    cards = [
-        _turning_card(
-            "出発点",
-            generation=ancestry[0]["generation"],
-            body_lines=[_lineage_outcome_text(ancestry[0].get("outcome"))],
-        )
-    ]
-    for index, turning in enumerate(turnings):
-        cards.append(
-            _turning_card(
-                "転機",
-                generation=turning["child_generation"],
-                body_lines=[
-                    _gene_shift_text(turning["gene_shift"]),
-                    f'{_lineage_action_text(turning["parent_action"])} → '
-                    f'{_lineage_action_text(turning["child_action"])}',
-                    _lineage_outcome_text(turning["outcome"]),
-                ],
-                href=f"{lineage_base}?turning={index}",
-                current=(index == selected),
-            )
-        )
-    if first_reach_index is not None:
-        reach_node = ancestry[first_reach_index]
-        cards.append(
-            _turning_card(
-                "初到達",
-                generation=reach_node["generation"],
-                body_lines=[_lineage_outcome_text(reach_node.get("outcome"))],
-            )
-        )
-
-    if turnings and selected is not None:
-        detail = _turning_detail(turnings[selected])
-    else:
-        detail = (
-            '<p class="muted">この系譜には転機が見つかりませんでした'
-            "（決定が完全に一致したか、比べられる祖先がありません）。</p>"
-        )
-
-    broken = [entry["ref"] for entry in ancestry if entry.get("rerun_error")]
-    warning = (
-        '<p class="warning">一部の祖先は再現できませんでした（'
-        + _escape("、".join(broken))
-        + "）。関わる転機は省略されています。</p>"
-        if broken
-        else ""
-    )
-
-    body = (
-        f'<div class="cell-navigation"><a href="{cell_base}">← 候補</a></div>'
-        + warning
-        + '<section class="card"><h2>系譜</h2>'
-        + glossary(["lineage", "turning"])
-        + _lineage_band(ancestry, turnings, first_reach_index)
-        + "</section>"
-        + '<section class="card turning-cards"><h2>出発点・転機・初到達</h2>'
-        + "".join(cards)
-        + "</section>"
-        + '<section class="card"><h2>選んだ転機の詳細</h2>'
-        + detail
-        + "</section>"
-    )
-    phases = data.phase_status(repository, experiment_name, job_store=job_store)
-    return document(
-        f"{experiment_name} / {cell_key} / 系譜",
-        body,
-        run=experiment_name,
-        phase="sifting",
-        phases=phases,
-        lead="祖先をたどり、行動が最初に分かれた地点を確かめます。",
-        next_action=("候補に戻る →", cell_base),
-        job_store=job_store,
+    from viewer import lineage_pages
+    return lineage_pages.render(
+        repository, experiment_name, cell_key, turning_index=turning_index,
+        job_store=job_store, point=point, tab=tab, view=view, expected_ref=expected_ref,
     )
 
 

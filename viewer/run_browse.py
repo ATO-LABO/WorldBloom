@@ -2,7 +2,7 @@
 from datetime import datetime
 from urllib.parse import parse_qs, urlsplit
 
-from viewer import data, pages
+from viewer import data, pages, run_summary
 
 E, U = pages._escape, pages._url_segment
 
@@ -17,25 +17,38 @@ def _date(value):
         return str(value)
 
 
-def _document(handler, title, active, body, *, world=None, config=None, footer=""):
+def navigation(active, *, world=None, config=None, store=None, status_href=None):
+    """The same four destinations on every execution page."""
     from viewer import workbench_pages as wb
-    store = wb._job_store(handler)
     world_id = (world or {}).get("id")
     conditions = f'/jobs?world={U(world_id)}' if world_id else '/jobs'
+    settings = f'/configs/new?project={U(world_id)}' if world_id else '/configs/new'
     if config:
-        conditions += f'&config={U(config["config_id"])}'
-    jobs = store.list() if store else []
-    current = next((j for j in jobs if j.get("state") in wb.RUNNING_STATES and j.get("kind", "evolve") == "evolve"), None)
-    if current is None:
-        current = next((j for j in sorted(jobs, key=lambda j: str(j.get("created_at") or ""), reverse=True)
-                        if j.get("kind", "evolve") == "evolve" and (not config or j.get("config_id") == config["config_id"])), None)
-    status_href = f'/jobs/{U(current["job_id"])}' if current else conditions
-    nav = ''.join(f'<a href="{E(href)}"' + (' aria-current="page"' if key == active else '') + f'>{label}</a>'
-                  for key, label, href in (("conditions", "実行条件", conditions), ("status", "実行状況", status_href), ("history", "実行履歴", "/history")))
-    content = ('<div class="rw-shell rb-shell"><nav class="rw-sidebar" aria-label="実行メニュー">' + nav + '</nav>'
-               '<div class="rb-main"><header class="rw-heading"><h1>' + E(title) + '</h1>'
+        conditions = f'/configs/{U(config["config_id"])}'
+        settings = f'/configs/new?from={U(config["config_id"])}'
+    if not status_href:
+        world_configs = {c["config_id"] for c in store.configs.list() if c["project_id"] == world_id} if store and world_id else None
+        jobs = [j for j in (store.list() if store else []) if j.get("kind", "evolve") == "evolve"
+                and (not config or j.get("config_id") == config["config_id"])
+                and (world_configs is None or j.get("config_id") in world_configs)]
+        jobs.sort(key=lambda j: str(j.get("created_at") or ""), reverse=True)
+        current = next((j for j in jobs if j.get("state") in wb.RUNNING_STATES), jobs[0] if jobs else None)
+        status_href = f'/jobs/{U(current["job_id"])}' if current else conditions
+    items = (("settings", "実行設定", settings), ("conditions", "実行条件", conditions),
+             ("status", "実行状況", status_href), ("history", "実行履歴", "/history"))
+    return '<nav class="rw-sidebar" aria-label="実行メニュー">' + ''.join(
+        f'<a href="{E(href)}"' + (' aria-current="page"' if key == active else '')
+        + (' data-history-back' if key == "history" else '') + f'>{label}</a>' for key, label, href in items) + '</nav>'
+
+
+def _document(handler, title, active, body, *, world=None, config=None, footer="", summary=""):
+    from viewer import workbench_pages as wb
+    store = wb._job_store(handler)
+    main_class = "rb-main rb-has-summary" if summary else "rb-main"
+    content = ('<div class="rw-shell rb-shell">' + navigation(active, world=world, config=config, store=store)
+               + f'<div class="{main_class}"><header class="rw-heading"><h1>' + E(title) + '</h1>'
                '<p>' + ("条件を確認して、物語の探索を始めます。" if active == "conditions" else "実行した探索を振り返り、続きの作業へ進めます。") + '</p></header>'
-               '<div class="rb-content">' + body + '</div>'
+               '<div class="rb-content">' + body + '</div>' + summary
                + ('<footer class="rw-footer rb-footer">' + footer + '</footer>' if footer else '') + '</div></div>')
     doc = pages.document(title, content, phase="run", world=world, job_store=store,
                          pin=data.pinned_target(store), page_class="run-observer")
@@ -55,13 +68,13 @@ def conditions(handler, view=None, *, config=None):
     cid = U(config["config_id"])
     labels = {v["id"]: v.get("label", v["id"]) for v in preview.get("world", {}).get("ending", [])}
     endings = "、".join(labels.get(v, v) for v in preview.get("target_endings", [])) or "世界の既定"
-    keep = {"all": "すべての結果", "reached": "結末に到達した結果", "none": "ログを保存しない"}.get(ev["keep"], ev["keep"])
+    keep = {"all": "すべての結果", "reached": "結末に到達した結果", "exemplar": "個体ごとに代表1件", "none": "ログを保存しない"}.get(ev["keep"], ev["keep"])
     picker = wb._run_config_picker(world, view["configs"], config) if preparing else f'<h2>{E(config["label"])}</h2>'
     stats = ''.join(f'<div><span>{label}</span><strong>{E(ev[key])}<small>{unit}</small></strong></div>' for label, key, unit in
                     (("世代を重ねる回数", "generations", "世代"), ("各世代の物語", "population", "個体"), ("各個体の評価", "seeds", "回")))
     body = ('<div class="rb-config-picker">' + picker + f'<a href="/configs/new?from={cid}">複製して調整 ↗</a>'
             f'<a href="{E(wb._new_config_href(world))}">＋ 新しい条件</a></div>'
-            '<div class="rb-condition-grid"><div><section class="rb-section"><span class="rb-eyebrow">01 · 世界と結末</span>'
+            '<div class="rb-condition-sections"><section class="rb-section"><span class="rb-eyebrow">01 · 世界と結末</span>'
             f'<h2>{E(preview["world_name"])}</h2><p class="rb-ending">{E(endings)}</p><dl class="rb-facts">'
             f'<dt>主人公</dt><dd>{E(preview["protagonist"])}</dd><dt>敵役</dt><dd>{E(preview["antagonist"])}</dd>'
             f'<dt>物語の長さの上限</dt><dd>{E(preview["max_turns"])} ターン</dd></dl></section>'
@@ -71,20 +84,20 @@ def conditions(handler, view=None, *, config=None):
             f'<dl class="rb-facts"><dt>結果の保存</dt><dd>{E(keep)}</dd><dt>実行時間の上限</dt><dd>{E(config["execution_limits"]["wall_seconds"])} 秒</dd>'
             f'<dt>説明の記録</dt><dd>{"残す" if ev["record_explanations"] else "残さない"}</dd>'
             f'<dt>共進化</dt><dd>{"あり" if ev["coevolve"] else "なし"}</dd><dt>メタ進化</dt><dd>{"あり" if ev["meta_evolution"] else "なし"}</dd></dl></section>'
-            '</div><aside class="rb-summary"><h2>今回の探索</h2><dl>'
-            f'<dt>評価する個体</dt><dd>{E(preview["planned_individual_evaluations"])} 個体</dd>'
-            f'<dt>シミュレーションの評価回数</dt><dd>{E(preview["planned_seed_evaluations"])} 回</dd>'
-            f'<dt>所要時間の目安</dt><dd>{view["estimate"] if preparing else "実行前の確認画面で表示"}</dd></dl>'
-            '<p>GA は LLM を呼び出しません。文章の生成は、候補を選んだあとの工程です。</p>'
-            f'<p class="muted">設定作成：{E(_date(config["created_at"]))}</p></aside></div>'
+            '</div>'
             '<details class="rb-advanced"><summary>詳細な設定・固定値・来歴を確認</summary>'
+            + f'<p>設定作成：{E(_date(config["created_at"]))}</p>'
             + wb.render_config_detail(config).rsplit('<p class="actions">', 1)[0] + '</details>')
     back = f'<a href="/worlds/{U(world["id"])}">世界設定へ戻る</a>'
     if preparing:
         action = wb._blocking_notice(view["blocking_job"]) if view.get("blocking_job") else wb._start_cta(config, view["request_id"])
     else:
         action = f'<a class="rw-primary" href="/configs/{cid}/start">この条件で実行へ →</a>'
-    _document(handler, "実行条件", "conditions", body, world=world, config=config, footer=back + action)
+    store = wb._job_store(handler)
+    estimate = view["estimate"] if preparing else wb._estimate(
+        store.list(), {c["config_id"]: c for c in store.configs.list()}, world["id"], config)
+    _document(handler, "実行条件", "conditions", body, world=world, config=config, footer=back + action,
+              summary=run_summary.render(ev, preview=preview, estimate_html=estimate))
 
 
 def history(handler, records, generation_jobs):

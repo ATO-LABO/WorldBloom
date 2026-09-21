@@ -231,7 +231,7 @@ class WorkbenchTests(unittest.TestCase):
 
         # WB-UI-021: /configs carries the single 文章生成 card, defaulted from
         # an absent settings.json (DEFAULT_BACKEND = codex-cli).
-        self.assertIn('<section class="card" id="output">', body)
+        self.assertIn('<section class="gs-panel" id="output" data-gs-panel="output">', body)
         self.assertIn('data-wb="output-settings"', body)
         self.assertIn(
             '<select id="f-backend" name="backend" data-field="backend">',
@@ -269,11 +269,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn('data-field="generation', body)
         self.assertIn('<option value="romance">romance</option>', body)
         self.assertIn('class="cfg-adv"', body)
-        self.assertIn(
-            'type="radio" id="f-evolution.keep-reached" name="evolution.keep" value="reached" '
-            'data-field="evolution.keep" checked',
-            body,
-        )
+        self.assertIn('<option value="reached" selected>結末に到達した結果</option>', body)
         # The fixture's "romance" world resolves to the "romance" genre
         # (templates/romance exists), so its <option> carries data-genre.
         self.assertIn('data-genre="', body)
@@ -283,7 +279,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertIn('data-parent="cfg-test"', body)
         self.assertGreaterEqual(body.count('type="hidden"'), 2)
-        self.assertIn('data-summary', body)
+        self.assertIn('data-scale-equation', body)
 
     def test_output_settings_api_round_trip(self):
         status, before = self.http("GET", "/api/settings/output")
@@ -686,7 +682,7 @@ class WorkbenchTests(unittest.TestCase):
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
         self.assertEqual(body.count('data-candidate-id="'), 2)
-        self.assertIn('data-revision="0"', body)
+        self.assertEqual(_sifting_initial(body)['revision'], 0)
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates?reached=true")
         self.assertEqual(status, 200, body)
@@ -718,18 +714,12 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        row = body[body.index(f'data-candidate-id="{cid}"'):]
-        self.assertIn('<option value="adopted" selected>', row)
-        # The selection state reads in Japanese with a glance mark, and the
-        # <select> carries the state class so app.css can colour it.
-        select_html = row[row.index('<select data-field="state"'):row.index("</select>")]
-        self.assertIn('class="state-select state-sel-adopted"', select_html)
-        self.assertIn('<option value="adopted" selected>✔ 採用</option>', select_html)
-        self.assertIn('<option value="held">⏸ 保留</option>', select_html)
-        self.assertIn('<option value="rejected">✖ 除外</option>', select_html)
-        self.assertIn('<option value="unclassified">○ 未分類</option>', select_html)
-        # The filter form uses the same labels (values stay the API keys).
-        self.assertIn('<option value="rejected">✖ 除外</option>', body[:body.index("<thead>")])
+        data = _sifting_initial(body)
+        saved = next(c for c in data['items'] if c['candidate_id'] == cid)
+        self.assertEqual((saved['state'], saved['note']), ('adopted', 'ok'))
+        self.assertIn('sf-badge sf-adopted', body)
+        self.assertIn('name="sf-verdict" value="held"', body)
+        self.assertIn('data-sf-proceed>採用候補を確認（1件）', body)
 
     def test_candidates_sort_quality_desc_and_bogus_sort_ignored(self):
         self._legacy_experiment("exp-sort")
@@ -738,14 +728,16 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates?sort=quality&dir=desc")
         self.assertEqual(status, 200, body)
-        self.assertIn('aria-sort="descending"', body)
+        self.assertIn('<option value="desc" selected>', body)
+        body = body[body.index('<div class="sf-list-scroll"'):]
         # VI|high (q=0.7) must render before I|low (q=0.5) in descending order.
         self.assertLess(body.index("VI|high"), body.index("I|low"))
         self.assertLess(body.index("0.7000"), body.index("0.5000"))
 
         status, asc_body, _ = self.get_status(f"/runs/{rid}/candidates?sort=quality&dir=asc")
         self.assertEqual(status, 200, asc_body)
-        self.assertIn('aria-sort="ascending"', asc_body)
+        self.assertIn('<option value="asc" selected>', asc_body)
+        asc_body = asc_body[asc_body.index('<div class="sf-list-scroll"'):]
         self.assertLess(asc_body.index("I|low"), asc_body.index("VI|high"))
 
         status, bogus_body, _ = self.get_status(f"/runs/{rid}/candidates?sort=bogus")
@@ -841,25 +833,18 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("選定は保存できません", html)
         self.assertIn("disabled", html)
 
-    def test_candidates_table_is_ten_columns_with_detail_rows(self):
-        # WB-UI-014 §3.1 (+あらすじ column): 10 list columns (選択/候補ID/セル/
-        # あらすじ/q/到達/採用可/選定状態/メモ/操作); 世代/個体/seed/役割/原記録/稿
-        # move into a per-row detail toggle instead of being spread across the table.
+    def test_candidates_share_one_reader_and_verdict(self):
         self._legacy_experiment("exp-detail")
-        catalog = self.server.repository.catalog
-        rid = catalog.register_legacy("exp-detail")
-
+        rid = self.server.repository.catalog.register_legacy("exp-detail")
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        thead = body[body.index("<thead>"):body.index("</thead>")]
-        # "<thead>" itself contains "<th", so match the column tag precisely.
-        self.assertEqual(len(re.findall(r"<th[ >]", thead)), 10)
-        self.assertEqual(body.count('class="detail-row"'), 2)  # one per candidate
-        self.assertEqual(body.count('class="row-toggle"'), 2)
-        self.assertIn('aria-expanded="false"', body)
-        self.assertIn('aria-controls="detail-', body)
-        self.assertIn('<details class="glossary">', body)
-        self.assertIn('<p class="page-lead">', body)
+        self.assertEqual(body.count('class="sf-inspector"'), 1)
+        self.assertEqual(body.count('data-candidate-id="'), 2)
+        self.assertEqual(body.count('name="sf-verdict"'), 4)
+        self.assertEqual(body.count('role="tabpanel"'), 3)
+        self.assertIn('data-sf-mode="synopsis"', body)
+        self.assertNotIn('id="generate-form"', body)
+        self.assertEqual(self.fake.submitted, [])
 
     def test_candidates_synopsis_column(self):
         root = self._legacy_experiment("exp-syn")
@@ -869,26 +854,22 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        self.assertIn("<th>あらすじ</th>", body)
-        for cid in cids.values():
-            row = body[body.index(f'data-candidate-id="{cid}"'):]
-            self.assertIn('<td class="synopsis"><span>—</span></td>', row)
-
-        synopsis_text = "あ" * 100
+        self.assertTrue(all(not c['synopsis'] for c in _sifting_initial(body)['items']))
+        synopsis_text = "あ" * 150
         atomic_json(root / "synopses.json", {"entries": [{"cell": "I|low", "synopsis": synopsis_text}]})
-
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        low_row = body[body.index(f'data-candidate-id="{cids["I|low"]}"'):]
-        self.assertIn(f'<td class="synopsis"><span>{"あ" * 60}…</span></td>', low_row)
-        high_row = body[body.index(f'data-candidate-id="{cids["VI|high"]}"'):]
-        self.assertIn('<td class="synopsis"><span>—</span></td>', high_row)
+        by_cell = {c['cell_key']: c for c in _sifting_initial(body)['items']}
+        self.assertEqual(by_cell['I|low']['synopsis'], synopsis_text)
+        self.assertEqual(by_cell['VI|high']['synopsis'], '')
+        self.assertIn('class="sf-snippet">' + 'あ' * 120 + '</span>', body)
 
     def test_configs_and_jobs_pages_have_lead_and_next_cta(self):
         status, body, _ = self.get_status("/configs")
         self.assertEqual(status, 200, body)
-        self.assertIn('<p class="page-lead">', body)
-        self.assertIn('class="next-cta"', body)
+        self.assertIn('data-global-settings', body)
+        self.assertIn('data-gs-save', body)
+        self.assertNotIn('class="next-cta"', body)
 
         status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)
@@ -924,12 +905,36 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/selected")
         self.assertEqual(status, 200, body)
-        self.assertIn(f'data-candidate-id="{cid}"', body)
-        row = body[body.index(f'data-candidate-id="{cid}"'):]
-        self.assertIn("data-revision=", row)
-        self.assertIn("外す", row)
-        # The tray shows the state as a coloured badge, not the raw key.
-        self.assertIn('<span class="state-badge state-sel-adopted">✔ 採用</span>', row)
+        self.assertIn(f'/selected?run={rid}', body)
+        self.assertIn('採用 1件', body)
+        self.assertNotIn('data-sf-generate', body)
+        status, body, _ = self.get_status(f'/selected?run={rid}&config=cfg-test')
+        self.assertEqual(status, 200, body)
+        self.assertIn('sf-badge sf-adopted', body)
+        self.assertIn(f'data-sf-tray-state="{cid}"', body)
+        self.assertIn('保留に戻す', body)
+
+    def test_sifting_grid_comparison_checks_candidate_identity(self):
+        from urllib.parse import urlencode
+        self._legacy_experiment('exp-grid-identity')
+        catalog = self.server.repository.catalog
+        rid = catalog.register_legacy('exp-grid-identity')
+        snapshot = catalog.snapshot(rid)
+        reps = catalog.representatives(snapshot)
+        query = [('publication', str(snapshot['revision']))]
+        query += [('cell', c) for c in reps]
+        query += [('candidate', cid) for cid in reps.values()]
+        status, body, _ = self.get_status('/exp/exp-grid-identity/compare?' + urlencode(query))
+        self.assertEqual(status, 200, body)
+        changed = [(k, 'cand-wrong' if k == 'candidate' else v) for k,v in query]
+        status, body, _ = self.get_status('/exp/exp-grid-identity/compare?' + urlencode(changed))
+        self.assertGreaterEqual(status, 400)
+        self.assertIn('選び直して', body)
+        status, body, _ = self.get_status('/exp/exp-grid-identity')
+        self.assertEqual(status, 200, body)
+        initial = _sifting_initial(body)
+        self.assertEqual(set(initial['visible']), set(reps.values()))
+        self.assertEqual(self.fake.submitted, [])
 
     # -------------------------------------------------------------- CSP
 
@@ -1015,3 +1020,8 @@ class WorkbenchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _sifting_initial(body):
+    import html
+    return json.loads(html.unescape(re.search(r'data-initial="([^"]+)"', body).group(1)))
