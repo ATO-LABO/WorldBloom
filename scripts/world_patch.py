@@ -272,7 +272,10 @@ def cmd_propose(args: argparse.Namespace) -> int:
             response_text = Path(args.from_file).read_text(encoding="utf-8")
         else:
             try:
-                result = generate_text(backend_name, current_prompt, settings_path=args.settings)
+                # 900s, not the 600s default: a 27B local model measured 350-580s
+                # on this prompt, and the first call after a cold start ran over.
+                result = generate_text(backend_name, current_prompt, settings_path=args.settings,
+                                       timeout=900)
             except GenerationError as error:
                 # e.g. the GPU lease is held by another run; nothing was written.
                 print(f"生成できませんでした: {error}")
