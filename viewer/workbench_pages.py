@@ -163,7 +163,7 @@ def _th_title(term_key):
 
 def _guidance_page(title="実行管理", *, phase=None):
     from viewer.error_pages import guidance
-    return guidance("この操作はStudioで利用できます", "実行管理は未設定です。保存された候補や物語の閲覧は、ホームから続けられます。", phase=phase)
+    return guidance("この操作はStudioで利用できます", "実行管理は未設定です。保存された物語は、ホームで世界を開き「保存された物語を見る」から読めます。", phase=phase)
 
 
 def _query(handler):

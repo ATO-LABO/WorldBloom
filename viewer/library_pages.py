@@ -543,6 +543,11 @@ def _worlds_new(handler):
         genre_id=genre_id, copy_mode="from" in query))
 
 
+def _world_experiments(repository, world_name):
+    groups, minor = data.grouped_experiments(repository)
+    return [str(m["name"]) for m in dict(groups).get(world_name, []) + [m for m in minor if str(m["world"]) == world_name]]
+
+
 def _worlds_detail(handler, world_id):
     job_store = _job_store(handler)
     repo = job_store.configs.repo if job_store is not None else data.ROOT
@@ -558,6 +563,8 @@ def _worlds_detail(handler, world_id):
         handler._send_html(world_prototype.render(
             world, current["world"], current["people"], revision=current["revision"],
             job_store=job_store, pin=data.pinned_target(job_store),
+            # Read-only viewers have no run screens; the world page is their way in to saved experiments.
+            experiments=[] if job_store is not None else _world_experiments(handler.repository, label),
         ))
         return
     from viewer import world_advanced
