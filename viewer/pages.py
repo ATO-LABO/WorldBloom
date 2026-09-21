@@ -1959,32 +1959,6 @@ def compare_page(repository, experiment_name, cells, *, job_store=None):
                      lead=lead, next_action=next_action, job_store=job_store)
 
 
-def raw_page(repository, experiment_name, cell_key, line=None, *, job_store=None):
-    experiment = repository.experiment(experiment_name)
-    explanation = data.cell_explanation(repository, experiment, cell_key)
-    # The source path is obtained only through the repository containment check.
-    from pathlib import Path
-    raw = Path(explanation["source"]["layers_path"]).read_text(encoding="utf-8-sig")
-    body = f'<p><a href="{explanation_ui.base_url(explanation)}">← 四項目</a></p>'
-    body += f'<p>SHA-256: {_escape(explanation["source"]["sha256"])}</p><div class="raw-lines">'
-    lines = raw.splitlines()
-    if line is not None:
-        try:
-            line = int(line)
-        except (TypeError, ValueError) as error:
-            raise data.BadRequest("line must be a 1-based integer") from error
-        if not 1 <= line <= len(lines):
-            raise data.BadRequest("line is outside the source log")
-        first, last = max(1, line - 3), min(len(lines), line + 3)
-        body += f'<p>原ログ全{len(lines)}行のうちL{first}〜L{last}。<a href="{explanation_ui.base_url(explanation)}/raw">全文</a></p>'
-    else:
-        first, last = 1, len(lines)
-    for number in range(first, last + 1):
-        value = lines[number - 1]
-        body += f'<pre id="L{number}"><a href="?line={number}#L{number}">L{number}</a> {_escape(value)}</pre>'
-    phases = data.phase_status(repository, experiment_name, job_store=job_store)
-    return document(
-        f"{cell_key} 原ログ", body + '</div>',
-        run=experiment_name, phase="sifting", phases=phases,
-        job_store=job_store,
-    )
+def raw_page(repository, experiment_name, cell_key, line=None, *, job_store=None, **options):
+    from viewer import raw_pages
+    return raw_pages.render(repository, experiment_name, cell_key, line, job_store=job_store, **options)
