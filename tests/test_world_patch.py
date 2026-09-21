@@ -9,6 +9,7 @@ import yaml
 from world_patch_fixtures import write_approved
 from gapengine.world_patch import EMPTY_STACK_DIGEST
 
+from engine.sim import Simulation
 from engine.world import World
 from gapengine.world_patch import (
     PatchError,
@@ -16,14 +17,23 @@ from gapengine.world_patch import (
     apply_patch,
     apply_patches,
     approved_patches,
+    lottery_facts,
+    materialize,
     patch_id_for,
     validate_patch,
 )
 from gapengine.world_patch_contract import contract_check
+from gapengine.world_patch_inputs import read_subjects
+from test_detective import PROJECT as DETECTIVE_PROJECT
+from test_detective import SUSPECTS
+from test_detective import TEMPLATE as DETECTIVE_TEMPLATE
+from test_detective import load_subjects as load_detective_subjects
 
 ROOT = Path(__file__).resolve().parents[1]
 WORLD_PATH = ROOT / "projects" / "momotaro" / "world.yaml"
 ACTION_GRAPH_PATH = ROOT / "templates" / "momotaro" / "action_graph.yaml"
+DETECTIVE_WORLD_PATH = DETECTIVE_PROJECT / "world.yaml"
+DETECTIVE_ACTION_GRAPH_PATH = DETECTIVE_TEMPLATE / "action_graph.yaml"
 
 
 def load_world() -> dict:
@@ -533,6 +543,256 @@ class WorldPatchTests(unittest.TestCase):
                 Path(world["gapengine"]["effects"]),
                 (repo_root / "templates" / "x" / "effects.yaml").resolve(),
             )
+
+
+def load_detective_world() -> dict:
+    return yaml.safe_load(DETECTIVE_WORLD_PATH.read_text(encoding="utf-8"))
+
+
+def detective_fact(**overrides) -> dict:
+    fact = {
+        "id": "怪しい足跡",
+        "label": "書斎の窓辺に泥の足跡が残っていた",
+        "secrecy": 0.2,
+        "sources": [{"type": "investigate", "zone": "食堂", "count": 1}],
+        "implies": {"fact": "culprit", "value": "$innocent:1", "confidence": 0.25},
+    }
+    fact.update(overrides)
+    return fact
+
+
+def detective_patch(facts: list[dict], **overrides) -> dict:
+    patch = {"id": "p-lottery01", "title": "くじ試験", "add": {"zones": [], "items": [], "facts": facts}}
+    patch.update(overrides)
+    return patch
+
+
+class LotteryTruthImpliesTests(unittest.TestCase):
+    """WB-WORLD-DEMAND: implies against a per-seed-drawn fact (world["truth"]
+    [fact].candidates, e.g. detective's culprit/weapon) must use $truth/
+    $innocent:N instead of a fixed candidate name -- a fixed name would mean
+    something different every seed instead of what the author intended."""
+
+    def test_truth_and_innocent_tokens_pass(self):
+        world = load_detective_world()
+        patch = detective_patch([
+            detective_fact(implies={"fact": "culprit", "value": "$innocent:1", "confidence": 0.25}),
+            detective_fact(id="血のついた手袋", label="誰かの手袋に血の跡が付いていた",
+                            sources=[{"type": "investigate", "zone": "客室", "count": 1}],
+                            implies={"fact": "culprit", "value": "$truth", "confidence": 0.25}),
+        ])
+        self.assertEqual(validate_patch(world, patch), [])
+
+    def test_fixed_name_against_lottery_fact_is_rejected(self):
+        world = load_detective_world()
+        patch = detective_patch([detective_fact(
+            implies={"fact": "culprit", "value": "容疑者甲", "confidence": 0.25})])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("value は $truth か $innocent:N で書いてください" in v for v in violations), violations)
+
+    def test_innocent_n_out_of_range_high(self):
+        world = load_detective_world()
+        patch = detective_patch([detective_fact(
+            implies={"fact": "culprit", "value": "$innocent:3", "confidence": 0.25})])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("$innocent:N の N は1〜2で指定してください" in v for v in violations), violations)
+
+    def test_innocent_n_is_capped_at_what_the_engine_knows(self):
+        # engine/world.py's truth_tokens stops at $innocent:2, so a fourth
+        # candidate must not make $innocent:3 pass the gate only to raise
+        # when the engine builds the world.
+        world = load_detective_world()
+        world["truth"]["culprit"]["candidates"]["容疑者丁"] = 1
+        patch = detective_patch([detective_fact(
+            implies={"fact": "culprit", "value": "$innocent:3", "confidence": 0.25})])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("$innocent:N の N は1〜2で指定してください" in v for v in violations), violations)
+
+    def test_innocent_token_must_be_the_exact_engine_spelling(self):
+        # The engine matches tokens literally: a zero-padded or full-width N
+        # parses to 1 but raises "Unknown truth-relative value" at world build.
+        world = load_detective_world()
+        for token in ("$innocent:01", "$innocent:001", "$innocent:１", "$innocent:1 ", " $truth"):
+            patch = detective_patch([detective_fact(
+                implies={"fact": "culprit", "value": token, "confidence": 0.25})])
+            violations = validate_patch(world, patch)
+            self.assertTrue(any("$truth か $innocent:N" in v or "$innocent:N の N は" in v for v in violations),
+                            (token, violations))
+
+    def test_label_and_id_may_not_name_any_lottery_candidate(self):
+        # weapon is drawn per seed too, so naming a weapon in a culprit clue is
+        # just as seed-dependent; the id reaches belief records like the label.
+        world = load_detective_world()
+        implies = {"fact": "culprit", "value": "$truth", "confidence": 0.25}
+        by_label = detective_patch([detective_fact(label="燭台のそばに誰かの足跡が残っていた", implies=implies)])
+        self.assertTrue(any("label に候補の名前は書けません" in v for v in validate_patch(world, by_label)))
+        by_id = detective_patch([detective_fact(id="容疑者甲の足跡", implies=implies)])
+        self.assertTrue(any("id に候補の名前は書けません" in v for v in validate_patch(world, by_id)))
+
+    def test_innocent_n_out_of_range_zero(self):
+        world = load_detective_world()
+        patch = detective_patch([detective_fact(
+            implies={"fact": "culprit", "value": "$innocent:0", "confidence": 0.25})])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("$innocent:N の N は1〜2で指定してください" in v for v in violations), violations)
+
+    def test_innocent_non_numeric_suffix(self):
+        world = load_detective_world()
+        patch = detective_patch([detective_fact(
+            implies={"fact": "culprit", "value": "$innocent:x", "confidence": 0.25})])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("$innocent:N の N は1〜2で指定してください" in v for v in violations), violations)
+
+    def test_innocent_missing_suffix(self):
+        world = load_detective_world()
+        patch = detective_patch([detective_fact(
+            implies={"fact": "culprit", "value": "$innocent:", "confidence": 0.25})])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("$innocent:N の N は1〜2で指定してください" in v for v in violations), violations)
+
+    def test_wrong_case_truth_token(self):
+        world = load_detective_world()
+        patch = detective_patch([detective_fact(
+            implies={"fact": "culprit", "value": "$Truth", "confidence": 0.25})])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("$innocent:N の N は1〜2で指定してください" in v for v in violations), violations)
+
+    def test_label_naming_a_candidate_is_rejected(self):
+        world = load_detective_world()
+        patch = detective_patch([detective_fact(
+            label="容疑者乙は書斎の窓辺に立っていたらしい",
+            implies={"fact": "culprit", "value": "$innocent:1", "confidence": 0.25})])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("label に候補の名前は書けません" in v and "容疑者乙" in v for v in violations), violations)
+
+    def test_label_naming_a_candidate_without_implies_is_not_flagged_by_this_rule(self):
+        world = load_detective_world()
+        fact = detective_fact(label="容疑者乙は書斎の窓辺に立っていたらしい")
+        fact.pop("implies")
+        patch = detective_patch([fact])
+        violations = validate_patch(world, patch)
+        self.assertFalse(any("label に候補の名前は書けません" in v for v in violations), violations)
+
+    def test_momotaro_fixed_truth_rejects_a_token_and_accepts_the_fixed_name(self):
+        world = load_world()
+        token_patch = sample_patch(add={
+            "zones": [], "items": [],
+            "facts": [{"id": "囲炉裏端の噂", "label": "鬼は熱いものを嫌うと聞いた", "secrecy": 0.2,
+                       "sources": [{"type": "investigate", "zone": "海", "count": 1}],
+                       "implies": {"fact": "oni_weakness", "value": "$truth", "confidence": 0.25}}],
+        })
+        violations = validate_patch(world, token_patch)
+        self.assertTrue(any("value は名前で書いてください" in v for v in violations), violations)
+
+        fixed_patch = sample_patch(add={
+            "zones": [], "items": [],
+            "facts": [{"id": "囲炉裏端の噂", "label": "鬼は熱いものを嫌うと聞いた", "secrecy": 0.2,
+                       "sources": [{"type": "investigate", "zone": "海", "count": 1}],
+                       "implies": {"fact": "oni_weakness", "value": "塩", "confidence": 0.25}}],
+        })
+        self.assertEqual(validate_patch(world, fixed_patch), [])
+
+    # -- R6-style: malformed shapes must produce violations, never raise ----
+
+    def test_truth_as_list_does_not_raise(self):
+        world = load_detective_world()
+        world["truth"] = ["culprit"]
+        patch = detective_patch([detective_fact()])
+        self.assertEqual(lottery_facts(world), {})
+        violations = validate_patch(world, patch)
+        self.assertIsInstance(violations, list)
+
+    def test_candidates_as_list_does_not_raise(self):
+        world = load_detective_world()
+        world["truth"]["culprit"]["candidates"] = ["容疑者甲", "容疑者乙", "容疑者丙"]
+        patch = detective_patch([detective_fact()])
+        self.assertEqual(lottery_facts(world).get("culprit"), None)
+        violations = validate_patch(world, patch)
+        self.assertIsInstance(violations, list)
+
+    def test_implies_value_non_string_types_do_not_raise(self):
+        world = load_detective_world()
+        for bad_value in (1, None, {}, ["容疑者甲"], True):
+            patch = detective_patch([detective_fact(
+                implies={"fact": "culprit", "value": bad_value, "confidence": 0.25})])
+            violations = validate_patch(world, patch)
+            self.assertIsInstance(violations, list)
+            self.assertTrue(violations, (bad_value, violations))
+
+    # -- engine integration: tokens resolve per seed -------------------------
+
+    def test_token_implies_resolves_per_seed_in_the_engine(self):
+        world = load_detective_world()
+        subjects = read_subjects(DETECTIVE_PROJECT / "subjects")
+        patch = detective_patch([detective_fact()])
+        patched_world, _ = materialize(world, subjects, [patch])  # raises PatchError if the gate rejects it
+
+        with tempfile.TemporaryDirectory() as temp:
+            world_path = Path(temp) / "world.yaml"
+            world_path.write_text(yaml.safe_dump(patched_world, allow_unicode=True, sort_keys=False),
+                                   encoding="utf-8")
+            loaded = World.from_yaml(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
+
+            seen: dict[int, tuple[str, str]] = {}
+            for seed in range(8):
+                people = load_detective_subjects()
+                loaded.resolve_truth(seed)
+                loaded.bind_subjects(people)
+                culprit = loaded.truth["culprit"]
+                resolved = loaded.facts["怪しい足跡"]["implies"]["value"]
+                self.assertIn(resolved, SUSPECTS)
+                self.assertNotEqual(resolved, culprit)  # $innocent:1 must never point at the real culprit
+                seen[seed] = (culprit, resolved)
+
+            # (b)/(c): across seeds, the drawn culprit varies, and for at
+            # least one pair of seeds with a different culprit, the
+            # innocent-1 resolution differs too (it need not differ for
+            # *every* such pair -- with 3 suspects, two different culprits
+            # can share the same "first innocent" by coincidence).
+            distinct_culprits = {culprit for culprit, _ in seen.values()}
+            self.assertGreater(len(distinct_culprits), 1, seen)
+            diff_culprit_pairs = [(seen[x], seen[y]) for x in seen for y in seen if seen[x][0] != seen[y][0]]
+            self.assertTrue(any(a[1] != b[1] for a, b in diff_culprit_pairs), seen)
+
+    def test_truth_token_resolves_to_the_actual_culprit(self):
+        world = load_detective_world()
+        subjects = read_subjects(DETECTIVE_PROJECT / "subjects")
+        patch = detective_patch([detective_fact(
+            id="血のついた手袋", label="誰かの手袋に血の跡が付いていた",
+            sources=[{"type": "investigate", "zone": "客室", "count": 1}],
+            implies={"fact": "culprit", "value": "$truth", "confidence": 0.25})])
+        patched_world, _ = materialize(world, subjects, [patch])
+
+        with tempfile.TemporaryDirectory() as temp:
+            world_path = Path(temp) / "world.yaml"
+            world_path.write_text(yaml.safe_dump(patched_world, allow_unicode=True, sort_keys=False),
+                                   encoding="utf-8")
+            loaded = World.from_yaml(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
+            for seed in (0, 1, 2):
+                people = load_detective_subjects()
+                loaded.resolve_truth(seed)
+                loaded.bind_subjects(people)
+                self.assertEqual(loaded.facts["血のついた手袋"]["implies"]["value"], loaded.truth["culprit"])
+
+    def test_patched_world_stays_byte_deterministic_for_the_same_seed(self):
+        world = load_detective_world()
+        subjects = read_subjects(DETECTIVE_PROJECT / "subjects")
+        patch = detective_patch([detective_fact()])
+        patched_world, _ = materialize(world, subjects, [patch])
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            world_path = root / "world.yaml"
+            world_path.write_text(yaml.safe_dump(patched_world, allow_unicode=True, sort_keys=False),
+                                   encoding="utf-8")
+
+            def run(tag):
+                loaded = World.from_yaml(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
+                people = load_detective_subjects()
+                return Simulation(7, loaded, people, root / tag).run()
+
+            first, second = run("first"), run("second")
+            self.assertEqual(first.read_bytes(), second.read_bytes())
 
 
 def _minimal_contract_world(temp: Path, *, subject_range_zones: list[str]) -> tuple[Path, Path]:

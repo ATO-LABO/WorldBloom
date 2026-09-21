@@ -21,9 +21,19 @@ import yaml
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}$")
 _NAME_FORBIDDEN_CHARS = frozenset("'\"\n{}")
+# engine/world.py only knows $innocent:1 and $innocent:2 (its truth_tokens
+# set), whatever the number of candidates -- a larger N would pass here and
+# then raise when the engine builds the world.
+MAX_INNOCENT_INDEX = 2
+
+
+def innocent_tokens(candidates) -> list[str]:
+    """The exact $innocent:N strings usable against a lottery fact with these
+    candidates (one of them is always the truth, so N stops at len - 1)."""
+    return [f"$innocent:{n}" for n in range(1, min(len(candidates) - 1, MAX_INNOCENT_INDEX) + 1)]
 
 # ponytail: budgets are placeholders; tune once real proposals have been reviewed.
-PATCH_RULES_VERSION = 3
+PATCH_RULES_VERSION = 4
 MAX_ZONES = 1
 MAX_ITEMS = 2
 MAX_FACTS = 2
@@ -257,6 +267,27 @@ def _valued_facts(world: dict) -> dict[str, set[str]]:
     return result
 
 
+def lottery_facts(world: dict) -> dict[str, set[str]]:
+    """Valued facts whose true value is drawn per-seed instead of fixed --
+    world["truth"][fact_id] is a mapping with a non-empty "candidates"
+    mapping (engine/world.py's World.__init__/resolve_truth). Returns
+    {fact_id: candidate names}. Shared by validate_patch and
+    world_patch_propose's prompt so both agree on which facts need
+    $truth/$innocent:N instead of a fixed value name. Never raises on a
+    malformed world -- an unrecognized shape just isn't counted as lottery."""
+    result: dict[str, set[str]] = {}
+    truth = world.get("truth")
+    if not isinstance(truth, dict):
+        return result
+    for fact_id, raw in truth.items():
+        if not isinstance(raw, dict):
+            continue
+        candidates = raw.get("candidates")
+        if isinstance(candidates, dict) and candidates:
+            result[str(fact_id)] = {str(c) for c in candidates}
+    return result
+
+
 def _all_strings(value: Any):
     if isinstance(value, str):
         yield value
@@ -361,6 +392,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
     existing = _existing_names(world)
     subject_id_set = {str(s) for s in subject_ids}
     valued_facts = _valued_facts(world)
+    lottery = lottery_facts(world)
     daily = world.get("daily_events")
     has_daily_slot = isinstance(daily, dict) and isinstance(daily.get("events"), list)
 
@@ -588,7 +620,37 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
                 violations.append(f"{relation}.fact が値付きの既存事実ではありません: {target!r}")
             else:
                 value = rel.get("value")
-                if not isinstance(value, str) or value not in valued_facts[target]:
+                # WB-WORLD-DEMAND: a lottery-target implies must point at the
+                # seed-drawn truth via a token, never a fixed candidate name --
+                # engine/world.py resolves $truth/$innocent:N per seed
+                # (fact_truth_tokens), so a fixed name would silently mean
+                # something different every run instead of what the author
+                # intended. refutes keeps the old fixed-name-only behavior
+                # unchanged (v1 patches don't use refutes at all).
+                if relation == "implies" and target in lottery:
+                    # Exact strings only: the engine matches tokens literally, so
+                    # "$innocent:01" or a full-width digit would pass a numeric
+                    # parse here and then raise when the world is built.
+                    allowed = innocent_tokens(lottery[target])
+                    if not (isinstance(value, str) and value.startswith("$")):
+                        violations.append(
+                            f"この事実の真値は毎回くじで決まるので、value は $truth か $innocent:N で書いてください: {fact_id!r}")
+                    elif value != "$truth" and value not in allowed:
+                        violations.append(
+                            (f"$innocent:N の N は1〜{len(allowed)}で指定してください（半角で）: {fact_id!r}" if allowed
+                             else f"この事実に使えるのは $truth だけです: {fact_id!r}"))
+                    # Any lottery fact's candidate, not just this target's: every
+                    # one of them names something that changes per seed. The id
+                    # reaches belief records too, so it is held to the same rule.
+                    names = sorted({c for group in lottery.values() for c in group if c})
+                    for where, text in (("label", fact.get("label")), ("id", fact_id)):
+                        hit = next((c for c in names if isinstance(text, str) and c in text), None)
+                        if hit:
+                            violations.append(
+                                f"誰が本物かは回ごとに変わるので、{where} に候補の名前は書けません: {fact_id!r}（{hit}）")
+                elif relation == "implies" and isinstance(value, str) and value.startswith("$"):
+                    violations.append(f"この事実の真値は固定なので、value は名前で書いてください: {fact_id!r}")
+                elif not isinstance(value, str) or value not in valued_facts[target]:
                     violations.append(f"{relation}.value が対象事実の値にありません: {value!r}")
             confidence = rel.get("confidence")
             if not (_is_number(confidence) and 0 < confidence <= 1):

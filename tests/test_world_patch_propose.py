@@ -18,6 +18,14 @@ WORLD = yaml.safe_load((ROOT / "projects" / "momotaro" / "world.yaml").read_text
 SUBJECT_IDS = ["おじいさん", "おばあさん", "桃太郎", "犬", "猿", "キジ", "鬼"]
 TRIGGER = {"zone": "海", "verb": "investigate", "count": 228, "whiffs": 228}
 
+DETECTIVE_WORLD = yaml.safe_load((ROOT / "projects" / "detective" / "world.yaml").read_text(encoding="utf-8"))
+DETECTIVE_SUBJECT_IDS = ["探偵", "容疑者甲", "容疑者乙", "容疑者丙", "証人壱", "証人弐"]
+DETECTIVE_TRIGGER = {"zone": "食堂", "verb": "investigate", "count": 10, "whiffs": 10}
+
+ROMANCE_WORLD = yaml.safe_load((ROOT / "projects" / "romance" / "world.yaml").read_text(encoding="utf-8"))
+ROMANCE_SUBJECT_IDS = ["A", "B", "C", "D", "E"]
+ROMANCE_TRIGGER = {"zone": "学校", "verb": "investigate", "count": 10, "whiffs": 10}
+
 
 def sample_add() -> dict:
     # A1 requires a source directly in the trigger zone (海) itself; A2
@@ -76,6 +84,35 @@ class BuildPromptTests(unittest.TestCase):
         # rejected purely for its sources.max.
         prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [], give_available=True)
         self.assertIn("小さく", prompt)
+
+
+class LotteryImpliesPromptTests(unittest.TestCase):
+    """WB-WORLD-DEMAND: build_prompt must tell the model to use $truth/
+    $innocent:N (not a fixed candidate name) for facts whose truth is drawn
+    per-seed, and must not let it name a candidate in a token-using fact's
+    label."""
+
+    def test_detective_prompt_mentions_truth_innocent_and_candidate_names(self):
+        # culprit and weapon both have 3 candidates -> $innocent:1..2.
+        prompt = build_prompt(DETECTIVE_WORLD, DETECTIVE_SUBJECT_IDS, DETECTIVE_TRIGGER, [])
+        self.assertIn("$truth", prompt)
+        self.assertIn("$innocent:2", prompt)
+        self.assertIn("容疑者甲", prompt)
+        # A lottery-only world must still be told the implies keys and the cap.
+        self.assertIn("0.3以下", prompt)
+        self.assertIn('"value":"$truth"', prompt)
+
+    def test_momotaro_prompt_has_no_truth_token(self):
+        # oni_weakness/treasure_thief are valued facts but fixed (not drawn
+        # per seed) -- the prompt must not suggest $truth/$innocent for them.
+        prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [])
+        self.assertNotIn("$truth", prompt)
+        self.assertNotIn("$innocent", prompt)
+
+    def test_romance_prompt_forbids_implies_entirely(self):
+        # romance has no valued facts at all -- unaffected by this change.
+        prompt = build_prompt(ROMANCE_WORLD, ROMANCE_SUBJECT_IDS, ROMANCE_TRIGGER, [])
+        self.assertIn("implies は書かないでください", prompt)
 
 
 class ParseProposalTests(unittest.TestCase):

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from gapengine.world_patch import _valued_facts, addition_caps, patch_id_for
+from gapengine.world_patch import _valued_facts, addition_caps, innocent_tokens, lottery_facts, patch_id_for
 
 MAX_PROMPT_CHARS = 12000
 
@@ -192,10 +192,33 @@ def _implies_rule(world: dict) -> str:
     valued = _valued_facts(world)
     if not valued:
         return "この世界には implies を付けられる事実がありません。implies は書かないでください。"
-    targets = "、".join(f"{fact}（{'／'.join(sorted(values))}）" for fact, values in sorted(valued.items()))
-    return ('implies: {"fact":既存id,"value":既存値,"confidence":0より大きく0.3以下} を付けられる相手は '
-            f"{targets} だけです。少なくとも1つの事実に付けてください。implies の無い事実は、得ても誰の考えも変わりません。"
-            "対象ごとの累積は0.6以下。")
+    lottery = lottery_facts(world)
+    fixed = {fact: values for fact, values in valued.items() if fact not in lottery}
+
+    # The schema line is unconditional: a world with only lottery facts
+    # (detective) would otherwise never be told the keys or the 0.3 cap.
+    sentences = ['事実には implies: {"fact":既存id,"value":値,"confidence":0より大きく0.3以下} を付けられます。'
+                 "少なくとも1つの事実に付けてください。implies の無い事実は、得ても誰の考えも変わりません。"]
+    if fixed:
+        targets = "、".join(f"{fact}（{'／'.join(sorted(values))}）" for fact, values in sorted(fixed.items()))
+        sentences.append(f"value を名前で書く相手は {targets} です。")
+    if lottery:
+        lottery_targets = "、".join(
+            f"{fact}（{'／'.join(sorted(values))}）" for fact, values in sorted(lottery.items()))
+        tokens = "、".join(
+            f"{fact}なら" + "・".join(f'"{t}"' for t in innocent_tokens(values))
+            for fact, values in sorted(lottery.items()) if innocent_tokens(values))
+        candidate_names = "、".join(sorted({c for values in lottery.values() for c in values}))
+        innocent = f"か、無実の候補を指す当てにならない手がかり（{tokens}）" if tokens else ""
+        example = next(iter(sorted(lottery)))
+        sentences.append(
+            f"次の事実は真値が毎回くじで決まります: {lottery_targets}。"
+            f'これらを相手にする implies の value は名前ではなく "$truth"（本物を指す手がかり）{innocent}で、'
+            "この綴りのまま半角で書いてください"
+            f'（例: "implies": {{"fact":"{example}","value":"$truth","confidence":0.25}}。下の出力例のように名前では書けません）。'
+            f"その事実の id と label には候補の名前（{candidate_names}）を書かないでください（誰が本物かは回ごとに変わります）。")
+    sentences.append("implies の fact に書けるのは、ここに挙げた事実だけです（それ以外の事実や証拠の id は書けません）。対象ごとの累積は0.6以下。")
+    return "".join(sentences)
 
 
 def _assemble(brief: str, trigger: dict, zone_verbs: list, world: dict, *, give_available: bool = True) -> str:
