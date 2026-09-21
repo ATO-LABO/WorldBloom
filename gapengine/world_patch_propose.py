@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from gapengine.world_patch import patch_id_for
+from gapengine.world_patch import _valued_facts, addition_caps, patch_id_for
 
 MAX_PROMPT_CHARS = 12000
 
@@ -21,36 +21,43 @@ _INTRO = """あなたは物語シミュレーションの世界設定を拡張�
 
 _RULES_TEMPLATE = """# 拡張のルール
 - 足せるのは add.zones / add.items / add.facts だけです。既存のものは変更も削除もできません。1つの仕組みに絞ってください。
-- zones（最大1）: {{"name","parent","note"}}。parent は既存の場所。親の入場条件を継承する枝になります。
-- items（最大2）: {{"name","sources":[{{"type":"investigate","zone":場所,"count":1,"max":1〜3}}],"give":{{"receiver_affinity":0〜0.5,"giver_affinity":0〜0.5}}}}。give は両方の値を明示してください。省略時は受け手0.2・渡し手0.05。全追加アイテムの合計は1パッチ0.6・累積1.2以下。
-- facts（最大2）: {{"id","label"(60文字以内),"sources":[{{"type":"investigate","zone":場所,"count":1}}]}}。値付き事実への implies: {{"fact":既存id,"value":既存値,"confidence":0より大きく0.3以下}} のみ。対象ごとの累積は0.6以下。
-- 累積追加数は基準世界のゾーン40%（絶対上限4）、アイテム・事実50%（絶対上限8）。切り上げ、基準数0でも最低1件。パッチ総数8以下。
-- 名前とidは30文字以内。新しい名前は、この世界の説明文（上の一覧を含む world.yaml 全体）のどこかに含まれる文字列であってはいけません（既存の語をそのまま名前にしない）。
-- modifier.value の合計は1つの提案で10までです。
+- zones（最大1）: {{"name","parent","note"}}。parent は既存の場所で、足した場所は parent と同じ入場条件を持つ、その場所の一部になります。note は世界の中の描写だけを書いてください。「枝」「親」「パッチ」などの設計上の言葉や、この世界に無い場所・物の名前を書いてはいけません。facts の label も同じです。
+- items（最大2）: {{"name","sources":[{{"type":"investigate","zone":場所,"count":1,"max":1〜3}}],"give":{{"receiver_affinity":0〜0.5,"giver_affinity":0〜0.5}}}}。sources.max は、1人がその場所で何個まで手に入れられるかです。max:1 は1回取ったら二度と出ず、その後は元どおりの空振りに戻ります。今回の空振りは{whiffs}回なので、1つしか無いことに意味がある品でなければ max は2以上にしてください。give は渡したときの好感度の変化で、両方の値を明示してください。省略時は受け手0.2・渡し手0.05。全追加アイテムの合計は1パッチ0.6・累積1.2以下。
+- items に足せる任意の項目（渡すだけの品にしないための選択肢です。要るものだけ使ってください）:
+  "keepsake": true … 手放さない品（渡せず、取引にも差し出さない）。
+  "lootable": true … 持ち主が倒れたとき、相手に奪われうる品。
+  "modifier": {{"id":"item:アイテム名","value":0〜10,"kind":"item","visible":trueかfalse}} … 持っていると対決での強さに value が足される。visible が true なら相手から見える。value の合計は1つの提案で10まで。
+  "made_from": {{素材名:1〜3}} … 同じ提案で足す別のアイテムを素材にして作る品（sources の代わりに書ける）。"craft_zone": 場所 で作れる場所を限定できる。
+  "requires": {{"knowledge": 事実id}} … その事実を知っている人物だけが作れる品（made_from と一緒に使う）。
+- facts（最大2）: {{"id","label"(60文字以内),"secrecy":0〜1,"share_min_affinity":-1〜1,"sources":[{{"type":"investigate","zone":場所,"count":1}}]}}。事実は一度知ると二度と得られません（countは1固定、maxはありません）。secrecy は必ず明示してください。0 は誰にでも話す噂、0.2〜0.4 は相手を選んで話すこと、0.8 以上はほぼ口外しない秘密です。省略すると0になり、最も広まりやすい事実になります。share_min_affinity は、この好感度以上の相手にしか話さないという下限です（省略時0）。{implies_rule}
+- {budget_rule}
+- 名前とidは30文字以内。新しい名前は、この世界の説明文（上の一覧を含む world.yaml 全体）のどこかに含まれる文字列であってはいけません（既存の語をそのまま名前にしない）。アイテムの name と事実の id にも、互いに違う名前を付けてください。
 - 結末、目的の品、乗り物、道の通行条件には触れられません。
-- 必ず「{zone}」またはその枝の場所をsourcesのzoneにしたitemsかfactsを1つ以上入れてください。
-- rationale に「新たに何を選べるか／何を失う可能性があるか／既存のどの関係へ作用するか」を書いてください。"""
+- 必ず「{zone}」そのものをsourcesのzoneにしたitemsかfactsを1つ以上入れてください。足した場所に置くだけでは、「{zone}」で調べたときの空振りは1回も減りません。
+- 場所を足さずに「{zone}」の中身を増やすのが基本です。zonesを足すのは、その場所でしか成り立たない中身があるときだけにしてください。足した場合は、その場所をsourcesのzoneにしたitemsかfactsを必ず1つ以上そこに置いてください（中身の無い場所は、行っても必ず空振りする場所が増えるだけです）。
+- rationale はちょうど3文で書いてください。1文目「新たに何を選べるか」、2文目「何を失う可能性があるか」、3文目「既存のどの関係へ作用するか」。2文目と3文目には、上の一覧にある人物名・事実id・アイテム名のいずれかを必ず名指しで入れてください。提案に入れていない効果を書いてはいけません。"""
 
 _OUTPUT = """# 出力
 次の形のJSONだけを、読みやすく複数行で出力してください。説明文やコードフェンスは要りません。
 {
   "title": "20文字程度の題",
-  "rationale": "200文字以内",
+  "rationale": "3文、300文字以内",
   "add": { "zones": [...], "items": [...], "facts": [...] }
 }
 
-例（この世界とは無関係な架空の設定です。この例に出てくる名前「灯台守の記録」「色あせた航海日誌」「岬」「灯台守の失踪」は真似しないでください）:
+例（この世界とは無関係な架空の設定です。この例に出てくる名前「灯台守の記録」「色あせた航海日誌」「岬」「灯台守の失踪」「灯を消した者」「船主」「見習い」は真似しないでください。形も真似せず、この世界に合う項目を選んでください）:
 {
   "title": "灯台守の記録",
-  "rationale": "岬に眠る記録が、主人公の判断に新しい手がかりを与える。",
+  "rationale": "岬で航海日誌を拾い、見習いに渡すか手元に置くかを選べる。日誌を渡すと、灯台守の失踪を先に知った見習いが船主を疑い、主人公の言葉を聞かなくなるおそれがある。灯を消した者についての確信が弱い向きに一つ増え、見習いと船主の関係に作用する。",
   "add": {
     "zones": [],
     "items": [
-      {"name": "色あせた航海日誌", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}, "sources": [{"type": "investigate", "zone": "岬", "count": 1, "max": 1}]}
+      {"name": "色あせた航海日誌", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}, "sources": [{"type": "investigate", "zone": "岬", "count": 1, "max": 3}]}
     ],
     "facts": [
-      {"id": "灯台守の失踪", "label": "先代の灯台守が三年前に姿を消したらしい",
-       "sources": [{"type": "investigate", "zone": "岬", "count": 1}]}
+      {"id": "灯台守の失踪", "label": "先代の灯台守が三年前に姿を消したらしい", "secrecy": 0.25,
+       "sources": [{"type": "investigate", "zone": "岬", "count": 1}],
+       "implies": {"fact": "灯を消した者", "value": "船主", "confidence": 0.2}}
     ]
   }
 }"""
@@ -165,9 +172,26 @@ def _demand_section(trigger: dict, zone_verbs: list) -> str:
     )
 
 
-def _assemble(brief: str, trigger: dict, zone_verbs: list) -> str:
-    return "\n\n".join([_INTRO, brief, _demand_section(trigger, zone_verbs),
-                        _RULES_TEMPLATE.format(zone=trigger["zone"]), _OUTPUT])
+def _budget_rule(world: dict) -> str:
+    left = {key: max(cap - used, 0) for key, (cap, used) in addition_caps(world).items()}
+    return (f"この世界に今回足せる数は、場所{min(left['zones'], 1)}・アイテム{min(left['items'], 2)}・"
+            f"事実{min(left['facts'], 2)}までです（これを超えると不採用になります）。パッチ総数8以下。")
+
+
+def _implies_rule(world: dict) -> str:
+    valued = _valued_facts(world)
+    if not valued:
+        return "この世界には implies を付けられる事実がありません。implies は書かないでください。"
+    targets = "、".join(f"{fact}（{'／'.join(sorted(values))}）" for fact, values in sorted(valued.items()))
+    return ('implies: {"fact":既存id,"value":既存値,"confidence":0より大きく0.3以下} を付けられる相手は '
+            f"{targets} だけです。少なくとも1つの事実に付けてください。implies の無い事実は、得ても誰の考えも変わりません。"
+            "対象ごとの累積は0.6以下。")
+
+
+def _assemble(brief: str, trigger: dict, zone_verbs: list, world: dict) -> str:
+    rules = _RULES_TEMPLATE.format(zone=trigger["zone"], whiffs=trigger.get("whiffs"),
+                                   budget_rule=_budget_rule(world), implies_rule=_implies_rule(world))
+    return "\n\n".join([_INTRO, brief, _demand_section(trigger, zone_verbs), rules, _OUTPUT])
 
 
 def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs: list) -> str:
@@ -180,7 +204,7 @@ def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs:
     if trigger.get("verb") != "investigate":
         raise ValueError("v1 は investigate の需要だけに対応しています")
 
-    fixed_chars = len(_assemble("", trigger, zone_verbs))
+    fixed_chars = len(_assemble("", trigger, zone_verbs, world))
     budget = max(MAX_PROMPT_CHARS - fixed_chars, 0)
 
     brief = world_brief(world, subject_ids)
@@ -205,13 +229,13 @@ def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs:
         n_zones -= 1
         brief = world_brief(world, subject_ids, cap=40, n_facts=n_facts, n_items=n_items, n_zones=n_zones)
 
-    prompt = _assemble(brief, trigger, zone_verbs)
+    prompt = _assemble(brief, trigger, zone_verbs, world)
     if len(prompt) > MAX_PROMPT_CHARS:
         # Last-resort safety net -- the loops above already fit `brief` to
         # `budget`, so this only bites if the fixed parts themselves (e.g. an
         # enormous zone_verbs list) already overran MAX_PROMPT_CHARS.
         brief = brief[:max(len(brief) - (len(prompt) - MAX_PROMPT_CHARS), 0)]
-        prompt = _assemble(brief, trigger, zone_verbs)
+        prompt = _assemble(brief, trigger, zone_verbs, world)
     return prompt
 
 
