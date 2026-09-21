@@ -335,6 +335,15 @@ FUNNEL_ROWS = [
         "details": {"gathered": [{"item": "小判", "count": 2}]},
     },
     {
+        # A companion's 小判 must not count toward the protagonist's funnel.
+        "kind": "decision",
+        "day": 5,
+        "subject": "猿",
+        "verb": "investigate",
+        "result": "investigated",
+        "details": {"gathered": [{"item": "小判", "count": 1}]},
+    },
+    {
         "kind": "decision",
         "day": 6,
         "subject": "桃太郎",
@@ -418,8 +427,9 @@ class FunnelRowTests(unittest.TestCase):
         funnel = funnel_row(FUNNEL_ROWS, None)
         self.assertEqual(funnel["protagonist_rests"], 0)
         self.assertEqual(funnel["protagonist_rests_not_alive"], 0)
-        # The other signals don't depend on knowing the protagonist.
-        self.assertEqual(funnel["koban_gained"], 3)
+        # Without a protagonist the 小判 count can't be narrowed, so 猿's one
+        # is included; negotiate doesn't depend on knowing the protagonist.
+        self.assertEqual(funnel["koban_gained"], 4)
         self.assertTrue(funnel["negotiated"])
 
 

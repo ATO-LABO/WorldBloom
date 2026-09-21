@@ -196,7 +196,13 @@ def funnel_row(
         result = row.get("result")
         details = row.get("details") or {}
 
-        if verb == "investigate" and result == "investigated":
+        # Companions gather their own 小判 on the road; only the protagonist's
+        # count says whether the gun was affordable.
+        if (
+            verb == "investigate"
+            and result == "investigated"
+            and (protagonist is None or row.get("subject") == protagonist)
+        ):
             koban_gained += sum(
                 int(item.get("count", 1))
                 for item in details.get("gathered") or []
@@ -235,7 +241,9 @@ def funnel_row(
             # is excluded from both the numerator and the denominator.
             if isinstance(ctx, list) and len(ctx) >= 4:
                 protagonist_rests += 1
-                if ctx[3] != "alive":
+                # "revived" never returns to "alive" (engine/vitality.py), so
+                # only "downed" -- the forced rest -- measures days lost.
+                if ctx[3] == "downed":
                     protagonist_rests_not_alive += 1
 
     return {
@@ -515,7 +523,7 @@ def _funnel_table(stats: dict[str, Any]) -> str:
         )
     )
     lines.append(
-        "主人公のrestのうちvitalityがaliveでないものの割合: "
+        "主人公のrestのうちdowned（倒れて強制休息）の割合: "
         + _pct(
             funnel["protagonist_rest_not_alive_total"],
             funnel["protagonist_rest_total"],
