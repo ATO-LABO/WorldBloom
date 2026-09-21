@@ -35,8 +35,8 @@ class WorldCreateTests(unittest.TestCase):
         status, markup = self.get('/worlds/original')
         self.assertEqual(status,200)
         self.assertIn('星が地上へ降りる街。',markup)
-        self.assertIn('初期物語はまだ設定されていません',markup)
-        self.assertIn('data-world-basics="original"',markup)
+        self.assertIn('data-screen="story"',markup)
+        self.assertIn('data-world-prototype',markup)
         self.assertNotIn('data-quick-start',markup)
         with self.assertRaises(ConfigError):
             self.server.job_store.configs.preview({'label':'draft','project_id':'original','template_id':'basic'})

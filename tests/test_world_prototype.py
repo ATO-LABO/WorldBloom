@@ -1,4 +1,4 @@
-"""Opt-in preview preserves navigation and treats input as data, never markup."""
+"""World workspace preserves navigation and treats input as data, never markup."""
 import json
 from pathlib import Path
 import re
@@ -35,11 +35,11 @@ class WorldPrototypeTests(unittest.TestCase):
         payload = re.search(r'<script type="application/json" id="wp-data">(.*?)</script>', result).group(1)
         self.assertEqual(json.loads(payload)['people'][0]['id'], attack)
 
-    def test_empty_world_has_preview_and_return_link(self):
+    def test_empty_world_has_readonly_guidance_and_advanced_link(self):
         result = world_prototype.render({'id': 'empty', 'name': 'Empty'}, {}, [])
         self.assertIn('data-world-prototype', result)
-        self.assertIn('href="/worlds/empty"', result)
-        self.assertIn('実行条件には引き継がれません', result)
+        self.assertIn('href="/worlds/empty?view=advanced"', result)
+        self.assertIn('閲覧モード', result)
         self.assertNotIn('data-quick-start', result)
 
 

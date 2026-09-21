@@ -1,4 +1,4 @@
-/* All overrides are limited to the opt-in preview. The four phase tabs inherit app.css unchanged. */
+/* World workspace styles. The four phase tabs inherit app.css unchanged. */
 .layout-world-prototype{
   --wp-font-sans:"BIZ UDPGothic","Yu Gothic UI","Yu Gothic","Hiragino Sans","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
   font-family:var(--wp-font-sans);
@@ -6,10 +6,7 @@
 .layout-world-prototype .page-shell{padding:0;max-width:none;overflow:hidden;scrollbar-gutter:auto}
 .layout-world-prototype .page-heading{display:none}
 .layout-world-prototype .page-content{height:100%}
-.layout-world-prototype .header-pickers{background:#294b3e;border-bottom:0;min-height:60px;padding:8px 32px}
 .layout-world-prototype .home-cell{font-family:var(--wp-font-sans);font-size:28px;font-weight:700;letter-spacing:.01em}
-.layout-world-prototype .picker{flex-direction:row;align-items:center;gap:12px}
-.layout-world-prototype .picker-select{border:1px solid #8a9e92;border-radius:5px;padding:5px 12px}
 .wp{--wp-ink:#18222e;--wp-muted:#6c7478;--wp-line:#d8d7d2;--wp-orange:#ac4c26;height:100%;display:grid;grid-template-columns:246px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;background:#faf9f6;color:var(--wp-ink);font-family:var(--wp-font-sans);font-size:18px;line-height:1.8;letter-spacing:.01em}
 .wp [hidden]{display:none!important}
 .wp button,.wp input,.wp textarea,.wp select{font:inherit}
@@ -188,3 +185,18 @@
   .wp-person-detail > details {margin-block:4px;padding-block:5px;}
   .wp-content[data-screen="story"] {padding-block:12px;}
 }
+
+.wp button:disabled{cursor:default;opacity:.6}
+.wp-dialog{max-height:calc(100dvh - 32px);overflow:auto}
+.wp-dialog input,.wp-dialog textarea,.wp-dialog select{max-width:100%;box-sizing:border-box}
+.wp-dialog #wp-edit-error{color:#934027;overflow-wrap:anywhere}
+.wp-state td:last-child button{display:block;font-size:13px;color:#315e4b}
+
+.wp-dialog label{margin:12px 0 4px}
+.wp-dialog textarea{min-height:84px;height:84px}
+.wp-dialog-actions{position:sticky;bottom:-26px;background:#faf9f6;margin-top:14px;padding:10px 0}
+.wp-dialog input,.wp-dialog textarea,.wp-dialog select{padding:8px}
+@media(max-width:760px){.wp-dialog-actions{bottom:-18px}.wp-nav{overflow-x:auto}.wp-nav>button{min-width:max-content;padding-inline:8px}}
+
+.wp-state .wp-state-action{width:44px;text-align:center}
+.wp-state .wp-state-action button{display:inline-block;font-size:16px;padding:2px 8px}

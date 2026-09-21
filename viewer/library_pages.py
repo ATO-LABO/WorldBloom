@@ -450,6 +450,7 @@ def render_world_detail(world, store, job_store):
         initial_story = '<h3>シミュレーション開始時点の導入・状況</h3><p class="wc-copy">'+_escape(world_yaml.get("initial_story") or "初期物語はまだ設定されていません。")+'</p>'
         if job_store is not None:
             initial_story += basics_editor(world_id, world_yaml, story=True)
+        initial_story += _canon_panel(world, subjects, store)
     else:
         initial_story = _canon_panel(world, subjects, store)
     panels = [
@@ -550,15 +551,17 @@ def _worlds_detail(handler, world_id):
     if world is None:
         raise ConfigError("world_id", "世界がありません", code="not_found")
     label = world["name"] or world_id
-    if _query(handler).get("preview") == ["editorial"]:
+    if _query(handler).get("view") != ["advanced"]:
+        from execution.world_editor import snapshot
         from viewer import world_prototype
+        current = snapshot(store, world_id)
         handler._send_html(world_prototype.render(
-            world, _world_yaml_mapping(repo, world_id),
-            world_graph.load_subjects(repo / "projects" / world_id),
+            world, current["world"], current["people"], revision=current["revision"],
             job_store=job_store, pin=data.pinned_target(job_store),
         ))
         return
-    body = render_world_detail(world, store, job_store)
+    body = (f'<p><a href="/worlds/{_url(world_id)}">← 世界設定に戻る</a></p>'
+            + render_world_detail(world, store, job_store))
     doc = pages.document(
         f"世界: {label}", body,
         crumbs=[(label, f"/worlds/{_url(world_id)}")],
@@ -642,6 +645,14 @@ def _create_world(handler):
     handler._send_json(HTTPStatus.CREATED, {"world_id": world_id})
 
 
+def _edit_world(handler, world_id):
+    jobs = _require_job_store(handler)
+    body = _boundary_body(handler)
+    from execution.world_editor import save
+    result = save(LibraryStore(jobs.configs.repo), world_id, body)
+    handler._send_json(HTTPStatus.OK, result)
+
+
 def _save_world_basics(handler, world_id):
     jobs = _require_job_store(handler)
     body = _boundary_body(handler)
@@ -713,6 +724,8 @@ def _validate_genre(handler, genre_id):
 
 def _resolve(parts, method):
     if method == "POST":
+        if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "edit":
+            return _edit_world, (parts[2],)
         if len(parts) == 4 and parts[:2] == ["api", "genres"] and parts[3] in ("save", "parse", "check"):
             return _genre_editor_action, (parts[2], parts[3])
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "basics":
