@@ -69,7 +69,7 @@ class LineagePageTests(unittest.TestCase):
         self.assertIn("初到達", rendered)
         self.assertIn("転機", rendered)
         self.assertIn('class="turning-columns"', rendered)
-        self.assertIn("選んだ転機の詳細", rendered)
+        self.assertIn('aria-label="選んだ地点の詳細"', rendered)
         # Default selection is the first (only) turning point.
         self.assertIn('aria-current="page"', rendered)
         self.assertNotIn("転機が見つかりませんでした", rendered)
@@ -93,10 +93,10 @@ class LineagePageTests(unittest.TestCase):
 
         rendered = pages.lineage_page(self.repository, "exp1", "II|high")
 
-        band_section = rendered.split("<h2>系譜</h2>", 1)[1].split("</section>", 1)[0]
+        band_section = rendered.split('<section class="lw-overview">', 1)[1].split("</section>", 1)[0]
         self.assertNotIn('class="spark"', band_section)
 
-        detail_section = rendered.split("<h2>選んだ転機の詳細</h2>", 1)[1]
+        detail_section = rendered.split('id="lw-panel-traits"', 1)[1].split('id="lw-panel-records"', 1)[0]
         self.assertIn('class="spark"', detail_section)
         self.assertIn(f'{trait_series["label"]}の推移', detail_section)
 
@@ -106,7 +106,7 @@ class LineagePageTests(unittest.TestCase):
         rendered = pages.lineage_page(
             self.repository, "exp1", "II|high", turning_index=99,
         )
-        self.assertIn("選んだ転機の詳細", rendered)
+        self.assertIn('aria-label="選んだ地点の詳細"', rendered)
         self.assertNotIn("転機が見つかりませんでした", rendered)
 
     def test_lineage_page_immigrant_cell_reports_no_turning_point(self) -> None:

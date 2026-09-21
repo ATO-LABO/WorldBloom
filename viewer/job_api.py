@@ -72,6 +72,17 @@ def send_error(handler, error):
     handler._send_json(HTTPStatus(STATUS.get(error.code, 422)), body)
 
 
+def send_data_error(handler, error):
+    from viewer import data
+    if isinstance(error, data.ForbiddenPath):
+        code, message = "forbidden", "この場所は表示できません"
+    elif isinstance(error, data.MissingResource):
+        code, message = "not_found", "対象の情報が見つかりません"
+    else:
+        code, message = "bad_request", str(error)
+    send_error(handler, ConfigError("request", message, code=code))
+
+
 def dispatch(handler, parts, method):
     if not parts or parts[0] != "api":
         return False

@@ -93,7 +93,8 @@ class OutputJobTests(unittest.TestCase):
         source += f"def transport(request, command):\n    time.sleep({delay!r})\n"
         if mode == "tree":
             marker = str(self.base / "descendant.json")
-            source += ("    child = subprocess.Popen([sys.executable, '-B', '-c', 'import time;time.sleep(300)'])\n"
+            source += ("    import sys\n"
+                       "    child = subprocess.Popen([sys.executable, '-B', '-c', 'import time;time.sleep(300)'])\n"
                        f"    Path({marker!r}).write_text(json.dumps({{'pid':child.pid}}))\n    time.sleep(300)\n")
         elif mode == "unknown":
             source += "    raise BoundaryError('transport_timeout')\n"

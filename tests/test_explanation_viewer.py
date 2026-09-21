@@ -60,13 +60,13 @@ class ExplanationViewerTests(unittest.TestCase):
         self.assertIn('SHA-256',raw)
         context=pages.raw_page(self.repo,"exp-viewer","III|high",2)
         self.assertIn('id="L2"',context)
-        self.assertIn("全文",context)
+        self.assertIn('aria-label="選んだ記録"',context)
         with self.assertRaises(data.BadRequest):
             pages.raw_page(self.repo,"exp-viewer","III|high",0)
         page=pages.cell_page(self.repo,"exp-viewer","III|high",view="all")
         self.assertIn("場面ごとの四項目",page)
         grid=pages.experiment_page(self.repo,"exp-viewer")
-        self.assertIn('form="compare-cells"',grid)
+        self.assertIn('form="ux-compare"',grid)
 
     def test_compare_and_source_reject_invalid_selection_and_paths(self):
         for cells in ([], ["I|low"],["I|low","I|low"],["I|low"]*5):
@@ -205,8 +205,9 @@ class ExplanationViewerTests(unittest.TestCase):
     def test_comparison_labels_and_dump_css_are_connected(self):
         import re
         doc = pages.experiment_page(self.repo, "exp-viewer")
-        self.assertIn('<button type="submit">四項目で比較</button>', doc)
-        self.assertIn('form="compare-cells"> 四項目で比較</label>', doc)
+        self.assertIn('<button class="ux-primary" type="submit">選んだ候補を比較 →</button>', doc)
+        self.assertIn('form="ux-compare"', doc)
+        self.assertIn('>比較に追加</label>', doc)
         css = (Path(pages.__file__).parent / "static/app.css").read_text(encoding="utf-8")
         rule = re.search(r"(?m)^\.explanation-dump\s*\{([^}]+)\}", css)
         self.assertIsNotNone(rule)
