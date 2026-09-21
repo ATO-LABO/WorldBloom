@@ -2144,8 +2144,10 @@ def dispatch(handler, parts, method):
         if method == "GET" and parts[0] != "api":
             raise data.MissingResource("保存された記録が見つかりません")
         job_api.send_error(handler, ConfigError("resource", "公開済み記録がありません", code="not_found"))
-    except (data.BadRequest, data.ForbiddenPath, data.MissingResource):
-        raise
+    except (data.BadRequest, data.ForbiddenPath, data.MissingResource) as error:
+        if method == "GET" and parts[0] != "api":
+            raise
+        job_api.send_data_error(handler, error)
     except (OSError, ValueError, TypeError, KeyError):
         if method == "GET" and parts[0] != "api":
             raise OSError("保存された情報を読み取れません")

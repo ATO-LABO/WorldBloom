@@ -337,7 +337,8 @@ def _node_title(node: Mapping) -> str:
     )
 
 
-def render_river(model: Mapping, base_url: str) -> str:
+def river_parts(model: Mapping, base_url: str) -> tuple[str, str, str]:
+    """(前置き(summary段落+controls), 図('<div class="grid-wrap river-wrap">'+svg+'</div>'), 凡例)."""
     index = model["index"]
     edges = model["edges"]
     survivor_map = model["survivor_map"]
@@ -493,14 +494,13 @@ def render_river(model: Mapping, base_url: str) -> str:
         ]
         controls = '<p class="river-selection">血筋を強調: ' + " ・ ".join(elite_links) + "</p>"
 
-    return (
-        f'<p class="river-summary">{pages._escape(summary)}</p>'
-        + controls
-        + '<div class="grid-wrap river-wrap">'
-        + svg
-        + '</div>'
-        + legend
-    )
+    preface = f'<p class="river-summary">{pages._escape(summary)}</p>' + controls
+    diagram_html = '<div class="grid-wrap river-wrap">' + svg + '</div>'
+    return preface, diagram_html, legend
+
+
+def render_river(model: Mapping, base_url: str) -> str:
+    return "".join(river_parts(model, base_url))
 
 
 def river_page(

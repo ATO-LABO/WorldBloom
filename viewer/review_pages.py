@@ -74,8 +74,7 @@ def candidate(repo, name, cell, model, story, reason, technical, nav_links, *, j
             binding={'run_id':rid,'candidate_id':cid,'revision':loaded['revision'],'running':loaded['running']}
             grid=f'/runs/{U(rid)}/candidates?candidate={U(cid)}'
     raw=item['raw_href'] if item and item['raw_href'] else base+'/raw'
-    # Legacy output cards are replaced by a single readable synopsis; keep timeline and saved prose accessible.
-    flow=story[story.index('<section class="card story-section">'):]
+    flow=story
     synopsis=f'<section class="ux-prose"><h3>あらすじ</h3><p>{E(prose or "あらすじはまだ保存されていません。下の記録から物語の流れを確認できます。")}</p><small>{E(label) if prose else ""}</small></section>'
     for cap,entry in (('あらすじ',model.get('synopsis')),('本文',model.get('story'))):
         if isinstance(entry,dict) and entry.get('error'): synopsis+=f'<p class="ux-muted">{cap}の生成は完了していません（{E(entry.get("status","—"))}）：{E(entry["error"])}</p>'
@@ -159,10 +158,8 @@ def compare(repo,name,cells,*,job_store=None):
 def river(repo,name,*,selected_cell=None,job_store=None):
     from viewer import lineage_river as lr
     model=lr.river_model(repo,name,selected_cell=selected_cell); base=f'/exp/{U(name)}'; url=base+'/river'
-    rendered=lr.render_river(model,url)
     # Keep the proven graph and its dense-run limits; expose controls separately.
-    start=rendered.index('<div class="grid-wrap river-wrap">'); stop=rendered.index('</div>',start)+6
-    graph=rendered[start:stop]; legend=rendered[stop:]
+    _,graph,legend=lr.river_parts(model,url)
     options='<option value="">すべての系譜</option>'+''.join(f'<option value="{E(c)}"'+(' selected' if c==selected_cell else '')+f'>{E(c)}</option>' for c in sorted(model['elite_nodes']))
     body='<div class="ux-shell ux-river" data-river-workspace>'+heading('物語の系譜をたどる',link(base,'← 候補一覧へ'),'<span class="ux-muted">系譜の川</span>')
     body+=f'<div class="ux-toolbar"><form method="get" action="{url}"><label>強調する系譜 <select name="cell">{options}</select></label><button type="submit">表示</button></form><label><input type="checkbox" data-river-only'+('' if selected_cell else ' disabled')+'> 選んだ系譜だけ</label><div><button type="button" data-zoom="fit">全体を表示</button><button type="button" data-zoom="out" aria-label="縮小">−</button><output data-zoom-level>全体</output><button type="button" data-zoom="in" aria-label="拡大">＋</button></div></div>'
