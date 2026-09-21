@@ -100,6 +100,101 @@ class RunWorkspaceTests(unittest.TestCase):
         self.assertIn("世界の需要（1件）", link)
         self.assertIn(f"/exp/{self.run_id}/monitor?tab=demand", link)
 
+    def test_demand_tab_shows_propose_button_time_estimate_and_progress_panel(self):
+        # job-replay is a catalogued run (job_store present, config with a
+        # resolvable project) -- WB-WORLDGROW-001 段階3b-3's propose button
+        # must appear, with the raw trigger index and the run's own name.
+        (self.runs / self.run_id / "world_demand.json").write_text(json.dumps({
+            "schema_version": 1, "zones": {},
+            "triggers": [{"zone": "海", "verb": "investigate", "count": 11, "whiffs": 11,
+                          "wasted_share": 0.07}]}), encoding="utf-8")
+        status, body = self.get("/jobs/job-replay")
+        self.assertEqual(status, 200, body)
+        self.assertIn(
+            f'data-patch-action="propose" data-run="{self.run_id}" data-trigger="0"', body)
+        self.assertIn("6〜11分かかります", body)
+        self.assertIn(f'<div class="card" data-patch-job data-run="{self.run_id}" hidden>', body)
+        self.assertIn('data-patch-job-cancel', body)
+        # No stray reason line when the button is actually offered.
+        self.assertNotIn("提案できません", body)
+
+    def test_propose_reason_view_only_wins_even_with_a_usable_config(self):
+        # Direct-call test (HTTP routing can't reach this combination: a
+        # job_store-free experiment_page() falls back to a path that also
+        # forces config=None -- see _propose_reason_missing_config_when_can_write
+        # below for that branch). can_write is checked first regardless.
+        from viewer import run_workspace
+
+        class FakeServer:
+            job_store = None
+
+        class FakeHandler:
+            server = FakeServer()
+
+        propose_run, reason = run_workspace._propose_run_and_reason(
+            FakeHandler(), {"config": {"project_id": "romance", "template_id": "romance"}, "run_name": "x"})
+        self.assertIsNone(propose_run)
+        self.assertEqual(reason, "閲覧モードでは提案できません")
+
+    def test_propose_reason_missing_config_when_can_write(self):
+        from viewer import run_workspace
+
+        class FakeServer:
+            job_store = object()
+
+        class FakeHandler:
+            server = FakeServer()
+
+        propose_run, reason = run_workspace._propose_run_and_reason(
+            FakeHandler(), {"config": None, "run_name": "x"})
+        self.assertIsNone(propose_run)
+        self.assertEqual(reason, "凍結入力の無い実験からは提案できません")
+
+    def test_propose_reason_names_a_missing_world_separately(self):
+        from unittest import mock
+        from viewer import run_workspace
+
+        class FakeServer:
+            job_store = object()
+
+        class FakeHandler:
+            server = FakeServer()
+
+        with mock.patch.object(run_workspace, "_expansion_project", return_value=None):
+            propose_run, reason = run_workspace._propose_run_and_reason(
+                FakeHandler(), {"config": {"project_id": "gone"}, "run_name": "x"})
+        self.assertIsNone(propose_run)
+        self.assertEqual(reason, "この実験の世界が見つからないため、提案できません")
+
+    def test_propose_reason_none_when_view_is_none(self):
+        from viewer import run_workspace
+        self.assertEqual(run_workspace._propose_run_and_reason(object(), None), (None, None))
+
+    def test_legacy_experiment_hides_propose_button_with_reason(self):
+        # A legacy experiment has no config_id -- run_workspace._demand_html
+        # must not offer a button the server would 422 on.
+        from test_viewer import _create_experiment
+        experiment = _create_experiment(self.runs)
+        (experiment / "world_demand.json").write_text(json.dumps({
+            "schema_version": 1, "zones": {},
+            "triggers": [{"zone": "海", "verb": "investigate", "count": 11, "whiffs": 11,
+                          "wasted_share": 0.07}]}), encoding="utf-8")
+        status, body = self.get(f"/exp/{experiment.name}/monitor")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn("data-patch-action=\"propose\"", body)
+        self.assertIn("凍結入力の無い実験からは提案できません", body)
+
+    def test_polling_response_excludes_propose_and_progress_markup(self):
+        (self.runs / self.run_id / "world_demand.json").write_text(json.dumps({
+            "schema_version": 1, "zones": {},
+            "triggers": [{"zone": "海", "verb": "investigate", "count": 11, "whiffs": 11,
+                          "wasted_share": 0.07}]}), encoding="utf-8")
+        status, raw = self.get("/jobs/job-replay?view-data=1")
+        self.assertEqual(status, 200, raw)
+        self.assertNotIn("data-patch-action", raw)
+        self.assertNotIn("data-patch-job", raw)
+        json.loads(raw)  # still valid JSON, no HTML leaked into a field
+
     def test_condition_row_links_to_demand_tab_when_expanded(self):
         (self.runs / self.run_id / "expanded-project").mkdir()
         (self.runs / self.run_id / "expanded-project" / "world.yaml").write_text(
@@ -164,7 +259,11 @@ class RunWorkspaceTests(unittest.TestCase):
         run_workspace._expansion_project = lambda handler, view: broken_project
         self.addCleanup(setattr, run_workspace, "_expansion_project", original)
         html = run_workspace._proposals_html(None, {"config": {}}, "exp-1")
-        self.assertEqual(html, '<p class="rw-empty">世界の拡張を読み込めませんでした。</p>')
+        # WB-WORLDGROW-001 段階3b-3: the job-progress panel is now always
+        # emitted once project_dir resolves, even if the rest of the state
+        # can't be read.
+        self.assertTrue(html.startswith('<div class="card" data-patch-job data-run="exp-1" hidden>'))
+        self.assertIn('<p class="rw-empty">世界の拡張を読み込めませんでした。</p>', html)
 
 
 if __name__ == "__main__":

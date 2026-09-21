@@ -125,10 +125,53 @@ def _zone_ineffective_text(zone: Mapping) -> str:
     return f"{data._number(rate) * 100:.1f}%（{decisions:.0f}回中）"
 
 
-def demand_block(repository: "data.RunRepository", experiment: Any, state: Any = None) -> str:
+# WB-WORLDGROW-001 段階3b-3: the "拡張を提案させる" button per investigate
+# trigger. Shown only when the caller (run_workspace._demand_html) has
+# already confirmed the run can plausibly accept a proposal -- the final
+# accept/reject is always the server's (POST .../world-patch can still 409/
+# 422/503).
+_PROPOSE_TIME_NOTE = (
+    '<p class="muted">ローカルの文章生成モデルで1回の生成に6〜11分かかります。'
+    "検査まで含めて10〜30分ほどです。実行中はほかの実行や生成を始められません。</p>"
+)
+
+
+def _trigger_li(index: int, t: Mapping, propose_run: str | None) -> str:
+    zone, verb = t.get("zone"), t.get("verb")
+    body = (
+        f'<strong>{_escape(zone)}</strong> で'
+        f'「{_escape(verb)}」: '
+        f'{_escape(t.get("count"))} 回中 {_escape(t.get("whiffs"))} 回が空振り{_own_rate_text(t)}'
+        f'（全滞在決定の {data._number(t.get("wasted_share")) * 100:.1f}%）'
+    )
+    if propose_run:
+        if verb == "investigate":
+            body += (
+                ' <button type="button" data-patch-action="propose" '
+                f'data-run="{_escape(propose_run)}" data-trigger="{index}">'
+                "この場所の拡張を提案させる</button>"
+            )
+        else:
+            body += ' <span class="muted">（「investigate」＝調べる、の空振りにだけ拡張を提案できます）</span>'
+    # data-trigger is the raw index into world_demand.json's triggers (every
+    # verb) -- NOT the same number `scripts/world_patch.py propose --trigger
+    # N` takes, which counts investigate-only triggers (its own
+    # _investigate_triggers()). The world-patch job route
+    # (viewer/run_catalog.py's POST .../world-patch ->
+    # execution/world_patch_job.py's prepare()) converts this raw index into
+    # that investigate-only one before building the argv.
+    return f'<li data-trigger="{index}" data-zone="{_escape(zone)}" data-verb="{_escape(verb)}">{body}</li>'
+
+
+def demand_block(repository: "data.RunRepository", experiment: Any, state: Any = None, *,
+                  propose_run: str | None = None) -> str:
     """世界の需要（WB-WORLDGROW-001 段階2/3a): この実験の世界（ベースか拡張ずみか）
     を常に1行で示し、world_expansion=detect/expand で回っていればゾーン別の
-    空振りトリガーも平文で見せる。集計が無ければ案内文のみ。"""
+    空振りトリガーも平文で見せる。集計が無ければ案内文のみ。
+
+    `propose_run`（実験名）を渡すと、investigate のきっかけごとに「拡張を提案
+    させる」ボタンを足す（呼び出し元が提案を受け付けられる見込みを確認済みの
+    ときだけ渡す想定 -- 段階3b-3）。"""
 
     # `state` lets a caller that already read world_expansion_state() pass it in.
     line = expansion_line(state if state is not None else data.world_expansion_state(repository, experiment))
@@ -143,23 +186,12 @@ def demand_block(repository: "data.RunRepository", experiment: Any, state: Any =
 
     triggers = data._as_list(report.get("triggers"))
     if triggers:
-        trigger_html = "<ul>" + "".join(
-            # data-trigger is the raw index into world_demand.json's triggers
-            # (every verb) -- NOT the same number `scripts/world_patch.py
-            # propose --trigger N` takes, which counts investigate-only
-            # triggers (its own _investigate_triggers()). The world-patch job
-            # route (viewer/run_catalog.py's POST .../world-patch ->
-            # execution/world_patch_job.py's prepare()) converts this raw
-            # index into that investigate-only one before building the argv.
-            f'<li data-trigger="{index}" data-zone="{_escape(t.get("zone"))}" data-verb="{_escape(t.get("verb"))}">'
-            f'<strong>{_escape(t.get("zone"))}</strong> で'
-            f'「{_escape(t.get("verb"))}」: '
-            f'{_escape(t.get("count"))} 回中 {_escape(t.get("whiffs"))} 回が空振り{_own_rate_text(t)}'
-            f'（全滞在決定の {data._number(t.get("wasted_share")) * 100:.1f}%）'
-            "</li>"
-            for index, t in enumerate(triggers)
-            if isinstance(t, Mapping)
-        ) + "</ul>"
+        rows = "".join(_trigger_li(index, t, propose_run) for index, t in enumerate(triggers) if isinstance(t, Mapping))
+        # Only where a button actually appears -- the estimate alone would hang in the air.
+        can_propose = propose_run and any(
+            isinstance(t, Mapping) and t.get("verb") == "investigate" for t in triggers)
+        note = _PROPOSE_TIME_NOTE if can_propose else ""
+        trigger_html = f"{note}<ul>{rows}</ul>"
     else:
         trigger_html = "<p>拡張が必要そうな場所は見つかりませんでした。</p>"
 

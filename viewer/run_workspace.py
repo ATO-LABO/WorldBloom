@@ -179,16 +179,25 @@ def _expansion_project(handler, view):
 
 def _proposals_html(handler, view, run_name):
     """「この実験から生まれた提案」節: この実験がトリガーとなった提案だけを
-    proposal_card で並べ、他の提案・承認済みは件数だけ世界の画面へ逃がす。"""
+    proposal_card で並べ、他の提案・承認済みは件数だけ世界の画面へ逃がす。
+
+    節の先頭に world-patch ジョブの進行表示の器（data-patch-job）を置く --
+    中身は viewer/static/world-expansion.js が GET /api/jobs で埋める
+    （段階3b-3）。project_dir が解決できない実験には出さない。"""
     project_dir = _expansion_project(handler, view)
     if project_dir is None:
         return ""
     world_id = (view.get("config") or {}).get("project_id")
+    job_panel = (
+        f'<div class="card" data-patch-job data-run="{E(run_name)}" hidden>'
+        '<p role="status"></p>'
+        '<button type="button" data-patch-job-cancel>停止</button></div>'
+    )
     try:
         state = world_expansion_view.load(project_dir)
         world_yaml = yaml.safe_load((project_dir / "world.yaml").read_text(encoding="utf-8"))
     except READ_ERRORS:
-        return '<p class="rw-empty">世界の拡張を読み込めませんでした。</p>'
+        return job_panel + '<p class="rw-empty">世界の拡張を読み込めませんでした。</p>'
     if not isinstance(world_yaml, dict):
         world_yaml = {}
     can_write = getattr(handler.server, "job_store", None) is not None
@@ -197,14 +206,15 @@ def _proposals_html(handler, view, run_name):
     approved_mine = [a for a in state["approved"] if a.get("experiment") == run_name]
     other_count = len(state["proposed"]) - len(mine) + (len(state["approved"]) - len(approved_mine))
 
-    parts = ["<h3>この実験から生まれた提案</h3>"]
+    parts = [job_panel, "<h3>この実験から生まれた提案</h3>"]
     if state.get("error"):
         parts.append(f'<p class="rw-empty">拡張の記録を読み込めませんでした: {E(state["error"])}</p>')
         return "".join(parts)
     if not mine:
         parts.append("<p>この実験から生まれた提案はまだありません。</p>")
     else:
-        parts.extend(world_expansion_view.proposal_card(p, world_yaml, world_id=world_id, can_write=can_write)
+        parts.extend(world_expansion_view.proposal_card(p, world_yaml, world_id=world_id, can_write=can_write,
+                                                         run_id=run_name)
                      for p in mine)
     if approved_mine:
         titles = "、".join(f'『{E(a["patch"].get("title"))}』' for a in approved_mine)
@@ -217,13 +227,34 @@ def _proposals_html(handler, view, run_name):
     return "".join(parts)
 
 
+def _propose_run_and_reason(handler, view):
+    """(propose_run, reason) for the demand tab's "拡張を提案させる" button --
+    WB-WORLDGROW-001 段階3b-3. propose_run is only set when a proposal has a
+    plausible chance of being accepted (the server's POST .../world-patch
+    still has the final say and can 409/422/503); otherwise reason explains
+    why not, in the same two cases run_catalog.py's admit() rejects first."""
+    if view is None:
+        return None, None
+    can_write = getattr(handler.server, "job_store", None) is not None
+    if not can_write:
+        return None, "閲覧モードでは提案できません"
+    if not view.get("config"):
+        return None, "凍結入力の無い実験からは提案できません"
+    if _expansion_project(handler, view) is None:
+        return None, "この実験の世界が見つからないため、提案できません"
+    return view.get("run_name"), None
+
+
 def _demand_html(handler, experiment, state, view=None):
     if experiment is None:
         return '<p class="rw-empty">実験がまだ保存されていません。</p>'
+    propose_run, reason = _propose_run_and_reason(handler, view)
     try:
-        block = world_demand_view.demand_block(handler.repository, experiment, state)
+        block = world_demand_view.demand_block(handler.repository, experiment, state, propose_run=propose_run)
     except READ_ERRORS:
         return '<p class="rw-empty">世界の需要を読み込めませんでした。</p>'
+    if reason:
+        block += f'<p class="muted">{E(reason)}</p>'
     if view is None:
         return block
     return block + _proposals_html(handler, view, view.get("run_name"))

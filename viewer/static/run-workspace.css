@@ -606,4 +606,8 @@
 .we-actions textarea{flex:1 1 240px;min-height:60px}
 .we-actions [disabled]{opacity:.55;cursor:not-allowed}
 .we-message{width:100%;color:#91411f;margin:0}
+.we-hint{width:100%;margin:0}
 .we-reopen{margin-top:16px}
+
+[data-patch-job]{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+[data-patch-job] [role="status"]{margin:0;flex:1 1 240px}

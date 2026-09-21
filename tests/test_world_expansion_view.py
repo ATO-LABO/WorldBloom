@@ -16,6 +16,21 @@ from viewer import world_expansion_view as wev
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class JobPanelScriptTests(unittest.TestCase):
+    """viewer/static/world-expansion.js's propose/check job panel: the state
+    machine (what is disabled when, what a failed poll does) only exists in JS."""
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
+    def test_job_panel_state_machine(self):
+        import subprocess
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [shutil.which("node"), str(root / "tests/world_expansion_ui.cjs"),
+             str(root / "viewer/static/world-expansion.js")],
+            capture_output=True, text=True, encoding="utf-8", timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 class DescribeAddTests(unittest.TestCase):
     def test_zone_with_note(self):
         add = {"zones": [{"name": "船大工の小屋", "parent": "海", "note": "浜の外れに残る、昔の船大工の作業小屋"}]}
@@ -239,14 +254,16 @@ class ApprovableTests(unittest.TestCase):
 
 
 class ProposalCardTests(unittest.TestCase):
-    def _make(self, *, can_write=True, seed_set="holdout"):
+    def _make(self, *, can_write=True, seed_set="holdout", run_id=None, holdout_checks=None):
         patch = _base_patch(add={"items": [{"name": "潮見の貝殻",
                                             "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 2}]}]})
         raw = yaml.safe_dump(patch, allow_unicode=True, sort_keys=False).encode("utf-8")
         sha = hashlib.sha256(raw).hexdigest()
         gate = _reviewable_gate(patch, patch_sha=sha, seed_set=seed_set)
+        if holdout_checks is not None:
+            gate["holdout_checks"] = holdout_checks
         proposal = _proposal(patch, gate, patch_sha=sha)
-        html = wev.proposal_card(proposal, {}, world_id="momotaro", can_write=can_write)
+        html = wev.proposal_card(proposal, {}, world_id="momotaro", can_write=can_write, run_id=run_id)
         return html, proposal
 
     def test_what_is_added_appears_before_rationale(self):
@@ -354,6 +371,31 @@ class ProposalCardTests(unittest.TestCase):
                                  {}, world_id="momotaro", can_write=True)
         self.assertIn("読めません", html)
         self.assertIn("p-broken", html)
+
+    def test_can_write_and_run_id_shows_check_button(self):
+        html, proposal = self._make(can_write=True, run_id="exp-viewer")
+        self.assertIn('data-patch-action="check"', html)
+        self.assertIn(f'data-run="exp-viewer"', html)
+        self.assertIn(f'data-patch="{proposal["id"]}"', html)
+        self.assertIn("検査をやり直す", html)
+
+    def test_can_write_false_hides_check_button_even_with_run_id(self):
+        html, _ = self._make(can_write=False, run_id="exp-viewer")
+        self.assertNotIn('data-patch-action="check"', html)
+
+    def test_run_id_none_hides_check_button(self):
+        html, _ = self._make(can_write=True, run_id=None)
+        self.assertNotIn('data-patch-action="check"', html)
+
+    def test_holdout_checks_zero_or_missing_is_not_shown(self):
+        html_missing, _ = self._make()
+        self.assertNotIn("holdout の検査", html_missing)
+        html_zero, _ = self._make(holdout_checks=0)
+        self.assertNotIn("holdout の検査", html_zero)
+
+    def test_holdout_checks_two_is_shown(self):
+        html, _ = self._make(holdout_checks=2)
+        self.assertIn("holdout の検査: 2 回", html)
 
 
 class LoadTests(unittest.TestCase):
