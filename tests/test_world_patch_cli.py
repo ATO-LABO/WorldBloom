@@ -178,6 +178,70 @@ class WorldPatchCliTests(unittest.TestCase):
         self.assertFalse(gate["passed"])
         self.assertTrue(gate["static"]["violations"])
 
+    # -- B4: --job-less exit code is unchanged by stage 3b-3's --job-only
+    # "0 once saved" override (execution/world_patch_job.py's job pipeline
+    # is the only caller that ever passes --job). reviewable -> 0 without
+    # --job is already covered by
+    # test_propose_from_file_creates_proposal_with_passing_gates_and_leaves_experiment_untouched
+    # (line ~170 above); static_failed -> 1 without --job was not previously
+    # asserted anywhere, so it's added here.
+
+    def test_propose_exit_code_without_job_is_1_for_static_failed(self):
+        code = self._propose_from_file(add=COLLIDING_ADD)
+        self.assertEqual(code, 1)
+        gate = json.loads(self._proposed_files()[0].with_name(
+            self._proposed_files()[0].stem + ".gate.json").read_text(encoding="utf-8"))
+        self.assertEqual(gate["status"], "static_failed")
+
+    # -- B1-B3: --then-holdout ----------------------------------------------
+
+    def test_propose_then_holdout_upgrades_a_reviewable_gate_to_holdout_evidence(self):
+        code = self._propose_from_file(extra=["--then-holdout"])
+        self.assertEqual(code, 0)
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        gate = json.loads(proposed[0].with_name(proposed[0].stem + ".gate.json").read_text(encoding="utf-8"))
+        self.assertEqual(gate["status"], "reviewable")
+        self.assertIsNotNone(gate["trial"])
+        self.assertEqual(gate["trial"]["evidence"]["seed_set"], "holdout")
+        self.assertEqual(gate["holdout_checks"], 1)
+
+    def test_propose_then_holdout_skips_holdout_when_static_gate_rejects(self):
+        # --max-runs/--seeds-per-run are irrelevant here (a static rejection
+        # never reaches the trial at all, exploration or holdout), so
+        # _propose_from_file's default extra (added because "--skip-trial"
+        # isn't in extra) is harmless.
+        code = self._propose_from_file(add=COLLIDING_ADD, extra=["--then-holdout"])
+        self.assertEqual(code, 1)
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        gate = json.loads(proposed[0].with_name(proposed[0].stem + ".gate.json").read_text(encoding="utf-8"))
+        self.assertEqual(gate["status"], "static_failed")
+        self.assertIsNone(gate["trial"])
+        self.assertEqual(gate.get("holdout_checks", 0), 0)
+
+    def test_propose_then_holdout_with_skip_trial_never_runs_a_trial(self):
+        code = self._propose_from_file(extra=["--then-holdout", "--skip-trial"])
+        self.assertEqual(code, 0)
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        gate = json.loads(proposed[0].with_name(proposed[0].stem + ".gate.json").read_text(encoding="utf-8"))
+        self.assertEqual(gate["status"], "trial_pending")
+        self.assertIsNone(gate["trial"])
+        self.assertEqual(gate.get("holdout_checks", 0), 0)
+
+    # -- B5: --job/--control given, but the job folder doesn't exist --------
+
+    def test_progress_is_a_noop_when_the_job_folder_is_missing(self):
+        control = Path(self._scratch.name) / "control"
+        (control / "jobs").mkdir(parents=True)
+        code = self._propose_from_file(extra=["--job", "job-does-not-exist", "--control", str(control)])
+        # --job was given, so a successfully saved proposal returns 0
+        # regardless of gate status (here: reviewable) -- _progress's own
+        # failure (no such job folder) must not surface as a CLI failure.
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self._proposed_files()), 1)
+
     def test_propose_retries_on_bad_json_then_succeeds(self):
         good_text = json.dumps(
             {"title": "海辺の船大工小屋", "rationale": "海でのinvestigateが空振りし続けている", "add": VALID_ADD},

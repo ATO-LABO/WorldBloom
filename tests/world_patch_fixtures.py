@@ -21,7 +21,13 @@ def frozen_experiment(root, *, explanations=True, coevolve=False):
     project, template = repo / "projects/momotaro", repo / "templates/momotaro"
     shutil.copytree(ROOT / "projects/momotaro", project, ignore=shutil.ignore_patterns("patches"))
     shutil.copytree(ROOT / "templates/momotaro", template)
-    for package in ("engine", "gapengine", "scripts", "execution"):
+    # viewer/ isn't part of code_snapshot()'s frozen closure (engine/gapengine/
+    # scripts/execution only), but scripts/world_patch.py's own CLI (and, as
+    # of WB-WORLDGROW-001 stage 3b-3, execution/world_patch_job.py's admit/
+    # prepare) import viewer.data/viewer.run_catalog -- a world_patch job's
+    # subprocess launches against *this* copied repo, so it needs its own
+    # viewer/ package to import from, same as engine/gapengine/scripts/execution.
+    for package in ("engine", "gapengine", "scripts", "execution", "viewer"):
         shutil.copytree(ROOT / package, repo / package, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copyfile(ROOT / "requirements.txt", repo / "requirements.txt")
     path = project / "world.yaml"

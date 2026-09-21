@@ -144,8 +144,13 @@ def demand_block(repository: "data.RunRepository", experiment: Any, state: Any =
     triggers = data._as_list(report.get("triggers"))
     if triggers:
         trigger_html = "<ul>" + "".join(
-            # data-trigger is the index into world_demand.json's triggers -- the
-            # same number `scripts/world_patch.py propose --trigger N` takes.
+            # data-trigger is the raw index into world_demand.json's triggers
+            # (every verb) -- NOT the same number `scripts/world_patch.py
+            # propose --trigger N` takes, which counts investigate-only
+            # triggers (its own _investigate_triggers()). The world-patch job
+            # route (viewer/run_catalog.py's POST .../world-patch ->
+            # execution/world_patch_job.py's prepare()) converts this raw
+            # index into that investigate-only one before building the argv.
             f'<li data-trigger="{index}" data-zone="{_escape(t.get("zone"))}" data-verb="{_escape(t.get("verb"))}">'
             f'<strong>{_escape(t.get("zone"))}</strong> で'
             f'「{_escape(t.get("verb"))}」: '

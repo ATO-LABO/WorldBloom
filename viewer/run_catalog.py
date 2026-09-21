@@ -398,6 +398,7 @@ def dispatch(handler, parts, method):
     from http import HTTPStatus
     from urllib.parse import parse_qs, urlsplit
     from viewer import job_api
+    status = HTTPStatus.OK
     try:
         catalog, selections = handler.repository.catalog, handler.repository.selections
         if catalog is None:
@@ -424,6 +425,38 @@ def dispatch(handler, parts, method):
                 if set(body) != {"expected_revision", "changes"}:
                     raise ConfigError("request", "版番号と変更項目を指定してください", code="bad_request")
                 result = selections.update(rid, body["changes"], expected_revision=body["expected_revision"])
+            elif action == "world-patch" and method == "POST":
+                job_store = getattr(handler.server, "job_store", None)
+                if job_store is None:
+                    raise ConfigError("service", "実行管理は未設定です", code="unavailable")
+                request_action = body.get("action") if isinstance(body, dict) else None
+                if request_action == "propose":
+                    expected_keys = {"action", "request_id", "trigger"}
+                elif request_action == "check":
+                    expected_keys = {"action", "request_id", "patch_id"}
+                else:
+                    raise ConfigError("action", "処理種別が不正です", code="bad_request")
+                if set(body) != expected_keys:
+                    raise ConfigError("request", "未対応の要求項目があります", code="bad_request")
+                # The browser never chooses config_id/project/template/backend --
+                # they come from the run's own frozen manifest, the same way
+                # output_pages.build_confirmation resolves them for synopsize/narrate.
+                root, legacy = catalog.resolve(rid)
+                if legacy:
+                    raise ConfigError("run_id", "凍結入力の無い実験からは提案できません")
+                manifest = read_json(contained(root, "manifest.json"))
+                config_id = manifest.get("config_id")
+                if not config_id:
+                    raise ConfigError("config_id", "実行設定の記録がありません")
+                field = "trigger" if request_action == "propose" else "patch_id"
+                patch_request = {"schema_version": 1, "request_id": body["request_id"], "kind": "world_patch",
+                    "config_id": config_id, "run_id": rid, "action": request_action, field: body[field]}
+                job, created = job_store.submit(patch_request,
+                    settings_path=getattr(handler.server, "settings_path", None))
+                result = job
+                # Same as POST /api/jobs: 202 for a job that just started, 200 for
+                # a repeated request_id that returns the one already running.
+                status = HTTPStatus.ACCEPTED if created else HTTPStatus.OK
             elif action == "candidates" and method == "GET":
                 query = parse_qs(urlsplit(handler.path).query, keep_blank_values=True)
                 filters = {}
@@ -455,7 +488,7 @@ def dispatch(handler, parts, method):
                 raise ConfigError("route", "APIがありません", code="not_found")
         else:
             raise ConfigError("route", "APIがありません", code="not_found")
-        handler._send_json(HTTPStatus.OK, result)
+        handler._send_json(status, result)
     except ConfigError as error:
         job_api.send_error(handler, error)
     except FileNotFoundError:
