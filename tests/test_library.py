@@ -234,7 +234,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('href="/genres/momotaro"', body)
 
     def test_world_detail_page(self):
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn('data-wb="library"', body)
         self.assertIn('data-kind="world"', body)
@@ -255,7 +255,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         # (WB-UI-017, extended by WB-UI-025's 行動図鑑 tab): checks the tab
         # wiring itself, not just that each panel's content is present
         # somewhere in the flat HTML.
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertEqual(body.count('class="tab-input"'), 6)
         for index, label in enumerate(["概要", "登場人物", "初期物語", "行動図鑑", "場所", "期間"]):
@@ -269,7 +269,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         # WB-UI-025: the 行動図鑑 tab renders this world's verb status
         # (active/pruned/unused/unimplemented) with world-specific values
         # filled into the engine-level catalog text.
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn("catalog-kinds", body)
         self.assertIn("未実装（構想のみ）", body)
@@ -279,7 +279,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
     def test_world_detail_overview_intro(self):
         # WB-UI-024: the 概要 tab leads with a one-sentence auto-generated
         # introduction, not just a bare metadata line.
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn('class="world-intro"', body)
         self.assertIn("桃太郎が「", body)
@@ -293,7 +293,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         # header, not folded into a per-row sentence) and the characters tab
         # the deterministic per-character readout (hidden item modifiers,
         # secrets, foreshadowing) end-to-end through the route.
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn('class="wb-table canon-table"', body)
         self.assertIn("鬼ヶ島の宝物の所在", body)
@@ -495,7 +495,7 @@ class LibraryGuidanceTests(unittest.TestCase):
         self.assertNotIn('href="/worlds/new"', body)
 
     def test_world_detail_without_control_is_read_only(self):
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn('class="relation-graph"', body)
         self.assertNotIn('data-action="save-file"', body)

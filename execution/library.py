@@ -137,7 +137,7 @@ class LibraryStore:
             raise ConfigError("path", "ファイルがありません", code="not_found") from None
 
     def write(self, kind, owner_id, rel, text):
-        if kind == "genre":
+        if kind in ("world", "genre"):
             base = self._base(kind, owner_id)
             if not base.is_dir():
                 raise ConfigError("genre_id", "対象がありません", code="not_found")
@@ -249,7 +249,7 @@ class LibraryStore:
             if not isinstance(world, dict):
                 raise ConfigError("content", "世界の設定形式が不正です", code="bad_request")
             world.update(cleaned)
-            self.write("world", world_id, "world.yaml", yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
+            self._write_file("world", world_id, "world.yaml", yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
         return cleaned
 
     def create_genre(self, new_id, *, from_id):
