@@ -1,0 +1,80 @@
+/* Execution setup: editable conditions plus a continuously visible summary. */
+.rs-shell {width:100%;min-width:0;}
+.rs-form {display:grid;grid-template-columns:minmax(0,1fr) 290px;grid-template-rows:minmax(0,1fr) auto;min-height:0;min-width:0;margin:0;}
+.rs-form [hidden] {display:none!important;}
+.rs-editor {min-height:0;min-width:0;overflow:auto;padding:16px 24px;scrollbar-gutter:stable;}
+.rs-form .rs-heading {display:flex;align-items:baseline;gap:16px;margin-bottom:10px;}
+.rs-form .rs-heading h1 {font-size:26px;}
+.rs-form .rs-heading p {font-size:14px;margin:0;color:var(--rw-muted);}
+.rs-form .rs-name {display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:14px;align-items:end;margin-bottom:8px;}
+.rs-form .field {margin:0;min-width:0;}
+.rs-form label,.rs-form .rs-fixed>span {font-size:14px;color:#3b4942;display:block;margin:0 0 5px;}
+.rs-form .field-key,.rs-form .key {display:none;}
+.rs-form .rs-name .field {display:grid;grid-template-columns:65px minmax(0,1fr);align-items:center;gap:6px;}
+.rs-form .rs-name .field label {margin:0;}
+.rs-form .rs-name .field-error {grid-column:2;}
+.rs-form .rs-picker {font-size:12px;margin:0;}
+.rs-form input[type=text],.rs-form input[type=number],.rs-form select {box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:36px;padding:5px 10px;border:1px solid #b8c3bb;border-radius:4px;background:white;color:#22302d;font-family:inherit;font-size:16px;line-height:1.5;}
+.rs-form input {font-family:inherit;}
+.rs-form .field-error:empty,.rs-form .form-error:empty {display:none;}
+.rs-form .field-error,.rs-form .form-error {font-size:13px;color:#a22f20;}
+.rs-form .form-error {padding:8px;border:1px solid #c87765;background:#fff2ec;}
+.rs-form section {padding:10px 0;margin:0;border:0;border-top:1px solid var(--rw-line);background:none;box-shadow:none;border-radius:0;}
+.rs-form h2 {font-size:19px;line-height:1.4;margin:0 0 9px;}
+.rs-form .rs-world {display:flex;align-items:center;gap:16px;}
+.rs-world>.field,.rs-fixed {flex:1;display:flex;align-items:center;gap:16px;}
+.rs-world>.field label,.rs-fixed>span {flex:0 0 95px;margin:0;}
+.rs-world a {font-size:13px;white-space:nowrap;}
+.rs-fixed strong {font-size:16px;}
+.rs-form .rs-ending {display:grid;grid-template-columns:110px minmax(0,1fr);align-items:center;gap:4px 0;margin-top:8px;}
+.rs-form .rs-ending-mode {display:block;margin:0;}
+.rs-ending-mode select {max-width:240px;}
+.rs-form .rs-ending>.field {grid-column:2;}
+.rs-form .rs-ending>.rs-muted {grid-column:2;margin:0;}
+.rs-form .rs-muted {font-size:13px;color:var(--rw-muted);line-height:1.5;margin:5px 0 0;}
+.rs-form [data-world-facts] {margin-left:110px;}
+.rs-scale {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;}
+.rs-form .unit {display:flex;align-items:center;gap:8px;}
+.rs-form .unit>span {font-size:14px;white-space:nowrap;}
+.rs-stepper {display:flex;align-items:center;min-width:0;border:1px solid #b8c3bb;border-radius:4px;overflow:hidden;background:white;}
+.rs-form .rs-stepper input {border:0;border-radius:0;text-align:center;padding:4px 0;min-height:34px;appearance:textfield;font-size:18px;}
+.rs-stepper input::-webkit-inner-spin-button {appearance:none;}
+.rs-form .rs-stepper button {padding:0;width:30px;min-width:30px;min-height:34px;border:0;border-radius:0;background:transparent;}
+.rs-form .rs-keep {display:grid;grid-template-columns:110px minmax(0,1fr);align-items:center;}
+.rs-keep select {max-width:290px;}
+.rs-keep .field-error {grid-column:2;}
+.rs-toggles {display:flex;align-items:center;gap:26px;margin-top:10px;flex-wrap:wrap;}
+.rs-form .toggle {display:flex;align-items:center;gap:8px;padding:0;border:0;background:none;margin:0;}
+.rs-form .toggle input {width:18px;height:18px;accent-color:#2f7255;margin:0;}
+.rs-form .toggle b {font-size:14px;font-weight:500;}
+.rs-form .toggle small:empty {display:none;}
+.rs-form .cfg-adv {margin:0;padding:8px 0 0;border:0;border-top:1px solid var(--rw-line);background:none;}
+.rs-form .cfg-adv summary {font-size:14px;}
+.rs-form .cfg-adv summary span {font-weight:400;color:var(--rw-muted);font-size:12px;margin-left:14px;}
+.rs-form .cfg-adv>.field,.rs-form .cfg-adv>.rs-scale {margin-top:12px;}
+.rs-form .cfg-adv p {font-size:13px;line-height:1.6;margin:8px 0;}
+.rs-form .rs-footer {grid-column:1/-1;padding:9px 24px;gap:12px;}
+.rs-footer a {font-size:14px;white-space:nowrap;}
+.rs-footer span {font-size:12px;line-height:1.5;}
+.rs-form .rs-footer button {background:var(--rw-orange);color:white;border-color:var(--rw-orange);white-space:nowrap;padding:9px 16px;font-size:15px;font-weight:600;}
+@media(max-width:1100px) and (min-width:768px){.rs-form{grid-template-columns:minmax(0,1fr) 240px}.rs-editor{padding:14px 18px}.rs-form .rs-name{grid-template-columns:1fr 175px}.rs-world a{font-size:12px}.rs-scale{gap:8px}.rs-form .rs-heading{display:block}.rs-toggles{gap:14px}.rs-footer span{display:none}}
+@media(max-width:767px){.rs-form{display:block}.rs-editor{overflow:visible;padding:18px 16px}.rs-form .rs-name{grid-template-columns:1fr}.rs-form .rs-heading{display:block}.rs-form .rs-heading p{margin:4px 0 12px}.rs-form .rs-world{flex-wrap:wrap}.rs-world>.field,.rs-fixed{flex-basis:100%}.rs-form .rs-ending{grid-template-columns:1fr;gap:6px}.rs-form .rs-ending>.field,.rs-form .rs-ending>.rs-muted{grid-column:1}.rs-form [data-world-facts]{margin-left:0}.rs-scale{grid-template-columns:1fr}.rs-form .rs-stepper{max-width:230px}.rs-form .rs-keep{grid-template-columns:1fr;gap:6px}.rs-form .rs-footer{align-items:stretch;padding:16px}.rs-footer a{text-align:left}.rs-form .rs-footer span{display:block}.rs-form .cfg-adv summary span{display:block;margin-left:0}}
+
+.rs-form {line-height:1.45;}
+.rs-form .field {display:block;}
+.rs-form .rs-name .field,.rs-form .rs-ending,.rs-form .rs-keep {display:grid;}
+.rs-form .rs-world>.field {display:flex;flex-direction:row;}
+.rs-form .rs-heading {margin-bottom:6px;}
+.rs-form .toggle {min-height:0;}
+
+@media(min-width:1024px) and (max-height:780px){
+  .rs-editor{padding-block:12px}
+  .rs-form section{padding-block:6px}
+  .rs-form h2{margin-bottom:6px}
+  .rs-form .rs-name{margin-bottom:4px}
+  .rs-form .rs-ending{margin-top:5px}
+  .rs-form .rs-muted{margin-top:3px}
+  .rs-form .rs-ending>.rs-muted{margin-top:0}
+  .rs-toggles{margin-top:7px}
+  .rs-form .cfg-adv{padding-top:5px}
+}

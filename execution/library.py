@@ -11,12 +11,13 @@ import os
 import re
 import shutil
 import uuid
+import tempfile
 from pathlib import Path
 
 import yaml
 
 from engine.yaml_cache import load_yaml
-from execution.provenance import ConfigError, contained, identifier
+from execution.provenance import ConfigError, contained, identifier, directory_lock
 
 GENRE_FILES = ("action_graph.yaml", "canon.yaml", "effects.yaml", "qd.yaml", "rules.yaml",
                "action_graph.antagonist.yaml", "canon.antagonist.yaml")
@@ -103,7 +104,9 @@ class LibraryStore:
         for entry in sorted(p for p in root.iterdir() if p.is_dir()):
             files = [name for name in GENRE_FILES if (entry / name).is_file()]
             used_by = sorted(w["id"] for w in worlds if w["genre"] == entry.name)
-            result.append({"id": entry.name, "files": files, "used_by": used_by})
+            from execution.genre_editor import metadata
+            info = metadata(entry)
+            result.append({"id": entry.name, "name": info.get("name") or entry.name, "description": info.get("description") or "", "files": files, "used_by": used_by})
         return result
 
     def world_files(self, world_id):
@@ -134,6 +137,15 @@ class LibraryStore:
             raise ConfigError("path", "ファイルがありません", code="not_found") from None
 
     def write(self, kind, owner_id, rel, text):
+        if kind == "genre":
+            base = self._base(kind, owner_id)
+            if not base.is_dir():
+                raise ConfigError("genre_id", "対象がありません", code="not_found")
+            with directory_lock(base):
+                return self._write_file(kind, owner_id, rel, text)
+        return self._write_file(kind, owner_id, rel, text)
+
+    def _write_file(self, kind, owner_id, rel, text):
         _validate_rel(kind, rel)
         if not isinstance(text, str) or len(text.encode("utf-8")) > MAX_BYTES:
             raise ConfigError("content", "256KB以内のテキストを指定してください", code="bad_request")
@@ -160,55 +172,89 @@ class LibraryStore:
 
     # -- creation ---------------------------------------------------------
 
+    @staticmethod
+    def _text(value, field, *, required=False, maximum=8000):
+        if not isinstance(value, str) or len(value) > maximum or (required and not value.strip()):
+            raise ConfigError(field, f"{maximum}文字以内で入力してください" if value else "入力してください", code="bad_request")
+        return value.strip()
+
+    def create_original_world(self, new_id, *, name, overview=""):
+        identifier(new_id, "world_id")
+        name = self._text(name, "name", required=True, maximum=120)
+        overview = self._text(overview, "overview")
+        if not (self.repo / "templates/basic").is_dir():
+            raise ConfigError("template_id", "共通の基本ルールが見つかりません", code="unavailable")
+        world = {
+            "name": name, "overview": overview, "initial_story": "",
+            "time": {"days": 7, "slots": ["朝", "昼", "夕方", "夜"]},
+            "protagonist": "", "antagonist": "", "zones": [], "routes": {},
+            "ending": [], "target_ending": [],
+            "gapengine": {"action_graph": "templates/basic/action_graph.yaml",
+                          "effects": "templates/basic/effects.yaml"},
+        }
+        return self._publish_world(new_id, world=world)
+
     def create_world(self, new_id, *, from_id, genre_id, name):
         identifier(new_id, "world_id")
         identifier(from_id, "from_world_id")
         identifier(genre_id, "template_id")
-        if not isinstance(name, str) or not name.strip():
-            raise ConfigError("name", "表示名を入力してください", code="bad_request")
-        dest = contained(self.repo / "projects", new_id)
-        if dest.exists():
-            raise ConfigError("world_id", "既に存在します", code="conflict")
+        name = self._text(name, "name", required=True, maximum=120)
         source = contained(self.repo / "projects", from_id)
         if not source.is_dir():
             raise ConfigError("from_world_id", "複製元の世界がありません", code="not_found")
         if not (self.repo / "templates" / genre_id).is_dir():
             raise ConfigError("template_id", "ジャンルがありません", code="not_found")
         _reject_symlinks(source)
-        shutil.copytree(source, dest)
-        try:
-            world_path = dest / "world.yaml"
-            world = yaml.safe_load(world_path.read_text(encoding="utf-8"))
-            if not isinstance(world, dict):
-                raise ConfigError("world_id", "複製元のworld.yamlが不正です", code="bad_request")
-            world["name"] = name
-            gapengine = dict(world.get("gapengine") or {})
-            gapengine["action_graph"] = f"templates/{genre_id}/action_graph.yaml"
-            gapengine["effects"] = f"templates/{genre_id}/effects.yaml"
-            world["gapengine"] = gapengine
-            world_path.write_text(
-                yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
-        except (OSError, ValueError, TypeError, yaml.YAMLError, ConfigError):
-            shutil.rmtree(dest, ignore_errors=True)
-            raise
+        return self._publish_world(new_id, source=source, name=name, genre_id=genre_id)
+
+    def _publish_world(self, new_id, *, world=None, source=None, name=None, genre_id=None):
+        # Stage outside projects: listings never expose a half-created world.
+        with directory_lock(self.repo / "projects"):
+            dest = contained(self.repo / "projects", new_id)
+            if dest.exists():
+                raise ConfigError("world_id", "このIDは使用されています。別のIDを指定してください", code="conflict")
+            with tempfile.TemporaryDirectory(prefix=".world-create-", dir=self.repo) as temporary:
+                staged = Path(temporary) / "world"
+                if source is not None:
+                    shutil.copytree(source, staged)
+                    try:
+                        world = yaml.safe_load((staged / "world.yaml").read_text(encoding="utf-8"))
+                    except (OSError, yaml.YAMLError) as error:
+                        raise ConfigError("from_world_id", "複製元の世界を読めません", code="bad_request") from error
+                    if not isinstance(world, dict):
+                        raise ConfigError("from_world_id", "複製元の世界の形式が不正です", code="bad_request")
+                    world["name"] = name
+                    graph = dict(world.get("gapengine") or {})
+                    graph.update(action_graph=f"templates/{genre_id}/action_graph.yaml", effects=f"templates/{genre_id}/effects.yaml")
+                    world["gapengine"] = graph
+                else:
+                    (staged / "subjects").mkdir(parents=True)
+                (staged / "world.yaml").write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                staged.rename(dest)
         return new_id
 
+    def update_world_basics(self, world_id, changes):
+        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "overview", "initial_story"}:
+            raise ConfigError("request", "名前・概要・初期物語を指定してください", code="bad_request")
+        cleaned = {key: self._text(value, key, required=key == "name", maximum=120 if key == "name" else 8000)
+                   for key, value in changes.items()}
+        base = self._base("world", world_id)
+        if not base.is_dir():
+            raise ConfigError("world_id", "世界がありません", code="not_found")
+        with directory_lock(base):
+            try:
+                world = yaml.safe_load(self.read("world", world_id, "world.yaml"))
+            except yaml.YAMLError as error:
+                raise ConfigError("content", "世界の設定を読めません", code="bad_request") from error
+            if not isinstance(world, dict):
+                raise ConfigError("content", "世界の設定形式が不正です", code="bad_request")
+            world.update(cleaned)
+            self.write("world", world_id, "world.yaml", yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
+        return cleaned
+
     def create_genre(self, new_id, *, from_id):
-        identifier(new_id, "template_id")
-        identifier(from_id, "from_template_id")
-        dest = contained(self.repo / "templates", new_id)
-        if dest.exists():
-            raise ConfigError("template_id", "既に存在します", code="conflict")
-        source = contained(self.repo / "templates", from_id)
-        if not source.is_dir():
-            raise ConfigError("from_template_id", "複製元のジャンルがありません", code="not_found")
-        _reject_symlinks(source)
-        try:
-            shutil.copytree(source, dest)
-        except OSError:
-            shutil.rmtree(dest, ignore_errors=True)
-            raise
-        return new_id
+        from execution.genre_editor import create
+        return create(self, new_id, name=new_id, from_id=from_id)
 
     # -- validation ---------------------------------------------------------
 

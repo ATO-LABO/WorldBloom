@@ -33,10 +33,28 @@ from viewer.data import (
 
 MAX_POST_BYTES = 64 * 1024
 STATIC_FILES = {
+    "world-create.css": "text/css; charset=utf-8",
+    "genre-workspace.css": "text/css; charset=utf-8",
+    "genre-workspace.js": "application/javascript; charset=utf-8",
+    "world-create.js": "application/javascript; charset=utf-8",
+    "global-settings.css": "text/css; charset=utf-8",
+    "global-settings.js": "application/javascript; charset=utf-8",
+    "generation.css": "text/css; charset=utf-8",
+    "generation.js": "application/javascript; charset=utf-8",
+    "screening-workspace.css": "text/css; charset=utf-8",
+    "screening-workspace.js": "application/javascript; charset=utf-8",
     "app.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
     "workbench.js": "text/javascript; charset=utf-8",
     "run-workspace.css": "text/css; charset=utf-8",
+    "sifting-workspace.css": "text/css; charset=utf-8",
+    "sifting-workspace.js": "application/javascript; charset=utf-8",
+    "lineage-workspace.css": "text/css; charset=utf-8",
+    "lineage-workspace.js": "application/javascript; charset=utf-8",
+    "comparison.css": "text/css; charset=utf-8",
+    "comparison.js": "application/javascript; charset=utf-8",
+    "run-settings.css": "text/css; charset=utf-8",
+    "run-settings.js": "application/javascript; charset=utf-8",
     "run-workspace.js": "text/javascript; charset=utf-8",
     "ga_replay.js": "text/javascript; charset=utf-8",
     "world-prototype.css": "text/css; charset=utf-8",
@@ -193,6 +211,22 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return
         if len(parts) == 3 and parts[0] == "exp" and parts[2] == "compare":
             query = parse_qs(urlsplit(self.path).query)
+            if self.repository.catalog is not None:
+                from viewer import compare_pages
+                compare_pages.render(self, parts[1], query)
+                return
+            if "publication" in query or "candidate" in query:
+                catalog = self.repository.catalog
+                if catalog is None:
+                    raise BadRequest("比較対象の公開版を確認できません")
+                snapshot = catalog.snapshot(catalog.run_id(parts[1]))
+                cells, ids = query.get("cell", []), query.get("candidate", [])
+                reps = catalog.representatives(snapshot)
+                if (query.get("publication") != [str(snapshot["revision"])]
+                        or not 2 <= len(ids) <= 4 or len(set(ids)) != len(ids)
+                        or len(cells) != len(ids)
+                        or any(reps.get(cell) != cid for cell, cid in zip(cells, ids))):
+                    raise BadRequest("比較対象が更新されています。格子で対象を選び直してください")
             self._send_html(pages.compare_page(
                 self.repository, parts[1], query.get("cell", []), job_store=job_store,
             ))
@@ -215,10 +249,20 @@ class ViewerHandler(BaseHTTPRequestHandler):
                     turning_index = None
             self._send_html(pages.lineage_page(
                 self.repository, parts[1], parts[3], turning_index=turning_index,
-                job_store=job_store,
+                job_store=job_store, point=query.get("point", [None])[0],
+                tab=query.get("tab", ["choices"])[0],
+                view=query.get("view", ["key"])[0],
+                expected_ref=query.get("elite", [None])[0],
             ))
             return
         if len(parts) == 2 and parts[0] == "exp":
+            if self.repository.catalog is not None:
+                from viewer import sifting_pages
+                rid = self.repository.catalog.run_id(parts[1])
+                if rid.startswith("legacy-"):
+                    rid = self.repository.catalog.register_legacy(parts[1])
+                sifting_pages.candidates(self, rid, grid=True)
+                return
             self._send_html(
                 pages.experiment_page(
                     self.repository,

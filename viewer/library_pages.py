@@ -81,7 +81,7 @@ def _genre_row(genre):
     used = ", ".join(genre["used_by"]) if genre["used_by"] else "—"
     return (
         "<tr>"
-        f'<td><a href="/genres/{_url(genre["id"])}">{_escape(genre["id"])}</a></td>'
+        f'<td><a href="/genres/{_url(genre["id"])}">{_escape(genre.get("name") or genre["id"])}</a></td>'
         f'<td>{_escape(", ".join(genre["files"]))}</td>'
         f'<td>{_escape(used)}</td>'
         f'<td class="wb-actions"><a href="/genres/{_url(genre["id"])}">編集</a></td>'
@@ -139,7 +139,7 @@ def render_world_new_form(worlds, genres, *, from_id, genre_id):
         for w in worlds
     )
     genre_options = "".join(
-        f'<option value="{_escape(g["id"])}"{" selected" if g["id"] == genre_id else ""}>{_escape(g["id"])}</option>'
+        f'<option value="{_escape(g["id"])}"{" selected" if g["id"] == genre_id else ""}>{_escape(g.get("name") or g["id"])}</option>'
         for g in genres
     )
     return (
@@ -166,7 +166,7 @@ def render_world_new_form(worlds, genres, *, from_id, genre_id):
 
 def render_genre_new_form(genres, *, from_id):
     genre_options = "".join(
-        f'<option value="{_escape(g["id"])}"{" selected" if g["id"] == from_id else ""}>{_escape(g["id"])}</option>'
+        f'<option value="{_escape(g["id"])}"{" selected" if g["id"] == from_id else ""}>{_escape(g.get("name") or g["id"])}</option>'
         for g in genres
     )
     return (
@@ -229,11 +229,14 @@ def _overview_panel(world, world_yaml, subjects):
     zones = world_yaml.get("zones") or []
     intro += f" {day_text}日間・{len(zones)}か所・{_escape(world['subjects'])}人。"
 
+    if "overview" in world_yaml:
+        intro = _escape(world_yaml.get("overview") or "世界の概要はまだ設定されていません。")
+
     genre = world["genre"]
     genre_html = f'<a href="/genres/{_url(genre)}">{_escape(genre)}</a>' if genre else "—"
     characters_html = (
-        f'{_escape(world["subjects"])}人（主人公: {_escape(protagonist_id)} '
-        f'／ 敵役: {_escape(antagonist_id)}）'
+        f'{_escape(world["subjects"])}人（主人公: {_escape(protagonist_id or "未設定")} '
+        f'／ 敵役: {_escape(antagonist_id or "未設定")}）'
     )
     zone_names = "・".join(
         _escape(zone["name"]) for zone in zones if isinstance(zone, dict) and zone.get("name")
@@ -373,7 +376,7 @@ def _editor_group(store, world, job_store):
     other_files = [rel for rel in store.world_files(world_id) if not rel.startswith("subjects/")]
     contents = {rel: store.read("world", world_id, rel) for rel in other_files}
     genre_options = "".join(
-        f'<option value="{_escape(g["id"])}"{" selected" if g["id"] == world["genre"] else ""}>{_escape(g["id"])}</option>'
+        f'<option value="{_escape(g["id"])}"{" selected" if g["id"] == world["genre"] else ""}>{_escape(g.get("name") or g["id"])}</option>'
         for g in store.genres()
     )
     validate_form = (
@@ -400,7 +403,10 @@ def _subject_editors_html(store, world, job_store):
     world_id = world["id"]
     subject_files = [rel for rel in store.world_files(world_id) if rel.startswith("subjects/")]
     contents = {rel: store.read("world", world_id, rel) for rel in subject_files}
-    template_content = contents[subject_files[0]] if subject_files else ""
+    template_content = contents[subject_files[0]] if subject_files else yaml.safe_dump({
+        "id": "新しい人物", "traits": {"social": 0.5, "stubbornness": 0.5, "curiosity": 0.5, "diligence": 0.5, "temper": 0.5},
+        "base": 50, "range": {"entry": "", "zones": []}, "goal": {},
+    }, allow_unicode=True, sort_keys=False)
     editors = []
     for rel in subject_files:
         try:
@@ -436,10 +442,20 @@ def render_world_detail(world, store, job_store):
     subjects = world_graph.load_subjects(store.repo / "projects" / world["id"])
     world_id = world["id"]
     editors_html = _subject_editors_html(store, world, job_store)
+    from viewer.world_create import basics_editor
+    overview = _overview_panel(world, world_yaml, subjects)
+    if job_store is not None:
+        overview += basics_editor(world_id, world_yaml)
+    if "initial_story" in world_yaml:
+        initial_story = '<h3>シミュレーション開始時点の導入・状況</h3><p class="wc-copy">'+_escape(world_yaml.get("initial_story") or "初期物語はまだ設定されていません。")+'</p>'
+        if job_store is not None:
+            initial_story += basics_editor(world_id, world_yaml, story=True)
+    else:
+        initial_story = _canon_panel(world, subjects, store)
     panels = [
-        ("概要", _overview_panel(world, world_yaml, subjects)),
+        ("概要", overview),
         ("登場人物", _characters_panel(world, world_yaml, subjects, store, editors_html)),
-        ("初期物語", _canon_panel(world, subjects, store)),
+        ("初期物語", initial_story),
         ("行動図鑑", action_catalog.catalog_panel_html(world, store.repo)),
         ("場所", _places_panel(world_yaml)),
         ("期間", _period_panel(world_yaml)),
@@ -451,7 +467,15 @@ def render_world_detail(world, store, job_store):
         world["id"], world["genre"], world["name"] or world["id"], run_href,
         css_class="button primary", text="この世界で実験を回す",
     )
-    cta_html = f'<p class="actions world-cta"><span>世界を確かめたら、実験へ。</span>{cta}</p>'
+    missing = []
+    if not subjects: missing.append("登場人物")
+    if not world_yaml.get("zones"): missing.append("場所")
+    people_ids = {str(person.get("id")) for person in subjects}
+    if not world.get("protagonist") or world.get("protagonist") not in people_ids: missing.append("主人公")
+    if not world.get("antagonist") or world.get("antagonist") not in people_ids: missing.append("敵役")
+    if not world_yaml.get("target_ending"): missing.append("目標の結末")
+    cta_html = (f'<p class="actions world-cta"><span>この世界は設定途中です。{"・".join(missing)}を設定してから、実行に進めます。</span></p>'
+                if missing else f'<p class="actions world-cta"><span>世界を確かめたら、実験へ。</span>{cta}</p>')
     if job_store is None:
         return ('<div class="world-workspace">' + card + files_block + '</div>'
                 + '<p class="actions world-cta">実験を始めるにはWorldBloom Studioでこの世界を開いてください。</p>')
@@ -513,11 +537,9 @@ def _worlds_new(handler):
     if genre_id not in genre_ids:
         source = next((w for w in worlds if w["id"] == from_id), None)
         genre_id = source["genre"] if source and source["genre"] in genre_ids else None
-    body = render_world_new_form(worlds, genres, from_id=from_id, genre_id=genre_id)
-    handler._send_html(pages.document(
-        "新しい世界を作る", body, crumbs=[("新しい世界", "/worlds/new")], phase="world",
-        job_store=job_store, pin=data.pinned_target(job_store),
-    ))
+    from viewer import world_create
+    handler._send_html(world_create.render(store, job_store, from_id=from_id,
+        genre_id=genre_id, copy_mode="from" in query))
 
 
 def _worlds_detail(handler, world_id):
@@ -537,14 +559,15 @@ def _worlds_detail(handler, world_id):
         ))
         return
     body = render_world_detail(world, store, job_store)
-    handler._send_html(pages.document(
+    doc = pages.document(
         f"世界: {label}", body,
         crumbs=[(label, f"/worlds/{_url(world_id)}")],
         phase="world", world={"id": world_id, "name": label},
         page_class="world-editorial",
         lead="この世界の人物・場所・期間・定石を確かめ、必要なら編集してから実験へ進みます。",
         job_store=job_store, pin=data.pinned_target(job_store),
-    ))
+    )
+    handler._send_html(doc.replace('</head>', '<link rel="stylesheet" href="/static/world-create.css"><script src="/static/world-create.js" defer></script></head>'))
 
 
 def _genres_new(handler):
@@ -552,39 +575,23 @@ def _genres_new(handler):
     if job_store is None:
         handler._send_html(_guidance_page(phase="world"))
         return
-    store = LibraryStore(job_store.configs.repo)
-    genres = store.genres()
-    genre_ids = {g["id"] for g in genres}
-    query = _query(handler)
-    from_id = query.get("from", [None])[0]
-    if from_id not in genre_ids:
-        from_id = genres[0]["id"] if genres else None
-    body = render_genre_new_form(genres, from_id=from_id)
-    handler._send_html(pages.document(
-        "新しいジャンルを作る", body, crumbs=[("新しいジャンル", "/genres/new")], phase="world",
-        job_store=job_store, pin=data.pinned_target(job_store),
-    ))
+    from viewer import genre_pages
+    genre_pages.new(handler)
 
 
 def _genres_detail(handler, genre_id):
-    job_store = _job_store(handler)
-    if job_store is None:
+    if _job_store(handler) is None:
         handler._send_html(_guidance_page(phase="world"))
         return
-    store = LibraryStore(job_store.configs.repo)
-    genre = next((g for g in store.genres() if g["id"] == genre_id), None)
-    if genre is None:
-        raise ConfigError("template_id", "ジャンルがありません", code="not_found")
-    contents = {rel: store.read("genre", genre_id, rel) for rel in genre["files"]}
-    body = render_genre_detail(genre, contents, store.worlds())
-    handler._send_html(pages.document(
-        f"ジャンル: {genre_id}", body,
-        crumbs=[(genre_id, f"/genres/{_url(genre_id)}")],
-        phase="world",
-        lead="このジャンルの文法を編集し、世界を指定して検証します。",
-        next_action=("世界一覧へ →", "/worlds"),
-        job_store=job_store, pin=data.pinned_target(job_store),
-    ))
+    from viewer import genre_pages
+    genre_pages.detail(handler, genre_id)
+
+
+def _genre_editor_action(handler, genre_id, operation):
+    _require_job_store(handler)
+    body = _boundary_body(handler)
+    from viewer import genre_pages
+    genre_pages.action(handler, genre_id, operation, body)
 
 
 # --------------------------------------------------------------------------
@@ -620,21 +627,43 @@ def _file_body(body):
 def _create_world(handler):
     job_store = _require_job_store(handler)
     body = _boundary_body(handler)
-    if set(body) != {"world_id", "name", "from_world_id", "template_id"}:
-        raise ConfigError("request", "world_id, name, from_world_id, template_idを指定してください", code="bad_request")
     store = LibraryStore(job_store.configs.repo)
-    world_id = store.create_world(
-        body["world_id"], from_id=body["from_world_id"], genre_id=body["template_id"], name=body["name"])
+    if body.get("mode") == "new":
+        if set(body) != {"mode", "world_id", "name", "overview"}:
+            raise ConfigError("request", "新規作成には名前・概要・世界IDを指定してください", code="bad_request")
+        world_id = store.create_original_world(body["world_id"], name=body["name"], overview=body["overview"])
+    else:
+        expected = {"world_id", "name", "from_world_id", "template_id"}
+        if "mode" in body:
+            expected.add("mode")
+        if set(body) != expected or body.get("mode", "copy") != "copy":
+            raise ConfigError("request", "作成方法と入力項目を確認してください", code="bad_request")
+        world_id = store.create_world(body["world_id"], from_id=body["from_world_id"], genre_id=body["template_id"], name=body["name"])
     handler._send_json(HTTPStatus.CREATED, {"world_id": world_id})
+
+
+def _save_world_basics(handler, world_id):
+    jobs = _require_job_store(handler)
+    body = _boundary_body(handler)
+    result = LibraryStore(jobs.configs.repo).update_world_basics(world_id, body)
+    handler._send_json(HTTPStatus.OK, result)
 
 
 def _create_genre(handler):
     job_store = _require_job_store(handler)
     body = _boundary_body(handler)
-    if set(body) != {"template_id", "from_template_id"}:
-        raise ConfigError("request", "template_id, from_template_idを指定してください", code="bad_request")
     store = LibraryStore(job_store.configs.repo)
-    template_id = store.create_genre(body["template_id"], from_id=body["from_template_id"])
+    if set(body) == {"template_id", "from_template_id"}:
+        template_id = store.create_genre(body["template_id"], from_id=body["from_template_id"])
+    else:
+        from execution.genre_editor import create
+        expected = {"mode", "template_id", "name", "description"}
+        if body.get("mode") == "copy": expected.add("from_template_id")
+        if set(body) != expected or body.get("mode") not in ("new", "copy"):
+            raise ConfigError("request", "作成方法と入力項目を確認してください", code="bad_request")
+        if body["mode"] == "copy" and not isinstance(body.get("from_template_id"), str):
+            raise ConfigError("from_template_id", "複製元を選んでください", code="bad_request")
+        template_id = create(store, body["template_id"], name=body["name"], description=body["description"], from_id=body.get("from_template_id"))
     handler._send_json(HTTPStatus.CREATED, {"template_id": template_id})
 
 
@@ -684,6 +713,10 @@ def _validate_genre(handler, genre_id):
 
 def _resolve(parts, method):
     if method == "POST":
+        if len(parts) == 4 and parts[:2] == ["api", "genres"] and parts[3] in ("save", "parse", "check"):
+            return _genre_editor_action, (parts[2], parts[3])
+        if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "basics":
+            return _save_world_basics, (parts[2],)
         if parts == ["api", "worlds"]:
             return _create_world, ()
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "worlds" and parts[3] == "files":

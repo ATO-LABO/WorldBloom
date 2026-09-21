@@ -306,21 +306,21 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
     def test_genre_detail_page(self):
         status, body = self.get("/genres/momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-wb="library"', body)
-        self.assertIn('data-kind="genre"', body)
-        self.assertIn('data-file="rules.yaml"', body)
+        self.assertIn('data-genre-editor', body)
+        self.assertIn('data-section="rules"', body)
+        self.assertIn('data-validate', body)
         self.assertIn("momotaro", body)
 
     def test_new_forms(self):
         status, body = self.get("/worlds/new?from=momotaro&genre=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-wb="library-create"', body)
-        self.assertIn('data-kind="world"', body)
+        self.assertIn('data-world-create', body)
+        self.assertIn('name="mode" value="copy" checked', body)
         self.assertIn('<option value="momotaro" selected>', body)
 
         status, body = self.get("/genres/new?from=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-kind="genre"', body)
+        self.assertIn('data-genre-new', body)
 
     def test_unknown_world_is_404(self):
         status, body = self.get("/worlds/no-such-world")

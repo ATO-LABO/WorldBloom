@@ -202,11 +202,11 @@ def render(handler, view):
         '<p data-metric-description></p><div data-trend-graph></div><div data-trend-detail></div>'
         '<details class="rw-trend-table"><summary>表で見る</summary><div data-trend-table></div></details></section>'
     )
+    from viewer.run_browse import navigation
     body = (
         f'<div class="rw-shell" data-run-workspace data-initial="{E(initial)}">'
-        '<nav class="rw-sidebar" aria-label="実行メニュー">'
-        f'<a href="{E(config_href)}">実行条件</a><a href="{E(urlsplit(handler.path).path)}" aria-current="page">実行状況</a>'
-        '<a href="/history" data-history-back>実行履歴</a></nav>'
+        + navigation("status", world=world, config=config, status_href=urlsplit(handler.path).path)
+        +
         '<div class="rw-main"><header class="rw-heading"><div><h1 data-run-title>' + title + '</h1>'
         '<span class="state-badge" data-status>' + E(wb.STATE_LABELS.get(job.get("state"), "記録")) + '</span></div>'
         f'<p>{E(config.get("label") or world["name"])}</p></header>'

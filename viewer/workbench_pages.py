@@ -1883,27 +1883,8 @@ def render_output_settings_card(settings_path):
 
 
 def _configs_list(handler):
-    job_store = _job_store(handler)
-    if job_store is None:
-        handler._send_html(_guidance_page(phase="world"))
-        return
-    from execution.library import LibraryStore
-    from viewer import library_pages  # deferred: library_pages imports this module
-    configs = job_store.configs.list()
-    settings_path = getattr(handler.server, "settings_path", None)
-    body = (
-        render_configs_list(configs)
-        + render_output_settings_card(settings_path)
-        + library_pages.render_genres_section(LibraryStore(job_store.configs.repo).genres())
-        + pages.glossary(("config_id", "genre"))
-    )
-    handler._send_html(pages.document(
-        "設定", body,
-        crumbs=[("設定", "/configs")], phase="world",
-        lead="実行設定の版を作り、そこから GA を実行します。文章生成の生成先とジャンルの追加・編集もここで行います。",
-        next_action=("新しい実行設定を作る →", "/configs/new"),
-        job_store=job_store, pin=data.pinned_target(job_store, configs=configs),
-    ))
+    from viewer import global_settings
+    return global_settings.render(handler)
 
 
 def _configs_new(handler):
@@ -1926,9 +1907,6 @@ def _configs_new(handler):
             label=parent["label"], project_id=parent["project_id"], template_id=parent["template_id"],
             evolution=parent["evolution"], execution_limits=parent["execution_limits"],
         )
-        body = render_config_form(values, projects=projects, templates=templates,
-                                   parent_config_id=from_id, world_genres=world_genres)
-        title = "実行設定を複製"
     else:
         values = _new_config_values()
         project_preset = query.get("project", [None])[0]
@@ -1946,14 +1924,10 @@ def _configs_new(handler):
         if values["project_id"] and values["template_id"]:
             values["label"] = quick_label(
                 world_names.get(values["project_id"], values["project_id"]), values["template_id"])
-        body = render_config_form(values, projects=projects, templates=templates,
-                                   world_genres=world_genres)
-        title = "新しい実行設定"
-    handler._send_html(pages.document(
-        title, body, crumbs=[("実行設定", "/configs"), (title, "/configs/new")], phase="world",
-        lead="世界とジャンルを決め、どのくらいの規模で経緯を探索するかを指定します。ふだん触るのは上の 3 つの区画だけです。",
-        job_store=job_store, pin=data.pinned_target(job_store),
-    ))
+    from viewer import run_settings
+    return run_settings.render(handler, values, projects=projects, templates=templates, worlds=worlds,
+                               parent=parent if from_id is not None else None)
+
 
 
 def _configs_detail(handler, cid):
@@ -2068,116 +2042,16 @@ def _jobs_detail(handler, jid):
         return
     job = job_store.get(jid)
     if job.get("kind") in ("synopsize", "narrate"):
-        from viewer import output_pages
-        body = output_pages.render_generation_job(job)
-        # job["run_id"] is the catalog run_id (an evolve job's happens to
-        # equal the experiment folder name since it always creates a native,
-        # non-legacy run, but a synopsize/narrate job's does not for a legacy
-        # run). Resolve it to the folder name for the header/Sifting link;
-        # keep the catalog id for the 上映 link, which /outputs?run= matches
-        # against.
-        catalog_run_id = job.get("run_id")
-        run_name = _resolve_run_name(handler, catalog_run_id)
-        state = job.get("state")
-        next_action = None
-        if state in ("succeeded", "partial") and run_name:
-            next_action = ("Sifting へ →", f"/exp/{_url(run_name)}")
-        elif state in ("failed", "cancelled", "interrupted") and job.get("config_id"):
-            next_action = ("実行設定へ →", f"/configs/{_url(job['config_id'])}")
-        handler._send_html(pages.document(
-            f"処理: {jid}", body,
-            phase="run", run=run_name, output_run=catalog_run_id,
-            lead="実行の進み具合を見ます。完了したら候補を Sifting します。",
-            next_action=next_action,
-            job_store=job_store,
-        ))
-        return
+        from viewer.generation_pages import render_job
+        return render_job(handler, job)
     view = _run_view(handler, job=job)
     from viewer import run_workspace
     return run_workspace.render(handler, view)
 
 
 def _candidates_list(handler, run_id):
-    repository = handler.repository
-    if repository.catalog is None:
-        handler._send_html(_guidance_page(phase="sifting"))
-        return
-    catalog, selections = repository.catalog, repository.selections
-    query = _query(handler)
-    sort_key = query.get("sort", [None])[0]
-    if sort_key not in SORT_KEYS:
-        sort_key = None
-    sort_dir = query.get("dir", ["asc"])[0]
-    if sort_dir not in ("asc", "desc"):
-        sort_dir = "asc"
-    filter_query = {k: v for k, v in query.items() if k not in ("sort", "dir")}
-    filters, state_filter = _parse_filters(_clean_query(filter_query))
-    result = catalog.candidates(run_id, **filters)
-    selected = selections.get(run_id)
-    entries = {e["candidate_id"]: e for e in selected["entries"]}
-    candidates = [
-        {**c, "state": entries.get(c["candidate_id"], {}).get("state", "unclassified"),
-         "note": entries.get(c["candidate_id"], {}).get("note", "")}
-        for c in result["candidates"]
-    ]
-    if state_filter is not None:
-        candidates = [c for c in candidates if c["state"] == state_filter]
-    snapshot = catalog.snapshot(run_id)
-    try:
-        representatives = set(catalog.representatives(snapshot).values())
-        representatives_error = False
-    except ConfigError:
-        # A broken/ambiguous representative mapping must not take the whole
-        # Sifting page down; degrade to "no grid links" instead.
-        representatives = set()
-        representatives_error = True
-    experiment_name = snapshot["experiment_name"]
-    synopses = data.synopsis_texts(repository, repository.runs_root / experiment_name)
-    history_record = next((r for r in catalog.history() if r["run_id"] == run_id), None)
-    running = history_record is not None and history_record["state"] in RUNNING_STATES
-    running_job_id = history_record.get("job_id") if running and history_record else None
-    config_id = history_record.get("config_id") if history_record else None
-    # Unfiltered: the narrate button's enabled state must not depend on
-    # whatever the filter form narrowed `candidates` down to above.
-    has_adopted = any(e["state"] == "adopted" for e in selected["entries"])
-    from viewer import output_pages
-    summary = output_pages.run_output_summary(_job_store(handler), run_id)
-    has_draft = any(sum(counts.values()) > 0 for counts in summary["by_candidate"].values())
-    if sort_key:
-        candidates = sort_candidates(candidates, sort_key, sort_dir, summary["by_candidate"])
-    page = render_candidates_page(
-        run_id=run_id, experiment_name=experiment_name, config_id=config_id,
-        revision=result["revision"], selection_revision=selected["revision"],
-        candidates=candidates, representatives=representatives, running=running, query=query,
-        representatives_error=representatives_error, output_summary=summary["by_candidate"],
-        output_summary_error=summary["error"], has_adopted=has_adopted,
-        sort_key=sort_key, sort_dir=sort_dir, running_job_id=running_job_id, synopses=synopses,
-    )
-    # WB-UI-012 §2.2/§2.3: a run with no candidates at all sends the user
-    # back to start a run; otherwise the three-way adopt/generate/read
-    # judgement (snapshot["candidates"] is the *unfiltered* total, already
-    # fetched above -- distinct from `candidates`, which the filter form may
-    # have narrowed).
-    if not snapshot["candidates"]["candidates"]:
-        next_action = ("実行する →", "/configs/new")
-    elif not has_adopted:
-        next_action = ("候補を採用する（選定状態を「✔ 採用」に）→", "#candidate-table")
-    elif not has_draft:
-        next_action = ("あらすじを生成する →", "#generate-form")
-    else:
-        next_action = ("作品を読む →", f"/outputs?run={_url(run_id)}")
-    handler._send_html(pages.document(
-        "物語の候補を読む", page,
-        crumbs=[(experiment_name, f"/exp/{_url(experiment_name)}"), ("候補一覧", f"/runs/{_url(run_id)}/candidates")],
-        # run_id here is the catalog run_id (from the URL); it's what
-        # /outputs?run= must use, while `run` (the experiment folder name)
-        # drives the header's picker and its /exp/ link.
-        phase="sifting", run=experiment_name, output_run=run_id,
-        lead="候補を読み、判断理由を残して上映候補を選びます。",
-        next_action=next_action,
-        job_store=_job_store(handler),
-        page_class="candidate-workspace",
-    ))
+    from viewer import sifting_pages
+    return sifting_pages.candidates(handler, run_id)
 
 
 def _candidates_raw(handler, run_id, candidate_id):
@@ -2234,18 +2108,8 @@ def _candidates_raw(handler, run_id, candidate_id):
 
 
 def _tray(handler):
-    repository = handler.repository
-    if repository.selections is None:
-        handler._send_html(_guidance_page(phase="sifting"))
-        return
-    rows = repository.selections.tray()
-    body = f'<section data-wb="tray">{render_tray_page(rows)}</section>'
-    handler._send_html(pages.document(
-        "Sifting トレイ", body, crumbs=[("Sifting トレイ", "/selected")], phase="sifting",
-        lead="実験をまたいで採用した候補をまとめて見ます。",
-        next_action=("作品一覧へ →", "/outputs"),
-        job_store=_job_store(handler),
-    ))
+    from viewer import sifting_pages
+    return sifting_pages.tray(handler)
 
 
 # --------------------------------------------------------------------------
