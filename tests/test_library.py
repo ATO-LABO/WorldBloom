@@ -202,7 +202,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         status, body = self.get("/worlds")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertIn('class="tabs tabs-home"', body)
+        self.assertIn('role="tablist" aria-label="ライブラリー"', body)
         self.assertIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
         self.assertIn('href="/genres/new"', body)
@@ -212,15 +212,15 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         status, body = self.get("/")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertIn('class="tabs tabs-home"', body)
+        self.assertIn('role="tablist" aria-label="ライブラリー"', body)
         self.assertIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
         self.assertIn('href="/genres/new"', body)
         self.assertIn('class="world-card"', body)
         # The lead names the engine/genre/world layering; the genre tab's own
         # lead explains what a genre is, once, without a redundant <h2>.
-        self.assertIn("1 つの物語エンジンに", body)
-        self.assertIn("ジャンルは行動の文法", body)
+        self.assertIn("世界を開いて、人物や場所、物語の始まりを確かめましょう", body)
+        self.assertIn("ジャンルは、行動とその結果を決める共通のルール", body)
         self.assertEqual(body.count("<h2>ジャンル</h2>"), 0)
 
     def test_genres_live_on_settings_page(self):

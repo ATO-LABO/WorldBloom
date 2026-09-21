@@ -33,6 +33,8 @@ from viewer.data import (
 
 MAX_POST_BYTES = 64 * 1024
 STATIC_FILES = {
+    "home-workspace.css": "text/css; charset=utf-8",
+    "home-workspace.js": "application/javascript; charset=utf-8",
     "world-create.css": "text/css; charset=utf-8",
     "genre-workspace.css": "text/css; charset=utf-8",
     "genre-workspace.js": "application/javascript; charset=utf-8",

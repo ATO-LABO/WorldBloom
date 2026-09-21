@@ -5690,3 +5690,37 @@ main:has(.cfg-form) .form-actions {
   .world-editorial .world-facts {grid-template-columns:100px minmax(0,1fr) 100px minmax(0,1fr);gap:8px 14px;}
   .world-editorial .world-intro {max-width:none;}
 }
+/* Shared top bar: explicit history/settings links on every screen. */
+.header-pickers{flex-wrap:nowrap;min-width:0}
+.header-pickers>.picker{min-width:0;max-width:280px}
+.header-pickers>.picker:has(.picker-value){flex:1;max-width:none}
+.header-pickers .picker-select{max-width:100%;min-width:0}
+.header-pickers .picker-value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.header-links{margin-left:auto;flex:none;gap:0;align-items:center;white-space:nowrap}
+.header-links a{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:36px;padding:4px 18px;color:#f8f4ec;font-family:var(--font-ui);font-size:14px;font-weight:600;text-decoration:none}
+.header-links a+a{border-left:1px solid rgba(255,255,255,.35)}
+.header-links a:last-child{padding-right:2px}
+.header-links svg{width:21px;height:21px;flex:none}
+.header-links a:hover{color:white;background:rgba(255,255,255,.08);text-decoration:none}
+.header-links a:focus-visible{outline:2px solid #f1ce74;outline-offset:3px}
+@media(max-width:760px){
+ .header-pickers{flex-wrap:wrap;gap:6px 12px;padding:7px 12px}
+ .header-pickers>.brand,.header-pickers>.home-cell{order:0}
+ .header-links{order:1;margin-left:auto}
+ .header-links a{padding:4px 11px;gap:6px;font-size:13px}
+ .header-links svg{width:18px;height:18px}
+ .header-pickers>.picker{order:2;max-width:45%;flex:1;padding-left:10px}
+ .header-pickers>.picker:has(.picker-value){order:3;max-width:50%;flex:1}
+ .header-pickers:has(.picker)>.header-links{margin-left:auto}
+ .header-pickers>.picker:first-of-type{margin-left:0}
+}
+
+
+@media(max-width:760px){
+ .header-pickers{display:grid;grid-template-columns:minmax(0,1fr) auto}
+ .header-pickers>.brand,.header-pickers>.home-cell{grid-row:1;grid-column:1}
+ .header-pickers>.header-links{grid-row:1;grid-column:2}
+ .header-pickers>.picker{grid-row:2;grid-column:1;width:100%;max-width:none;margin:0}
+ .header-pickers>.picker:has(.picker-value){grid-row:2;grid-column:2;width:100%;max-width:none}
+ .header-pickers:not(:has(.picker-value))>.picker{grid-column:1/-1}
+}
