@@ -226,6 +226,27 @@ def _existing_names(world: dict) -> dict[str, set[str]]:
     return {"zones": zones, "items": items, "facts": facts, "daily_events": events}
 
 
+def _applied_names(world: dict) -> dict[str, set]:
+    applied = {key: set() for key in ADD_KEYS}
+    for entry in (world.get("expansion") or {}).get("patches", []):
+        for key in ADD_KEYS:
+            applied[key].update((entry.get("added") or {}).get(key, []))
+    return applied
+
+
+def addition_caps(world: dict) -> dict[str, tuple[int, int]]:
+    """{key: (cumulative cap, already added)} -- shared by the static gate and
+    the proposal prompt, so the model is told the same numbers it is held to."""
+    existing, applied = _existing_names(world), _applied_names(world)
+    caps = {}
+    for key in ("zones", "items", "facts"):
+        base_count = len(existing[key] - applied[key])
+        cap = min(4 if key == "zones" else 8,
+                  max(1, math.ceil(base_count * (0.4 if key == "zones" else 0.5))))
+        caps[key] = (cap, len(applied[key]))
+    return caps
+
+
 def _valued_facts(world: dict) -> dict[str, set[str]]:
     result: dict[str, set[str]] = {}
     for fact in (world.get("facts") or []):
@@ -594,15 +615,11 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
             violations.append(f"stress_delta は-1〜1で指定してください: {event_id!r}")
 
     if check_budgets:
-        applied = {key: set() for key in ADD_KEYS}
-        for entry in (existing_expansion or {}).get("patches", []):
-            for key in ADD_KEYS:
-                applied[key].update((entry.get("added") or {}).get(key, []))
+        applied = _applied_names(world)
+        caps = addition_caps(world)
         for key, new in (("zones", raw_zones), ("items", raw_items), ("facts", raw_facts)):
-            base_count = len(existing[key] - applied[key])
-            cap = min(4 if key == "zones" else 8,
-                      max(1, math.ceil(base_count * (0.4 if key == "zones" else 0.5))))
-            if len(applied[key]) + len(new) > cap:
+            cap, applied_count = caps[key]
+            if applied_count + len(new) > cap:
                 violations.append(f"{key} の累積追加数が上限（{cap}）を超えています")
         def give_total(items):
             total = 0.0
