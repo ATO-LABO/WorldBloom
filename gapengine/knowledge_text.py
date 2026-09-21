@@ -420,7 +420,7 @@ def describe_candidate_coarse(
     engine-verb-literal wording of momotaro_plus2's new routes too low to
     tell apart from an unrelated candidate ("作った（鉄砲）" 0.07,
     "交渉した（敵対）" while holding the letter 0.17) -- rephrasing them into
-    what the action actually accomplishes ("旅の商人から小判3枚で鉄砲を買っ
+    what the action actually accomplishes ("道中の商人から小判3枚で鉄砲を買っ
     た", "宝を譲るよう交渉した（敵対、差し出せる品: 弟の手紙）") scored 0.74.
 
     ``candidate_labels`` maps "<verb>:<first arg>" (craft) or

@@ -1513,6 +1513,158 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(trade_holder.has_item("勾玉"))
         self.assertFalse(trade_actor.has_item("勾玉"))
 
+    def test_concede_trade_settles_the_dispute(self) -> None:
+        """WB-JEV-004: concede is a resolution, not just a handout -- both
+        sides' goal.obstacles must drop each other and neither direction's
+        affinity may stay negative, or the very next fight/target_role check
+        treats the pair as still-hostile and the treasure gets looted back."""
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        self.assertTrue(momotaro.has_item("勾玉"))
+
+        engine = VerbEngine(world, FixedRandom([]))
+        result, _, _ = engine.execute(
+            momotaro,
+            Action("negotiate", ("鬼",)),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "offered")
+
+        trade_actions = [
+            action
+            for action, _ in candidates(
+                oni,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "concede"
+        ]
+        self.assertEqual(trade_actions[0].meta["mode"], "trade")
+
+        result, details, _ = engine.execute(
+            oni,
+            trade_actions[0],
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "conceded")
+        self.assertEqual(details["mode"], "trade")
+
+        self.assertNotIn("桃太郎", oni.goal.obstacles)
+        self.assertNotIn("鬼", momotaro.goal.obstacles)
+        self.assertGreaterEqual(
+            world.relations.stance("鬼", "桃太郎"),
+            0.0,
+        )
+        self.assertGreaterEqual(
+            world.relations.stance("桃太郎", "鬼"),
+            0.0,
+        )
+        self.assertEqual(world.target_role(oni, momotaro), "neutral")
+        self.assertEqual(world.target_role(momotaro, oni), "neutral")
+
+    def test_concede_goodwill_keeps_normal_increment_but_floors_the_other_side(
+        self,
+    ) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.remove_item("勾玉", 1)
+        world.relations.change(
+            "鬼",
+            "桃太郎",
+            affinity=1.0,
+        )
+
+        engine = VerbEngine(world, FixedRandom([]))
+        engine.execute(
+            momotaro,
+            Action("negotiate", ("鬼",)),
+            turn=1,
+            day=1,
+        )
+        concede_actions = [
+            action
+            for action, _ in candidates(
+                oni,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "concede"
+        ]
+        self.assertEqual(concede_actions[0].meta["mode"], "goodwill")
+
+        before_oni_to_momotaro = world.relations.stance("鬼", "桃太郎")
+        self.assertGreaterEqual(before_oni_to_momotaro, 0.0)
+        result, _, _ = engine.execute(
+            oni,
+            concede_actions[0],
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "conceded")
+
+        # Already non-negative: floor doesn't change the plain +0.2 behavior.
+        self.assertAlmostEqual(
+            world.relations.stance("鬼", "桃太郎"),
+            before_oni_to_momotaro + 0.2,
+        )
+        # Untouched by negotiate, still at the hostile default (-0.5):
+        # +0.2 alone would leave it at -0.3, so the floor must kick in.
+        self.assertEqual(world.relations.stance("桃太郎", "鬼"), 0.0)
+
+        self.assertNotIn("桃太郎", oni.goal.obstacles)
+        self.assertNotIn("鬼", momotaro.goal.obstacles)
+        self.assertNotEqual(world.target_role(oni, momotaro), "hostile")
+        self.assertNotEqual(world.target_role(momotaro, oni), "hostile")
+
+    def test_concede_obstacle_removal_does_not_leak_into_a_fresh_load(
+        self,
+    ) -> None:
+        """A run's concede must not poison a later run's initial state: it
+        mutates this process's Subject/Goal objects in place, so the fix
+        relies on Subject.from_yaml building a brand-new obstacles list
+        (engine/subject.py) from a freshly deep-copied YAML document
+        (engine/yaml_cache.load_yaml) every time it is called."""
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+        self.assertTrue(momotaro.has_item("勾玉"))
+
+        engine = VerbEngine(world, FixedRandom([]))
+        engine.execute(
+            momotaro,
+            Action("negotiate", ("鬼",)),
+            turn=1,
+            day=1,
+        )
+        concede_actions = [
+            action
+            for action, _ in candidates(
+                oni,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "concede"
+        ]
+        engine.execute(oni, concede_actions[0], turn=2, day=1)
+        self.assertNotIn("桃太郎", oni.goal.obstacles)
+
+        _, fresh_subjects = load_fixture()
+        self.assertEqual(
+            fresh_subjects["鬼"].goal.obstacles,
+            ["桃太郎"],
+        )
+        self.assertEqual(
+            fresh_subjects["桃太郎"].goal.obstacles,
+            ["鬼"],
+        )
+
     def test_pledge_then_fight_records_betrayal(self) -> None:
         world, subjects = load_fixture()
         momotaro = subjects["桃太郎"]

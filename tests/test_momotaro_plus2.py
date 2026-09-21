@@ -293,7 +293,7 @@ class RationalityYamlLoaderTests(unittest.TestCase):
         self.assertEqual(
             labels,
             {
-                "craft:鉄砲": "旅の商人から小判3枚で鉄砲を買った",
+                "craft:鉄砲": "道中の商人から小判3枚で鉄砲を買った",
                 "trial:brother_letter_trial": "鬼の弟に、鬼あての手紙を書いてもらった",
             },
         )
@@ -323,7 +323,7 @@ class CandidateLabelReplacementTests(unittest.TestCase):
         text = describe_candidate_coarse(
             action, self.momotaro, self.world, [], candidate_labels=self.labels
         )
-        self.assertEqual(text, "旅の商人から小判3枚で鉄砲を買った")
+        self.assertEqual(text, "道中の商人から小判3枚で鉄砲を買った")
 
     def test_trial_label_is_replaced_and_wins_over_describe_trial_grants(self) -> None:
         action = Action(

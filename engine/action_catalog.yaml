@@ -325,12 +325,18 @@ verbs:
         label: concede(trade)
         precondition: claimant からの offer があり、提示資産に自分が未所持の modifier 付きアイテムを含む。
         target: offer を出した claimant。
-        effect: 目的物を譲渡し、提示資産を実際に受け取る。
+        effect: >-
+          目的物を譲渡し、提示資産を実際に受け取る。和解として双方の
+          goal.obstacles から互いを外し、双方向 affinity を+0.2（結果が
+          0.0未満なら0.0まで引き上げ）する。
       - id: goodwill
         label: concede(goodwill)
         precondition: offer があり、stance が negotiate_threshold（{negotiate_threshold}）以上（魅力的な提示資産が無い場合）。
         target: offer を出した claimant。
-        effect: 目的物の譲渡のみ。資産交換なし。
+        effect: >-
+          目的物の譲渡のみ。資産交換なし。和解として双方の goal.obstacles
+          から互いを外し、双方向 affinity を+0.2（結果が0.0未満なら0.0まで
+          引き上げ）する。
 
   rescue:
     design: {category: V, slot: "V-5"}

@@ -1512,16 +1512,26 @@ class VerbEngine:
                 actor.add_item(item, count)
                 transferred[item] = count
 
+        # Settle the dispute: concede is a resolution, not just a handout.
+        # Drop the mutual "obstacle" flag and floor affinity at 0.0 so the
+        # target_role/fight hostility checks (engine/world.py, engine/sim.py)
+        # stop treating the pair as enemies right after the trade/goodwill.
+        actor_stance = self.world.relations.stance(actor.id, claimant.id)
+        claimant_stance = self.world.relations.stance(claimant.id, actor.id)
         self.world.relations.change(
             actor.id,
             claimant.id,
-            affinity=0.2,
+            affinity=max(0.2, 0.0 - actor_stance),
         )
         self.world.relations.change(
             claimant.id,
             actor.id,
-            affinity=0.2,
+            affinity=max(0.2, 0.0 - claimant_stance),
         )
+        if claimant.id in actor.goal.obstacles:
+            actor.goal.obstacles.remove(claimant.id)
+        if actor.id in claimant.goal.obstacles:
+            claimant.goal.obstacles.remove(actor.id)
         del self.world.offers[key]
         return (
             "conceded",
