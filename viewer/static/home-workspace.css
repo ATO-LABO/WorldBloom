@@ -9,8 +9,9 @@
 .hl-heading{display:flex;align-items:center;justify-content:space-between;gap:20px}
 .hl-heading h1{font-size:30px;line-height:1.3;margin:0 0 6px}
 .hl-heading p{margin:0;color:var(--muted);font-size:14px}
-.hl-primary{display:inline-flex;align-items:center;justify-content:center;background:var(--accent-dark);color:#fff;padding:12px 22px;border-radius:5px;text-decoration:none;white-space:nowrap;font-weight:700}
-.hl-primary:hover{background:var(--accent)}
+.hl-primary{display:inline-flex;align-items:center;justify-content:center;background:var(--ws-advance);border:1px solid var(--ws-advance);color:#fff;min-height:var(--ws-control-h);padding:9px 16px;font-size:15px;border-radius:var(--ws-radius);text-decoration:none;white-space:nowrap;font-weight:600}
+.hl-primary:hover{background:var(--ws-advance-ink)}
+.hl-primary.is-confirm{background:var(--ws-confirm);border-color:var(--ws-confirm)}
 .hl-recent{display:flex;align-items:center;gap:20px;background:#e8eee6;border:1px solid #d9e4d8;border-radius:6px;padding:12px 18px;font-size:14px;min-width:0}
 .hl-recent>span{color:#325748;border-right:1px solid #b9cdc0;padding-right:20px;white-space:nowrap}
 .hl-recent strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -22,7 +23,7 @@
 .hl-tabs button[aria-selected=true]{color:var(--accent-dark);border-color:var(--accent);font-weight:700}
 .hl-tabs button span{margin-left:8px;font-size:13px}
 .hl-filters{display:flex;align-items:center;gap:12px;padding-bottom:8px}
-.hl-filters input,.hl-filters select{font:inherit;border:1px solid #b9c9c0;border-radius:5px;background:#fff;padding:8px 12px;max-width:100%;height:40px}
+.hl-filters input,.hl-filters select{font:inherit;font-size:15px;border:1px solid var(--ws-control-line);border-radius:var(--ws-radius);background:var(--ws-surface);color:var(--ws-text);padding:8px 12px;max-width:100%;min-height:var(--ws-control-h)}
 .hl-filters input{width:260px}
 .hl-filters select{width:190px}
 .hl-count{min-width:42px;color:var(--muted);font-size:14px;text-align:right}
