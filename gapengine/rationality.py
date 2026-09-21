@@ -615,6 +615,8 @@ class Rationality:
         key_items: Sequence[str] = (),
         max_judge_calls: int | None = None,
         describe_trial_grants: bool = False,
+        candidate_labels: Mapping[str, str] = {},
+        describe_negotiate_offer: bool = False,
     ) -> None:
         self.kappa = float(kappa)
         self.table = table
@@ -624,6 +626,8 @@ class Rationality:
         self.key_items = list(key_items)
         self.max_judge_calls = max_judge_calls
         self.describe_trial_grants = bool(describe_trial_grants)
+        self.candidate_labels = dict(candidate_labels)
+        self.describe_negotiate_offer = bool(describe_negotiate_offer)
         self._judge_calls = 0
         self._budget_exhausted = False
         self._judge_disabled = False
@@ -704,6 +708,8 @@ class Rationality:
                 world,
                 present,
                 describe_trial_grants=self.describe_trial_grants,
+                candidate_labels=self.candidate_labels,
+                describe_negotiate_offer=self.describe_negotiate_offer,
             )
             for action in actions
         ]

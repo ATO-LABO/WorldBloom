@@ -62,7 +62,9 @@ from gapengine.genome import Genome
 from gapengine.knowledge_text import (
     context_key,
     describe_candidate_coarse,
+    load_candidate_labels,
     load_common_knowledge,
+    load_describe_negotiate_offer,
     load_describe_trial_grants,
     load_key_items,
     map_line as knowledge_map_line,
@@ -177,6 +179,8 @@ class _RecordingPolicy:
         recipe_lines: str,
         map_line: str,
         describe_trial_grants: bool = False,
+        candidate_labels: dict[str, str] | None = None,
+        describe_negotiate_offer: bool = False,
     ) -> None:
         self._inner = inner
         self._common_knowledge = common_knowledge
@@ -184,6 +188,8 @@ class _RecordingPolicy:
         self._recipe_lines = recipe_lines
         self._map_line = map_line
         self._describe_trial_grants = describe_trial_grants
+        self._candidate_labels = dict(candidate_labels or {})
+        self._describe_negotiate_offer = describe_negotiate_offer
         self.decisions: list[dict[str, Any]] = []
 
     def __getattr__(self, name: str) -> Any:
@@ -213,6 +219,8 @@ class _RecordingPolicy:
                             world,
                             present,
                             describe_trial_grants=self._describe_trial_grants,
+                            candidate_labels=self._candidate_labels,
+                            describe_negotiate_offer=self._describe_negotiate_offer,
                         ),
                         "verb": action.verb,
                         "args": tuple(str(value) for value in action.args),
@@ -270,6 +278,8 @@ def _run_mode_a(
         recipe_lines=recipe_lines,
         map_line=map_line,
         describe_trial_grants=load_describe_trial_grants(template),
+        candidate_labels=load_candidate_labels(template),
+        describe_negotiate_offer=load_describe_negotiate_offer(template),
     )
     Simulation(
         seed,

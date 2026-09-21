@@ -10,7 +10,12 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from scripts.jev_stage4_report import classify_rows, compute_experiment
+from scripts.jev_stage4_report import (
+    _protagonist_from_rows,
+    classify_rows,
+    compute_experiment,
+    funnel_row,
+)
 
 GENOME_TEMPLATE = {
     "category_weight": {
@@ -282,6 +287,180 @@ class ComputeExperimentTests(unittest.TestCase):
             stats["archive_elite_routes"],
             {"I|low": "letter_trade", "II|high": "gun_fight"},
         )
+
+    def test_funnel_stats_over_the_same_fixture(self) -> None:
+        # No fixture row above has "subject"/"day"/a header row, so the
+        # protagonist-scoped rest signal and the day-based median stay at
+        # their empty defaults here; the negotiate/concede-mode/ship/
+        # reached-after-concede signals are still exercised (none of the
+        # LETTER_TRADE/GUN_TRADE/GOODWILL fixtures include a negotiate row,
+        # matching classify_rows' own fixtures -- concede is offered
+        # implicitly).
+        stats = compute_experiment("fake", self.exp_dir)
+        funnel = stats["funnel"]
+        self.assertEqual(funnel["koban_at_least_1_runs"], 0)
+        self.assertEqual(funnel["koban_all_3_runs"], 0)
+        self.assertEqual(funnel["negotiated_runs"], 0)
+        # letter_trade and gun_trade each concede in "trade" mode, goodwill
+        # concedes in "goodwill" mode; gun_fight/classic/unreached never
+        # concede at all (see GUN_FIGHT_ROWS/CLASSIC_ROWS/UNREACHED_BUSY_ROWS
+        # above -- none contain a concede row).
+        self.assertEqual(dict(funnel["concede_mode_runs"]), {"trade": 2, "goodwill": 1})
+        self.assertEqual(funnel["concede_with_ship_runs"], 0)
+        # letter_trade/gun_trade/goodwill all have reached=True and concede.
+        self.assertEqual(funnel["reached_after_concede_runs"], 3)
+        self.assertEqual(funnel["protagonist_rest_total"], 0)
+        self.assertEqual(funnel["protagonist_rest_not_alive_total"], 0)
+        self.assertIsNone(funnel["concede_day_median"])
+
+
+HEADER_ROW = {"kind": "header", "protagonist": "桃太郎", "antagonist": "鬼"}
+
+FUNNEL_ROWS = [
+    HEADER_ROW,
+    {
+        "kind": "decision",
+        "day": 3,
+        "subject": "桃太郎",
+        "verb": "investigate",
+        "result": "investigated",
+        "details": {"gathered": [{"item": "小判", "count": 1}]},
+    },
+    {
+        "kind": "decision",
+        "day": 5,
+        "subject": "桃太郎",
+        "verb": "investigate",
+        "result": "investigated",
+        "details": {"gathered": [{"item": "小判", "count": 2}]},
+    },
+    {
+        "kind": "decision",
+        "day": 6,
+        "subject": "桃太郎",
+        "verb": "negotiate",
+        "result": "offered",
+        "details": {},
+    },
+    {
+        "kind": "decision",
+        "day": 7,
+        "subject": "鬼",
+        "verb": "concede",
+        "result": "conceded",
+        "details": {"mode": "trade", "assets": {"船": 1, "鉄砲": 1}},
+    },
+    {
+        "kind": "decision",
+        "day": 2,
+        "subject": "桃太郎",
+        "verb": "rest",
+        "result": "rested",
+        "policy": {"ctx": [[], False, "none", "alive", "neutral", False]},
+    },
+    {
+        "kind": "decision",
+        "day": 4,
+        "subject": "桃太郎",
+        "verb": "rest",
+        "result": "rested",
+        "policy": {"ctx": [[], False, "none", "downed", "neutral", False]},
+    },
+    {
+        # engine/sim.py's no-candidates fallback: Action("rest") with no
+        # policy meta at all -- must be excluded from both the numerator and
+        # the denominator (see funnel_row's docstring).
+        "kind": "decision",
+        "day": 9,
+        "subject": "桃太郎",
+        "verb": "rest",
+        "result": "rested",
+        "policy": None,
+    },
+    {
+        # A companion's own rest must not count towards "主人公の rest".
+        "kind": "decision",
+        "day": 9,
+        "subject": "猿",
+        "verb": "rest",
+        "result": "rested",
+        "policy": {"ctx": [[], False, "none", "dead", "neutral", False]},
+    },
+]
+
+
+class ProtagonistFromRowsTests(unittest.TestCase):
+    def test_reads_the_header_row(self) -> None:
+        self.assertEqual(_protagonist_from_rows(FUNNEL_ROWS), "桃太郎")
+
+    def test_none_without_a_header_row(self) -> None:
+        self.assertIsNone(_protagonist_from_rows(FUNNEL_ROWS[1:]))
+
+
+class FunnelRowTests(unittest.TestCase):
+    def test_counts_every_signal(self) -> None:
+        funnel = funnel_row(FUNNEL_ROWS, "桃太郎")
+        self.assertEqual(funnel["koban_gained"], 3)
+        self.assertFalse(funnel["crafted_gun"])
+        self.assertFalse(funnel["got_letter"])
+        self.assertTrue(funnel["negotiated"])
+        self.assertEqual(len(funnel["concede_events"]), 1)
+        event = funnel["concede_events"][0]
+        self.assertEqual(event["mode"], "trade")
+        self.assertTrue(event["ship"])
+        self.assertEqual(event["day"], 7)
+        # Two 桃太郎 rests carry a ctx (alive, downed); the fallback rest
+        # (policy=None) and 猿's rest are excluded.
+        self.assertEqual(funnel["protagonist_rests"], 2)
+        self.assertEqual(funnel["protagonist_rests_not_alive"], 1)
+
+    def test_without_a_protagonist_the_rest_signal_stays_zero(self) -> None:
+        funnel = funnel_row(FUNNEL_ROWS, None)
+        self.assertEqual(funnel["protagonist_rests"], 0)
+        self.assertEqual(funnel["protagonist_rests_not_alive"], 0)
+        # The other signals don't depend on knowing the protagonist.
+        self.assertEqual(funnel["koban_gained"], 3)
+        self.assertTrue(funnel["negotiated"])
+
+
+class ComputeExperimentFunnelIntegrationTests(unittest.TestCase):
+    """compute_experiment reads the header row (once, from the first run it
+    opens) and threads it through funnel_row for every run in the
+    experiment -- exercised end to end here, rather than just funnel_row in
+    isolation above."""
+
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.exp_dir = Path(self._tmp.name)
+        layers_rel = "g0/ind-0/seed-0/layers.jsonl"
+        _write_layers(self.exp_dir / layers_rel, FUNNEL_ROWS)
+        individuals = [
+            {
+                "index": 0,
+                "genome": _genome(),
+                "parents": [],
+                "runs": [{"seed": 0, "reached": True, "layers_path": layers_rel}],
+            }
+        ]
+        (self.exp_dir / "g0").mkdir(exist_ok=True)
+        (self.exp_dir / "g0" / "results.json").write_text(
+            json.dumps(individuals, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def test_funnel_stats_pick_up_the_header_protagonist(self) -> None:
+        stats = compute_experiment("fake", self.exp_dir)
+        funnel = stats["funnel"]
+        self.assertEqual(funnel["koban_at_least_1_runs"], 1)
+        self.assertEqual(funnel["koban_all_3_runs"], 1)
+        self.assertEqual(funnel["negotiated_runs"], 1)
+        self.assertEqual(dict(funnel["concede_mode_runs"]), {"trade": 1})
+        self.assertEqual(funnel["concede_event_count"], 1)
+        self.assertEqual(funnel["concede_day_median"], 7)
+        self.assertEqual(funnel["concede_with_ship_runs"], 1)
+        self.assertEqual(funnel["reached_after_concede_runs"], 1)
+        self.assertEqual(funnel["protagonist_rest_total"], 2)
+        self.assertEqual(funnel["protagonist_rest_not_alive_total"], 1)
 
 
 if __name__ == "__main__":

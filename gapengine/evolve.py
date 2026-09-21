@@ -22,7 +22,9 @@ from engine.world import World
 from gapengine import gpu_guard
 from gapengine.genome import Genome
 from gapengine.knowledge_text import (
+    load_candidate_labels,
     load_common_knowledge,
+    load_describe_negotiate_offer,
     load_describe_trial_grants,
     load_key_items,
 )
@@ -388,6 +390,10 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
                 max_judge_calls=rationality_cfg.get("max_judge_calls"),
                 describe_trial_grants=bool(
                     rationality_cfg.get("describe_trial_grants", False)
+                ),
+                candidate_labels=rationality_cfg.get("candidate_labels", {}),
+                describe_negotiate_offer=bool(
+                    rationality_cfg.get("describe_negotiate_offer", False)
                 ),
             )
 
@@ -1223,6 +1229,8 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             "common_knowledge": load_common_knowledge(template_dir),
             "key_items": load_key_items(template_dir),
             "describe_trial_grants": load_describe_trial_grants(template_dir),
+            "candidate_labels": load_candidate_labels(template_dir),
+            "describe_negotiate_offer": load_describe_negotiate_offer(template_dir),
         }
         rationality_table_path = Path(
             str(rationality_override.get("table") or (out_dir / "rationality.json"))
