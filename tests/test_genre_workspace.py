@@ -105,6 +105,21 @@ class GenreWorkspaceTests(unittest.TestCase):
         self.assertEqual(self.http('POST','/api/genres/romance/parse',{'path':'../x','content':'[]'})[0],400)
         self.assertEqual(self.http('POST','/api/genres/romance/save',{'path':'rules.yaml','content':'[','revision':snap['files']['rules.yaml']['revision']})[0],400)
 
+    def test_save_writes_yaml_not_json_but_keeps_raw_yaml_text_verbatim(self):
+        snap=self.snap();path='rules.yaml'
+        value=[{'id':'x','adjust':{'custom.key':0.2}}]
+        body={'path':path,'content':json.dumps(value),'revision':snap['files'][path]['revision']}
+        status,result=self.http('POST','/api/genres/romance/save',body)
+        self.assertEqual(status,200,result)
+        written=(self.repo/'templates/romance'/path).read_text(encoding='utf-8')
+        with self.assertRaises(ValueError): json.loads(written)
+        self.assertEqual(yaml.safe_load(written),value)
+        raw='# a comment\n- id: y\n  adjust: {custom.key: 0.3}\n'
+        body={'path':path,'content':raw,'revision':result['files'][path]['revision']}
+        status,result=self.http('POST','/api/genres/romance/save',body)
+        self.assertEqual(status,200,result)
+        self.assertEqual((self.repo/'templates/romance'/path).read_text(encoding='utf-8'),raw)
+
     def test_markup_assets_escaping_and_missing_optional_sections(self):
         self.create(name='<script>alert(1)</script>')
         status,body=self.get('/genres/custom')

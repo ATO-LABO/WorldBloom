@@ -1366,37 +1366,6 @@ def _raw_table(rows: Sequence[Mapping[str, Any]]) -> str:
     )
 
 
-def _output_panel(
-    title: str,
-    entry: Mapping[str, Any] | None,
-    text: str | None,
-    backend: str | None = None,
-) -> str:
-    if entry is None:
-        return (
-            f'<section class="card output-panel"><h2>{_escape(title)}</h2>'
-            '<p class="muted">該当項目がありません。</p></section>'
-        )
-    status = str(entry.get("status", "—"))
-    backend_text = f" · {backend}" if backend else ""
-    error = entry.get("error")
-    return (
-        f'<section class="card output-panel"><h2>{_escape(title)}</h2>'
-        f'<p><span class="badge">{_escape(status + backend_text)}</span></p>'
-        + (
-            f"<pre>{_escape(text)}</pre>"
-            if text
-            else '<p class="muted">まだ生成されていません。</p>'
-        )
-        + (
-            f'<p class="error">{_escape(error)}</p>'
-            if error
-            else ""
-        )
-        + "</section>"
-    )
-
-
 def cell_page(
     repository: data.RunRepository,
     experiment_name: str,
@@ -1449,23 +1418,8 @@ def cell_page(
         str(parent)
         for parent in model["parents"]
     ) or "—"
-    synopsis_entry = model["synopsis"]
-    synopsis_text = (
-        str(synopsis_entry.get("synopsis"))
-        if isinstance(synopsis_entry, Mapping)
-        and synopsis_entry.get("synopsis")
-        else None
-    )
-
-    outputs = (
-        '<div class="outputs-grid story-outputs">'
-        f'{_output_panel("あらすじ", synopsis_entry, synopsis_text, model["synopsis_backend"])}'
-        f'{_output_panel("本文", model["story"], model["story_text"])}'
-        '</div>'
-    )
     story_panel = (
-        outputs
-        + '<section class="card story-section"><div class="section-heading"><h2>物語の流れ</h2>'
+        '<section class="card story-section"><div class="section-heading"><h2>物語の流れ</h2>'
         f'<nav class="view-modes">{" ".join(mode_links)}</nav></div>'
         f'{_timeline(model)}</section>'
     )

@@ -1,11 +1,13 @@
 """Remaining workspace contracts: read-only, provenance, recovery, and revisioned edits."""
 import hashlib
 import html
+import http.client
 import json
 from pathlib import Path
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.parse import quote
 
 import test_viewer as fixture
@@ -14,7 +16,7 @@ import test_workbench_pages as workbench_fixture
 from execution import world_editor
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
-from viewer import data, pages, review_pages, raw_pages, raw_view
+from viewer import data, library_pages, pages, review_pages, raw_pages, raw_view
 
 
 class ReadOnlyWorkspaceTests(unittest.TestCase):
@@ -141,3 +143,30 @@ class AdvancedEditTests(unittest.TestCase):
         self.assertIn('canon.yaml',model['genre']['files'])
         self.assertIn('character-readout',content)
         self.assertEqual(before,self.current()['revision'])
+
+
+class PostApiDataExceptionTests(unittest.TestCase):
+    """library_pages.dispatch: a data.* exception from a POST handler must
+    come back as job_api JSON (not be re-raised into the HTML error page,
+    which is only correct for GET)."""
+    setUp=library_fixture.LibraryHttpBoundaryTests.setUp
+
+    def raw_post(self,path,body):
+        conn=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=5)
+        try:
+            conn.request('POST',path,json.dumps(body),headers={'Content-Type':'application/json','X-WorldBloom-Client':'1'})
+            response=conn.getresponse()
+            return response.status,response.getheader('Content-Type'),response.read()
+        finally:
+            conn.close()
+
+    def test_post_api_missing_resource_returns_job_api_json_not_html(self):
+        body={'mode':'new','world_id':'ghost','name':'幽霊','overview':''}
+        status,content_type,raw=self.raw_post('/api/worlds',body)
+        self.assertEqual(status,201,raw)  # baseline: unpatched handler succeeds
+        def boom(handler):library_pages._boundary_body(handler);raise data.MissingResource('ghost2')  # real handlers read the body first
+        with patch.object(library_pages,'_create_world',boom):
+            status,content_type,raw=self.raw_post('/api/worlds',{**body,'world_id':'ghost2'})
+        self.assertEqual(status,404,raw)
+        self.assertIn('application/json',content_type)
+        self.assertIn('code',json.loads(raw))

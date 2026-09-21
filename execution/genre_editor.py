@@ -112,7 +112,15 @@ def save(store, ident, path, content, revision):
             raise ConfigError("revision", "別の画面で変更されています。入力を控えてから再読み込みしてください", code="conflict")
         target = contained(base, path)
         # One selected item per atomic save; other drafts stay in the browser.
-        text = json.dumps(value, ensure_ascii=False, indent=2) if path == META else content
+        if path == META:
+            text = json.dumps(value, ensure_ascii=False, indent=2)
+        else:
+            try:
+                json.loads(content)
+            except ValueError:
+                text = content  # free-text YAML (may hold comments); keep verbatim
+            else:
+                text = yaml.safe_dump(value, allow_unicode=True, sort_keys=False)
         temporary = target.with_name("." + target.name + "-" + uuid.uuid4().hex)
         try:
             temporary.write_text(text, encoding="utf-8")
