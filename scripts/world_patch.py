@@ -8,7 +8,6 @@ import argparse
 import datetime
 import hashlib
 import json
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -42,7 +41,7 @@ from gapengine.world_patch_trial import run_trial, gate_status
 from gapengine.world_patch import stack_head, verify_stack, read_stack
 from execution.provenance import atomic_json
 from execution.world_patches import patch_lock
-from execution.world_patch_approval import approve, reopen, repair
+from execution.world_patch_approval import approve, reject, reopen, repair
 
 # Exceptions an LLM's malformed JSON/shape can realistically trigger while a
 # proposal is parsed and gated (WB-WORLDGROW-001 R6): parse_proposal/make_patch/
@@ -355,21 +354,7 @@ def cmd_approve(args):
 
 
 def cmd_reject(args):
-    if not ID_RE.fullmatch(args.patch):
-        raise PatchError("パッチ ID の形式が不正です")
-    project = args.project.resolve()
-    with patch_lock(project):
-        proposed = project / "patches" / "_proposed"
-        destination = project / "patches" / "_rejected"
-        files = [proposed / f"{args.patch}{suffix}" for suffix in (".yaml", ".gate.json")]
-        files = [p for p in files if p.is_file()]
-        if not files:
-            raise PatchError("提案が見つかりません")
-        if any((destination / p.name).exists() for p in files):
-            raise PatchError("却下済みの同名ファイルがあります")
-        destination.mkdir(exist_ok=True)
-        for path in files:
-            shutil.move(str(path), str(destination / path.name))
+    reject(args.project.resolve(), args.patch)
     return 0
 
 

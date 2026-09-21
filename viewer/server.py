@@ -66,6 +66,7 @@ STATIC_FILES = {
     "ga_replay.js": "text/javascript; charset=utf-8",
     "world-prototype.css": "text/css; charset=utf-8",
     "world-prototype.js": "text/javascript; charset=utf-8",
+    "world-expansion.js": "text/javascript; charset=utf-8",
 }
 
 

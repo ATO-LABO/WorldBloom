@@ -8,7 +8,7 @@ from urllib.parse import quote
 from viewer import pages
 
 
-def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=None, experiments=()):
+def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=None, experiments=(), expansion_html=""):
     """Render saved settings in the shared production shell. Rendering never writes."""
     model = {
         "id": world["id"], "name": world.get("name") or world["id"],
@@ -35,6 +35,13 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
     status = ("未設定：" + "・".join(missing)) if missing else "編集した項目ごとに保存できます。"
     if not model["editable"]: status = "閲覧モード · 保存には実行管理の設定が必要です。"
     saved = "".join(f'<a class="wp-primary" href="/exp/{quote(name, safe="")}">' + ("保存された物語を見る →" if len(experiments) == 1 else html.escape(name) + " の物語を見る →") + "</a> " for name in experiments)
+    # V2 (viewer review): the section used to sit as a direct sibling of
+    # #wp-content in the .wp 2-column grid, which stranded it in the left
+    # column. It's inert markup (a <template>, never rendered as-is) that
+    # world-prototype.js's overview screen appends into itself, so it lands
+    # inside "世界の概要" instead. Omitted entirely when there's nothing to
+    # show (0 approved and 0 proposed), same as before.
+    expansion_template = f'<template id="wp-expansion">{expansion_html}</template>' if expansion_html else ""
     body = f'''
     <div class="wp" data-world-prototype>
       <nav class="wp-nav" aria-label="世界設定">
@@ -46,6 +53,7 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         <div class="wp-preview"><strong>世界設定</strong><br>変更は次の実行から使われます。<a href="/worlds/{wid}?view=advanced">詳細設定・設定ファイル ↗</a></div>
       </nav>
       <div class="wp-content" id="wp-content"></div>
+      {expansion_template}
       <footer class="wp-footer"><span id="wp-message" role="status">{html.escape(status)}</span><a class="wp-primary" data-next href="{html.escape(next_href, quote=True)}" {"hidden" if not model["editable"] else ""}>{next_label}</a>{saved}</footer>
       <dialog class="wp-dialog" aria-labelledby="wp-dialog-title"><form id="wp-form"><div class="wp-section-head"><h2 id="wp-dialog-title">編集</h2><button type="button" data-close aria-label="閉じる">×</button></div><p class="wp-muted">保存すると世界設定を更新します。過去の実行結果は変わりません。</p><div id="wp-fields"></div><div class="wp-dialog-actions"><button type="button" data-close>キャンセル</button><button class="wp-primary" type="submit">保存する</button></div></form></dialog>
       <script type="application/json" id="wp-data">{payload}</script>
@@ -53,6 +61,8 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
     </div>'''
     doc = pages.document(model["name"], body, world={"id": world["id"], "name": model["name"]},
                          phase="world", page_class="world-prototype", job_store=job_store, pin=pin)
-    doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/world-prototype.css"><script src="/static/world-prototype.js" defer></script></head>')
+    doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/world-prototype.css">'
+                      '<script src="/static/world-prototype.js" defer></script>'
+                      '<script src="/static/world-expansion.js" defer></script></head>')
     doc = doc.replace('data-wb="world-picker"', 'data-wb="world-picker" aria-label="世界"')
     return doc.replace('<a class="home-cell" href="/">⌂ ホーム</a>', '<a class="home-cell" href="/" aria-label="WorldBloom ホーム">WorldBloom</a>')
