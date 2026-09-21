@@ -199,7 +199,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn('<a class="brand" href="/">WorldBloom</a>', configs_body)
         for href, label, icon in (("/configs", "設定", "⚙"), ("/history", "実行履歴", "📝")):
             with self.subTest(href=href):
-                link = f'<a href="{href}" title="{label}" aria-label="{label}">{icon}</a>'
+                link = f'<a href="{href}" title="{label}" aria-label="{label}">'
                 self.assertIn(link, body)
                 self.assertIn(link, configs_body)
 
@@ -231,7 +231,7 @@ class WorkbenchTests(unittest.TestCase):
 
         # WB-UI-021: /configs carries the single 文章生成 card, defaulted from
         # an absent settings.json (DEFAULT_BACKEND = codex-cli).
-        self.assertIn('<section class="card" id="output">', body)
+        self.assertIn('<section class="gs-panel" id="output" data-gs-panel="output">', body)
         self.assertIn('data-wb="output-settings"', body)
         self.assertIn(
             '<select id="f-backend" name="backend" data-field="backend">',
@@ -273,23 +273,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn('data-field="generation', body)
         self.assertIn('<option value="romance">romance</option>', body)
         self.assertIn('class="cfg-adv"', body)
-        self.assertIn(
-            'type="radio" id="f-evolution.keep-reached" name="evolution.keep" value="reached" '
-            'data-field="evolution.keep" checked',
-            body,
-        )
-        self.assertIn(
-            'type="radio" id="f-evolution.world_expansion-off" name="evolution.world_expansion" '
-            'value="off" data-field="evolution.world_expansion" checked',
-            body,
-        )
-        # WB-WORLDGROW-001 stage 3a: third "expand" choice alongside off/detect.
-        self.assertIn(
-            'type="radio" id="f-evolution.world_expansion-expand" name="evolution.world_expansion" '
-            'value="expand" data-field="evolution.world_expansion"',
-            body,
-        )
-        self.assertIn("承認済みの拡張を適用", body)
+        self.assertIn('<option value="reached" selected>結末に到達した結果</option>', body)
         # The fixture's "romance" world resolves to the "romance" genre
         # (templates/romance exists), so its <option> carries data-genre.
         self.assertIn('data-genre="', body)
@@ -299,7 +283,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertIn('data-parent="cfg-test"', body)
         self.assertGreaterEqual(body.count('type="hidden"'), 2)
-        self.assertIn('data-summary', body)
+        self.assertIn('data-scale-equation', body)
 
     def test_world_expansion_label_helper_covers_all_values_and_unknown(self):
         # Shared by render_config_form's detail dl and _run_plan's job-screen
@@ -417,31 +401,31 @@ class WorkbenchTests(unittest.TestCase):
         self.assertGreater(history_at, running_at)
         self.assertLess(body.index("run-a"), history_at)
         self.assertGreater(body.index("run-b"), history_at)
-        self.assertGreater(body.index("<td>run-c</td>"), history_at)
+        self.assertGreater(body.index("<code>run-c</code>"), history_at)
         self.assertLess(body.index("run-d"), history_at)
 
         status, body, _ = self.get_status("/jobs/job-run")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-poll="1"', body)
-        self.assertIn('data-terminal="false"', body)
-        self.assertIn('data-action="cancel"', body)
-        self.assertNotIn('data-action="cancel" disabled', body)
+        self.assertIn('data-run-workspace', body)
+        self.assertIn('&quot;state&quot;:&quot;running&quot;', body)
+        self.assertIn('data-stop', body)
+        self.assertNotIn('data-stop disabled', body)
 
         status, body, _ = self.get_status("/jobs/job-fail")
         self.assertEqual(status, 200, body)
         self.assertIn("監視プロセスが消失しました", body)
         self.assertIn("同じ設定で新しく実行できます", body)
-        self.assertIn("/jobs?world=romance&amp;config=cfg-test", body)
+        self.assertIn("/configs/cfg-test", body)
 
         status, body, _ = self.get_status("/jobs/job-ok")
         self.assertEqual(status, 200, body)
-        self.assertIn("Sifting で候補を選ぶ", body)
+        self.assertIn("保存済みの候補を見る", body)
         self.assertIn("/exp/run-c", body)
-        self.assertIn("/runs/run-c/candidates", body)
+        self.assertIn("&quot;candidate_count&quot;:0", body)
 
         status, body, _ = self.get_status("/jobs/job-unknown")
         self.assertEqual(status, 200, body)
-        self.assertIn("状態確認中", body)
+        self.assertIn("&quot;reconciliation&quot;:&quot;unknown&quot;", body)
 
         status, body, _ = self.get_status("/jobs/absent")
         self.assertEqual(status, 404, body)
@@ -508,10 +492,10 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('data-wb="start"', body)
         self.assertIn('<select name="config"', body)
         self.assertIn("この設定で GA を回す", body)
-        # romance's QD axes are I/II/III x low/mid/high -- 9 cells, all empty
-        # before any run has published.
-        self.assertEqual(body.count("qd-cell empty"), 9)
-        self.assertEqual(body.count("vbox ghost"), 3)
+        # Before running, show the saved conditions and cost summary.
+        self.assertIn("どのくらい探索するか", body)
+        self.assertIn("今回の探索", body)
+        self.assertIn('data-request-id=', body)
         self.assertNotIn("<h2>履歴</h2>", body)
 
     def test_run_page_blocked_by_other_world(self):
@@ -531,10 +515,10 @@ class WorkbenchTests(unittest.TestCase):
         self.fake.add(_job("job-run", "run-a", "running"))
         status, body, _ = self.get_status("/jobs/job-run")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-poll="1"', body)
-        self.assertEqual(body.count("<progress"), 3)
-        self.assertIn('data-action="cancel"', body)
-        self.assertIn("data-revision=", body)
+        self.assertIn('data-run-workspace', body)
+        self.assertEqual(body.count("<progress"), 1)
+        self.assertIn('data-stop', body)
+        self.assertIn("&quot;publication_revision&quot;", body)
 
     def test_run_page_done_reads_publication(self):
         run_id = "run-handcrafted-done"
@@ -548,10 +532,12 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/job-ok2")
         self.assertEqual(status, 200, body)
-        self.assertGreaterEqual(body.count("qd-cell f"), 1)
-        self.assertIn('<b data-field="metric_occupied">1</b>', body)
-        self.assertIn('class="exit on"', body)
-        self.assertIn('data-revision="1"', body)
+        status, raw, _ = self.get_status("/jobs/job-ok2?view-data=1")
+        observed = json.loads(raw)["observation"]
+        self.assertEqual(status, 200)
+        self.assertEqual(len(observed["cells"]), 1)
+        self.assertEqual(observed["generations"][0]["occupied_cells"], 1)
+        self.assertEqual(observed["revision"], 1)
 
     def test_run_page_shows_generation_trend_table(self):
         # WB-LINEAGE-001: reach rate / allies-at-contest / the biggest
@@ -583,6 +569,8 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/job-trend")
         self.assertEqual(status, 200, body)
+        snapshot = workbench_pages._live_map(type("Handler", (), {"repository": self.server.repository})(), self.fake.get("job-trend"))
+        body = workbench_pages._generation_trend_table(snapshot["generations"])
         self.assertIn("世代の推移", body)
         self.assertIn("<td>g0</td>", body)
         self.assertIn("<td>g1</td>", body)
@@ -635,6 +623,8 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/job-role-collision")
         self.assertEqual(status, 200, body)
+        snapshot = workbench_pages._live_map(type("Handler", (), {"repository": self.server.repository})(), self.fake.get("job-role-collision"))
+        body = workbench_pages._generation_trend_table(snapshot["generations"])
         second_row = body[body.index("<td>g1</td>"):]
         self.assertIn("譲渡→味方 20%→80%", second_row)
         self.assertIn("譲渡→敵対相手 60%→10%", second_row)
@@ -653,7 +643,11 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs/job-legacy")
         self.assertEqual(status, 200, body)
-        self.assertNotIn("世代の推移", body)
+        self.assertIn('role="tab"', body)
+        status, raw, _ = self.get_status("/jobs/job-legacy?view-data=1")
+        generations = json.loads(raw)["observation"]["generations"]
+        self.assertEqual(generations[0]["generation"], 0)
+        self.assertNotIn("action_share", generations[0])
 
     def test_history_page_lists_tables(self):
         status, body, _ = self.get_status("/history")
@@ -700,7 +694,7 @@ class WorkbenchTests(unittest.TestCase):
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
         self.assertEqual(body.count('data-candidate-id="'), 2)
-        self.assertIn('data-revision="0"', body)
+        self.assertEqual(_sifting_initial(body)['revision'], 0)
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates?reached=true")
         self.assertEqual(status, 200, body)
@@ -708,7 +702,7 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates?reached=maybe")
         self.assertEqual(status, 422, body)
-        self.assertIn("code", json.loads(body))
+        self.assertIn("ux-guidance", body)
 
         # The filter form (§3.8) always submits every field, blank or not, so
         # an all-blank submission and a one-field submission must both 200.
@@ -732,18 +726,12 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        row = body[body.index(f'data-candidate-id="{cid}"'):]
-        self.assertIn('<option value="adopted" selected>', row)
-        # The selection state reads in Japanese with a glance mark, and the
-        # <select> carries the state class so app.css can colour it.
-        select_html = row[row.index('<select data-field="state"'):row.index("</select>")]
-        self.assertIn('class="state-select state-sel-adopted"', select_html)
-        self.assertIn('<option value="adopted" selected>✔ 採用</option>', select_html)
-        self.assertIn('<option value="held">⏸ 保留</option>', select_html)
-        self.assertIn('<option value="rejected">✖ 除外</option>', select_html)
-        self.assertIn('<option value="unclassified">○ 未分類</option>', select_html)
-        # The filter form uses the same labels (values stay the API keys).
-        self.assertIn('<option value="rejected">✖ 除外</option>', body[:body.index("<thead>")])
+        data = _sifting_initial(body)
+        saved = next(c for c in data['items'] if c['candidate_id'] == cid)
+        self.assertEqual((saved['state'], saved['note']), ('adopted', 'ok'))
+        self.assertIn('sf-badge sf-adopted', body)
+        self.assertIn('name="sf-verdict" value="held"', body)
+        self.assertIn('data-sf-proceed>採用候補を確認（1件）', body)
 
     def test_candidates_sort_quality_desc_and_bogus_sort_ignored(self):
         self._legacy_experiment("exp-sort")
@@ -752,14 +740,16 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates?sort=quality&dir=desc")
         self.assertEqual(status, 200, body)
-        self.assertIn('aria-sort="descending"', body)
+        self.assertIn('<option value="desc" selected>', body)
+        body = body[body.index('<div class="sf-list-scroll"'):]
         # VI|high (q=0.7) must render before I|low (q=0.5) in descending order.
         self.assertLess(body.index("VI|high"), body.index("I|low"))
         self.assertLess(body.index("0.7000"), body.index("0.5000"))
 
         status, asc_body, _ = self.get_status(f"/runs/{rid}/candidates?sort=quality&dir=asc")
         self.assertEqual(status, 200, asc_body)
-        self.assertIn('aria-sort="ascending"', asc_body)
+        self.assertIn('<option value="asc" selected>', asc_body)
+        asc_body = asc_body[asc_body.index('<div class="sf-list-scroll"'):]
         self.assertLess(asc_body.index("I|low"), asc_body.index("VI|high"))
 
         status, bogus_body, _ = self.get_status(f"/runs/{rid}/candidates?sort=bogus")
@@ -855,25 +845,18 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("選定は保存できません", html)
         self.assertIn("disabled", html)
 
-    def test_candidates_table_is_ten_columns_with_detail_rows(self):
-        # WB-UI-014 §3.1 (+あらすじ column): 10 list columns (選択/候補ID/セル/
-        # あらすじ/q/到達/採用可/選定状態/メモ/操作); 世代/個体/seed/役割/原記録/稿
-        # move into a per-row detail toggle instead of being spread across the table.
+    def test_candidates_share_one_reader_and_verdict(self):
         self._legacy_experiment("exp-detail")
-        catalog = self.server.repository.catalog
-        rid = catalog.register_legacy("exp-detail")
-
+        rid = self.server.repository.catalog.register_legacy("exp-detail")
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        thead = body[body.index("<thead>"):body.index("</thead>")]
-        # "<thead>" itself contains "<th", so match the column tag precisely.
-        self.assertEqual(len(re.findall(r"<th[ >]", thead)), 10)
-        self.assertEqual(body.count('class="detail-row"'), 2)  # one per candidate
-        self.assertEqual(body.count('class="row-toggle"'), 2)
-        self.assertIn('aria-expanded="false"', body)
-        self.assertIn('aria-controls="detail-', body)
-        self.assertIn('<details class="glossary">', body)
-        self.assertIn('<p class="page-lead">', body)
+        self.assertEqual(body.count('class="sf-inspector"'), 1)
+        self.assertEqual(body.count('data-candidate-id="'), 2)
+        self.assertEqual(body.count('name="sf-verdict"'), 4)
+        self.assertEqual(body.count('role="tabpanel"'), 3)
+        self.assertIn('data-sf-mode="synopsis"', body)
+        self.assertNotIn('id="generate-form"', body)
+        self.assertEqual(self.fake.submitted, [])
 
     def test_candidates_synopsis_column(self):
         root = self._legacy_experiment("exp-syn")
@@ -883,32 +866,27 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        self.assertIn("<th>あらすじ</th>", body)
-        for cid in cids.values():
-            row = body[body.index(f'data-candidate-id="{cid}"'):]
-            self.assertIn('<td class="synopsis"><span>—</span></td>', row)
-
-        synopsis_text = "あ" * 100
+        self.assertTrue(all(not c['synopsis'] for c in _sifting_initial(body)['items']))
+        synopsis_text = "あ" * 150
         atomic_json(root / "synopses.json", {"entries": [{"cell": "I|low", "synopsis": synopsis_text}]})
-
         status, body, _ = self.get_status(f"/runs/{rid}/candidates")
         self.assertEqual(status, 200, body)
-        low_row = body[body.index(f'data-candidate-id="{cids["I|low"]}"'):]
-        self.assertIn(f'<td class="synopsis"><span>{"あ" * 60}…</span></td>', low_row)
-        high_row = body[body.index(f'data-candidate-id="{cids["VI|high"]}"'):]
-        self.assertIn('<td class="synopsis"><span>—</span></td>', high_row)
+        by_cell = {c['cell_key']: c for c in _sifting_initial(body)['items']}
+        self.assertEqual(by_cell['I|low']['synopsis'], synopsis_text)
+        self.assertEqual(by_cell['VI|high']['synopsis'], '')
+        self.assertIn('class="sf-snippet">' + 'あ' * 120 + '</span>', body)
 
     def test_configs_and_jobs_pages_have_lead_and_next_cta(self):
         status, body, _ = self.get_status("/configs")
         self.assertEqual(status, 200, body)
-        self.assertIn('<p class="page-lead">', body)
-        self.assertIn('class="next-cta"', body)
+        self.assertIn('data-global-settings', body)
+        self.assertIn('data-gs-save', body)
+        self.assertNotIn('class="next-cta"', body)
 
         status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)
-        self.assertIn('<p class="page-lead">', body)
-        # No records yet -> the empty-jobs CTA from WB-UI-012 §2.3.
-        self.assertIn('class="next-cta" href="/configs/new">次: 実行設定を作る →</a>', body)
+        self.assertIn("実行した探索を振り返り", body)
+        self.assertIn('href="/jobs">実行条件を確認 →</a>', body)
 
     def test_raw_log(self):
         self._legacy_experiment("exp-raw")
@@ -939,12 +917,36 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/selected")
         self.assertEqual(status, 200, body)
-        self.assertIn(f'data-candidate-id="{cid}"', body)
-        row = body[body.index(f'data-candidate-id="{cid}"'):]
-        self.assertIn("data-revision=", row)
-        self.assertIn("外す", row)
-        # The tray shows the state as a coloured badge, not the raw key.
-        self.assertIn('<span class="state-badge state-sel-adopted">✔ 採用</span>', row)
+        self.assertIn(f'/selected?run={rid}', body)
+        self.assertIn('採用 1件', body)
+        self.assertNotIn('data-sf-generate', body)
+        status, body, _ = self.get_status(f'/selected?run={rid}&config=cfg-test')
+        self.assertEqual(status, 200, body)
+        self.assertIn('sf-badge sf-adopted', body)
+        self.assertIn(f'data-sf-tray-state="{cid}"', body)
+        self.assertIn('保留に戻す', body)
+
+    def test_sifting_grid_comparison_checks_candidate_identity(self):
+        from urllib.parse import urlencode
+        self._legacy_experiment('exp-grid-identity')
+        catalog = self.server.repository.catalog
+        rid = catalog.register_legacy('exp-grid-identity')
+        snapshot = catalog.snapshot(rid)
+        reps = catalog.representatives(snapshot)
+        query = [('publication', str(snapshot['revision']))]
+        query += [('cell', c) for c in reps]
+        query += [('candidate', cid) for cid in reps.values()]
+        status, body, _ = self.get_status('/exp/exp-grid-identity/compare?' + urlencode(query))
+        self.assertEqual(status, 200, body)
+        changed = [(k, 'cand-wrong' if k == 'candidate' else v) for k,v in query]
+        status, body, _ = self.get_status('/exp/exp-grid-identity/compare?' + urlencode(changed))
+        self.assertGreaterEqual(status, 400)
+        self.assertIn('選び直して', body)
+        status, body, _ = self.get_status('/exp/exp-grid-identity')
+        self.assertEqual(status, 200, body)
+        initial = _sifting_initial(body)
+        self.assertEqual(set(initial['visible']), set(reps.values()))
+        self.assertEqual(self.fake.submitted, [])
 
     # -------------------------------------------------------------- CSP
 
@@ -1001,9 +1003,9 @@ class WorkbenchTests(unittest.TestCase):
         self.fake.add(_job("job-eta", "run-eta", "running"))
         status, body, _ = self.get_status("/jobs/job-eta")
         self.assertEqual(status, 200, body)
-        self.assertIn('<span data-field="eta">—</span>', body)
-        self.assertIn('data-field="updated-at"', body)
-        self.assertIn('data-field="delta"', body)
+        self.assertIn('data-overview-progress', body)
+        self.assertIn('data-last-update', body)
+        self.assertIn('data-connection', body)
 
     def test_state_vocabulary(self):
         for state, label in workbench_pages.STATE_LABELS.items():
@@ -1030,3 +1032,8 @@ class WorkbenchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _sifting_initial(body):
+    import html
+    return json.loads(html.unescape(re.search(r'data-initial="([^"]+)"', body).group(1)))
