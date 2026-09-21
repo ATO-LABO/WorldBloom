@@ -366,11 +366,11 @@ class CandidateLabelsAndNegotiateOfferWiringTests(unittest.TestCase):
             table=RationalityTable(),
             judge=judge,
             method="noul",
-            candidate_labels={"craft:鉄砲": "旅の商人から小判3枚で鉄砲を買った"},
+            candidate_labels={"craft:鉄砲": "道中の商人から小判3枚で鉄砲を買った"},
         )
         action = Action("craft", ("鉄砲",), {"item": "鉄砲"})
         rationality.multipliers(actor, world, present, [action])
-        self.assertEqual(judge.received, ["旅の商人から小判3枚で鉄砲を買った"])
+        self.assertEqual(judge.received, ["道中の商人から小判3枚で鉄砲を買った"])
 
     def test_describe_negotiate_offer_extends_the_rendered_description(self) -> None:
         # _three_candidates()'s default present (桃太郎 starts in 村) never
