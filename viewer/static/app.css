@@ -53,6 +53,8 @@
   --ws-fs-h1: 24px;
   --ws-side-w: 180px;
   --ws-aside-w: 300px;
+  --ws-side-w-narrow: 145px;    /* 狭い画面での左サイドバー */
+  --ws-aside-w-narrow: 240px;   /* 狭い画面での右の補助パネル */
   --ws-gutter: 24px;
   --ws-control-h: 44px;
   --ws-control-h-sm: 34px;
@@ -1060,7 +1062,9 @@ td {
 
 .chip {
   background: var(--accent-soft);
-  color: var(--text);
+  color: var(--ws-confirm);
+  font-size: 12.5px;
+  padding: 3px 10px;
 }
 
 .scene {
@@ -1560,9 +1564,9 @@ form[data-wb="library-create"] > .form-grid {
 .state-badge {
   border-radius: 999px;
   display: inline-block;
-  font-size: 0.8rem;
+  font-size: 12.5px;
   font-weight: 600;
-  padding: 0.22rem 0.6rem;
+  padding: 3px 10px;
 }
 
 .state-running,
@@ -4744,6 +4748,12 @@ section[data-wb="output"] > article [data-story] {
   background: var(--wb-ui-accent);
   border-color: var(--wb-ui-accent);
   color: #fffaf7;
+}
+
+.candidate-inspector-footer .button.primary.is-confirm,
+.inspector-save-row .button.primary.is-confirm {
+  background: var(--ws-confirm);
+  border-color: var(--ws-confirm);
 }
 
 .candidate-layout-final.candidate-layout-enhanced .candidate-row-state,
