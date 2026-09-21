@@ -55,11 +55,11 @@ class LineagePageTests(unittest.TestCase):
         cls.temporary.cleanup()
 
     def test_cell_page_links_to_lineage(self) -> None:
-        rendered = pages.cell_page(self.repository, "exp1", "II|high", view="digest")
-        self.assertIn('href="/exp/exp1/cell/II%7Chigh/lineage"', rendered)
+        rendered = pages.cell_page(self.repository, "exp1", "III|mid", view="digest")
+        self.assertIn('href="/exp/exp1/cell/III%7Cmid/lineage"', rendered)
 
     def test_lineage_page_multi_generation_shows_band_cards_and_detail(self) -> None:
-        rendered = pages.lineage_page(self.repository, "exp1", "II|high")
+        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
         self.assertIn('class="lineage-band"', rendered)
         # Two ancestors -> two <li> band entries.
         self.assertEqual(rendered.count("lineage-node"), 2)
@@ -86,10 +86,10 @@ class LineagePageTests(unittest.TestCase):
         # section), and now traces that turning's own leading gene rather
         # than a mixed-gene personality_series.
         experiment = self.repository.experiment("exp1")
-        model = data.lineage_view(self.repository, experiment, "II|high")
+        model = data.lineage_view(self.repository, experiment, "III|mid")
         trait_series = model["turnings"][0]["trait_series"]
 
-        rendered = pages.lineage_page(self.repository, "exp1", "II|high")
+        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
 
         band_section = rendered.split("<h2>系譜</h2>", 1)[1].split("</section>", 1)[0]
         self.assertNotIn('class="spark"', band_section)
@@ -102,7 +102,7 @@ class LineagePageTests(unittest.TestCase):
         # Only one turning exists for this cell; an out-of-range index must
         # not crash, and must fall back to the default (index 0) selection.
         rendered = pages.lineage_page(
-            self.repository, "exp1", "II|high", turning_index=99,
+            self.repository, "exp1", "III|mid", turning_index=99,
         )
         self.assertIn("選んだ転機の詳細", rendered)
         self.assertNotIn("転機が見つかりませんでした", rendered)
@@ -118,22 +118,22 @@ class LineagePageTests(unittest.TestCase):
 
     def test_lineage_page_reports_missing_precedent_without_crashing(self) -> None:
         experiment = self.repository.experiment("exp1")
-        precedent_path = experiment / "g1" / "precedent.json"
+        precedent_path = experiment / "g0" / "precedent.json"
         backup = precedent_path.with_suffix(".json.bak")
         shutil.copyfile(precedent_path, backup)
         self.addCleanup(shutil.copyfile, backup, precedent_path)
         precedent_path.unlink()
 
-        cache_path = experiment / "lineage" / "II-high-cache.json"
+        cache_path = experiment / "lineage" / "III-mid-cache.json"
         cache_path.unlink(missing_ok=True)
         self.addCleanup(cache_path.unlink, missing_ok=True)
-        rerun_dir = experiment / "lineage" / "g1-ind-0"
+        rerun_dir = experiment / "lineage" / "g0-archive-I-low"
         if rerun_dir.is_dir():
             shutil.rmtree(rerun_dir)
 
-        rendered = pages.lineage_page(self.repository, "exp1", "II|high")
+        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
         self.assertIn("再現できませんでした", rendered)
-        self.assertIn("g1/ind-0", rendered)
+        self.assertIn("g0/archive/I-low", rendered)
 
     def test_data_lineage_view_rejects_unknown_cell(self) -> None:
         experiment = self.repository.experiment("exp1")

@@ -1532,6 +1532,11 @@ class VerbEngine:
             actor.goal.obstacles.remove(claimant.id)
         if actor.id in claimant.goal.obstacles:
             claimant.goal.obstacles.remove(actor.id)
+        # WB-JEV-004 part 2: remember the settlement so fight_candidates can
+        # skip this pair while they stay non-hostile (renewed hostility --
+        # e.g. stance dropping back below -0.2 -- lifts the skip; see
+        # engine/actions.py's _fight_candidates).
+        self.world.settled.add(frozenset((actor.id, claimant.id)))
         del self.world.offers[key]
         return (
             "conceded",

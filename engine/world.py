@@ -643,6 +643,9 @@ class World:
             tuple[str, str],
             dict[str, Any],
         ] = {}
+        # WB-JEV-004 (settlement, part 2): pairs a concede has settled --
+        # fight_candidates skips them while target_role isn't hostile again.
+        self.settled: set[frozenset[str]] = set()
 
         self._validate_item_references()
         self._validate_recipe_cycles()
@@ -1025,6 +1028,7 @@ class World:
         self.pending_effects.clear()
         self.offers.clear()
         self.pledges.clear()
+        self.settled.clear()
 
         for (
             evidence_id,

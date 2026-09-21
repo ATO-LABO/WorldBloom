@@ -1665,6 +1665,84 @@ class EngineTests(unittest.TestCase):
             ["鬼"],
         )
 
+    def test_settled_pair_loses_the_fight_candidate_until_hostility_returns(
+        self,
+    ) -> None:
+        """WB-JEV-004 part 2: reduced (restricted) weight alone doesn't stop
+        a policy-less NPC from re-attacking once concede thins its other
+        candidates out -- settle() must remove the fight candidate outright
+        for a pair that isn't hostile, but only until stance/obstacles make
+        it hostile again."""
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        momotaro.zone = "鬼ヶ島"
+
+        def has_fight_candidate(
+            actor: Subject,
+            target_id: str,
+        ) -> bool:
+            return any(
+                action.verb == "fight" and action.args == (target_id,)
+                for action, _ in candidates(
+                    actor,
+                    world,
+                    SimpleNamespace(day=1, turn=1),
+                )
+            )
+
+        # Baseline (nothing settled yet): fight is a restricted-weight
+        # candidate both ways, same as any other neutral/hostile pair.
+        self.assertTrue(has_fight_candidate(oni, "桃太郎"))
+        self.assertTrue(has_fight_candidate(momotaro, "鬼"))
+
+        engine = VerbEngine(world, FixedRandom([]))
+        engine.execute(
+            momotaro,
+            Action("negotiate", ("鬼",)),
+            turn=1,
+            day=1,
+        )
+        trade_actions = [
+            action
+            for action, _ in candidates(
+                oni,
+                world,
+                SimpleNamespace(day=1, turn=2),
+            )
+            if action.verb == "concede"
+        ]
+        result, _, _ = engine.execute(
+            oni,
+            trade_actions[0],
+            turn=2,
+            day=1,
+        )
+        self.assertEqual(result, "conceded")
+        self.assertIn(
+            frozenset(("鬼", "桃太郎")),
+            world.settled,
+        )
+
+        # Settled and not hostile: fight drops out of both sides' candidates.
+        self.assertFalse(has_fight_candidate(oni, "桃太郎"))
+        self.assertFalse(has_fight_candidate(momotaro, "鬼"))
+
+        # Hostility returns on 鬼's side only -- its fight candidate comes
+        # back; 桃太郎's side stays non-hostile, so its skip still holds.
+        world.relations.change(
+            "鬼",
+            "桃太郎",
+            affinity=-1.0,
+        )
+        self.assertLess(
+            world.relations.stance("鬼", "桃太郎"),
+            -0.2,
+        )
+        self.assertEqual(world.target_role(oni, momotaro), "hostile")
+        self.assertTrue(has_fight_candidate(oni, "桃太郎"))
+        self.assertFalse(has_fight_candidate(momotaro, "鬼"))
+
     def test_pledge_then_fight_records_betrayal(self) -> None:
         world, subjects = load_fixture()
         momotaro = subjects["桃太郎"]
