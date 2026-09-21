@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any, Sequence, TYPE_CHECKING
+from typing import Any, Mapping, Sequence, TYPE_CHECKING
 
 import yaml
 
@@ -71,15 +71,51 @@ def load_describe_trial_grants(template_dir: Path) -> bool:
     return bool(_load_rationality_yaml(template_dir).get("describe_trial_grants", False))
 
 
+def load_candidate_labels(template_dir: Path) -> dict[str, str]:
+    """``templates/<genre>/rationality.yaml``'s ``candidate_labels`` mapping
+    (WB-JEV-004 Stage 4b, requested after the 35b judge scored
+    engine-verb-literal descriptions of the new momotaro_plus2 routes too low
+    to tell them apart from an unrelated candidate -- see
+    describe_candidate_coarse). Keys look like "<verb>:<first arg>" (e.g.
+    "craft:鉄砲") or "trial:<trial id>" (e.g. "trial:brother_letter_trial");
+    a matching candidate's whole rendered description is replaced by the
+    value. Default {} so every template predating momotaro_plus2 renders
+    byte-identically."""
+
+    return dict(_load_rationality_yaml(template_dir).get("candidate_labels", {}))
+
+
+def load_describe_negotiate_offer(template_dir: Path) -> bool:
+    """``templates/<genre>/rationality.yaml``'s ``describe_negotiate_offer``
+    flag (WB-JEV-004 Stage 4b) -- appends, to a ``negotiate`` candidate's
+    description, which of the protagonist's items would make the antagonist's
+    concede a trade (the same "attractive" test ``engine.actions``'s
+    ``_concede_candidates`` applies). Default False, so every template
+    predating momotaro_plus2 renders byte-identically."""
+
+    return bool(_load_rationality_yaml(template_dir).get("describe_negotiate_offer", False))
+
+
 def _load_rationality_yaml(template_dir: Path) -> dict[str, Any]:
     path = Path(template_dir) / "rationality.yaml"
     if not path.is_file():
-        return {"common_knowledge": [], "key_items": [], "describe_trial_grants": False}
+        return {
+            "common_knowledge": [],
+            "key_items": [],
+            "describe_trial_grants": False,
+            "candidate_labels": {},
+            "describe_negotiate_offer": False,
+        }
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return {
         "common_knowledge": [str(v) for v in raw.get("common_knowledge", []) or []],
         "key_items": [str(v) for v in raw.get("key_items", []) or []],
         "describe_trial_grants": bool(raw.get("describe_trial_grants", False)),
+        "candidate_labels": {
+            str(key): str(value)
+            for key, value in (raw.get("candidate_labels", {}) or {}).items()
+        },
+        "describe_negotiate_offer": bool(raw.get("describe_negotiate_offer", False)),
     }
 
 
@@ -364,6 +400,8 @@ def describe_candidate_coarse(
     present: Sequence[Any],
     *,
     describe_trial_grants: bool = False,
+    candidate_labels: Mapping[str, str] = {},
+    describe_negotiate_offer: bool = False,
 ) -> str:
     """Like describe_candidate, but every companion name becomes a role
     (味方/中立/敵対) and every decimal is dropped (e.g. mislead's fabricated
@@ -374,7 +412,57 @@ def describe_candidate_coarse(
     ``describe_trial_grants`` (WB-JEV-004, default False so every template
     predating momotaro_plus renders byte-identically) appends what a
     ``trial`` candidate grants -- e.g. "試練に挑んだ（中立、弟の手紙を得る）"
-    -- so the judge/policy can tell two trials with the same giver apart."""
+    -- so the judge/policy can tell two trials with the same giver apart.
+
+    ``candidate_labels`` and ``describe_negotiate_offer`` (WB-JEV-004 Stage
+    4b, both default to a no-op so every template predating momotaro_plus2
+    renders byte-identically) were added after the 35b judge scored the
+    engine-verb-literal wording of momotaro_plus2's new routes too low to
+    tell apart from an unrelated candidate ("作った（鉄砲）" 0.07,
+    "交渉した（敵対）" while holding the letter 0.17) -- rephrasing them into
+    what the action actually accomplishes ("旅の商人から小判3枚で鉄砲を買っ
+    た", "宝を譲るよう交渉した（敵対、差し出せる品: 弟の手紙）") scored 0.74.
+
+    ``candidate_labels`` maps "<verb>:<first arg>" (craft) or
+    "trial:<trial id>" (trial) to a full replacement string -- when a
+    candidate matches, that string is returned as-is (no pieces, no
+    describe_trial_grants addendum: the replacement wins over the addendum).
+    ``describe_negotiate_offer`` replaces a ``negotiate`` candidate's whole
+    description with which of the protagonist's items would make the
+    antagonist's concede a trade, using the same "attractive" test as
+    ``engine.actions``'s ``_concede_candidates``: the protagonist holds it,
+    it is lootable, it carries a modifier, and the antagonist doesn't
+    already have it."""
+
+    label_key: str | None = None
+    if action.verb == "craft" and action.args:
+        label_key = f"craft:{action.args[0]}"
+    elif action.verb == "trial":
+        trial_id = action.meta.get("trial_id")
+        if trial_id is not None:
+            label_key = f"trial:{trial_id}"
+    if label_key is not None and label_key in candidate_labels:
+        return str(candidate_labels[label_key])
+
+    if describe_negotiate_offer and action.verb == "negotiate":
+        target_id = action.meta.get("target")
+        target_text = _peer_role_text(subject, world, present, str(target_id))
+        target = next(
+            (peer for peer in present if peer.id == target_id),
+            None,
+        )
+        offerable = sorted(
+            item
+            for item, count in subject.inventory.items()
+            if count > 0
+            and bool(world.items.get(item, {}).get("lootable", False))
+            and bool(world.items.get(item, {}).get("modifier"))
+            and (target is None or not target.has_item(item))
+        )
+        offer_text = (
+            f"差し出せる品: {'、'.join(offerable)}" if offerable else "差し出せる品なし"
+        )
+        return f"宝を譲るよう交渉した（{target_text}、{offer_text}）"
 
     label = VERB_LABELS.get(action.verb, action.verb)
     if action.verb == "mislead":

@@ -336,6 +336,106 @@ class RationalityMultiplierTests(unittest.TestCase):
         self.assertEqual(rest_action.meta["policy"]["m_rat"], 1.0)
 
 
+class CandidateLabelsAndNegotiateOfferWiringTests(unittest.TestCase):
+    """WB-JEV-004 Stage 4b addendum: Rationality threads candidate_labels
+    and describe_negotiate_offer through to describe_candidate_coarse
+    (multipliers()'s render step) exactly like describe_trial_grants --
+    same default (empty dict / False) no-op, same pass-through. FakeJudge
+    (network-free, deterministic) throughout -- no Ollama/GPU involved,
+    matching this stage's "kappa=0 or backend fake only" verification
+    rule."""
+
+    def test_default_is_a_no_op(self) -> None:
+        actor, world, present, _weighted = _three_candidates()
+        judge = RecordingJudge()
+        rationality = Rationality(
+            kappa=1.0,
+            table=RationalityTable(),
+            judge=judge,
+            method="noul",
+        )
+        action = Action("craft", ("鉄砲",), {"item": "鉄砲"})
+        rationality.multipliers(actor, world, present, [action])
+        self.assertEqual(judge.received, ["作った（鉄砲）"])
+
+    def test_candidate_labels_replaces_the_rendered_description(self) -> None:
+        actor, world, present, _weighted = _three_candidates()
+        judge = RecordingJudge()
+        rationality = Rationality(
+            kappa=1.0,
+            table=RationalityTable(),
+            judge=judge,
+            method="noul",
+            candidate_labels={"craft:鉄砲": "旅の商人から小判3枚で鉄砲を買った"},
+        )
+        action = Action("craft", ("鉄砲",), {"item": "鉄砲"})
+        rationality.multipliers(actor, world, present, [action])
+        self.assertEqual(judge.received, ["旅の商人から小判3枚で鉄砲を買った"])
+
+    def test_describe_negotiate_offer_extends_the_rendered_description(self) -> None:
+        # _three_candidates()'s default present (桃太郎 starts in 村) never
+        # includes 鬼 (entry 鬼ヶ島) -- put both in the same zone directly so
+        # _peer_role_text can actually resolve 鬼's role.
+        world, subjects = load_fixture()
+        actor = subjects[world.protagonist]
+        oni = subjects[world.antagonist]
+        actor.zone = "鬼ヶ島"
+        oni.zone = "鬼ヶ島"
+        present = [actor, oni]
+        # actor (桃太郎) holds 勾玉 by default (lootable, has a modifier);
+        # 鬼 (the antagonist) doesn't have one -- so it is "差し出せる品".
+        judge = RecordingJudge()
+        rationality = Rationality(
+            kappa=1.0,
+            table=RationalityTable(),
+            judge=judge,
+            method="noul",
+            describe_negotiate_offer=True,
+        )
+        action = Action(
+            "negotiate",
+            (world.antagonist,),
+            {"target": world.antagonist, "objective": actor.goal.target},
+        )
+        rationality.multipliers(actor, world, present, [action])
+        self.assertEqual(
+            judge.received, ["宝を譲るよう交渉した（敵対、差し出せる品: 勾玉）"]
+        )
+
+
+class Momotaro2CandidateLabelYamlEvolveWiringTests(unittest.TestCase):
+    """WB-JEV-004 Stage 4b: momotaro_plus2's own rationality.yaml declares
+    candidate_labels/describe_negotiate_offer -- run evolve()'s whole
+    cfg-resolution -> Rationality pipeline against it with backend "fake"
+    (no Ollama/GPU, per this stage's verification rule) to prove
+    gapengine.evolve actually loads and threads the two new knobs through
+    without raising, the same way it already does for
+    describe_trial_grants (see RationalityEvolveWiringTests above)."""
+
+    def test_momotaro_plus2_evolve_run_with_fake_backend_makes_judge_calls(self) -> None:
+        project = ROOT / "projects" / "momotaro_plus2"
+        template = ROOT / "templates" / "momotaro_plus2"
+        with tempfile.TemporaryDirectory() as temporary:
+            out_dir = Path(temporary) / "out"
+            evolve(
+                {
+                    "project": project,
+                    "template": template,
+                    "out": out_dir,
+                    "generations": 1,
+                    "population": 2,
+                    "seeds": 1,
+                    "keep": "all",
+                    "rationality": {"kappa": 1.0, "backend": "fake"},
+                }
+            )
+            summary_payload = json.loads(
+                (out_dir / "summary.json").read_text(encoding="utf-8")
+            )
+            generation0 = summary_payload["generations"][0]
+            self.assertGreater(generation0["rationality_judge_calls"], 0)
+
+
 class RationalityReproducibilityTests(unittest.TestCase):
     """Plan §2 item 3: same table -> zero new judge calls, byte-identical
     layers.jsonl."""

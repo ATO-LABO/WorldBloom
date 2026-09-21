@@ -159,6 +159,96 @@ def _classify_run_file(
     return classify_rows(list(_iter_layer_rows(full_path)), reached=reached)
 
 
+def _protagonist_from_rows(rows: list[dict[str, Any]]) -> str | None:
+    """``layers.jsonl``'s first (``header``) row names the protagonist --
+    used by ``funnel_row`` to know whose ``rest`` decisions count towards
+    the vitality-at-rest signal, without this script having to load the
+    world.yaml itself."""
+
+    for row in rows:
+        if row.get("kind") == "header":
+            protagonist = row.get("protagonist")
+            return str(protagonist) if protagonist is not None else None
+    return None
+
+
+def funnel_row(
+    rows: list[dict[str, Any]], protagonist: str | None
+) -> dict[str, Any]:
+    """WB-JEV-004 Stage 4b plan §3: per-run funnel signals -- how far into
+    the money->gun / brother's-letter->trade routes a run got, regardless of
+    whether it reached the target ending (mirrors ``classify_rows``'s
+    "counted for every run" unconditional flags). ``concede_events`` is one
+    entry per ``concede`` decision (usually zero or one per run)."""
+
+    koban_gained = 0
+    crafted_gun = False
+    got_letter = False
+    negotiated = False
+    concede_events: list[dict[str, Any]] = []
+    protagonist_rests = 0
+    protagonist_rests_not_alive = 0
+
+    for row in rows:
+        if row.get("kind") != "decision":
+            continue
+        verb = row.get("verb")
+        result = row.get("result")
+        details = row.get("details") or {}
+
+        if verb == "investigate" and result == "investigated":
+            koban_gained += sum(
+                int(item.get("count", 1))
+                for item in details.get("gathered") or []
+                if item.get("item") == "小判"
+            )
+        elif verb == "craft" and result == "crafted" and details.get("item") == "鉄砲":
+            crafted_gun = True
+        elif (
+            verb == "trial"
+            and result == "trial_completed"
+            and details.get("trial_id") == "brother_letter_trial"
+        ):
+            got_letter = True
+        elif verb == "negotiate" and result == "offered":
+            negotiated = True
+        elif verb == "concede" and result == "conceded":
+            concede_events.append(
+                {
+                    "mode": details.get("mode"),
+                    "day": row.get("day"),
+                    "ship": "船" in (details.get("assets") or {}),
+                }
+            )
+
+        if (
+            protagonist is not None
+            and verb == "rest"
+            and row.get("subject") == protagonist
+        ):
+            policy_meta = row.get("policy")
+            ctx = policy_meta.get("ctx") if isinstance(policy_meta, dict) else None
+            # ctx[3] is subject.vitality at decision time (see
+            # gapengine.precedent.ctx_key) -- absent for the no-candidates
+            # fallback rest (engine/sim.py's choose_action returns
+            # Action("rest") with no policy meta at all in that case), which
+            # is excluded from both the numerator and the denominator.
+            if isinstance(ctx, list) and len(ctx) >= 4:
+                protagonist_rests += 1
+                if ctx[3] != "alive":
+                    protagonist_rests_not_alive += 1
+
+    return {
+        "koban_gained": koban_gained,
+        "crafted_gun": crafted_gun,
+        "got_letter": got_letter,
+        "negotiated": negotiated,
+        "concede_events": concede_events,
+        "protagonist_rests": protagonist_rests,
+        "protagonist_rests_not_alive": protagonist_rests_not_alive,
+    }
+
+
 def compute_experiment(name: str, exp_dir: Path) -> dict[str, Any]:
     generations = _load_generations(exp_dir)
 
@@ -169,6 +259,17 @@ def compute_experiment(name: str, exp_dir: Path) -> dict[str, Any]:
     route_genomes: dict[str, list[dict[str, Any]]] = {route: [] for route in ROUTES}
     reached_genomes: list[dict[str, Any]] = []
     qd_cross: dict[tuple[str, str], Counter[str]] = {}
+
+    protagonist: str | None = None
+    koban_at_least_1_runs = 0
+    koban_all_3_runs = 0
+    negotiated_runs = 0
+    concede_mode_runs: Counter[str] = Counter()
+    concede_days: list[int] = []
+    concede_with_ship_runs = 0
+    reached_after_concede_runs = 0
+    protagonist_rest_total = 0
+    protagonist_rest_not_alive_total = 0
 
     archive = None
     archive_path = exp_dir / "archive.json"
@@ -187,14 +288,45 @@ def compute_experiment(name: str, exp_dir: Path) -> dict[str, Any]:
                 layers_path = run.get("layers_path")
                 if not layers_path:
                     continue
-                classified = _classify_run_file(exp_dir, layers_path, reached=reached)
-                if classified is None:
+                full_path = exp_dir / layers_path
+                if not full_path.exists():
+                    _warn(f"missing layers file: {full_path}")
                     continue
-                route, crafted_gun, got_letter = classified
+                rows = list(_iter_layer_rows(full_path))
+                if protagonist is None:
+                    protagonist = _protagonist_from_rows(rows)
+
+                route, crafted_gun, got_letter = classify_rows(rows, reached=reached)
                 if crafted_gun:
                     crafted_gun_runs += 1
                 if got_letter:
                     got_letter_runs += 1
+
+                funnel = funnel_row(rows, protagonist)
+                if funnel["koban_gained"] >= 1:
+                    koban_at_least_1_runs += 1
+                if funnel["koban_gained"] >= 3:
+                    koban_all_3_runs += 1
+                if funnel["negotiated"]:
+                    negotiated_runs += 1
+                for mode in {
+                    str(event["mode"])
+                    for event in funnel["concede_events"]
+                    if event.get("mode")
+                }:
+                    concede_mode_runs[mode] += 1
+                concede_days.extend(
+                    int(event["day"])
+                    for event in funnel["concede_events"]
+                    if event.get("day") is not None
+                )
+                if any(event["ship"] for event in funnel["concede_events"]):
+                    concede_with_ship_runs += 1
+                if funnel["concede_events"] and reached:
+                    reached_after_concede_runs += 1
+                protagonist_rest_total += funnel["protagonist_rests"]
+                protagonist_rest_not_alive_total += funnel["protagonist_rests_not_alive"]
+
                 if not reached or route is None:
                     continue
 
@@ -224,9 +356,23 @@ def compute_experiment(name: str, exp_dir: Path) -> dict[str, Any]:
             archive_elite_routes["|".join(cell)] = classified[0] if classified else None
 
     reached_runs = sum(route_counts.values())
+    funnel_stats = {
+        "koban_at_least_1_runs": koban_at_least_1_runs,
+        "koban_all_3_runs": koban_all_3_runs,
+        "negotiated_runs": negotiated_runs,
+        "concede_mode_runs": concede_mode_runs,
+        "concede_runs": sum(concede_mode_runs.values()),
+        "concede_event_count": len(concede_days),
+        "concede_day_median": statistics.median(concede_days) if concede_days else None,
+        "concede_with_ship_runs": concede_with_ship_runs,
+        "reached_after_concede_runs": reached_after_concede_runs,
+        "protagonist_rest_total": protagonist_rest_total,
+        "protagonist_rest_not_alive_total": protagonist_rest_not_alive_total,
+    }
     return {
         "name": name,
         "dir": exp_dir,
+        "funnel": funnel_stats,
         "total_runs": total_runs,
         "reached_runs": reached_runs,
         "route_counts": route_counts,
@@ -331,6 +477,53 @@ def _archive_table(stats: dict[str, Any]) -> str:
     return _markdown_table(["セル", "経路"], rows)
 
 
+def _funnel_table(stats: dict[str, Any]) -> str:
+    """WB-JEV-004 Stage 4b plan §3: how far into the new routes every run
+    got, regardless of whether it reached the target ending (unlike (a)'s
+    route table, which only classifies *reached* runs)."""
+
+    funnel = stats["funnel"]
+    total = stats["total_runs"]
+    rows = [
+        ["小判を1枚以上得た", _pct(funnel["koban_at_least_1_runs"], total)],
+        ["小判を3枚そろえた", _pct(funnel["koban_all_3_runs"], total)],
+        ["鉄砲をcraftした", _pct(stats["crafted_gun_runs"], total)],
+        ["鬼の弟の試練を完了した", _pct(stats["got_letter_runs"], total)],
+        ["negotiateを申し出た", _pct(funnel["negotiated_runs"], total)],
+        [
+            "鬼がconcedeした（trade）",
+            _pct(funnel["concede_mode_runs"].get("trade", 0), total),
+        ],
+        [
+            "鬼がconcedeした（goodwill）",
+            _pct(funnel["concede_mode_runs"].get("goodwill", 0), total),
+        ],
+        [
+            "concedeで渡した品に船が含まれた",
+            _pct(funnel["concede_with_ship_runs"], total),
+        ],
+        ["concede後に到達した", _pct(funnel["reached_after_concede_runs"], total)],
+    ]
+    lines = [_markdown_table(["段階", "全ラン中の割合"], rows), ""]
+    median = funnel["concede_day_median"]
+    lines.append(
+        "concedeの時点の日付の中央値: "
+        + (
+            f"{median:g}日目（n={funnel['concede_event_count']}）"
+            if median is not None
+            else "-"
+        )
+    )
+    lines.append(
+        "主人公のrestのうちvitalityがaliveでないものの割合: "
+        + _pct(
+            funnel["protagonist_rest_not_alive_total"],
+            funnel["protagonist_rest_total"],
+        )
+    )
+    return "\n".join(lines)
+
+
 def _judgement(stats: dict[str, Any]) -> list[tuple[str, str]]:
     reached = stats["reached_runs"]
     route_counts = stats["route_counts"]
@@ -414,6 +607,10 @@ def build_report(stats_list: list[dict[str, Any]]) -> str:
                 [[label, result] for label, result in _judgement(stats)],
             )
         )
+        lines.append("")
+        lines.append("### (f) 経路の各段階の通過数（到達不問・全ラン対象）")
+        lines.append("")
+        lines.append(_funnel_table(stats))
         lines.append("")
 
     return "\n".join(lines)
