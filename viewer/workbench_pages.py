@@ -162,11 +162,8 @@ def _th_title(term_key):
 
 
 def _guidance_page(title="実行管理", *, phase=None):
-    body = (
-        '<section class="card"><p>実行管理は未設定です。'
-        '<code>--control &lt;管理フォルダ&gt;</code> を付けてビューアを起動してください。</p></section>'
-    )
-    return pages.document(title, body, phase=phase)
+    from viewer.error_pages import guidance
+    return guidance("この操作はStudioで利用できます", "実行管理は未設定です。保存された候補や物語の閲覧は、ホームから続けられます。", phase=phase)
 
 
 def _query(handler):
@@ -2070,41 +2067,20 @@ def _candidates_raw(handler, run_id, candidate_id):
     if availability != "present" or not relative_path:
         raise ConfigError("candidate_id", f"原記録を表示できません（状態: {availability}）", code="not_found")
     root, _legacy = catalog.resolve(run_id)
-    path = contained(root, relative_path)
-    raw = path.read_text(encoding="utf-8-sig")
-    lines = raw.splitlines()
+    from viewer import raw_view, raw_pages
+    from execution.output_store import verified
+    source = raw_view.source_bytes(
+        verified(contained(root, relative_path), candidate["source_log_sha256"]),
+        relative=relative_path, experiment=experiment_name, cell=candidate.get("cell_key") or "未分類",
+        generation=candidate.get("generation"), seed=candidate.get("seed"))
     query = _query(handler)
-    line_param = query.get("line", [None])[0]
-    body = [f'<p><a href="/runs/{_url(run_id)}/candidates">← 候補一覧へ戻る</a></p>']
-    body.append(
-        f'<p>SHA-256: {_escape(candidate.get("source_log_sha256"))} · '
-        f'世代{_escape(candidate.get("generation"))} · '
-        f'個体{_escape(candidate.get("individual_index"))} · seed{_escape(candidate.get("seed"))}</p>'
-    )
-    if line_param is not None:
-        try:
-            line = int(line_param)
-        except (TypeError, ValueError) as error:
-            raise ConfigError("line", "1始まりの整数を指定してください") from error
-        if not 1 <= line <= len(lines):
-            raise ConfigError("line", "原ログの範囲外です")
-        first, last = max(1, line - 3), min(len(lines), line + 3)
-        body.append(
-            f'<p>原ログ全{len(lines)}行のうちL{first}〜L{last}。'
-            f'<a href="/runs/{_url(run_id)}/candidates/{_url(candidate_id)}/raw">全文</a></p>'
-        )
-    else:
-        first, last = 1, len(lines)
-    body.append('<div class="raw-lines">')
-    for number in range(first, last + 1):
-        body.append(f'<pre id="L{number}"><a href="?line={number}#L{number}">L{number}</a> {_escape(lines[number - 1])}</pre>')
-    body.append("</div>")
-    handler._send_html(pages.document(
-        f"{candidate_id} 原ログ", "".join(body),
-        crumbs=[("候補一覧", f"/runs/{_url(run_id)}/candidates")],
-        phase="sifting", run=experiment_name, output_run=run_id,
-        job_store=_job_store(handler),
-    ))
+    options = {key:query.get(key,[default])[0] for key,default in
+               (("line",None),("q",""),("kind",""),("person",""),("page",None),("mode","readable"))}
+    handler._send_html(raw_pages.render_source(source, **options,
+        expected_source=query.get("source",[None])[0], job_store=_job_store(handler), output_run=run_id,
+        back_href=f"/runs/{_url(run_id)}/candidates?candidate={_url(candidate_id)}",
+        raw_href=f"/runs/{_url(run_id)}/candidates/{_url(candidate_id)}/raw"))
+
 
 
 def _tray(handler):
@@ -2161,10 +2137,18 @@ def dispatch(handler, parts, method):
     try:
         action(handler, *args)
     except ConfigError as error:
+        if method == "GET" and not parts[0] == "api":
+            raise
         job_api.send_error(handler, error)
     except FileNotFoundError:
+        if method == "GET" and parts[0] != "api":
+            raise data.MissingResource("保存された記録が見つかりません")
         job_api.send_error(handler, ConfigError("resource", "公開済み記録がありません", code="not_found"))
+    except (data.BadRequest, data.ForbiddenPath, data.MissingResource):
+        raise
     except (OSError, ValueError, TypeError, KeyError):
+        if method == "GET" and parts[0] != "api":
+            raise OSError("保存された情報を読み取れません")
         handler._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
             "code": "storage_error", "message": "保存済み記録を処理できません",
             "field_errors": {}, "retryable": False, "current_revision": None,

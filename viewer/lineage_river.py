@@ -510,21 +510,5 @@ def river_page(
     selected_cell: str | None = None,
     job_store: Any = None,
 ) -> str:
-    model = river_model(repository, experiment_name, selected_cell=selected_cell)
-    experiment_url = f"/exp/{pages._url_segment(experiment_name)}"
-    base_url = f"{experiment_url}/river"
-    body = (
-        f'<div class="cell-navigation"><a href="{experiment_url}">← 格子</a></div>'
-        + render_river(model, base_url)
-    )
-    phases = data.phase_status(repository, experiment_name, job_store=job_store)
-    return pages.document(
-        f"{experiment_name} / 系譜の川",
-        body,
-        run=experiment_name,
-        phase="sifting",
-        phases=phases,
-        lead="世代をまたいで、地図に残った物語の血筋を確かめます。",
-        next_action=("格子に戻る →", experiment_url),
-        job_store=job_store,
-    )
+    from viewer import review_pages
+    return review_pages.river(repository, experiment_name, selected_cell=selected_cell, job_store=job_store)

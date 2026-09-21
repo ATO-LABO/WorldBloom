@@ -560,17 +560,9 @@ def _worlds_detail(handler, world_id):
             job_store=job_store, pin=data.pinned_target(job_store),
         ))
         return
-    body = (f'<p><a href="/worlds/{_url(world_id)}">← 世界設定に戻る</a></p>'
-            + render_world_detail(world, store, job_store))
-    doc = pages.document(
-        f"世界: {label}", body,
-        crumbs=[(label, f"/worlds/{_url(world_id)}")],
-        phase="world", world={"id": world_id, "name": label},
-        page_class="world-editorial",
-        lead="この世界の人物・場所・期間・定石を確かめ、必要なら編集してから実験へ進みます。",
-        job_store=job_store, pin=data.pinned_target(job_store),
-    )
-    handler._send_html(doc.replace('</head>', '<link rel="stylesheet" href="/static/world-create.css"><script src="/static/world-create.js" defer></script></head>'))
+    from viewer import world_advanced
+    handler._send_html(world_advanced.render(world, store, job_store))
+
 
 
 def _genres_new(handler):
@@ -646,8 +638,8 @@ def _create_world(handler):
 
 
 def _edit_world(handler, world_id):
-    jobs = _require_job_store(handler)
     body = _boundary_body(handler)
+    jobs = _require_job_store(handler)
     from execution.world_editor import save
     result = save(LibraryStore(jobs.configs.repo), world_id, body)
     handler._send_json(HTTPStatus.OK, result)
@@ -771,10 +763,18 @@ def dispatch(handler, parts, method):
     try:
         action(handler, *args)
     except ConfigError as error:
+        if method == "GET" and not parts[0] == "api":
+            raise
         job_api.send_error(handler, error)
     except FileNotFoundError:
+        if method == "GET" and parts[0] != "api":
+            raise data.MissingResource("保存された記録が見つかりません")
         job_api.send_error(handler, ConfigError("resource", "対象が見つかりません", code="not_found"))
+    except (data.BadRequest, data.ForbiddenPath, data.MissingResource):
+        raise
     except (OSError, ValueError, TypeError, KeyError):
+        if method == "GET" and parts[0] != "api":
+            raise OSError("保存された情報を読み取れません")
         handler._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
             "code": "storage_error", "message": "保存済み記録を処理できません",
             "field_errors": {}, "retryable": False, "current_revision": None,

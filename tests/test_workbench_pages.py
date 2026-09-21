@@ -199,7 +199,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn('<a class="brand" href="/">WorldBloom</a>', configs_body)
         for href, label, icon in (("/configs", "設定", "⚙"), ("/history", "実行履歴", "📝")):
             with self.subTest(href=href):
-                link = f'<a href="{href}" title="{label}" aria-label="{label}">{icon}</a>'
+                link = f'<a href="{href}" title="{label}" aria-label="{label}">'
                 self.assertIn(link, body)
                 self.assertIn(link, configs_body)
 
@@ -690,7 +690,7 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status(f"/runs/{rid}/candidates?reached=maybe")
         self.assertEqual(status, 422, body)
-        self.assertIn("code", json.loads(body))
+        self.assertIn("ux-guidance", body)
 
         # The filter form (§3.8) always submits every field, blank or not, so
         # an all-blank submission and a one-field submission must both 200.
