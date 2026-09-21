@@ -236,34 +236,18 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
     def test_world_detail_page(self):
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-wb="library"', body)
-        self.assertIn('data-kind="world"', body)
-        self.assertIn('data-file="world.yaml"', body)
-        self.assertIn('data-file="subjects/03_momotaro.yaml"', body)
-        self.assertIn("人物を追加", body)
-        self.assertIn('class="relation-graph"', body)
-        self.assertNotIn('class="next-cta"', body)
-        self.assertIn('class="actions world-cta"', body)
-        self.assertIn('id="world-files"', body)
-        self.assertIn('id="subject-files"', body)
-        self.assertGreater(
-            body.index('class="actions world-cta"'), body.index('id="world-files"'))
-        self.assertEqual(body.count('data-file="subjects/03_momotaro.yaml"'), 1)
+        self.assertIn('data-world-advanced', body)
+        self.assertIn('&quot;world.yaml&quot;', body)
+        self.assertIn('subjects/03_momotaro.yaml', body)
+        self.assertIn('data-advanced-save', body)
+        self.assertIn('href="/worlds/momotaro"', body)
 
-    def test_world_detail_page_has_six_tabs(self):
-        # Regression guard for the world/genre/count/period tab split
-        # (WB-UI-017, extended by WB-UI-025's 行動図鑑 tab): checks the tab
-        # wiring itself, not just that each panel's content is present
-        # somewhere in the flat HTML.
+    def test_world_detail_page_has_four_sections(self):
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertEqual(body.count('class="tab-input"'), 6)
-        for index, label in enumerate(["概要", "登場人物", "初期物語", "行動図鑑", "場所", "期間"]):
-            self.assertIn(f'<label class="tab-label" for="tab-world-{index}">{label}</label>', body)
-        self.assertNotIn('for="tab-world-6"', body)
-        self.assertIn('class="relation-graph zone-graph"', body)
-        self.assertIn('class="day-cycle"', body)
-        self.assertIn('class="calendar-grid"', body)
+        for section in ('roles','canon','actions','files'):
+            self.assertIn(f'data-advanced-section="{section}"',body)
+        self.assertNotIn('class="tab-input"',body)
 
     def test_world_detail_action_catalog(self):
         # WB-UI-025: the 行動図鑑 tab renders this world's verb status
@@ -281,11 +265,10 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         # introduction, not just a bare metadata line.
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('class="world-intro"', body)
-        self.assertIn("桃太郎が「", body)
-        self.assertIn("16日間", body)
+        self.assertIn('世界の詳細設定', body)
+        self.assertIn('href="/worlds/momotaro"', body)
+        self.assertIn('&quot;days&quot;: 16', body)
         self.assertIn('href="/genres/momotaro"', body)
-        self.assertIn('class="world-summary world-facts"', body)
 
     def test_world_detail_page_has_canon_and_readout(self):
         # WB-EXPLAIN-canon: the 初期物語 tab surfaces the canon precedent
@@ -497,10 +480,10 @@ class LibraryGuidanceTests(unittest.TestCase):
     def test_world_detail_without_control_is_read_only(self):
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('class="relation-graph"', body)
+        self.assertIn('data-world-advanced', body)
         self.assertNotIn('data-action="save-file"', body)
         self.assertNotIn('data-wb="library"', body)
-        self.assertIn('class="actions world-cta"', body)
+        self.assertIn('&quot;editable&quot;: false', body)
 
     def test_genre_detail_without_control_is_still_guidance(self):
         status, body = self.get("/genres/momotaro")

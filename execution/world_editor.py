@@ -73,6 +73,8 @@ def save(store, ident, body):
         "place": {"note"}, "add-person": {"name", "description", "entry"},
         "add-place": {"name", "description"}, "state": {"entry", "knowledge"},
         "route": {"item", "cost"},
+        "roles": {"protagonist", "antagonist", "target_ending"},
+        "file": {"content"},
     }
     if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict) or set(values) != allowed[operation]:
         _bad("values", "編集項目を確認してください")
@@ -85,7 +87,33 @@ def save(store, ident, body):
         names = [z if isinstance(z, str) else z["name"] for z in zones]
         people = [(rel, p) for rel, p in files.items() if rel != "world.yaml"]
         rel, updated = "world.yaml", deepcopy(world)
-        if operation in ("person", "state"):
+        if operation == "file":
+            if not isinstance(target, str) or target not in files:
+                _bad("target", "登録された世界・人物ファイルを指定してください")
+            content = values["content"]
+            if not isinstance(content, str) or not content.strip() or len(content.encode("utf-8")) > 262144:
+                _bad("content", "空ではない256KB以内の設定を指定してください")
+            try:
+                parsed = yaml.safe_load(content)
+            except yaml.YAMLError:
+                _bad("content", "YAMLの書式を確認してください")
+            if not isinstance(parsed, dict):
+                _bad("content", "項目と値の形式で指定してください")
+            store._write_file("world", ident, target, content)
+            return snapshot(store, ident)
+        elif operation == "roles":
+            ids = [p.get("id") for _, p in people]
+            for key in ("protagonist", "antagonist"):
+                value = _text(values[key], key, maximum=120)
+                if value and ids.count(value) != 1:
+                    _bad(key, "登録された人物を選んでください")
+                updated[key] = value
+            endings = _list(values["target_ending"], "target_ending")
+            known = [e.get("id") for e in world.get("ending", []) if isinstance(e, dict)]
+            if any(e not in known for e in endings):
+                _bad("target_ending", "登録された結末を選んでください")
+            updated["target_ending"] = endings
+        elif operation in ("person", "state"):
             matches = [(r, p) for r, p in people if isinstance(target, str) and p.get("id") == target]
             if len(matches) != 1:
                 _bad("target", "人物を一意に特定できません。詳細設定で確認してください")

@@ -343,8 +343,7 @@ class OutputPagesTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/outputs/out-doesnotexist" + uuid.uuid4().hex[:8])
         self.assertEqual(status, 404, body)
-        payload = json.loads(body)
-        self.assertIn("code", payload)
+        self.assertIn("ux-guidance", body)
 
     def test_output_detail_without_job_state(self):
         """An output whose owning job is unknown to this job store degrades to

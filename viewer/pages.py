@@ -1017,147 +1017,9 @@ def experiment_page(
     *,
     job_store: Any = None,
 ) -> str:
-    experiment = repository.experiment(experiment_name)
-    archive = repository.archive(experiment)
-    cells = data._as_mapping(archive.get("cells"))
-    meta = data.experiment_meta(repository, experiment)
-    categories, bins = data._ordered_axes(
-        meta["categories"],
-        meta["bins"],
-        cells,
-    )
-    selected = repository.selection(experiment)
+    from viewer import review_pages
+    return review_pages.grid(repository, experiment_name, job_store=job_store)
 
-    headings = "".join(
-        f"<th scope=\"col\">{_escape(bin_name)}</th>"
-        for bin_name in bins
-    )
-    body_rows = []
-    for category in categories:
-        columns = []
-        for bin_name in bins:
-            cell_key = f"{category}|{bin_name}"
-            elite = cells.get(cell_key)
-            if isinstance(elite, Mapping):
-                columns.append(
-                    _cell_markup(
-                        repository,
-                        experiment,
-                        experiment_name,
-                        cell_key,
-                        elite,
-                        meta["world_meta"],
-                        meta["categories"],
-                        selected,
-                        len(meta.get("seeds") or []),
-                    )
-                )
-            else:
-                columns.append('<td class="empty">空</td>')
-        body_rows.append(
-            f'<tr><th scope="row">{_escape(category)}</th>'
-            + "".join(columns)
-            + "</tr>"
-        )
-
-    reach = meta["reach_series"]
-    occupied = meta["occupied_series"]
-    quality = meta["quality_series"]
-    dissimilarity = meta.get("dissimilarity_series") or []
-    strip = (
-        '<section class="card metric-strip">'
-        f'<div><strong>{_tip("cells", "占有マス")}</strong>'
-        f'{sparkline(occupied)}'
-        f'<span class="{_grade(_ratio(meta["cells"], meta["grid_size"]))}">'
-        f'{_escape(meta["cells"])}/{_escape(meta["grid_size"])}</span></div>'
-        f'<div><strong>{_tip("dissimilarity", "相異度")}</strong>'
-        f'{sparkline(dissimilarity)}'
-        f'<span class="{_grade(_last(dissimilarity))}">'
-        f'{_escape(_series_text(dissimilarity))}</span>'
-        f'{_dissimilarity_note(dissimilarity)}</div>'
-        f'<div><strong>{_tip("quality", "q̄")}</strong>'
-        f'{sparkline(quality)}'
-        f'<span class="{_grade(_last(quality))}">'
-        f'{_escape(_series_text(quality))}</span></div>'
-        f'<div class="gate"><strong>{_tip("reach", "到達率")}</strong>'
-        f'<span>{_escape(_gate_text(reach))}</span>'
-        '<span class="gate-note">アーカイブへの入場ゲート。'
-        '上げる対象ではない</span></div>'
-        '<p class="strip-detail">'
-        f'volatility 閾値 {_escape(_threshold_text(meta["thresholds"]))}'
-        f' · 結末 {_escape(meta.get("target_ending"))}'
-        f' · keep={_escape(meta.get("keep"))}'
-        "</p></section>"
-    )
-
-    order = [
-        f"{category}|{bin_name}"
-        for category in categories
-        for bin_name in bins
-    ]
-    tray_links = [
-        (
-            f'<a href="/exp/{_url_segment(experiment_name)}'
-            f'/cell/{_url_segment(cell)}">★ {_escape(cell)}</a>'
-        )
-        for cell in order
-        if cell in selected
-    ]
-    tray = (
-        '<aside class="tray"><strong>Sifting トレイ:</strong> '
-        + (" ".join(tray_links) if tray_links else "選定なし")
-        + "</aside>"
-    )
-
-    workbench_links = ""
-    if repository.catalog is not None:
-        run_id = repository.catalog.run_id(experiment_name)
-        if run_id.startswith("legacy-"):
-            run_id = repository.catalog.register_legacy(experiment_name)
-        links = [
-            f'<a href="/runs/{_url_segment(run_id)}/candidates">候補一覧（世代・seed別）</a>',
-            '<a href="/selected">横断 Sifting トレイ</a>',
-        ]
-        manifest_path = repository.safe_path(experiment, "manifest.json")
-        if manifest_path.is_file():
-            manifest = data._read_json(manifest_path)
-            config_id = manifest.get("config_id") if isinstance(manifest, dict) else None
-            if config_id:
-                links.append(f'<a href="/configs/{_url_segment(config_id)}">実行設定</a>')
-        workbench_links = f'<p class="workbench-links">{" ".join(links)}</p>'
-
-    body = (
-        f'<form id="compare-cells" method="get" action="/exp/{_url_segment(experiment_name)}/compare"><p>格子から2〜4候補を選択して <button type="submit">四項目で比較</button></p></form>'
-        f"{workbench_links}"
-        '<p class="experiment-meta">'
-        f'<span class="genre">{_escape(meta["genre"])}</span> '
-        f'{_escape(meta["world"])} · '
-        f'{datetime.fromtimestamp(float(meta["archive_mtime"])).strftime("%Y-%m-%d %H:%M")}'
-        "</p>"
-        f"{strip}"
-        '<section class="card grid-wrap">'
-        '<table class="archive-grid">'
-        f'<thead><tr><th scope="col">カテゴリ</th>{headings}</tr></thead>'
-        f'<tbody>{"".join(body_rows)}</tbody>'
-        "</table></section>"
-        f"{_command_block(repository, meta)}"
-        f"{tray}"
-    )
-    world = _experiment_world(meta, job_store)
-    phases = data.phase_status(repository, experiment_name, job_store=job_store)
-    next_label, next_href = next_action_for(experiment_name, phases)
-    return document(
-        f"実験: {experiment_name}",
-        body,
-        crumbs=[(experiment_name, f"/exp/{_url_segment(experiment_name)}")],
-        world=world,
-        run=experiment_name,
-        phase="sifting",
-        phases=phases,
-        lead="格子で候補を吟味し、★で選定します。",
-        next_action=(next_label, next_href),
-        job_store=job_store,
-    )
 
 
 def layers_svg(
@@ -1554,8 +1416,6 @@ def cell_page(
     cell_base = (
         f"{experiment_url}/cell/{_url_segment(cell_key)}"
     )
-    endpoint = f"{experiment_url}/selection"
-    checked = " checked" if model["selected"] else ""
 
     nav_links = []
     if model["prev_cell"]:
@@ -1597,18 +1457,6 @@ def cell_page(
         else None
     )
 
-    selection_bar = (
-        '<section class="candidate-statusbar">'
-        '<label class="selection large">'
-        f'<input type="checkbox" class="selection-toggle" '
-        f'data-endpoint="{endpoint}" data-cell="{_escape(cell_key)}"{checked}>'
-        '<span>上映候補として選定</span></label>'
-        '<dl class="candidate-status-metrics">'
-        f'<div><dt>{_tip("quality", "品質")}</dt><dd>{model["quality"]:.4f}</dd></div>'
-        f'<div><dt>{_tip("elite_reach", "到達")}</dt><dd>{_reached_seeds(model["reach_rate"], len(model.get("seeds") or []))}</dd></div>'
-        f'<div><dt>{_tip("generation", "世代")}</dt><dd>g{model["generation"]}</dd></div>'
-        '</dl></section>'
-    )
     outputs = (
         '<div class="outputs-grid story-outputs">'
         f'{_output_panel("あらすじ", synopsis_entry, synopsis_text, model["synopsis_backend"])}'
@@ -1659,38 +1507,10 @@ def cell_page(
         '<details class="raw"><summary>模範ランのターン列（生ログ）</summary>'
         f'{_raw_table(model["turn_rows"])}</details>'
     )
-    body = (
-        '<div class="candidate-detail-shell">'
-        '<div class="cell-navigation">'
-        f'<a href="{experiment_url}">← 格子</a>'
-        f'<span class="neighbors">{" ".join(nav_links)}</span></div>'
-        + selection_bar
-        + '<div class="candidate-detail-tabs" role="tablist" aria-label="候補情報">'
-        '<button type="button" class="candidate-detail-tab is-active" data-detail-tab="story" aria-selected="true">物語</button>'
-        '<button type="button" class="candidate-detail-tab" data-detail-tab="reason" aria-selected="false">選択と根拠</button>'
-        '<button type="button" class="candidate-detail-tab" data-detail-tab="data" aria-selected="false">実験データ</button>'
-        '</div><div class="candidate-detail-panels">'
-        f'<section class="candidate-detail-panel is-active" data-detail-panel="story">{story_panel}</section>'
-        f'<section class="candidate-detail-panel" data-detail-panel="reason" hidden>{reason_panel}</section>'
-        f'<section class="candidate-detail-panel" data-detail-panel="data" hidden>{data_panel}</section>'
-        '</div></div>'
-    )
-    phases = data.phase_status(repository, experiment_name, job_store=job_store)
-    return document(
-        f"{experiment_name} / {cell_key}",
-        body,
-        crumbs=[
-            (experiment_name, experiment_url),
-            (cell_key, cell_base),
-        ],
-        run=experiment_name,
-        phase="sifting",
-        phases=phases,
-        lead="この候補の経緯を四項目で確かめます。",
-        next_action=("格子に戻る →", experiment_url),
-        job_store=job_store,
-        page_class="candidate-detail-workspace",
-    )
+    from viewer import review_pages
+    return review_pages.candidate(repository, experiment_name, cell_key, model,
+                                  story_panel, reason_panel, data_panel, nav_links, job_store=job_store)
+
 
 
 def _gene_shift_text(gene_shift: Sequence[Mapping[str, Any]] | None) -> str:
@@ -1890,37 +1710,9 @@ def _reader_generation_backend(job_store):
 
 
 def compare_page(repository, experiment_name, cells, *, job_store=None):
-    experiment = repository.experiment(experiment_name)
-    phases = data.phase_status(repository, experiment_name, job_store=job_store)
-    grid_href = f"/exp/{_url_segment(experiment_name)}"
-    lead = "候補を同じ四項目で並べて比べます。"
-    next_action = ("格子に戻る →", grid_href)
-    if not 2 <= len(cells) <= 4 or len(set(cells)) != len(cells):
-        return document("四項目で比較",
-                        '<p role="alert">比較する異なる候補を2〜4件選んでください。</p>'
-                        + f'<p><a href="{grid_href}">← 格子で候補を選ぶ</a></p>',
-                        run=experiment_name, phase="sifting", phases=phases,
-                        lead=lead, next_action=next_action, job_store=job_store)
-    explanations = [data.cell_explanation(repository, experiment, cell) for cell in cells]
-    same = len({x["trajectory_signature"] for x in explanations}) == 1
-    body = f'<p><a href="{grid_href}">← 格子で候補を選ぶ</a></p>'
-    body += '<p>それぞれの候補で、何が起きたかを読み比べられます。</p>'
-    has_reader = any(x.get("reader_summary") for x in explanations)
-    if has_reader:
-        body += '<details><summary>記録上の比較</summary>'
-    body += '<p>主人公の行動・対象・結果の並びは同じ筋です。</p>' if same else '<p>主人公の行動・対象・結果の並びに差があります。物語品質の優劣は判定していません。</p>'
-    if has_reader:
-        body += "</details>"
-    backend = _reader_generation_backend(job_store)
-    body += '<div class="explanation-comparison">'
-    for cell, explanation in zip(cells, explanations):
-        body += f'<section class="card"><h2><a href="{explanation_ui.base_url(explanation)}">{_escape(cell)}</a></h2>'
-        body += reader_ui.panel(explanation)
-        if backend and not explanation.get("reader_summary") and data.is_summarizable(explanation):
-            body += reader_ui.generate_button(experiment_name, cell, url_segment=_url_segment)
-        body += '</section>'
-    return document("四項目で比較", body + '</div>', run=experiment_name, phase="sifting", phases=phases,
-                     lead=lead, next_action=next_action, job_store=job_store)
+    from viewer import review_pages
+    return review_pages.compare(repository, experiment_name, cells, job_store=job_store)
+
 
 
 def raw_page(repository, experiment_name, cell_key, line=None, *, job_store=None, **options):

@@ -114,11 +114,13 @@ def readable(record):
 
 
 def render_source(source, *, line=None, q="", kind="", person="", page=None,
-                  mode="readable", expected_source=None, phases=None, job_store=None):
+                  mode="readable", expected_source=None, phases=None, job_store=None,
+                  back_href=None, raw_href=None, output_run=None):
     view = model.select(source, line=line, q=q, kind=kind, person=person,
                         page=page, expected_source=expected_source)
     base = f'/exp/{U(source["experiment"])}/cell/{U(source["cell"])}'
-    raw_url = base + "/raw"
+    raw_url = raw_href or base + "/raw"
+    base = back_href or base
     mode = mode if mode in ("readable", "json") else "readable"
     chosen = view.get("selected")
     def href(**overrides):
@@ -204,7 +206,7 @@ def render_source(source, *, line=None, q="", kind="", person="", page=None,
     info = f'<details class="rv-file"><summary>ファイル情報</summary><div>{fields([("ファイル",source["relative"]),("サイズ",str(source["size"])+" bytes"),("SHA-256",source["sha256"])])}<p class="rv-note">ハッシュは読み取ったファイル全体のバイト列に対応します。</p></div></details>'
     body += '<footer class="rv-footer"><div><span>' + (f'原記録 L{chosen.line} / {len(source["records"])}行' if chosen else "原記録") + '</span>' + info + f'</div><a class="rv-primary" href="{base}">候補に戻る →</a></footer><p class="rv-status" data-rv-status role="status" aria-live="polite"></p></div>'
     html = pages.document("原記録を確かめる", body, run=source["experiment"], phase="sifting",
-                          phases=phases, job_store=job_store, page_class="run-observer")
+                          phases=phases, output_run=output_run, job_store=job_store, page_class="run-observer")
     return html.replace("</head>", '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/raw-workspace.css"><script src="/static/raw-workspace.js" defer></script></head>')
 
 

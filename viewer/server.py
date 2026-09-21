@@ -33,6 +33,9 @@ from viewer.data import (
 
 MAX_POST_BYTES = 64 * 1024
 STATIC_FILES = {
+    "review-workspace.css": "text/css; charset=utf-8",
+    "review-workspace.js": "application/javascript; charset=utf-8",
+    "world-advanced.js": "application/javascript; charset=utf-8",
     "home-workspace.css": "text/css; charset=utf-8",
     "home-workspace.js": "application/javascript; charset=utf-8",
     "world-create.css": "text/css; charset=utf-8",
@@ -210,7 +213,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if len(parts) == 3 and parts[0] == "exp" and parts[2] == "river":
             from viewer import lineage_river
             query = parse_qs(urlsplit(self.path).query)
-            html = lineage_river.river_page(self.repository, parts[1], selected_cell=query.get("cell", [None])[0], job_store=job_store)
+            html = lineage_river.river_page(self.repository, parts[1], selected_cell=query.get("cell", [None])[0] or None, job_store=job_store)
             self._send_html(html.replace("</head>", '<link rel="stylesheet" href="/static/run-workspace.css"></head>'))
             return
         if len(parts) == 3 and parts[0] == "exp" and parts[2] == "compare":
@@ -298,29 +301,34 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return
         raise MissingResource("route not found")
 
+    def _page_error(self, status, message):
+        from viewer import error_pages
+        if urlsplit(self.path).path.startswith(("/api/", "/static/")):
+            self._send_json(HTTPStatus(status), {"error": message})
+            return
+        html = error_pages.render(self.path, status, message, job_store=getattr(self.server,"job_store",None))
+        self._send_bytes(HTTPStatus(status), "text/html; charset=utf-8", html.encode("utf-8"))
+
     def do_GET(self) -> None:
         try:
             self._dispatch_get()
         except ConfigError as error:
-            job_api.send_error(self, error)
+            if urlsplit(self.path).path.startswith("/api/"):
+                job_api.send_error(self, error)
+            else:
+                self._page_error(job_api.STATUS.get(error.code, 422), str(error))
         except ForbiddenPath:
-            self.send_error(HTTPStatus.FORBIDDEN.value)
+            self._page_error(403, "この場所は表示できません")
         except MissingResource:
-            self.send_error(HTTPStatus.NOT_FOUND.value)
+            self._page_error(404, "対象の情報が見つかりません")
         except BadRequest as error:
-            self._send_json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": str(error)},
-            )
+            self._page_error(400, str(error))
         except (
             OSError,
             ValueError,
             json.JSONDecodeError,
         ):
-            self.send_error(
-                HTTPStatus.INTERNAL_SERVER_ERROR.value,
-                "Could not read experiment artifacts",
-            )
+            self._page_error(500, "保存された情報を読み取れませんでした")
 
     def _request_json(self) -> Mapping[str, Any]:
         raw_length = self.headers.get("Content-Length")

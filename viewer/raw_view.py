@@ -139,7 +139,12 @@ def read_source(repository, experiment_name, cell_key):
     path = repository.safe_path(experiment, relative)
     if not path.is_file():
         raise data.MissingResource("exemplar log not found")
-    payload = path.read_bytes()
+    return source_bytes(path.read_bytes(), relative=relative, experiment=experiment_name,
+                        cell=cell_key, generation=elite.get("generation"), seed=exemplar.get("seed"))
+
+
+def source_bytes(payload, *, relative, experiment, cell, generation=None, seed=None):
+    """Index the exact bound log without resolving a different representative."""
     try:
         text = payload.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -157,8 +162,8 @@ def read_source(repository, experiment_name, cell_key):
     header = next((r.row for r in records if r.kind == "header"), {})
     return {"records": records, "sha256": hashlib.sha256(payload).hexdigest(),
             "relative": relative, "size": len(payload), "world": scalar(header.get("world")),
-            "generation": elite.get("generation"), "seed": exemplar.get("seed", header.get("seed")),
-            "experiment": experiment_name, "cell": cell_key}
+            "generation": generation, "seed": seed if seed is not None else header.get("seed"),
+            "experiment": experiment, "cell": cell}
 
 
 def select(source, *, line=None, q="", kind="", person="", page=None, expected_source=None):

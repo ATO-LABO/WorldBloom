@@ -46,7 +46,8 @@ class WorldEditorTests(unittest.TestCase):
         status,html=self.get('/worlds/momotaro?view=advanced')
         self.assertEqual(status,200,html)
         self.assertIn('canon-table',html)
-        self.assertIn('data-file="world.yaml"',html)
+        self.assertIn('data-world-advanced',html)
+        self.assertIn('&quot;world.yaml&quot;',html)
 
     def test_world_edits_preserve_unrelated_fields_and_subject_bytes(self):
         original=deepcopy(self.current()['world'])

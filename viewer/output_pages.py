@@ -19,7 +19,7 @@ from execution.output_settings import current_generation
 from execution.output_store import OutputStore, verified
 from execution.provenance import ConfigError, contained, read_json
 from execution.worker import TERMINAL
-from viewer import job_api, pages, workbench_pages
+from viewer import job_api, pages, workbench_pages, data
 
 _escape = pages._escape
 _url = pages._url_segment
@@ -859,10 +859,18 @@ def dispatch(handler, parts, method):
     try:
         action(handler, *args)
     except ConfigError as error:
+        if method == "GET" and not parts[0] == "api":
+            raise
         job_api.send_error(handler, error)
     except FileNotFoundError:
+        if method == "GET" and parts[0] != "api":
+            raise data.MissingResource("保存された記録が見つかりません")
         job_api.send_error(handler, ConfigError("resource", "作品が見つからないか読み取れません", code="not_found"))
+    except (data.BadRequest, data.ForbiddenPath, data.MissingResource):
+        raise
     except (OSError, ValueError, TypeError, KeyError):
+        if method == "GET" and parts[0] != "api":
+            raise OSError("保存された情報を読み取れません")
         handler._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
             "code": "storage_error", "message": "保存済み記録を処理できません",
             "field_errors": {}, "retryable": False, "current_revision": None,

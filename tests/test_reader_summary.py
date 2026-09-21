@@ -334,7 +334,7 @@ class ReaderSummaryTests(unittest.TestCase):
             core = explanation_ui.short(data.cell_explanation(self.repo, self.exp, cell))
             self.assertIn(core, grid)
         self.assertIn('class="reader-short-label"', grid)
-        self.assertLess(detail.index('class="card reader-primary'), detail.index('class="cell-navigation'))
+        self.assertLess(detail.index('<h2>保存済み候補の見出し III|high</h2>'), detail.index('id="ux-panel-story"'))
         self.assertIn('<details class="reader-evidence">', detail)
         self.assertIn('/raw?line=3#L3', detail)
 
@@ -413,8 +413,9 @@ class ReaderSummaryTests(unittest.TestCase):
         document = pages.cell_page(self.repo, self.exp.name, "III|high", view="all")
         self.assertNotIn("要約はまだありません", document)
         self.assertNotIn('class="card reader-primary', document)
-        self.assertLess(document.index('class="cell-navigation"'), document.index('class="card elite-summary"'))
-        self.assertLess(document.index('class="card elite-summary"'), document.index("選択から後続へのつながり"))
+        self.assertLess(document.index('class="ux-heading"'), document.index('id="ux-panel-story"'))
+        self.assertLess(document.index('id="ux-panel-story"'), document.index("選択から後続へのつながり"))
+        self.assertLess(document.index("選択から後続へのつながり"), document.index('class="card elite-summary"'))
         self.assertIn(explanation_ui.panel(self.explanation), document)
         self.assertEqual(reader_ui.panel(self.explanation), explanation_ui.panel(self.explanation))
 
@@ -568,13 +569,12 @@ class ReaderSummaryTests(unittest.TestCase):
     def test_compare_without_summary_keeps_visible_trajectory_diagnostic(self):
         self._linked_fixture()
         doc = pages.compare_page(self.repo, self.exp.name, ["III|high", "I|low"])
-        self.assertIn("四項目で比較", doc)
-        self.assertNotIn("記録上の比較</summary>", doc)
+        self.assertIn("物語を並べて読む", doc)
         self.assertIn("主人公の行動・対象・結果の並びは同じ筋です", doc)
         self._publish_fixture("III|high")
         doc = pages.compare_page(self.repo, self.exp.name, ["III|high", "I|low"])
-        self.assertIn("四項目で比較", doc)
-        self.assertIn("記録上の比較</summary>", doc)
+        self.assertIn("物語を並べて読む", doc)
+        self.assertIn("主人公の行動・対象・結果の並びは同じ筋です", doc)
 
 
 class ReaderSummaryRouteTests(unittest.TestCase):
