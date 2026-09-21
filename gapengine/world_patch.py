@@ -23,7 +23,7 @@ ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}$")
 _NAME_FORBIDDEN_CHARS = frozenset("'\"\n{}")
 
 # ponytail: budgets are placeholders; tune once real proposals have been reviewed.
-PATCH_RULES_VERSION = 2
+PATCH_RULES_VERSION = 3
 MAX_ZONES = 1
 MAX_ITEMS = 2
 MAX_FACTS = 2
@@ -36,7 +36,9 @@ MAX_GIVE_TOTAL = 1.2
 MAX_IMPLIES_CONFIDENCE = 0.3
 MAX_IMPLIES_TOTAL = 0.6
 # engine/verbs.py::_give_item defaults, including partially specified give.
-# This bounds definitions, not affinity accumulated by repeated gifts.
+# This bounds definitions x how many of each a patch lets someone pick up
+# (sources.max), not affinity accumulated by giving the same item back and
+# forth repeatedly.
 DEFAULT_RECEIVER_AFFINITY = 0.2
 DEFAULT_GIVER_AFFINITY = 0.05
 EMPTY_STACK_DIGEST = hashlib.sha256(b"worldbloom-patch-stack-v1").hexdigest()
@@ -267,7 +269,8 @@ def _all_strings(value: Any):
 
 
 def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
-                    reserved: Iterable[str] = (), check_budgets: bool = True) -> list[str]:
+                    reserved: Iterable[str] = (), check_budgets: bool = True,
+                    give_available: bool = True) -> list[str]:
     """Static gate. Returns a list of Japanese violation strings (empty = pass).
 
     Never raises -- a malformed patch just accumulates violations instead of
@@ -621,23 +624,44 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
             cap, applied_count = caps[key]
             if applied_count + len(new) > cap:
                 violations.append(f"{key} の累積追加数が上限（{cap}）を超えています")
+        def item_give_count(item):
+            sources = item.get("sources")
+            if not isinstance(sources, list):
+                return 1
+            counted, count = False, 0
+            for source in sources:
+                if isinstance(source, dict) and type(source.get("max")) is int:
+                    counted, count = True, count + source["max"]
+            return count if counted else 1
+
         def give_total(items):
             total = 0.0
             for item in items:
-                if not isinstance(item, dict):
+                if not isinstance(item, dict) or item.get("keepsake"):
+                    continue
+                made_from = item.get("made_from")
+                if isinstance(made_from, dict) and made_from:
                     continue
                 give = item.get("give") or {}
                 if isinstance(give, dict):
+                    per_item = 0.0
                     for key, default in (("receiver_affinity", DEFAULT_RECEIVER_AFFINITY),
                                          ("giver_affinity", DEFAULT_GIVER_AFFINITY)):
                         value = give.get(key, default)
                         if _is_number(value):
-                            total += value
+                            per_item += value
+                    total += per_item * item_give_count(item)
             return total
         given = give_total(raw_items)
         prior_given = give_total([i for i in world.get("items", []) if i.get("name") in applied["items"]])
-        if given > MAX_GIVE_PER_PATCH + 1e-12 or given + prior_given > MAX_GIVE_TOTAL + 1e-12:
-            violations.append("give の効果総量が上限を超えています")
+        # No subject has give_item -> give never fires, so it costs no budget
+        # (check_proposal_rules separately rejects writing give there at all).
+        if give_available and (given > MAX_GIVE_PER_PATCH + 1e-12
+                               or given + prior_given > MAX_GIVE_TOTAL + 1e-12):
+            violations.append(
+                "渡したときの効果の総量が上限を超えています（(受け手＋渡し手)×その品の sources の max の合計、を全アイテムで足して1パッチ0.6・"
+                "累積1.2まで。give を書かない品も受け手0.2・渡し手0.05で数えます。"
+                "たくさん拾える品は give の値を小さくしてください）")
         totals = {}
         for fact in [f for f in world.get("facts", []) if f.get("id") in applied["facts"]] + raw_facts:
             relation = fact.get("implies") if isinstance(fact, dict) else None
@@ -760,7 +784,8 @@ def patch_id_for(add: dict) -> str:
 
 
 def apply_patches(world: dict, patches: list[dict], *, subject_ids: Iterable[str] = (),
-                   reserved: Iterable[str] = (), check_budgets: bool = True) -> dict:
+                   reserved: Iterable[str] = (), check_budgets: bool = True,
+                   give_available: bool = True) -> dict:
     """Validate and apply each patch in order. Returns `world` unchanged
     (same object, no `expansion` key added) when `patches` is empty."""
     if not patches:
@@ -768,7 +793,7 @@ def apply_patches(world: dict, patches: list[dict], *, subject_ids: Iterable[str
     current = world
     for patch in patches:
         violations = validate_patch(current, patch, subject_ids=subject_ids, reserved=reserved,
-                                    check_budgets=check_budgets)
+                                    check_budgets=check_budgets, give_available=give_available)
         if violations:
             raise PatchError(f"{patch.get('id')}: {violations[0]}")
         current = apply_patch(current, patch)
@@ -782,9 +807,15 @@ def materialize(world: dict, subjects: dict[str, dict], patches: list[dict], *,
         return world, subjects
     current, people = world, copy.deepcopy(subjects)
     ids = [p.get("id") for p in people.values() if isinstance(p, dict)]
+    # M2: derive give_available from the actual subjects instead of the
+    # validate_patch default (True) -- a world with no give_item verb on
+    # any subject must not be held to a give budget it can never spend.
+    # Empty subjects means "unknown", not "nobody can give": charge the budget.
+    give_available = not people or any(isinstance(subject, dict) and isinstance(subject.get("verbs"), list)
+                          and "give_item" in subject["verbs"] for subject in people.values())
     for patch in patches:
         current = apply_patches(current, [patch], subject_ids=ids, reserved=reserved,
-                                check_budgets=check_budgets)
+                                check_budgets=check_budgets, give_available=give_available)
         for zone in patch.get("add", {}).get("zones", []):
             parent, name = zone["parent"], zone["name"]
             for subject in people.values():
