@@ -35,7 +35,7 @@ def output_panel(view, error):
         '<section class="gs-limits"><h2>生成の上限</h2><div class="gs-limit-fields">'+limits+'</div><p class="gs-hint">1回の生成操作で使う上限です。</p></section>'
         '<details class="gs-advanced"><summary>詳細設定 <small>応答の保存上限</small></summary>'+advanced+'</details></fieldset></div>'
         '<aside class="gs-summary" aria-label="現在使っている設定"><h2>現在使っている設定</h2><span class="gs-saved">● 保存済み</span><dl data-gs-saved></dl><div class="gs-diff" data-gs-diff></div><div class="gs-scope"><h2>この変更が適用される範囲</h2><p>③ Sifting のあらすじ生成</p><p>④ 上映の本文生成</p><p class="gs-hint">保存後に開始する生成から適用されます。</p></div></aside></div>'
-        '<footer class="gs-footer"><p data-gs-save-status role="status">保存済みの設定を表示しています</p><button type="button" data-gs-reset>変更を戻す</button><button type="submit" class="gs-primary" data-gs-save>設定を保存</button></footer></form></section>')
+        '<footer class="gs-footer"><p data-gs-save-status role="status">保存済みの設定を表示しています</p><button type="button" data-gs-reset>変更を戻す</button><button type="submit" class="gs-primary is-confirm" data-gs-save>設定を保存</button></footer></form></section>')
 
 
 def display_date(value):

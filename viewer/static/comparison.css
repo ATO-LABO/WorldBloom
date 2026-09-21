@@ -40,12 +40,13 @@
 .cp-verdict input:focus-visible+span{outline:3px solid #286fbd;outline-offset:-3px}
 .cp-verdict input:disabled+span{opacity:.5;cursor:not-allowed}
 .cp-note-label{display:block}
-.cp-decision textarea{display:block;width:100%;font:inherit;font-size:14px;line-height:1.5;min-height:62px;resize:vertical;border:1px solid #c9d3cb;border-radius:4px;padding:8px 10px;background:white}
+.cp-decision textarea{display:block;width:100%;font:inherit;font-size:var(--ws-fs-sm);line-height:1.5;min-height:62px;resize:vertical;border:1px solid var(--ws-control-line);border-radius:var(--ws-radius);padding:8px 12px;background:var(--ws-surface);color:var(--ws-text)}
 .cp-footer{padding:10px 24px;border-top:1px solid var(--rw-line);display:flex;justify-content:space-between;gap:12px;background:#fff;flex-shrink:0}
 .cp-footer>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .cp-footer span{font-size:12px;color:var(--rw-muted)}
-.cp-shell .cp-primary{background:var(--rw-green);color:white;font-weight:600;white-space:nowrap}
-.cp-shell .cp-primary:hover{background:#184b38}
+.cp-shell .cp-primary{background:var(--ws-advance);border-color:var(--ws-advance);color:white;font-weight:600;padding:9px 16px;white-space:nowrap}
+.cp-shell .cp-primary:hover{background:var(--ws-advance-ink)}
+.cp-shell .cp-primary.is-confirm{background:var(--ws-confirm);border-color:var(--ws-confirm)}
 .cp-matrix[data-view=evidence]{grid-template-rows:auto repeat(4,auto) auto}
 .cp-matrix[data-view=evidence] .cp-card{grid-row:1 / span 6}
 .cp-evidence{display:contents}
@@ -61,7 +62,7 @@
 .cp-picker header,.cp-picker footer{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 20px}
 .cp-picker h2{font-size:20px;margin:0}.cp-picker header p{font-size:13px;margin:5px 0}
 .cp-picker form{margin:0}.cp-search{display:block;padding:0 20px 12px;font-size:13px}
-.cp-search input{display:block;width:100%;padding:8px;border:1px solid #b6c1ba;border-radius:4px}
+.cp-search input{display:block;width:100%;padding:8px 12px;border:1px solid var(--ws-control-line);border-radius:var(--ws-radius);background:var(--ws-surface);color:var(--ws-text);font-size:15px}
 .cp-picker-list{min-height:0;overflow:auto;padding:0 20px}
 .cp-picker-list>label{display:flex;align-items:start;gap:12px;border-top:1px solid var(--rw-line);padding:12px 0;cursor:pointer}
 .cp-picker-list input{margin-top:6px;accent-color:var(--rw-green)}

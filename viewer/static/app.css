@@ -31,6 +31,33 @@
   --font-ui: "Yu Gothic UI", "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   --font-serif: "Yu Mincho", "Hiragino Mincho ProN", serif;
   --font-mono: Consolas, monospace;
+
+  /* Workspace parts (WB-UI-UNIFY) */
+  --ws-font: "BIZ UDPGothic","Yu Gothic UI","Yu Gothic","Hiragino Sans","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+  --ws-text: #24302a;
+  --ws-muted: #66716d;
+  --ws-line: #d7dcd8;
+  --ws-control-line: #a8b3ad;
+  --ws-surface: #ffffff;
+  --ws-advance: #b64b22;
+  --ws-advance-ink: #91411f;
+  --ws-confirm: #245c48;
+  --ws-confirm-soft: #e6efe8;
+  --ws-select-bg: #eeece6;
+  --ws-panel-bg: #f0f5f1;
+  --ws-fs-xs: 12px;
+  --ws-fs-sm: 14px;
+  --ws-fs-md: 16px;
+  --ws-fs-h3: 17px;
+  --ws-fs-h2: 20px;
+  --ws-fs-h1: 24px;
+  --ws-side-w: 180px;
+  --ws-aside-w: 300px;
+  --ws-gutter: 24px;
+  --ws-control-h: 44px;
+  --ws-control-h-sm: 34px;
+  --ws-radius: 6px;
+  --ws-bar-h: 58px;
 }
 
 * {
@@ -275,10 +302,10 @@ p {
 }
 
 .button {
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-s);
-  color: var(--text);
+  background: var(--ws-surface);
+  border: 1px solid var(--ws-control-line);
+  border-radius: var(--ws-radius);
+  color: var(--ws-text);
   display: inline-block;
   padding: 0.35rem 0.75rem;
   text-decoration: none;
@@ -292,13 +319,18 @@ p {
 }
 
 .button.primary {
-  background: var(--accent);
-  border-color: var(--accent-dark);
+  background: var(--ws-advance);
+  border-color: var(--ws-advance);
   color: #fff;
 }
 
 .button.primary:hover {
-  background: var(--accent-dark);
+  background: var(--ws-advance-ink);
+}
+
+.button.primary.is-confirm {
+  background: var(--ws-confirm);
+  border-color: var(--ws-confirm);
 }
 
 /* -------------------------------------------------------------- home */
@@ -5074,6 +5106,11 @@ main:has(.cfg-form) .form-actions .button-primary {
   background: var(--wb-ui-accent, #2f7255);
   color: white;
   font-weight: 750;
+}
+
+main:has(.cfg-form) .form-actions .button-primary.is-confirm {
+  border-color: var(--ws-confirm);
+  background: var(--ws-confirm);
 }
 
 @media (max-width: 900px) {
