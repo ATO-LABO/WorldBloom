@@ -299,6 +299,9 @@ def prepare(args, job, folder):
             if hashlib.sha256(raw).hexdigest() != job["output_plan_sha256"]:
                 raise ValueError("output plan changed")
             manifest = prepare_output(configs, job, json.loads(raw))
+        elif request["kind"] == "world_patch":
+            from execution.world_patch_job import prepare as prepare_patch
+            manifest = prepare_patch(configs, job, request)
         else:
             manifest = configs.prepare_run(request["config_id"], run_id=job["run_id"], job_id=args.job)
             configs.verify_run(job["run_id"])
@@ -392,6 +395,15 @@ def main(argv=None):
             launch_argv = manifest["argv"]
             handler = "output_worker"
             phase = "generating"
+        elif job.get("kind") == "world_patch":
+            # scripts/world_patch.py takes absolute --experiment/--project
+            # paths and writes only scratch temp dirs, never cwd-relative
+            # paths -- the job's own folder is a safe, disposable cwd.
+            run_root = folder / "scratch"
+            run_root.mkdir(exist_ok=True)
+            launch_argv = manifest["argv"]
+            handler = "world_patch_cli"
+            phase = manifest["phase"]
         else:
             run_root = Path(args.runs) / job["run_id"]
             adapter = run_root / "runtime/execution/evolution_worker.py"

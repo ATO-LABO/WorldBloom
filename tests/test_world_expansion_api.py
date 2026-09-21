@@ -231,6 +231,48 @@ class WorldExpansionApiTests(unittest.TestCase):
             {"reason": "確認しました確認しました", "seen": {"patch_sha256": "a" * 64, "gate_sha256": "b" * 64}})
         self.assertEqual(status, 403, payload)
 
+    def test_repeated_large_body_403_and_503_never_reset_the_connection(self):
+        # server.py's _drain_unread_body (do_POST's finally) exists because
+        # closing a connection with the POST body still unread makes Windows
+        # reset it now and then -- the client sees a dropped connection
+        # instead of the error response. Exercise the two "the body never
+        # gets read by the normal path" cases it guards:
+        #  - a ForbiddenPath (path traversal) raised by _parts(), before any
+        #    dispatch function (and so before any body reading) runs at all.
+        #  - a 503 (no job_store) from library_pages.py's
+        #    _approve_patch_action, which now reads+parses the body (the
+        #    reordering fix) before finding there's no job_store.
+        #
+        # A body past MAX_POST_BYTES is rejected unread as well, so the drain
+        # must go past that limit too: draining only the first 64KB of a 200KB
+        # body still reset the connection about once in ten class runs.
+        oversized_body = {"reason": "x" * 200000,
+                          "seen": {"patch_sha256": "a" * 64, "gate_sha256": "b" * 64}}
+        for i in range(20):
+            with self.subTest(case="dotdot-oversized", i=i):
+                status, payload = self.http(
+                    "POST", "/api/worlds/momotaro/patches/../approve", oversized_body)
+                self.assertEqual(status, 403, payload)
+
+        under_limit_body = {"reason": "確認しました確認しました" + "x" * 60000,
+                             "seen": {"patch_sha256": "a" * 64, "gate_sha256": "b" * 64}}
+        self.assertLess(len(json.dumps(under_limit_body).encode("utf-8")), 64 * 1024)
+        for i in range(20):
+            with self.subTest(case="dotdot-under-limit", i=i):
+                status, payload = self.http(
+                    "POST", "/api/worlds/momotaro/patches/../approve", under_limit_body)
+                self.assertEqual(status, 403, payload)
+
+        under_limit_body = {"reason": "確認しました確認しました" + "x" * 60000,
+                             "seen": {"patch_sha256": "a" * 64, "gate_sha256": "b" * 64}}
+        self.assertLess(len(json.dumps(under_limit_body).encode("utf-8")), 64 * 1024)
+        self.server.job_store = None
+        for i in range(20):
+            with self.subTest(case="no-job-store-under-limit", i=i):
+                status, payload = self.http(
+                    "POST", "/api/worlds/momotaro/patches/p-00000001/approve", under_limit_body)
+                self.assertEqual(status, 503, payload)
+
     def test_running_job_blocks_approve(self):
         self.job_store._jobs = [{"job_id": "job-1", "state": "running"}]
         status, payload = self.http(

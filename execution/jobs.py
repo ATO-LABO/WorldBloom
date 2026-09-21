@@ -175,9 +175,14 @@ class JobStore:
             raise ConfigError("request", "オブジェクトを指定してください")
         kind = request.get("kind")
         generating = kind in ("synopsize", "narrate")
+        patching = kind == "world_patch"
         if generating:
             from execution.output_requests import normalize
             request = normalize(request)
+            rid, cid = request["request_id"], request["config_id"]
+        elif patching:
+            from execution.world_patch_job import normalize as normalize_patch
+            request = normalize_patch(request)
             rid, cid = request["request_id"], request["config_id"]
         else:
             if set(request) - {"request_id", "kind", "config_id"}:
@@ -204,6 +209,10 @@ class JobStore:
             if generating:
                 from execution.output_requests import admit
                 plan = admit(self, request, settings_path=settings_path)
+            patch_admission = None
+            if patching:
+                from execution.world_patch_job import admit as admit_patch
+                patch_admission = admit_patch(self, request, settings_path=settings_path)
             # Probe the containment API before publishing a request.
             try:
                 tree = worker.ProcessTree(); tree.close()
@@ -215,7 +224,7 @@ class JobStore:
             entry = final / "worker.py"
             source = Path(worker.__file__).read_bytes()
             write_bytes(pending / "worker.py", source)
-            run_id = request["run_id"] if generating else "run-" + secrets.token_hex(16)
+            run_id = request["run_id"] if generating or patching else "run-" + secrets.token_hex(16)
             now = time.time()
             job = {"schema_version":1, "job_id":jid, "request_id":rid, "request_hash":request_hash,
                    "nonce":nonce, "kind":kind, "config_id":cid, "run_id":run_id,
@@ -235,6 +244,15 @@ class JobStore:
                     wall_seconds=request["limits"]["wall_seconds"],
                     progress={"completed": 0, "total": len(plan["candidate_ids"]), "counts": {}})
                 atomic_json(pending / "output-plan.json", plan)
+            if patching:
+                # No output_id: a world_patch job never owns an OutputStore
+                # entry, so every output_id-gated branch elsewhere in this
+                # class (below, and in worker.py) takes its "absent" path
+                # unchanged for this kind.
+                job.update(
+                    settings_path=str(Path(settings_path).absolute()) if settings_path is not None else None,
+                    wall_seconds=patch_admission["wall_seconds"],
+                    progress={"step": "queued"})
             atomic_json(pending / "request.json", request)
             atomic_json(pending / "job.json", job)
             publish_directory(pending, final)

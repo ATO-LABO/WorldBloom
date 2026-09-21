@@ -819,8 +819,10 @@ def _proposal_shas(project, patch_id):
 
 
 def _approve_patch_action(handler, world_id, patch_id):
-    job_store = _require_job_store(handler)
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
     body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
     reason, seen_patch_sha, seen_gate_sha = _approve_body(body)
     _patch_id_arg(patch_id)
     project, template = _resolve_world_patch_dirs(job_store, world_id)
@@ -851,8 +853,10 @@ def _approve_patch_action(handler, world_id, patch_id):
 
 
 def _reject_patch_action(handler, world_id, patch_id):
-    job_store = _require_job_store(handler)
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
     body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
     seen_patch_sha, seen_gate_sha = _reject_body(body)
     _patch_id_arg(patch_id)
     project, _template = _resolve_world_patch_dirs(job_store, world_id)
@@ -868,8 +872,10 @@ def _reject_patch_action(handler, world_id, patch_id):
 
 
 def _reopen_patch_action(handler, world_id):
-    job_store = _require_job_store(handler)
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
     body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
     seen_head = _reopen_body(body)
     project, _template = _resolve_world_patch_dirs(job_store, world_id)
     _reject_running_job(job_store)

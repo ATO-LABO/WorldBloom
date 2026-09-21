@@ -40,7 +40,7 @@ from gapengine.world_patch_propose import (MAX_PROMPT_CHARS, build_prompt, check
 from gapengine.world_patch_trial import run_trial, gate_status
 from gapengine.world_patch import stack_head, verify_stack, read_stack
 from execution.provenance import atomic_json
-from execution.world_patches import patch_lock
+from execution.world_patches import _check_parent_rev, patch_lock
 from execution.world_patch_approval import approve, reject, reopen, repair
 
 # Exceptions an LLM's malformed JSON/shape can realistically trigger while a
@@ -104,27 +104,30 @@ def _added_summary(add: dict) -> str:
     return "、".join(parts) if parts else "なし"
 
 
-def _world_parent_rev(base_world: dict) -> list:
-    return [p["id"] for p in (base_world.get("expansion") or {}).get("patches", [])]
-
-
-def _check_parent_rev(base_world: dict, project: Path) -> str | None:
-    """None = ok; otherwise a Japanese error message. Both propose and check
-    must refuse to gate a patch against a world state the experiment never
-    actually ran under."""
+def _progress(args, **progress):
+    """Best-effort job progress write (WB-WORLDGROW-001 stage 3b-3): a no-op
+    for CLI-only use (no --job/--control given). The job runs propose/check
+    as its owned child process (execution/worker.py's watch()), the same way
+    execution/output_worker.py writes its own progress back via
+    execution.worker.change() -- never lets a progress-write failure break
+    propose/check itself."""
+    if not getattr(args, "job", None) or not getattr(args, "control", None):
+        return
     try:
-        with patch_lock(project):
-            current_approved = approved_patches(project)
-    except PatchError as error:
-        return f"承認済みパッチの読み込みに失敗しました: {error}"
-    if _world_parent_rev(base_world) != [p["id"] for p in current_approved]:
-        return "この実験は現在の承認済み拡張とは別の版の世界で回っています"
-    return None
+        # Imported here, not at module top: execution.worker pulls in
+        # ctypes.wintypes, which the plain CLI never needed.
+        from execution.worker import change as job_change, read_job as job_read
+        jobs = Path(args.control) / "jobs"
+        folder = jobs / args.job
+        nonce = job_read(jobs, folder)["nonce"]
+        job_change(jobs, folder, nonce, progress=progress)
+    except (ImportError, OSError, ValueError, KeyError, TypeError):
+        pass
 
 
 def _gate(experiment, project, patch, ctx, subject_ids, *, skip_trial, max_runs,
           seeds_per_run, give_available, reserved=(), seed_set="exploration", template_dir=None,
-          repo_root=None):
+          repo_root=None, progress=None):
     base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
     violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved,
                                         give_available=give_available)
@@ -134,6 +137,8 @@ def _gate(experiment, project, patch, ctx, subject_ids, *, skip_trial, max_runs,
             "static": {"passed": not violations, "violations": violations}, "trial": None,
             "passed": False, "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
     if not violations and not skip_trial:
+        if progress is not None:
+            progress(step="holdout" if seed_set == "holdout" else "trial")
         with tempfile.TemporaryDirectory() as tmp:
             # N2 (WB-WORLDGROW-001, Astra review): forward --repo here too --
             # `ctx` above was already resolved with it, but run_trial used to
@@ -226,8 +231,10 @@ def cmd_propose(args: argparse.Namespace) -> int:
     project = args.project.resolve()
     report = _load_report(experiment)
     triggers = _investigate_triggers(report)
+    progress = lambda **p: _progress(args, **p)
     if args.trigger >= len(triggers):
         print("対応できる需要がありません")
+        progress(step="failed", message="対応できる需要がありません")
         return 1
     trigger = dict(triggers[args.trigger])
     trigger["experiment"] = experiment.name
@@ -237,6 +244,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
     mismatch = _check_parent_rev(base_world, project)
     if mismatch:
         print(mismatch)
+        progress(step="failed", message=mismatch)
         return 1
     with patch_lock(project):
         parent_digest = stack_head(project)
@@ -249,6 +257,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
         prompt = build_prompt(base_world, subject_ids, trigger, zone_verbs, give_available=give_available)
     except ValueError as error:
         print(str(error))
+        progress(step="failed", message=str(error))
         return 1
 
     if args.from_file:
@@ -267,6 +276,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
     patch: dict = {}
     violations: list[str] = []
     for attempt in range(1, max_attempts + 1):
+        progress(step="generate", attempt=attempt, attempts=max_attempts)
         if args.from_file:
             response_text = Path(args.from_file).read_text(encoding="utf-8")
         else:
@@ -277,10 +287,14 @@ def cmd_propose(args: argparse.Namespace) -> int:
                                        timeout=900)
             except GenerationError as error:
                 # e.g. the GPU lease is held by another run; nothing was written.
-                print(f"生成できませんでした: {error}")
+                message = f"生成できませんでした: {error}"
+                print(message)
+                progress(step="failed", message=message)
                 return 2
             if result.status != "ok":
-                print(f"生成に失敗しました: status={result.status} warning={result.warning}")
+                message = f"生成に失敗しました: status={result.status} warning={result.warning}"
+                print(message)
+                progress(step="failed", message=message)
                 return 1
             response_text = result.text
 
@@ -315,15 +329,32 @@ def cmd_propose(args: argparse.Namespace) -> int:
     gate = _gate(experiment, project, patch, ctx, subject_ids, skip_trial=args.skip_trial,
                  max_runs=args.max_runs, seeds_per_run=args.seeds_per_run, reserved=reserved,
                  seed_set="exploration", template_dir=args.template, repo_root=args.repo,
-                 give_available=give_available)
+                 give_available=give_available, progress=progress)
     _save_gate(project, patch_path, raw, gate)
+    # Only the exploration-gated run above ever regenerates the patch on a
+    # violation; --then-holdout re-gates the same already-saved patch against
+    # holdout seeds -- never spends holdout seeds/CPU on a patch that isn't
+    # reviewable yet (static_failed/contract_failed/insufficient/trial_pending/
+    # reference_only all skip it).
+    if args.then_holdout and not args.skip_trial and gate["status"] == "reviewable":
+        gate = _gate(experiment, project, patch, ctx, subject_ids, skip_trial=args.skip_trial,
+                     max_runs=args.max_runs, seeds_per_run=args.seeds_per_run, reserved=reserved,
+                     seed_set="holdout", template_dir=args.template, repo_root=args.repo,
+                     give_available=give_available, progress=progress)
+        _save_gate(project, patch_path, raw, gate)
     _print_gate_summary(patch, gate)
+    progress(step="done", patch_id=patch["id"], status=gate["status"])
+    if args.job:
+        return 0
     return 1 if gate["status"] in ("static_failed", "contract_failed") else 0
 
 
 def cmd_check(args):
+    progress = lambda **p: _progress(args, **p)
     if not ID_RE.fullmatch(args.patch):
-        raise PatchError("パッチ ID の形式が不正です")
+        message = "パッチ ID の形式が不正です"
+        progress(step="failed", message=message)
+        raise PatchError(message)
     experiment, project = args.experiment.resolve(), args.project.resolve()
     _, ctx = _resolve_ctx(experiment, args.template, repo_root=args.repo)
     path = project / "patches" / "_proposed" / f"{args.patch}.yaml"
@@ -331,18 +362,24 @@ def cmd_check(args):
         raw = path.read_bytes()
         patch = yaml.safe_load(raw)
         if patch.get("parent_digest") != stack_head(project):
-            raise PatchError("parent_digest が現在のスタックと一致しません")
+            message = "parent_digest が現在のスタックと一致しません"
+            progress(step="failed", message=message)
+            raise PatchError(message)
     world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
     mismatch = _check_parent_rev(world, project)
     if mismatch:
+        progress(step="failed", message=mismatch)
         raise PatchError(mismatch)
     gate = _gate(experiment, project, patch, ctx, _subject_ids(ctx["subjects_dir"]),
                  skip_trial=args.skip_trial, max_runs=args.max_runs, seeds_per_run=args.seeds_per_run,
                  seed_set=args.seed_set, template_dir=args.template,
                  reserved=template_identifiers(ctx["template_dir"]), repo_root=args.repo,
-                 give_available=_give_available(ctx["subjects_dir"]))
+                 give_available=_give_available(ctx["subjects_dir"]), progress=progress)
     _save_gate(project, path, raw, gate)
     _print_gate_summary(patch, gate)
+    progress(step="done", patch_id=patch["id"], status=gate["status"])
+    if args.job:
+        return 0
     return 1 if gate["status"] in ("static_failed", "contract_failed") else 0
 
 
@@ -410,6 +447,17 @@ def build_parser() -> argparse.ArgumentParser:
     # only needed when the project/template referenced by the experiment
     # live outside this repo (e.g. under a control-side repo copy).
     propose.add_argument("--repo", type=Path)
+    # WB-WORLDGROW-001 stage 3b-3: --then-holdout re-gates a reviewable
+    # proposal against holdout seeds right after its exploration gate passes
+    # (see _gate's caller in cmd_propose) -- unused by direct CLI/test
+    # callers, which keep checking exploration or holdout explicitly via a
+    # separate `check` call. --control/--job are optional: given only when
+    # this run is a world_patch job's owned child (execution/worker.py),
+    # so progress can be written back (see _progress); CLI-only use leaves
+    # them unset and _progress becomes a no-op.
+    propose.add_argument("--then-holdout", action="store_true")
+    propose.add_argument("--control", type=Path)
+    propose.add_argument("--job")
     propose.set_defaults(func=cmd_propose)
 
     check = sub.add_parser("check")
@@ -422,6 +470,8 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--template", type=Path)
     check.add_argument("--repo", type=Path)
     check.add_argument("--seed-set", choices=("exploration", "holdout"), default="holdout")
+    check.add_argument("--control", type=Path)
+    check.add_argument("--job")
     check.set_defaults(func=cmd_check)
 
     approve = sub.add_parser("approve")
@@ -462,7 +512,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return args.func(args)
     except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as error:
-        print(f"処理できません: {error}")
+        message = f"処理できません: {error}"
+        print(message)
+        # A safety net for any propose/check failure that raises instead of
+        # printing+returning (e.g. cmd_check's PatchErrors, or cmd_propose's
+        # "提案中に承認スタックが変わりました") -- _progress is a no-op
+        # without --job, so this never affects direct CLI/test use.
+        _progress(args, step="failed", message=message)
         return 1
 
 

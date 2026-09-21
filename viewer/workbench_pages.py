@@ -44,6 +44,8 @@ PHASE_LABELS = {
     "publishing": "世代確定中",
     "generation_completed": "世代完了",
     "generating": "生成中",
+    "proposing": "拡張を提案中",
+    "checking": "拡張を検査中",
 }
 
 ERROR_MESSAGES = {
@@ -2061,6 +2063,20 @@ def _jobs_detail(handler, jid):
     if job.get("kind") in ("synopsize", "narrate"):
         from viewer.generation_pages import render_job
         return render_job(handler, job)
+    if job.get("kind") == "world_patch":
+        # No dedicated observation screen yet (stage 3b-3 only adds the job
+        # itself) -- the run's own monitor page already has a "世界の需要"
+        # tab (viewer/world_demand_view.py) that's the natural place to see
+        # this land, same as _configs_start's redirect below.
+        location = f'/exp/{_url(job["run_id"])}/monitor?tab=demand'
+        handler.send_response(HTTPStatus.FOUND)
+        handler.send_header("Location", location)
+        handler.send_header("Content-Length", "0")
+        handler.send_header("Cache-Control", "no-store")
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.send_header("Referrer-Policy", "no-referrer")
+        handler.end_headers()
+        return
     view = _run_view(handler, job=job)
     from viewer import run_workspace
     return run_workspace.render(handler, view)
