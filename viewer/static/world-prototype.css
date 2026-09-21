@@ -200,3 +200,9 @@
 
 .wp-state .wp-state-action{width:44px;text-align:center}
 .wp-state .wp-state-action button{display:inline-block;font-size:16px;padding:2px 8px}
+
+.we-approved{margin-top:16px}
+.we-approved ol,.we-approved ul{padding-left:20px}
+.we-approved li{margin-bottom:12px}
+.we-message{color:#934027}
+.we-reopen{margin-top:16px}

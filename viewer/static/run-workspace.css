@@ -598,3 +598,12 @@
  .rb-has-summary>.rb-footer{padding:9px 24px}
  .rb-has-summary>.rb-footer .rw-primary,.rb-has-summary>.rb-footer button[type=submit]{font-size:15px;padding:9px 16px}
 }
+
+.we-card{margin:0 0 16px}
+.we-status{font-size:12px;font-weight:600;padding:2px 8px;border:1px solid #a8b3ad;border-radius:999px;margin-left:8px}
+.we-reason{color:#91411f}
+.we-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin-top:12px}
+.we-actions textarea{flex:1 1 240px;min-height:60px}
+.we-actions [disabled]{opacity:.55;cursor:not-allowed}
+.we-message{width:100%;color:#91411f;margin:0}
+.we-reopen{margin-top:16px}

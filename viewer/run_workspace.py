@@ -9,14 +9,16 @@ import json
 from http import HTTPStatus
 from urllib.parse import parse_qs, urlsplit
 
+import yaml
+
 from execution.provenance import ConfigError
 from execution.worker import TERMINAL
-from viewer import data, pages, ga_replay, lineage_river, world_demand_view
+from viewer import data, pages, ga_replay, lineage_river, world_demand_view, world_expansion_view
 
 
 TABS = (("overview", "概要"), ("replay", "進化のリプレイ"),
         ("river", "系譜の川"), ("trends", "世代の推移"), ("demand", "世界の需要と拡張"))
-READ_ERRORS = (ConfigError, OSError, ValueError, KeyError, TypeError, data.MissingResource)
+READ_ERRORS = (ConfigError, OSError, ValueError, KeyError, TypeError, data.MissingResource, yaml.YAMLError)
 E = pages._escape
 U = pages._url_segment
 
@@ -158,13 +160,73 @@ def _world_row_html(handler, state, setting):
     return "<br>".join(parts)
 
 
-def _demand_html(handler, experiment, state):
+def _expansion_project(handler, view):
+    """project_dir for the world this run's config names, or None for a
+    legacy run with no config (nothing to resolve a world from) --
+    WB-WORLDGROW-001 段階3b-1. Only project_dir is returned: the sole caller
+    never needed template_dir (R5, Opus review)."""
+    config = view.get("config") or {}
+    project_id, template_id = config.get("project_id"), config.get("template_id")
+    if not project_id or not template_id:
+        return None
+    job_store = getattr(handler.server, "job_store", None)
+    repo = job_store.configs.repo if job_store is not None else data.ROOT
+    project_dir = repo / "projects" / project_id
+    if not project_dir.is_dir():
+        return None
+    return project_dir
+
+
+def _proposals_html(handler, view, run_name):
+    """「この実験から生まれた提案」節: この実験がトリガーとなった提案だけを
+    proposal_card で並べ、他の提案・承認済みは件数だけ世界の画面へ逃がす。"""
+    project_dir = _expansion_project(handler, view)
+    if project_dir is None:
+        return ""
+    world_id = (view.get("config") or {}).get("project_id")
+    try:
+        state = world_expansion_view.load(project_dir)
+        world_yaml = yaml.safe_load((project_dir / "world.yaml").read_text(encoding="utf-8"))
+    except READ_ERRORS:
+        return '<p class="rw-empty">世界の拡張を読み込めませんでした。</p>'
+    if not isinstance(world_yaml, dict):
+        world_yaml = {}
+    can_write = getattr(handler.server, "job_store", None) is not None
+    mine = [p for p in state["proposed"]
+            if isinstance(p.get("patch"), dict) and (p["patch"].get("trigger") or {}).get("experiment") == run_name]
+    approved_mine = [a for a in state["approved"] if a.get("experiment") == run_name]
+    other_count = len(state["proposed"]) - len(mine) + (len(state["approved"]) - len(approved_mine))
+
+    parts = ["<h3>この実験から生まれた提案</h3>"]
+    if state.get("error"):
+        parts.append(f'<p class="rw-empty">拡張の記録を読み込めませんでした: {E(state["error"])}</p>')
+        return "".join(parts)
+    if not mine:
+        parts.append("<p>この実験から生まれた提案はまだありません。</p>")
+    else:
+        parts.extend(world_expansion_view.proposal_card(p, world_yaml, world_id=world_id, can_write=can_write)
+                     for p in mine)
+    if approved_mine:
+        titles = "、".join(f'『{E(a["patch"].get("title"))}』' for a in approved_mine)
+        parts.append(f"<p>承認済み: {titles}</p>"
+                     f'<p><a href="/configs/new?project={U(world_id)}">この拡張を適用して次の実験を回す →</a> '
+                     '実行設定の「世界の拡張」で「承認済みの拡張を適用」を選んでください。</p>')
+    if other_count:
+        parts.append(f'<p>この世界には他に {other_count} 件の提案・承認済みの拡張があります。'
+                     f'<a href="/worlds/{U(world_id)}">世界の画面で見る →</a></p>')
+    return "".join(parts)
+
+
+def _demand_html(handler, experiment, state, view=None):
     if experiment is None:
         return '<p class="rw-empty">実験がまだ保存されていません。</p>'
     try:
-        return world_demand_view.demand_block(handler.repository, experiment, state)
+        block = world_demand_view.demand_block(handler.repository, experiment, state)
     except READ_ERRORS:
         return '<p class="rw-empty">世界の需要を読み込めませんでした。</p>'
+    if view is None:
+        return block
+    return block + _proposals_html(handler, view, view.get("run_name"))
 
 
 def _condition_html(handler, view, state):
@@ -239,7 +301,7 @@ def render(handler, view):
         '<p data-metric-description></p><div data-trend-graph></div><div data-trend-detail></div>'
         '<details class="rw-trend-table"><summary>表で見る</summary><div data-trend-table></div></details></section>'
         '<section id="rw-demand" role="tabpanel" aria-labelledby="rw-tab-demand" hidden>'
-        + _demand_html(handler, experiment, world_state) + '</section>'
+        + _demand_html(handler, experiment, world_state, view) + '</section>'
     )
     from viewer.run_browse import navigation
     body = (
@@ -266,7 +328,8 @@ def render(handler, view):
                          page_class="run-observer")
     doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">'
                       '<script src="/static/ga_replay.js" defer></script>'
-                      '<script src="/static/run-workspace.js" defer></script></head>')
+                      '<script src="/static/run-workspace.js" defer></script>'
+                      '<script src="/static/world-expansion.js" defer></script></head>')
     handler._send_html(doc)
 
 

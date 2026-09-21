@@ -1,10 +1,12 @@
 """Observer reads committed records; browsing never starts another execution."""
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import test_ga_replay as fixture
-from viewer import ga_replay
+from viewer import ga_replay, run_workspace
 
 
 class RunWorkspaceTests(unittest.TestCase):
@@ -124,6 +126,45 @@ class RunWorkspaceTests(unittest.TestCase):
         self.assertIn("利用者の停止要求", self.get("/jobs/job-replay")[1])
         self.fake._jobs["job-replay"].update(state="failed", error={"code": "wall_timeout"})
         self.assertIn("実行時間の上限に達しました", self.get("/jobs/job-replay")[1])
+
+    def test_broken_world_yaml_does_not_break_the_run_page(self):
+        # M1 (viewer review): _proposals_html's yaml.safe_load(world.yaml)
+        # raised a bare yaml.YAMLError, which READ_ERRORS didn't list --
+        # do_GET had no handler for it, so the connection just dropped
+        # instead of the page rendering. _expansion_project is monkeypatched
+        # here (rather than corrupting projects/romance/world.yaml, which
+        # this task must not touch) to point at an isolated broken world.
+        temp = tempfile.TemporaryDirectory(prefix="wb-run-workspace-broken-world-")
+        self.addCleanup(temp.cleanup)
+        broken_project = Path(temp.name) / "brokenworld"
+        broken_project.mkdir()
+        (broken_project / "world.yaml").write_text("name: [unclosed", encoding="utf-8")
+        original = run_workspace._expansion_project
+        run_workspace._expansion_project = lambda handler, view: broken_project
+        self.addCleanup(setattr, run_workspace, "_expansion_project", original)
+        status, body = self.get("/jobs/job-replay")
+        self.assertEqual(status, 200, body)
+        self.assertIn('id="rw-demand"', body)
+        # The world-demand display itself is untouched by the broken world.yaml...
+        self.assertIn("この実験は世界の需要を集計していません", body)
+        # ...and the proposals section degrades to a message instead of
+        # taking the whole page down with it.
+        self.assertIn("世界の拡張を読み込めませんでした", body)
+
+    def test_proposals_html_survives_broken_world_yaml_directly(self):
+        # Direct-call companion to the HTTP test above, in ReplayModelDirectTests'
+        # style (tests/test_ga_replay.py) -- proves _proposals_html itself
+        # returns a graceful string rather than raising.
+        temp = tempfile.TemporaryDirectory(prefix="wb-run-workspace-broken-world-direct-")
+        self.addCleanup(temp.cleanup)
+        broken_project = Path(temp.name) / "brokenworld"
+        broken_project.mkdir()
+        (broken_project / "world.yaml").write_text("name: [unclosed", encoding="utf-8")
+        original = run_workspace._expansion_project
+        run_workspace._expansion_project = lambda handler, view: broken_project
+        self.addCleanup(setattr, run_workspace, "_expansion_project", original)
+        html = run_workspace._proposals_html(None, {"config": {}}, "exp-1")
+        self.assertEqual(html, '<p class="rw-empty">世界の拡張を読み込めませんでした。</p>')
 
 
 if __name__ == "__main__":

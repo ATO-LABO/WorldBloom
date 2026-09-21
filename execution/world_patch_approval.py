@@ -3,6 +3,7 @@ import datetime
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 import uuid
 from pathlib import Path
@@ -25,7 +26,15 @@ def _sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def approve(project, template, patch_id, reason, *, repo_root=None):
+class StalePatch(PatchError):
+    """approve() was asked to check the proposal against an expected
+    patch/gate hash (expect_patch_sha256/expect_gate_sha256) that no longer
+    matches what's on disk -- a caller (the viewer's approve API) can catch
+    this specifically to answer 409 instead of guessing from the message."""
+
+
+def approve(project, template, patch_id, reason, *, repo_root=None,
+            expect_patch_sha256=None, expect_gate_sha256=None):
     """Human approval of a proposed patch.
 
     What this re-runs at approval time: the static gate (via materialize(),
@@ -60,7 +69,16 @@ def approve(project, template, patch_id, reason, *, repo_root=None):
             raise PatchError("提案が見つかりません（別の処理が先に承認・却下した可能性があります）")
         raw = source.read_bytes()
         patch = yaml.safe_load(raw)
-        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+        gate_raw = gate_path.read_bytes()
+        gate = json.loads(gate_raw)
+        # R3 (viewer review): checked here, inside the lock, immediately
+        # after reading both files -- a caller that already read patch_sha256/
+        # gate_sha256 from outside the lock (e.g. to show them on screen) can
+        # pass what it saw and get a dedicated StalePatch instead of racing
+        # its own pre-check against a concurrent writer.
+        if ((expect_patch_sha256 is not None and expect_patch_sha256 != _sha(raw))
+                or (expect_gate_sha256 is not None and expect_gate_sha256 != _sha(gate_raw))):
+            raise StalePatch("画面を開いたあとに内容が変わりました。再読み込みしてください")
         # R1: re-derive status from the gate's own recorded static/trial
         # evidence rather than trusting either the stored `status` field or
         # trial["runs"] -- both are values a rewritten gate.json could set
@@ -205,6 +223,28 @@ def approve(project, template, patch_id, reason, *, repo_root=None):
         stack["revisions"].append(revision)
         atomic_json(folder / "stack.json", stack)
         return revision
+
+
+def reject(project, patch_id):
+    """Move a proposal (yaml + gate.json, if present) from _proposed/ to
+    _rejected/. Moved from scripts/world_patch.py's cmd_reject verbatim
+    (WB-WORLDGROW-001 段階3b) so the viewer's POST /api/worlds/.../reject
+    can call the same logic as the CLI without duplicating it."""
+    if not ID_RE.fullmatch(patch_id):
+        raise PatchError("パッチ ID の形式が不正です")
+    project = Path(project)
+    with patch_lock(project):
+        proposed = project / "patches" / "_proposed"
+        destination = project / "patches" / "_rejected"
+        files = [proposed / f"{patch_id}{suffix}" for suffix in (".yaml", ".gate.json")]
+        files = [p for p in files if p.is_file()]
+        if not files:
+            raise PatchError("提案が見つかりません")
+        if any((destination / p.name).exists() for p in files):
+            raise PatchError("却下済みの同名ファイルがあります")
+        destination.mkdir(exist_ok=True)
+        for path in files:
+            shutil.move(str(path), str(destination / path.name))
 
 
 def repair(project):
