@@ -22,12 +22,12 @@ _INTRO = """あなたは物語シミュレーションの世界設定を拡張�
 _RULES_TEMPLATE = """# 拡張のルール
 - 足せるのは add.zones / add.items / add.facts だけです。既存のものは変更も削除もできません。1つの仕組みに絞ってください。
 - zones（最大1）: {{"name","parent","note"}}。parent は既存の場所で、足した場所は parent と同じ入場条件を持つ、その場所の一部になります。note は世界の中の描写だけを書いてください。「枝」「親」「パッチ」などの設計上の言葉や、この世界に無い場所・物の名前を書いてはいけません。facts の label も同じです。
-- items（最大2）: {{"name","sources":[{{"type":"investigate","zone":場所,"count":1,"max":1〜3}}],"give":{{"receiver_affinity":0〜0.5,"giver_affinity":0〜0.5}}}}。sources.max は、1人がその場所で何個まで手に入れられるかです。max:1 は1回取ったら二度と出ず、その後は元どおりの空振りに戻ります。今回の空振りは{whiffs}回なので、1つしか無いことに意味がある品でなければ max は2以上にしてください。give は渡したときの好感度の変化で、両方の値を明示してください。省略時は受け手0.2・渡し手0.05。全追加アイテムの合計は1パッチ0.6・累積1.2以下。
+- items（最大2）: {{"name","sources":[{{"type":"investigate","zone":場所,"count":1,"max":1〜3}}],"give":{{"receiver_affinity":0〜0.5,"giver_affinity":0〜0.5}}}}。sources.max は、1人がその場所で何個まで手に入れられるかです。max:1 は1回取ったら二度と出ず、その後は元どおりの空振りに戻ります。今回の空振りは{whiffs}回なので、1つしか無いことに意味がある品でなければ max は2以上にしてください。{give_rule}
 - items に足せる任意の項目（渡すだけの品にしないための選択肢です。要るものだけ使ってください）:
-  "keepsake": true … 手放さない品（渡せず、取引にも差し出さない）。
+  "keepsake": true … 手放さない品（渡せず、取引にも差し出さない）。give とは併記できません。
   "lootable": true … 持ち主が倒れたとき、相手に奪われうる品。
   "modifier": {{"id":"item:アイテム名","value":0〜10,"kind":"item","visible":trueかfalse}} … 持っていると対決での強さに value が足される。visible が true なら相手から見える。value の合計は1つの提案で10まで。
-  "made_from": {{素材名:1〜3}} … 同じ提案で足す別のアイテムを素材にして作る品（sources の代わりに書ける）。"craft_zone": 場所 で作れる場所を限定できる。
+  "made_from": {{素材名:1〜3}} … 同じ提案で足す別のアイテムを素材にして作る品（sources の代わりに書ける）。"craft_zone": 場所 で作れる場所を限定できる。give とは併記できません。
   "requires": {{"knowledge": 事実id}} … その事実を知っている人物だけが作れる品（made_from と一緒に使う）。
 - facts（最大2）: {{"id","label"(60文字以内),"secrecy":0〜1,"share_min_affinity":-1〜1,"sources":[{{"type":"investigate","zone":場所,"count":1}}]}}。事実は一度知ると二度と得られません（countは1固定、maxはありません）。secrecy は必ず明示してください。0 は誰にでも話す噂、0.2〜0.4 は相手を選んで話すこと、0.8 以上はほぼ口外しない秘密です。省略すると0になり、最も広まりやすい事実になります。share_min_affinity は、この好感度以上の相手にしか話さないという下限です（省略時0）。{implies_rule}
 - {budget_rule}
@@ -52,7 +52,7 @@ _OUTPUT = """# 出力
   "add": {
     "zones": [],
     "items": [
-      {"name": "色あせた航海日誌", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}, "sources": [{"type": "investigate", "zone": "岬", "count": 1, "max": 3}]}
+      {"name": "色あせた航海日誌", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}, "sources": [{"type": "investigate", "zone": "岬", "count": 1, "max": 2}]}
     ],
     "facts": [
       {"id": "灯台守の失踪", "label": "先代の灯台守が三年前に姿を消したらしい", "secrecy": 0.25,
@@ -178,6 +178,16 @@ def _budget_rule(world: dict) -> str:
             f"事実{min(left['facts'], 2)}までです（これを超えると不採用になります）。パッチ総数8以下。")
 
 
+def _give_rule(give_available: bool) -> str:
+    if not give_available:
+        return "この世界には品を渡す行動がありません。give は書かないでください。"
+    return ("give は渡したときの好感度の変化で、両方の値を必ず明示してください。省略時は受け手0.2・渡し手0.05として数えます。"
+            "（受け手＋渡し手）×その品の sources の max の合計、を全追加アイテムで足して1パッチ0.6・累積1.2以下"
+            "（sources を2つ書けば max も2つ分数えます）。"
+            "たくさん拾える品（max が2以上）ほど give の値を小さくしてください"
+            "（例: 受け手0.1・渡し手0 で max 3 なら 0.3）。keepsake と made_from の品は渡せないので数えません。")
+
+
 def _implies_rule(world: dict) -> str:
     valued = _valued_facts(world)
     if not valued:
@@ -188,23 +198,28 @@ def _implies_rule(world: dict) -> str:
             "対象ごとの累積は0.6以下。")
 
 
-def _assemble(brief: str, trigger: dict, zone_verbs: list, world: dict) -> str:
+def _assemble(brief: str, trigger: dict, zone_verbs: list, world: dict, *, give_available: bool = True) -> str:
     rules = _RULES_TEMPLATE.format(zone=trigger["zone"], whiffs=trigger.get("whiffs"),
-                                   budget_rule=_budget_rule(world), implies_rule=_implies_rule(world))
+                                   budget_rule=_budget_rule(world), implies_rule=_implies_rule(world),
+                                   give_rule=_give_rule(give_available))
     return "\n\n".join([_INTRO, brief, _demand_section(trigger, zone_verbs), rules, _OUTPUT])
 
 
-def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs: list) -> str:
+def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs: list, *,
+                  give_available: bool = True) -> str:
     """The rules/output sections a reader depends on must never be cut off, so
     the fixed parts (intro, demand section, rules, output) get their budget
     first and only the "# 世界" brief shrinks to make room: first each note/
     label is capped to 40 chars, then -- if that's still not enough -- facts,
     then items, then zones are dropped from the tail one at a time (each
-    shedding round adds a "（ほかN件）" marker instead of silently vanishing)."""
+    shedding round adds a "（ほかN件）" marker instead of silently vanishing).
+    `give_available` should be scripts/world_patch.py's `_give_available()`
+    result for this world's subjects -- give never fires with no give_item
+    verb, so the prompt must not ask for it."""
     if trigger.get("verb") != "investigate":
         raise ValueError("v1 は investigate の需要だけに対応しています")
 
-    fixed_chars = len(_assemble("", trigger, zone_verbs, world))
+    fixed_chars = len(_assemble("", trigger, zone_verbs, world, give_available=give_available))
     budget = max(MAX_PROMPT_CHARS - fixed_chars, 0)
 
     brief = world_brief(world, subject_ids)
@@ -229,13 +244,13 @@ def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs:
         n_zones -= 1
         brief = world_brief(world, subject_ids, cap=40, n_facts=n_facts, n_items=n_items, n_zones=n_zones)
 
-    prompt = _assemble(brief, trigger, zone_verbs, world)
+    prompt = _assemble(brief, trigger, zone_verbs, world, give_available=give_available)
     if len(prompt) > MAX_PROMPT_CHARS:
         # Last-resort safety net -- the loops above already fit `brief` to
         # `budget`, so this only bites if the fixed parts themselves (e.g. an
         # enormous zone_verbs list) already overran MAX_PROMPT_CHARS.
         brief = brief[:max(len(brief) - (len(prompt) - MAX_PROMPT_CHARS), 0)]
-        prompt = _assemble(brief, trigger, zone_verbs, world)
+        prompt = _assemble(brief, trigger, zone_verbs, world, give_available=give_available)
     return prompt
 
 
@@ -274,23 +289,8 @@ def make_patch(proposal: dict, *, trigger: dict, parent_digest: str, author: dic
     }
 
 
-def check_trigger_coverage(add: dict, trigger: dict) -> list[str]:
-    """Extra gate (not part of validate_patch's generic schema check): at
-    least one added item/fact must source from the trigger zone or a new
-    zone branching directly off it -- otherwise the patch doesn't actually
-    address the whiff it was proposed for. Never raises: `add`/`trigger` may
-    be whatever shape an LLM (or a caller re-running check on a hand-edited
-    proposal) handed us."""
-    no_coverage = ["きっかけの場所に調べて得られるものが足されていません"]
-    if not isinstance(add, dict):
-        return no_coverage
-    zone = trigger.get("zone")
-    zones_raw = add.get("zones")
-    branch_zones = {
-        z.get("name") for z in (zones_raw if isinstance(zones_raw, list) else [])
-        if isinstance(z, dict) and isinstance(z.get("name"), str) and z.get("parent") == zone
-    }
-    valid_zones = ({zone} if isinstance(zone, str) else set()) | branch_zones
+def _sourced_zones(add: dict) -> set:
+    found: set = set()
     for bucket in ("items", "facts"):
         entries = add.get(bucket)
         if not isinstance(entries, list):
@@ -302,7 +302,70 @@ def check_trigger_coverage(add: dict, trigger: dict) -> list[str]:
             if not isinstance(sources, list):
                 continue
             for source in sources:
-                if (isinstance(source, dict) and isinstance(source.get("zone"), str)
-                        and source["zone"] in valid_zones):
-                    return []
-    return no_coverage
+                if isinstance(source, dict) and isinstance(source.get("zone"), str):
+                    found.add(source["zone"])
+    return found
+
+
+def check_trigger_coverage(add: dict, trigger: dict) -> list[str]:
+    """Extra gate (not part of validate_patch's generic schema check), both
+    conditions required:
+    - A1: the trigger zone itself must have at least one added item/fact
+      sourcing from it -- placing content only in a branch off it leaves the
+      whiff the patch was proposed for exactly as frequent as before.
+    - A2: every zone add.zones adds must itself have at least one added
+      item/fact sourcing from it -- an empty added zone is just a new place
+      to whiff in.
+    Never raises: `add`/`trigger` may be whatever shape an LLM (or a caller
+    re-running check on a hand-edited proposal) handed us."""
+    if not isinstance(add, dict):
+        return ["きっかけの場所そのものに調べて得られるものが足されていません"]
+    covered = _sourced_zones(add)
+    violations: list[str] = []
+    zone = trigger.get("zone") if isinstance(trigger, dict) else None
+    if not (isinstance(zone, str) and zone in covered):
+        violations.append("きっかけの場所そのものに調べて得られるものが足されていません")
+    zones_raw = add.get("zones")
+    for entry in zones_raw if isinstance(zones_raw, list) else []:
+        name = entry.get("name") if isinstance(entry, dict) else None
+        if isinstance(name, str) and name not in covered:
+            violations.append(f"足した場所に調べて得られるものがありません: '{name}'")
+    return violations
+
+
+def check_proposal_rules(add: dict, *, give_available: bool = True) -> list[str]:
+    """Extra proposal-time-only gate (not part of validate_patch's generic
+    schema check):
+    - every added fact must set secrecy explicitly -- an omitted secrecy
+      silently defaults to 0, the most shareable value, so the model must
+      choose it rather than fall into it.
+    - a keepsake item (never handed over -- see engine/actions.py's
+      _give_candidates) cannot also carry give.
+    - a made_from item (a crafted recipe -- engine/world.py's `recipes`,
+      also excluded from _give_candidates) cannot also carry give.
+    - when this world has no give_item verb on any subject, give can never
+      fire, so a proposal must not spend its give budget on it either.
+    Never raises: `add` may be whatever shape an LLM handed us."""
+    violations: list[str] = []
+    if not isinstance(add, dict):
+        return violations
+    facts = add.get("facts")
+    if isinstance(facts, list):
+        for fact in facts:
+            if isinstance(fact, dict) and fact.get("secrecy") is None:
+                violations.append(f"secrecy を明示してください: '{fact.get('id')}'")
+    items = add.get("items")
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name, has_give = item.get("name"), "give" in item
+            made_from = item.get("made_from")
+            has_made_from = isinstance(made_from, dict) and bool(made_from)
+            if item.get("keepsake") and has_give:
+                violations.append(f"keepsake の品に give は書けません（手放さない品は渡せません）: '{name}'")
+            if has_made_from and has_give:
+                violations.append(f"作る品（made_from）に give は書けません（作った品は渡せません）: '{name}'")
+            if not give_available and has_give:
+                violations.append(f"この世界には品を渡す行動が無いので give は書けません: '{name}'")
+    return violations

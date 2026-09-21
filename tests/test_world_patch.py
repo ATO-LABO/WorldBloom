@@ -189,6 +189,67 @@ class WorldPatchTests(unittest.TestCase):
         })
         self.assertEqual(validate_patch(world, patch), [])
 
+    def test_give_budget_multiplies_by_source_max(self):
+        # (0.2 + 0.05) x max:3 = 0.75, over MAX_GIVE_PER_PATCH (0.6).
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "facts": [],
+            "items": [{"name": "潮見の貝殻", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05},
+                       "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 3}]}],
+        })
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("渡したときの効果の総量が上限を超えています" in v for v in violations), violations)
+
+    def test_give_budget_within_limit_at_max_two_passes(self):
+        # (0.2 + 0.05) x max:2 = 0.5, within MAX_GIVE_PER_PATCH (0.6).
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "facts": [],
+            "items": [{"name": "潮見の貝殻", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05},
+                       "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 2}]}],
+        })
+        self.assertEqual(validate_patch(world, patch), [])
+
+    def test_give_budget_excludes_keepsake_items(self):
+        # keepsake items are never handed over (engine/actions.py's
+        # _give_candidates excludes them), so their give never counts against
+        # the budget even if `give` is present.
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "facts": [],
+            "items": [{"name": "潮見の貝殻", "keepsake": True,
+                       "give": {"receiver_affinity": 0.5, "giver_affinity": 0.5},
+                       "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 3}]}],
+        })
+        self.assertEqual(validate_patch(world, patch), [])
+
+    def test_give_budget_is_not_charged_when_no_subject_can_give(self):
+        # Same max:3 item that fails above: with no give_item verb in the
+        # world, give never fires, so a plentiful item must not be rejected
+        # for a budget it cannot spend.
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "facts": [],
+            "items": [{"name": "潮見の貝殻",
+                       "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 3}]}],
+        })
+        self.assertTrue(validate_patch(world, patch))
+        self.assertEqual(validate_patch(world, patch, give_available=False), [])
+
+    def test_give_budget_survives_non_list_sources(self):
+        # M1: item_give_count used to iterate item["sources"] unconditionally
+        # -- a scalar (int/bool/float) there raised TypeError instead of
+        # accumulating as a violation. validate_patch must never raise.
+        world = load_world()
+        for bad_sources in (5, True, 1.5):
+            patch = sample_patch(add={
+                "zones": [], "facts": [],
+                "items": [{"name": "壊れた品", "give": {"receiver_affinity": 0.1, "giver_affinity": 0.0},
+                           "sources": bad_sources}],
+            })
+            violations = validate_patch(world, patch)
+            self.assertTrue(violations, (bad_sources, violations))
+
     def test_made_from_self_reference_cycle(self):
         world = load_world()
         patch = sample_patch(add={
@@ -209,6 +270,21 @@ class WorldPatchTests(unittest.TestCase):
         })
         violations = validate_patch(world, patch)
         self.assertTrue(any("made_from が循環しています" in v for v in violations), violations)
+
+    def test_give_budget_excludes_made_from_items(self):
+        # R1: made_from items are excluded from _give_candidates the same
+        # way keepsake items are (engine/actions.py) -- a crafted recipe's
+        # `give` must not count against the budget even if present.
+        world = load_world()
+        patch = sample_patch(add={
+            "zones": [], "facts": [],
+            "items": [{"name": "潮見の貝殻", "made_from": {"帆布片": 1},
+                       "give": {"receiver_affinity": 0.5, "giver_affinity": 0.5},
+                       "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 3}]},
+                      {"name": "帆布片", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}]}],
+        })
+        violations = validate_patch(world, patch)
+        self.assertFalse(any("渡したときの効果の総量が上限を超えています" in v for v in violations), violations)
 
     def test_name_collides_with_existing_zone(self):
         self.assert_invalid(lambda p: p["add"]["zones"][0].update(name="村"))
@@ -412,7 +488,7 @@ class WorldPatchTests(unittest.TestCase):
         broken = {"items": {"name": "x"}, "facts": "not-a-list"}
         self.assertEqual(
             check_trigger_coverage(broken, {"zone": "海"}),
-            ["きっかけの場所に調べて得られるものが足されていません"])
+            ["きっかけの場所そのものに調べて得られるものが足されていません"])
 
     # -- R10: names reserved by the engine ----------------------------------
 

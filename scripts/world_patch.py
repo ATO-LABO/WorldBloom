@@ -36,7 +36,8 @@ from gapengine.world_patch import (
     template_identifiers,
     validate_patch,
 )
-from gapengine.world_patch_propose import MAX_PROMPT_CHARS, build_prompt, check_trigger_coverage, make_patch, parse_proposal
+from gapengine.world_patch_propose import (MAX_PROMPT_CHARS, build_prompt, check_proposal_rules,
+                                           check_trigger_coverage, make_patch, parse_proposal)
 from gapengine.world_patch_trial import run_trial, gate_status
 from gapengine.world_patch import stack_head, verify_stack, read_stack
 from execution.provenance import atomic_json
@@ -67,6 +68,18 @@ def _subject_ids(subjects_dir: Path) -> list[str]:
         if isinstance(data, dict) and isinstance(data.get("id"), str):
             ids.append(data["id"])
     return ids
+
+
+def _give_available(subjects_dir: Path) -> bool:
+    """Whether any subject in this world can give_item -- if none can, give
+    never fires and a proposal must not be allowed to spend its give budget
+    on it (check_proposal_rules)."""
+    for path in sorted(Path(subjects_dir).glob("*.yaml")):
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        verbs = data.get("verbs") if isinstance(data, dict) else None
+        if isinstance(verbs, list) and "give_item" in verbs:
+            return True
+    return False
 
 
 def _load_report(experiment: Path) -> dict:
@@ -111,10 +124,13 @@ def _check_parent_rev(base_world: dict, project: Path) -> str | None:
 
 
 def _gate(experiment, project, patch, ctx, subject_ids, *, skip_trial, max_runs,
-          seeds_per_run, reserved=(), seed_set="exploration", template_dir=None, repo_root=None):
+          seeds_per_run, give_available, reserved=(), seed_set="exploration", template_dir=None,
+          repo_root=None):
     base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
-    violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved)
+    violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved,
+                                        give_available=give_available)
     violations += check_trigger_coverage(patch.get("add", {}), patch.get("trigger", {}))
+    violations += check_proposal_rules(patch.get("add", {}), give_available=give_available)
     gate = {"schema_version": 2, "patch_id": patch["id"],
             "static": {"passed": not violations, "violations": violations}, "trial": None,
             "passed": False, "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
@@ -227,10 +243,11 @@ def cmd_propose(args: argparse.Namespace) -> int:
         parent_digest = stack_head(project)
 
     subject_ids = _subject_ids(Path(ctx["subjects_dir"]))
+    give_available = _give_available(Path(ctx["subjects_dir"]))
     zone_verbs = _zone_verbs(report, trigger["zone"])
     reserved = template_identifiers(ctx['template_dir'])
     try:
-        prompt = build_prompt(base_world, subject_ids, trigger, zone_verbs)
+        prompt = build_prompt(base_world, subject_ids, trigger, zone_verbs, give_available=give_available)
     except ValueError as error:
         print(str(error))
         return 1
@@ -270,8 +287,10 @@ def cmd_propose(args: argparse.Namespace) -> int:
             proposal = parse_proposal(response_text)
             last_proposal_text = json.dumps(proposal, ensure_ascii=False, indent=2, sort_keys=False)
             patch = make_patch(proposal, trigger=trigger, parent_digest=parent_digest, author=author)
-            violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved)
+            violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved,
+                                        give_available=give_available)
             violations += check_trigger_coverage(patch["add"], trigger)
+            violations += check_proposal_rules(patch["add"], give_available=give_available)
         except _PROPOSAL_ERRORS as error:
             violations = [f"提案の形式を検査できませんでした: {error}"]
             patch = make_patch(
@@ -293,7 +312,8 @@ def cmd_propose(args: argparse.Namespace) -> int:
         patch_path.write_bytes(raw)
     gate = _gate(experiment, project, patch, ctx, subject_ids, skip_trial=args.skip_trial,
                  max_runs=args.max_runs, seeds_per_run=args.seeds_per_run, reserved=reserved,
-                 seed_set="exploration", template_dir=args.template, repo_root=args.repo)
+                 seed_set="exploration", template_dir=args.template, repo_root=args.repo,
+                 give_available=give_available)
     _save_gate(project, patch_path, raw, gate)
     _print_gate_summary(patch, gate)
     return 1 if gate["status"] in ("static_failed", "contract_failed") else 0
@@ -317,7 +337,8 @@ def cmd_check(args):
     gate = _gate(experiment, project, patch, ctx, _subject_ids(ctx["subjects_dir"]),
                  skip_trial=args.skip_trial, max_runs=args.max_runs, seeds_per_run=args.seeds_per_run,
                  seed_set=args.seed_set, template_dir=args.template,
-                 reserved=template_identifiers(ctx["template_dir"]), repo_root=args.repo)
+                 reserved=template_identifiers(ctx["template_dir"]), repo_root=args.repo,
+                 give_available=_give_available(ctx["subjects_dir"]))
     _save_gate(project, path, raw, gate)
     _print_gate_summary(patch, gate)
     return 1 if gate["status"] in ("static_failed", "contract_failed") else 0

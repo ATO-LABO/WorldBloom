@@ -9,7 +9,9 @@ import yaml
 
 from copy import deepcopy
 
-from gapengine.world_patch_propose import build_prompt, check_trigger_coverage, make_patch, parse_proposal
+from gapengine.world_patch import validate_patch
+from gapengine.world_patch_propose import (build_prompt, check_proposal_rules, check_trigger_coverage,
+                                           make_patch, parse_proposal)
 
 ROOT = Path(__file__).resolve().parents[1]
 WORLD = yaml.safe_load((ROOT / "projects" / "momotaro" / "world.yaml").read_text(encoding="utf-8"))
@@ -18,10 +20,16 @@ TRIGGER = {"zone": "海", "verb": "investigate", "count": 228, "whiffs": 228}
 
 
 def sample_add() -> dict:
+    # A1 requires a source directly in the trigger zone (海) itself; A2
+    # requires the added branch zone (船大工の小屋) to have one too.
     return {
         "zones": [{"name": "船大工の小屋", "parent": "海", "note": "船具を扱う小屋"}],
-        "items": [{"name": "古びた帆布", "sources": [
-            {"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 2}]}],
+        "items": [
+            {"name": "古びた帆布", "sources": [
+                {"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 2}]},
+            {"name": "潮見の貝殻", "sources": [
+                {"type": "investigate", "zone": "海", "count": 1, "max": 2}]},
+        ],
         "facts": [],
     }
 
@@ -52,6 +60,22 @@ class BuildPromptTests(unittest.TestCase):
     def test_normal_momotaro_world_drops_nothing(self):
         prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [("craft", 40, 0.1), ("move", 20, 0.0)])
         self.assertNotIn("ほか", prompt)
+
+    def test_give_unavailable_tells_the_model_not_to_write_give(self):
+        prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [], give_available=False)
+        self.assertIn("give は書かないでください", prompt)
+
+    def test_give_available_does_not_forbid_give(self):
+        prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [], give_available=True)
+        self.assertNotIn("give は書かないでください", prompt)
+
+    def test_give_available_tells_the_model_to_shrink_give_for_plentiful_items(self):
+        # M3: the give budget counts default-affinity items too, so the
+        # prompt must say the trade-off (more max -> smaller give), not just
+        # the raw formula -- otherwise a retry can't fix a give-less item
+        # rejected purely for its sources.max.
+        prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [], give_available=True)
+        self.assertIn("小さく", prompt)
 
 
 class ParseProposalTests(unittest.TestCase):
@@ -121,12 +145,33 @@ class CheckTriggerCoverageTests(unittest.TestCase):
         add = {"items": [{"name": "潮見の貝殻", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}]}]}
         self.assertEqual(check_trigger_coverage(add, TRIGGER), [])
 
-    def test_source_in_branch_zone_off_trigger_has_no_violation(self):
+    def test_source_only_in_branch_zone_is_an_a1_violation(self):
+        # A1: a source in the trigger zone (海) itself is required -- placing
+        # it only in a branch off it leaves the whiff exactly as frequent.
         add = {
             "zones": [{"name": "船大工の小屋", "parent": "海"}],
             "facts": [{"id": "船大工の噂", "sources": [{"type": "investigate", "zone": "船大工の小屋", "count": 1}]}],
         }
+        violations = check_trigger_coverage(add, TRIGGER)
+        self.assertIn("きっかけの場所そのものに調べて得られるものが足されていません", violations)
+
+    def test_trigger_zone_and_branch_zone_both_covered_has_no_violation(self):
+        add = {
+            "zones": [{"name": "船大工の小屋", "parent": "海"}],
+            "items": [{"name": "潮見の貝殻", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}]}],
+            "facts": [{"id": "船大工の噂", "sources": [{"type": "investigate", "zone": "船大工の小屋", "count": 1}]}],
+        }
         self.assertEqual(check_trigger_coverage(add, TRIGGER), [])
+
+    def test_added_zone_without_its_own_source_is_an_a2_violation(self):
+        # A2: 海 itself is covered, but the added branch zone has nothing
+        # sourcing from it -- an empty added zone is just a new whiff spot.
+        add = {
+            "zones": [{"name": "船大工の小屋", "parent": "海"}],
+            "items": [{"name": "潮見の貝殻", "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 1}]}],
+        }
+        violations = check_trigger_coverage(add, TRIGGER)
+        self.assertIn("足した場所に調べて得られるものがありません: '船大工の小屋'", violations)
 
     def test_source_only_in_unrelated_zone_is_a_violation(self):
         add = {"items": [{"name": "山の薬草", "sources": [{"type": "investigate", "zone": "山", "count": 1, "max": 1}]}]}
@@ -151,6 +196,92 @@ class CheckTriggerCoverageTests(unittest.TestCase):
             with self.subTest(add=add):
                 self.assertEqual(check_trigger_coverage(add, TRIGGER), check_trigger_coverage(add, TRIGGER))
                 self.assertTrue(check_trigger_coverage(add, TRIGGER))
+
+
+class CheckProposalRulesTests(unittest.TestCase):
+    def test_fact_missing_secrecy_is_a_violation(self):
+        add = {"facts": [{"id": "船大工の噂", "label": "x"}]}
+        violations = check_proposal_rules(add)
+        self.assertTrue(any("secrecy" in v for v in violations), violations)
+
+    def test_fact_with_secrecy_has_no_violation(self):
+        add = {"facts": [{"id": "船大工の噂", "label": "x", "secrecy": 0.2}]}
+        self.assertEqual(check_proposal_rules(add), [])
+
+    def test_keepsake_with_give_is_a_violation(self):
+        add = {"items": [{"name": "古びた帆布", "keepsake": True,
+                           "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}}]}
+        violations = check_proposal_rules(add)
+        self.assertTrue(any("keepsake" in v for v in violations), violations)
+
+    def test_keepsake_without_give_has_no_violation(self):
+        add = {"items": [{"name": "古びた帆布", "keepsake": True}]}
+        self.assertEqual(check_proposal_rules(add), [])
+
+    def test_give_without_give_available_is_a_violation(self):
+        add = {"items": [{"name": "古びた帆布", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}}]}
+        violations = check_proposal_rules(add, give_available=False)
+        self.assertTrue(any("give" in v for v in violations), violations)
+
+    def test_give_with_give_available_has_no_violation(self):
+        add = {"items": [{"name": "古びた帆布", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}}]}
+        self.assertEqual(check_proposal_rules(add, give_available=True), [])
+
+    def test_made_from_with_give_is_a_violation(self):
+        # R1: a crafted item (made_from) can never be handed over
+        # (engine/actions.py's _give_candidates excludes world.recipes), so
+        # a proposal must not be allowed to write give on one.
+        add = {"items": [{"name": "組み立てた品", "made_from": {"部品": 1},
+                           "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05}}]}
+        violations = check_proposal_rules(add)
+        self.assertTrue(any("made_from" in v for v in violations), violations)
+
+    def test_made_from_without_give_has_no_violation(self):
+        add = {"items": [{"name": "組み立てた品", "made_from": {"部品": 1}}]}
+        self.assertEqual(check_proposal_rules(add), [])
+
+    def test_malformed_add_shapes_never_raise(self):
+        for add in (
+            {"facts": "not-a-list"},
+            {"facts": [None, "x", 1]},
+            {"items": {"a": 1}},
+            {"items": [None, "x", 1]},
+            "not-a-dict",
+            None,
+        ):
+            with self.subTest(add=add):
+                self.assertEqual(check_proposal_rules(add), [])
+                self.assertEqual(check_proposal_rules(add, give_available=False), [])
+
+
+class KnownGoodRegressionTests(unittest.TestCase):
+    def test_sea_proposal_human_add_passes_all_three_gates(self):
+        # Mirrors the add from
+        # C:\Projects\WorldBloom-local\runs\world-demand-reports\sea-proposal-human.json
+        # (minus daily_events) -- a regression guard that A1/A2 trigger
+        # coverage and the proposal-time rules (secrecy, keepsake x give,
+        # give availability) all accept a real, previously-accepted shape.
+        add = {
+            "zones": [{"name": "船大工の小屋", "parent": "海", "note": "浜の外れに残る、昔の船大工の作業小屋"}],
+            "items": [
+                {"name": "古びた帆布", "keepsake": True,
+                 "sources": [{"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 1}]},
+                {"name": "潮見の貝殻", "give": {"receiver_affinity": 0.2, "giver_affinity": 0.05},
+                 "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 2}]},
+            ],
+            "facts": [
+                {"id": "潮の読み方", "label": "沖へ出る潮の変わり目を見分けられる", "secrecy": 0.2, "share_min_affinity": 0.2,
+                 "sources": [{"type": "investigate", "zone": "海", "count": 1}]},
+                {"id": "小屋の言い伝え", "label": "昔の船大工は、鬼は塩を嫌うと語っていたらしい", "secrecy": 0.3, "share_min_affinity": 0.0,
+                 "sources": [{"type": "investigate", "zone": "船大工の小屋", "count": 1}],
+                 "implies": {"fact": "oni_weakness", "value": "塩", "confidence": 0.3}},
+            ],
+        }
+        patch = make_patch({"title": "海辺の船大工小屋", "rationale": "浜の船大工小屋を足す提案です。",
+                             "add": add}, trigger=TRIGGER, parent_digest="a" * 64, author={"backend": "none"})
+        self.assertEqual(validate_patch(WORLD, patch, subject_ids=SUBJECT_IDS), [])
+        self.assertEqual(check_trigger_coverage(add, TRIGGER), [])
+        self.assertEqual(check_proposal_rules(add), [])
 
 
 if __name__ == "__main__":

@@ -33,9 +33,18 @@ PROJECT = ROOT / "projects" / "momotaro"
 TEMPLATE = ROOT / "templates" / "momotaro"
 
 VALID_ADD = {
+    # A1 needs a source directly in the trigger zone (海) itself; A2 needs
+    # the added branch zone (船大工の小屋) to have one too. max:1 each (not
+    # 2) keeps the two items' implicit give budget (no explicit `give` still
+    # counts at the engine's default affinities x source max) within
+    # MAX_GIVE_PER_PATCH.
     "zones": [{"name": "船大工の小屋", "parent": "海", "note": "船具を扱う小屋"}],
-    "items": [{"name": "古びた帆布", "sources": [
-        {"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 2}]}],
+    "items": [
+        {"name": "古びた帆布", "sources": [
+            {"type": "investigate", "zone": "船大工の小屋", "count": 1, "max": 1}]},
+        {"name": "潮見の貝殻", "sources": [
+            {"type": "investigate", "zone": "海", "count": 1, "max": 1}]},
+    ],
     "facts": [],
 }
 COLLIDING_ADD = {"zones": [{"name": "村", "parent": "海"}], "items": [], "facts": []}
@@ -582,6 +591,10 @@ class WorldPatchCliTests(unittest.TestCase):
         self.assertTrue((rejected_dir / f"{patch_id}.yaml").is_file())
         self.assertTrue((rejected_dir / f"{patch_id}.gate.json").is_file())
         self.assertEqual(self._proposed_files(), [])
+
+    def test_give_available_true_for_momotaro_false_for_detective(self):
+        self.assertTrue(wpc._give_available(PROJECT / "subjects"))
+        self.assertFalse(wpc._give_available(ROOT / "projects" / "detective" / "subjects"))
 
     def test_list_shows_approved_and_proposed_without_crashing(self):
         self._propose_from_file()

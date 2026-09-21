@@ -137,6 +137,29 @@ class Boundaries(unittest.TestCase):
         world = dict(self.world, facts=[])
         self.assertEqual(validate_patch(world, p), [])
 
+    def test_materialize_derives_give_available_from_subjects(self):
+        # M2: materialize() used to always re-validate with the
+        # validate_patch default (give_available=True), so a give-less,
+        # plentiful item (sources.max:3) that's fine in a world with no
+        # give_item verb (e.g. detective) still failed the give budget at
+        # materialize() time, even though it already passed the static gate
+        # with the correct give_available=False.
+        detective_dir = ROOT / "projects" / "detective"
+        detective_world = yaml.safe_load((detective_dir / "world.yaml").read_text(encoding="utf-8"))
+        detective_people = read_subjects(detective_dir / "subjects")
+        add = {"zones": [], "items": [{"name": "手がかりの品",
+               "sources": [{"type": "investigate", "zone": "書斎", "count": 1, "max": 3}]}]}
+        patch = {"id": patch_id_for(add), "title": "給付試験", "add": add}
+        materialize(detective_world, detective_people, [patch])  # must not raise
+
+        # The same give-less max:3 item, in momotaro (桃太郎 has give_item),
+        # still costs give budget at the engine's default affinities.
+        momotaro_add = {"zones": [], "items": [{"name": "手がかりの品",
+                        "sources": [{"type": "investigate", "zone": "海", "count": 1, "max": 3}]}]}
+        momotaro_patch = {"id": patch_id_for(momotaro_add), "title": "給付試験2", "add": momotaro_add}
+        with self.assertRaises(PatchError):
+            materialize(self.world, self.people, [momotaro_patch])
+
     def test_content_digest_tracks_role_not_filename(self):
         template = self.root / "template"
         template.mkdir()
@@ -230,8 +253,13 @@ class Boundaries(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             experiment, project, template, control = external_repo_experiment(Path(root), individuals=3)
             self.assertFalse((ROOT / "lib" / "action_graph.yaml").exists())
+            # A single item with two sources -- one in the added branch (祠,
+            # satisfies A2) and one in the trigger zone itself (村, satisfies
+            # A1) -- so this stays within this fixture's items cap of 1.
             add = {"zones": [{"name": "祠", "parent": "村"}],
-                   "items": [{"name": "石版", "sources": [{"type": "investigate", "zone": "祠", "count": 1, "max": 1}]}]}
+                   "items": [{"name": "石版", "sources": [
+                       {"type": "investigate", "zone": "祠", "count": 1, "max": 1},
+                       {"type": "investigate", "zone": "村", "count": 1, "max": 1}]}]}
             patch = {"id": patch_id_for(add), "title": "外部repo参照試験", "add": add,
                      "trigger": {"zone": "村", "verb": "investigate"}, "parent_digest": EMPTY_STACK_DIGEST}
             subject_ids = wpc._subject_ids(project / "subjects")
@@ -240,9 +268,13 @@ class Boundaries(unittest.TestCase):
             # Today's actual bug, reproduced directly: _gate (exactly as
             # cmd_check/cmd_propose call it) drops repo_root even though the
             # ctx above already resolved it correctly.
+            # This fixture's momotaro/oni subjects were trimmed down to
+            # verbs=["move", "investigate"]/["rest"] -- no give_item, so
+            # give_available is False here (R3: _gate no longer defaults it).
             with self.assertRaisesRegex(PatchError, "action_graph"):
                 wpc._gate(experiment, project, patch, ctx, subject_ids, skip_trial=False,
-                          max_runs=3, seeds_per_run=4, seed_set="holdout", template_dir=template)
+                          max_runs=3, seeds_per_run=4, seed_set="holdout", template_dir=template,
+                          give_available=False)
 
             # Fixed: forwarding repo_root all the way through reaches a
             # real, error-free trial -- which requires the engine to have
@@ -251,7 +283,7 @@ class Boundaries(unittest.TestCase):
             # inputs digest.
             gate = wpc._gate(experiment, project, patch, ctx, subject_ids, skip_trial=False,
                               max_runs=3, seeds_per_run=4, seed_set="holdout", template_dir=template,
-                              repo_root=control)
+                              repo_root=control, give_available=False)
             self.assertEqual(gate["status"], "reference_only", gate)
             trial = gate["trial"]
             self.assertEqual(trial["errors"], [])
@@ -445,8 +477,12 @@ class FrozenReplay(unittest.TestCase):
         patch = {"id": patch_id_for(add), "title": title, "trigger": trigger,
                  "parent_digest": EMPTY_STACK_DIGEST, "add": add}
         subject_ids = wpc._subject_ids(ctx["subjects_dir"])
+        # frozen_experiment() copies the full momotaro project, whose 桃太郎
+        # has give_item -- give_available=True here (R3: _gate no longer
+        # defaults it).
         gate = wpc._gate(self.experiment, project, patch, ctx, subject_ids, skip_trial=False,
-                          max_runs=5, seeds_per_run=4, seed_set="holdout", template_dir=self.template)
+                          max_runs=5, seeds_per_run=4, seed_set="holdout", template_dir=self.template,
+                          give_available=True)
         self.assertEqual(gate["status"], "reviewable", gate)
         raw = yaml.safe_dump(patch, allow_unicode=True, sort_keys=False).encode("utf-8")
         proposed_dir = project / "patches" / "_proposed"
@@ -467,10 +503,19 @@ class FrozenReplay(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             project = Path(root) / "momotaro"
             shutil.copytree(self.project, project, ignore=shutil.ignore_patterns("patches"))
+            # Each item sources from both its added branch (A2) and the
+            # branch's own parent, standing in as the trigger zone (A1).
+            # max:1 each (not 2) keeps the implicit give budget -- items with
+            # no explicit `give` still count at the engine's default
+            # affinities x total source max -- within MAX_GIVE_PER_PATCH.
             add_a = {"zones": [{"name": "小屋A", "parent": "海"}],
-                     "items": [{"name": "アイテムA", "sources": [{"type": "investigate", "zone": "小屋A", "count": 1, "max": 2}]}]}
+                     "items": [{"name": "アイテムA", "sources": [
+                         {"type": "investigate", "zone": "小屋A", "count": 1, "max": 1},
+                         {"type": "investigate", "zone": "海", "count": 1, "max": 1}]}]}
             add_b = {"zones": [{"name": "小屋B", "parent": "森"}],
-                     "items": [{"name": "アイテムB", "sources": [{"type": "investigate", "zone": "小屋B", "count": 1, "max": 2}]}]}
+                     "items": [{"name": "アイテムB", "sources": [
+                         {"type": "investigate", "zone": "小屋B", "count": 1, "max": 1},
+                         {"type": "investigate", "zone": "森", "count": 1, "max": 1}]}]}
             pid_a = self._reviewable_patch(project, add_a, "並行試験A")
             pid_b = self._reviewable_patch(project, add_b, "並行試験B")
 
@@ -563,8 +608,12 @@ class ExternalRepoApproval(unittest.TestCase):
 
     def _propose_check(self, experiment, project, template, repo):
         proposal_path = Path(project).parent / "proposal.json"
+        # One item with two sources -- 祠 (the added branch, A2) and 海 (the
+        # trigger zone itself, A1).
         add = {"zones": [{"name": "祠", "parent": "海"}],
-               "items": [{"name": "石版", "sources": [{"type": "investigate", "zone": "祠", "count": 1, "max": 1}]}]}
+               "items": [{"name": "石版", "sources": [
+                   {"type": "investigate", "zone": "祠", "count": 1, "max": 1},
+                   {"type": "investigate", "zone": "海", "count": 1, "max": 1}]}]}
         proposal_path.write_text(json.dumps({"title": "外部repo受入試験", "rationale": "試験", "add": add},
                                              ensure_ascii=False), encoding="utf-8")
         code = self._run(["propose", "--experiment", str(experiment), "--project", str(project),
