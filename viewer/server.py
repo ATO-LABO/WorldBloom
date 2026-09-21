@@ -49,6 +49,8 @@ STATIC_FILES = {
     "run-workspace.css": "text/css; charset=utf-8",
     "sifting-workspace.css": "text/css; charset=utf-8",
     "sifting-workspace.js": "application/javascript; charset=utf-8",
+    "raw-workspace.css": "text/css; charset=utf-8",
+    "raw-workspace.js": "application/javascript; charset=utf-8",
     "lineage-workspace.css": "text/css; charset=utf-8",
     "lineage-workspace.js": "application/javascript; charset=utf-8",
     "comparison.css": "text/css; charset=utf-8",
@@ -235,7 +237,10 @@ class ViewerHandler(BaseHTTPRequestHandler):
             query = parse_qs(urlsplit(self.path).query)
             self._send_html(pages.raw_page(
                 self.repository, parts[1], parts[3], query.get("line", [None])[0],
-                job_store=job_store,
+                job_store=job_store, q=query.get("q", [""])[0],
+                kind=query.get("kind", [""])[0], person=query.get("person", [""])[0],
+                page=query.get("page", [None])[0], mode=query.get("mode", ["readable"])[0],
+                expected_source=query.get("source", [None])[0],
             ))
             return
         if len(parts) == 5 and parts[0] == "exp" and parts[2] == "cell" and parts[4] == "lineage":

@@ -60,7 +60,7 @@ class ExplanationViewerTests(unittest.TestCase):
         self.assertIn('SHA-256',raw)
         context=pages.raw_page(self.repo,"exp-viewer","III|high",2)
         self.assertIn('id="L2"',context)
-        self.assertIn("全文",context)
+        self.assertIn('aria-label="選んだ記録"',context)
         with self.assertRaises(data.BadRequest):
             pages.raw_page(self.repo,"exp-viewer","III|high",0)
         page=pages.cell_page(self.repo,"exp-viewer","III|high",view="all")
