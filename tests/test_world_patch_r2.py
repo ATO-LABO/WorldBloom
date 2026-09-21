@@ -350,7 +350,7 @@ class Boundaries(unittest.TestCase):
 
     def test_summary_only_expansion_and_missing_details(self):
         from viewer.data import RunRepository, world_expansion_state
-        from viewer.pages import _world_expansion_line
+        from viewer.world_demand_view import expansion_line
         experiment = self.root / "sample"
         experiment.mkdir()
         repository = RunRepository(self.root)
@@ -358,7 +358,7 @@ class Boundaries(unittest.TestCase):
         summary.write_text(json.dumps({"world_patches": ["p-a"]}), encoding="utf-8")
         state = world_expansion_state(repository, experiment)
         self.assertEqual(state["state"], "unknown")
-        self.assertIn("不明", _world_expansion_line(state))
+        self.assertIn("不明", expansion_line(state))
         summary.write_text(json.dumps({"world_patches": ["p-a"],
             "world_expansion_patches": [{"id": "p-a", "title": "test", "added": {}}]}), encoding="utf-8")
         self.assertEqual(world_expansion_state(repository, experiment)["state"], "expanded")

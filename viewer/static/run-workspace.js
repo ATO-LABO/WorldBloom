@@ -17,7 +17,7 @@
   let params = new URL(location.href).searchParams;
   const readSaved = () => {try {return JSON.parse(sessionStorage.getItem(key) || "{}");} catch (_) {return {};}};
   const saved = readSaved();
-  const tabNames = ["overview","replay","river","trends"];
+  const tabNames = ["overview","replay","river","trends","demand"];
   let tab = params.get("tab") || saved.tab || "overview";
   if (!tabNames.includes(tab)) tab = "overview";
   let follow = !params.has("gen");
@@ -66,10 +66,10 @@
     button.addEventListener("click", () => switchTab(button.dataset.tab));
     button.addEventListener("keydown", event => {
       let i = tabNames.indexOf(button.dataset.tab);
-      if (event.key === "ArrowRight") i = (i+1)%4;
-      else if (event.key === "ArrowLeft") i = (i+3)%4;
+      if (event.key === "ArrowRight") i = (i+1)%tabNames.length;
+      else if (event.key === "ArrowLeft") i = (i+tabNames.length-1)%tabNames.length;
       else if (event.key === "Home") i = 0;
-      else if (event.key === "End") i = 3;
+      else if (event.key === "End") i = tabNames.length-1;
       else return;
       event.preventDefault(); switchTab(tabNames[i]); $(`[data-tab="${tabNames[i]}"]`).focus();
     });

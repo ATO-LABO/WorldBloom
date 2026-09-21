@@ -733,6 +733,35 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('name="sf-verdict" value="held"', body)
         self.assertIn('data-sf-proceed>採用候補を確認（1件）', body)
 
+    def test_sidebar_shows_world_demand_link_only_when_report_exists(self):
+        self._legacy_experiment("exp-demand")
+        catalog = self.server.repository.catalog
+        rid = catalog.register_legacy("exp-demand")
+
+        status, body, _ = self.get_status(f"/runs/{rid}/candidates")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn("世界の需要", body)
+
+        (self.runs / "exp-demand" / "world_demand.json").write_text(
+            json.dumps({"schema_version": 1, "zones": [], "triggers": [{"zone": "海", "verb": "investigate"}]}),
+            encoding="utf-8")
+        status, body, _ = self.get_status(f"/runs/{rid}/candidates")
+        self.assertEqual(status, 200, body)
+        self.assertIn('href="/exp/exp-demand/monitor?tab=demand"', body)
+        self.assertIn("世界の需要（1件）", body)
+
+    def test_config_form_saves_world_expansion_choice(self):
+        # WB-WORLDGROW-001 stage 2/3a: confirms the run_settings.py select's
+        # name (evolution.world_expansion) actually round-trips through the
+        # real save path (POST /api/configs -> ConfigStore.save), not just
+        # that the form renders it.
+        status, saved = self.http("POST", "/api/configs", {
+            "label": "wd", "project_id": "romance", "template_id": "romance",
+            "evolution": {"generations": 1, "population": 1, "seeds": 1, "world_expansion": "detect"},
+        })
+        self.assertEqual(status, 201, saved)
+        self.assertEqual(saved["evolution"]["world_expansion"], "detect")
+
     def test_candidates_sort_quality_desc_and_bogus_sort_ignored(self):
         self._legacy_experiment("exp-sort")
         catalog = self.server.repository.catalog

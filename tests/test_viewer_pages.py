@@ -76,74 +76,6 @@ class ViewerPageTests(unittest.TestCase):
             1,
         )
 
-    def test_experiment_page_without_world_demand_shows_guidance(self) -> None:
-        rendered = pages.experiment_page(self.repository, "exp-viewer")
-        self.assertIn("世界の需要", rendered)
-        self.assertIn(
-            "この実験は世界の需要を集計していません",
-            rendered,
-        )
-
-    def test_experiment_page_with_world_demand_shows_triggers_and_zone_table(
-        self,
-    ) -> None:
-        _write_json(
-            self.experiment / "world_demand.json",
-            {
-                "schema_version": 1,
-                "files": 1,
-                "skipped_paths": 0,
-                "subject_decisions": 4,
-                "zones": [
-                    {
-                        "zone": "海",
-                        "decisions": 3,
-                        "dwell": 3,
-                        "dwell_share": 1.0,
-                        "verbs": [["investigate", 3, 1.0]],
-                        "repeat_rate": 0.0,
-                        "ineffective_rate": 1.0,
-                        "ineffective_reasons": [["invalid", 3]],
-                        "mean_p_prec": None,
-                        "mean_m_nov": None,
-                        "mean_candidates": None,
-                    },
-                ],
-                "triggers": [
-                    {
-                        "zone": "海",
-                        "verb": "investigate",
-                        "count": 3,
-                        "whiffs": 3,
-                        "whiff_rate": 1.0,
-                        "wasted_share": 0.5,
-                        "zone_dwell_share": 1.0,
-                    },
-                ],
-                "archive": None,
-                "thresholds": {"whiff_rate_min": 0.5, "wasted_share_min": 0.02},
-            },
-        )
-        rendered = pages.experiment_page(self.repository, "exp-viewer")
-        self.assertIn("世界の需要", rendered)
-        self.assertNotIn("この実験は世界の需要を集計していません", rendered)
-        self.assertIn("investigate", rendered)
-        self.assertIn("50.0%", rendered)
-        self.assertIn("ゾーン別の詳細", rendered)
-
-    def test_experiment_page_survives_a_malformed_world_demand_report(self) -> None:
-        _write_json(
-            self.experiment / "world_demand.json",
-            {
-                "schema_version": 1,
-                "zones": [{"zone": "海", "verbs": [["investigate", 3], "junk", None]}, "junk"],
-                "triggers": [{"zone": "海", "verb": "investigate", "wasted_share": None}, 7],
-            },
-        )
-        rendered = pages.experiment_page(self.repository, "exp-viewer")
-        self.assertIn("世界の需要", rendered)
-        self.assertIn("investigate×3", rendered)
-
     # -- WB-WORLDGROW-001 stage 3a: expansion patches shown on the experiment page --
 
     def test_world_expansion_info_reads_config_json_project_layout(self) -> None:
@@ -174,41 +106,6 @@ class ViewerPageTests(unittest.TestCase):
         (self.experiment / "expanded-project" / "world.yaml").write_text(
             "not: [valid, yaml", encoding="utf-8")
         self.assertEqual(data.world_expansion_info(self.repository, self.experiment), [])
-
-    def test_experiment_page_shows_base_world_line_without_patches(self) -> None:
-        rendered = pages.experiment_page(self.repository, "exp-viewer")
-        self.assertIn("この実験の世界: ベース（拡張なし）", rendered)
-
-    def test_experiment_page_shows_expansion_patches(self) -> None:
-        world = {
-            "name": "桃太郎",
-            "expansion": {
-                "base": "桃太郎",
-                "patches": [
-                    {"id": "p-1a2b3c4d", "title": "海辺の船大工小屋",
-                     "trigger": {"zone": "海", "verb": "investigate"},
-                     "added": {"zones": ["船大工の小屋"], "items": ["古びた帆布"],
-                               "facts": [], "daily_events": []}},
-                ],
-            },
-        }
-        (self.experiment / "expanded-project").mkdir()
-        (self.experiment / "expanded-project" / "world.yaml").write_text(
-            yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
-        rendered = pages.experiment_page(self.repository, "exp-viewer")
-        self.assertIn("この実験の世界: 拡張あり", rendered)
-        self.assertIn("海辺の船大工小屋", rendered)
-        self.assertIn("p-1a2b3c4d", rendered)
-        self.assertIn("海 で investigate", rendered)
-        self.assertIn("船大工の小屋", rendered)
-        self.assertIn("古びた帆布", rendered)
-
-    def test_experiment_page_survives_malformed_expansion_shape(self) -> None:
-        (self.experiment / "expanded-project").mkdir()
-        (self.experiment / "expanded-project" / "world.yaml").write_text(
-            "name: x\nexpansion: not-a-mapping\n", encoding="utf-8")
-        rendered = pages.experiment_page(self.repository, "exp-viewer")
-        self.assertIn("この実験の世界: ベース（拡張なし）", rendered)
 
     def test_cell_page_structure(self) -> None:
         rendered = pages.cell_page(
