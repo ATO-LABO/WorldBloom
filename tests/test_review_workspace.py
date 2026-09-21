@@ -34,7 +34,7 @@ class ReadOnlyWorkspaceTests(unittest.TestCase):
             self.assertNotIn('data-candidate-binding',content)
             self.assertNotIn('data-reader-generate',content)
             self.assertNotIn('name="verdict"',content)
-        self.assertIn('data-readonly-grid',rendered[0]);self.assertIn('閲覧専用',rendered[2])
+        self.assertIn('data-readonly-grid',rendered[0]);self.assertIn('<details class="ux-metrics">',rendered[0]);self.assertIn('占有マス',rendered[0]);self.assertIn('閲覧専用',rendered[2])
         after={str(p):p.read_bytes() for p in self.exp.rglob('*') if p.is_file()}
         self.assertEqual(before,after)
 

@@ -120,6 +120,14 @@ def grid(repo, name, *, job_store=None):
         rows.append(f'<tr><th scope="row">{E(cat)}</th>'+''.join(columns)+'</tr>')
     body='<div class="ux-shell" data-readonly-grid>'+heading('格子で物語を探す',link('/','← 世界を選ぶ'),link(base+'/river','系譜の川を見る') if any(p.is_file() for p in root.glob('g*/results.json')) else '','<small class="ux-badge">閲覧専用</small>')
     body+='<div class="ux-toolbar"><p>保存された代表候補を閲覧しています</p><label>候補を探す <input type="search" data-grid-search placeholder="区画・あらすじ"></label><button type="button" data-grid-mode aria-pressed="false">一覧で表示</button></div>'
+    P=pages; reach,occupied,quality,diss=meta['reach_series'],meta['occupied_series'],meta['quality_series'],meta.get('dissimilarity_series') or []
+    # The experiment-wide QD readout of the legacy grid, folded so reading stays first.
+    body+=('<details class="ux-metrics"><summary>この実験の数字</summary><section class="card metric-strip">'
+        f'<div><strong>{P._tip("cells","占有マス")}</strong>{P.sparkline(occupied)}<span class="{P._grade(P._ratio(meta["cells"],meta["grid_size"]))}">{E(meta["cells"])}/{E(meta["grid_size"])}</span></div>'
+        f'<div><strong>{P._tip("dissimilarity","相異度")}</strong>{P.sparkline(diss)}<span class="{P._grade(P._last(diss))}">{E(P._series_text(diss))}</span>{P._dissimilarity_note(diss)}</div>'
+        f'<div><strong>{P._tip("quality","q̄")}</strong>{P.sparkline(quality)}<span class="{P._grade(P._last(quality))}">{E(P._series_text(quality))}</span></div>'
+        f'<div class="gate"><strong>{P._tip("reach","到達率")}</strong><span>{E(P._gate_text(reach))}</span><span class="gate-note">アーカイブへの入場ゲート。上げる対象ではない</span></div>'
+        f'<p class="strip-detail">volatility 閾値 {E(P._threshold_text(meta["thresholds"]))} · 結末 {E(meta.get("target_ending"))} · keep={E(meta.get("keep"))}</p></section></details>')
     body+='<div class="ux-columns"><div class="ux-scroll ux-grid"><table><thead><tr><th>区画</th>'+''.join(f'<th scope="col">{E(b)}</th>' for b in bins)+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table>'+('' if previews else '<p class="ux-empty">候補がまだありません。</p>')+'</div><aside class="ux-aside ux-scroll">'+''.join(previews)+'</aside></div>'
     body+=f'<form id="ux-compare" class="ux-footer" action="{base}/compare" method="get"><span data-compare-count>比較対象を2〜4件選んでください</span><span class="ux-muted">比較の選択は保存されません</span><button class="ux-primary" type="submit">選んだ候補を比較 →</button></form></div>'
     return doc('格子で物語を探す',body,name,job_store=job_store,world=pages._experiment_world(meta,job_store),phases=data.phase_status(repo,name,job_store=job_store))
