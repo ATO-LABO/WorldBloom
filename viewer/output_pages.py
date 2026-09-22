@@ -19,7 +19,7 @@ from execution.output_settings import current_generation
 from execution.output_store import OutputStore, verified
 from execution.provenance import ConfigError, contained, read_json
 from execution.worker import TERMINAL
-from viewer import job_api, pages, workbench_pages
+from viewer import job_api, pages, workbench_pages, data
 
 _escape = pages._escape
 _url = pages._url_segment
@@ -215,14 +215,14 @@ def _generation_job_row(job):
 # §3.1 -- generation confirmation page
 # --------------------------------------------------------------------------
 
-def _generate_confirm(handler, run_id):
+def build_confirmation(handler, run_id, query=None):
     job_store = _job_store(handler)
     repository = handler.repository
     if job_store is None or repository.catalog is None:
         handler._send_html(_guidance_page(phase="stage"))
         return
     catalog, selections = repository.catalog, repository.selections
-    query = _query(handler)
+    query = _query(handler) if query is None else query
 
     def qval(name):
         values = query.get(name)
@@ -337,20 +337,24 @@ def _generate_confirm(handler, run_id):
             "acknowledge_unknown": acknowledge_unknown, "attempt_ids": attempt_ids,
         }
 
-    body = _render_generate_body(
+    return dict(
         run_id=run_id, kind=kind, mode=mode, candidate_ids=candidate_ids, by_id=by_id,
         selection_revision=selected["revision"], config_id=config_id, config=config,
         legacy=legacy, config_note=config_note, generation=generation, check=check, request=request,
         request_id=request_id, synopsis_refs=synopsis_refs, attempt_ids=attempt_ids,
         ack_requested=ack_requested, errors=errors,
+        experiment_name=snapshot["experiment_name"],
     )
-    handler._send_html(pages.document(
-        "生成の確認", body,
-        crumbs=[("候補一覧", f"/runs/{_url(run_id)}/candidates"), ("生成の確認", f"/runs/{_url(run_id)}/generate")],
-        phase="stage", run=snapshot["experiment_name"], output_run=run_id,
-        lead="生成内容を確認して開始します。",
-        job_store=job_store,
-    ))
+
+
+def _generate_confirm(handler, run_id):
+    view = build_confirmation(handler, run_id)
+    if view is None:
+        return
+    from viewer import sifting_pages
+    if view["kind"] == "narrate":
+        return sifting_pages.tray(handler, run_id=run_id, confirmation=view)
+    return sifting_pages.synopsis_confirm(handler, run_id, view)
 
 
 def _render_generate_body(*, run_id, kind, mode, candidate_ids, by_id, selection_revision,
@@ -459,51 +463,8 @@ def _render_generate_body(*, run_id, kind, mode, candidate_ids, by_id, selection
 # --------------------------------------------------------------------------
 
 def _outputs_list(handler):
-    job_store = _job_store(handler)
-    if job_store is None:
-        handler._send_html(_guidance_page(phase="stage"))
-        return
-    query = _query(handler)
-    run_filter = query.get("run", [None])[0]
-    # run_filter (the ?run= query value) is the catalog run_id -- outputs are
-    # always keyed that way, including for legacy runs whose catalog id
-    # differs from the experiment folder name. The header's 実験 picker and
-    # its 工程 links must use the folder name, so resolve it via history()
-    # before rendering (computed first so the error branch below can use it
-    # too).
-    try:
-        history = handler.repository.catalog.history()
-    except (ConfigError, OSError, ValueError, KeyError, TypeError):
-        history = []
-    run_names = {r["run_id"]: r["experiment_name"] for r in history}
-    run_experiment = run_names.get(run_filter) if run_filter else None
-    lead = "生成した作品を読みます。"
-    try:
-        outputs = job_store.outputs()
-    except (ConfigError, OSError, ValueError, KeyError, TypeError, AttributeError):
-        body = '<p class="error">作品一覧を読み込めません。保存記録が破損している可能性があります</p>'
-        handler._send_html(pages.document(
-            "作品一覧", body, crumbs=[("作品一覧", "/outputs")],
-            phase="stage", run=run_experiment, output_run=run_filter, lead=lead,
-            job_store=job_store,
-        ))
-        return
-    if run_filter:
-        outputs = [o for o in outputs if (o.get("request") or {}).get("run_id") == run_filter]
-    # WB-UI-012 §2.2: no outputs yet -> point back at where generation
-    # happens (the run's candidate list when we know which run, else /history).
-    next_action = None
-    if not outputs:
-        next_action = (
-            ("候補一覧で生成する →", f"/runs/{_url(run_filter)}/candidates")
-            if run_filter else ("候補一覧で生成する →", "/history")
-        )
-    handler._send_html(pages.document(
-        "作品一覧", render_outputs_list(outputs, run_names), crumbs=[("作品一覧", "/outputs")],
-        phase="stage", run=run_experiment, output_run=run_filter,
-        lead=lead, next_action=next_action,
-        job_store=job_store,
-    ))
+    from viewer.screening_pages import render
+    return render(handler)
 
 
 def _reader_summary_note():
@@ -519,7 +480,7 @@ OUTPUTS_GLOSSARY_KEYS = (
 )
 
 
-def render_outputs_list(outputs, run_names=None):
+def render_outputs_list(outputs, run_names=None, dates=None):
     run_names = run_names or {}
     if not outputs:
         return "<p>生成した作品はまだありません。候補一覧から生成できます。</p>" + pages.glossary(OUTPUTS_GLOSSARY_KEYS) + _reader_summary_note()
@@ -533,7 +494,9 @@ def render_outputs_list(outputs, run_names=None):
         by_run.setdefault(request["run_id"], []).append(output)
     sections = []
     for run_id, items in sorted(by_run.items()):
-        rows = "".join(_output_row(o) for o in items)
+        if dates is not None:
+            items.sort(key=lambda o: dates.get(o["output_id"]) or 0, reverse=True)
+        rows = "".join(_output_row(o, dates.get(o["output_id"]) if dates is not None else None) for o in items)
         heading = _escape(run_names.get(run_id, run_id))
         sections.append(
             f'<section class="card"><h2>run: {heading} '
@@ -555,7 +518,7 @@ def render_outputs_list(outputs, run_names=None):
     return "".join(sections) + pages.glossary(OUTPUTS_GLOSSARY_KEYS) + _reader_summary_note()
 
 
-def _output_row(output):
+def _output_row(output, created=None):
     request = output["request"]
     output_id = output["output_id"]
     job_state = output.get("job_state")
@@ -575,9 +538,13 @@ def _output_row(output):
     # WB-UI-014 §3.2: 選定版/backend-model/対象数/設定 move into a collapsed
     # detail row; the list keeps only what Sifting scans at a glance.
     detail_id = f"detail-{_escape(output_id)}"
+    date_html = ""
+    if created is not None:
+        from viewer.screening_view import date_label
+        date_html = f'<strong>{_escape(date_label(created))}</strong><br>'
     row = (
         "<tr>"
-        f'<td><a href="/outputs/{_url(output_id)}">{_escape(_short_id(output_id))}</a></td>'
+        f'<td>{date_html}<a href="/outputs/{_url(output_id)}">{_escape(_short_id(output_id))}</a></td>'
         f'<td>{_escape(KIND_LABELS.get(request.get("kind"), request.get("kind")))}</td>'
         f'<td>{_escape(state_text)}</td>'
         f'<td>{_escape(counts_text)}</td>'
@@ -620,6 +587,9 @@ def _output_detail(handler, output_id):
     # it into a 500 with code="storage_error".
 
     request = output["request"]
+    if request["kind"] == "narrate" and _query(handler).get("view") != ["record"]:
+        from viewer.screening_pages import render
+        return render(handler, output_id)
     job_state = output.get("job_state")
     # A job_state-less output has no owning job record at all; treat it like a
     # terminal output (nothing to poll, nothing to reconcile) with only the
@@ -762,18 +732,15 @@ def _output_detail(handler, output_id):
         + "".join(header) + ops_html + entry_sections
         + "</section>" + sibling_html
     )
-    handler._send_html(pages.document(
-        f"作品: {_short_id(output_id)}", body,
-        crumbs=[("作品一覧", "/outputs"), (_short_id(output_id), f"/outputs/{_url(output_id)}")],
-        # run_id here is the catalog run_id; the header's 実験 picker and its
-        # Sifting link use the experiment folder name (history()-resolved
-        # above, None if it can't be resolved), while the 上映 link must keep
-        # using the catalog id (that's what /outputs?run= matches against).
-        phase="stage", run=experiment_name, output_run=run_id,
-        lead="生成結果を読み、必要なら再生成します。",
-        next_action=("作品一覧へ →", f"/outputs?run={_url(run_id)}"),
-        job_store=job_store,
-    ))
+    from viewer.screening_pages import shell, link
+    return_link = f"/outputs/{_url(output_id)}" if kind == "narrate" else f"/outputs?run={_url(run_id)}&view=history"
+    try:
+        history = handler.repository.catalog.history()
+    except (ConfigError, OSError, ValueError, KeyError, TypeError):
+        history = []
+    shell(handler, "生成記録", '<div class="sc-history"><p>' + link(return_link, "← 作品・履歴へ戻る") + '</p>' + body + '</div>',
+          query={"run": [run_id]}, history=history, active="history")
+
 
 
 def _entry_article(entry, candidates_by_id, store, output_id, run_id, synopsis_ref=None):
@@ -864,6 +831,9 @@ def _entry_prompt(handler, output_id, candidate_id):
 def _resolve(parts):
     if not parts:
         return None
+    if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "generation-plan":
+        from viewer.generation_pages import api_plan
+        return api_plan, (parts[2],)
     if parts[0] == "runs" and len(parts) == 3 and parts[2] == "generate":
         return _generate_confirm, (parts[1],)
     if parts[0] != "outputs":
@@ -889,10 +859,20 @@ def dispatch(handler, parts, method):
     try:
         action(handler, *args)
     except ConfigError as error:
+        if method == "GET" and not parts[0] == "api":
+            raise
         job_api.send_error(handler, error)
     except FileNotFoundError:
+        if method == "GET" and parts[0] != "api":
+            raise data.MissingResource("保存された記録が見つかりません")
         job_api.send_error(handler, ConfigError("resource", "作品が見つからないか読み取れません", code="not_found"))
+    except (data.BadRequest, data.ForbiddenPath, data.MissingResource) as error:
+        if method == "GET" and parts[0] != "api":
+            raise
+        job_api.send_data_error(handler, error)
     except (OSError, ValueError, TypeError, KeyError):
+        if method == "GET" and parts[0] != "api":
+            raise OSError("保存された情報を読み取れません")
         handler._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
             "code": "storage_error", "message": "保存済み記録を処理できません",
             "field_errors": {}, "retryable": False, "current_revision": None,
