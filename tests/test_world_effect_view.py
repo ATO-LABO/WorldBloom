@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from test_viewer import _write_json
+from test_viewer import _write_json, _write_jsonl
 from viewer import data, world_effect_view
 
 _SHA = "a" * 64
@@ -18,9 +18,17 @@ _OTHER_SHA = "b" * 64
 
 def _write_experiment(runs_root: Path, name: str, *, project_id="momotaro", template_id="momotaro",
                        source_sha256=_SHA, patch_ids=(), evolution_extra=None, cells=("I|low",),
-                       demand_triggers=None, reach_rate=0.5, occupied_cells=3) -> Path:
+                       demand_triggers=None, reach_rate=0.5, occupied_cells=3,
+                       protagonist=None, world_yaml=None, cell_exemplars=None,
+                       expansion_added=None) -> Path:
     experiment = runs_root / name
-    _write_json(experiment / "archive.json", {"cells": {cell: {"quality": 0.5} for cell in cells}})
+    cell_entries = {}
+    for cell in cells:
+        entry = {"quality": 0.5}
+        if cell_exemplars and cell in cell_exemplars:
+            entry["exemplar"] = {"layers_path": cell_exemplars[cell]}
+        cell_entries[cell] = entry
+    _write_json(experiment / "archive.json", {"cells": cell_entries})
     _write_json(experiment / "summary.json", {"generations": [
         {"generation": 0, "reach_rate": reach_rate, "occupied_cells": occupied_cells},
     ]})
@@ -28,10 +36,16 @@ def _write_experiment(runs_root: Path, name: str, *, project_id="momotaro", temp
                  "world_expansion": "expand" if patch_ids else "detect"}
     if evolution_extra:
         evolution.update(evolution_extra)
-    _write_json(experiment / "config.json", {
-        "config_id": f"cfg-{name}", "project_id": project_id, "template_id": template_id,
-        "evolution": evolution,
-    })
+    config = {"config_id": f"cfg-{name}", "project_id": project_id, "template_id": template_id,
+              "evolution": evolution}
+    preview = {}
+    if protagonist:
+        preview["protagonist"] = protagonist
+    if world_yaml is not None:
+        preview["world"] = world_yaml
+    if preview:
+        config["preview"] = preview
+    _write_json(experiment / "config.json", config)
     world_entry = {"path": f"projects/{project_id}/world.yaml", "source_sha256": source_sha256,
                    "sha256": "frozen-" + source_sha256}
     if patch_ids:
@@ -41,6 +55,14 @@ def _write_experiment(runs_root: Path, name: str, *, project_id="momotaro", temp
         _write_json(experiment / "world_demand.json", {
             "schema_version": 1, "triggers": demand_triggers, "zones": [],
         })
+    if expansion_added is not None:
+        # data.world_expansion_state() の summary.json フォールバック経路
+        # （段階4b: この一覧を使って usage_counts の対象集合を作る）。
+        summary_path = experiment / "summary.json"
+        summary = data._read_json(summary_path)
+        summary["world_patches"] = list(patch_ids) or ["p-1"]
+        summary["world_expansion_patches"] = [{"id": "p-1", "title": "t", "added": expansion_added}]
+        _write_json(summary_path, summary)
     return experiment
 
 
@@ -157,6 +179,45 @@ class EffectHtmlTests(unittest.TestCase):
         query = parse_qs("with=base-b")
         html = world_effect_view.effect_html(self._handler(), {"run_name": "expand-run"}, query)
         self.assertIn("<strong>base-b</strong>", html)
+
+    def test_stage4b_badge_shown_for_a_new_cell_that_used_the_expansion(self) -> None:
+        _write_jsonl(self.runs_root / "expand-run" / "g0/ind-0/seed-7/layers.jsonl", [
+            {"kind": "decision", "subject": "桃太郎", "verb": "move", "result": "moved",
+             "delta": {"actor": {"zone": "船大工の小屋"}}},
+        ])
+        _write_experiment(self.runs_root, "base-run", cells=("I|low",))
+        _write_experiment(self.runs_root, "expand-run", patch_ids=("p-1",), cells=("I|low", "II|mid"),
+                           cell_exemplars={"II|mid": "g0/ind-0/seed-7/layers.jsonl"},
+                           protagonist="桃太郎", expansion_added={"zones": ["船大工の小屋"]})
+        html = world_effect_view.effect_html(self._handler(), {"run_name": "expand-run"}, {})
+        self.assertIn("拡張要素: 使った", html)
+        self.assertIn("新しい場所への移動 1回", html)
+
+    def test_stage4b_badge_absent_when_new_cell_did_not_use_the_expansion(self) -> None:
+        _write_jsonl(self.runs_root / "expand-run" / "g0/ind-0/seed-7/layers.jsonl", [
+            {"kind": "decision", "subject": "桃太郎", "verb": "move", "result": "moved",
+             "delta": {"actor": {"zone": "村"}}},
+        ])
+        _write_experiment(self.runs_root, "base-run", cells=("I|low",))
+        _write_experiment(self.runs_root, "expand-run", patch_ids=("p-1",), cells=("I|low", "II|mid"),
+                           cell_exemplars={"II|mid": "g0/ind-0/seed-7/layers.jsonl"},
+                           protagonist="桃太郎", expansion_added={"zones": ["船大工の小屋"]})
+        html = world_effect_view.effect_html(self._handler(), {"run_name": "expand-run"}, {})
+        self.assertIn("拡張要素: 使っていない", html)
+
+    def test_stage4c_frozen_world_map_shown_when_preview_world_present(self) -> None:
+        _write_experiment(self.runs_root, "base-run", cells=("I|low",))
+        _write_experiment(self.runs_root, "expand-run", patch_ids=("p-1",),
+                           world_yaml={"zones": [{"name": "海"}, {"name": "船大工の小屋"}], "routes": {}})
+        html = world_effect_view.effect_html(self._handler(), {"run_name": "expand-run"}, {})
+        self.assertIn("回った世界を地図で見る", html)
+        self.assertIn("船大工の小屋", html)
+
+    def test_stage4c_frozen_world_map_absent_without_preview_world(self) -> None:
+        _write_experiment(self.runs_root, "base-run", cells=("I|low",))
+        _write_experiment(self.runs_root, "expand-run", patch_ids=("p-1",))
+        html = world_effect_view.effect_html(self._handler(), {"run_name": "expand-run"}, {})
+        self.assertNotIn("回った世界を地図で見る", html)
 
     def test_multiple_partners_render_as_clickable_links_not_a_dead_select(self) -> None:
         # Opus review M1: <select data-effect-partner> だった旧実装は

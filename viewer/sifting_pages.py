@@ -67,11 +67,16 @@ def candidate_row(c, *, grid=False):
     cid = c["candidate_id"]
     shade = max(0, min(1, c.get("quality") or 0))
     attr = f' style="--sf-quality:{shade}"' if grid else ''
+    # 段階4b: 代表候補行にだけ拡張要素バッジを添える（sifting_view.load が
+    # grid=Trueかつ代表候補のときしか埋めない）。<details>展開版なので、
+    # <button>の外（記事の直下）に置く -- <details>は<button>の中に
+    # 入れられない（Opus review 推奨3）。
+    usage = c["usage_html"] if grid and c.get("usage_html") else ''
     return (f'<article class="sf-candidate" data-candidate-id="{E(cid)}"{attr}>'
             f'<label class="sf-choice" hidden><input type="checkbox" data-sf-choice="{E(cid)}"><span>対象にする</span></label>'
             f'<button type="button" data-sf-open="{E(cid)}"><span class="sf-row-title"><strong>{E(c["label"])}</strong><span data-row-state>{badge(c["state"])}</span></span>'
             + ('' if grid else f'<span class="sf-snippet">{E(c["synopsis"][:120] or c["synopsis_state"])}</span>')
-            + f'<small>品質 {E(c["quality_text"])} · {"到達" if c.get("reached") else "未到達"} · 第{E(c.get("generation"))}世代</small><small>{E(c.get("cell_key"))}</small></button></article>')
+            + f'<small>品質 {E(c["quality_text"])} · {"到達" if c.get("reached") else "未到達"} · 第{E(c.get("generation"))}世代</small><small>{E(c.get("cell_key"))}</small></button>{usage}</article>')
 
 
 def candidates(handler, run_id, grid=False):
@@ -79,7 +84,7 @@ def candidates(handler, run_id, grid=False):
         handler._send_html(wb._guidance_page(phase="sifting"))
         return
     query = parse_qs(urlsplit(handler.path).query, keep_blank_values=True)
-    v = sifting_view.load(handler, run_id, query=query)
+    v = sifting_view.load(handler, run_id, query=query, grid=grid)
     items = v["visible"]
     base = f'/runs/{U(run_id)}/candidates'
     if grid: items = [c for c in v["items"] if c["representative"]]

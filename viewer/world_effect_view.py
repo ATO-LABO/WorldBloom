@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from viewer import data, pages, world_demand_view
+from viewer import data, pages, world_demand_view, world_graph, world_usage_badge
 
 _escape = pages._escape
 _url = pages._url_segment
@@ -170,10 +170,12 @@ def _trend_html(base_summary, expand_summary):
     )
 
 
-def _map_diff_html(repository, base_root, expand_root, expand_name):
+def _map_diff_html(repository, base_root, expand_root, expand_name, expand_state, protagonist):
     try:
         base_cells = set((repository.archive(base_root) or {}).get("cells") or {})
-        expand_cells = set((repository.archive(expand_root) or {}).get("cells") or {})
+        expand_archive = repository.archive(expand_root) or {}
+        expand_cells_map = expand_archive.get("cells") or {}
+        expand_cells = set(expand_cells_map)
     except _SAFE_ERRORS:
         return "<p>地図の記録を読み込めませんでした。</p>"
     only_expand = sorted(expand_cells - base_cells)
@@ -184,8 +186,13 @@ def _map_diff_html(repository, base_root, expand_root, expand_name):
     parts = [f"<p>両方に出た型: {len(both)}種類／拡張後だけに出た型: {len(only_expand)}種類／"
              f"ベースだけに出た型: {len(only_base)}種類</p>"]
     if only_expand:
+        # 段階4b: 新しく出た型が本当に拡張要素で生まれたかを、代表個体の
+        # ログから読み取ったバッジで添える（保存しない、都度導出）。
+        patches = expand_state.get("patches") if isinstance(expand_state, dict) else None
         links = "".join(
-            f'<li><a href="/exp/{_url(expand_name)}/cell/{_url(cell)}">{_escape(cell.replace("|", " × "))}</a></li>'
+            f'<li><a href="/exp/{_url(expand_name)}/cell/{_url(cell)}">{_escape(cell.replace("|", " × "))}</a>'
+            f' {world_usage_badge.cell_badge_html(repository, expand_root, patches, expand_cells_map.get(cell), protagonist)}'
+            "</li>"
             for cell in only_expand
         )
         parts.append(f"<details><summary>拡張後だけに出た型（{len(only_expand)}）</summary><ul>{links}</ul></details>")
@@ -249,6 +256,8 @@ def effect_html(handler, view, query):
     base_summary = _read_json_safe(repository, base_root, "summary.json")
     expand_summary = _read_json_safe(repository, expand_root, "summary.json")
     expand_state = data.world_expansion_state(repository, expand_root)
+    expand_config = config if role == "expand" else _read_json_safe(repository, expand_root, "config.json")
+    protagonist = ((expand_config or {}).get("preview") or {}).get("protagonist")
     # Opus review R1: expansion_line() は「この実験の世界」という一人称の
     # 文言なので、role=="base"（開いているのは相手側）のときは誤読を招く。
     # 拡張側の実験名を明示する。
@@ -260,7 +269,23 @@ def effect_html(handler, view, query):
         + header
         + "<h3>きっかけは解消したか</h3>" + _whiff_table_html(base_report, expand_report)
         + "<h3>物語はどう変わったか（最終世代）</h3>" + _trend_html(base_summary, expand_summary)
-        + "<h3>地図の差分</h3>" + _map_diff_html(repository, base_root, expand_root, expand_name)
+        + "<h3>地図の差分</h3>" + _map_diff_html(repository, base_root, expand_root, expand_name, expand_state, protagonist)
         + f"<h3>{added_heading}</h3>" + world_demand_view.expansion_line(expand_state)
+        + _frozen_world_map_html(expand_config)
         + "</section>"
     )
+
+
+def _frozen_world_map_html(expand_config):
+    """段階4c-最小: 凍結された（拡張後の）世界を地図として見る。世界画面
+    本体は変えない（v1制約=常にベースworld.yamlを正として表示、を維持）。
+    追加I/Oなし -- expand_config["preview"]["world"] は expand 実験では
+    execution/configs.py._capture_inputs が既に拡張後の世界を焼き込んでいる。"""
+    world_yaml = ((expand_config or {}).get("preview") or {}).get("world")
+    if not isinstance(world_yaml, dict):
+        return ""
+    zones = world_yaml.get("zones") or []
+    routes = world_yaml.get("routes") or {}
+    return ("<details><summary>回った世界を地図で見る（拡張後）</summary>"
+            + world_graph.zone_list_html(zones) + world_graph.zone_svg(zones, routes)
+            + "</details>")

@@ -601,6 +601,14 @@
 
 .we-card{margin:0 0 16px}
 .we-status{font-size:12px;font-weight:600;padding:2px 8px;border:1px solid #a8b3ad;border-radius:999px;margin-left:8px}
+.we-usage{font-size:var(--ws-fs-xs);font-weight:600;border-radius:999px;display:inline-block}
+.we-usage[data-used="true"]{background:var(--ws-confirm-soft);color:var(--ws-confirm)}
+.we-usage[data-used="false"]{background:var(--ws-select-bg);color:var(--ws-muted)}
+span.we-usage{padding:2px 8px}
+details.we-usage>summary{padding:2px 8px;cursor:pointer;list-style:none}
+details.we-usage>summary::-webkit-details-marker{display:none}
+details.we-usage[open]>summary{border-radius:999px 999px 0 0}
+details.we-usage p{margin:4px 0 0;padding:0 8px}
 .we-reason{color:#91411f}
 .we-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin-top:12px}
 .we-actions textarea{flex:1 1 240px;min-height:60px}

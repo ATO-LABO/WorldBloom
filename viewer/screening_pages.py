@@ -2,7 +2,7 @@
 import json
 from urllib.parse import urlencode
 from execution.output_store import OutputStore
-from viewer import pages, workbench_pages as wb, screening_view as view
+from viewer import pages, workbench_pages as wb, screening_view as view, world_usage_badge
 E, U = pages._escape, pages._url_segment
 
 
@@ -117,7 +117,10 @@ def render(handler, output_id=None):
     polling = []
     if selected:
         chosen = next((d for d in selected["drafts"] if d["output_id"] == query.get("output", [None])[0]), selected["preferred"])
-        content += reader(selected, chosen, works, query, job_store, names)
+        # 段階4b: 拡張要素の使用バッジ（1候補だけなので毎回軽い）。
+        usage_html = world_usage_badge.badge_for_run_candidate(
+            handler.repository, selected["run_id"], selected["candidate_id"])
+        content += reader(selected, chosen, works, query, job_store, names, usage_html)
         for d in selected["drafts"]:
             if d["active"]:
                 polling.append({"output_id": d["output_id"], "candidate_id": selected["candidate_id"], "status": d["entry"].get("status")})
@@ -127,7 +130,7 @@ def render(handler, output_id=None):
     shell(handler, "作品を読む", content, query=query, history=history, polling=polling)
 
 
-def reader(work, draft, works, query, job_store, names):
+def reader(work, draft, works, query, job_store, names, usage_html=""):
     cid, rid, oid = work["candidate_id"], work["run_id"], draft["output_id"]
     record = f'/outputs/{U(oid)}?view=record#entry-{U(cid)}'
     choices = ''
@@ -155,6 +158,8 @@ def reader(work, draft, works, query, job_store, names):
     body += '<section role="tabpanel" id="sc-panel-info" aria-labelledby="sc-tab-info" data-sc-panel="info" hidden><h3>生成情報</h3><dl class="sc-info">'
     for name, value in (("状態", view.LABELS.get(draft['status'], draft['status'])), ("作成日時", draft['date']), ("候補", cid), ("生成版", oid), ("試行", draft['entry'].get('attempt_id') or '未開始'), ("モデル", draft['request'].get('model') or '指定なし')):
         body += f'<dt>{E(name)}</dt><dd>{E(value)}</dd>'
+    if usage_html:  # 段階4b: 拡張実験の候補にだけ出る
+        body += f'<dt>世界の拡張</dt><dd>{usage_html}</dd>'
     body += '</dl><p>' + link(record, '生成記録・再生成・復旧を確認 →') + '</p><p>' + link(f'/runs/{U(rid)}/candidates?candidate={U(cid)}', 'Siftingでこの候補を確認 →') + '</p></section></div>'
     index = works.index(work)
     body += '<footer class="sc-reader-footer">'
