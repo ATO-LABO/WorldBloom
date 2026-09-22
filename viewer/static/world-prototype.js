@@ -47,20 +47,30 @@
       expansionHtml;
   }
   const TRAIT_LABELS = {social:'社交性',stubbornness:'頑固さ',curiosity:'好奇心',diligence:'勤勉さ',temper:'気性の荒さ'};
-  function traitBars(p) {
-    const entries = Object.entries(p.traits||{});
-    if (!entries.length) return '<p>未設定</p>';
-    return '<div class="stat-bars">' + entries.map(([k,v]) => {
-      const num = Number(v) || 0;
-      const ratio = Math.max(0, Math.min(1, num));
-      return `<div class="stat"><span class="stat-label">${esc(TRAIT_LABELS[k] || k)}</span><span class="gene-track"><span class="gene-fill" style="width:${(ratio*100).toFixed(1)}%"></span></span><span class="stat-value">${esc(num.toFixed(2))}</span></div>`;
-    }).join('') + '</div>';
+  const num = v => Number(v) || 0;
+  const bar = (label, value, scale, text) => {
+    const ratio = scale > 0 ? Math.max(0, Math.min(1, value / scale)) : 0;
+    return `<div class="stat"><span class="stat-label">${esc(label)}</span><span class="gene-track"><span class="gene-fill" style="width:${(ratio*100).toFixed(1)}%"></span></span><span class="stat-value">${esc(text)}</span></div>`;
+  };
+  // Same nine bars and scales as the advanced sheet (viewer/world_graph.py).
+  function statBars(p) {
+    const traits = p.traits || {};
+    const stamina = p.stamina || {};
+    const baseScale = Math.max(100, ...people.map(q => num(q.base)));
+    const staminaScale = Math.max(0, ...people.map(q => num((q.stamina || {}).max)));
+    const allyScale = Math.max(0, ...people.map(q => num(q.ally_value)));
+    const rows = Object.entries(TRAIT_LABELS).map(([k, label]) => bar(label, num(traits[k]), 1, num(traits[k]).toFixed(2)));
+    rows.push(bar('基礎の強さ', num(p.base), baseScale, String(Math.round(num(p.base)))));
+    rows.push(bar('体力', num(stamina.max), staminaScale, `${Math.round(num(stamina.max))}（回復 ${num(stamina.recover_per_slot)}/時間帯）`));
+    rows.push(bar('評判', num(p.reputation), 1, num(p.reputation).toFixed(2)));
+    rows.push(bar('仲間への加勢', num(p.ally_value), allyScale, String(Math.round(num(p.ally_value)))));
+    return '<div class="stat-bars">' + rows.join('') + '</div>';
   }
   function personDetail() {
     const p = people[person];
     if (!p) return '<p>人物を追加すると、ここに詳細が表示されます。</p>';
     const relations = Object.entries(p.relations||{}).map(([name,r])=>`<span>${esc(name)} <small class="wp-muted">${r.affinity>0?'好意がある':r.affinity<0?'反感がある':'中立・未設定'}</small></span>`).join('') || '関係は未設定です。';
-    return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目的',esc(goal(p)))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl><details open><summary>性格・能力の数値</summary>${traitBars(p)}<p class="wp-muted">基礎値: ${esc(p.base ?? '未設定')}</p></details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
+    return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目的',esc(goal(p)))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl><details open><summary>性格・能力の数値</summary>${statBars(p)}</details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
   }
   function personButton(p,i){return `<button class="wp-person-button" data-person="${i}" aria-pressed="${i===person}" ${!p.id.includes(query)?'hidden':''}>${esc(p.id)}<small>${esc(role(p))}</small></button>`;}
   function peopleScreen() {
