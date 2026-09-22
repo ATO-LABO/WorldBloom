@@ -67,14 +67,20 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         for label, key in (("説明記録", "record_explanations"), ("共進化", "coevolve"), ("メタ進化", "meta_evolution")))
     if rationality is not None:
         total = wb._as_int(values["evolution.generations"]) * wb._as_int(values["evolution.population"]) * wb._as_int(values["evolution.seeds"])
-        rationality_section = '<section><h2>04. 合理性</h2>' + wb._rationality_section(
+        # S2 (Opus review, WB-JEV-002 merge follow-up): _rationality_section
+        # already renders its own <section class="cfg-sec">...<h2>, so it
+        # must not be wrapped in another <section><h2> -- that produced a
+        # nested <section> with two consecutive <h2>s. heading_prefix folds
+        # this form's "04. " numbering into that single h2 instead.
+        rationality_section = wb._rationality_section(
             values, rationality,
             # Opus review (render_config_form): match execution/configs.py's
             # _describe() planned_seed_evaluations -- a coevolve run judges a
             # protagonist pass and a separate antagonist pass.
             total_runs=total * (2 if values["evolution.coevolve"] else 1),
             wall_seconds=wb._as_int(values["execution_limits.wall_seconds"]),
-        ) + '</section>'
+            heading_prefix="04. ",
+        )
     else:
         rationality_section = ""
     advanced = ('<details class="cfg-adv"><summary>詳細設定 <span data-limit-summary></span></summary>'

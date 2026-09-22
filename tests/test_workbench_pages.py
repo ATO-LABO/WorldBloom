@@ -410,6 +410,45 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn("約3分", solo)
         self.assertIn("約3分", coevolved)
 
+    def test_kappa_eta_doubles_for_coevolve_via_configs_new_http(self):
+        """S5 (Opus review, WB-JEV-002 merge follow-up): the coevolve
+        ETA-doubling above was only ever checked by calling
+        render_config_form() directly -- never over the actual /configs/new
+        HTTP path, which WB-JEV-002's merge into main moved onto
+        run_settings.py's own rendering. Confirm the doubling still holds
+        there."""
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}):
+            self.configs.save(
+                {"label": "桃太郎 coevolve", "project_id": "momotaro", "template_id": "momotaro",
+                 "evolution": {"generations": 1, "population": 1, "seeds": 1, "kappa": 0.6,
+                               "coevolve": True},
+                 "execution_limits": {"wall_seconds": 10 ** 9}},
+                config_id="cfg-momo-coevolve",
+            )
+            status, body, _ = self.get_status("/configs/new?from=cfg-momo-coevolve")
+        self.assertEqual(status, 200, body)
+        # 1 run * 90s solo would read "約2分"; coevolve doubles to 2 runs *
+        # 90s = 180s -> "約3分" (see test_kappa_eta_doubles_for_coevolve).
+        self.assertIn("約3分", body)
+        self.assertNotIn("約2分", body)
+
+    def test_rationality_section_between_section_03_and_advanced_details(self):
+        """S2 (Opus review): _rationality_section used to be double-wrapped
+        in an outer <section><h2>04. 合理性</h2> in run_settings.py, nesting
+        two <h2>s. Now that it renders as its own top-level section, confirm
+        it still lands where the form expects it: after "03. 保存と進化" and
+        before the <details class="cfg-adv"> advanced block."""
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}):
+            status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
+        self.assertEqual(status, 200, body)
+        section03_at = body.index("03. 保存と進化")
+        rationality_at = body.index('data-wb="rationality"')
+        advanced_at = body.index('class="cfg-adv"')
+        self.assertLess(section03_at, rationality_at)
+        self.assertLess(rationality_at, advanced_at)
+
     def test_format_eta_seconds_all_three_scales(self):
         """Coordinator review: 1 hour and over reads "約N時間M分" (or just
         "約N時間" on an exact hour) -- both workbench.js's live formatEta()
