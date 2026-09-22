@@ -13,11 +13,12 @@ import yaml
 
 from execution.provenance import ConfigError
 from execution.worker import TERMINAL
-from viewer import data, pages, ga_replay, lineage_river, world_demand_view, world_expansion_view
+from viewer import data, pages, ga_replay, lineage_river, world_demand_view, world_effect_view, world_expansion_view
 
 
 TABS = (("overview", "概要"), ("replay", "進化のリプレイ"),
-        ("river", "系譜の川"), ("trends", "世代の推移"), ("demand", "世界の需要と拡張"))
+        ("river", "系譜の川"), ("trends", "世代の推移"), ("demand", "世界の需要と拡張"),
+        ("effect", "拡張の効果"))
 READ_ERRORS = (ConfigError, OSError, ValueError, KeyError, TypeError, data.MissingResource, yaml.YAMLError)
 E = pages._escape
 U = pages._url_segment
@@ -260,6 +261,13 @@ def _demand_html(handler, experiment, state, view=None):
     return block + _proposals_html(handler, view, view.get("run_name"))
 
 
+def _effect_html(handler, view, query):
+    try:
+        return world_effect_view.effect_html(handler, view, query)
+    except READ_ERRORS:
+        return '<p class="rw-empty">拡張の効果を読み込めませんでした。</p>'
+
+
 def _condition_html(handler, view, control=None, state=None):
     config = view.get("config") or {}
     preview = config.get("preview") or {}
@@ -358,6 +366,8 @@ def render(handler, view):
         '<details class="rw-trend-table"><summary>表で見る</summary><div data-trend-table></div></details></section>'
         '<section id="rw-demand" role="tabpanel" aria-labelledby="rw-tab-demand" hidden>'
         + _demand_html(handler, experiment, world_state, view) + '</section>'
+        '<section id="rw-effect" role="tabpanel" aria-labelledby="rw-tab-effect" hidden>'
+        + _effect_html(handler, view, query) + '</section>'
     )
     from viewer.run_browse import navigation
     body = (
@@ -377,7 +387,7 @@ def render(handler, view):
         f'<a data-restart href="{E(config_href)}" hidden>この条件で新しく実行</a>'
         '<span data-stop-status role="status">保存済みの結果は残ります。</span></div>'
         '<a class="rw-primary" data-candidates>保存済みの候補を見る →</a></footer></div></div>'
-        '<noscript><p>5タブの操作にはJavaScriptが必要です。保存記録は既存の候補画面で閲覧できます。</p></noscript>'
+        '<noscript><p>各タブの操作にはJavaScriptが必要です。保存記録は既存の候補画面で閲覧できます。</p></noscript>'
     )
     doc = pages.document(title, body, phase="run", world=world, run=view.get("run_name"),
                          output_run=job.get("run_id"), job_store=getattr(handler.server, "job_store", None),

@@ -17,7 +17,7 @@
   let params = new URL(location.href).searchParams;
   const readSaved = () => {try {return JSON.parse(sessionStorage.getItem(key) || "{}");} catch (_) {return {};}};
   const saved = readSaved();
-  const tabNames = ["overview","replay","river","trends","demand"];
+  const tabNames = ["overview","replay","river","trends","demand","effect"];
   let tab = params.get("tab") || saved.tab || "overview";
   if (!tabNames.includes(tab)) tab = "overview";
   let follow = !params.has("gen");

@@ -66,11 +66,11 @@ class RunWorkspaceTests(unittest.TestCase):
         self.assertEqual(self.read("&gen=-1")["observation"]["generation"], 0)
         self.assertEqual(self.read("&gen=invalid")["observation"]["generation"], 1)
 
-    def test_page_preserves_four_phases_and_exposes_five_observer_tabs(self):
+    def test_page_preserves_four_phases_and_exposes_six_observer_tabs(self):
         status, body = self.get("/jobs/job-replay")
         self.assertEqual(status, 200)
-        self.assertEqual(body.count('role="tab"'), 5)
-        for text in ("概要", "進化のリプレイ", "系譜の川", "世代の推移", "世界の需要と拡張", "Sifting", "上映"):
+        self.assertEqual(body.count('role="tab"'), 6)
+        for text in ("概要", "進化のリプレイ", "系譜の川", "世代の推移", "世界の需要と拡張", "拡張の効果", "Sifting", "上映"):
             self.assertIn(text, body)
         self.assertIn('data-vessel="replay"', body)
         self.assertIn('data-rw-managed="true"', body)
