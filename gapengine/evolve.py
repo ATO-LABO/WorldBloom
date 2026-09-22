@@ -11,6 +11,7 @@ import sys
 import uuid
 import multiprocessing
 import random
+import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -26,6 +27,7 @@ from gapengine.ollama import DEFAULT_BASE_URL as RATIONALITY_DEFAULT_BASE_URL
 from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
 from gapengine.policy import Policy
 from gapengine.precedent import PrecedentTable, from_runs, load_canon
+from gapengine.world_demand import build_report as build_world_demand_report
 from gapengine.qd import (
     Archive,
     Descriptor,
@@ -1129,6 +1131,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     keep = str(cfg.get("keep", "reached"))
     coevolve = bool(cfg.get("coevolve", False))
     meta_evolution = bool(cfg.get("meta_evolution", False))
+    world_expansion = str(cfg.get("world_expansion", "off"))
     resume = bool(cfg.get("resume", False))
     resume_allow_code_change = bool(cfg.get("resume_allow_code_change", False))
     if generations < 1 or population_size < 1 or seed_count < 1:
@@ -1143,6 +1146,8 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         raise ValueError(
             "keep must be one of: all, reached, exemplar"
         )
+    if world_expansion not in {"off", "detect", "expand"}:
+        raise ValueError("world_expansion must be one of: off, detect, expand")
 
     if observer is not None:
         observer.checkpoint(phase="preparing")
@@ -1166,6 +1171,16 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     rules = list(_load_yaml(template_dir / "rules.yaml", []))
     rule_ids = _rule_ids(rules) if meta_evolution else ()
     canon = load_canon(template_dir / "canon.yaml")
+
+    # Read once, raw: World.from_yaml below parses world_path into typed
+    # attributes and drops any "expansion" key -- summary_payload needs the
+    # raw applied-patch ids (WB-WORLDGROW-001 stage 3a), not engine state.
+    raw_world_patches = (
+        (_load_yaml(world_path, {}).get("expansion") or {}).get("patches") or []
+    )
+    world_patch_ids = [
+        p["id"] for p in raw_world_patches if isinstance(p, dict) and "id" in p
+    ]
 
     # WB-JEV-001 Stage 2: rationality.yaml's kappa/method/backend are the
     # template's defaults; cfg["rationality"] (scripts/evolve.py's
@@ -1911,6 +1926,11 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         }
         if meta_evolution:
             summary_payload["meta_evolution"] = True
+        if world_expansion != "off":
+            summary_payload["world_expansion"] = world_expansion
+        if world_patch_ids:
+            summary_payload["world_patches"] = world_patch_ids
+            summary_payload["world_expansion_patches"] = raw_world_patches
         if coevolve:
             summary_payload.update(
                 {
@@ -1951,6 +1971,19 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             state_payload["antagonist_archive"] = antagonist_archive.to_dict()
             state_payload["previous_antagonist_results"] = previous_antagonist_results
         _json_write(out_dir / "ga_state.json", state_payload)
+
+    if world_expansion in ("detect", "expand"):
+        # Post-evolution only: never touches sim state, rng, candidate
+        # generation or the Policy. Runs after the last summary/publish, and a
+        # report that cannot be built must not turn a finished run into a
+        # failed job -- the viewer then just says nothing was collected.
+        try:
+            _json_write(
+                out_dir / "world_demand.json",
+                build_world_demand_report(out_dir),
+            )
+        except Exception as error:
+            print(f"world_demand report skipped: {error!r}", file=sys.stderr)
 
     return archive
 

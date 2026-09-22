@@ -48,6 +48,8 @@ PHASE_LABELS = {
     "publishing": "世代確定中",
     "generation_completed": "世代完了",
     "generating": "生成中",
+    "proposing": "拡張を提案中",
+    "checking": "拡張を検査中",
 }
 
 ERROR_MESSAGES = {
@@ -72,6 +74,13 @@ CANDIDATE_STATE_LABELS = {
     "unclassified": "○ 未分類",
 }
 AVAILABILITY_LABELS = {"present": "あり", "pruned": "剪定済み", "missing": "不在", "stale": "不一致"}
+# WB-WORLDGROW-001 stage 3a: evolution.world_expansion's Japanese display value
+# (config form's radio + detail views). An unrecognized value is shown as-is.
+WORLD_EXPANSION_LABELS = {"off": "しない", "detect": "検知のみ", "expand": "承認済みの拡張を適用"}
+
+
+def _world_expansion_label(value):
+    return WORLD_EXPANSION_LABELS.get(value, value)
 
 # WB-UI-021: /configs's 文章生成 card (execution/output_settings.py's backend choices).
 GENERATION_BACKEND_OPTIONS = (
@@ -384,6 +393,7 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
     for key in ("generations", "population", "seeds", "seed_base", "ga_seed", "processes"):
         values[f"evolution.{key}"] = evolution[key]
     values["evolution.keep"] = evolution["keep"]
+    values["evolution.world_expansion"] = evolution.get("world_expansion", "off")
     for key in ("coevolve", "meta_evolution", "record_explanations"):
         values[f"evolution.{key}"] = evolution[key]
     # .get(), not [...]: a config saved before WB-JEV-002 added "kappa" to
@@ -609,7 +619,17 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
             "説明記録", "evolution.record_explanations", values["evolution.record_explanations"],
             desc="各手番の「選択・根拠・代償・転機」を記録する。上映で使う。",
         )
-        + "</div>",
+        + "</div>"
+        + _radio_field(
+            "世界の拡張", "evolution.world_expansion",
+            (
+                ("off", "しない（既定）。世界は設定したまま固定。"),
+                ("detect", "検知のみ。進化の後に、世界の解像度が足りない場所"
+                           "（よく滞在するのに行動が空振りする場所）を集計して実験画面に出す。世界は変えない。"),
+                ("expand", "承認済みの拡張を適用。この世界に承認済みの拡張パッチがあれば当てた世界で回し、需要の集計もする。"),
+            ),
+            values["evolution.world_expansion"],
+        ),
     )
 
     section4 = (
@@ -727,6 +747,7 @@ def render_config_detail(config, control):
         ("ga_seed", _escape(ev["ga_seed"])),
         ("processes", _escape(ev["processes"])),
         ("保存方針", _escape(ev["keep"])),
+        ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("共進化", _escape(ev["coevolve"])),
         ("メタ進化", _escape(ev["meta_evolution"])),
         ("説明記録", _escape(ev["record_explanations"])),
@@ -961,6 +982,7 @@ def _run_plan(config, estimate, control, *, open_detail=False):
         ("評価する個体 / seed",
          f'{_escape(preview["planned_individual_evaluations"])} / {_escape(preview["planned_seed_evaluations"])}'),
         ("保存方針", _escape(ev["keep"])),
+        ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
         ("合理性 κ", _escape(_rationality_summary(_frozen_template_dir(control, config), ev))),
     ])
@@ -2275,6 +2297,20 @@ def _jobs_detail(handler, jid):
     if job.get("kind") in ("synopsize", "narrate"):
         from viewer.generation_pages import render_job
         return render_job(handler, job)
+    if job.get("kind") == "world_patch":
+        # No dedicated observation screen yet (stage 3b-3 only adds the job
+        # itself) -- the run's own monitor page already has a "世界の需要"
+        # tab (viewer/world_demand_view.py) that's the natural place to see
+        # this land, same as _configs_start's redirect below.
+        location = f'/exp/{_url(job["run_id"])}/monitor?tab=demand'
+        handler.send_response(HTTPStatus.FOUND)
+        handler.send_header("Location", location)
+        handler.send_header("Content-Length", "0")
+        handler.send_header("Cache-Control", "no-store")
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.send_header("Referrer-Policy", "no-referrer")
+        handler.end_headers()
+        return
     view = _run_view(handler, job=job)
     from viewer import run_workspace
     return run_workspace.render(handler, view)
