@@ -502,7 +502,7 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
         + '<div class="form-actions">'
         + f'<span class="form-summary" data-summary>{summary}</span>'
         + preview_button
-        + f'<button type="submit" class="button-primary">{_escape(save_label)}</button>'
+        + f'<button type="submit" class="button-primary is-confirm">{_escape(save_label)}</button>'
         + '</div>'
         + "</form>"
     )
@@ -1748,7 +1748,7 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
             '<section data-inspector-panel="selection" hidden><h3>この候補の扱い</h3>'
             f'<label class="inspector-field">選定状態<select data-inspector-state>{state_options}</select></label>'
             '<label class="inspector-field">メモ<input type="text" data-inspector-note placeholder="判断理由を残す"></label>'
-            '<div class="inspector-save-row"><button type="button" class="button primary" data-inspector-save>状態とメモを保存</button>'
+            '<div class="inspector-save-row"><button type="button" class="button primary is-confirm" data-inspector-save>状態とメモを保存</button>'
             '<span data-inspector-save-status></span></div></section>'
             '<section data-inspector-panel="data" hidden><h3>実験データ</h3>'
             '<dl class="candidate-inspector-metrics"><div><dt>品質</dt><dd data-inspector-quality>—</dd></div>'
@@ -1759,7 +1759,7 @@ def render_candidates_page(*, run_id, experiment_name, config_id, revision, sele
             '</div>'
             '<footer class="candidate-inspector-footer"><div><strong>採用候補 <span data-adopted-count>'
             f'{adopted_count}</span>件</strong><span data-generate-count>生成対象 0件</span></div>'
-            '<button type="button" class="button primary" data-inspector-adopt>この候補を採用</button></footer>'
+            '<button type="button" class="button primary is-confirm" data-inspector-adopt>この候補を採用</button></footer>'
             '</aside>'
         )
     else:
@@ -1891,7 +1891,7 @@ def render_output_settings_card(settings_path):
         )
         + "</div></details>"
         + f'<p data-availability>{_escape(avail_text)}</p>'
-        + '<div class="form-actions"><button type="submit" class="button-primary">保存</button></div>'
+        + '<div class="form-actions"><button type="submit" class="button-primary is-confirm">保存</button></div>'
         + "</form>"
     )
     return (

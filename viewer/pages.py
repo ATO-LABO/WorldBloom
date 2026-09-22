@@ -143,12 +143,11 @@ def _header_pickers(
                 '<span class="picker"><span class="picker-label">実験</span>'
                 f'<span class="picker-value">{_escape(run)}</span></span>'
             )
-    # Home already *is* "home", so the header leads with the brand there;
-    # every other page leads with the ⌂ home link instead of a redundant brand.
+    # Every page leads with the same wordmark; off the home page it links back home.
     leftmost = (
         '<a class="brand" href="/">WorldBloom</a>'
         if is_home
-        else '<a class="home-cell" href="/">⌂ ホーム</a>'
+        else '<a class="home-cell" href="/" aria-label="WorldBloom ホーム">WorldBloom</a>'
     )
     return (
         '<div class="header-pickers">'
