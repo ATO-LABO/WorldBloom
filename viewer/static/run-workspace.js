@@ -152,6 +152,16 @@
     });
     attachPlayControl();
   }
+  // 行動図鑑（action_catalog.yaml）の categories と同じ区分。番号を増やす予定が
+  // ないので複製で足りる。ずれが出たらサーバー側からラベルを渡す形に直す。
+  const CATEGORY_HINTS = {
+    I: "パラメータ変動系 ― base/modifier を直接動かす行動",
+    II: "認識・情報系 ― 実際の力は動かさず、何が知られているかを動かす行動",
+    III: "資格・関係構築系 ― 他の行動を解放する前提条件、または関係性の進展",
+    IV: "身分・役割の操作系",
+    V: "通過儀礼・危機系",
+    VI: "外部・結末系",
+  };
   function overview() {
     const rationalityHost = $("[data-rationality]");
     if (rationalityHost) rationalityHost.innerHTML = payload.rationality_html || "";
@@ -159,7 +169,7 @@
     const total = observed.categories.length * observed.bins.length;
     $("[data-overview-metrics]").innerHTML = `<div class="rw-stats"><div><span>物語の種類</span><strong>${Object.keys(observed.cells).length} / ${total}</strong></div><div><span>${number(observed.generation)?`第${observed.generation+1}世代の`:""}結末到達率</span><strong>${percent(gen.reach_rate)}</strong></div></div>`;
     const heading = `<tr><th>行動の傾向＼起伏</th>${observed.bins.map(b=>`<th>${esc(b)}</th>`).join("")}</tr>`;
-    const rows = observed.categories.map(c=>`<tr><th scope="row">${esc(c)}</th>${observed.bins.map(b=>{
+    const rows = observed.categories.map(c=>`<tr><th scope="row" class="rw-hint" title="${esc(CATEGORY_HINTS[c] || "")}">${esc(c)}<span aria-hidden="true">︖</span></th>${observed.bins.map(b=>{
       const cell = observed.cells[`${c}|${b}`]; const value=cell?.quality;
       return `<td class="${cell?"is-filled":"is-empty"}"><span>${cell?(number(value)?fmt(value):"品質未計測"):"空き"}</span></td>`;
     }).join("")}</tr>`).join("");
