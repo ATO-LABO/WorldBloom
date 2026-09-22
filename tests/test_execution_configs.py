@@ -398,7 +398,6 @@ class ConfigTests(unittest.TestCase):
                               **evolution}}
 
     def test_reject_invalid_kappa_and_rationality_fields(self):
-
         for bad in (True, False, -0.01, 1.01, "0.5", [0.5]):
             with self.subTest(bad=bad), self.assertRaises(ConfigError):
                 self.store.preview({**self.spec, "evolution": {"kappa": bad}})
