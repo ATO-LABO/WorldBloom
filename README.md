@@ -30,6 +30,17 @@
 
 StorySim（同作者の別プロジェクト。世界と人物をシミュレートし、面白かったログを物語に書き起こす方式）から要素を切り取って再構築したもので、フォークではありません。
 
+## できること
+
+- **QD 格子での探索と選定（Sifting / Screening）**: 主導カテゴリ×volatilityの格子から気に入った展開を選び、あらすじ・本文だけを生成
+- **世界の自己拡張**: 実験結果から世界設定の拡張案を提案させ、承認/却下したうえで拡張あり/なしの結果を比較
+- **系譜・転機の可視化**: 世代を追った戦略の推移と、物語の転機をグラフで表示
+- **Jev（合理性チェック層）**: 行動選択が「もっともらしいか」をκスライダーで調整しながら検証（開発中の機能）
+- **ローカル GPU の自動調停**: Ollama と llama-server の同居調停・熱ガード・自動起動停止・プリロード/アンロード
+- **実行進捗の可視化**: 生成中の進捗スピナー・パーセント・残り時間(ETA)表示
+
+仕組みの詳細は後述の[解説ページ](#解説ページatom-box-サイト)を参照してください。
+
 自分で進化を回す・文章を生成し直す場合は、以下のソースから実行してください。
 
 ## 必要なもの
@@ -74,6 +85,9 @@ pip install -r requirements.txt
 `options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は思考トークンを抑えるため既定で `false`。`settings.json` は `.gitignore` 対象（APIキーを含み得るため）。
 
 ### (b-2) Bonsai 2 27B（llama-server）を使う場合
+
+<details>
+<summary>展開する（Ollama以外・より大きなローカルモデルを使う場合のみ必要）</summary>
 
 PrismML の Ternary Bonsai 2 27B は独自量子化形式のため Ollama では動かず、PrismML フォーク版 llama.cpp の `llama-server`（OpenAI 互換 API）でのみ動く。
 
@@ -144,6 +158,8 @@ llama-server.exe -m Ternary-Bonsai-2-27B-PTQ1_0.gguf --alias bonsai2-27b -ngl 99
 - `gpu_guard` は空オブジェクト `{}` でも有効（全項目に既定値が入る）
 
 Jev などこの仕組みの外で GPU を使うコードも、`gapengine.gpu_guard.gpu_lease(owner, wait_seconds=...)` を取ってから GPU を使えば同じ調停に参加できる（同一プロセス内での再入は待たずに通る）。
+
+</details>
 
 ### (c) サンプルをビューアで見る
 
