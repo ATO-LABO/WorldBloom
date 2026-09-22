@@ -113,6 +113,52 @@ def is_ready(config: Mapping[str, Any], *, timeout: float = 2.0) -> bool:
         return False
 
 
+def has_launch_command(config: Mapping[str, Any]) -> bool:
+    launch = config.get("launch")
+    return isinstance(launch, list) and bool(launch) and all(isinstance(part, str) and part for part in launch)
+
+
+def spawn_server(config: Mapping[str, Any]) -> subprocess.Popen:
+    """Start the configured llama-server. Caller owns the process (stop it, wait on it)."""
+
+    launch = config.get("launch")
+    kwargs: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    return subprocess.Popen(list(launch), **kwargs)
+
+
+def wait_ready(
+    config: Mapping[str, Any], process: subprocess.Popen, *, sleep=time.sleep, clock=time.monotonic,
+) -> None:
+    """Block until /health answers or the process dies/times out. Raises RuntimeError on failure."""
+
+    startup_seconds = float(config.get("startup_seconds", 180))
+    deadline = clock() + startup_seconds
+    while True:
+        if is_ready(config):
+            return
+        if process.poll() is not None:
+            raise RuntimeError("llama-server failed to start")
+        if clock() >= deadline:
+            raise RuntimeError("llama-server failed to start")
+        sleep(2.0)
+
+
+def stop_server(process: subprocess.Popen) -> None:
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+
+
 @contextmanager
 def managed_server(config: Mapping[str, Any], *, on_started=None, sleep=time.sleep, clock=time.monotonic):
     """Start the configured llama-server if needed, and stop it again on exit.
@@ -126,41 +172,18 @@ def managed_server(config: Mapping[str, Any], *, on_started=None, sleep=time.sle
         yield False
         return
 
-    launch = config.get("launch")
-    if not isinstance(launch, list) or not launch or not all(isinstance(part, str) and part for part in launch):
+    if not has_launch_command(config):
         yield False
         return
 
-    startup_seconds = float(config.get("startup_seconds", 180))
-    kwargs: dict[str, Any] = {
-        "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-    process = subprocess.Popen(list(launch), **kwargs)
+    process = spawn_server(config)
     if on_started is not None:
         on_started(process.pid)
     try:
-        deadline = clock() + startup_seconds
-        while True:
-            if is_ready(config):
-                break
-            if process.poll() is not None:
-                raise RuntimeError("llama-server failed to start")
-            if clock() >= deadline:
-                raise RuntimeError("llama-server failed to start")
-            sleep(2.0)
+        wait_ready(config, process, sleep=sleep, clock=clock)
         yield True
     finally:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=10)
+        stop_server(process)
 
 
 def availability(

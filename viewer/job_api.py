@@ -8,6 +8,7 @@ from execution.output_settings import (
     write_api_key, write_output_settings,
 )
 from execution.provenance import ConfigError
+from gapengine.gpu_guard import GpuBusy
 
 
 STATUS = {"not_found":404, "conflict":409, "unavailable":503,
@@ -95,6 +96,44 @@ def dispatch(handler, parts, method):
             from viewer import local_status
             settings = getattr(handler.server, "settings_path", None)
             handler._send_json(HTTPStatus.OK, local_status.snapshot(settings))
+            return True
+        if method == "POST" and parts in (["api", "status", "local", "preload"], ["api", "status", "local", "unload"]):
+            # Same job_store exemption as the GET route above -- the Viewer
+            # exe never shows these buttons (backend resolves to None there),
+            # but the route itself doesn't need job_store to run.
+            handler.connection.settimeout(5)
+            try:
+                body = handler._request_json()
+            except ValueError as error:
+                raise ConfigError("request", "JSON本文が不正です", code="bad_request") from error
+            boundary(handler)
+            from viewer import local_status
+            settings = getattr(handler.server, "settings_path", None)
+            is_preload = parts[3] == "preload"
+            if is_preload:
+                if body:
+                    raise ConfigError("request", "読み込み要求の本文は空オブジェクトにしてください")
+            else:
+                # Unlike preload (always the currently-configured backend),
+                # unload names an explicit backend: a config change after
+                # preloading must not strand the release button with
+                # nothing to target (WB-PRELOAD-001 review M1).
+                backend = body.get("backend")
+                if set(body) != {"backend"} or backend not in ("llama-server", "ollama"):
+                    raise ConfigError(
+                        "request", 'backendに"llama-server"か"ollama"を指定してください', code="bad_request",
+                    )
+            try:
+                if is_preload:
+                    handler._send_json(HTTPStatus.ACCEPTED, local_status.start_preload(settings))
+                else:
+                    handler._send_json(HTTPStatus.OK, local_status.stop_preload(settings, backend))
+            except GpuBusy as error:
+                raise ConfigError(
+                    "preload", f"GPUが使用中です: {error.holder.get('owner', 'unknown')}", code="conflict",
+                ) from error
+            except ValueError as error:
+                raise ConfigError("preload", str(error)) from error
             return True
         jobs = getattr(handler.server, "job_store", None)
         if jobs is None:

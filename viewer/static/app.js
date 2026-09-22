@@ -178,6 +178,61 @@
       const rowsEl = dialog.querySelector("[data-local-status-rows]");
       const timeEl = dialog.querySelector("[data-local-status-time]");
       const refreshButton = dialog.querySelector("[data-local-status-refresh]");
+      let pollTimer = null;
+      const stopPolling = () => {
+        if (pollTimer !== null) {
+          window.clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      };
+      // WB-PRELOAD-001: 読み込んでおく/解放する -- one button per row, POSTed
+      // to /api/status/local/preload or /unload, then reload the dialog.
+      // Errors go through the shared toast (notify()), not backendEl: that
+      // element is immediately overwritten by the loadStatus() reload below,
+      // so writing the error there would never actually be seen.
+      const runPreloadAction = async (endpoint, body, button) => {
+        button.disabled = true;
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "X-WorldBloom-Client": "1"},
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(20000),
+          });
+          if (!response.ok) {
+            const responseBody = await response.json().catch(() => ({}));
+            throw new Error(responseBody.message || `HTTP ${response.status}`);
+          }
+        } catch (error) {
+          notify(error.message || "操作に失敗しました");
+        } finally {
+          await loadStatus();
+        }
+      };
+      const buildActionButton = (row) => {
+        // row.id は "llama_server"/"ollama"、POST するバックエンド名は
+        // "llama-server"/"ollama"(settings.json の表記に合わせる)。
+        const backend = row.id === "llama_server" ? "llama-server" : "ollama";
+        if (row.can_preload) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "ls-action";
+          button.textContent = "読み込んでおく";
+          button.addEventListener("click", () => runPreloadAction("/api/status/local/preload", {}, button));
+          return button;
+        }
+        if (row.can_unload) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "ls-action";
+          button.textContent = "解放する";
+          button.addEventListener("click", () => (
+            runPreloadAction("/api/status/local/unload", {backend}, button)
+          ));
+          return button;
+        }
+        return null;
+      };
       const loadStatus = async () => {
         if (refreshButton) {
           refreshButton.disabled = true;
@@ -194,7 +249,12 @@
             throw new Error(`HTTP ${response.status}`);
           }
           const status = await response.json();
-          backendEl.textContent = status.backend_label || "";
+          if (!dialog.open) {
+            // Closed while this (poll-triggered) fetch was in flight -- don't
+            // touch the torn-down dialog, and don't re-arm the poll below.
+            return;
+          }
+          backendEl.textContent = status.preload_error || status.backend_label || "";
           rowsEl.replaceChildren(
             ...(status.rows || []).map((row) => {
               const item = document.createElement("div");
@@ -205,12 +265,21 @@
               dot.setAttribute("aria-hidden", "true");
               dt.append(dot, document.createTextNode(row.label));
               const dd = document.createElement("dd");
-              dd.textContent = row.value;
+              dd.append(document.createTextNode(row.value));
+              const action = buildActionButton(row);
+              if (action) {
+                dd.append(action);
+              }
               item.append(dt, dd);
               return item;
             })
           );
           timeEl.textContent = status.checked_at ? `${status.checked_at} 時点` : "";
+          if (status.preloading && pollTimer === null) {
+            pollTimer = window.setInterval(loadStatus, 3000);
+          } else if (!status.preloading) {
+            stopPolling();
+          }
         } catch (error) {
           backendEl.textContent = "";
           // A <dl> only allows dt/dd/div children, not <p>.
@@ -232,6 +301,7 @@
         }
       });
       refreshButton?.addEventListener("click", loadStatus);
+      dialog.addEventListener("close", stopPolling);
     }
   }
 

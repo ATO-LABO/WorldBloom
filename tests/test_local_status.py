@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from viewer import local_status
 
@@ -35,6 +38,10 @@ def _no_loaded_models(base_url):
     return []
 
 
+def _no_preloaded_llama_server():
+    return False
+
+
 class RowBuilderTests(unittest.TestCase):
     def test_temperature_row_levels(self) -> None:
         thermal = {"pause_at": 78, "resume_at": 70}
@@ -62,7 +69,6 @@ class RowBuilderTests(unittest.TestCase):
         self.assertIn("output_worker", row["value"])
 
     def test_lease_row_just_now(self) -> None:
-        import time
         row = local_status._lease_row(
             {}, enabled=True,
             state=lambda: {"busy": True, "owner": "output_worker", "since": time.time()},
@@ -70,7 +76,6 @@ class RowBuilderTests(unittest.TestCase):
         self.assertIn("たった今から", row["value"])
 
     def test_lease_row_elapsed_minutes(self) -> None:
-        import time
         row = local_status._lease_row(
             {}, enabled=True,
             state=lambda: {"busy": True, "owner": "output_worker", "since": time.time() - 300},
@@ -140,6 +145,7 @@ class SnapshotTests(unittest.TestCase):
             llama_is_ready=_llama_not_ready,
             ollama_list_models=_ollama_unreachable,
             ollama_loaded_models=_no_loaded_models,
+            has_preloaded_llama_server=_no_preloaded_llama_server,
         )
         kwargs.update(overrides)
         return local_status.snapshot(settings_path, **kwargs)
@@ -185,6 +191,254 @@ class SnapshotTests(unittest.TestCase):
             settings_path.write_text(json.dumps({"output": {}}), encoding="utf-8")
             snapshot = self._snapshot(settings_path)
             self.assertIn("無効", _row(snapshot["rows"], "gpu_lease")["value"])
+
+    def test_can_preload_llama_server_when_stopped_and_configured(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(json.dumps({
+                "output": {
+                    "default_backend": "llama-server", "gpu_guard": {}, "llama-server": {"launch": ["x"]},
+                },
+            }), encoding="utf-8")
+            row = _row(self._snapshot(settings_path)["rows"], "llama_server")
+            self.assertTrue(row["can_preload"])
+            self.assertFalse(row["can_unload"])
+            self.assertNotIn("ready", row)
+            self.assertNotIn("has_launch", row)
+
+    def test_not_in_use_never_shows_a_button_even_if_otherwise_eligible(self) -> None:
+        # VRAM can't hold both backends -- only the configured one's row may
+        # ever offer preload/unload, regardless of that row's own state.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(json.dumps({
+                "output": {
+                    "default_backend": "llama-server", "gpu_guard": {}, "llama-server": {"launch": ["x"]},
+                },
+            }), encoding="utf-8")
+            row = _row(self._snapshot(settings_path)["rows"], "ollama")
+            self.assertFalse(row["in_use"])
+            self.assertFalse(row["can_preload"])
+            self.assertFalse(row["can_unload"])
+
+    def test_cannot_preload_llama_server_without_launch_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(
+                json.dumps({"output": {"default_backend": "llama-server", "gpu_guard": {}}}), encoding="utf-8",
+            )
+            row = _row(self._snapshot(settings_path)["rows"], "llama_server")
+            self.assertFalse(row["can_preload"])
+
+    def test_can_unload_llama_server_when_ready_and_preloaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(
+                json.dumps({"output": {"default_backend": "llama-server", "gpu_guard": {}}}), encoding="utf-8",
+            )
+            row = _row(self._snapshot(
+                settings_path, llama_is_ready=lambda config: True,
+                has_preloaded_llama_server=lambda: True,
+            )["rows"], "llama_server")
+            self.assertFalse(row["can_preload"])
+            self.assertTrue(row["can_unload"])
+
+    def test_ready_but_not_our_preload_cannot_unload(self) -> None:
+        # A llama-server started by hand (or by a real generation session) is
+        # still reachable, but only holder.json's "preloaded" pid is ours to stop.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(
+                json.dumps({"output": {"default_backend": "llama-server", "gpu_guard": {}}}), encoding="utf-8",
+            )
+            row = _row(self._snapshot(
+                settings_path, llama_is_ready=lambda config: True,
+                has_preloaded_llama_server=_no_preloaded_llama_server,
+            )["rows"], "llama_server")
+            self.assertFalse(row["can_unload"])
+
+    def test_can_preload_ollama_when_not_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(
+                json.dumps({"output": {"default_backend": "ollama", "gpu_guard": {}}}), encoding="utf-8",
+            )
+            row = _row(self._snapshot(settings_path)["rows"], "ollama")
+            self.assertTrue(row["can_preload"])
+            self.assertFalse(row["can_unload"])
+
+    def test_can_preload_ollama_when_server_up_but_idle(self) -> None:
+        # Regression for review H1: the server being reachable (level="ok")
+        # does NOT mean a model is loaded -- "idle" (level="ok", nothing
+        # loaded) is exactly the state a preload button should be offered
+        # for. The old `level != "ok"` gate hid the button here.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(
+                json.dumps({"output": {"default_backend": "ollama", "gpu_guard": {}}}), encoding="utf-8",
+            )
+            row = _row(self._snapshot(
+                settings_path,
+                ollama_list_models=lambda config: (["qwen"], None),
+                ollama_loaded_models=lambda base_url: [],
+            )["rows"], "ollama")
+            self.assertEqual(row["level"], "ok")
+            self.assertTrue(row["can_preload"])
+            self.assertFalse(row["can_unload"])
+
+    def test_can_unload_ollama_when_model_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(
+                json.dumps({"output": {"default_backend": "ollama", "gpu_guard": {}}}), encoding="utf-8",
+            )
+            row = _row(self._snapshot(
+                settings_path,
+                ollama_list_models=lambda config: (["qwen"], None),
+                ollama_loaded_models=lambda base_url: [{"name": "qwen"}],
+            )["rows"], "ollama")
+            self.assertFalse(row["can_preload"])
+            self.assertTrue(row["can_unload"])
+            self.assertNotIn("has_model_loaded", row)
+
+    def test_starting_overrides_the_matching_row_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            settings_path.write_text(json.dumps({
+                "output": {
+                    "default_backend": "llama-server", "gpu_guard": {}, "llama-server": {"launch": ["x"]},
+                },
+            }), encoding="utf-8")
+            local_status._preload_state.update(phase="starting", backend="llama-server", error=None)
+            try:
+                rows = self._snapshot(settings_path)["rows"]
+            finally:
+                local_status._preload_state.update(phase="idle", backend=None, error=None)
+            llama_row = _row(rows, "llama_server")
+            ollama_row = _row(rows, "ollama")
+            self.assertIn("起動中…", llama_row["value"])
+            self.assertEqual(llama_row["level"], "warn")
+            self.assertFalse(llama_row["can_preload"])
+            self.assertNotIn("起動中…", ollama_row["value"])
+
+    def test_preloading_flag_reflects_phase(self) -> None:
+        self.assertFalse(self._snapshot(None)["preloading"])
+        local_status._preload_state.update(phase="starting", backend="llama-server", error=None)
+        try:
+            self.assertTrue(self._snapshot(None)["preloading"])
+        finally:
+            local_status._preload_state.update(phase="idle", backend=None, error=None)
+
+    def test_preload_error_surfaces_until_next_attempt(self) -> None:
+        local_status._preload_state.update(phase="idle", backend="llama-server", error="失敗しました")
+        try:
+            snapshot = self._snapshot(None)
+        finally:
+            local_status._preload_state.update(phase="idle", backend=None, error=None)
+        self.assertEqual(snapshot["preload_error"], "失敗しました")
+
+
+class PreloadOrchestrationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        local_status._preload_state.update(phase="idle", backend=None, error=None)
+        self.addCleanup(local_status._preload_state.update, phase="idle", backend=None, error=None)
+
+    def _settings_path(self, tmp, output: dict) -> Path:
+        settings_path = Path(tmp) / "settings.json"
+        settings_path.write_text(json.dumps({"output": output}), encoding="utf-8")
+        return settings_path
+
+    def test_rejects_cloud_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = self._settings_path(tmp, {"default_backend": "openai"})
+            with self.assertRaisesRegex(ValueError, "ローカル"):
+                local_status.start_preload(settings_path)
+            with self.assertRaisesRegex(ValueError, "ローカル"):
+                local_status.stop_preload(settings_path, "openai")
+
+    def test_rejects_concurrent_preload(self) -> None:
+        local_status._preload_state.update(phase="starting", backend="llama-server")
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = self._settings_path(tmp, {
+                "default_backend": "llama-server", "gpu_guard": {}, "llama-server": {"launch": ["x"]},
+            })
+            with self.assertRaisesRegex(ValueError, "読み込み中"):
+                local_status.start_preload(settings_path)
+
+    def test_dispatches_to_llama_server_and_resets_phase_on_success(self) -> None:
+        done = threading.Event()
+        calls = []
+
+        def fake_preload(output_settings):
+            calls.append(output_settings)
+            done.set()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = self._settings_path(tmp, {
+                "default_backend": "llama-server", "gpu_guard": {}, "llama-server": {"launch": ["x"]},
+            })
+            with mock.patch("gapengine.gpu_guard.preload_llama_server", side_effect=fake_preload):
+                result = local_status.start_preload(settings_path)
+                self.assertEqual(result, {"backend": "llama-server"})
+                self.assertTrue(done.wait(timeout=5))
+        deadline = time.monotonic() + 5
+        while local_status._preload_state["phase"] != "idle" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(local_status._preload_state["phase"], "idle")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["llama-server"], {"launch": ["x"]})
+
+    def test_records_error_and_still_resets_phase(self) -> None:
+        done = threading.Event()
+
+        def fake_preload(output_settings):
+            done.set()
+            raise ValueError("失敗しました")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = self._settings_path(tmp, {
+                "default_backend": "llama-server", "gpu_guard": {}, "llama-server": {"launch": ["x"]},
+            })
+            with mock.patch("gapengine.gpu_guard.preload_llama_server", side_effect=fake_preload):
+                local_status.start_preload(settings_path)
+                self.assertTrue(done.wait(timeout=5))
+        deadline = time.monotonic() + 5
+        while local_status._preload_state["phase"] != "idle" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(local_status._preload_state["error"], "失敗しました")
+
+    def test_stop_dispatches_to_ollama_unload(self) -> None:
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = self._settings_path(tmp, {"gpu_guard": {}, "default_backend": "ollama"})
+            with mock.patch(
+                "gapengine.gpu_guard.unload_preloaded_ollama", side_effect=lambda s: calls.append(s),
+            ):
+                result = local_status.stop_preload(settings_path, "ollama")
+        self.assertEqual(result, {"backend": "ollama"})
+        self.assertEqual(len(calls), 1)
+
+    def test_stop_targets_the_named_backend_even_after_a_config_switch(self) -> None:
+        # Regression for review M1: preloaded llama-server, then switched
+        # default_backend to ollama -- stop_preload must still be able to
+        # release the llama-server it actually warmed up.
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = self._settings_path(tmp, {"gpu_guard": {}, "default_backend": "ollama"})
+            with mock.patch(
+                "gapengine.gpu_guard.stop_preloaded_llama_server", side_effect=lambda: calls.append(True),
+            ):
+                result = local_status.stop_preload(settings_path, "llama-server")
+        self.assertEqual(result, {"backend": "llama-server"})
+        self.assertEqual(len(calls), 1)
+
+    def test_stop_clears_a_stale_preload_error(self) -> None:
+        local_status._preload_state.update(error="前回失敗しました")
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = self._settings_path(tmp, {"gpu_guard": {}})
+            with mock.patch("gapengine.gpu_guard.stop_preloaded_llama_server"):
+                local_status.stop_preload(settings_path, "llama-server")
+        self.assertIsNone(local_status._preload_state["error"])
 
 
 if __name__ == "__main__":

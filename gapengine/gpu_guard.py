@@ -144,11 +144,18 @@ def _unlock_file(handle) -> None:
         fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-# ponytail: a process-global depth counter, not thread-safe. Every caller in
-# this codebase (output_worker's single-threaded candidate loop, generate_text's
-# single call) takes the lease from one thread at a time. Add a threading.Lock
-# around the counter if a concurrent caller shows up.
-_lease_depth = 0
+# Reentrant per calling *thread*, not just per process: the viewer process
+# now has two genuinely concurrent callers of gpu_lease() (a preload worker
+# thread mid-acquire, and ThreadingHTTPServer request threads calling
+# stop_preloaded_llama_server()/unload_preloaded_ollama()). A plain process
+# -global counter would let one thread's held lease silently no-op another
+# thread's acquire; threading.local() scopes reentrancy to the thread that
+# actually holds it.
+_lease_local = threading.local()
+
+
+def _lease_depth() -> int:
+    return getattr(_lease_local, "depth", 0)
 
 
 @contextmanager
@@ -160,20 +167,19 @@ def gpu_lease(
     sleep=time.sleep,
     clock=time.monotonic,
 ):
-    """OS-level, non-blocking file lock. Reentrant within the same process.
+    """OS-level, non-blocking file lock. Reentrant within the same thread.
 
     Raises GpuBusy(holder=...) if not acquired within wait_seconds. The lock
     is released by the OS if this process dies, so a crashed holder never
     leaves the GPU stuck.
     """
 
-    global _lease_depth
-    if _lease_depth > 0:
-        _lease_depth += 1
+    if _lease_depth() > 0:
+        _lease_local.depth += 1
         try:
             yield
         finally:
-            _lease_depth -= 1
+            _lease_local.depth -= 1
         return
 
     directory = lease_dir()
@@ -202,10 +208,10 @@ def gpu_lease(
     holder.update(owner=owner, pid=os.getpid(), since=time.time())
     _write_holder(directory, holder)
     try:
-        _lease_depth = 1
+        _lease_local.depth = 1
         yield
     finally:
-        _lease_depth = 0
+        _lease_local.depth = 0
         try:
             _unlock_file(handle)
         finally:
@@ -259,6 +265,22 @@ def lease_state() -> dict[str, Any]:
             handle.close()
 
 
+def _record_server(kind: str, pid: int | None, image: str | None = None) -> None:
+    """Record (or clear) the pid+image of a llama-server under holder.json's
+    "<kind>_server_*" keys. "managed" is a local_gpu_session()-owned server
+    (stopped by whoever started it, at the end of its own session); "preloaded"
+    is a warm-started one meant to outlive that (see preload_llama_server()).
+    Keeping them under separate keys is what lets reap_orphan_server() (which
+    only ever looks at "managed") leave a preloaded server alone.
+    """
+
+    directory = lease_dir()
+    holder = _read_holder(directory)
+    holder[f"{kind}_server_pid"] = pid
+    holder[f"{kind}_server_image"] = None if pid is None else image
+    _write_holder(directory, holder)
+
+
 def record_managed_server(pid: int | None, image: str | None = None) -> None:
     """Record (or clear) the pid+image of a llama-server this machine's lease holder started.
 
@@ -267,11 +289,7 @@ def record_managed_server(pid: int | None, image: str | None = None) -> None:
     on its own, since pids get reused by unrelated processes.
     """
 
-    directory = lease_dir()
-    holder = _read_holder(directory)
-    holder["managed_server_pid"] = pid
-    holder["managed_server_image"] = None if pid is None else image
-    _write_holder(directory, holder)
+    _record_server("managed", pid, image)
 
 
 def _tasklist_row(pid: int) -> str | None:
@@ -351,8 +369,8 @@ def _terminate_process(pid: int) -> None:
             pass
 
 
-def reap_orphan_server() -> None:
-    """Terminate a previous lease holder's llama-server if it never cleaned up.
+def _reap_server(kind: str) -> None:
+    """Terminate the "<kind>_server_*"-recorded process if it's still the same image.
 
     Only terminates when the process currently running as the recorded pid
     still has the recorded executable image -- a pid alone can be reused by
@@ -366,15 +384,45 @@ def reap_orphan_server() -> None:
 
     directory = lease_dir()
     holder = _read_holder(directory)
-    pid = holder.get("managed_server_pid")
+    pid = holder.get(f"{kind}_server_pid")
     if not isinstance(pid, int):
         return
-    recorded_image = holder.get("managed_server_image")
+    recorded_image = holder.get(f"{kind}_server_image")
     if isinstance(recorded_image, str) and _process_alive(pid):
         current_image = _process_image(pid)
         if isinstance(current_image, str) and current_image.casefold() == recorded_image.casefold():
             _terminate_process(pid)
-    record_managed_server(None)
+    _record_server(kind, None)
+
+
+def has_preloaded_llama_server() -> bool:
+    """True if holder.json still has a preload_llama_server() pid on record."""
+
+    return isinstance(_read_holder(lease_dir()).get("preloaded_server_pid"), int)
+
+
+def reap_orphan_server() -> None:
+    """Terminate a previous lease holder's llama-server if it never cleaned up.
+
+    Only ever looks at the "managed" (local_gpu_session()-owned) server --
+    a preload_llama_server() one is deliberately recorded under a different
+    key so this never mistakes it for a crashed leftover and kills it.
+    """
+
+    _reap_server("managed")
+
+
+def stop_preloaded_llama_server(*, wait_seconds: float = 0.0) -> None:
+    """Stop a llama-server preload_llama_server() started and left running.
+
+    Takes the GPU lease first (like preload_llama_server()) so a real
+    generation session currently borrowing this same server -- via
+    managed_server()'s is_ready() reuse path, which never re-records it --
+    isn't killed out from under it; raises GpuBusy if it's held.
+    """
+
+    with gpu_lease("preload:llama-server:stop", wait_seconds=wait_seconds):
+        _reap_server("preloaded")
 
 
 def ollama_models(base_url: str, *, timeout: float = 2.0) -> list[dict[str, Any]]:
@@ -408,14 +456,15 @@ def ollama_is_active(base_url: str, *, observe_seconds: float, sleep=time.sleep)
     return False
 
 
-def unload_ollama(base_url: str, names: list[str]) -> None:
-    """Best-effort POST /api/generate keep_alive=0 for each model name."""
+def _ollama_keep_alive(base_url: str, names: list[str], keep_alive: Any) -> None:
+    """Best-effort POST /api/generate with no prompt -- loads (or, at keep_alive=0,
+    immediately unloads) each named model without generating any text."""
 
     for name in names:
         try:
             request = urllib.request.Request(
                 f"{base_url.rstrip('/')}/api/generate",
-                data=json.dumps({"model": name, "keep_alive": 0}).encode("utf-8"),
+                data=json.dumps({"model": name, "keep_alive": keep_alive}).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
@@ -423,6 +472,125 @@ def unload_ollama(base_url: str, names: list[str]) -> None:
                 pass
         except (OSError, urllib.error.URLError):
             pass
+
+
+def unload_ollama(base_url: str, names: list[str]) -> None:
+    """Best-effort POST /api/generate keep_alive=0 for each model name."""
+
+    _ollama_keep_alive(base_url, names, 0)
+
+
+# How long a preloaded Ollama model stays warm before Ollama's own idle
+# timeout would unload it again -- just "long enough to press 実行 after
+# pressing 読み込んでおく", not a setting: a real generation request's own
+# keep_alive (server default) takes over the moment generation starts.
+PRELOAD_OLLAMA_KEEP_ALIVE = "30m"
+
+
+def _clear_ollama_for_llama_server(guard: Mapping[str, Any], deadline: float) -> None:
+    """Wait for Ollama to go idle (or the deadline), then unload whatever it has loaded.
+
+    Shared by local_gpu_session()'s llama-server branch and preload_llama_server() --
+    both need the same "don't steal VRAM out from under an active Ollama call" wait.
+    """
+
+    ollama_url = str(guard.get("ollama_base_url", ollama.DEFAULT_BASE_URL))
+    observe_seconds = max(1.0, float(guard.get("observe_seconds", 15)))
+    while ollama_is_active(ollama_url, observe_seconds=observe_seconds):
+        if time.monotonic() >= deadline:
+            raise GpuBusy({"owner": "ollama (in use)"})
+    loaded = ollama_models(ollama_url)
+    names = [model.get("name") for model in loaded if model.get("name")]
+    if names:
+        unload_ollama(ollama_url, names)
+
+
+def preload_llama_server(output_settings: Mapping[str, Any], *, wait_seconds: float = 0.0) -> int | None:
+    """Start llama-server and leave it running once /health answers, instead of
+    stopping it on exit like managed_server() -- as if a person had launched it
+    by hand. Recorded under the "preloaded" holder key, not "managed", so the
+    next real session's reap_orphan_server() leaves it alone.
+
+    Returns the new process's pid, or None if a server was already reachable
+    (nothing to do -- not an error, same as managed_server()'s own convention).
+    Raises ValueError if llama-server isn't configured for local generation,
+    GpuBusy if the GPU is currently leased by someone else, and RuntimeError
+    (from llama_server.wait_ready()) if the process fails to come up in time.
+    """
+
+    settings = output_settings if isinstance(output_settings, Mapping) else {}
+    guard = settings.get("gpu_guard")
+    if not isinstance(guard, Mapping):
+        raise ValueError("gpu_guardが設定されていません")
+    config = settings.get("llama-server")
+    config = config if isinstance(config, Mapping) else {}
+    if not llama_server.has_launch_command(config):
+        raise ValueError("llama-serverの起動コマンドが設定されていません")
+    if llama_server.is_ready(config):
+        return None
+
+    deadline = time.monotonic() + wait_seconds
+    with gpu_lease("preload:llama-server", wait_seconds=wait_seconds):
+        reap_orphan_server()
+        _clear_ollama_for_llama_server(guard, deadline)
+        if llama_server.is_ready(config):
+            # Someone else (a real session, or a previous preload) started it
+            # while we were waiting for the lease/Ollama -- nothing to do.
+            return None
+        process = llama_server.spawn_server(config)
+        try:
+            llama_server.wait_ready(config, process)
+        except BaseException:
+            llama_server.stop_server(process)
+            raise
+        launch = config["launch"]
+        image = os.path.basename(launch[0])
+        _record_server("preloaded", process.pid, image)
+        return process.pid
+
+
+def unload_preloaded_ollama(output_settings: Mapping[str, Any], *, wait_seconds: float = 0.0) -> None:
+    """Unload whatever preload_ollama() (or a real Ollama call) left loaded.
+
+    Takes the GPU lease first, same reasoning as stop_preloaded_llama_server():
+    don't unload a model an active generation session is mid-call with.
+    """
+
+    settings = output_settings if isinstance(output_settings, Mapping) else {}
+    guard = settings.get("gpu_guard")
+    guard = guard if isinstance(guard, Mapping) else {}
+    config = settings.get("ollama")
+    config = config if isinstance(config, Mapping) else {}
+    base_url = str(config.get("base_url") or guard.get("ollama_base_url", ollama.DEFAULT_BASE_URL))
+    with gpu_lease("preload:ollama:stop", wait_seconds=wait_seconds):
+        loaded = ollama_models(base_url)
+        names = [model.get("name") for model in loaded if model.get("name")]
+        if names:
+            unload_ollama(base_url, names)
+
+
+def preload_ollama(output_settings: Mapping[str, Any], *, wait_seconds: float = 0.0) -> None:
+    """Load the configured Ollama model into VRAM ahead of a real generation call.
+
+    Raises ValueError if gpu_guard isn't enabled, GpuBusy if llama-server is
+    currently running (VRAM can't hold both) or the GPU lease is held.
+    """
+
+    settings = output_settings if isinstance(output_settings, Mapping) else {}
+    guard = settings.get("gpu_guard")
+    if not isinstance(guard, Mapping):
+        raise ValueError("gpu_guardが設定されていません")
+    config = settings.get("ollama")
+    config = config if isinstance(config, Mapping) else {}
+    model = str(config.get("model", ollama.DEFAULT_MODEL))
+    base_url = str(config.get("base_url") or guard.get("ollama_base_url", ollama.DEFAULT_BASE_URL))
+
+    with gpu_lease("preload:ollama", wait_seconds=wait_seconds):
+        reap_orphan_server()
+        llama_config = settings.get("llama-server")
+        if isinstance(llama_config, Mapping) and llama_server.is_ready(llama_config):
+            raise GpuBusy({"owner": "llama-server (running)"})
+        _ollama_keep_alive(base_url, [model], PRELOAD_OLLAMA_KEEP_ALIVE)
 
 
 @contextmanager
@@ -446,9 +614,9 @@ def local_gpu_session(
         yield
         return
 
-    if _lease_depth > 0:
+    if _lease_depth() > 0:
         # An outer local_gpu_session (or a bare gpu_lease) in this same
-        # process already holds the lease and owns the server's lifecycle.
+        # thread already holds the lease and owns the server's lifecycle.
         # Re-running reap/Ollama-arbitration/managed_server here would treat
         # the outer session's own server as an orphan and restart it on
         # every nested call (e.g. once per cell in scripts/synopsize.py).
@@ -471,15 +639,7 @@ def local_gpu_session(
             yield
             return
 
-        ollama_url = str(guard.get("ollama_base_url", ollama.DEFAULT_BASE_URL))
-        observe_seconds = max(1.0, float(guard.get("observe_seconds", 15)))
-        while ollama_is_active(ollama_url, observe_seconds=observe_seconds):
-            if time.monotonic() >= deadline:
-                raise GpuBusy({"owner": "ollama (in use)"})
-        loaded = ollama_models(ollama_url)
-        names = [model.get("name") for model in loaded if model.get("name")]
-        if names:
-            unload_ollama(ollama_url, names)
+        _clear_ollama_for_llama_server(guard, deadline)
 
         status("server_start")
         config = settings.get("llama-server", {})
