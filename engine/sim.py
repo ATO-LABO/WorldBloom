@@ -267,6 +267,7 @@ class Simulation:
         "method",
         "backend",
         "model",
+        "num_ctx",
         "table_hash_at_start",
     )
 

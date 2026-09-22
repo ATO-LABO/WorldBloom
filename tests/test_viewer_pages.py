@@ -108,13 +108,13 @@ class ViewerPageTests(unittest.TestCase):
         self.assertNotIn('data-wb="world-picker"', rendered)
         self.assertNotIn('<nav class="phase-band"', rendered)  # Home never shows the phase tabs
 
-    def test_index_world_card_has_quick_start(self) -> None:
-        # WB-UI-022's one-click "この世界で新しい実験を回す" button lives in
-        # each home card's footer (merged from the card-grid redesign).
+    def test_index_world_card_opens_settings_before_execution(self) -> None:
+        # Home now prioritizes reading the world before entering execution settings.
         rendered = pages.index_page(self.repository)
         card_start = rendered.index('class="world-card"')
         card_end = rendered.index("</article>", card_start)
-        self.assertIn("data-quick-start", rendered[card_start:card_end])
+        self.assertIn("世界を開く", rendered[card_start:card_end])
+        self.assertNotIn("data-quick-start", rendered[card_start:card_end])
 
     def test_detail_lines(self) -> None:
         rethink = data.detail_line(

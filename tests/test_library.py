@@ -202,7 +202,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         status, body = self.get("/worlds")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertIn('class="tabs tabs-home"', body)
+        self.assertIn('role="tablist" aria-label="ライブラリー"', body)
         self.assertIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
         self.assertIn('href="/genres/new"', body)
@@ -212,15 +212,15 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         status, body = self.get("/")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertIn('class="tabs tabs-home"', body)
+        self.assertIn('role="tablist" aria-label="ライブラリー"', body)
         self.assertIn('id="genres"', body)
         self.assertIn('href="/worlds/new"', body)
         self.assertIn('href="/genres/new"', body)
         self.assertIn('class="world-card"', body)
         # The lead names the engine/genre/world layering; the genre tab's own
         # lead explains what a genre is, once, without a redundant <h2>.
-        self.assertIn("1 つの物語エンジンに", body)
-        self.assertIn("ジャンルは行動の文法", body)
+        self.assertIn("世界を開いて、人物や場所、物語の始まりを確かめましょう", body)
+        self.assertIn("ジャンルは、行動とその結果を決める共通のルール", body)
         self.assertEqual(body.count("<h2>ジャンル</h2>"), 0)
 
     def test_genres_live_on_settings_page(self):
@@ -234,42 +234,26 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('href="/genres/momotaro"', body)
 
     def test_world_detail_page(self):
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-wb="library"', body)
-        self.assertIn('data-kind="world"', body)
-        self.assertIn('data-file="world.yaml"', body)
-        self.assertIn('data-file="subjects/03_momotaro.yaml"', body)
-        self.assertIn("人物を追加", body)
-        self.assertIn('class="relation-graph"', body)
-        self.assertNotIn('class="next-cta"', body)
-        self.assertIn('class="actions world-cta"', body)
-        self.assertIn('id="world-files"', body)
-        self.assertIn('id="subject-files"', body)
-        self.assertGreater(
-            body.index('class="actions world-cta"'), body.index('id="world-files"'))
-        self.assertEqual(body.count('data-file="subjects/03_momotaro.yaml"'), 1)
+        self.assertIn('data-world-advanced', body)
+        self.assertIn('&quot;world.yaml&quot;', body)
+        self.assertIn('subjects/03_momotaro.yaml', body)
+        self.assertIn('data-advanced-save', body)
+        self.assertIn('href="/worlds/momotaro"', body)
 
-    def test_world_detail_page_has_six_tabs(self):
-        # Regression guard for the world/genre/count/period tab split
-        # (WB-UI-017, extended by WB-UI-025's 行動図鑑 tab): checks the tab
-        # wiring itself, not just that each panel's content is present
-        # somewhere in the flat HTML.
-        status, body = self.get("/worlds/momotaro")
+    def test_world_detail_page_has_four_sections(self):
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertEqual(body.count('class="tab-input"'), 6)
-        for index, label in enumerate(["概要", "登場人物", "初期物語", "行動図鑑", "場所", "期間"]):
-            self.assertIn(f'<label class="tab-label" for="tab-world-{index}">{label}</label>', body)
-        self.assertNotIn('for="tab-world-6"', body)
-        self.assertIn('class="relation-graph zone-graph"', body)
-        self.assertIn('class="day-cycle"', body)
-        self.assertIn('class="calendar-grid"', body)
+        for section in ('roles','canon','actions','files'):
+            self.assertIn(f'data-advanced-section="{section}"',body)
+        self.assertNotIn('class="tab-input"',body)
 
     def test_world_detail_action_catalog(self):
         # WB-UI-025: the 行動図鑑 tab renders this world's verb status
         # (active/pruned/unused/unimplemented) with world-specific values
         # filled into the engine-level catalog text.
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn("catalog-kinds", body)
         self.assertIn("未実装（構想のみ）", body)
@@ -279,13 +263,12 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
     def test_world_detail_overview_intro(self):
         # WB-UI-024: the 概要 tab leads with a one-sentence auto-generated
         # introduction, not just a bare metadata line.
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('class="world-intro"', body)
-        self.assertIn("桃太郎が「", body)
-        self.assertIn("16日間", body)
+        self.assertIn('世界の詳細設定', body)
+        self.assertIn('href="/worlds/momotaro"', body)
+        self.assertIn('&quot;days&quot;: 16', body)
         self.assertIn('href="/genres/momotaro"', body)
-        self.assertIn('class="world-summary world-facts"', body)
 
     def test_world_detail_page_has_canon_and_readout(self):
         # WB-EXPLAIN-canon: the 初期物語 tab surfaces the canon precedent
@@ -293,7 +276,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         # header, not folded into a per-row sentence) and the characters tab
         # the deterministic per-character readout (hidden item modifiers,
         # secrets, foreshadowing) end-to-end through the route.
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn('class="wb-table canon-table"', body)
         self.assertIn("鬼ヶ島の宝物の所在", body)
@@ -306,21 +289,21 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
     def test_genre_detail_page(self):
         status, body = self.get("/genres/momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-wb="library"', body)
-        self.assertIn('data-kind="genre"', body)
-        self.assertIn('data-file="rules.yaml"', body)
+        self.assertIn('data-genre-editor', body)
+        self.assertIn('data-section="rules"', body)
+        self.assertIn('data-validate', body)
         self.assertIn("momotaro", body)
 
     def test_new_forms(self):
         status, body = self.get("/worlds/new?from=momotaro&genre=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-wb="library-create"', body)
-        self.assertIn('data-kind="world"', body)
+        self.assertIn('data-world-create', body)
+        self.assertIn('name="mode" value="copy" checked', body)
         self.assertIn('<option value="momotaro" selected>', body)
 
         status, body = self.get("/genres/new?from=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-kind="genre"', body)
+        self.assertIn('data-genre-new', body)
 
     def test_unknown_world_is_404(self):
         status, body = self.get("/worlds/no-such-world")
@@ -495,12 +478,12 @@ class LibraryGuidanceTests(unittest.TestCase):
         self.assertNotIn('href="/worlds/new"', body)
 
     def test_world_detail_without_control_is_read_only(self):
-        status, body = self.get("/worlds/momotaro")
+        status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('class="relation-graph"', body)
+        self.assertIn('data-world-advanced', body)
         self.assertNotIn('data-action="save-file"', body)
         self.assertNotIn('data-wb="library"', body)
-        self.assertIn('class="actions world-cta"', body)
+        self.assertIn('&quot;editable&quot;: false', body)
 
     def test_genre_detail_without_control_is_still_guidance(self):
         status, body = self.get("/genres/momotaro")
