@@ -473,7 +473,7 @@ def _kappa_field(value):
     )
 
 
-def _rationality_section(values, ctx, *, total_runs, wall_seconds):
+def _rationality_section(values, ctx, *, total_runs, wall_seconds, heading_prefix=""):
     kappa_value = values.get("evolution.kappa") or 0
     if ctx["available"]:
         status = f'判定器: Ollama {ctx["model"]} — 利用可'
@@ -506,7 +506,7 @@ def _rationality_section(values, ctx, *, total_runs, wall_seconds):
     return (
         '<section class="cfg-sec" data-wb="rationality" '
         f'data-judge-seconds-per-run="{JUDGE_SECONDS_PER_RUN}"><div class="cfg-sec-head">'
-        "<h2>合理性（主人公がどれだけ筋の通った手を選ぶか）</h2>"
+        f"<h2>{_escape(heading_prefix)}合理性（主人公がどれだけ筋の通った手を選ぶか）</h2>"
         f'<p class="desc" id="kappa-desc">{_escape(RATIONALITY_DESCRIPTION)}</p>'
         '</div><div class="cfg-sec-body">'
         + _kappa_field(kappa_value)

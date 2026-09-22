@@ -160,17 +160,29 @@ def _condition_html(view, control=None):
 
 def render(handler, view):
     from viewer import workbench_pages as wb
-    store = wb._job_store(handler)
     query = parse_qs(urlsplit(handler.path).query)
     generation = _integer(query.get("gen", [None])[0])
     observed = observation(handler, view, generation)
     job = view.get("job") or {"state": "legacy", "progress": {}}
     actions = {key for row in observed["generations"] for key in (row.get("action_share") or {})}
+    # WB-JEV-002: reuse view["live"] (from _live_map, reading the catalog's
+    # on-disk published/current.json directly) rather than the replay-scoped
+    # `observed["generations"]` (bounded by job["publication_revision"], the
+    # job record's own copy of the same revision). Both only ever hold
+    # committed/published generations -- evolution_worker.py writes the disk
+    # pointer and then the job record's publication_revision back-to-back in
+    # the same checkpoint, so `live` can be at most one generation ahead,
+    # never unbounded. (observation()'s legacy fallback path, ~106-119,
+    # leaves view["live"] as None since it has no job; harmless here because
+    # legacy runs predate the rationality_* summary fields anyway.)
+    rationality_totals = wb._rationality_totals((view.get("live") or {}).get("generations") or [])
+    rationality_html = wb._rationality_progress_line(rationality_totals) if rationality_totals is not None else ""
     payload = {"job": job, "observation": observed, "state_labels": wb.STATE_LABELS,
                "phase_labels": wb.PHASE_LABELS, "terminal_states": sorted(TERMINAL),
                "error_messages": wb.ERROR_MESSAGES,
                "action_labels": {key: wb._action_share_label(key) if "/" in key else key for key in actions},
-               "world": view["world"], "config_id": (view.get("config") or {}).get("config_id")}
+               "world": view["world"], "config_id": (view.get("config") or {}).get("config_id"),
+               "rationality_html": rationality_html}
     if query.get("view-data") == ["1"]:
         handler._send_json(HTTPStatus.OK, payload)
         return
@@ -188,19 +200,17 @@ def render(handler, view):
     empty = '<p class="rw-empty">保存済みの記録を読み込んでいます。</p>'
     initial_replay = observed.get("replay_html", empty).replace('class="ga-replay"', 'class="ga-replay" data-rw-managed="true" data-active="false"')
     terminal_message = wb._run_terminal_message(job) if job.get("state") in TERMINAL else ""
-    # WB-JEV-002: reuse view["live"] (unbounded -- every generation the
-    # catalog has committed so far, from _live_map), not the replay-scoped
-    # `observed["generations"]`, which is capped to the last *published*
-    # revision and would silently drop later generations' running totals.
-    rationality_totals = wb._rationality_totals((view.get("live") or {}).get("generations") or [])
-    rationality_html = wb._rationality_progress_line(rationality_totals) if rationality_totals is not None else ""
     panels = (
         '<section id="rw-overview" role="tabpanel" aria-labelledby="rw-tab-overview">'
         '<div class="rw-overview"><div><h2>探索の進み具合</h2><div data-overview-progress></div>'
-        + rationality_html +
+        '<div data-rationality>' + rationality_html + '</div>'
         '<h2>見つかっている物語</h2><div data-overview-metrics></div><div data-map></div>'
         '<div data-recent-saves></div><details><summary>処理の詳細・ログ</summary><div data-run-log></div></details></div>'
-        + _condition_html(view, store.configs.control if store else None) + '</div></section>'
+        # N1 (Opus review): view["control"] is job_store.configs.control
+        # (set in _run_view -- same value _run_plan() reads at
+        # workbench_pages.py:1052/1060), so this avoids re-deriving it via a
+        # second _job_store(handler) call.
+        + _condition_html(view, view.get("control")) + '</div></section>'
         '<section id="rw-replay" role="tabpanel" aria-labelledby="rw-tab-replay" hidden>'
         '<div data-generation-controls="replay"></div><p>保存済みの世代を再生しています。計算の進捗は上部で確認できます。</p>'
         f'<div data-replay-host>{initial_replay}</div></section>'
