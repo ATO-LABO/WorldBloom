@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
@@ -16,7 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 from execution.output_store import OutputStore
-from gapengine import gpu_guard, llama_server
+from gapengine import gpu_guard, llama_server, ollama
 from gapengine.synopsis import GenerationError, generate_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +41,7 @@ class _EnvIsolatedTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        gpu_guard._lease_depth = 0
+        gpu_guard._lease_local.depth = 0
         self._lease_temp = tempfile.TemporaryDirectory(prefix="wb-gpu-guard-lease-")
         self.addCleanup(self._lease_temp.cleanup)
         patcher = mock.patch.dict(os.environ, {"WORLDBLOOM_GPU_LEASE_DIR": self._lease_temp.name})
@@ -116,31 +117,76 @@ class WaitUntilCoolTests(_EnvIsolatedTestCase):
         self.assertEqual(waited, 30.0)
 
 
-class GpuLeaseCrossProcessTests(_EnvIsolatedTestCase):
-    WORKER = (
-        "import sys, time\n"
-        "sys.path.insert(0, sys.argv[2])\n"
-        "from gapengine import gpu_guard\n"
-        "with gpu_guard.gpu_lease('other-process', wait_seconds=5):\n"
-        "    open(sys.argv[1], 'w', encoding='utf-8').write('ready')\n"
-        "    time.sleep(300)\n"
-    )
+_LEASE_HOLDER_WORKER = (
+    "import sys, time\n"
+    "sys.path.insert(0, sys.argv[2])\n"
+    "from gapengine import gpu_guard\n"
+    "with gpu_guard.gpu_lease('other-process', wait_seconds=5):\n"
+    "    open(sys.argv[1], 'w', encoding='utf-8').write('ready')\n"
+    "    time.sleep(300)\n"
+)
 
+
+def _spawn_lease_holder(case: unittest.TestCase, lease_dir: str) -> subprocess.Popen:
+    """A real subprocess that holds the GPU lease -- the reentrant _lease_depth
+    fast path only applies within one process, so testing that some code
+    respects an *externally* held lease needs a genuinely separate process."""
+
+    marker = Path(lease_dir) / "ready.marker"
+    process = subprocess.Popen(
+        [sys.executable, "-c", _LEASE_HOLDER_WORKER, str(marker), str(ROOT)],
+        env=os.environ.copy(),
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    case.addCleanup(_reap_process, process)
+    deadline = time.monotonic() + 10
+    while not marker.exists():
+        if time.monotonic() >= deadline:
+            process.kill()
+            raise AssertionError("lease holder subprocess never signalled readiness")
+        time.sleep(0.05)
+    return process
+
+
+class LeaseDepthThreadSafetyTests(_EnvIsolatedTestCase):
+    def test_a_lease_held_by_one_thread_still_blocks_another_thread(self) -> None:
+        # Regression for WB-PRELOAD-001 review M2: a process-global reentrancy
+        # counter would let this second thread's acquire silently no-op
+        # (skip the OS lock entirely) just because *some* thread in this
+        # process already holds it. threading.local() must scope reentrancy
+        # to the thread that actually holds the lease.
+        holding = threading.Event()
+        release = threading.Event()
+        outcome: dict = {}
+
+        def hold():
+            with gpu_guard.gpu_lease("holder-thread", wait_seconds=5):
+                holding.set()
+                release.wait(timeout=5)
+
+        def contend():
+            holding.wait(timeout=5)
+            try:
+                with gpu_guard.gpu_lease("contender-thread", wait_seconds=0.3, poll_seconds=0.05):
+                    outcome["acquired"] = True
+            except gpu_guard.GpuBusy as error:
+                outcome["busy_owner"] = error.holder.get("owner")
+
+        holder_thread = threading.Thread(target=hold)
+        contender_thread = threading.Thread(target=contend)
+        holder_thread.start()
+        contender_thread.start()
+        contender_thread.join(timeout=10)
+        release.set()
+        holder_thread.join(timeout=10)
+
+        self.assertNotIn("acquired", outcome)
+        self.assertEqual(outcome.get("busy_owner"), "holder-thread")
+
+
+class GpuLeaseCrossProcessTests(_EnvIsolatedTestCase):
     def _spawn_holder(self):
-        marker = Path(self._lease_temp.name) / "ready.marker"
-        process = subprocess.Popen(
-            [sys.executable, "-c", self.WORKER, str(marker), str(ROOT)],
-            env=os.environ.copy(),
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        )
-        self.addCleanup(_reap_process, process)
-        deadline = time.monotonic() + 10
-        while not marker.exists():
-            if time.monotonic() >= deadline:
-                process.kill()
-                raise AssertionError("lease holder subprocess never signalled readiness")
-            time.sleep(0.05)
-        return process
+        return _spawn_lease_holder(self, self._lease_temp.name)
 
     def test_lease_state_busy_while_other_process_holds_it(self) -> None:
         process = self._spawn_holder()
@@ -312,6 +358,19 @@ class ReapOrphanServerTests(_EnvIsolatedTestCase):
             gpu_guard.reap_orphan_server()
         run.assert_not_called()
 
+    def test_leaves_a_preloaded_server_alone(self) -> None:
+        # reap_orphan_server() only ever looks at the "managed" key -- a
+        # preload_llama_server() process is recorded separately so this
+        # never mistakes it for a crashed session's leftover.
+        process = self._spawn_sleeper()
+        image = os.path.basename(sys.executable)
+        gpu_guard._record_server("preloaded", process.pid, image=image)
+        gpu_guard.reap_orphan_server()
+        time.sleep(0.2)
+        self.assertIsNone(process.poll())
+        holder = gpu_guard._read_holder(gpu_guard.lease_dir())
+        self.assertEqual(holder.get("preloaded_server_pid"), process.pid)
+
 
 FAKE_HEALTH_SERVER = (
     "import http.server, sys\n"
@@ -377,6 +436,153 @@ class ManagedServerTests(_EnvIsolatedTestCase):
         with self.assertRaises(RuntimeError):
             with llama_server.managed_server(config, sleep=lambda s: time.sleep(0.02)):
                 pass
+
+
+class PreloadLlamaServerTests(_EnvIsolatedTestCase):
+    def test_requires_gpu_guard(self) -> None:
+        with self.assertRaises(ValueError):
+            gpu_guard.preload_llama_server({})
+
+    def test_requires_launch_command(self) -> None:
+        with self.assertRaises(ValueError):
+            gpu_guard.preload_llama_server({"gpu_guard": {}, "llama-server": {}})
+
+    def test_already_ready_is_a_noop_not_an_error(self) -> None:
+        with mock.patch("gapengine.llama_server.is_ready", return_value=True), \
+                mock.patch("gapengine.llama_server.spawn_server") as spawn:
+            pid = gpu_guard.preload_llama_server(
+                {"gpu_guard": {}, "llama-server": {"launch": ["x"]}},
+            )
+        self.assertIsNone(pid)
+        spawn.assert_not_called()
+
+    def test_gpu_busy_propagates(self) -> None:
+        with mock.patch("gapengine.llama_server.is_ready", return_value=False), \
+                mock.patch("gapengine.gpu_guard.gpu_lease",
+                            side_effect=gpu_guard.GpuBusy({"owner": "someone-else"})):
+            with self.assertRaises(gpu_guard.GpuBusy):
+                gpu_guard.preload_llama_server(
+                    {"gpu_guard": {}, "llama-server": {"launch": ["x"]}}, wait_seconds=0,
+                )
+
+    def test_launches_leaves_running_and_a_real_session_reuses_it_without_killing_it(self) -> None:
+        port = _free_port()
+        settings = {
+            "gpu_guard": {},
+            "llama-server": {
+                "base_url": f"http://127.0.0.1:{port}",
+                "launch": [sys.executable, "-c", FAKE_HEALTH_SERVER, str(port)],
+                "startup_seconds": 10,
+            },
+        }
+        config = settings["llama-server"]
+        with mock.patch("gapengine.gpu_guard.ollama_is_active", return_value=False), \
+                mock.patch("gapengine.gpu_guard.ollama_models", return_value=[]):
+            pid = gpu_guard.preload_llama_server(settings)
+        try:
+            self.assertIsNotNone(pid)
+            self.assertTrue(llama_server.is_ready(config))
+            holder = gpu_guard._read_holder(gpu_guard.lease_dir())
+            self.assertEqual(holder.get("preloaded_server_pid"), pid)
+            self.assertIsNone(holder.get("managed_server_pid"))
+
+            # A real generation session must find it via is_ready() and reuse
+            # it (managed_server()'s existing "yield False" path) -- not
+            # reap it as an orphan, and not still be running afterwards.
+            with mock.patch("gapengine.gpu_guard.ollama_is_active", return_value=False), \
+                    mock.patch("gapengine.gpu_guard.ollama_models", return_value=[]):
+                with gpu_guard.local_gpu_session("llama-server", settings, owner="job", wait_seconds=1):
+                    self.assertTrue(llama_server.is_ready(config))
+            self.assertTrue(llama_server.is_ready(config))
+        finally:
+            gpu_guard.stop_preloaded_llama_server()
+        deadline = time.monotonic() + 5
+        while llama_server.is_ready(config) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertFalse(llama_server.is_ready(config))
+        holder = gpu_guard._read_holder(gpu_guard.lease_dir())
+        self.assertIsNone(holder.get("preloaded_server_pid"))
+
+
+class StopPreloadedLlamaServerTests(_EnvIsolatedTestCase):
+    def test_no_recorded_pid_is_a_noop(self) -> None:
+        gpu_guard.stop_preloaded_llama_server()
+
+    def test_respects_an_active_lease(self) -> None:
+        # Must not kill a server a real generation session is mid-call with,
+        # even if that session never recorded it under "preloaded" itself.
+        # A genuinely separate process is required here: gpu_lease() is
+        # reentrant within one process, so an in-process "held" lease
+        # wouldn't actually block a nested acquire the way a real holder does.
+        process = _spawn_lease_holder(self, self._lease_temp.name)
+        try:
+            with self.assertRaises(gpu_guard.GpuBusy):
+                gpu_guard.stop_preloaded_llama_server(wait_seconds=0)
+        finally:
+            process.kill()
+            process.wait(timeout=10)
+
+
+class PreloadOllamaTests(_EnvIsolatedTestCase):
+    def test_requires_gpu_guard(self) -> None:
+        with self.assertRaises(ValueError):
+            gpu_guard.preload_ollama({})
+
+    def test_busy_when_llama_server_reachable(self) -> None:
+        with mock.patch("gapengine.llama_server.is_ready", return_value=True):
+            with self.assertRaises(gpu_guard.GpuBusy):
+                gpu_guard.preload_ollama({"gpu_guard": {}, "llama-server": {}})
+
+    def test_posts_a_30_minute_keep_alive_for_the_configured_model(self) -> None:
+        calls = []
+
+        def fake_urlopen(request, timeout=None):
+            calls.append(json.loads(request.data.decode("utf-8")))
+            response = mock.MagicMock()
+            response.__enter__.return_value = response
+            return response
+
+        with mock.patch("gapengine.llama_server.is_ready", return_value=False), \
+                mock.patch("gapengine.gpu_guard.urllib.request.urlopen", side_effect=fake_urlopen):
+            gpu_guard.preload_ollama({"gpu_guard": {}, "ollama": {"model": "qwen3.6:35b"}})
+        self.assertEqual(calls, [{"model": "qwen3.6:35b", "keep_alive": gpu_guard.PRELOAD_OLLAMA_KEEP_ALIVE}])
+
+    def test_respects_an_active_lease(self) -> None:
+        process = _spawn_lease_holder(self, self._lease_temp.name)
+        try:
+            with self.assertRaises(gpu_guard.GpuBusy):
+                gpu_guard.preload_ollama({"gpu_guard": {}}, wait_seconds=0)
+        finally:
+            process.kill()
+            process.wait(timeout=10)
+
+
+class UnloadPreloadedOllamaTests(_EnvIsolatedTestCase):
+    def test_unloads_whatever_is_loaded(self) -> None:
+        calls = []
+
+        def fake_urlopen(request, timeout=None):
+            response = mock.MagicMock()
+            response.__enter__.return_value = response
+            if isinstance(request, str):
+                # ollama_models()'s GET /api/ps -- a bare URL string, not a Request.
+                response.read.return_value = json.dumps({"models": [{"name": "qwen3.6:35b"}]}).encode("utf-8")
+            else:
+                calls.append(json.loads(request.data.decode("utf-8")))
+            return response
+
+        with mock.patch("gapengine.gpu_guard.urllib.request.urlopen", side_effect=fake_urlopen):
+            gpu_guard.unload_preloaded_ollama({"gpu_guard": {}})
+        self.assertEqual(calls, [{"model": "qwen3.6:35b", "keep_alive": 0}])
+
+    def test_respects_an_active_lease(self) -> None:
+        process = _spawn_lease_holder(self, self._lease_temp.name)
+        try:
+            with self.assertRaises(gpu_guard.GpuBusy):
+                gpu_guard.unload_preloaded_ollama({}, wait_seconds=0)
+        finally:
+            process.kill()
+            process.wait(timeout=10)
 
 
 class LocalGpuSessionTests(_EnvIsolatedTestCase):

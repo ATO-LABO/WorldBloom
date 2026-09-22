@@ -3146,9 +3146,33 @@ table.catalog-kinds code {
 }
 
 .ls-row dd {
+  align-items: center;
   color: var(--muted);
+  display: inline-flex;
+  gap: 0.5rem;
   margin: 0;
   text-align: right;
+}
+
+.ls-action {
+  background: none;
+  border: 1px solid var(--ws-advance);
+  border-radius: var(--radius-s, 4px);
+  color: var(--ws-advance);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.55rem;
+  white-space: nowrap;
+}
+
+.ls-action:hover {
+  background: var(--ws-advance);
+  color: #fff;
+}
+
+.ls-action:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .ls-dot {
