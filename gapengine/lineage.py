@@ -352,6 +352,7 @@ def _has_recorded_explanations(rows: Sequence[Mapping[str, Any]]) -> bool:
 def _resolve_world_context(
     repository: Any,
     experiment: Path,
+    *, template_dir=None, repo_root=None,
 ) -> dict[str, Any]:
     """cfg needed to rerun any node: project/template dirs, action/qd/rules
     config, target ending and protagonist/antagonist. Restored either from a
@@ -371,41 +372,10 @@ def _resolve_world_context(
     action_graph.antagonist.yaml the same way when coevolve is on).
     """
 
-    manifest_path = repository.safe_path(experiment, "manifest.json")
-    if manifest_path.is_file():
-        config = json.loads(
-            repository.safe_path(experiment, "config.json").read_text(
-                encoding="utf-8",
-            )
-        )
-        project_dir = repository.safe_path(
-            experiment,
-            f"inputs/projects/{config['project_id']}",
-        )
-        template_dir = repository.safe_path(
-            experiment,
-            f"inputs/templates/{config['template_id']}",
-        )
-    else:
-        from viewer import data as viewer_data
-
-        archive = json.loads(
-            repository.safe_path(experiment, "archive.json").read_text(
-                encoding="utf-8",
-            )
-        )
-        header = viewer_data._first_header(
-            repository,
-            experiment,
-            archive.get("cells") or {},
-        )
-        world_name = str(header.get("world", ""))
-        resolved = viewer_data.resolve_genre(world_name)
-        if resolved is None:
-            raise LineageError(
-                f"cannot resolve project/template for world {world_name!r}"
-            )
-        _, project_dir, template_dir = resolved
+    from gapengine.world_patch_inputs import resolve_experiment_inputs
+    resolved = resolve_experiment_inputs(experiment, template_dir=template_dir, repo_root=repo_root)
+    project_dir = resolved["world_path"].parent
+    template_dir = resolved["template_dir"]
 
     world_path = project_dir / "world.yaml"
     subjects_dir = project_dir / "subjects"
@@ -443,11 +413,25 @@ def _resolve_world_context(
     )
     target_ending = summary.get("target_ending")
 
-    world = World.from_yaml(world_path, action_graph_path=action_graph_path)
+    # N2 (WB-WORLDGROW-001, Astra review): construct World from an
+    # in-memory copy with gapengine.action_graph/effects already
+    # absolutized against `resolved["references"]` -- reading world_path
+    # directly (as World.from_yaml would) leaves those fields exactly as
+    # the project author wrote them, and effects has no action_graph_path-
+    # style override, so a reference resolvable only via a caller-supplied
+    # repo_root (e.g. --repo) would otherwise fail here even once
+    # resolve_experiment_inputs itself resolved it correctly.
+    from gapengine.world_patch import absolutize_references
+    raw_world = _load_yaml(world_path, {})
+    absolutize_references(raw_world, project_dir, references=resolved["references"])
+    world = World(raw_world, world_path, action_graph_path=action_graph_path)
     if target_ending is not None:
         world.set_target_ending(target_ending)
 
     return {
+        "source": resolved["source"],
+        "template_dir": template_dir,
+        "references": resolved["references"],
         "action_cfg": action_cfg,
         "action_graph_path": action_graph_path,
         "antagonist": world.antagonist,

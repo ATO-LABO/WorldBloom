@@ -30,11 +30,21 @@
   const time = () => `${w.time?.days ?? '未指定'}日間 ・ ${(w.time?.slots||[]).join(' ／ ')}`;
   function overview() {
     const hero = people.find(p=>p.id===w.protagonist);
+    // V2 (viewer review): "後から生まれたもの" (承認済み/提案中の世界拡張)
+    // ships as an inert <template id="wp-expansion"> (viewer/world_prototype.py)
+    // so it renders inside 世界の概要 instead of sitting as a stray sibling
+    // of #wp-content in the .wp 2-column grid. Its markup is server-built
+    // and already HTML-escaped (viewer/world_expansion_view.py), so
+    // innerHTML here doesn't need its own escaping. Absent when there's
+    // nothing to show (template tag itself is omitted server-side then).
+    const expansionTemplate = document.getElementById('wp-expansion');
+    const expansionHtml = expansionTemplate ? expansionTemplate.innerHTML : '';
     return title(model.name,'この世界の前提を確認する') +
       `<section class="wp-section">${head('どんな世界？',edit('overview'))}<p>${absent(model.overview)}</p></section>`+
       `<div class="wp-columns"><section><h2>物語の出発点</h2><p>${hero?`${esc(hero.id)}は${esc(entry(hero))}にいる。`:'主人公は未指定です。'}</p></section><section><h2>目指す結末</h2><p>${esc(goal(hero))}</p></section></div>`+
       `<section class="wp-section">${head('この世界を構成するもの')}<button class="wp-jump" data-screen="people"><strong>登場人物</strong><span>${esc(people.map(p=>p.id).join('、')) || 'まだいません'}</span><span>→</span></button><button class="wp-jump" data-screen="places"><strong>場所</strong><span>${esc(zones.map(z=>z.name).join('、')) || 'まだありません'}</span><span>→</span></button><button class="wp-jump" data-screen="story"><strong>初期物語</strong><span>シミュレーション開始時点の導入・状況</span><span>→</span></button><button class="wp-jump" data-screen="time"><strong>時間</strong><span>${esc(time())}</span><span>→</span></button></section>`+
-      `<details class="wp-section"><summary>詳しい世界設定</summary><p>状況別の定石・行動図鑑・設定ファイルは、<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced">詳細設定</a>で確認できます。</p></details>`;
+      `<details class="wp-section"><summary>詳しい世界設定</summary><p>状況別の定石・行動図鑑・設定ファイルは、<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced">詳細設定</a>で確認できます。</p></details>`+
+      expansionHtml;
   }
   function personDetail() {
     const p = people[person];

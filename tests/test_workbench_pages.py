@@ -269,6 +269,9 @@ class WorkbenchTests(unittest.TestCase):
         # WB-UI-021: generation moved off the execution config entirely --
         # nothing about it is shown on the config detail page any more.
         self.assertNotIn("生成設定", body)
+        # WB-WORLDGROW-001 stage 3a: the detail dl shows the Japanese label,
+        # not the raw evolution.world_expansion value ("off").
+        self.assertIn("しない", body)
 
         status, body, _ = self.get_status("/configs/absent")
         self.assertEqual(status, 404, body)
@@ -280,7 +283,8 @@ class WorkbenchTests(unittest.TestCase):
             "label", "project_id", "template_id",
             "evolution.generations", "evolution.population", "evolution.seeds",
             "evolution.seed_base", "evolution.ga_seed", "evolution.processes",
-            "evolution.keep", "evolution.coevolve", "evolution.meta_evolution",
+            "evolution.keep", "evolution.world_expansion",
+            "evolution.coevolve", "evolution.meta_evolution",
             "evolution.record_explanations", "evolution.target_ending",
             "execution_limits.wall_seconds",
         ):
@@ -550,6 +554,14 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("熱待機 12 秒", body)
         self.assertIn("予算切れ 1 件", body)
         self.assertIn("判定器が途中で使えなくなり、以降は合理性が効いていません。", body)
+
+    def test_world_expansion_label_helper_covers_all_values_and_unknown(self):
+        # Shared by render_config_form's detail dl and _run_plan's job-screen
+        # summary (WB-WORLDGROW-001 stage 3a) -- one place to keep them in sync.
+        self.assertEqual(workbench_pages._world_expansion_label("off"), "しない")
+        self.assertEqual(workbench_pages._world_expansion_label("detect"), "検知のみ")
+        self.assertEqual(workbench_pages._world_expansion_label("expand"), "承認済みの拡張を適用")
+        self.assertEqual(workbench_pages._world_expansion_label("bogus"), "bogus")
 
     def test_output_settings_api_round_trip(self):
         status, before = self.http("GET", "/api/settings/output")
@@ -990,6 +1002,35 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('sf-badge sf-adopted', body)
         self.assertIn('name="sf-verdict" value="held"', body)
         self.assertIn('data-sf-proceed>採用候補を確認（1件）', body)
+
+    def test_sidebar_shows_world_demand_link_only_when_report_exists(self):
+        self._legacy_experiment("exp-demand")
+        catalog = self.server.repository.catalog
+        rid = catalog.register_legacy("exp-demand")
+
+        status, body, _ = self.get_status(f"/runs/{rid}/candidates")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn("世界の需要", body)
+
+        (self.runs / "exp-demand" / "world_demand.json").write_text(
+            json.dumps({"schema_version": 1, "zones": [], "triggers": [{"zone": "海", "verb": "investigate"}]}),
+            encoding="utf-8")
+        status, body, _ = self.get_status(f"/runs/{rid}/candidates")
+        self.assertEqual(status, 200, body)
+        self.assertIn('href="/exp/exp-demand/monitor?tab=demand"', body)
+        self.assertIn("世界の需要（1件）", body)
+
+    def test_config_form_saves_world_expansion_choice(self):
+        # WB-WORLDGROW-001 stage 2/3a: confirms the run_settings.py select's
+        # name (evolution.world_expansion) actually round-trips through the
+        # real save path (POST /api/configs -> ConfigStore.save), not just
+        # that the form renders it.
+        status, saved = self.http("POST", "/api/configs", {
+            "label": "wd", "project_id": "romance", "template_id": "romance",
+            "evolution": {"generations": 1, "population": 1, "seeds": 1, "world_expansion": "detect"},
+        })
+        self.assertEqual(status, 201, saved)
+        self.assertEqual(saved["evolution"]["world_expansion"], "detect")
 
     def test_candidates_sort_quality_desc_and_bogus_sort_ignored(self):
         self._legacy_experiment("exp-sort")

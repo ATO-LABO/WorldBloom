@@ -20,6 +20,7 @@ TOP_LEVEL_FILES = (
     "summary.json",
     "synopses.json",
     "selection.json",
+    "world_demand.json",
     "g0/population.json",
 )
 TOP_LEVEL_DIRS = ("prompts", "stories")

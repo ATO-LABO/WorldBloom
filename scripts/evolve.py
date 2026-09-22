@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Sequence
 
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -15,6 +17,7 @@ if str(ROOT) not in sys.path:
 
 from gapengine.evolve import evolve
 from gapengine.qd import Archive
+from gapengine.world_patch import PatchError, absolutize_references, apply_patches, approved_patches
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -71,6 +74,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--record-explanations", action=argparse.BooleanOptionalAction, default=True,
                         help="Record bounded choice candidates for the explanation viewer (default: on).")
+    parser.add_argument(
+        "--world-expansion",
+        choices=("off", "detect", "expand"),
+        default="off",
+        help=("Off leaves the world unchanged; detect aggregates zone/verb whiff "
+              "triggers after evolution ends; expand applies this project's approved "
+              "patches (projects/<name>/patches/*.yaml) before the run, then detects."),
+    )
     parser.add_argument(
         "--kappa",
         type=float,
@@ -175,10 +186,44 @@ def _print_resume_status(out: Path, generations: int) -> None:
         )
 
 
+def _expanded_project(project: Path, out: Path, template: Path | None = None) -> Path:
+    """Materialize <out>/expanded-project: `project`'s approved patches
+    (WB-WORLDGROW-001 stage 3a) applied to world.yaml, plus an unchanged copy
+    of subjects/. Returns `project` unchanged when there are no approved
+    patches -- callers then run directly off the original project."""
+    from execution.world_patches import expanded_snapshot
+    from gapengine.world_patch_inputs import digest, template_data
+    if template is None:
+        raise PatchError("expand には --template が必要です")
+    try:
+        world, people, verified = expanded_snapshot(project, template)
+    except PatchError as error:
+        raise SystemExit(f"world-expansion patches invalid: {error}") from error
+    if not verified:
+        return project
+    absolutize_references(world, project, ROOT)
+    expanded = out / "expanded-project"
+    expanded.mkdir(parents=True, exist_ok=True)
+    (expanded / "world.yaml").write_text(
+        yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    shutil.copytree(project / "subjects", expanded / "subjects", dirs_exist_ok=True)
+    for name, person in people.items():
+        path = expanded / "subjects" / name
+        if yaml.safe_load(path.read_text(encoding="utf-8")) != person:
+            path.write_text(yaml.safe_dump(person, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    (expanded / "source.json").write_text(json.dumps({"project": str(project.resolve()),
+        "template": str(template.resolve()), "template_digest": digest(template_data(template))},
+        ensure_ascii=False), encoding="utf-8")
+    return expanded
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.resume:
         _print_resume_status(args.out, args.generations)
+    project = args.project
+    if args.world_expansion == "expand":
+        project = _expanded_project(args.project, args.out, args.template)
     archive = evolve(
         {
             "record_explanations": args.record_explanations,
@@ -190,7 +235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "out": args.out,
             "population": args.population,
             "processes": args.processes,
-            "project": args.project,
+            "project": project,
             "rationality": {
                 "kappa": args.kappa,
                 "backend": args.rationality_backend,
@@ -206,6 +251,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "seeds": args.seeds,
             "target_ending": args.target_ending,
             "template": args.template,
+            "world_expansion": args.world_expansion,
         }
     )
     message = (

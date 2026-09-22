@@ -7,9 +7,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 from test_viewer import (
     _create_experiment,
     _fixture_rows,
+    _write_json,
     _write_jsonl,
 )
 from viewer import data, pages, server
@@ -72,6 +75,37 @@ class ViewerPageTests(unittest.TestCase):
             ),
             1,
         )
+
+    # -- WB-WORLDGROW-001 stage 3a: expansion patches shown on the experiment page --
+
+    def test_world_expansion_info_reads_config_json_project_layout(self) -> None:
+        _write_json(self.experiment / "config.json", {"project_id": "momotaro"})
+        world_dir = self.experiment / "inputs" / "projects" / "momotaro"
+        world_dir.mkdir(parents=True)
+        (world_dir / "world.yaml").write_text(
+            yaml.safe_dump({"name": "桃太郎", "expansion": {
+                "base": "桃太郎", "patches": [{"id": "p-x", "title": "t"}]}}, allow_unicode=True),
+            encoding="utf-8")
+        patches = data.world_expansion_info(self.repository, self.experiment)
+        self.assertEqual(patches, [{"id": "p-x", "title": "t"}])
+
+    def test_world_expansion_info_reads_expanded_project_cli_layout(self) -> None:
+        (self.experiment / "expanded-project").mkdir()
+        (self.experiment / "expanded-project" / "world.yaml").write_text(
+            yaml.safe_dump({"name": "桃太郎", "expansion": {
+                "base": "桃太郎", "patches": [{"id": "p-y", "title": "u"}]}}, allow_unicode=True),
+            encoding="utf-8")
+        patches = data.world_expansion_info(self.repository, self.experiment)
+        self.assertEqual(patches, [{"id": "p-y", "title": "u"}])
+
+    def test_world_expansion_info_missing_returns_empty(self) -> None:
+        self.assertEqual(data.world_expansion_info(self.repository, self.experiment), [])
+
+    def test_world_expansion_info_survives_malformed_world_yaml(self) -> None:
+        (self.experiment / "expanded-project").mkdir()
+        (self.experiment / "expanded-project" / "world.yaml").write_text(
+            "not: [valid, yaml", encoding="utf-8")
+        self.assertEqual(data.world_expansion_info(self.repository, self.experiment), [])
 
     def test_cell_page_structure(self) -> None:
         rendered = pages.cell_page(

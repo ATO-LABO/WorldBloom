@@ -293,6 +293,87 @@ class RunRepository:
         return destination
 
 
+def world_demand(repository: "RunRepository", experiment: Path) -> dict[str, Any] | None:
+    """Load <experiment>/world_demand.json (WB-WORLDGROW-001 stage 2).
+
+    Returns None when the experiment never ran with world_expansion=detect,
+    or the file is missing/malformed -- callers render a plain "not
+    collected" message in that case rather than failing.
+    """
+
+    path = repository.safe_path(experiment, "world_demand.json")
+    if not path.is_file():
+        return None
+    try:
+        raw = _read_json(path)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, Mapping) or raw.get("schema_version") != 1:
+        return None
+    return dict(raw)
+
+
+def world_expansion_state(repository: "RunRepository", experiment: Path) -> dict[str, Any]:
+    """expansion.patches applied to this experiment's frozen world
+    (WB-WORLDGROW-001 stage 3a).
+
+    Reads <experiment>/inputs/projects/<project_id>/world.yaml (project_id
+    from <experiment>/config.json -- the job_api/ConfigStore.prepare_run
+    layout), or <experiment>/expanded-project/world.yaml (a direct
+    scripts/evolve.py --world-expansion=expand CLI run). Missing or
+    malformed input never raises -- callers show "no expansion" instead.
+    Not cached (unlike _cached_world_meta): a run's frozen world never
+    changes, but re-reading it once per page view keeps this function
+    simple and its cost is one small YAML file.
+    """
+
+    candidates: list[Path] = []
+    try:
+        config_path = repository.safe_path(experiment, "config.json")
+        if config_path.is_file():
+            config = _read_json(config_path)
+            project_id = config.get("project_id") if isinstance(config, Mapping) else None
+            if isinstance(project_id, str) and project_id:
+                candidates.append(repository.safe_path(
+                    experiment, f"inputs/projects/{project_id}/world.yaml"))
+    except (ForbiddenPath, OSError, ValueError):
+        pass
+    try:
+        candidates.append(repository.safe_path(experiment, "expanded-project/world.yaml"))
+    except ForbiddenPath:
+        pass
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            world = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(world, Mapping):
+            continue
+        expansion = world.get("expansion")
+        if not isinstance(expansion, Mapping):
+            return {"state": "base", "patches": []}
+        patches = expansion.get("patches")
+        if isinstance(patches, list) and patches:
+            return {"state": "expanded", "patches": [p for p in patches if isinstance(p, Mapping)]}
+    try:
+        summary = _read_json(repository.safe_path(experiment, "summary.json"))
+        details = summary.get("world_expansion_patches")
+        if isinstance(details, list) and details:
+            return {"state": "expanded", "patches": [p for p in details if isinstance(p, Mapping)]}
+        if summary.get("world_patches"):
+            return {"state": "unknown", "patches": []}
+    except (ForbiddenPath, OSError, ValueError, AttributeError):
+        pass
+    return {"state": "base", "patches": []}
+
+
+def world_expansion_info(repository: "RunRepository", experiment: Path) -> list[dict[str, Any]]:
+    return world_expansion_state(repository, experiment)["patches"]
+
+
 RUNNING_JOB_STATES = frozenset({"queued", "running", "stopping"})
 
 
@@ -1443,6 +1524,7 @@ def lineage_view(
     way for the same malformed input."""
 
     from gapengine import lineage as lineage_engine
+    from gapengine.world_patch import PatchError
 
     repository.validate_segment(cell_key)
     if cell_key.count("|") != 1 or not all(cell_key.split("|", 1)):
@@ -1453,7 +1535,14 @@ def lineage_view(
     if not isinstance(cells.get(cell_key), Mapping):
         raise MissingResource(f"cell not found: {cell_key}")
 
-    return lineage_engine.build_lineage_report(repository, experiment, cell_key)
+    try:
+        return lineage_engine.build_lineage_report(repository, experiment, cell_key)
+    except PatchError as error:
+        # R3: resolve_experiment_inputs fails closed (ValueError/PatchError)
+        # when a frozen experiment's sealed inputs don't verify -- correct,
+        # but left uncaught it fell through to the generic except in
+        # do_GET() as an unexplained 500. Surface it as a 400 instead.
+        raise BadRequest(f"この実験の凍結入力の封印を検証できません（入力が変更されています）: {error}") from error
 
 
 @lru_cache(maxsize=128)
