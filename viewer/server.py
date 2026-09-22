@@ -66,6 +66,7 @@ STATIC_FILES = {
     "ga_replay.js": "text/javascript; charset=utf-8",
     "world-prototype.css": "text/css; charset=utf-8",
     "world-prototype.js": "text/javascript; charset=utf-8",
+    "world-expansion.js": "text/javascript; charset=utf-8",
 }
 
 
@@ -342,9 +343,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
             raise BadRequest("request body is too large")
 
         try:
-            value = json.loads(
-                self.rfile.read(length).decode("utf-8")
-            )
+            raw = self.rfile.read(length)
+            self._body_consumed = True
+            value = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise BadRequest("invalid JSON") from error
         if not isinstance(value, Mapping):
@@ -413,7 +414,33 @@ class ViewerHandler(BaseHTTPRequestHandler):
         )
         self._send_json(HTTPStatus.OK, {"cell": cell, "reviewed": summary["reviewed"]})
 
+    def _drain_unread_body(self) -> None:
+        """Closing the connection with the POST body still unread makes Windows
+        reset it now and then, so the client sees a dropped connection instead
+        of the 403/404/503 that was sent. Every early rejection routes through
+        do_POST, so discard the body here, once, instead of in each handler."""
+        if getattr(self, "_body_consumed", False):
+            return
+        try:
+            # Bodies past MAX_POST_BYTES are rejected unread too, so drain more
+            # than that -- but bounded, in chunks, never into memory at once.
+            remaining = min(int(self.headers.get("Content-Length") or 0), 8 * 1024 * 1024)
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 64 * 1024))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except (OSError, ValueError):
+            pass
+
     def do_POST(self) -> None:
+        self._body_consumed = False
+        try:
+            self._dispatch_post()
+        finally:
+            self._drain_unread_body()
+
+    def _dispatch_post(self) -> None:
         try:
             parts = self._parts()
             if output_pages.dispatch(self, parts, "POST"):

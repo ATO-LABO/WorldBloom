@@ -42,6 +42,32 @@ class WorldPrototypeTests(unittest.TestCase):
         self.assertIn('閲覧モード', result)
         self.assertNotIn('data-quick-start', result)
 
+    def test_no_expansion_html_omits_the_template_entirely(self):
+        # V2: 0 approved and 0 proposed -> library_pages passes expansion_html=""
+        # -> no <template id="wp-expansion"> at all (not even an empty one).
+        result = world_prototype.render({'id': 'empty', 'name': 'Empty'}, {}, [])
+        self.assertNotIn('id="wp-expansion"', result)
+
+    def test_expansion_html_ships_as_an_inert_template_outside_wp_content(self):
+        # V2 (viewer review): the "後から生まれたもの" section used to sit as
+        # a direct sibling of #wp-content in the .wp 2-column grid, which
+        # stranded it in the left column. It now ships as an inert
+        # <template id="wp-expansion"> that world-prototype.js's overview
+        # screen appends into itself.
+        marker = '<p>後から生まれたものの中身</p>'
+        result = world_prototype.render({'id': 'empty', 'name': 'Empty'}, {}, [], expansion_html=marker)
+        match = re.search(r'<template id="wp-expansion">(.*?)</template>', result, re.S)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), marker)
+        # A <template>'s content never renders in place -- but assert the
+        # placement too: it must come after #wp-content closes, not before
+        # (i.e. not nested inside the JS-managed area) and not be duplicated
+        # loose in the body outside the template tag.
+        content_close = result.index('id="wp-content"></div>')
+        template_open = result.index('<template id="wp-expansion">')
+        self.assertLess(content_close, template_open)
+        self.assertEqual(result.count(marker), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

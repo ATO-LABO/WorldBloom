@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlsplit, urlencode
 from execution.provenance import ConfigError
 from execution.output_store import OutputStore
 from execution.output_requests import eligible
-from viewer import pages, workbench_pages as wb, output_pages, sifting_view
+from viewer import pages, workbench_pages as wb, output_pages, sifting_view, world_demand_view
 from viewer import generation_pages
 E, U = pages._escape, pages._url_segment
 LABELS = {"unclassified":"未分類", "held":"保留", "adopted":"採用", "rejected":"除外"}
@@ -38,7 +38,8 @@ def shell(handler, v, active, title, body, footer, *, step=1, initial=None):
              ("grid", "格子で見る", f'/exp/{U(v["name"])}' if rid else '/selected'),
              ("tray", "Siftingトレイ", f'/selected?run={U(rid)}' if rid else '/selected')]
     nav = '<nav class="rw-sidebar" aria-label="Siftingメニュー">' + ''.join(
-        f'<a href="{E(href)}"' + (' aria-current="page"' if key == active else '') + f'>{label}</a>' for key,label,href in links) + '</nav>'
+        f'<a href="{E(href)}"' + (' aria-current="page"' if key == active else '') + f'>{label}</a>' for key,label,href in links) \
+        + world_demand_view.sidebar_link(handler.repository, v.get("name")) + '</nav>'
     steps = '<ol class="sf-steps" aria-label="Siftingの進行">' + ''.join(f'<li' + (' aria-current="step"' if n == step else '') + f'><span>{n}</span>{label}</li>' for n,label in enumerate(("候補を選ぶ", "採用候補を確認", "本文を生成"),1)) + '</ol>'
     content = '<div class="rw-shell sf-shell" data-sifting data-initial="' + json_attr(initial or {}) + '">' + nav
     content += '<main class="sf-main"><header class="sf-heading"><h1>' + title + '</h1>' + steps + picker(v, active) + '</header>'

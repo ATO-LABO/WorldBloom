@@ -91,6 +91,15 @@ class RunSettingsTests(unittest.TestCase):
                 self.assertIn('Siftingで候補を選ぶ', body)
         self.assertEqual(self.fake.submitted, [])
 
+    def test_world_expansion_select_defaults_to_off(self):
+        status, body, _ = self.get_status('/configs/new?project=romance')
+        self.assertEqual(status, 200, body)
+        self.assertIn('data-field="evolution.world_expansion"', body)
+        self.assertIn('data-error-for="evolution.world_expansion"', body)
+        self.assertIn('<option value="off" selected>', body)
+        self.assertIn('<option value="detect">', body)
+        self.assertIn('<option value="expand">', body)
+
     def test_new_settings_and_static_files(self):
         status, body, _ = self.get_status('/configs/new?project=romance')
         self.assertEqual(status, 200)
