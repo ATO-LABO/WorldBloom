@@ -50,10 +50,19 @@
 .rs-form .toggle small:empty {display:none;}
 /* WB-JEV-002: .cfg-sec/.kappa-row are reused as-is from the retired
    render_config_form (app.css) -- only restack the section from its
-   200px-label two-column grid to this form's single-column layout. */
-.rs-form .cfg-sec {display:block;padding:0;border:0;}
+   200px-label two-column grid to this form's single-column layout.
+   S2 (Opus review): _rationality_section is now the form's own top-level
+   <section class="cfg-sec">, a sibling of 01/02/03's bare <section>s, so it
+   needs the same divider (border-top + padding) those get from the plain
+   ".rs-form section" rule at the top of this file -- .cfg-sec's own class
+   selector otherwise wins on specificity and would zero both out. */
+.rs-form .cfg-sec {display:block;padding:10px 0;border:0;border-top:1px solid var(--rw-line);}
 .rs-form .cfg-sec-head {margin-bottom:8px;}
 .rs-form .cfg-sec-body {display:flex;flex-direction:column;gap:8px;}
+/* S3: app.css's ".cfg-form .hint" doesn't reach here (this form is
+   ".rs-form", not ".cfg-form") -- _rationality_section's <p class="hint">
+   needs its own rule. */
+.rs-form .cfg-sec .hint {font-size:13px;color:var(--rw-muted);margin:0;}
 .rs-form .cfg-adv {margin:0;padding:8px 0 0;border:0;border-top:1px solid var(--rw-line);background:none;}
 .rs-form .cfg-adv summary {font-size:14px;}
 .rs-form .cfg-adv summary span {font-weight:400;color:var(--rw-muted);font-size:12px;margin-left:14px;}
@@ -76,6 +85,10 @@
 @media(min-width:1024px) and (max-height:780px){
   .rs-editor{padding-block:12px}
   .rs-form section{padding-block:6px}
+  /* .cfg-sec's own higher-specificity padding (10px, above) otherwise wins
+     over the ".rs-form section" rule on this line even inside this media
+     query -- match it here so 04 keeps matching 01/02/03 at short heights. */
+  .rs-form .cfg-sec{padding-block:6px}
   .rs-form h2{margin-bottom:6px}
   .rs-form .rs-name{margin-bottom:4px}
   .rs-form .rs-ending{margin-top:5px}

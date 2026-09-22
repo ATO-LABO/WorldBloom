@@ -153,6 +153,8 @@
     attachPlayControl();
   }
   function overview() {
+    const rationalityHost = $("[data-rationality]");
+    if (rationalityHost) rationalityHost.innerHTML = payload.rationality_html || "";
     const gen = (observed.generations || []).find(g=>g.generation===observed.generation) || {};
     const total = observed.categories.length * observed.bins.length;
     $("[data-overview-metrics]").innerHTML = `<div class="rw-stats"><div><span>物語の種類</span><strong>${Object.keys(observed.cells).length} / ${total}</strong></div><div><span>${number(observed.generation)?`第${observed.generation+1}世代の`:""}結末到達率</span><strong>${percent(gen.reach_rate)}</strong></div></div>`;

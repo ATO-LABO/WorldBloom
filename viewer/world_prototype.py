@@ -38,10 +38,16 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
     # WB-JEV-002: the actual kappa value is chosen on the run-settings form
     # (default 0.6 when the genre's judge is available), never here -- this
     # is just a heads-up that the choice exists, shown only for genres that
-    # have a rationality.yaml at all.
+    # have a rationality.yaml at all. S4 (Opus review): read the same repo
+    # the rest of this page reads (job_store.configs.repo when writable,
+    # never the live data.ROOT working tree directly), and N2: the
+    # read-only viewer exe has no run-settings screen to point at, so skip
+    # the hint entirely when this page isn't editable.
+    repo = job_store.configs.repo if job_store is not None else data.ROOT
     rationality_hint = (
         ' <span class="hint muted">合理性（κ）は実行設定で指定します。</span>'
-        if not missing and world.get("genre") and (data.ROOT / "templates" / world["genre"] / "rationality.yaml").is_file()
+        if model["editable"] and not missing and world.get("genre")
+        and (repo / "templates" / world["genre"] / "rationality.yaml").is_file()
         else ""
     )
     body = f'''

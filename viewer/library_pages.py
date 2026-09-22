@@ -466,7 +466,7 @@ def render_world_detail(world, store, job_store):
     files_block = _editor_group(store, world, job_store)
     cta = pages.quick_start_actions(
         world["id"], world["genre"], world["name"] or world["id"], run_href,
-        css_class="button primary", text="この世界で実験を回す",
+        css_class="button primary", text="この世界で実験を回す", repo=store.repo,
     )
     missing = []
     if not subjects: missing.append("登場人物")
