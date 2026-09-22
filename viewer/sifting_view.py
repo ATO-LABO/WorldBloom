@@ -3,10 +3,10 @@ import math
 from collections import Counter
 from execution.provenance import ConfigError, contained
 from execution.output_store import OutputStore, verified
-from viewer import data, pages, workbench_pages as wb, output_pages
+from viewer import data, pages, workbench_pages as wb, output_pages, world_usage_badge
 
 
-def load(handler, run_id, *, query=None):
+def load(handler, run_id, *, query=None, grid=False):
     repo = handler.repository
     catalog, selections = repo.catalog, repo.selections
     snapshot = catalog.snapshot(run_id)
@@ -59,6 +59,17 @@ def load(handler, run_id, *, query=None):
     endings = {}
     if config:
         endings = {e["id"]: e.get("label", e["id"]) for e in config["preview"].get("world", {}).get("ending", [])}
+    # 段階4b: 代表候補だけ拡張要素の使用バッジを添える（保存しない、都度導出）。
+    # 実験全体で1回だけ判定・読み込むので、候補ごとの余計な解決はしない。
+    # grid=False（候補一覧）ではバッジを描画しない（sifting_pages.candidate_row）
+    # ので、ログを読む前にここで足切りする（Opus review 推奨1: 一覧ビューで
+    # 代表候補ぶんのlayers.jsonlを読んで捨てていた）。
+    usage_protagonist = (config or {}).get("preview", {}).get("protagonist") if grid else None
+    usage_patches = None
+    if usage_protagonist:
+        usage_state = data.world_expansion_state(repo, root)
+        if usage_state.get("state") == "expanded":
+            usage_patches = usage_state["patches"]
     for candidate in snapshot["candidates"]["candidates"]:
         c = dict(candidate)
         cid, cell = c["candidate_id"], c.get("cell_key", "")
@@ -71,6 +82,13 @@ def load(handler, run_id, *, query=None):
         c["detail_href"] = f'/exp/{pages._url_segment(snapshot["experiment_name"])}/cell/{pages._url_segment(cell)}' if c["representative"] else ""
         c["raw_href"] = f'/runs/{pages._url_segment(run_id)}/candidates/{pages._url_segment(cid)}/raw' if c.get("log", {}).get("availability") == "present" else ""
         c["availability"] = wb.AVAILABILITY_LABELS.get(c.get("log", {}).get("availability"), "原記録を確認できません")
+        c["usage_html"] = ""
+        if usage_patches and c["representative"] and c.get("log", {}).get("availability") == "present":
+            counts = world_usage_badge.usage_counts(
+                repo, root, c["log"].get("relative_path"), usage_protagonist, usage_patches)
+            # sifting_pages.candidate_row が <button> の外（<article> 直下）に
+            # 置くので、<details>展開版がそのまま使える（Opus review 推奨3）。
+            c["usage_html"] = world_usage_badge.badge_html(counts)
         c["status"] = statuses.get(cid, {})
         c["output_href"] = output_links.get(cid, "")
         c["synopsis_state"] = "あらすじあり" if c["synopsis"] else {"error":"あらすじ生成に失敗", "unknown":"あらすじ生成の結果不明", "running":"あらすじ生成中", "unreadable":"あらすじを読み込めません"}.get(c["status"].get("synopsize"), "あらすじ未生成")
