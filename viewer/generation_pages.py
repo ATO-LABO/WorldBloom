@@ -56,7 +56,7 @@ def surface(initial=None, *, modal=False):
     return f'''<{tag} class="gen-surface" data-generation data-initial="{E(json.dumps(initial or {}, ensure_ascii=False))}"{attr}>
 <header class="gen-heading"><div><span class="gen-eyebrow">文章の準備</span><h2 id="gen-title" data-gen-title>生成内容を確認</h2></div><button type="button" data-gen-close aria-label="閉じる">×</button></header>
 <div class="gen-scroll"><p data-gen-message role="status" aria-live="polite"></p><div data-gen-settings></div>
-<div class="gen-progress" data-gen-progress hidden><strong data-gen-count></strong><progress aria-label="処理済みの候補"></progress><p data-gen-phase></p></div>
+<div class="gen-progress" data-gen-progress hidden><div class="gen-spinner" aria-hidden="true"></div><strong data-gen-count></strong><progress aria-label="処理済みの候補"></progress><p data-gen-phase></p><p data-gen-eta></p></div>
 <ul class="gen-entries" data-gen-entries aria-label="生成対象と結果"></ul>
 <label data-gen-ack-wrap hidden><input type="checkbox" data-gen-ack>結果不明の試行を再生成します。二重生成の可能性を確認しました。</label>
 <p class="gen-error" role="alert" data-gen-error></p><details data-gen-details hidden><summary>生成記録の詳細</summary><p data-gen-id></p><a data-gen-record>結果と復旧方法を確認 ↗</a></details></div>

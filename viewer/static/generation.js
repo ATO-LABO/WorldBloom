@@ -6,6 +6,7 @@
  const statuses={pending:'未開始',running:'生成中',ok:'生成済み',prompt_only:'プロンプト保存済み',unknown:'結果不明',error:'失敗',skipped_limit:'上限により未実行',skipped_cancelled:'停止により未実行',skipped_interrupted:'中断により未実行',cancelled:'停止',interrupted:'中断'};
  const completions={generated:'全件生成',prompt_only:'プロンプト保存のみ（文章は未生成）',mixed:'文章とプロンプトの混在',partial:'一部成功',partial_unknown:'一部成功（結果不明あり）',unknown:'結果不明',limit_before_start:'呼出し前に上限到達',error:'失敗',cancelled:'停止済み',interrupted:'中断'};
  const states={queued:'受付済み',running:'生成中',starting:'準備中',stopping:'停止処理中',succeeded:'完了',partial:'一部完了',failed:'失敗',cancelled:'停止済み',interrupted:'中断'};
+ function formatDuration(sec){sec=Math.max(0,Math.round(sec));if(sec<60)return `${sec}秒`;const m=Math.floor(sec/60),s=sec%60;return s?`${m}分${s}秒`:`${m}分`;}
  let plan=null,job=null,output=null,request=null,source=null,opener=null,busy=false,uncertain=false,stopConfirm=false,pollTimer=null,version=0,connectionLost=false;
  const applied=new Set(), texts=new Map();
  const reopen=document.createElement('button');reopen.type='button';reopen.className='gen-reopen';reopen.hidden=true;document.body.append(reopen);
@@ -48,9 +49,13 @@
   if(token===version&&(readFailed||!job||!terminal.has(job.state)||!output&&job.output_id))pollTimer=setTimeout(()=>watch(jid),1800);
  }
  function renderJob(){base();$('settings').replaceChildren();$('message').textContent=stopConfirm?'生成を停止しますか？ 保存済みの文章は残ります。':job.reconciliation==='unknown'?'実行状態を確認中':terminal.has(job.state)?completions[output?.completion_kind||job.completion_kind]||states[job.state]:states[job.state]||job.state;
-  const p=job.progress||{},counts=job.counts||p.counts||{},total=p.total,completed=p.completed;
-  $('count').textContent=Number.isFinite(total)?`処理済み ${completed||0} / ${total}件`:'準備中';const meter=$('progress').querySelector('progress');if(Number.isFinite(total)&&total>0){meter.max=total;meter.value=completed||0;}else meter.removeAttribute('value');
+  const p=job.progress||{},counts=job.counts||p.counts||{},total=p.total,completed=p.completed||0;
+  const pct=Number.isFinite(total)&&total>0?Math.round(completed/total*100):null;
+  $('count').textContent=Number.isFinite(total)?`処理済み ${completed} / ${total}件${pct!=null?`（${pct}%）`:''}`:'準備中';const meter=$('progress').querySelector('progress');if(Number.isFinite(total)&&total>0){meter.max=total;meter.value=completed;}else meter.removeAttribute('value');
   $('phase').textContent=Object.entries(counts).map(([k,n])=>`${statuses[k]||k} ${n}件`).join(' · ')||'保存された進捗を確認しています';
+  const active=!terminal.has(job.state);$('progress').classList.toggle('gen-progress-active',active);
+  let eta='';if(active&&pct!=null&&completed>0&&completed<total&&job.started_at){const elapsed=Date.now()/1000-job.started_at,rate=completed/elapsed,remaining=rate>0?(total-completed)/rate:null;if(Number.isFinite(remaining))eta=`完了まで残り目安 ${formatDuration(remaining)}`;}
+  $('eta').textContent=eta;
   $('note').textContent=terminal.has(job.state)?'生成結果を確認して、次の操作へ進めます。':'閉じても生成は続きます。停止する場合は「生成を停止」を選んでください。';
   $('id').textContent=`処理 ${job.job_id}`;$('record').hidden=!job.output_id;if(job.output_id)$('record').href=`/outputs/${encodeURIComponent(job.output_id)}?view=record`;
   const scroll=$('entries').parentElement.scrollTop;$('entries').replaceChildren();
