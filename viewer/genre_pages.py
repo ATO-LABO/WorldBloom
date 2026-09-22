@@ -52,7 +52,7 @@ def detail(handler, ident):
     <div class="ge-layout"><nav class="ge-nav" aria-label="編集する内容"><h2>編集する内容</h2>{nav}<a href="/configs?tab=genres">← ジャンル一覧へ</a></nav>
     <section class="ge-edit ge-scroll" aria-label="ジャンルの編集項目"><header class="ge-section-heading"><div><h2 data-title>基本情報</h2><p data-help></p></div><button type="button" data-add hidden>＋ 追加</button></header><div class="ge-role" data-role hidden><button type="button" data-variant="0">主人公側</button><button type="button" data-variant="1">敵役側</button></div><div data-editor></div></section>
     <aside class="ge-inspector ge-scroll"><h2>この変更を確認</h2><section><h3>使っている世界</h3>{'<ul>'+used+'</ul>' if used else '<p>まだ使っている世界はありません。</p>'}<p class="ge-hint">新しく保存する実行設定に反映されます。保存済みの設定・結果は変わりません。</p></section><section><h3>世界と組み合わせて確認</h3><label class="ge-field">確認する世界<select data-world>{options}</select></label><button type="button" data-validate>変更内容を確認</button><p data-validation role="status">未確認</p><p class="ge-hint">下書きも確認します。シミュレーションは実行しません。</p></section><section><h3>変更した項目</h3><ul data-changes><li>変更はありません</li></ul></section></aside></div>
-    <footer class="ge-footer"><p role="status" data-status>保存済みの設定を表示しています。</p><button type="button" data-reset>この項目の変更を戻す</button><button type="button" class="ge-primary" data-save>この項目を保存</button></footer></div>'''
+    <footer class="ge-footer"><p role="status" data-status>保存済みの設定を表示しています。</p><button type="button" data-reset>この項目の変更を戻す</button><button type="button" class="ge-primary is-confirm" data-save>この項目を保存</button></footer></div>'''
     document(handler, 'ジャンルを編集', body)
 
 

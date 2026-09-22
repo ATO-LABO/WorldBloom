@@ -31,6 +31,35 @@
   --font-ui: "Yu Gothic UI", "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   --font-serif: "Yu Mincho", "Hiragino Mincho ProN", serif;
   --font-mono: Consolas, monospace;
+
+  /* Workspace parts (WB-UI-UNIFY) */
+  --ws-font: "BIZ UDPGothic","Yu Gothic UI","Yu Gothic","Hiragino Sans","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+  --ws-text: #24302a;
+  --ws-muted: #66716d;
+  --ws-line: #d7dcd8;
+  --ws-control-line: #a8b3ad;
+  --ws-surface: #ffffff;
+  --ws-advance: #b64b22;
+  --ws-advance-ink: #91411f;
+  --ws-confirm: #245c48;
+  --ws-confirm-soft: #e6efe8;
+  --ws-select-bg: #eeece6;
+  --ws-panel-bg: #f0f5f1;
+  --ws-fs-xs: 12px;
+  --ws-fs-sm: 14px;
+  --ws-fs-md: 16px;
+  --ws-fs-h3: 17px;
+  --ws-fs-h2: 20px;
+  --ws-fs-h1: 24px;
+  --ws-side-w: 180px;
+  --ws-aside-w: 300px;
+  --ws-side-w-narrow: 145px;    /* 狭い画面での左サイドバー */
+  --ws-aside-w-narrow: 240px;   /* 狭い画面での右の補助パネル */
+  --ws-gutter: 24px;
+  --ws-control-h: 44px;
+  --ws-control-h-sm: 34px;
+  --ws-radius: 6px;
+  --ws-bar-h: 58px;
 }
 
 * {
@@ -106,11 +135,22 @@ select {
   padding: 0.4rem 1rem;
 }
 
-.home-cell {
+.home-cell,
+.brand {
   color: #f8f4ec;
-  font-size: 0.85rem;
+  font-family: var(--ws-font);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: .01em;
   text-decoration: none;
   white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .home-cell,
+  .brand {
+    font-size: 21px;
+  }
 }
 
 .home-cell:hover {
@@ -169,14 +209,6 @@ select {
 
 .header-links a:hover {
   text-decoration: underline;
-}
-
-.brand {
-  color: #f8f4ec;
-  font-size: 1.05rem;
-  font-weight: 750;
-  text-decoration: none;
-  white-space: nowrap;
 }
 
 .phase-band {
@@ -275,10 +307,10 @@ p {
 }
 
 .button {
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-s);
-  color: var(--text);
+  background: var(--ws-surface);
+  border: 1px solid var(--ws-control-line);
+  border-radius: var(--ws-radius);
+  color: var(--ws-text);
   display: inline-block;
   padding: 0.35rem 0.75rem;
   text-decoration: none;
@@ -292,13 +324,18 @@ p {
 }
 
 .button.primary {
-  background: var(--accent);
-  border-color: var(--accent-dark);
+  background: var(--ws-advance);
+  border-color: var(--ws-advance);
   color: #fff;
 }
 
 .button.primary:hover {
-  background: var(--accent-dark);
+  background: var(--ws-advance-ink);
+}
+
+.button.primary.is-confirm {
+  background: var(--ws-confirm);
+  border-color: var(--ws-confirm);
 }
 
 /* -------------------------------------------------------------- home */
@@ -1028,7 +1065,9 @@ td {
 
 .chip {
   background: var(--accent-soft);
-  color: var(--text);
+  color: var(--ws-confirm);
+  font-size: 12.5px;
+  padding: 3px 10px;
 }
 
 .scene {
@@ -1528,9 +1567,9 @@ form[data-wb="library-create"] > .form-grid {
 .state-badge {
   border-radius: 999px;
   display: inline-block;
-  font-size: 0.8rem;
+  font-size: 12.5px;
   font-weight: 600;
-  padding: 0.22rem 0.6rem;
+  padding: 3px 10px;
 }
 
 .state-running,
@@ -4714,6 +4753,12 @@ section[data-wb="output"] > article [data-story] {
   color: #fffaf7;
 }
 
+.candidate-inspector-footer .button.primary.is-confirm,
+.inspector-save-row .button.primary.is-confirm {
+  background: var(--ws-confirm);
+  border-color: var(--ws-confirm);
+}
+
 .candidate-layout-final.candidate-layout-enhanced .candidate-row-state,
 .candidate-layout-final.candidate-layout-enhanced .candidate-note-save,
 .candidate-layout-final.candidate-layout-enhanced .wb-actions {
@@ -5074,6 +5119,11 @@ main:has(.cfg-form) .form-actions .button-primary {
   background: var(--wb-ui-accent, #2f7255);
   color: white;
   font-weight: 750;
+}
+
+main:has(.cfg-form) .form-actions .button-primary.is-confirm {
+  border-color: var(--ws-confirm);
+  background: var(--ws-confirm);
 }
 
 @media (max-width: 900px) {
@@ -5697,7 +5747,7 @@ main:has(.cfg-form) .form-actions {
 .header-pickers .picker-select{max-width:100%;min-width:0}
 .header-pickers .picker-value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .header-links{margin-left:auto;flex:none;gap:0;align-items:center;white-space:nowrap}
-.header-links a{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:36px;padding:4px 18px;color:#f8f4ec;font-family:var(--font-ui);font-size:14px;font-weight:600;text-decoration:none}
+.header-links a{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:36px;padding:4px 18px;color:#f8f4ec;font-family:var(--ws-font);font-size:14px;font-weight:600;text-decoration:none}
 .header-links a+a{border-left:1px solid rgba(255,255,255,.35)}
 .header-links a:last-child{padding-right:2px}
 .header-links svg{width:21px;height:21px;flex:none}

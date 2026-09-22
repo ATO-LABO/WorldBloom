@@ -55,7 +55,7 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
       <div class="wp-content" id="wp-content"></div>
       {expansion_template}
       <footer class="wp-footer"><span id="wp-message" role="status">{html.escape(status)}</span><a class="wp-primary" data-next href="{html.escape(next_href, quote=True)}" {"hidden" if not model["editable"] else ""}>{next_label}</a>{saved}</footer>
-      <dialog class="wp-dialog" aria-labelledby="wp-dialog-title"><form id="wp-form"><div class="wp-section-head"><h2 id="wp-dialog-title">編集</h2><button type="button" data-close aria-label="閉じる">×</button></div><p class="wp-muted">保存すると世界設定を更新します。過去の実行結果は変わりません。</p><div id="wp-fields"></div><div class="wp-dialog-actions"><button type="button" data-close>キャンセル</button><button class="wp-primary" type="submit">保存する</button></div></form></dialog>
+      <dialog class="wp-dialog" aria-labelledby="wp-dialog-title"><form id="wp-form"><div class="wp-section-head"><h2 id="wp-dialog-title">編集</h2><button type="button" data-close aria-label="閉じる">×</button></div><p class="wp-muted">保存すると世界設定を更新します。過去の実行結果は変わりません。</p><div id="wp-fields"></div><div class="wp-dialog-actions"><button type="button" data-close>キャンセル</button><button class="wp-primary is-confirm" type="submit">保存する</button></div></form></dialog>
       <script type="application/json" id="wp-data">{payload}</script>
       <noscript>この表示にはJavaScriptが必要です。<a href="/worlds/{wid}?view=advanced">詳細設定を開く</a></noscript>
     </div>'''
@@ -65,4 +65,4 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
                       '<script src="/static/world-prototype.js" defer></script>'
                       '<script src="/static/world-expansion.js" defer></script></head>')
     doc = doc.replace('data-wb="world-picker"', 'data-wb="world-picker" aria-label="世界"')
-    return doc.replace('<a class="home-cell" href="/">⌂ ホーム</a>', '<a class="home-cell" href="/" aria-label="WorldBloom ホーム">WorldBloom</a>')
+    return doc
