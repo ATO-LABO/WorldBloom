@@ -316,7 +316,7 @@
   // initConfigForm's world->genre snap above.
   const initOutputSettings = () => {
     const form = document.querySelector('[data-wb="output-settings"]');
-    if (!form) {
+    if (!form || form.hasAttribute("data-gs-output")) {
       return;
     }
     let backends = parseJsonAttr(form.dataset.backends, {});

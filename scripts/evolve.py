@@ -94,6 +94,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override rationality.yaml's judge method (yes/no vs multiple-choice).",
     )
     parser.add_argument(
+        "--rationality-model",
+        type=str,
+        default=None,
+        help="Override rationality.yaml's judge model name.",
+    )
+    parser.add_argument(
+        "--rationality-num-ctx",
+        type=int,
+        default=None,
+        help=(
+            "WB-JEV-003: override the Ollama judge's context window size "
+            "(num_ctx). Default: rationality.yaml's backend.num_ctx, or "
+            "Ollama's own default (16384) if that is unset too."
+        ),
+    )
+    parser.add_argument(
         "--rationality-table",
         type=Path,
         default=None,
@@ -179,6 +195,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "kappa": args.kappa,
                 "backend": args.rationality_backend,
                 "method": args.rationality_method,
+                "model": args.rationality_model,
+                "num_ctx": args.rationality_num_ctx,
                 "table": args.rationality_table,
                 "max_judge_calls_per_run": args.rationality_max_calls,
             },
