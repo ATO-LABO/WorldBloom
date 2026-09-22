@@ -26,6 +26,7 @@ from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
 from gapengine.policy import _compile_rules
 from gapengine.precedent import load_canon
 from gapengine.synopsis import _backend_config
+from gapengine.world_patch import PatchError, apply_patches, approved_patches, template_identifiers
 from scripts.evolve import build_parser
 from execution.provenance import (
     ConfigError, atomic_json, canonical, code_snapshot, contained, directory_lock,
@@ -122,6 +123,8 @@ def normalize(spec):
             raise ConfigError("evolution." + name, "真偽値を指定してください")
     if values["keep"] not in ("all", "reached", "exemplar"):
         raise ConfigError("evolution.keep", "保存方針が不正です")
+    if values["world_expansion"] not in ("off", "detect", "expand"):
+        raise ConfigError("evolution.world_expansion", "世界の拡張の指定が不正です")
     endings = values["target_ending"]
     if endings is not None and (not isinstance(endings, list) or not endings
             or any(not isinstance(x, str) or not x for x in endings)
@@ -308,6 +311,27 @@ def _capture_inputs(repo, spec):
                 records[world_key]["transformation"] = "rebase_world_references_to_frozen_relative_paths"
     except (yaml.YAMLError, AttributeError, TypeError) as error:
         raise ConfigError("inputs.world", "世界の入力形式が不正です") from error
+    if spec["evolution"]["world_expansion"] == "expand":
+        from execution.world_patches import expanded_snapshot
+        try:
+            world, expanded_people, verified = expanded_snapshot(project, template, repo_root=repo)
+        except PatchError as error:
+            raise ConfigError("inputs.world_patches", str(error)) from error
+        if verified:
+            # Preserve the already rebased references captured above.
+            rebased = yaml.safe_load(blobs[world_key]).get("gapengine")
+            if rebased is not None:
+                world["gapengine"] = rebased
+            for p in subjects:
+                key = p.relative_to(repo).as_posix()
+                if yaml.safe_load(blobs[key]) != expanded_people[p.name]:
+                    blobs[key] = yaml.safe_dump(expanded_people[p.name], allow_unicode=True,
+                                               sort_keys=False).encode("utf-8")
+                    records[key]["transformation"] = "world_patches_extend_range"
+            blobs[world_key] = yaml.safe_dump(world, allow_unicode=True,
+                                              sort_keys=False).encode("utf-8")
+            patch_records = [{"id": patch["id"], "sha256": sha256(raw)} for patch, raw in verified]
+            records[world_key]["world_patches"] = patch_records
     entries = [{**records[p], "sha256": sha256(b), "bytes": len(b)}
                for p, b in sorted(blobs.items())]
     return blobs, {"schema_version": 1, "files": entries}
@@ -405,6 +429,10 @@ class ConfigStore:
             prior, manifest, root = self._bundle(parent)
             if any(prior[k] != spec[k] for k in ("project_id", "template_id")):
                 raise ConfigError("parent_config_id", "複製元と異なる入力は新規設定として保存してください")
+            prior_expand = prior["evolution"].get("world_expansion", "off") == "expand"
+            spec_expand = spec["evolution"]["world_expansion"] == "expand"
+            if prior_expand != spec_expand:
+                raise ConfigError("parent_config_id", "複製元と異なる入力は新規設定として保存してください")
             blobs = {r["path"]: contained(root / "inputs", r["path"]).read_bytes()
                      for r in manifest["files"]}
         # Opus review: a genre switch (client-side, before submit) must not
@@ -489,7 +517,16 @@ class ConfigStore:
         changes = changes or {}
         for key, value in changes.items():
             spec[key] = {**spec[key], **value} if key in ("evolution", "execution_limits") and isinstance(value, dict) else value
-        return self.save(spec, config_id=new_id, parent_config_id=config_id)
+        # Unlike project_id/template_id (hidden, fixed fields on the "duplicate to
+        # edit" form), evolution.world_expansion is an editable radio there. Toggling
+        # to/from "expand" makes the frozen inputs incompatible with the parent
+        # config (_prepare's parent_config_id check) -- save as a fresh config
+        # instead of dead-ending the save, the same way changing project_id would
+        # require a fresh (non-duplicate) config if it were reachable from the UI.
+        prior_expand = original["evolution"].get("world_expansion") == "expand"
+        spec_expand = (spec.get("evolution") or {}).get("world_expansion") == "expand"
+        parent = config_id if prior_expand == spec_expand else None
+        return self.save(spec, config_id=new_id, parent_config_id=parent)
 
     def prepare_run(self, config_id, *, run_id=None, job_id):
         rid = identifier(("run-" + uuid.uuid4().hex) if run_id is None else run_id, "run_id")

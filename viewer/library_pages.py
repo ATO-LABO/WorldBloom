@@ -8,13 +8,18 @@ straight through to execution.configs.ConfigStore.preview via LibraryStore.
 """
 from __future__ import annotations
 
+import hashlib
 from http import HTTPStatus
 
 import yaml
 
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
-from viewer import action_catalog, data, pages, job_api, world_graph
+from execution.worker import TERMINAL
+from execution.world_patch_approval import (StalePatch as _StalePatch, approve as _approve_patch,
+                                            reject as _reject_patch, reopen as _reopen_patch)
+from gapengine.world_patch import ID_RE as _PATCH_ID_RE, PatchError as _WorldPatchError, stack_head as _patch_stack_head
+from viewer import action_catalog, data, pages, job_api, world_expansion_view, world_graph
 from viewer.workbench_pages import _guidance_page, _job_store, _query
 
 _escape = pages._escape
@@ -548,6 +553,19 @@ def _world_experiments(repository, world_name):
     return [str(m["name"]) for m in dict(groups).get(world_name, []) + [m for m in minor if str(m["world"]) == world_name]]
 
 
+def _world_expansion_html(store, world_id, world_yaml, job_store):
+    """「後から生まれたもの」節。壊れていても世界画面は落とさない
+    （WB-WORLDGROW-001 段階3b-1）。"""
+    try:
+        state = world_expansion_view.load(store.repo / "projects" / world_id)
+        return world_expansion_view.approved_list(
+            state, world_id=world_id, can_write=job_store is not None, world=world_yaml,
+            run_link=lambda name: f"/exp/{_url(name)}/monitor?tab=demand",
+        )
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError):
+        return ""
+
+
 def _worlds_detail(handler, world_id):
     job_store = _job_store(handler)
     repo = job_store.configs.repo if job_store is not None else data.ROOT
@@ -565,6 +583,7 @@ def _worlds_detail(handler, world_id):
             job_store=job_store, pin=data.pinned_target(job_store),
             # Read-only viewers have no run screens; the world page is their way in to saved experiments.
             experiments=[] if job_store is not None else _world_experiments(handler.repository, label),
+            expansion_html=_world_expansion_html(store, world_id, current["world"], job_store),
         ))
         return
     from viewer import world_advanced
@@ -718,6 +737,164 @@ def _validate_genre(handler, genre_id):
 
 
 # --------------------------------------------------------------------------
+# World-expansion patch approval API (WB-WORLDGROW-001 段階3b-2)
+# --------------------------------------------------------------------------
+
+_STALE_MESSAGE = "画面を開いたあとに内容が変わりました。再読み込みしてください"
+
+
+def _resolve_world_patch_dirs(job_store, world_id):
+    """(project_dir, template_dir) for an existing, genre-linked world --
+    world_id is matched against LibraryStore.worlds()'s own listing (real
+    directory names only), never joined onto a path directly, so a stray
+    '..' in the URL can never leave projects/templates."""
+    store = LibraryStore(job_store.configs.repo)
+    world = next((w for w in store.worlds() if w["id"] == world_id), None)
+    if world is None or not world.get("genre"):
+        raise ConfigError("world_id", "世界がありません", code="not_found")
+    return store.repo / "projects" / world["id"], store.repo / "templates" / world["genre"]
+
+
+def _reject_running_job(job_store):
+    # Same single-run constraint JobStore.submit() enforces -- a running/
+    # queued job could be mid-simulation against exactly the patches/ this
+    # request would rewrite.
+    if any(job.get("state") not in TERMINAL for job in job_store.list()):
+        raise ConfigError("jobs", "他の処理が実行中です", code="conflict")
+
+
+def _patch_id_arg(patch_id):
+    if not _PATCH_ID_RE.fullmatch(patch_id):
+        raise ConfigError("patch_id", "パッチ ID の形式が不正です", code="bad_request")
+    return patch_id
+
+
+def _approve_body(body):
+    if not isinstance(body, dict) or set(body) != {"reason", "seen"}:
+        raise ConfigError("request", "reason と seen だけを指定してください", code="bad_request")
+    reason = body["reason"]
+    # A2 (viewer review): matches execution.world_patch_approval.approve()'s
+    # own floor (len(reason.strip()) < 10 raises there) so a request that
+    # passes this check never fails on reason length once it reaches approve().
+    if not isinstance(reason, str) or not (10 <= len(reason.strip()) <= 500):
+        raise ConfigError("reason", "承認の理由は10文字以上で書いてください", code="bad_request")
+    seen = body["seen"]
+    if (not isinstance(seen, dict) or set(seen) != {"patch_sha256", "gate_sha256"}
+            or not isinstance(seen["patch_sha256"], str) or not isinstance(seen["gate_sha256"], str)):
+        raise ConfigError("seen", "seen の形式が不正です", code="bad_request")
+    return reason.strip(), seen["patch_sha256"], seen["gate_sha256"]
+
+
+def _reject_body(body):
+    if not isinstance(body, dict) or set(body) != {"seen"}:
+        raise ConfigError("request", "seen だけを指定してください", code="bad_request")
+    seen = body["seen"]
+    if (not isinstance(seen, dict) or set(seen) != {"patch_sha256", "gate_sha256"}
+            or not isinstance(seen["patch_sha256"], str)
+            or not (seen["gate_sha256"] is None or isinstance(seen["gate_sha256"], str))):
+        raise ConfigError("seen", "seen の形式が不正です", code="bad_request")
+    return seen["patch_sha256"], seen["gate_sha256"]
+
+
+def _reopen_body(body):
+    if not isinstance(body, dict) or set(body) != {"seen"}:
+        raise ConfigError("request", "seen だけを指定してください", code="bad_request")
+    seen = body["seen"]
+    if not isinstance(seen, dict) or set(seen) != {"head"} or not isinstance(seen["head"], str):
+        raise ConfigError("seen", "seen の形式が不正です", code="bad_request")
+    return seen["head"]
+
+
+def _proposal_shas(project, patch_id):
+    """(patch_sha256, gate_sha256) for the currently proposed patch, or
+    (None, None) if either file is missing / unreadable right now."""
+    folder = project / "patches" / "_proposed"
+    source, gate_path = folder / f"{patch_id}.yaml", folder / f"{patch_id}.gate.json"
+    try:
+        patch_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+        gate_sha = hashlib.sha256(gate_path.read_bytes()).hexdigest() if gate_path.is_file() else None
+    except OSError:
+        return None, None
+    return patch_sha, gate_sha
+
+
+def _approve_patch_action(handler, world_id, patch_id):
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
+    body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
+    reason, seen_patch_sha, seen_gate_sha = _approve_body(body)
+    _patch_id_arg(patch_id)
+    project, template = _resolve_world_patch_dirs(job_store, world_id)
+    _reject_running_job(job_store)
+    # R4 (see module docstring's report notes): this freshness check runs
+    # just before approve()'s own patch_lock, not inside it -- directory_lock
+    # isn't reentrant (a second acquisition in this same call would itself
+    # raise "conflict"). The gap it leaves is narrow and is covered by
+    # approve()'s own re-validation of the sealed evidence (gate.patch_sha256
+    # vs the patch bytes it reads, re-derived status, re-hashed archive, ...):
+    # a rewrite in that gap either fails approve()'s own checks or is
+    # functionally identical (same patch_id = same content hash).
+    current_patch_sha, current_gate_sha = _proposal_shas(project, patch_id)
+    if current_patch_sha != seen_patch_sha or current_gate_sha != seen_gate_sha:
+        raise ConfigError("seen", _STALE_MESSAGE, code="conflict")
+    try:
+        # R3 (viewer review): also hand the expected hashes to approve()
+        # itself, which re-checks them inside its own lock right after
+        # reading both files -- closes the gap between the pre-check above
+        # and approve() actually reading the (possibly since-rewritten) files.
+        revision = _approve_patch(project, template, patch_id, reason, repo_root=job_store.configs.repo,
+                                   expect_patch_sha256=seen_patch_sha, expect_gate_sha256=seen_gate_sha)
+    except _StalePatch as error:
+        raise ConfigError("seen", _STALE_MESSAGE, code="conflict") from error
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": patch_id, "rev": revision["rev"]})
+
+
+def _reject_patch_action(handler, world_id, patch_id):
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
+    body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
+    seen_patch_sha, seen_gate_sha = _reject_body(body)
+    _patch_id_arg(patch_id)
+    project, _template = _resolve_world_patch_dirs(job_store, world_id)
+    _reject_running_job(job_store)
+    current_patch_sha, current_gate_sha = _proposal_shas(project, patch_id)
+    if current_patch_sha != seen_patch_sha or current_gate_sha != seen_gate_sha:
+        raise ConfigError("seen", _STALE_MESSAGE, code="conflict")
+    try:
+        _reject_patch(project, patch_id)
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": patch_id})
+
+
+def _reopen_patch_action(handler, world_id):
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
+    body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
+    seen_head = _reopen_body(body)
+    project, _template = _resolve_world_patch_dirs(job_store, world_id)
+    _reject_running_job(job_store)
+    try:
+        current_head = _patch_stack_head(project)
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    if current_head != seen_head:
+        raise ConfigError("seen", _STALE_MESSAGE, code="conflict")
+    try:
+        reopened = _reopen_patch(project)
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    if not reopened:
+        raise ConfigError("patch", "戻す承認済みの拡張がありません")
+    handler._send_json(HTTPStatus.OK, {"ok": True, "patch_ids": reopened})
+
+
+# --------------------------------------------------------------------------
 # Dispatch
 # --------------------------------------------------------------------------
 
@@ -741,6 +918,13 @@ def _resolve(parts, method):
             return _save_genre_file, (parts[2],)
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "genres" and parts[3] == "validate":
             return _validate_genre, (parts[2],)
+        if (len(parts) == 6 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
+                and parts[5] in ("approve", "reject")):
+            return ((_approve_patch_action if parts[5] == "approve" else _reject_patch_action),
+                    (parts[2], parts[4]))
+        if (len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
+                and parts[4] == "reopen"):
+            return _reopen_patch_action, (parts[2],)
         return None
     if method != "GET" or not parts:
         return None
