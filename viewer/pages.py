@@ -756,14 +756,21 @@ def _world_project_info() -> dict[str, str]:
     return info
 
 
-def quick_start_actions(world_id, genre, world_name, run_href, *, css_class="", text="この世界で新しい実験を回す"):
+def quick_start_actions(world_id, genre, world_name, run_href, *, css_class="", text="この世界で新しい実験を回す",
+                         repo=None):
     """WB-UI-022: one click starts a run with an auto-generated 設定名 and the
     current defaults, skipping the config form. The 設定名 is built client-side
     at click time (see workbench.js's quickLabel/initQuickStart) so it carries
     the actual click time, not this page's render time. Falls back to a plain
     link to that form when there is no world/genre to start from
     (data-quick-start's JS handler also falls back to run_href on failure).
+
+    S4 (Opus review): `repo` lets a caller with a job_store pass its own
+    `job_store.configs.repo` instead of reading the live data.ROOT working
+    tree directly; callers with no job_store (or that don't care) keep the
+    old data.ROOT default.
     """
+    repo = repo if repo is not None else data.ROOT
     cls = f' class="{_escape(css_class)}"' if css_class else ""
     if not world_id or not genre:
         return f'<a{cls} href="{_escape(run_href)}">{_escape(text)}</a>'
@@ -773,7 +780,7 @@ def quick_start_actions(world_id, genre, world_name, run_href, *, css_class="", 
         f'data-world-name="{_escape(world_name)}">{_escape(text)}</a>'
     )
     result = quick + f' <a href="{_escape(run_href)}">設定を変更して実行</a>'
-    if (data.ROOT / "templates" / genre / "rationality.yaml").is_file():
+    if (repo / "templates" / genre / "rationality.yaml").is_file():
         # WB-JEV-002: this button always saves kappa=None (rationality off,
         # same as leaving the field untouched) -- the default scale
         # (20*100*3=6,000 runs) would take ~150h at kappa=0.6.
