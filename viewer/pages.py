@@ -154,11 +154,23 @@ def _header_pickers(
         + leftmost
         + "".join(pickers)
         + '<span class="header-links">'
+        '<a href="#" data-sheet="local-status-dialog" title="GPUとローカルAIの動作状況" aria-label="GPUとローカルAIの動作状況">'
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9 7V4M12 7V4M15 7V4M9 20v-3M12 20v-3M15 20v-3M7 9H4M7 12H4M7 15H4M20 9h-3M20 12h-3M20 15h-3" stroke-linecap="round"/></svg><span>動作状況</span></a>'
         '<a href="/history" title="実行履歴" aria-label="実行履歴">'
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>実行履歴</span></a>'
         '<a href="/configs" title="設定" aria-label="設定">'
         '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M10 2h4l.6 3 2 .9 2.6-1.5 2 3.5-2.2 2v2.2l2.2 2-2 3.5-2.6-1.5-2 .9-.6 3h-4l-.6-3-2-.9-2.6 1.5-2-3.5 2.2-2V10L2.8 8l2-3.5 2.6 1.5 2-.9L10 2zm2 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg><span>設定</span></a>'
         "</span>"
+        '<dialog class="sheet-dialog local-status-dialog" id="local-status-dialog" '
+        'data-fetch="/api/status/local" aria-label="GPU・ローカルAIの動作状況">'
+        '<section class="local-status">'
+        '<div class="sheet-head"><h4>GPU・ローカルAIの動作状況</h4>'
+        '<button type="button" class="button" data-local-status-refresh>更新</button>'
+        '<button type="button" class="button" data-close-dialog>閉じる</button></div>'
+        '<p class="local-status-backend" data-local-status-backend>確認中…</p>'
+        '<dl class="local-status-rows" data-local-status-rows></dl>'
+        '<p class="local-status-time" data-local-status-time></p>'
+        "</section></dialog>"
         "</div>"
     )
 

@@ -3088,6 +3088,92 @@ table.catalog-kinds code {
   }
 }
 
+/* WB-INFO-001: topbar GPU/AI status dialog. */
+.local-status-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+}
+
+.local-status {
+  padding: 1rem 1.3rem 1.1rem;
+}
+
+.local-status .sheet-head {
+  gap: 0.5rem;
+}
+
+.local-status-backend {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.7rem;
+}
+
+.local-status-rows {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.ls-row {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  gap: 0.1rem 0.5rem;
+  justify-content: space-between;
+}
+
+.ls-row dt {
+  align-items: center;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 0.4rem;
+}
+
+.ls-row.in-use dt {
+  text-decoration: underline;
+  text-decoration-color: var(--ws-advance);
+  text-decoration-thickness: 2px;
+}
+
+.ls-row dd {
+  color: var(--muted);
+  margin: 0;
+  text-align: right;
+}
+
+.ls-dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.6rem;
+  width: 0.6rem;
+}
+
+.ls-row.level-ok .ls-dot {
+  background: var(--ws-confirm);
+}
+
+.ls-row.level-warn .ls-dot {
+  background: var(--ws-advance);
+}
+
+.ls-row.level-off .ls-dot {
+  background: var(--line);
+}
+
+.local-status-time {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 0.8rem 0 0;
+  padding-top: 0.5rem;
+  text-align: right;
+}
+
+.ls-error {
+  color: var(--muted);
+  margin: 0;
+}
+
 /* WB-UI-019: sectioned run-config form. */
 
 .cfg-form {

@@ -167,6 +167,74 @@
     });
   });
 
+  // WB-INFO-001: topbar GPU/AI status dialog. Fetched fresh on every open
+  // (and on the refresh button) rather than cached, since a stale "空き" or
+  // "起動中" reading defeats the point of a status check.
+  {
+    const trigger = document.querySelector('[data-sheet="local-status-dialog"]');
+    const dialog = document.getElementById("local-status-dialog");
+    if (trigger && dialog && typeof dialog.showModal === "function") {
+      const backendEl = dialog.querySelector("[data-local-status-backend]");
+      const rowsEl = dialog.querySelector("[data-local-status-rows]");
+      const timeEl = dialog.querySelector("[data-local-status-time]");
+      const refreshButton = dialog.querySelector("[data-local-status-refresh]");
+      const loadStatus = async () => {
+        if (refreshButton) {
+          refreshButton.disabled = true;
+        }
+        backendEl.textContent = "確認中…";
+        rowsEl.replaceChildren();
+        timeEl.textContent = "";
+        try {
+          const response = await fetch(dialog.dataset.fetch, {
+            headers: {"X-WorldBloom-Client": "1"},
+            signal: AbortSignal.timeout(20000),
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const status = await response.json();
+          backendEl.textContent = status.backend_label || "";
+          rowsEl.replaceChildren(
+            ...(status.rows || []).map((row) => {
+              const item = document.createElement("div");
+              item.className = `ls-row level-${row.level}${row.in_use ? " in-use" : ""}`;
+              const dt = document.createElement("dt");
+              const dot = document.createElement("span");
+              dot.className = "ls-dot";
+              dot.setAttribute("aria-hidden", "true");
+              dt.append(dot, document.createTextNode(row.label));
+              const dd = document.createElement("dd");
+              dd.textContent = row.value;
+              item.append(dt, dd);
+              return item;
+            })
+          );
+          timeEl.textContent = status.checked_at ? `${status.checked_at} 時点` : "";
+        } catch (error) {
+          backendEl.textContent = "";
+          // A <dl> only allows dt/dd/div children, not <p>.
+          const message = document.createElement("div");
+          message.className = "ls-error";
+          message.textContent = "状態を取得できませんでした（サーバー応答なし）";
+          rowsEl.replaceChildren(message);
+        } finally {
+          if (refreshButton) {
+            refreshButton.disabled = false;
+          }
+        }
+      };
+      trigger.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (!dialog.open) {
+          dialog.showModal();
+          loadStatus();
+        }
+      });
+      refreshButton?.addEventListener("click", loadStatus);
+    }
+  }
+
   const deleteRun = async (button) => {
     const endpoint = button.dataset.endpoint;
     const name = button.dataset.run;

@@ -87,6 +87,15 @@ def dispatch(handler, parts, method):
     if not parts or parts[0] != "api":
         return False
     try:
+        if method == "GET" and parts == ["api", "status", "local"]:
+            # Unlike every other /api route, this must work without a
+            # job_store: the Viewer exe (no job_store at all) still shows the
+            # topbar's GPU/AI status dialog, just with everything as "off".
+            boundary(handler, client_header=False, body_required=False)
+            from viewer import local_status
+            settings = getattr(handler.server, "settings_path", None)
+            handler._send_json(HTTPStatus.OK, local_status.snapshot(settings))
+            return True
         jobs = getattr(handler.server, "job_store", None)
         if jobs is None:
             raise ConfigError("service", "実行管理は未設定です", code="unavailable")
