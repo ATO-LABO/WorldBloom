@@ -9,18 +9,27 @@
 
 [![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio--portable.zip-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip)
 
-展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます<br>
+</div>
+
+展開して `WorldBloom-Studio.exe` を開くだけ。
+
+世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます。
+
 （Python 3.11以上が別途必要です。詳細は同梱の README.txt を参照）
 
-インストールせずブラウザで見るだけなら → [公開ビューア](https://ato-labo.github.io/WorldBloom/)（桃太郎・恋愛・探偵の3実験）
+インストールせずブラウザで見るだけなら → [公開ビューア](https://ato-labo.github.io/WorldBloom/)
+
+（桃太郎・恋愛・探偵の3実験）
 
 3分でわかるダイジェスト動画 → [YouTube](https://youtu.be/Yozi2qb2IQg)
 
-[![WorldBloom 3分ダイジェスト動画](https://img.youtube.com/vi/Yozi2qb2IQg/maxresdefault.jpg)](https://youtu.be/Yozi2qb2IQg)
+<p align="center">
+  <a href="https://youtu.be/Yozi2qb2IQg"><img src="https://img.youtube.com/vi/Yozi2qb2IQg/maxresdefault.jpg" width="640" alt="WorldBloom 3分ダイジェスト動画のサムネイル"></a>
+</p>
 
-<img src="docs/images/readme-hero.png" width="820" alt="WorldBloomビューアのSifting画面。進化で見つかった物語の展開が格子状に並び、あらすじが表示されている">
-
-</div>
+<p align="center">
+  <img src="docs/images/readme-hero.png" width="820" alt="WorldBloomビューアのSifting画面。進化で見つかった物語の展開が格子状に並び、あらすじが表示されている">
+</p>
 
 ## これは何か
 
