@@ -3069,6 +3069,11 @@ table.catalog-kinds code {
   gap: 0.3rem;
 }
 
+/* Same column width the advanced sheet gives its bars, so the tracks don't span the whole panel. */
+.wp-person-detail .stat-bars {
+  max-width: 32rem;
+}
+
 .stat {
   align-items: center;
   display: grid;
