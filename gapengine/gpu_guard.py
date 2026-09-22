@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -207,6 +208,53 @@ def gpu_lease(
         _lease_depth = 0
         try:
             _unlock_file(handle)
+        finally:
+            handle.close()
+
+
+# Serializes lease_state() probes within this process -- two concurrent HTTP
+# requests (e.g. two browser tabs open on the status dialog) would otherwise
+# contend with *each other*'s probe attempt and report a false "busy" against
+# stale holder.json data, since holder.json is never cleared on release.
+_lease_state_lock = threading.Lock()
+
+
+def lease_state() -> dict[str, Any]:
+    """Best-effort, non-blocking snapshot of whether the lease is held right now.
+
+    holder.json alone can't answer this: it records the *last* acquirer and
+    is never cleared on release. This grabs and immediately releases the lock
+    file to actually test it, for diagnostic display only.
+
+    # ponytail: a real gpu_lease() acquire in progress with wait_seconds=0
+    # left at its deadline could, in a vanishingly small window, have this
+    # probe's momentary hold make it miss the lock and raise GpuBusy one poll
+    # early. Narrow enough (a single OS-level lock/unlock) not to be worth a
+    # retry protocol; revisit if a real GpuBusy is ever traced back to it.
+    """
+
+    with _lease_state_lock:
+        directory = lease_dir()
+        lock_path = directory / "gpu.lock"
+        if not lock_path.exists():
+            return {"busy": False}
+        holder = _read_holder(directory)
+        try:
+            handle = lock_path.open("a+b")
+        except OSError:
+            return {"busy": False}
+        try:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"0")
+                handle.flush()
+            handle.seek(0)
+            try:
+                _lock_file(handle)
+            except OSError:
+                return {"busy": True, **holder}
+            _unlock_file(handle)
+            return {"busy": False}
         finally:
             handle.close()
 

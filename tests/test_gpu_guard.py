@@ -48,6 +48,25 @@ class _EnvIsolatedTestCase(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
 
+class LeaseStateTests(_EnvIsolatedTestCase):
+    def test_not_busy_with_no_lock_file_yet(self) -> None:
+        self.assertEqual(gpu_guard.lease_state(), {"busy": False})
+
+    def test_probe_with_no_lock_file_creates_nothing(self) -> None:
+        gpu_guard.lease_state()
+        self.assertFalse((Path(self._lease_temp.name) / "gpu.lock").exists())
+        self.assertFalse((Path(self._lease_temp.name) / "gpu.holder.json").exists())
+
+    def test_probe_does_not_leave_the_lease_held(self) -> None:
+        with gpu_guard.gpu_lease("setup", wait_seconds=1):
+            pass
+        self.assertFalse(gpu_guard.lease_state()["busy"])
+        # A real acquire right after the probe must still succeed --
+        # lease_state() must release what it took to test the lock.
+        with gpu_guard.gpu_lease("after-probe", wait_seconds=1):
+            pass
+
+
 class WaitUntilCoolTests(_EnvIsolatedTestCase):
     def test_none_temperature_does_not_wait(self) -> None:
         sleep = mock.Mock()
@@ -122,6 +141,29 @@ class GpuLeaseCrossProcessTests(_EnvIsolatedTestCase):
                 raise AssertionError("lease holder subprocess never signalled readiness")
             time.sleep(0.05)
         return process
+
+    def test_lease_state_busy_while_other_process_holds_it(self) -> None:
+        process = self._spawn_holder()
+        try:
+            state = gpu_guard.lease_state()
+            self.assertTrue(state["busy"])
+            self.assertEqual(state.get("owner"), "other-process")
+        finally:
+            process.kill()
+            process.wait(timeout=10)
+
+    def test_lease_state_probe_does_not_steal_the_other_process_lease(self) -> None:
+        # The probe must not just *report* busy from stale holder.json -- the
+        # other process's actual OS-level hold must still be intact right after.
+        process = self._spawn_holder()
+        try:
+            gpu_guard.lease_state()
+            with self.assertRaises(gpu_guard.GpuBusy):
+                with gpu_guard.gpu_lease("me", wait_seconds=0.5, poll_seconds=0.1):
+                    pass
+        finally:
+            process.kill()
+            process.wait(timeout=10)
 
     def test_other_process_holds_lease_raises_gpu_busy(self) -> None:
         process = self._spawn_holder()

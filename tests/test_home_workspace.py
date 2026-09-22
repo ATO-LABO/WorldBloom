@@ -110,11 +110,16 @@ class HomeWorkspaceTests(unittest.TestCase):
         for home in (False, True):
             page = pages.document("test", "", is_home=home, run="x"*200)
             head = page.split('<header class="site-header">', 1)[1].split("</header>", 1)[0]
+            local_status = head.index('data-sheet="local-status-dialog"')
             history = head.index('href="/history"')
             settings = head.index('href="/configs"')
+            self.assertLess(local_status, history)
             self.assertLess(history, settings)
+            self.assertIn("<span>動作状況</span>", head)
             self.assertIn("<span>実行履歴</span>", head)
             self.assertIn("<span>設定</span>", head)
-            self.assertEqual(head.count('aria-hidden="true" focusable="false"'), 2)
+            self.assertEqual(head.count('aria-hidden="true" focusable="false"'), 3)
+            self.assertIn('id="local-status-dialog"', head)
+            self.assertIn('data-fetch="/api/status/local"', head)
         self.assertIn("home-workspace.js", server.STATIC_FILES)
         self.assertIn("home-workspace.css", server.STATIC_FILES)
