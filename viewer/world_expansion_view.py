@@ -19,6 +19,7 @@ from gapengine.world_patch import (
     PATCH_RULES_VERSION,
     PatchError,
     read_stack,
+    retired_patches,
     verify_stack,
 )
 from viewer import pages
@@ -60,19 +61,32 @@ def _load_proposal(path: Path) -> dict:
 def load(project_dir) -> dict:
     """その世界の拡張の状態をサーバー側で読み直す。書き込みは一切しない。"""
     project_dir = Path(project_dir)
-    result: dict[str, Any] = {"approved": [], "proposed": [], "head": None, "error": None}
+    result: dict[str, Any] = {"approved": [], "proposed": [], "retired": [], "head": None, "error": None}
     try:
         verified = verify_stack(project_dir)
+        retired = retired_patches(project_dir)
         stack = read_stack(project_dir)
     except PatchError as error:
         result["error"] = str(error)
         return result
-    for (patch, _raw), revision in zip(verified, stack["revisions"]):
+    # WB-WORLDGROW-001 段階5a: a retire revision breaks the old 1:1
+    # zip(verified, stack["revisions"]) -- match by patch_id instead of
+    # position (stack["revisions"] now interleaves "patch" and "retire" kinds).
+    approval_by_id = {r["patch_id"]: r for r in stack["revisions"] if r.get("kind", "patch") == "patch"}
+    for patch, _raw in verified:
+        revision = approval_by_id.get(patch["id"]) or {}
         result["approved"].append({
             "rev": revision.get("rev"), "patch": patch,
             "reason": (revision.get("approval") or {}).get("reason") or "",
             "approved_at": revision.get("approved_at"),
             "experiment": (patch.get("trigger") or {}).get("experiment"),
+        })
+    for entry in retired:
+        result["retired"].append({
+            "rev": entry["rev"], "patch": entry["patch"],
+            "reason": entry["retire"].get("reason") or "",
+            "retired_at": entry["retire"].get("retired_at"),
+            "experiment": entry["retire"].get("experiment"),
         })
     result["head"] = stack["head"]
     proposed_dir = project_dir / "patches" / "_proposed"
@@ -477,7 +491,8 @@ def approved_list(state: dict, *, world_id: str, can_write: bool, run_link, worl
     （渡さなければ id をそのまま使う）。"""
     approved = state.get("approved") or []
     proposed = state.get("proposed") or []
-    if not approved and not proposed:
+    retired = state.get("retired") or []
+    if not approved and not proposed and not retired:
         return ""
     parts = ['<section class="card we-approved"><h2>後から生まれたもの</h2>']
     if state.get("error"):
@@ -542,5 +557,20 @@ def approved_list(state: dict, *, world_id: str, can_write: bool, run_link, worl
                 + link_html + "</li>"
             )
         parts.append("</ul>")
+
+    if retired:
+        # WB-WORLDGROW-001 段階5a: 淘汰済み（墓標リビジョン）の一覧。yaml/gate
+        # は消えていない（読み直せば「何が増えるか」も出せるが、退場した拡張の
+        # 詳細まではここでは出さない -- タイトル・理由・実験だけで十分）。
+        parts.append(f"<h3>枯れた拡張（{len(retired)}件）</h3><ul>")
+        for entry in retired:
+            patch = entry["patch"]
+            link_html = _experiment_link_html(entry.get("experiment"), run_link, "枯らした実験を見る →")
+            parts.append(
+                f'<li><strong>{_escape(patch.get("title"))}</strong>'
+                f'<p class="muted">枯らした理由: {_escape(entry.get("reason"))}</p>{link_html}</li>'
+            )
+        parts.append("</ul>")
+
     parts.append("</section>")
     return "".join(parts)

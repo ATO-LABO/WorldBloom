@@ -34,6 +34,7 @@ from gapengine.world_patch import (
     apply_patches,
     approved_patches,
     patch_id_for,
+    retired_patches,
     template_identifiers,
     validate_patch,
 )
@@ -41,9 +42,10 @@ from gapengine.world_patch_propose import (MAX_PROMPT_CHARS, build_prompt, check
                                            check_trigger_coverage, make_patch, parse_proposal)
 from gapengine.world_patch_trial import run_trial, gate_status
 from gapengine.world_patch import stack_head, verify_stack, read_stack
+from gapengine.world_patch_usage import patch_usage, wither_candidates
 from execution.provenance import atomic_json
 from execution.world_patches import _check_parent_rev, patch_lock
-from execution.world_patch_approval import approve, reject, reopen, repair
+from execution.world_patch_approval import approve, reject, reopen, repair, retire
 
 # Exceptions an LLM's malformed JSON/shape can realistically trigger while a
 # proposal is parsed and gated (WB-WORLDGROW-001 R6): parse_proposal/make_patch/
@@ -414,14 +416,73 @@ def cmd_reject(args):
     return 0
 
 
+def _protagonist(project: Path) -> str:
+    world = yaml.safe_load((project / "world.yaml").read_text(encoding="utf-8"))
+    return world["protagonist"]
+
+
+def _usage_summary(usage: dict, candidates: list[str]) -> list[str]:
+    lines = []
+    for patch_id, counts in usage.items():
+        mark = "（枯れ候補）" if patch_id in candidates else ""
+        lines.append(f"  {patch_id}: 代表個体{counts['elites_total']}体中 強い使用{counts['elites_strong']}体・"
+                      f"弱い使用{counts['elites_weak']}体{mark}")
+    return lines
+
+
+def cmd_retire(args):
+    """WB-WORLDGROW-001 段階5a: wither an already-approved patch. --experiment
+    supplies the representative individuals patch_usage() measures use
+    against; the measured table is shown and written into retire.json
+    verbatim (execution.world_patch_approval.retire's `usage` argument)."""
+    project, template, experiment = args.project.resolve(), args.template.resolve(), args.experiment.resolve()
+    with patch_lock(project):
+        active = approved_patches(project)
+    usage = patch_usage(experiment, _protagonist(project), active)
+    candidates = wither_candidates(usage)
+    for line in _usage_summary(usage, candidates):
+        print(line)
+    try:
+        revision = retire(project, template, args.patch, args.reason, experiment=experiment,
+                          usage=usage.get(args.patch))
+    except PatchError as error:
+        print(str(error))
+        return 1
+    print(f"枯らしました: {args.patch}（rev={revision['rev']}）")
+    return 0
+
+
+def cmd_usage(args):
+    """WB-WORLDGROW-001 段階5a, 読み取り専用: 適用中パッチごとの使用表と枯れ候補。"""
+    project, experiment = args.project.resolve(), args.experiment.resolve()
+    with patch_lock(project):
+        active = approved_patches(project)
+    if not active:
+        print("適用中のパッチはありません")
+        return 0
+    usage = patch_usage(experiment, _protagonist(project), active)
+    candidates = wither_candidates(usage)
+    for line in _usage_summary(usage, candidates):
+        print(line)
+    return 0
+
+
 def cmd_list(args):
     project = args.project.resolve()
     with patch_lock(project):
         verified = verify_stack(project)
         stack = read_stack(project)
+        approval_by_id = {r["patch_id"]: r for r in stack["revisions"] if r.get("kind", "patch") == "patch"}
         print("承認済み:")
-        for (patch, _), revision in zip(verified, stack["revisions"]):
-            print(f"  rev={revision['rev']} {patch['id']} {patch.get('title')} / {revision['approval']['reason']}")
+        for patch, _raw in verified:
+            revision = approval_by_id.get(patch["id"], {})
+            reason = (revision.get("approval") or {}).get("reason")
+            print(f"  rev={revision.get('rev')} {patch['id']} {patch.get('title')} / {reason}")
+        retired = retired_patches(project)
+        if retired:
+            print("枯れた拡張:")
+            for entry in retired:
+                print(f"  rev={entry['rev']} {entry['patch']['id']} {entry['patch'].get('title')} / {entry['retire'].get('reason')}")
         print("提案中:")
         for path in sorted((project / "patches" / "_proposed").glob("*.yaml")):
             patch = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -505,6 +566,19 @@ def build_parser() -> argparse.ArgumentParser:
     reject.add_argument("--project", type=Path, required=True)
     reject.add_argument("--patch", required=True)
     reject.set_defaults(func=cmd_reject)
+
+    retire_cmd = sub.add_parser("retire")
+    retire_cmd.add_argument("--project", type=Path, required=True)
+    retire_cmd.add_argument("--template", type=Path, required=True)
+    retire_cmd.add_argument("--patch", required=True)
+    retire_cmd.add_argument("--reason", required=True)
+    retire_cmd.add_argument("--experiment", type=Path, required=True)
+    retire_cmd.set_defaults(func=cmd_retire)
+
+    usage_cmd = sub.add_parser("usage")
+    usage_cmd.add_argument("--project", type=Path, required=True)
+    usage_cmd.add_argument("--experiment", type=Path, required=True)
+    usage_cmd.set_defaults(func=cmd_usage)
 
     list_cmd = sub.add_parser("list")
     list_cmd.add_argument("--project", type=Path, required=True)

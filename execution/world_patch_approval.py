@@ -13,13 +13,15 @@ import yaml
 from engine.subject import Subject
 from engine.world import World
 from execution.provenance import atomic_json
-from execution.world_patches import applicable_snapshot, patch_lock
+from execution.world_patches import applicable_snapshot, patch_lock, project_inputs
 from gapengine.lineage import _EXEMPLAR_PATH
 from gapengine.world_patch import (PATCH_RULES_VERSION, ID_RE, PatchError, materialize,
-                                  next_digest, patch_id_for, read_stack, template_identifiers, verify_stack)
+                                  next_digest, patch_id_for, read_stack, retired_patches,
+                                  template_identifiers, verify_stack)
 from gapengine.world_patch_contract import contract_check
 from gapengine.world_patch_inputs import digest, inputs_digest, runtime_digest
 from gapengine.world_patch_trial import TRIAL_RULES_VERSION, gate_status, seed_sets
+from gapengine.world_patch_usage import load_archive
 
 
 def _sha(raw):
@@ -247,6 +249,110 @@ def reject(project, patch_id):
             shutil.move(str(path), str(destination / path.name))
 
 
+def _dependents_of(world, people, survivors, reserved):
+    """Applies `survivors` (the still-active patches, in approval order,
+    with the retire target already excluded) one at a time from `world`/
+    `people`, returning the ids of every survivor whose own materialize()
+    call fails on top of the previous survivors -- a best-effort diagnostic
+    for retire()'s refusal message (WB-WORLDGROW-001 段階5a): it does not
+    prove a dependency, but a patch whose craft_zone/requires.knowledge/
+    made_from referenced something only the retired patch added will show
+    up here. A survivor that fails is skipped (not folded into the running
+    world/people), so later, unrelated survivors are still checked from a
+    clean base instead of failing in cascade."""
+    current_world, current_people, failed = world, people, []
+    for patch in survivors:
+        try:
+            current_world, current_people = materialize(
+                current_world, current_people, [patch], reserved=reserved, check_budgets=False)
+        except PatchError:
+            failed.append(patch["id"])
+    return failed
+
+
+def retire(project, template, patch_id, reason, *, experiment, expect_head=None, usage=None):
+    """Human 'wither' of an already-approved patch (WB-WORLDGROW-001 段階5a,
+    方式G「墓標リビジョン」): the patch's own <id>.yaml/<id>.gate.json are
+    left exactly where they are (still readable, still hash-verified by
+    every later verify_stack()) -- only a new `kind: "retire"` revision is
+    appended to stack.json, and a <id>.retire.json evidence record is
+    written alongside them. From then on gapengine.world_patch.verify_stack
+    no longer counts this patch among the applied ones.
+
+    Refuses (writing nothing) when any other still-active patch fails to
+    materialize once this one is excluded -- e.g. a later patch's
+    craft_zone/requires.knowledge/made_from referenced something only this
+    patch added. Those must be retired together; the error names which
+    survivors broke (see _dependents_of) so the caller knows what to retire
+    first.
+
+    `experiment` is the experiment directory this retirement's usage
+    evidence was measured against (its name is what gets recorded and
+    displayed; its archive.json is hashed the same way approve() hashes
+    its own trial evidence, best-effort -- a missing/unreadable archive
+    just records archive_sha256=None instead of refusing). `usage` is the
+    gapengine.world_patch_usage.patch_usage() result the caller measured;
+    it is written into retire.json verbatim so the evidence survives even
+    if runs/ is later pruned (ユーザー決定2026-09-22 #7)."""
+    project, template, experiment = Path(project), Path(template), Path(experiment)
+    if not isinstance(reason, str) or len(reason.strip()) < 10:
+        raise PatchError("淘汰理由を10文字以上で指定してください")
+    if not ID_RE.fullmatch(patch_id):
+        raise PatchError("パッチ ID の形式が不正です")
+    folder = project / "patches"
+    with patch_lock(project):
+        verified = verify_stack(project)
+        stack = read_stack(project)
+        if expect_head is not None and expect_head != stack["head"]:
+            raise StalePatch("画面を開いたあとに内容が変わりました。再読み込みしてください")
+        active = [p for p, _ in verified]
+        if patch_id not in {p["id"] for p in active}:
+            raise PatchError("対象のパッチは適用中ではありません（未承認・すでに淘汰済み・存在しないのいずれかです）")
+        reserved = template_identifiers(template)
+        world, people, _refs, _digest = project_inputs(project, template)
+        survivors = [p for p in active if p["id"] != patch_id]
+        try:
+            materialize(world, people, survivors, reserved=reserved, check_budgets=False)
+        except PatchError as error:
+            dependents = _dependents_of(world, people, survivors, reserved)
+            if dependents:
+                raise PatchError(
+                    "このパッチは後から承認された拡張に使われているため、単独では枯らせません。"
+                    "先に一緒に枯らしてください: " + "、".join(dependents)) from error
+            raise PatchError(f"このパッチを外すと世界が組み立てられません: {error}") from error
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        record = {"patch_id": patch_id, "reason": reason.strip(), "retired_at": now,
+                  "parent_digest": stack["head"], "experiment": experiment.name,
+                  "usage": usage, "rules_version": PATCH_RULES_VERSION}
+        # M1 (Opus review): a ConfigStore-prepared experiment has no
+        # top-level archive.json (only published/<revision>/archive.json) --
+        # load_archive() covers both. Best-effort: an unreadable archive
+        # just leaves archive_sha256/archive_source None, same as before.
+        try:
+            _archive, raw, source = load_archive(experiment)
+            record["archive_sha256"] = _sha(raw)
+            record["archive_source"] = source
+        except (OSError, ValueError, KeyError, TypeError):
+            record["archive_sha256"] = None
+            record["archive_source"] = None
+        retire_path = folder / f"{patch_id}.retire.json"
+        # R2 (Opus review): a retire.json here cannot be a real tombstone --
+        # verify_stack() above already proved `patch_id` is still active,
+        # and a patch with a real (manifest-recorded) retire.json would not
+        # be. Any file at this path is therefore an orphan left by a
+        # previous retire() that wrote retire.json and then died before
+        # writing stack.json -- overwrite it rather than refusing forever.
+        atomic_json(retire_path, record)
+        retire_sha = _sha(retire_path.read_bytes())
+        revision = {"rev": len(stack["revisions"]) + 1, "kind": "retire", "patch_id": patch_id,
+                    "retire_sha256": retire_sha, "parent_digest": stack["head"],
+                    "digest": next_digest(stack["head"], retire_sha)}
+        stack["revisions"].append(revision)
+        stack["head"] = revision["digest"]
+        atomic_json(folder / "stack.json", stack)
+        return revision
+
+
 def repair(project):
     project = Path(project)
     folder, moved = project / "patches", []
@@ -256,6 +362,11 @@ def repair(project):
         # Verify listed bytes before moving anything; corrupt committed revisions
         # cannot be repaired by discarding their files.
         for entry in stack["revisions"]:
+            if entry.get("kind", "patch") == "retire":
+                path = folder / (entry["patch_id"] + ".retire.json")
+                if not path.is_file() or _sha(path.read_bytes()) != entry.get("retire_sha256"):
+                    raise PatchError("manifest掲載済みファイルの破損はrepairできません")
+                continue
             for suffix, key in ((".yaml", "patch_sha256"), (".gate.json", "gate_sha256")):
                 path = folder / (entry["patch_id"] + suffix)
                 if not path.is_file() or _sha(path.read_bytes()) != entry[key]:
@@ -278,32 +389,48 @@ def repair(project):
 
 
 def reopen(project):
+    """Restore every currently-active approved revision back to _proposed/
+    for re-checking. WB-WORLDGROW-001 段階5a: retired patches' yaml/gate/
+    retire.json go to _retired/ instead -- reopen() empties stack.json
+    (the whole approval chain restarts from scratch), so without this a
+    retired patch's files would just sit in patches/ as files the next
+    verify_stack() doesn't recognize (an "extra" error) until repair()."""
     project = Path(project)
     folder = project / "patches"
     with patch_lock(project):
         verified = verify_stack(project)
-        if not verified:
+        retired = retired_patches(project)
+        if not verified and not retired:
             return []
         stack = read_stack(project)
-        destination = folder / "_proposed"
-        sources = [folder / (p["id"] + suffix) for p, _ in verified for suffix in (".yaml", ".gate.json")]
-        if any((destination / p.name).exists() for p in sources):
+        proposed_dest = folder / "_proposed"
+        retired_dest = folder / "_retired"
+        active_sources = [folder / (p["id"] + suffix) for p, _ in verified for suffix in (".yaml", ".gate.json")]
+        retired_sources = [folder / (entry["patch"]["id"] + suffix) for entry in retired
+                            for suffix in (".yaml", ".gate.json", ".retire.json")]
+        if any((proposed_dest / p.name).exists() for p in active_sources):
             raise PatchError("_proposed の同名ファイルと競合しています。上書きはしません")
+        if any((retired_dest / p.name).exists() for p in retired_sources):
+            raise PatchError("_retired の同名ファイルと競合しています。上書きはしません")
         history = folder / "_history"
         history.mkdir(exist_ok=True)
         archive = history / f"stack.{stack['head'][:12]}.{uuid.uuid4().hex[:8]}"
         archive.mkdir()
-        # Preserve complete evidence before invalidating the active approvals.
-        for path in sources:
+        # Preserve complete evidence (both active and retired) before
+        # invalidating the whole chain.
+        for path in active_sources + retired_sources:
             (archive / path.name).write_bytes(path.read_bytes())
         atomic_json(archive / "stack.json", stack)
-        destination.mkdir(exist_ok=True)
-        for path in sources:
-            os.replace(path, destination / path.name)
+        proposed_dest.mkdir(exist_ok=True)
+        for path in active_sources:
+            os.replace(path, proposed_dest / path.name)
             if path.name.endswith(".gate.json"):
-                gate = json.loads((destination / path.name).read_text(encoding="utf-8"))
+                gate = json.loads((proposed_dest / path.name).read_text(encoding="utf-8"))
                 gate.update(status="trial_pending", trial=None, passed=False)
                 gate.pop("approval", None)
-                atomic_json(destination / path.name, gate)
+                atomic_json(proposed_dest / path.name, gate)
+        retired_dest.mkdir(exist_ok=True)
+        for path in retired_sources:
+            os.replace(path, retired_dest / path.name)
         os.replace(folder / "stack.json", history / f"{archive.name}.json")
         return [p["id"] for p, _ in verified]

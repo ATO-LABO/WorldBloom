@@ -487,6 +487,177 @@ class WorldExpansionApiTests(unittest.TestCase):
         self.assertFalse((self.project_dir / f"patches/_proposed/{patch['id']}.yaml").exists())
         self.assertTrue((self.project_dir / f"patches/{patch['id']}.yaml").is_file())
 
+    # -- retire (WB-WORLDGROW-001 段階5a) ----------------------------------
+
+    def _write_experiment(self, name, *, protagonist="桃太郎", cells=None):
+        """A minimal experiment under this server's runs_root, just enough
+        for viewer.data.RunRepository.experiment()/world_demand_view.
+        resolve_root() to accept it and for retire()'s server-side usage
+        table to compute (possibly against zero readable exemplars)."""
+        experiment = self.server.repository.runs_root / name
+        experiment.mkdir(parents=True, exist_ok=True)
+        (experiment / "archive.json").write_text(
+            json.dumps({"cells": cells or {}}, ensure_ascii=False), encoding="utf-8")
+        (experiment / "config.json").write_text(
+            json.dumps({"preview": {"protagonist": protagonist}}, ensure_ascii=False), encoding="utf-8")
+        return experiment
+
+    def test_retire_without_job_store_is_503(self):
+        self.server.job_store = None
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/p-00000000/retire",
+            {"reason": "確認しました確認しました", "experiment": "exp1", "seen": {"head": EMPTY_STACK_DIGEST}})
+        self.assertEqual(status, 503, payload)
+
+    def test_retire_extra_body_key_is_rejected(self):
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/p-00000000/retire",
+            {"reason": "確認しました確認しました", "experiment": "exp1", "status": "reviewable",
+             "seen": {"head": EMPTY_STACK_DIGEST}})
+        self.assertEqual(status, 400, payload)
+
+    def test_retire_reason_too_short_is_400(self):
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/p-00000000/retire",
+            {"reason": "短い", "experiment": "exp1", "seen": {"head": EMPTY_STACK_DIGEST}})
+        self.assertEqual(status, 400, payload)
+
+    def test_retire_seen_mismatch_is_409(self):
+        add = {"zones": [{"name": "小屋淘汰1", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "淘汰試験1", "add": add})
+        self._write_experiment("exp-retire-1")
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/retire",
+            {"reason": "使われていないので枯らします", "experiment": "exp-retire-1",
+             "seen": {"head": "not-the-real-head"}})
+        self.assertEqual(status, 409, payload)
+        self.assertTrue((self.project_dir / f"patches/{patch['id']}.yaml").is_file())
+        self.assertFalse((self.project_dir / f"patches/{patch['id']}.retire.json").exists())
+
+    def test_retire_unknown_experiment_is_400(self):
+        add = {"zones": [{"name": "小屋淘汰2", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "淘汰試験2", "add": add})
+        head = read_stack(self.project_dir)["head"]
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/retire",
+            {"reason": "使われていないので枯らします", "experiment": "no-such-experiment",
+             "seen": {"head": head}})
+        self.assertEqual(status, 400, payload)
+
+    def test_retire_unapproved_patch_is_422(self):
+        self._write_experiment("exp-retire-3")
+        head = read_stack(self.project_dir)["head"]
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/p-00000000/retire",
+            {"reason": "存在しないパッチを枯らそうとします", "experiment": "exp-retire-3",
+             "seen": {"head": head}})
+        self.assertEqual(status, 422, payload)
+
+    def test_retire_succeeds_and_writes_tombstone(self):
+        add = {"zones": [{"name": "小屋淘汰4", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "淘汰試験4", "add": add})
+        self._write_experiment("exp-retire-4")
+        head = read_stack(self.project_dir)["head"]
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/retire",
+            {"reason": "使われていないので枯らします", "experiment": "exp-retire-4",
+             "seen": {"head": head}})
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["patch_id"], patch["id"])
+        self.assertEqual(payload["rev"], 2)
+        self.assertTrue((self.project_dir / f"patches/{patch['id']}.yaml").is_file())
+        retire_path = self.project_dir / f"patches/{patch['id']}.retire.json"
+        self.assertTrue(retire_path.is_file())
+        record = json.loads(retire_path.read_text(encoding="utf-8"))
+        self.assertEqual(record["experiment"], "exp-retire-4")
+        self.assertIn("usage", record)
+        stack = read_stack(self.project_dir)
+        self.assertEqual(stack["revisions"][-1]["kind"], "retire")
+
+    def test_retire_dependent_patch_conflict_is_422(self):
+        add_a = {"zones": [{"name": "小屋淘汰5", "parent": "海"}]}
+        patch_a = write_approved(self.project_dir, {"title": "淘汰試験5A", "add": add_a})
+        add_c = {"zones": [], "items": [{"name": "淘汰試験用の道具", "sources": [
+            {"type": "investigate", "zone": "海", "count": 1, "max": 1}], "craft_zone": "小屋淘汰5"}]}
+        write_approved(self.project_dir, {"title": "淘汰試験5C", "add": add_c})
+        self._write_experiment("exp-retire-5")
+        head = read_stack(self.project_dir)["head"]
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch_a['id']}/retire",
+            {"reason": "依存されているのに枯らそうとします", "experiment": "exp-retire-5",
+             "seen": {"head": head}})
+        self.assertEqual(status, 422, payload)
+        self.assertFalse((self.project_dir / f"patches/{patch_a['id']}.retire.json").exists())
+
+    # -- M1 (Opus review): a catalogued (screen-run) experiment has no
+    # top-level archive.json, only published/<revision>/archive.json --
+    # both retire()'s own archive_sha256 hashing and the server's usage
+    # computation must read through that layout instead of silently
+    # producing a 500 / an always-empty usage table. --------------------
+
+    def _write_catalog_experiment(self, name, *, cells, protagonist="桃太郎"):
+        """A genuine (non-legacy), fully catalog-verified experiment with NO
+        top-level archive.json -- built the same way tests/test_run_catalog.
+        py's test_real_ui004_publication_and_terminal_gate and tests/
+        test_ga_replay.py's _publish_revision hand-build one, minus the real
+        GA run (this only needs the on-disk shape, not real individuals)."""
+        from execution.provenance import atomic_json as _atomic_json, canonical, sha256, write_bytes
+        root = self.server.repository.runs_root / name
+        root.mkdir(parents=True)
+        manifest = {"schema_version": 1, "run_id": name, "config_id": "cfg-usage",
+                    "evolution": {}, "target_endings": []}
+        manifest_bytes = canonical(manifest)
+        write_bytes(root / "manifest.json", manifest_bytes)
+        _atomic_json(root / "complete.json", {"schema_version": 1, "manifest_sha256": sha256(manifest_bytes)})
+        (root / "config.json").write_text(
+            json.dumps({"preview": {"protagonist": protagonist}}, ensure_ascii=False), encoding="utf-8")
+        payloads = {"archive": {"cells": cells}, "summary": {},
+                    "candidates": {"schema_version": 1, "run_id": name, "revision": 1, "candidates": []}}
+        folder = root / "published" / "1"
+        folder.mkdir(parents=True)
+        files = {}
+        for key, value in payloads.items():
+            raw = canonical(value)
+            write_bytes(folder / f"{key}.json", raw)
+            files[key] = {"path": f"published/1/{key}.json", "sha256": sha256(raw)}
+        pub_manifest = {"schema_version": 1, "run_id": name, "revision": 1,
+                        "completed_generations": 1, "files": files}
+        pub_manifest_bytes = canonical(pub_manifest)
+        write_bytes(folder / "manifest.json", pub_manifest_bytes)
+        _atomic_json(root / "published" / "current.json", {"schema_version": 1, "run_id": name,
+                     "revision": 1, "manifest_sha256": sha256(pub_manifest_bytes)})
+        self.assertFalse((root / "archive.json").exists())
+        return root
+
+    def test_retire_reads_usage_from_published_archive_when_no_top_level_archive(self):
+        add = {"zones": [{"name": "小屋淘汰6", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "淘汰試験6", "add": add})
+        log_relative = "g0/ind-0/seed-1/layers.jsonl"
+        cells = {"c0": {"exemplar": {"layers_path": log_relative}}}
+        root = self._write_catalog_experiment("exp-retire-6", cells=cells)
+        (root / log_relative).parent.mkdir(parents=True, exist_ok=True)
+        rows = [{"kind": "decision", "subject": "桃太郎", "verb": "move", "result": "moved",
+                 "delta": {"actor": {"zone": "小屋淘汰6"}}}]
+        (root / log_relative).write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+        # M1: the server's own repository must have a catalog (control_root
+        # given) to exercise viewer.data.RunRepository.archive()'s catalog
+        # branch at all -- the plain setUp repository has none.
+        self.server.repository = RunRepository(self.server.repository.runs_root,
+                                                control_root=Path(self.case_temp.name) / "control-usage")
+        head = read_stack(self.project_dir)["head"]
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/retire",
+            {"reason": "公開版のみのアーカイブから枯らします", "experiment": "exp-retire-6",
+             "seen": {"head": head}})
+        self.assertEqual(status, 200, payload)
+        record = json.loads((self.project_dir / f"patches/{patch['id']}.retire.json").read_text(encoding="utf-8"))
+        self.assertIsNotNone(record["archive_sha256"])
+        self.assertEqual(record["archive_source"], "published/1")
+        self.assertIsNotNone(record["usage"])
+        self.assertEqual(record["usage"]["elites_total"], 1)
+        self.assertEqual(record["usage"]["elites_strong"], 1)
+
 
 class WorldExpansionStaticFileTests(unittest.TestCase):
     def setUp(self):
