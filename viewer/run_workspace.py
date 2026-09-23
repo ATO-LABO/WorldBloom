@@ -228,6 +228,77 @@ def _proposals_html(handler, view, run_name):
     return "".join(parts)
 
 
+def _usage_html(handler, view, state, experiment):
+    """「この実験での拡張の使われ方」節（WB-WORLDGROW-001 段階5a）: この実験が
+    expand で回っていれば、適用パッチごとに代表個体の使用状況と枯れ候補
+    バッジを出し、can_write なら「枯らす」フォームを添える。
+
+    対象は凍結世界の expansion.patches（この実験が実際に回った拡張、名前
+    だけ）と現在の承認スタックの適用中パッチの積集合 -- すでに淘汰済み、
+    またはこの実験のあとに承認された（この実験では回っていない）パッチは
+    出さない。"""
+    if state is None or state.get("state") != "expanded" or experiment is None:
+        return ""
+    project_dir = _expansion_project(handler, view)
+    if project_dir is None:
+        return ""
+    config = view.get("config") or {}
+    protagonist = (config.get("preview") or {}).get("protagonist")
+    if not protagonist:
+        return ""
+    frozen_ids = {p.get("id") for p in state.get("patches") or [] if isinstance(p, dict)}
+    if not frozen_ids:
+        return ""
+    try:
+        expansion_state = world_expansion_view.load(project_dir)
+    except READ_ERRORS:
+        return ""
+    if expansion_state.get("error"):
+        return ""
+    active = [a["patch"] for a in expansion_state.get("approved") or []
+              if isinstance(a.get("patch"), dict) and a["patch"].get("id") in frozen_ids]
+    if not active:
+        return ""
+    from gapengine.world_patch_usage import patch_usage, wither_candidates
+    try:
+        # M1 (Opus review): a ConfigStore-prepared experiment (the only kind
+        # the screen can ever expand-run) has no top-level archive.json --
+        # only published/<revision>/archive.json. handler.repository.archive()
+        # already resolves that (viewer.data.RunRepository.archive(), the
+        # same catalog-verified path every other candidate/archive read on
+        # this screen uses) instead of gapengine.world_patch_usage's own
+        # unverified published/ fallback (which exists for the CLI, which
+        # has no RunRepository to hand).
+        usage = patch_usage(experiment, protagonist, active, archive=handler.repository.archive(experiment))
+    except READ_ERRORS:
+        return ""
+    candidates = set(wither_candidates(usage))
+    world_id = config.get("project_id")
+    can_write = getattr(handler.server, "job_store", None) is not None
+    parts = ['<section class="card we-usage-panel"><h3>この実験での拡張の使われ方</h3><ul>']
+    for patch in active:
+        pid = patch.get("id")
+        counts = usage.get(pid) or {"elites_total": 0, "elites_strong": 0, "elites_weak": 0}
+        badge = ' <span class="we-status we-wither">枯れ候補</span>' if pid in candidates else ""
+        parts.append(
+            f'<li data-patch-card="{E(pid)}"><strong>{E(patch.get("title"))}</strong>{badge}'
+            f'<p class="muted">代表個体{E(counts["elites_total"])}体中 '
+            f'強い使用{E(counts["elites_strong"])}体・弱い使用{E(counts["elites_weak"])}体</p>'
+        )
+        if can_write:
+            parts.append(
+                '<div class="we-actions">'
+                '<textarea data-retire-reason placeholder="枯らす理由（10文字以上）" minlength="10"></textarea>'
+                f'<button type="button" data-patch-action="retire" data-world="{E(world_id)}" '
+                f'data-patch="{E(pid)}" data-experiment="{E(experiment.name)}" '
+                f'data-head="{E(expansion_state.get("head"))}">枯らす</button>'
+                '<p class="we-message" data-patch-message role="alert"></p></div>'
+            )
+        parts.append("</li>")
+    parts.append("</ul></section>")
+    return "".join(parts)
+
+
 def _propose_run_and_reason(handler, view):
     """(propose_run, reason) for the demand tab's "拡張を提案させる" button --
     WB-WORLDGROW-001 段階3b-3. propose_run is only set when a proposal has a
@@ -258,7 +329,7 @@ def _demand_html(handler, experiment, state, view=None):
         block += f'<p class="muted">{E(reason)}</p>'
     if view is None:
         return block
-    return block + _proposals_html(handler, view, view.get("run_name"))
+    return block + _usage_html(handler, view, state, experiment) + _proposals_html(handler, view, view.get("run_name"))
 
 
 def _effect_html(handler, view, query):

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import test_ga_replay as fixture
 from viewer import ga_replay, run_workspace
+from world_patch_fixtures import write_approved
 
 
 class RunWorkspaceTests(unittest.TestCase):
@@ -264,6 +265,69 @@ class RunWorkspaceTests(unittest.TestCase):
         # can't be read.
         self.assertTrue(html.startswith('<div class="card" data-patch-job data-run="exp-1" hidden>'))
         self.assertIn('<p class="rw-empty">世界の拡張を読み込めませんでした。</p>', html)
+
+    def test_usage_html_uses_repository_archive_not_a_top_level_archive_json(self):
+        # M1 (Opus review, WB-WORLDGROW-001 段階5a): _usage_html must feed
+        # patch_usage() with handler.repository.archive(experiment) -- a
+        # ConfigStore-prepared (screen-run) experiment only ever has
+        # published/<revision>/archive.json once the catalog has published
+        # it, never a top-level archive.json. Proven directly (no HTTP, no
+        # real catalog -- that machinery is covered by tests/
+        # test_world_expansion_api.py's own M1 test): a fake repository
+        # returns a hand-built archive dict, and the experiment directory on
+        # disk deliberately has no archive.json at all -- the pre-fix code
+        # (patch_usage(archive=None), which read experiment/archive.json)
+        # would have raised here instead of rendering the panel.
+        class _Configs:
+            pass
+
+        class _FakeJobStore:
+            def __init__(self, repo):
+                self.configs = _Configs()
+                self.configs.repo = repo
+
+        class _FakeServer:
+            def __init__(self, job_store):
+                self.job_store = job_store
+
+        class _FakeRepository:
+            def __init__(self, archive):
+                self._archive = archive
+
+            def archive(self, experiment):
+                return self._archive
+
+        class _FakeHandler:
+            def __init__(self, repository, job_store):
+                self.repository = repository
+                self.server = _FakeServer(job_store)
+
+        temp = tempfile.TemporaryDirectory(prefix="wb-usage-html-")
+        self.addCleanup(temp.cleanup)
+        base = Path(temp.name)
+        repo = base / "repo"
+        project_dir = repo / "projects" / "testworld"
+        patch = write_approved(project_dir, {"title": "使用表試験",
+                                              "add": {"zones": [{"name": "小屋", "parent": "海"}]}})
+        experiment = base / "runs" / "exp-usage"
+        log_relative = "g0/ind-0/seed-1/layers.jsonl"
+        log_path = experiment / log_relative
+        log_path.parent.mkdir(parents=True)
+        rows = [{"kind": "decision", "subject": "桃太郎", "verb": "move", "result": "moved",
+                 "delta": {"actor": {"zone": "小屋"}}}]
+        log_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+        self.assertFalse((experiment / "archive.json").exists())
+
+        archive = {"cells": {"c0": {"exemplar": {"layers_path": log_relative}}}}
+        handler = _FakeHandler(_FakeRepository(archive), _FakeJobStore(repo))
+        view = {"config": {"project_id": "testworld", "template_id": "testworld",
+                            "preview": {"protagonist": "桃太郎"}}}
+        state = {"state": "expanded", "patches": [{"id": patch["id"]}]}
+        html = run_workspace._usage_html(handler, view, state, experiment)
+        self.assertIn('class="card we-usage-panel"', html)
+        self.assertIn("この実験での拡張の使われ方", html)
+        self.assertIn("使用表試験", html)
+        self.assertIn("強い使用1体", html)
 
 
 if __name__ == "__main__":

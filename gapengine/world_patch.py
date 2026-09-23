@@ -167,55 +167,102 @@ def next_digest(parent: str, patch_sha256: str) -> str:
     return hashlib.sha256((parent + patch_sha256).encode()).hexdigest()
 
 
-def verify_stack(project_dir) -> list[tuple[dict, bytes]]:
-    """Validate a manifest snapshot, returning the exact verified patch bytes.
+def _walk_stack(project_dir) -> list[dict]:
+    """Validate a manifest snapshot revision by revision, returning an
+    ordered list of records -- {"kind": "patch", "patch_id", "patch", "raw", "rev"}
+    for an approval, or {"kind": "retire", "patch_id", "retire", "rev"} for a
+    tombstone (WB-WORLDGROW-001 段階5a). verify_stack()/retired_patches() are
+    both thin views over this single walk, so the hash-chain/evidence
+    checking logic lives in exactly one place.
 
     Callers taking part in publication hold the external directory lock.
     This module intentionally never imports execution or engine.
     """
     folder = Path(project_dir) / "patches"
     stack = read_stack(project_dir)
-    head, seen, result = EMPTY_STACK_DIGEST, set(), []
+    head, seen_patch_ids, active, records = EMPTY_STACK_DIGEST, set(), {}, []
     try:
         for seq, entry in enumerate(stack["revisions"], 1):
-            pid = entry["patch_id"]
-            if not isinstance(pid, str) or not ID_RE.fullmatch(pid) or pid in seen:
-                raise ValueError("patch_id の不正または重複")
-            raw = (folder / f"{pid}.yaml").read_bytes()
-            sha = hashlib.sha256(raw).hexdigest()
-            patch = yaml.safe_load(raw)
-            gate_raw = (folder / f"{pid}.gate.json").read_bytes()
-            gate = json.loads(gate_raw)
-            if (patch["id"] != pid or patch_id_for(patch["add"]) != pid
-                    or entry["patch_sha256"] != sha
-                    or entry["gate_sha256"] != hashlib.sha256(gate_raw).hexdigest()
-                    or entry["rev"] != seq or type(entry["rev"]) is not int
-                    or entry["parent_digest"] != head or patch["parent_digest"] != head
-                    or entry["digest"] != next_digest(head, sha)
-                    or gate["patch_id"] != pid or gate["patch_sha256"] != sha
-                    or gate["status"] != "reviewable"
-                    or gate["trial"]["evidence"]["seed_set"] != "holdout"
-                    or len(gate["approval"]["reason"].strip()) < 10
-                    or gate["approval"] != entry["approval"]
-                    or gate["trial"]["evidence"]["patched_inputs_digest"] != entry["patched_inputs_digest"]
-                    or gate["trial"]["evidence"]["patch_rules_version"] != entry["rules_version"]
-                    or gate["trial"]["evidence"]["trial_rules_version"] != entry["trial_rules_version"]):
-                raise ValueError(f"revision {seq} の証拠が一致しません")
-            head = entry["digest"]
-            seen.add(pid)
-            result.append((patch, raw))
+            kind = entry.get("kind", "patch")
+            if kind == "patch":
+                pid = entry["patch_id"]
+                if not isinstance(pid, str) or not ID_RE.fullmatch(pid) or pid in seen_patch_ids:
+                    raise ValueError("patch_id の不正または重複")
+                raw = (folder / f"{pid}.yaml").read_bytes()
+                sha = hashlib.sha256(raw).hexdigest()
+                patch = yaml.safe_load(raw)
+                gate_raw = (folder / f"{pid}.gate.json").read_bytes()
+                gate = json.loads(gate_raw)
+                if (patch["id"] != pid or patch_id_for(patch["add"]) != pid
+                        or entry["patch_sha256"] != sha
+                        or entry["gate_sha256"] != hashlib.sha256(gate_raw).hexdigest()
+                        or entry["rev"] != seq or type(entry["rev"]) is not int
+                        or entry["parent_digest"] != head or patch["parent_digest"] != head
+                        or entry["digest"] != next_digest(head, sha)
+                        or gate["patch_id"] != pid or gate["patch_sha256"] != sha
+                        or gate["status"] != "reviewable"
+                        or gate["trial"]["evidence"]["seed_set"] != "holdout"
+                        or len(gate["approval"]["reason"].strip()) < 10
+                        or gate["approval"] != entry["approval"]
+                        or gate["trial"]["evidence"]["patched_inputs_digest"] != entry["patched_inputs_digest"]
+                        or gate["trial"]["evidence"]["patch_rules_version"] != entry["rules_version"]
+                        or gate["trial"]["evidence"]["trial_rules_version"] != entry["trial_rules_version"]):
+                    raise ValueError(f"revision {seq} の証拠が一致しません")
+                head = entry["digest"]
+                seen_patch_ids.add(pid)
+                active[pid] = (patch, raw)
+                records.append({"kind": "patch", "patch_id": pid, "patch": patch, "raw": raw, "rev": entry["rev"]})
+            elif kind == "retire":
+                pid = entry["patch_id"]
+                if not isinstance(pid, str) or pid not in active:
+                    raise ValueError("淘汰対象が適用中のパッチではありません")
+                retire_raw = (folder / f"{pid}.retire.json").read_bytes()
+                retire_sha = hashlib.sha256(retire_raw).hexdigest()
+                retire = json.loads(retire_raw)
+                if (entry["rev"] != seq or type(entry["rev"]) is not int
+                        or entry["retire_sha256"] != retire_sha
+                        or entry["parent_digest"] != head
+                        or entry["digest"] != next_digest(head, retire_sha)
+                        or retire["patch_id"] != pid or retire["parent_digest"] != head
+                        or len(str(retire["reason"]).strip()) < 10):
+                    raise ValueError(f"revision {seq} の淘汰記録が一致しません")
+                head = entry["digest"]
+                del active[pid]
+                records.append({"kind": "retire", "patch_id": pid, "retire": retire, "rev": entry["rev"]})
+            else:
+                raise ValueError(f"revision {seq} の種別が不正です: {kind!r}")
         if stack["head"] != head:
             raise ValueError("head が一致しません")
-        if result and (not stack.get("base_inputs_digest") or not stack.get("template_id")):
+        if records and (not stack.get("base_inputs_digest") or not stack.get("template_id")):
             raise ValueError("基準入力が記録されていません")
     except (OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError) as error:
         raise PatchError(f"承認スタックが破損しています（repair不可）: {error}") from error
-    extra = {p.stem for p in folder.glob("*.yaml")} - seen
+    extra = {p.stem for p in folder.glob("*.yaml")} - seen_patch_ids
     if extra:
         pid = sorted(extra)[0]
         state = "yaml と gate が移動済みで manifest 未更新" if (folder / f"{pid}.gate.json").exists() else "yaml だけ移動済み"
         raise PatchError(f"manifest に無いパッチ {pid}: {state}。repair を実行してください")
-    return result
+    return records
+
+
+def verify_stack(project_dir) -> list[tuple[dict, bytes]]:
+    """Validate a manifest snapshot, returning the (patch, raw bytes) of every
+    currently-applied (approved and not since retired) patch, in approval
+    order. Callers hold the external directory lock as before; a `kind`-less
+    entry (pre-段階5a stack) is treated as an ordinary approval."""
+    records = _walk_stack(project_dir)
+    retired_ids = {r["patch_id"] for r in records if r["kind"] == "retire"}
+    return [(r["patch"], r["raw"]) for r in records if r["kind"] == "patch" and r["patch_id"] not in retired_ids]
+
+
+def retired_patches(project_dir) -> list[dict]:
+    """{"patch": ..., "retire": <retire.json 内容>, "rev": ...} を、退場（淘汰）
+    した順に返す（WB-WORLDGROW-001 段階5a）。verify_stack と同じ _walk_stack
+    を経由するため、検証ロジックの二重化はない。"""
+    records = _walk_stack(project_dir)
+    patches_by_id = {r["patch_id"]: r["patch"] for r in records if r["kind"] == "patch"}
+    return [{"patch": patches_by_id[r["patch_id"]], "retire": r["retire"], "rev": r["rev"]}
+            for r in records if r["kind"] == "retire"]
 
 
 def _is_name(value: Any) -> bool:

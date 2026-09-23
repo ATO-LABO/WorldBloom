@@ -616,6 +616,8 @@ details.we-usage p{margin:4px 0 0;padding:0 8px}
 .we-message{width:100%;color:#91411f;margin:0}
 .we-hint{width:100%;margin:0}
 .we-reopen{margin-top:16px}
+.we-usage-panel li{margin:0 0 16px}
+.we-wither{border-color:var(--ws-confirm);color:var(--ws-confirm)}
 
 [data-patch-job]{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
 [data-patch-job] [role="status"]{margin:0;flex:1 1 240px}
