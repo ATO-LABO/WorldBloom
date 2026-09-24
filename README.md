@@ -39,6 +39,14 @@
 
 StorySim（同作者の別プロジェクト。世界と人物をシミュレートし、面白かったログを物語に書き起こす方式）から要素を切り取って再構築したもので、フォークではありません。
 
+## 制作哲学
+
+人もまた、世界の中で起こる自然現象のひとつです。場所、人と人との関係、時間。主人公を取り巻く世界を十分に定義すれば、物語は自然とその方向へ転がり出します。だから物語を作ることは、世界を作ることです。「キャラクターが勝手に動き出す」とは世界が完成した証であり、「ご都合展開」とは世界の法則に逆らわせた跡です。
+
+そして意味は、出来事のあとからやってきます（予測符号化・能動的推論、ガザニガの「解釈者」、ベムの自己知覚理論）。だから WorldBloom は、まず GA とシミュレーションで世界の中の行動を起こし、それを LLM が解釈して物語にします。縁起と無為自然に根ざした、ご都合のない物語の作り方です。
+
+全文 → [WorldBloom の制作哲学](https://www.atom-box.jp/worldbloom/philosophy/)
+
 ## できること
 
 - **QD 格子での探索と選定（Sifting / Screening）**: 主導カテゴリ×volatilityの格子から気に入った展開を選び、あらすじ・本文だけを生成
@@ -103,6 +111,7 @@ docs/        設計書・実装計画・開示文書
 仕組みや背景を読み物として整理したページを公式サイトに置いています。コードを読む前の入口としてはこちらが向いています。
 
 - [WorldBloom（ハブ）](https://www.atom-box.jp/worldbloom/) — 概要・できること・ダウンロード
+- [WorldBloom の制作哲学](https://www.atom-box.jp/worldbloom/philosophy/) — 物語を書くことは世界を作ること。意味は行動のあとに生まれる
 - [WorldBloom の仕組み](https://www.atom-box.jp/worldbloom/how-it-works/) — 7 層構造、遺伝子、結末固定、QD 格子、出口
 - [WorldBloom を試す](https://www.atom-box.jp/worldbloom/get-started/) — Studio / 公開ビューア / ソースからの実行
 - [なぜ GA と LLM を組み合わせるのか](https://www.atom-box.jp/worldbloom/ga-and-llm/) — 両者の得手不得手と分業の理由
