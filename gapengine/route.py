@@ -111,6 +111,43 @@ treated as a flat +1 action once any lever exists, since the real effect
 size is rng-dependent and the planner must never consume randomness;
 ``milestone`` names a single next best-branch node by a fixed priority
 order, not every open need (recommended 3).
+
+2026-09-24 review round 2 (Opus, e3b42ea, condition pass -- 83.3% agreement
+against an 80% bar, but with concrete required/design/recommended items):
+required fix A -- ``_acquire``'s early-return now compares against a
+``needed`` quantity (threaded from the craft branch's own recipe amount)
+instead of "holds at least 1", so being short by any amount still counts as
+a live need; required fix B -- ``_acquire_from_subject`` only ever builds a
+"negotiate" option when ``is_objective=True`` (only the top-level goal
+item passed by ``plan()``; everything ``_acquire`` fetches recursively for
+itself is fight-only), matching the real engine's ``_negotiate_candidates``
+(objective-only), and ``_travel``/``_shortest_route_path`` now respect the
+subject's ``range.exclude`` (momotaro can't re-enter 村 before holding the
+treasure) via an ``excluded`` zone set; design decision C (confirmed by the
+design role) -- ``_best_offer`` drops every alt entirely when the winning
+offer already costs 0 (a free offer in hand), so fetching or building a
+*second*, unneeded one is a plain detour, not "prepare"; recommended fix 1
+-- the delivery leg's ``_travel`` call takes ``excluded=frozenset()`` (the
+exclusion will already be lifted by delivery time) and ``assume_held`` for
+any persistent (``vehicle``) item the acquire phase picked up, so the trip
+home doesn't silently re-plan building a second 船; recommended fix 2 --
+``_would_break_requirement`` only protects a recipe/trial that actually
+appears somewhere in the live best/alt plan, so an irrelevant trial
+elsewhere in the world file (猿's 猿の知恵) can't permanently lock the last
+unit of an item (きびだんご) needed for something else entirely; recommended
+fix 3 -- ``_acquire``'s take-from-a-subject branch now also gates on
+``_holder_appears_to_have`` before even considering fighting for an
+invisible-modifier item; recommended fix 5 -- a move's fallback text now
+names a still-needed item/fact sourced at the destination before falling
+back to a bare "近づいた".
+
+Recommended fix 4 (best-tag priority so leaving a trial giver's zone before
+actually completing the trial doesn't read as "advance" just because that
+zone also sits on an unrelated route leg) is **not** implemented in S0:
+doing this properly needs either an ordered plan graph (visit nodes in
+dependency order, not a single flat h) or per-candidate lookahead, both
+larger than a one-shot static h computation -- deferred to S1 alongside the
+weighting work itself, per the review's own allowance.
 """
 
 from __future__ import annotations
@@ -243,10 +280,15 @@ def _shortest_route_path(
     world: World,
     origin: str,
     dest: str,
+    excluded: frozenset[str] = frozenset(),
 ) -> list[Any] | None:
     """Shortest route sequence by hop count, ignoring ``requires_item``
     gating and stamina (those are handled by the caller). None when the two
-    zones aren't topologically connected at all."""
+    zones aren't topologically connected at all, or only reachable through
+    an ``excluded`` zone (2026-09-24 review 2, required fix B: a subject's
+    ``range.exclude`` -- e.g. momotaro_plus2's protagonist can't re-enter
+    村 before holding the treasure -- must gate the planner's travel the
+    same way it gates the real engine's ``World.reachable_paths``)."""
 
     if origin == dest:
         return []
@@ -258,7 +300,7 @@ def _shortest_route_path(
         if zone == dest:
             break
         for route in world.routes.get(zone, ()):
-            if route.destination in prev:
+            if route.destination in prev or route.destination in excluded:
                 continue
             prev[route.destination] = (zone, route)
             queue.append(route.destination)
@@ -283,17 +325,35 @@ def _travel(
     trial_reveal_facts: Mapping[str, str],
     *,
     origin: str | None = None,
+    excluded: frozenset[str] | None = None,
+    assume_held: frozenset[str] = frozenset(),
 ) -> tuple[float, "Tags", "Tags"]:
     """``origin`` defaults to ``subject.zone`` -- pass an explicit zone (e.g.
     the believed holder's) to plan a *future* leg from somewhere the subject
-    isn't standing yet (2026-09-24 review fix 1: ``plan()``'s delivery leg
-    needs this so it isn't computed from "here", before the goal item is
-    even acquired)."""
+    isn't standing yet (review fix 1: ``plan()``'s delivery leg needs this
+    so it isn't computed from "here", before the goal item is even
+    acquired).
+
+    ``excluded`` defaults to the subject's *current* ``range.exclude``
+    zones (``World._excluded_zones``, review 2 required fix B) -- pass
+    ``frozenset()`` explicitly for a future leg (e.g. delivery) where the
+    excluding item will already have been acquired by then.
+
+    ``assume_held`` (review 2 recommended fix 1): item names to treat as
+    already in inventory for gating purposes only, without touching
+    ``subject``. The delivery leg needs this for a persistent (``vehicle``)
+    item like 船: the subject doesn't lose it on the way there, but
+    ``_travel`` computed from a fresh ``subject.has_item`` check was
+    otherwise re-planning (and double-counting the cost of) building a
+    *second* one for the return trip."""
 
     origin_zone = subject.zone if origin is None else origin
     if origin_zone == dest:
         return 0.0, frozenset(), frozenset()
-    edges = _shortest_route_path(world, origin_zone, dest)
+    excluded_zones = (
+        frozenset(world._excluded_zones(subject)) if excluded is None else excluded
+    )
+    edges = _shortest_route_path(world, origin_zone, dest, excluded_zones)
     if edges is None:
         return INF, frozenset(), frozenset()
 
@@ -305,7 +365,7 @@ def _travel(
     extra_cost = 0.0
     for route in edges:
         item = route.requires_item
-        if item is None or subject.has_item(item):
+        if item is None or subject.has_item(item) or item in assume_held:
             continue
         item_h, item_best, item_alt = _acquire(item, subject, world, visiting, trial_reveal_facts)
         if item_h == INF:
@@ -368,8 +428,15 @@ def _acquire(
     world: World,
     visiting: frozenset[Any],
     trial_reveal_facts: Mapping[str, str],
+    *,
+    needed: int = 1,
 ) -> tuple[float, "Tags", "Tags"]:
-    if subject.has_item(item):
+    # 2026-09-24 review 2, required fix A: the old unconditional
+    # ``subject.has_item(item)`` (>=1) early-return made a recipe needing
+    # e.g. 2 木材 read as fully satisfied by holding just 1 -- ``needed``
+    # (passed by the craft branch below, per-material) makes this compare
+    # against what's actually required here, not merely "at least one".
+    if subject.inventory.get(item, 0) >= needed:
         return 0.0, frozenset(), frozenset()
     key = ("item", item)
     if key in visiting:
@@ -397,7 +464,9 @@ def _acquire(
             for material, qty in sorted(world.recipes[item].items()):
                 if subject.inventory.get(material, 0) >= qty:
                     continue
-                mh, mbest, malt = _acquire(material, subject, world, visiting, trial_reveal_facts)
+                mh, mbest, malt = _acquire(
+                    material, subject, world, visiting, trial_reveal_facts, needed=qty
+                )
                 if mh == INF:
                     materials_ok = False
                     break
@@ -449,16 +518,24 @@ def _acquire(
                 (trial_h, trial_best | frozenset({("has_item", item)}), trial_alt)
             )
 
-    # 4. take it from whoever currently holds it (fight or negotiate)
+    # 4. take it from whoever currently holds it (fight only -- never
+    # negotiate for a non-objective item, review 2 required fix B). Also
+    # skip entirely when the subject has no in-fiction way to know this
+    # holder has it (review 2 recommended fix 3: an invisible modifier's
+    # possession, e.g. 鬼's 金棒, is not "public" the way world.holder
+    # normally is -- see _holder_appears_to_have).
     holder_id = world.holder(item)
     if holder_id is not None and holder_id != subject.id and holder_id in world.subjects:
-        take_h, take_best, take_alt = _acquire_from_subject(
-            item, world.subjects[holder_id], subject, world, visiting, trial_reveal_facts
-        )
-        if take_h != INF:
-            options.append(
-                (take_h, take_best | frozenset({("has_item", item)}), take_alt)
+        holder_subject = world.subjects[holder_id]
+        if _holder_appears_to_have(subject, holder_subject, item, world):
+            take_h, take_best, take_alt = _acquire_from_subject(
+                item, holder_subject, subject, world, visiting, trial_reveal_facts,
+                is_objective=False,
             )
+            if take_h != INF:
+                options.append(
+                    (take_h, take_best | frozenset({("has_item", item)}), take_alt)
+                )
 
     return _combine(options)
 
@@ -564,7 +641,17 @@ def _best_offer(
             continue
         tag = frozenset() if subject.has_item(name) else frozenset({("has_item", name)})
         options.append((item_h, item_best | tag, item_alt))
-    return _combine(options)
+    h, best, alt = _combine(options)
+    # Design decision C (2026-09-24 review 2, confirmed by the design role):
+    # a free offer already in hand (h==0) means fetching or building a
+    # *second* one is not "prepare" -- it's a plain detour. Suppress every
+    # other considered offer's tags entirely rather than exposing them as
+    # prepare-eligible alt (strength-boosting prep -- the first 鉄砲 toward
+    # boost_fight, train, companion recruiting -- is untouched: those tags
+    # never come from this function).
+    if h == 0.0:
+        return h, best, frozenset()
+    return h, best, alt
 
 
 def _acquire_from_subject(
@@ -574,7 +661,16 @@ def _acquire_from_subject(
     world: World,
     visiting: frozenset[Any],
     trial_reveal_facts: Mapping[str, str],
+    *,
+    is_objective: bool,
 ) -> tuple[float, "Tags", "Tags"]:
+    """``is_objective`` (review 2, required fix B): the real engine's
+    ``_negotiate_candidates`` only ever offers to negotiate for the
+    subject's own ``goal.target`` -- an arbitrary material someone else
+    happens to be holding (縄, 木材, ...) can only be taken by fighting for
+    it, never "negotiated" for. Only the top-level acquisition of the goal
+    item itself passes ``is_objective=True``."""
+
     key = ("subject", holder.id, item)
     if key in visiting:
         return INF, frozenset(), frozenset()
@@ -603,7 +699,7 @@ def _acquire_from_subject(
                 best.add(("boost_fight", holder.id))
             options.append((travel_h + rounds, frozenset(best), travel_alt))
 
-    if "negotiate" in subject.verbs:
+    if is_objective and "negotiate" in subject.verbs:
         best = set(travel_best) | {("route", "negotiate")}
         alt = set(travel_alt)
         extra_cost = 0.0
@@ -689,15 +785,16 @@ def plan(
 
     holder_subject = world.subjects[believed_holder_id]
     acquire_h, acquire_best, acquire_alt = _acquire_from_subject(
-        target, holder_subject, subject, world, frozenset({("item", target)}), reveal_facts
+        target, holder_subject, subject, world, frozenset({("item", target)}), reveal_facts,
+        is_objective=True,
     )
     if acquire_h == INF:
         return {"h": INF, "believed_holder": believed_holder_id, "best": frozenset(), "alt": frozenset(), "route": None}
 
     deliver_h = 0.0
     if subject.goal.deliver_to is not None:
-        # 2026-09-24 review fix 1: computed from the *holder's* zone (where
-        # the subject will actually be once the item is taken), not from
+        # review fix 1: computed from the *holder's* zone (where the
+        # subject will actually be once the item is taken), not from
         # subject.zone -- otherwise every step of the journey there already
         # counts the homeward trip and h stops decreasing monotonically.
         # Its tags are deliberately NOT merged into best/alt below: while
@@ -706,9 +803,23 @@ def plan(
         # retreating toward 村 before ever reaching the holder) must not
         # read as "advance" just because it will matter later. Only the
         # scalar h -- the true total remaining distance -- includes it.
+        #
+        # review 2, recommended fixes: ``excluded=frozenset()`` because the
+        # subject's range.exclude (e.g. 村 until holding the treasure) will
+        # already be lifted by the time delivery starts, and ``assume_held``
+        # carries forward any persistent (vehicle) item the acquire phase's
+        # winning branch picked up -- otherwise the delivery leg silently
+        # re-planned (and double-counted the cost of) building a *second*
+        # 船 for the trip home, since a fresh subject.has_item check has no
+        # way to know the first one is still in hand.
+        vehicle_items = frozenset(
+            value
+            for kind, value in acquire_best
+            if kind == "has_item" and world.items.get(str(value), {}).get("vehicle")
+        )
         deliver_h, _deliver_best, _deliver_alt = _travel(
             subject, world, subject.goal.deliver_to, frozenset(), reveal_facts,
-            origin=holder_subject.zone,
+            origin=holder_subject.zone, excluded=frozenset(), assume_held=vehicle_items,
         )
         if deliver_h == INF:
             return {"h": INF, "believed_holder": believed_holder_id, "best": frozenset(), "alt": frozenset(), "route": None}
@@ -768,18 +879,33 @@ def _is_companion_candidate(subject: Subject, target: Subject, world: World) -> 
 
 
 def _would_break_requirement(
-    subject: Subject, world: World, item: str, give_qty: int = 1
+    subject: Subject,
+    world: World,
+    item: str,
+    relevant_products: set[Any],
+    relevant_trial_items: set[Any],
+    relevant_trial_facts: set[Any],
+    give_qty: int = 1,
 ) -> bool:
     """Whether handing over ``give_qty`` of ``item`` would drop the subject
-    below what a still-relevant recipe or trial requires (2026-09-24 review
-    fix 4: matching only "the planner currently has an open need for this"
+    below what a still-relevant recipe or trial requires (review fix 4:
+    matching only "the planner currently has an open need for this"
     under-protected an *exactly* sufficient stock -- e.g. holding precisely
     the 2 木材 船 needs looked safe to give away, since nothing was
-    "missing" yet)."""
+    "missing" yet).
+
+    ``relevant_*`` (review 2, recommended fix 2) restrict protection to
+    products/trials actually appearing somewhere in best/alt -- otherwise
+    every trial in the whole world file (e.g. 猿's 猿の知恵, never on any
+    considered path here) permanently protects its required item (きびだん
+    ご), and the last one can never be credited for recruiting a companion
+    even once every real need is satisfied."""
 
     remaining = subject.inventory.get(item, 0) - give_qty
     for product, materials in world.recipes.items():
         if item not in materials or subject.has_item(product):
+            continue
+        if product not in relevant_products:
             continue
         if remaining < materials[item]:
             return True
@@ -790,6 +916,8 @@ def _would_break_requirement(
         grants = trial.get("grants") or {}
         granted_item = grants.get("item")
         granted_fact = grants.get("fact")
+        if granted_item not in relevant_trial_items and granted_fact not in relevant_trial_facts:
+            continue
         already_done = (
             (granted_item and subject.has_item(str(granted_item)))
             or (granted_fact and str(granted_fact) in subject.knowledge)
@@ -908,8 +1036,13 @@ def _match_advance_or_prepare(
         target_id = action.meta.get("target")
         if verb == "give_item":
             item = action.meta.get("item")
-            if item is not None and _would_break_requirement(subject, world, str(item)):
-                return None
+            if item is not None:
+                relevant_items = best_kinds.get("has_item", set()) | alt_kinds.get("has_item", set())
+                relevant_facts = best_kinds.get("knows", set()) | alt_kinds.get("knows", set())
+                if _would_break_requirement(
+                    subject, world, str(item), relevant_items, relevant_items, relevant_facts
+                ):
+                    return None
         if target_id in best_kinds.get("stance_ge", ()):
             return "advance"
         if target_id in alt_kinds.get("stance_ge", ()):
@@ -1031,6 +1164,17 @@ def _advance_text(
             holder = world.subjects.get(str(holder_id))
             if holder is not None and holder.zone == dest:
                 return f"{holder_id}のもとへ向かった"
+        # 2026-09-24 review 2, recommended fix 5: name what's actually at
+        # dest (a still-needed material/fact source) rather than falling
+        # straight to the generic "近づいた" whenever no holder/craft_zone
+        # matched -- e.g. a waypoint hop toward a *further* zone otherwise
+        # gave no hint of purpose at all.
+        for item in sorted(kinds.get("has_item", ())):
+            if _sourced_at_zone(item, world, str(dest)):
+                return f"{item}を集めるため{dest}へ向かった"
+        for fact_id in sorted(kinds.get("knows", ())):
+            if _fact_sourced_here(fact_id, world, str(dest), set()):
+                return f"{fact_id}について調べるため{dest}へ向かった"
         return f"{dest}へ移動して近づいた"
 
     if verb == "investigate":
