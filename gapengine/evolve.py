@@ -1107,9 +1107,15 @@ def _cfg_fingerprint(
         if num_ctx is not None:
             payload["rationality"]["num_ctx"] = num_ctx
     if route_cfg is not None:
+        route_obj = Route.from_config(route_cfg)
         payload["route"] = {
             "rho": route_cfg["rho"],
-            "multipliers_hash": Route.from_config(route_cfg).multipliers_hash(),
+            "multipliers_hash": route_obj.multipliers_hash(),
+            # WB-ROUTE-001 S2 §5: distinguishes two rho>0 runs whose
+            # motive table/gene_affinity differ but whose multipliers_hash
+            # happens to match.
+            "gene_affinity": route_obj.gene_affinity,
+            "motives_hash": route_obj.motives_hash(),
         }
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -1323,9 +1329,13 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     # to a pre-S1 run (plan §2).
     route_cfg = _route_cfg(cfg, template_dir)
     route_enabled = route_cfg is not None
-    route_multipliers_hash = (
-        Route.from_config(route_cfg).multipliers_hash() if route_cfg is not None else None
-    )
+    route_object = Route.from_config(route_cfg) if route_cfg is not None else None
+    route_multipliers_hash = route_object.multipliers_hash() if route_object is not None else None
+    # WB-ROUTE-001 S2 §5: motives.yaml hash + gene_affinity alongside
+    # multipliers_hash, both None/0.0 when the template has no motive table
+    # (S1-identical).
+    route_motives_hash = route_object.motives_hash() if route_object is not None else None
+    route_gene_affinity = route_object.gene_affinity if route_object is not None else None
 
     world_model = World.from_yaml(
         world_path,
@@ -2026,6 +2036,8 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             summary_payload["route"] = {
                 "rho": route_cfg["rho"],
                 "multipliers_hash": route_multipliers_hash,
+                "gene_affinity": route_gene_affinity,
+                "motives_hash": route_motives_hash,
             }
         if coevolve:
             summary_payload.update(

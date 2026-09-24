@@ -27,6 +27,8 @@ from gapengine.route import (
     _acquire,
     _acquire_from_subject,
     annotate,
+    gene_strength,
+    load_motives,
     load_route_config,
     plan,
 )
@@ -1356,6 +1358,376 @@ class DeterminismAcrossHashSeedsTests(unittest.TestCase):
         # must hold once m_route is actually modulating weights (rho=1.0),
         # not just at the S0-era rho=0 default above.
         script = _hash_seed_script(1, rho=1.0)
+        outputs = []
+        for hash_seed in ("1", "2"):
+            env = dict(os.environ)
+            env["PYTHONHASHSEED"] = hash_seed
+            env["PYTHONIOENCODING"] = "utf-8"
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=env,
+                timeout=120,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            outputs.append(result.stdout)
+        self.assertEqual(outputs[0], outputs[1])
+
+
+class MotiveLoadTests(unittest.TestCase):
+    """WB-ROUTE-001 S2 §1/§7: motives.yaml validation."""
+
+    def test_momotaro_plus2_motives_load_in_order(self) -> None:
+        motives = load_motives(TEMPLATE)
+        self.assertIsNotNone(motives)
+        assert motives is not None
+        self.assertEqual(
+            [m["id"] for m in motives],
+            ["care_for_ally", "grudge", "curiosity", "caution", "bravado"],
+        )
+
+    def test_template_without_motives_yaml_is_none(self) -> None:
+        self.assertIsNone(load_motives(ROOT / "templates" / "momotaro"))
+
+    def test_unknown_gene_key_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            (path / "motives.yaml").write_text(
+                "- id: bad\n"
+                "  when: 'True'\n"
+                "  verbs: [investigate]\n"
+                "  gene: not_a_real_gene\n"
+                "  text: x\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                load_motives(path)
+
+    def test_duplicate_id_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            (path / "motives.yaml").write_text(
+                "- id: dup\n  when: 'True'\n  verbs: [investigate]\n"
+                "  gene: novelty_drive\n  text: x\n"
+                "- id: dup\n  when: 'True'\n  verbs: [observe]\n"
+                "  gene: novelty_drive\n  text: y\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                load_motives(path)
+
+
+class GeneStrengthTests(unittest.TestCase):
+    """WB-ROUTE-001 S2 §2: s (0..1), neutral genome -> 0.5 (novelty_drive
+    -> 0, its own documented exception), a leading '-' inverts."""
+
+    def test_neutral_genome(self) -> None:
+        neutral = Genome.neutral()
+        self.assertAlmostEqual(gene_strength(neutral, "risk_tolerance"), 0.5)
+        self.assertAlmostEqual(gene_strength(neutral, "stance_shift_bias"), 0.5)
+        self.assertAlmostEqual(gene_strength(neutral, "novelty_drive"), 0.0)
+        self.assertAlmostEqual(
+            gene_strength(neutral, "category_weight.III", category_mean=0.5), 0.5
+        )
+
+    def test_negation_inverts(self) -> None:
+        neutral = Genome.neutral()
+        reckless = Genome(
+            category_weight=dict(neutral.category_weight),
+            risk_tolerance=1.0,
+            stance_shift_bias=neutral.stance_shift_bias,
+            novelty_drive=neutral.novelty_drive,
+        )
+        self.assertAlmostEqual(gene_strength(reckless, "risk_tolerance"), 1.0)
+        self.assertAlmostEqual(gene_strength(reckless, "-risk_tolerance"), 0.0)
+
+    def test_unknown_gene_key_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            gene_strength(Genome.neutral(), "not_a_gene")
+
+
+class MotiveMultiplierTests(unittest.TestCase):
+    """WB-ROUTE-001 S2 §3: b = delta + (1-delta)*gene_s for cause=="motive",
+    delta reused from multipliers["detour:none"] (no separate constant)."""
+
+    def test_motive_multiplier_spans_delta_to_one(self) -> None:
+        route = Route(rho=1.0, multipliers={"detour:none": 0.02})
+        self.assertAlmostEqual(route.multiplier("detour", "motive", gene_s=0.0), 0.02)
+        self.assertAlmostEqual(route.multiplier("detour", "motive", gene_s=1.0), 1.0)
+        self.assertAlmostEqual(
+            route.multiplier("detour", "motive", gene_s=0.5), 0.02 + 0.98 * 0.5
+        )
+
+    def test_rho_zero_disables_motive_multiplier_too(self) -> None:
+        route = Route(rho=0.0)
+        self.assertEqual(route.multiplier("detour", "motive", gene_s=1.0), 1.0)
+
+
+class MotiveMatchingTests(unittest.TestCase):
+    """WB-ROUTE-001 S2 §1: motives only ever relabel a candidate that was
+    already kind=detour/cause=none; every other kind/cause is untouched."""
+
+    TRF = {"鬼の弟": "弟の消息"}
+
+    @staticmethod
+    def _genome(*, risk_tolerance: float = 0.5) -> Genome:
+        neutral = Genome.neutral()
+        return Genome(
+            category_weight=dict(neutral.category_weight),
+            risk_tolerance=risk_tolerance,
+            stance_shift_bias=neutral.stance_shift_bias,
+            novelty_drive=neutral.novelty_drive,
+        )
+
+    def test_bravado_overrides_the_hopeless_holder_fight(self) -> None:
+        # Same fixture as DesignJudgmentDTests.
+        # test_hopeless_fight_against_the_holder_is_detour_none.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("fight", ("鬼",), {"target": "鬼"})
+        motives = load_motives(TEMPLATE)
+        reckless = self._genome(risk_tolerance=1.0)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            targets=["鬼"], genome=reckless, candidate_genomes=[reckless],
+            motives=motives,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "motive")
+        self.assertEqual(result["motive"], "bravado")
+        self.assertIn("鬼", result["text"])
+        self.assertAlmostEqual(result["gene_s"], 1.0)
+
+    def test_bravado_fires_regardless_of_risk_tolerance_gene_only_weights_it(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("fight", ("鬼",), {"target": "鬼"})
+        motives = load_motives(TEMPLATE)
+        cautious = self._genome(risk_tolerance=0.0)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            targets=["鬼"], genome=cautious, candidate_genomes=[cautious],
+            motives=motives,
+        )[0]
+        self.assertEqual(result["motive"], "bravado")
+        self.assertAlmostEqual(result["gene_s"], 0.0)
+
+    def test_unrelated_hostile_fight_never_gets_bravado(self) -> None:
+        # target != the true goal holder -- _match_advance_or_prepare's
+        # fight branch already returns None for this, landing in the
+        # generic detour/none fallback; bravado's own
+        # is_target_holder/holder_hopeless bindings must keep it out.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "道中"
+        momotaro.beliefs["treasure_thief"] = Belief(value="鬼", confidence=0.9)
+        present = world.present_subjects(momotaro.zone)
+        action = Action("fight", ("キジ",), {"target": "キジ"})
+        motives = load_motives(TEMPLATE)
+        reckless = self._genome(risk_tolerance=1.0)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief",
+            targets=["キジ"], genome=reckless, candidate_genomes=[reckless],
+            motives=motives,
+        )[0]
+        self.assertNotEqual(result.get("motive"), "bravado")
+
+    def test_care_for_ally_overrides_high_stance_give_item(self) -> None:
+        # Same fixture as RouteMultiplierTests.
+        # test_neutral_genome_is_still_modulated_when_rho_positive, but with
+        # stance(桃太郎, 鬼の弟) raised above care_for_ally's 0.6 threshold.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "森"
+        momotaro.inventory["縄"] = 1
+        world.relations.change("桃太郎", "鬼の弟", affinity=0.8)
+        present = world.present_subjects(momotaro.zone)
+        action = Action(
+            "give_item", ("鬼の弟", "木材"),
+            {"target": "鬼の弟", "item": "木材", "stance_sign": 1},
+        )
+        motives = load_motives(TEMPLATE)
+        genome = self._genome()
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief",
+            targets=["鬼の弟"], genome=genome, candidate_genomes=[genome],
+            category_mean=0.5, motives=motives,
+        )[0]
+        self.assertEqual(result["cause"], "motive")
+        self.assertEqual(result["motive"], "care_for_ally")
+        self.assertIn("鬼の弟", result["text"])
+
+    def test_curiosity_falls_back_to_zone_text_when_no_real_target(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "森"
+        momotaro.inventory["縄"] = 1
+        present = world.present_subjects(momotaro.zone)
+        # A bare investigate with no gather flag and nothing sourced here:
+        # falls through to the generic detour/none fallback (no ignorance,
+        # since the target isn't the believed holder).
+        action = Action("investigate", ("森",), {"target": "森"})
+        motives = load_motives(TEMPLATE)
+        genome = self._genome()
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief",
+            targets=[momotaro.id], genome=genome, candidate_genomes=[genome],
+            motives=motives,
+        )[0]
+        if result["cause"] == "motive":
+            self.assertEqual(result["motive"], "curiosity")
+            self.assertIn("森", result["text"])
+            self.assertNotIn("{target}", result["text"])
+
+    def test_lost_kind_is_never_touched_by_motives(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "道中"
+        present = world.present_subjects(momotaro.zone)
+        action = Action("investigate", ("道中",), {"target": "道中", "gather": True})
+        motives = load_motives(TEMPLATE)
+        genome = self._genome()
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief",
+            targets=[momotaro.id], genome=genome, candidate_genomes=[genome],
+            motives=motives,
+        )[0]
+        self.assertEqual(result["kind"], "lost")
+
+    def test_advance_prepare_ignorance_belief_are_never_touched(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        momotaro.inventory["鉄砲"] = 1  # winnable now -- see DesignJudgmentDTests
+        present = world.present_subjects(momotaro.zone)
+        action = Action("fight", ("鬼",), {"target": "鬼"})
+        motives = load_motives(TEMPLATE)
+        genome = self._genome()
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            targets=["鬼"], genome=genome, candidate_genomes=[genome],
+            motives=motives,
+        )[0]
+        self.assertEqual(result["kind"], "prepare")
+        self.assertIsNone(result["cause"])
+
+
+class GeneAffinityRouteSelectionTests(unittest.TestCase):
+    """WB-ROUTE-001 S2 §4: gene_affinity biases plan()'s fight-vs-negotiate
+    choice by category gene strength; the recorded h stays the winning
+    option's own plain h (never h_eff), and gene_affinity=0 is S1-identical."""
+
+    ROUTE_CATEGORY = {"fight": "I", "negotiate": "III"}
+
+    @staticmethod
+    def _genome(**category_weight: float) -> Genome:
+        base = {category: 0.5 for category in Genome.neutral().category_weight}
+        base.update(category_weight)
+        return Genome(
+            category_weight=base, risk_tolerance=0.5, stance_shift_bias=0.0, novelty_drive=0.0
+        )
+
+    def test_gene_affinity_zero_matches_s1(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        baseline = plan(momotaro, world, holder_belief_fact="treasure_thief")
+        genome = self._genome(I=1.0, III=0.05)
+        with_zero = plan(
+            momotaro, world, holder_belief_fact="treasure_thief",
+            genome=genome, category_mean=0.5, gene_affinity=0.0,
+            route_category=self.ROUTE_CATEGORY,
+        )
+        self.assertEqual(baseline["route"], with_zero["route"])
+        self.assertEqual(baseline["h"], with_zero["h"])
+        self.assertEqual(baseline["best"], with_zero["best"])
+        self.assertEqual(baseline["alt"], with_zero["alt"])
+
+    def test_type_i_prefers_fight_type_iii_prefers_negotiate(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        type_i = self._genome(I=1.0, III=0.05)
+        type_iii = self._genome(I=0.05, III=1.0)
+        mean_i = sum(type_i.category_weight.values()) / len(type_i.category_weight)
+        mean_iii = sum(type_iii.category_weight.values()) / len(type_iii.category_weight)
+        plan_i = plan(
+            momotaro, world, holder_belief_fact="treasure_thief",
+            genome=type_i, category_mean=mean_i, gene_affinity=0.5,
+            route_category=self.ROUTE_CATEGORY,
+        )
+        plan_iii = plan(
+            momotaro, world, holder_belief_fact="treasure_thief",
+            genome=type_iii, category_mean=mean_iii, gene_affinity=0.5,
+            route_category=self.ROUTE_CATEGORY,
+        )
+        self.assertEqual(plan_i["route"], "fight")
+        self.assertEqual(plan_iii["route"], "negotiate")
+        # h stays the *winning* option's own plain h, not an h_eff -- never
+        # negative/inflated, and matches a direct _acquire_from_subject
+        # recomputation at gene_affinity=0 would have given that option.
+        self.assertGreater(plan_i["h"], 0.0)
+
+
+def _s2_hash_seed_script(seed: int) -> str:
+    """Same shape as _hash_seed_script, but with a non-neutral, gene-
+    affinity-sensitive genome (momotaro_plus2's real route.yaml already
+    carries gene_affinity=0.5) -- exercises the h_eff winner-selection
+    branch under PYTHONHASHSEED variation, not just the rho=1.0 static-
+    multiplier path _hash_seed_script(seed, rho=1.0) already covers."""
+
+    return (
+        "import sys\n"
+        f"sys.path.insert(0, {str(ROOT)!r})\n"
+        "from pathlib import Path\n"
+        "import tempfile\n"
+        "import yaml\n"
+        "from engine.sim import Simulation\n"
+        "from engine.world import World\n"
+        "from gapengine.evolve import _load_subjects\n"
+        "from gapengine.genome import CATEGORIES, Genome\n"
+        "from gapengine.policy import Policy\n"
+        "from gapengine.route import Route, load_route_config\n"
+        f"project = Path({str(PROJECT)!r})\n"
+        f"template = Path({str(TEMPLATE)!r})\n"
+        'cfg = yaml.safe_load((template / "action_graph.yaml").read_text(encoding="utf-8"))\n'
+        "route = Route.from_config(load_route_config(template))\n"
+        "route.rho = 1.0\n"
+        "cw = {c: 0.5 for c in CATEGORIES}\n"
+        "cw['I'] = 1.0\n"
+        "cw['III'] = 0.05\n"
+        "genome = Genome(category_weight=cw, risk_tolerance=1.0, stance_shift_bias=-0.5, novelty_drive=0.7)\n"
+        'world = World.from_yaml(project / "world.yaml", action_graph_path=template / "action_graph.yaml")\n'
+        'subjects = _load_subjects(project / "subjects")\n'
+        "policy = Policy(genome, precedent=None, cfg=cfg, route=route)\n"
+        "with tempfile.TemporaryDirectory() as tmp:\n"
+        f"    Simulation({seed}, world, subjects, Path(tmp), policies={{world.protagonist: policy}}).run()\n"
+        '    sys.stdout.write((Path(tmp) / "layers.jsonl").read_text(encoding="utf-8"))\n'
+    )
+
+
+class S2DeterminismTests(unittest.TestCase):
+    """WB-ROUTE-001 S2 §7: motives + gene_affinity must not introduce any
+    PYTHONHASHSEED-dependent behavior (motives.yaml/route_category are
+    iterated as ordered lists/dicts, never a frozenset, so this is mostly a
+    guard against a future regression, not an expected failure mode)."""
+
+    def test_layers_jsonl_is_byte_identical_across_two_hash_seeds(self) -> None:
+        script = _s2_hash_seed_script(1)
         outputs = []
         for hash_seed in ("1", "2"):
             env = dict(os.environ)

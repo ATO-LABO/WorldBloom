@@ -1963,6 +1963,19 @@ class World:
                     lambda actor, fact: (actor, fact)
                     in self.confront_successes
                 ),
+                # WB-ROUTE-001 S2: whether `actor` believes themself weaker
+                # than the world's antagonist -- the general-purpose reading
+                # a "the enemy still scares me" predicate (e.g. a route
+                # motive's `caution`) needs, independent of any specific
+                # goal item. Mirrors gapengine.route._believed_win_probability's
+                # own strength/believed_strength comparison, just as a flat
+                # boolean (< 0.5) instead of a probability against a
+                # configurable threshold.
+                "believed_weaker": lambda actor: strength(
+                    self.subjects[actor], self, present
+                ) < believed_strength(
+                    self.subjects[actor], self.subjects[self.antagonist], self, present
+                ),
             }
         )
         if bindings:
