@@ -173,6 +173,7 @@ class Policy:
         cfg: Mapping[str, Any] | None = None,
         annotate_only: bool = False,
         rationality: Any = None,
+        route: Any = None,
     ) -> None:
         self.genome = genome
         self.precedent = precedent
@@ -191,6 +192,11 @@ class Policy:
         # policy.py free of a dependency on the rationality module). Only the
         # protagonist's Policy ever gets one; antagonists are out of scope.
         self.rationality = rationality
+        # WB-ROUTE-001 S0: an optional gapengine.route.Route (duck-typed via
+        # .annotate -- no import here, same reasoning as .rationality above).
+        # Measurement only: it never changes a weight, only adds
+        # action.meta["policy"]["route"] below.
+        self.route = route
 
     @property
     def precedent_hash(self) -> str | None:
@@ -289,6 +295,20 @@ class Policy:
         else:
             m_rats = [1.0] * len(classified)
             p_rats = [None] * len(classified)
+
+        # WB-ROUTE-001 S0: annotate every candidate (including
+        # annotation-only/neutral-genome decisions) before any weighting --
+        # this never changes what gets chosen, only what gets recorded.
+        route_annotations = (
+            self.route.annotate(
+                subject,
+                world,
+                present,
+                [action for action, _, _ in classified],
+            )
+            if self.route is not None
+            else None
+        )
 
         candidate_acts = {
             act_key(classification, action)
@@ -423,6 +443,8 @@ class Policy:
                 action.meta["policy"]["p_rat"] = (
                     round(p_rat, 12) if p_rat is not None else None
                 )
+            if route_annotations is not None:
+                action.meta["policy"]["route"] = route_annotations[index]
 
             if not annotation_only:
                 output.append(
