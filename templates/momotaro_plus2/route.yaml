@@ -1,0 +1,4 @@
+delta: 0.02          # S1 で使う無理由の下限乗数（S0 では未使用、記録のみ）
+holder_belief_fact: treasure_thief
+trial_reveal_facts:  # 2026-09-24 追記: このtrialのgiverは、対応するfactを知るまで
+  鬼の弟: 弟の消息    # プランナーの立ち寄り先として現れない（村で弟の消息を調べて初めて存在を知る）
