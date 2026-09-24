@@ -528,7 +528,7 @@ class ConfigStore:
         parent = config_id if prior_expand == spec_expand else None
         return self.save(spec, config_id=new_id, parent_config_id=parent)
 
-    def prepare_run(self, config_id, *, run_id=None, job_id):
+    def prepare_run(self, config_id, *, run_id=None, job_id, processes=None):
         rid = identifier(("run-" + uuid.uuid4().hex) if run_id is None else run_id, "run_id")
         identifier(job_id, "job_id")
         config, inputs, source = self._bundle(config_id)
@@ -558,6 +558,11 @@ class ConfigStore:
                 elif value is not None:
                     argv.append(flag)
                     argv.extend(value if isinstance(value, list) else [str(value)])
+            if processes is not None:
+                # PC-side operational setting (WB-COMPUTE-001), not part of what the
+                # config means: overrides the frozen evolution.processes value in the
+                # argv only -- config["evolution"]/config_sha256 stay untouched.
+                argv[argv.index("--processes") + 1] = str(processes)
             # .get(), not [...]: a config.json saved before WB-JEV-002 added
             # these keys to evolution_defaults() has none of them at all, and
             # this manifest-derived "evolution" dict is read straight off
@@ -594,6 +599,7 @@ class ConfigStore:
                         "config_sha256": sha256(canonical(config)),
                         "runtime_manifest_sha256": sha256(canonical(runtime)),
                         "argv": argv, "evolution": config["evolution"],
+                        "processes": processes if processes is not None else config["evolution"]["processes"],
                         "target_endings": config["preview"]["target_endings"],
                         "execution_limits": config["execution_limits"],
                         "status": "prepared"}

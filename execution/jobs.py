@@ -237,6 +237,9 @@ class JobStore:
                        "total_individuals":config["preview"]["planned_individual_evaluations"],
                        "total_seeds":config["preview"]["planned_seed_evaluations"],
                        "detail_available":False}}
+            if kind == "evolve" and settings_path is not None:
+                from execution.evolution_settings import read_evolution_settings
+                job["processes"] = read_evolution_settings(settings_path)["processes"]
             if generating:
                 job.update(output_id="out-" + secrets.token_hex(16),
                     output_plan_sha256=sha256(canonical(plan)),
