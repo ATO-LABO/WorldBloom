@@ -5,7 +5,10 @@ Notion 設計子ページ https://app.notion.com/p/3e5e21ef1cac81218cb0c01e4a604
 from __future__ import annotations
 
 import json
+import os
 import random
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -176,11 +179,16 @@ class AnnotateTests(unittest.TestCase):
         # 弟の手紙) -- but momotaro already starts holding 勾玉, a free
         # negotiate offer, so the *winning* plan never actually needs
         # 弟の手紙: this is "prepare" (an alt-branch tag), not "advance"
-        # (2026-09-24 review fix 2 -- the best/alt split -- pinned to a
-        # single expected value instead of accepting either, per the
-        # review's recommended fix 5).
+        # (review fix 2 -- the best/alt split -- pinned to a single expected
+        # value instead of accepting either, per the review's recommended
+        # fix 5). Credited via the stance_ge tag -- 弟の手紙 has a positive
+        # modifier and momotaro doesn't hold one yet, so review 3's
+        # _first_strength_item also independently picks it up (fix 3) --
+        # never via the generic companion rule, since 鬼の弟's ally_value is
+        # 0 (review 3 required fix 2).
         self.momotaro.zone = "森"
         self.momotaro.knowledge.add("弟の消息")
+        self.momotaro.inventory["縄"] = 1  # see test_gathering_missing_ship_material_is_advance
         action = Action("persuade", ("鬼の弟",), {"target": "鬼の弟", "stance_sign": 1})
         result = annotate(
             self.momotaro,
@@ -428,20 +436,60 @@ class ReviewReproductionTests(unittest.TestCase):
         )
         self.assertEqual(out[0]["kind"], "prepare")
 
-    def test_design_c_a_second_offer_is_a_detour_not_prepare(self) -> None:
-        # Design decision C (confirmed by the design role, 2026-09-24 review
-        # 2): once a free offer (勾玉) and the boat (船) are both already in
-        # hand, moving away to fetch/build a *second*, unnecessary offer
-        # (道中, to craft 鉄砲) is a plain detour -- not "prepare".
+    def test_design_c_a_second_copy_of_a_held_item_is_a_detour(self) -> None:
+        # Design decision C (confirmed by the design role) governs a
+        # genuinely *redundant* second copy: momotaro already holds 勾玉
+        # (free offer), 船 (boat), and a 鉄砲 -- nothing left needs 道中, so
+        # moving there is a plain detour. (Review 3 required fix 3 narrowed
+        # this: a *first*, not-yet-held strength item is prepare regardless
+        # of an unrelated free offer -- see
+        # test_fix3_first_strength_item_is_prepare_even_with_a_free_offer --
+        # only a second copy of something already in hand stays a detour.)
         def setup(m, w):
             m.zone = "海"
             m.inventory["船"] = 1
+            m.inventory["鉄砲"] = 1
 
         _m, _w, out = self._annotate(
             setup, [Action("move", ("道中",), {"dest": "道中"})]
         )
         self.assertEqual(out[0]["kind"], "detour")
         self.assertEqual(out[0]["cause"], "none")
+
+    def test_fix3_first_strength_item_is_prepare_even_with_a_free_offer(self) -> None:
+        # Required fix 3 (2026-09-24 review 3): a *first* copy of a
+        # not-yet-held positive-strength-modifier item (鉄砲) is prepare
+        # regardless of design decision C -- it raises engine.contest.
+        # strength() in any fight, independent of the free 勾玉 offer.
+        def setup(m, w):
+            m.zone = "道中"
+            m.inventory["縄"] = 1  # see test_gathering_missing_ship_material_is_advance
+
+        _m, _w, out = self._annotate(
+            setup,
+            [Action("investigate", ("道中",), {"target": "道中", "gather": True})],
+        )
+        self.assertEqual(out[0]["kind"], "prepare")
+        self.assertEqual(out[0]["cause"], None)
+
+    def test_fix2_ally_value_zero_target_is_not_a_generic_companion(self) -> None:
+        # Required fix 2: 鬼の弟's ally_value is 0 -- recruiting him adds
+        # nothing to strength() -- so the generic "any present non-hostile
+        # non-ally" rule must not fire for him even when he's a fresh
+        # stranger (stance far below companionship.threshold) and no
+        # stance_ge tag exists at all (h is unreachable here, so best/alt
+        # are both empty -- isolating the generic rule from the tag path).
+        from gapengine.route import _is_companion_candidate
+
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni_brother = subjects["鬼の弟"]
+        self.assertLessEqual(oni_brother.ally_value, 0.0)
+        self.assertFalse(_is_companion_candidate(momotaro, oni_brother, world))
+        # A real companion (positive ally_value) is unaffected.
+        inu = subjects["犬"]
+        self.assertGreater(inu.ally_value, 0.0)
+        self.assertTrue(_is_companion_candidate(momotaro, inu, world))
 
 
 class RouteWiringByteIdenticalTests(unittest.TestCase):
@@ -500,6 +548,72 @@ class RouteWiringByteIdenticalTests(unittest.TestCase):
                 self.assertEqual(stripped_with, without_route)
 
         self.assertTrue(saw_route_key, "expected at least one decision to carry policy.route")
+
+
+def _hash_seed_script(seed: int) -> str:
+    return (
+        "import sys\n"
+        f"sys.path.insert(0, {str(ROOT)!r})\n"
+        "from pathlib import Path\n"
+        "import tempfile\n"
+        "import yaml\n"
+        "from engine.sim import Simulation\n"
+        "from engine.world import World\n"
+        "from gapengine.evolve import _load_subjects\n"
+        "from gapengine.genome import Genome\n"
+        "from gapengine.policy import Policy\n"
+        "from gapengine.route import Route, load_route_config\n"
+        f"project = Path({str(PROJECT)!r})\n"
+        f"template = Path({str(TEMPLATE)!r})\n"
+        'cfg = yaml.safe_load((template / "action_graph.yaml").read_text(encoding="utf-8"))\n'
+        "route = Route.from_config(load_route_config(template))\n"
+        'world = World.from_yaml(project / "world.yaml", action_graph_path=template / "action_graph.yaml")\n'
+        'subjects = _load_subjects(project / "subjects")\n'
+        "policy = Policy(Genome.neutral(), precedent=None, cfg=cfg, route=route)\n"
+        "with tempfile.TemporaryDirectory() as tmp:\n"
+        f"    Simulation({seed}, world, subjects, Path(tmp), policies={{world.protagonist: policy}}).run()\n"
+        '    sys.stdout.write((Path(tmp) / "layers.jsonl").read_text(encoding="utf-8"))\n'
+    )
+
+
+class DeterminismAcrossHashSeedsTests(unittest.TestCase):
+    """2026-09-24 review 3, required fix 1: a plain ``for kind, value in
+    tags: return value`` scan over a ``frozenset`` of ``(str, str)`` tuples
+    is not guaranteed to visit elements in the same order across Python
+    processes -- CPython randomizes str hashing per-process unless
+    ``PYTHONHASHSEED`` is fixed, and frozenset iteration order follows hash
+    bucket order. ``_route_name`` used to do exactly that scan; two
+    processes with different ``PYTHONHASHSEED`` could (and, on
+    neutral/seed 1 around t50-54, did) pick a different ``("route", ...)``
+    tag when a nested sub-acquisition's own fight tag coexisted with the
+    top-level winner's tag in the same ``best`` set. Fixed by having
+    ``_acquire_from_subject`` return the winning route name *explicitly*
+    (from its own fixed-order options list), never scanned back out of a
+    set -- this test runs the same short simulation in two subprocesses
+    with different hash seeds and requires byte-identical output."""
+
+    def test_layers_jsonl_is_byte_identical_across_two_hash_seeds(self) -> None:
+        script = _hash_seed_script(1)
+        outputs = []
+        for hash_seed in ("1", "2"):
+            env = dict(os.environ)
+            env["PYTHONHASHSEED"] = hash_seed
+            # Force the child's stdout encoding to UTF-8 regardless of the
+            # console codepage (Windows defaults to the system codepage,
+            # e.g. cp932, which can't round-trip the Japanese subject/item
+            # names in layers.jsonl and corrupts the comparison).
+            env["PYTHONIOENCODING"] = "utf-8"
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=env,
+                timeout=120,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            outputs.append(result.stdout)
+        self.assertEqual(outputs[0], outputs[1])
 
 
 if __name__ == "__main__":

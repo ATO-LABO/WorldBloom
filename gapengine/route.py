@@ -148,6 +148,46 @@ doing this properly needs either an ordered plan graph (visit nodes in
 dependency order, not a single flat h) or per-candidate lookahead, both
 larger than a one-shot static h computation -- deferred to S1 alongside the
 weighting work itself, per the review's own allowance.
+
+2026-09-24 review round 3 (Opus, ed4c329, conditional pass -- three items
+required before closing S0):
+
+1. **Determinism.** ``_acquire_from_subject`` now returns its winning
+   route name *explicitly* (from its own fixed-order ``options`` list),
+   never scanned back out of a ``frozenset`` of tags: ``best`` can
+   legitimately contain more than one ``("route", ...)`` tag (this level's
+   own winner, plus a nested sub-acquisition's own "route":"fight" tag for
+   a raw material fought for along the way), and a frozenset's iteration
+   order for string elements depends on ``PYTHONHASHSEED`` -- two
+   processes could (and, on neutral/seed 1 around t50-54, did) disagree on
+   which tag came "first". Verified two ways: a subprocess-pair test
+   (``DeterminismAcrossHashSeedsTests``) and a 30-run (6 genomes x 5 seeds)
+   byte-identity sweep under ``PYTHONHASHSEED=1`` vs ``2`` (matching the
+   review's own reproduction scripts), both clean. Every other function in
+   this module already iterated tag/kind pools through ``sorted(...)`` or
+   only for set *membership* (order-independent) -- ``_route_name`` (now
+   removed) was the sole offender.
+2. **Companion candidates with no strength payoff.** ``Subject.
+   derived_modifiers`` grants an ally exactly ``peer.ally_value`` --
+   momotaro_plus2's 鬼の弟 has ``ally_value: 0``, so recruiting him adds
+   nothing. ``_is_companion_candidate`` now excludes ``ally_value <= 0``
+   targets from the generic "any present non-hostile non-ally" rule;
+   working toward him is still credited, but only through the existing
+   stance_ge tag path (his trial's own ``requires.stance``, reached when
+   弟の手紙 is actually on the live plan).
+3. **Design decision C was over-applying.** Suppressing every alt tag once
+   a free offer exists (round 2's design C) was also swallowing the
+   *first*, not-yet-held copy of a genuine strength item (鉄砲) -- never
+   redundant, since ``engine.contest.strength`` sums modifiers unconditionally
+   per holder. ``_first_strength_item`` is a new, parallel consideration
+   (independent of ``_best_offer``/design C) that tags the cheapest
+   not-yet-held positive-modifier item as ``boost_fight``-worthy prepare,
+   regardless of route or of an unrelated free offer; a *second* copy of
+   something already held is still never tagged (unchanged from round 2's
+   fix 3). Documented simplification: only checks the subject's own
+   possession, not present/known allies' -- an ally's own inventory doesn't
+   feed into the *subject's* ``strength()``, only ``peer.ally_value`` does,
+   so ally-possession is largely moot here.
 """
 
 from __future__ import annotations
@@ -528,7 +568,7 @@ def _acquire(
     if holder_id is not None and holder_id != subject.id and holder_id in world.subjects:
         holder_subject = world.subjects[holder_id]
         if _holder_appears_to_have(subject, holder_subject, item, world):
-            take_h, take_best, take_alt = _acquire_from_subject(
+            take_h, take_best, take_alt, _take_route = _acquire_from_subject(
                 item, holder_subject, subject, world, visiting, trial_reveal_facts,
                 is_objective=False,
             )
@@ -654,6 +694,49 @@ def _best_offer(
     return h, best, alt
 
 
+def _first_strength_item(
+    subject: Subject,
+    world: World,
+    visiting: frozenset[Any],
+    trial_reveal_facts: Mapping[str, str],
+) -> tuple[float, "Tags", "Tags"]:
+    """The cheapest positive-strength-modifier item the subject doesn't yet
+    hold -- owning it raises ``engine.contest.strength`` (an unconditional
+    per-holder sum, see ``engine.contest.strength``/``Subject.
+    all_modifiers`` -- visibility only affects what *others* estimate about
+    the holder, never the holder's own actual value) in any fight,
+    independent of which route is being pursued or whether a negotiate
+    offer is already free.
+
+    2026-09-24 review 3, required fix 3: design decision C's "no second
+    offer" suppression in ``_best_offer`` was also swallowing the *first*
+    copy of a strength item once a free offer (勾玉) existed -- that first
+    copy is never redundant. This is a separate, parallel consideration:
+    it never contributes to ``best`` (never the literal winning acquisition
+    route) and is merged into the caller's ``alt`` regardless of route.
+
+    Simplification (documented judgment call): only checks the subject's
+    *own* possession, not present/known allies' -- ``strength()`` only ever
+    sums the holder's own modifiers, so an ally carrying a second copy
+    doesn't raise the *subject's* strength() the way holding it personally
+    does, making an ally-possession check largely moot for this purpose."""
+
+    options: list[tuple[float, "Tags", "Tags"]] = []
+    for name, definition in sorted(world.items.items()):
+        modifier = definition.get("modifier") or {}
+        value = float(modifier.get("value", 0.0))
+        if value <= 0.0:
+            continue
+        if subject.has_item(name):
+            continue
+        item_h, item_best, item_alt = _acquire(name, subject, world, visiting, trial_reveal_facts)
+        if item_h == INF:
+            continue
+        tags = item_best | frozenset({("has_item", name), ("boost_fight", name)})
+        options.append((item_h, tags, item_alt))
+    return _combine(options)
+
+
 def _acquire_from_subject(
     item: str,
     holder: Subject,
@@ -663,24 +746,36 @@ def _acquire_from_subject(
     trial_reveal_facts: Mapping[str, str],
     *,
     is_objective: bool,
-) -> tuple[float, "Tags", "Tags"]:
+) -> tuple[float, "Tags", "Tags", str | None]:
     """``is_objective`` (review 2, required fix B): the real engine's
     ``_negotiate_candidates`` only ever offers to negotiate for the
     subject's own ``goal.target`` -- an arbitrary material someone else
     happens to be holding (縄, 木材, ...) can only be taken by fighting for
     it, never "negotiated" for. Only the top-level acquisition of the goal
-    item itself passes ``is_objective=True``."""
+    item itself passes ``is_objective=True``.
+
+    Returns ``(h, best, alt, route_name)`` -- ``route_name`` (review 3,
+    required fix 1) is the *explicit* winning branch's name ("fight" or
+    "negotiate"), determined locally from this function's own ``options``
+    list (built in a fixed, non-hash-dependent order). It must never be
+    read back out of ``best`` by scanning for a ``("route", ...)`` tag:
+    ``best`` can legitimately contain more than one such tag (this level's
+    own winning route, *plus* a nested sub-acquisition's "route":"fight"
+    tag for a raw material fought for along the way), and a frozenset's
+    iteration order depends on ``PYTHONHASHSEED`` for string elements --
+    scanning it for "the first" was non-deterministic across processes
+    (found via a cross-seed byte-identity check, review 3)."""
 
     key = ("subject", holder.id, item)
     if key in visiting:
-        return INF, frozenset(), frozenset()
+        return INF, frozenset(), frozenset(), None
     visiting = visiting | {key}
 
     travel_h, travel_best, travel_alt = _travel(subject, world, holder.zone, visiting, trial_reveal_facts)
     if travel_h == INF:
-        return INF, frozenset(), frozenset()
+        return INF, frozenset(), frozenset(), None
 
-    options: list[tuple[float, "Tags", "Tags"]] = []
+    options: list[tuple[float, "Tags", "Tags", str]] = []
 
     if "fight" in subject.verbs and world.target_role(subject, holder) != "ally":
         present_here = world.present_subjects(subject.zone)
@@ -697,7 +792,7 @@ def _acquire_from_subject(
             best = set(travel_best) | {("win_fight", holder.id), ("route", "fight")}
             if probability < 0.9:
                 best.add(("boost_fight", holder.id))
-            options.append((travel_h + rounds, frozenset(best), travel_alt))
+            options.append((travel_h + rounds, frozenset(best), travel_alt, "fight"))
 
     if is_objective and "negotiate" in subject.verbs:
         best = set(travel_best) | {("route", "negotiate")}
@@ -714,9 +809,23 @@ def _acquire_from_subject(
             else:
                 best.add(("stance_ge", holder.id))
                 extra_cost += _STANCE_RAISE_COST
-        options.append((travel_h + extra_cost + 1.0, frozenset(best), frozenset(alt)))
+        options.append((travel_h + extra_cost + 1.0, frozenset(best), frozenset(alt), "negotiate"))
 
-    return _combine(options)
+    if not options:
+        return INF, frozenset(), frozenset(), None
+
+    winner = min(options, key=lambda option: option[0])
+    route_name = winner[3]
+    h, best, alt = _combine([(o[0], o[1], o[2]) for o in options])
+
+    if is_objective:
+        strength_h, strength_best, strength_alt = _first_strength_item(
+            subject, world, visiting, trial_reveal_facts
+        )
+        if strength_h != INF:
+            alt |= (strength_best | strength_alt) - best
+
+    return h, best, alt, route_name
 
 
 # ---------------------------------------------------------------------------
@@ -745,13 +854,6 @@ def _believed_holder(
     return belief.value  # a confident misattribution (誤認)
 
 
-def _route_name(tags: "Tags") -> str | None:
-    for kind, value in tags:
-        if kind == "route":
-            return str(value)
-    return None
-
-
 def plan(
     subject: Subject,
     world: World,
@@ -763,9 +865,12 @@ def plan(
     knowledge. Read-only, rng-free. See the module docstring for the model.
 
     ``best``/``alt`` split what an action must match to count as advance vs.
-    prepare (2026-09-24 review fix 2). ``route`` names the single winning
-    branch (fight/negotiate), read directly off ``best`` -- there is only
-    ever one, since ``best`` is the winning option's own tags."""
+    prepare (review fix 2). ``route`` names the single winning branch
+    (fight/negotiate), returned *explicitly* by ``_acquire_from_subject``
+    (review 3, required fix 1) -- never scanned back out of ``best``, which
+    can legitimately contain more than one ``("route", ...)`` tag (this
+    level's own winner, plus a nested sub-acquisition's fight tag for a raw
+    material fought for along the way)."""
 
     reveal_facts = trial_reveal_facts or {}
     target = subject.goal.target
@@ -784,7 +889,7 @@ def plan(
         return {"h": None, "believed_holder": believed_holder_id, "best": frozenset(), "alt": frozenset(), "route": None}
 
     holder_subject = world.subjects[believed_holder_id]
-    acquire_h, acquire_best, acquire_alt = _acquire_from_subject(
+    acquire_h, acquire_best, acquire_alt, route_name = _acquire_from_subject(
         target, holder_subject, subject, world, frozenset({("item", target)}), reveal_facts,
         is_objective=True,
     )
@@ -824,8 +929,6 @@ def plan(
         if deliver_h == INF:
             return {"h": INF, "believed_holder": believed_holder_id, "best": frozenset(), "alt": frozenset(), "route": None}
 
-    route_name = _route_name(acquire_best)
-
     return {
         "h": acquire_h + deliver_h,
         "believed_holder": believed_holder_id,
@@ -862,14 +965,26 @@ def _fact_sourced_here(
 
 
 def _is_companion_candidate(subject: Subject, target: Subject, world: World) -> bool:
-    """A present, living peer who isn't hostile and isn't already an ally --
-    a plausible companion-recruiting target (companionship's own direction:
-    the *peer's* stance toward self, matching ``Subject.derived_modifiers``
-    /``_movement_candidates``'s companion checks elsewhere in the engine)."""
+    """A present, living peer who isn't hostile, isn't already an ally, and
+    would actually raise the subject's strength once allied (companionship's
+    own direction: the *peer's* stance toward self, matching ``Subject.
+    derived_modifiers``/``_movement_candidates``'s companion checks
+    elsewhere in the engine) -- a plausible companion-recruiting target.
+
+    2026-09-24 review 3, required fix 2: ``Subject.derived_modifiers``
+    grants an ally modifier worth exactly ``peer.ally_value``, so a peer
+    with ``ally_value <= 0`` (momotaro_plus2's 鬼の弟) contributes nothing
+    (or actively hurts) if recruited -- the generic "any present non-
+    hostile non-ally is worth befriending" rule must not fire for them.
+    Working toward 鬼の弟 specifically is still credited, but only through
+    the existing stance_ge tag (his trial's own ``requires.stance``, when
+    弟の手紙 is actually on the live best/alt plan)."""
 
     if target.id == subject.id or target.vitality == "dead":
         return False
     if world.target_role(subject, target) == "hostile":
+        return False
+    if target.ally_value <= 0.0:
         return False
     already_ally = (
         world.relations.stance(target.id, subject.id)
