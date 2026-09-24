@@ -42,11 +42,11 @@ def output_panel(view, error):
 def compute_panel(evolution, error):
     if error:
         return '<section class="gs-panel" id="compute" data-gs-panel="compute"><header class="gs-heading"><h1>計算の設定</h1></header><div class="gs-empty" role="alert">settings.json を読めません。設定ファイルを確認してから再読み込みしてください。</div></section>'
-    input_field = field('processes', 'GA の並列数', evolution['processes'], number=True, minimum=1, maximum=evolution['cpu_count'])
+    input_field = field('processes', 'GA の並列数', evolution['processes'], number=True, minimum=1, maximum=evolution['cpu_count']).replace('<input ', '<input required ', 1)
     return ('<section class="gs-panel" id="compute" data-gs-panel="compute"><header class="gs-heading"><div><h1>計算の設定 <span class="gs-badge" data-gs-compute-dirty>保存済み</span></h1><p>このPCでGA実験をどれだけ並列に計算するかの設定です。</p></div></header>'
         '<form id="gs-compute-form" data-wb="compute-settings" data-gs-compute><div class="gs-output-layout"><div class="gs-editor"><div class="gs-error" data-compute-form-error role="alert"></div><fieldset data-gs-compute-fields><legend class="gs-sr-only">計算の設定項目</legend><h2>GA の並列数</h2>'
         + input_field +
-        f'<p class="gs-hint">GA の個体評価を同時に何本走らせるか。結果は変わらず、速さだけが変わります。このPCでは {evolution["cpu_count"]} コア中 {evolution["default"]} 前後が最速でした（既定 {evolution["default"]}）。</p>'
+        f'<p class="gs-hint">GA の個体評価を同時に何本走らせるか。結果は変わらず、速さだけが変わります。開発PC（20コア）の実測では 8 前後で頭打ちでした。このPCのコア数は {evolution["cpu_count"]}、既定は {evolution["default"]} です。</p>'
         '</fieldset></div>'
         '<aside class="gs-summary" aria-label="現在使っている設定"><h2>現在使っている設定</h2><span class="gs-saved">● 保存済み</span><dl data-gs-compute-saved></dl><div class="gs-scope"><h2>この変更が適用される範囲</h2><p>GA 実験の実行</p><p class="gs-hint">保存後に開始するGA実験から適用されます。</p></div></aside></div>'
         '<footer class="gs-footer"><p data-gs-compute-status role="status">保存済みの設定を表示しています</p><button type="button" data-gs-compute-reset>変更を戻す</button><button type="submit" class="gs-primary is-confirm" data-gs-compute-save>設定を保存</button></footer></form></section>')
