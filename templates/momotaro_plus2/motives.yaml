@@ -13,6 +13,20 @@
   gene: category_weight.III
   text: "{target}との絆を深めたかった"
 
+# bravado は grudge より先に置く: 敵対的な持ち主への勝ち目の無い勝負は grudge の
+# when（stance<=-0.3）も満たすため、限定的な bravado を先に評価する（S2 レビュー前修正）。
+- id: bravado
+  label: 向こう見ず
+  # is_target_holder/holder_hopeless: gapengine.route.annotate() が候補ごとに
+  # 束縛する追加バインディング -- 目的物の真の持ち主への、S1 設計判断D で
+  # detour/none になった（believed win probability < min_win_prob の）挑戦、
+  # または S2 設計判断G: 設計判断F で detour/none になった「弱いまま持ち主の
+  # 区域へ入る move」か。move の場合 target は自動的に持ち主に束縛される。
+  when: "is_target_holder and holder_hopeless"
+  verbs: [fight, sabotage, neutralize, move]
+  gene: risk_tolerance
+  text: "勝ち目が薄いと知りながら、{target}に立ち向かわずにいられなかった"
+
 - id: grudge
   label: 恨みを晴らす
   when: "stance(self, target) <= -0.3"
@@ -38,15 +52,3 @@
   verbs: [rest, withdraw]
   gene: -risk_tolerance
   text: "まだ鬼には敵わないと感じ、慎重になった"
-
-- id: bravado
-  label: 向こう見ず
-  # is_target_holder/holder_hopeless: gapengine.route.annotate() が候補ごとに
-  # 束縛する追加バインディング -- 目的物の真の持ち主への、S1 設計判断D で
-  # detour/none になった（believed win probability < min_win_prob の）挑戦、
-  # または S2 設計判断G: 設計判断F で detour/none になった「弱いまま持ち主の
-  # 区域へ入る move」か。move の場合 target は自動的に持ち主に束縛される。
-  when: "is_target_holder and holder_hopeless"
-  verbs: [fight, sabotage, neutralize, move]
-  gene: risk_tolerance
-  text: "勝ち目が薄いと知りながら、{target}の元へ向かわずにいられなかった"

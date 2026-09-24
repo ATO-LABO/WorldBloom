@@ -1385,7 +1385,7 @@ class MotiveLoadTests(unittest.TestCase):
         assert motives is not None
         self.assertEqual(
             [m["id"] for m in motives],
-            ["care_for_ally", "grudge", "curiosity", "caution", "bravado"],
+            ["care_for_ally", "bravado", "grudge", "curiosity", "caution"],
         )
 
     def test_template_without_motives_yaml_is_none(self) -> None:
