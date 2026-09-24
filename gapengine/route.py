@@ -840,6 +840,9 @@ def _first_strength_item(
     world: World,
     visiting: frozenset[Any],
     trial_reveal_facts: Mapping[str, str],
+    *,
+    avoid_zone: str | None = None,
+    avoid_fight_holder: str | None = None,
 ) -> tuple[float, "Tags", "Tags"]:
     """The cheapest positive-strength-modifier item the subject doesn't yet
     hold -- owning it raises ``engine.contest.strength`` (an unconditional
@@ -860,7 +863,14 @@ def _first_strength_item(
     *own* possession, not present/known allies' -- ``strength()`` only ever
     sums the holder's own modifiers, so an ally carrying a second copy
     doesn't raise the *subject's* strength() the way holding it personally
-    does, making an ally-possession check largely moot for this purpose."""
+    does, making an ally-possession check largely moot for this purpose.
+
+    ``avoid_zone``/``avoid_fight_holder`` (E-2, Opus review): while a
+    danger-gated route's ``strong_enough`` node is still open, a candidate
+    obtained by entering the dangerous holder's own zone, or by fighting
+    them directly, is circular -- it presupposes the win the boost step
+    exists to avoid -- so it's dropped from consideration outright, not
+    merely kept out of ``best``."""
 
     options: list[tuple[float, "Tags", "Tags"]] = []
     for name, definition in sorted(world.items.items()):
@@ -872,6 +882,10 @@ def _first_strength_item(
             continue
         item_h, item_best, item_alt = _acquire(name, subject, world, visiting, trial_reveal_facts)
         if item_h == INF:
+            continue
+        if avoid_zone is not None and ("zone", avoid_zone) in item_best:
+            continue
+        if avoid_fight_holder is not None and ("win_fight", avoid_fight_holder) in item_best:
             continue
         tags = item_best | frozenset({("has_item", name), ("boost_fight", name)})
         options.append((item_h, tags, item_alt))
@@ -1009,8 +1023,18 @@ def _acquire_from_subject(
     strength_best: "Tags" = frozenset()
     strength_alt: "Tags" = frozenset()
     if is_objective:
+        # E-2 (Opus review): while strong_enough is still open (danger_gate),
+        # a strength item fetched by fighting the dangerous holder, or found
+        # only inside their zone, is circular -- it would require the very
+        # win the boost step exists to avoid. Excluded from consideration
+        # entirely (not just from best) so it can't leak into alt either.
         strength_h, strength_best, strength_alt = _first_strength_item(
-            subject, world, visiting, trial_reveal_facts
+            subject,
+            world,
+            visiting,
+            trial_reveal_facts,
+            avoid_zone=holder.zone if danger_gate else None,
+            avoid_fight_holder=holder.id if danger_gate else None,
         )
         if strength_h != INF:
             alt |= (strength_best | strength_alt) - best
@@ -1037,6 +1061,13 @@ def _acquire_from_subject(
                 ("route", "fight"),
                 ("route", "negotiate"),
                 ("boost_fight", holder.id),
+                # E-1 (Opus review): a negotiate offer that failed to find a
+                # free trade leaves ("stance_ge", holder.id) in best as the
+                # lever to raise instead -- that's also an "enter holder's
+                # zone/deal with holder" prerequisite and must be demoted
+                # alongside the others, or its own _leaf_zone (holder.zone)
+                # keeps the danger zone reachable as an advance/prepare leaf.
+                ("stance_ge", holder.id),
             }
         )
         demoted = best & entry_tags
@@ -1932,12 +1963,19 @@ def annotate(
             continue
 
         # S1 review 2 design judgment E: at the true, hostile holder's own
-        # zone with a hopeless believed win probability, leaving (move or
-        # withdraw) is the advancing step -- staying to do nothing (a
-        # voluntary "rest", not covered by _body_or_belief_cause's body
-        # reason) already resolves to detour/none via the ordinary fallback
-        # below, so it needs no special case here.
-        if danger_zone_escape and action.verb in ("move", "withdraw"):
+        # zone with a hopeless believed win probability, leaving is the
+        # advancing step. E-3 (Opus review): only an actual "move" leaves
+        # the zone -- engine.verbs._withdraw only lowers stress and never
+        # relocates the subject (engine/verbs.py), so treating "withdraw"
+        # as this same escape/advance was crediting an action that leaves
+        # the subject standing right where they started. withdraw instead
+        # falls through to the ordinary classification below, which (via
+        # _body_or_belief_cause) already reads it as detour/body when
+        # exhausted/downed/under_threat, and detour/none otherwise --
+        # staying to do nothing (a voluntary "rest") likewise already
+        # resolves to detour/none via the ordinary fallback, so neither
+        # needs a special case here.
+        if danger_zone_escape and action.verb == "move":
             results.append(
                 {
                     **base,
@@ -1979,6 +2017,36 @@ def annotate(
                         }
                     )
                     continue
+
+        # Design judgment F (Opus review): while strong_enough is still
+        # open, moving *into* a too-strong hostile holder's own zone is
+        # never a reasonable "prepare" either (E-1/E-2 above already keep
+        # it out of "advance") -- it's the reckless approach the boost step
+        # exists to delay, so it's forced to detour/none here, the same
+        # pattern as judgment D's hopeless-fight override just above. The
+        # reverse move (leaving that zone) is untouched -- handled
+        # separately by danger_zone_escape/E.
+        if action.verb == "move" and best_kinds.get("strong_enough"):
+            dest = action.meta.get("dest")
+            danger_holder = next(
+                (
+                    holder_id
+                    for holder_id in sorted(best_kinds["strong_enough"])
+                    if holder_id in world.subjects and world.subjects[holder_id].zone == dest
+                ),
+                None,
+            )
+            if danger_holder is not None:
+                results.append(
+                    {
+                        **base,
+                        "kind": "detour",
+                        "cause": "none",
+                        "h": [_finite_or_none(h_before), _finite_or_none(h_before)],
+                        "text": f"まだ敵わないのに{danger_holder}の元へ向かう無謀な行動",
+                    }
+                )
+                continue
 
         matched = _match_advance_or_prepare(
             action,

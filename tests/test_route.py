@@ -963,6 +963,25 @@ class DesignJudgmentETests(unittest.TestCase):
         )[0]
         self.assertNotEqual(result["kind"], "advance")
 
+    def test_entering_the_holder_zone_while_weak_is_detour_none(self) -> None:
+        # Design judgment F (Opus review): not merely "not advance" (the
+        # test above) -- entering while strong_enough is still open is
+        # actively reckless, forced to detour/none (not "prepare"), with a
+        # dedicated text naming the danger.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "海"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "none")
+        self.assertIn("鬼", result["text"])
+
     def test_training_while_weak_is_advance(self) -> None:
         world, subjects = load_fixture()
         momotaro = subjects["桃太郎"]
@@ -978,7 +997,13 @@ class DesignJudgmentETests(unittest.TestCase):
         self.assertIsNone(result["cause"])
         self.assertIn("鬼", result["text"])
 
-    def test_withdrawing_from_the_holder_zone_while_weak_is_advance(self) -> None:
+    def test_withdrawing_from_the_holder_zone_while_weak_is_not_advance(self) -> None:
+        # E-3 (Opus review): engine.verbs._withdraw only lowers stress (it
+        # never relocates the subject -- see engine/verbs.py) -- crediting
+        # it as the same "left the zone" escape/advance as an actual move
+        # was wrong; without exhaustion/downed/under_threat it now falls to
+        # the ordinary classification (detour/none, same as the idle-rest
+        # sibling test below), and never gets the "left the zone" wording.
         world, subjects = load_fixture()
         momotaro = subjects["桃太郎"]
         momotaro.zone = "鬼ヶ島"
@@ -989,8 +1014,27 @@ class DesignJudgmentETests(unittest.TestCase):
             momotaro, world, present, [action],
             holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
         )[0]
-        self.assertEqual(result["kind"], "advance")
-        self.assertIsNone(result["cause"])
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "none")
+        self.assertNotIn("離れた", result["text"])
+
+    def test_withdrawing_under_threat_is_detour_body(self) -> None:
+        # E-3: withdraw still reads as the physically-forced pause it
+        # actually is (_body_or_belief_cause's existing "body" rule) when
+        # under_threat, exhausted, or downed -- untouched by the escape
+        # override's removal.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("withdraw", (), {"under_threat": True})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "body")
 
     def test_resting_idle_at_the_holder_zone_while_weak_is_detour_none(self) -> None:
         # The mirror of the withdraw case above: staying and doing nothing
@@ -1038,6 +1082,89 @@ class DesignJudgmentETests(unittest.TestCase):
             is_objective=True,
         )
         self.assertNotIn(("strong_enough", "猿"), best)
+
+    def test_failed_negotiate_offer_stance_ge_is_not_advance_either(self) -> None:
+        # E-1 (Opus review): a negotiate offer that finds no free trade
+        # leaves ("stance_ge", holder.id) in best as the lever to raise
+        # instead of the offer itself -- the old entry_tags demotion list
+        # didn't include it, so this leaf's own zone (holder.zone) kept the
+        # danger zone reachable as an advance/prepare leaf even after the
+        # zone/win_fight/route tags were correctly demoted. visiting is
+        # pre-seeded with every offer/boost item's own acquire-key so
+        # _best_offer/_first_strength_item can't find *any* item (forcing
+        # the stance_ge branch deterministically, without depending on
+        # which items happen to be affordable from wherever momotaro is
+        # standing).
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "道中"
+        momotaro.inventory["船"] = 1
+        momotaro.inventory["勾玉"] = 0  # otherwise already-held 勾玉 (_acquire's
+        # own inventory>=needed short-circuit, checked before `visiting`)
+        # gives a free offer for h==0.0 regardless of the block below.
+        blocked = frozenset(
+            ("item", name) for name in ("勾玉", "弟の手紙", "鉄砲", "金棒", "小判")
+        )
+        h, best, alt, _route = _acquire_from_subject(
+            "鬼ヶ島の宝物", subjects["鬼"], momotaro, world, blocked, self.TRF,
+            is_objective=True,
+        )
+        self.assertNotIn(("stance_ge", "鬼"), best)
+        self.assertIn(("stance_ge", "鬼"), alt)
+
+    def test_strength_item_only_reachable_in_the_dangerous_zone_is_excluded(self) -> None:
+        # E-2 (Opus review): _first_strength_item must not hand back a
+        # strength item whose only acquisition route requires entering the
+        # dangerous holder's own zone -- that's circular, presupposing the
+        # very win the boost step exists to avoid.
+        from gapengine.route import _first_strength_item
+
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "森"
+        momotaro.inventory["船"] = 1  # 鬼ヶ島 is only reachable by boat
+        world.items["秘薬"] = {
+            "lootable": True,
+            "sources": [{"type": "investigate", "zone": "鬼ヶ島", "count": 1}],
+            "modifier": {"id": "item:秘薬", "value": 99, "kind": "item", "visible": True},
+        }
+        _h, best, alt = _first_strength_item(momotaro, world, frozenset(), self.TRF)
+        self.assertTrue(
+            ("has_item", "秘薬") in best or ("has_item", "秘薬") in alt,
+            "sanity: the synthetic item is a real candidate without the guard",
+        )
+        _h2, best2, alt2 = _first_strength_item(
+            momotaro, world, frozenset(), self.TRF, avoid_zone="鬼ヶ島",
+        )
+        self.assertNotIn(("has_item", "秘薬"), best2)
+        self.assertNotIn(("has_item", "秘薬"), alt2)
+
+    def test_strength_item_only_reachable_by_fighting_the_holder_is_excluded(self) -> None:
+        # E-2: same guard, the "take it from whoever holds it" (fight)
+        # route instead of a zone source -- a strength item only obtainable
+        # by fighting the dangerous holder directly must also be excluded.
+        from gapengine.route import _first_strength_item
+
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "道中"
+        momotaro.inventory["船"] = 1  # 鬼ヶ島 is only reachable by boat
+        oni = subjects["鬼"]
+        world.items["秘宝"] = {
+            "lootable": True,
+            "modifier": {"id": "item:秘宝", "value": 60, "kind": "item", "visible": True},
+        }
+        oni.inventory["秘宝"] = 1
+        _h, best, alt = _first_strength_item(momotaro, world, frozenset(), self.TRF)
+        self.assertTrue(
+            ("has_item", "秘宝") in best or ("has_item", "秘宝") in alt,
+            "sanity: the synthetic item is a real candidate without the guard",
+        )
+        _h2, best2, alt2 = _first_strength_item(
+            momotaro, world, frozenset(), self.TRF, avoid_fight_holder="鬼",
+        )
+        self.assertNotIn(("has_item", "秘宝"), best2)
+        self.assertNotIn(("has_item", "秘宝"), alt2)
 
 
 class S1Review1SiblingTests(unittest.TestCase):
