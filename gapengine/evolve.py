@@ -225,7 +225,11 @@ def _route_cfg(
     rho_override = override.get("rho")
     if rho_override is not None:
         rho = float(rho_override)
-        if route_yaml is None:
+        # S1 review 1 recommended fix: an explicit --route-rho 0 (disabling
+        # route, the template default) must never error just because the
+        # template has no route.yaml -- only an actual rho>0 request needs
+        # one to apply.
+        if rho > 0.0 and route_yaml is None:
             raise ValueError(
                 f"route.rho={rho} requested but {template_dir} has no "
                 "route.yaml (route stays disabled for this template)"
@@ -2013,6 +2017,16 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         if world_patch_ids:
             summary_payload["world_patches"] = world_patch_ids
             summary_payload["world_expansion_patches"] = raw_world_patches
+        if route_enabled:
+            # S1 review 1 recommended fix: summary.json is the display-only,
+            # human-facing counterpart of the per-run header (already
+            # carries route.rho/multipliers_hash, see
+            # RouteEvolveWiringTests) -- an experimenter reading only the GA
+            # summary had no way to tell route was even on.
+            summary_payload["route"] = {
+                "rho": route_cfg["rho"],
+                "multipliers_hash": route_multipliers_hash,
+            }
         if coevolve:
             summary_payload.update(
                 {

@@ -246,7 +246,6 @@ def load_route_config(template_dir: str | Path) -> dict[str, Any] | None:
         return None
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return {
-        "delta": float(raw.get("delta", 0.02)),
         "holder_belief_fact": raw.get("holder_belief_fact"),
         "trial_reveal_facts": {
             str(giver): str(fact_id)
@@ -257,6 +256,11 @@ def load_route_config(template_dir: str | Path) -> dict[str, Any] | None:
             str(key): float(value)
             for key, value in (raw.get("multipliers") or {}).items()
         },
+        # Design judgment D: below this believed win probability, a fight/
+        # sabotage/neutralize aimed at the true holder is a hopeless
+        # gesture, not a real branch of the plan -- forced to detour/none
+        # regardless of whether it happens to sit on best or alt.
+        "min_win_prob": float(raw.get("min_win_prob", 0.2)),
     }
 
 
@@ -280,28 +284,37 @@ class Route:
     def __init__(
         self,
         *,
-        delta: float = 0.02,
         holder_belief_fact: str | None = None,
         trial_reveal_facts: Mapping[str, str] | None = None,
         rho: float = 0.0,
         multipliers: Mapping[str, float] | None = None,
+        min_win_prob: float = 0.2,
     ) -> None:
-        self.delta = float(delta)
         self.holder_belief_fact = holder_belief_fact
         self.trial_reveal_facts = dict(trial_reveal_facts or {})
         self.rho = float(rho)
+        if not 0.0 <= self.rho <= 1.0:
+            raise ValueError(f"route.rho must be in [0, 1], got {self.rho!r}")
         self.multipliers = dict(DEFAULT_MULTIPLIERS)
         if multipliers:
+            unknown = sorted(set(multipliers) - set(DEFAULT_MULTIPLIERS))
+            if unknown:
+                raise ValueError(f"route.multipliers has unknown key(s): {unknown}")
             self.multipliers.update({str(k): float(v) for k, v in multipliers.items()})
+        self.min_win_prob = float(min_win_prob)
+        if not 0.0 <= self.min_win_prob <= 1.0:
+            raise ValueError(
+                f"route.min_win_prob must be in [0, 1], got {self.min_win_prob!r}"
+            )
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "Route":
         return cls(
-            delta=float(cfg.get("delta", 0.02)),
             holder_belief_fact=cfg.get("holder_belief_fact"),
             trial_reveal_facts=cfg.get("trial_reveal_facts"),
             rho=float(cfg.get("rho", 0.0)),
             multipliers=cfg.get("multipliers"),
+            min_win_prob=float(cfg.get("min_win_prob", 0.2)),
         )
 
     @property
@@ -349,6 +362,7 @@ class Route:
             actions,
             holder_belief_fact=self.holder_belief_fact,
             trial_reveal_facts=self.trial_reveal_facts,
+            min_win_prob=self.min_win_prob,
         )
 
 
@@ -410,6 +424,50 @@ def _shortest_route_path(
             break
         for route in world.routes.get(zone, ()):
             if route.destination in prev or route.destination in excluded:
+                continue
+            prev[route.destination] = (zone, route)
+            queue.append(route.destination)
+
+    if dest not in prev:
+        return None
+    edges: list[Any] = []
+    cursor = dest
+    while cursor != origin:
+        zone, route = prev[cursor]
+        edges.append(route)
+        cursor = zone
+    edges.reverse()
+    return edges
+
+
+def _reachable_shortest_path(
+    world: World,
+    subject: Subject,
+    origin: str,
+    dest: str,
+    excluded: frozenset[str] = frozenset(),
+) -> list[Any] | None:
+    """Like ``_shortest_route_path``, but gated by ``world._route_allowed``
+    (S1 review 1 required fix 2): a route requiring an item the subject
+    doesn't currently hold (e.g. 船) is not a real path *right now*. Used
+    only by ``annotate()`` to locate the nearest actionable leaf -- crediting
+    a move as "advance" toward a leaf the subject has no way to reach yet
+    would be wrong (that leaf's zone is simply excluded from the search, per
+    plan review 1 §required fix 2)."""
+
+    if origin == dest:
+        return []
+
+    prev: dict[str, tuple[str, Any] | None] = {origin: None}
+    queue: deque[str] = deque([origin])
+    while queue:
+        zone = queue.popleft()
+        if zone == dest:
+            break
+        for route in world.routes.get(zone, ()):
+            if route.destination in prev or route.destination in excluded:
+                continue
+            if not world._route_allowed(subject, route):
                 continue
             prev[route.destination] = (zone, route)
             queue.append(route.destination)
@@ -1155,6 +1213,15 @@ def _leaf_tags(best_kinds: dict[str, set[Any]], world: World) -> list[tuple[str,
         if recipe is not None:
             if any(material in best_kinds.get("has_item", ()) for material in recipe):
                 continue  # blocked: a material is itself still an open need
+            # S1 review 1 recommended fix: a craft with a knowledge
+            # requirement (e.g. 造船術 for 船) isn't actionable here either
+            # while that fact is still an open "knows" need -- mirrors
+            # engine.actions._can_craft's own gating.
+            required_fact = (world.items.get(item, {}).get("requires") or {}).get(
+                "knowledge"
+            )
+            if required_fact is not None and required_fact in best_kinds.get("knows", ()):
+                continue
             leaves.append(("has_item", item))
             continue
         trial = next(
@@ -1201,6 +1268,13 @@ def _leaf_zone(tag: tuple[str, Any], world: World) -> str | None:
             giver = world.subjects.get(str(trial.get("giver", "")))
             if giver is not None:
                 return giver.zone
+        # S1 review 1 recommended fix: an item with no recipe/investigate
+        # source/trial grant is one taken by force from whoever holds it
+        # (_acquire's "take it from whoever currently holds it" branch) --
+        # that's a real zone, not "anywhere".
+        holder_id = world.holder(item)
+        if holder_id is not None and holder_id in world.subjects:
+            return world.subjects[holder_id].zone
         return None
     if kind == "knows":
         for source in world.facts.get(str(value), {}).get("sources", []) or []:
@@ -1473,22 +1547,6 @@ _RELATION_VERB_TEXT = {
     "pledge": "と誓いを結んだ",
 }
 
-_MILESTONE_PRIORITY = ("has_item", "knows", "stance_ge", "win_fight", "zone")
-
-
-def _milestone(tags: "Tags") -> str | None:
-    """A single next node from ``tags`` (the winning branch, ``best``), by a
-    fixed priority order -- not every open need (2026-09-24 review
-    recommended fix 3)."""
-
-    grouped = _kinds(tags)
-    for kind in _MILESTONE_PRIORITY:
-        values = sorted(grouped.get(kind, ()), key=str)
-        if values:
-            return f"{kind}:{values[0]}"
-    return None
-
-
 def _advance_text(
     action: Action, subject: Subject, world: World, kinds: dict[str, set[Any]]
 ) -> str:
@@ -1603,6 +1661,7 @@ def annotate(
     *,
     holder_belief_fact: str | None = None,
     trial_reveal_facts: Mapping[str, str] | None = None,
+    min_win_prob: float = 0.2,
 ) -> list[dict[str, Any]]:
     """One annotation dict per action in ``actions``, in order. Adds a few
     reporting-only fields (``zone``/``inventory``/``allies``) beyond the
@@ -1654,6 +1713,7 @@ def annotate(
     # "advance" for a move; every other best/alt zone is only "prepare").
     leaves_here = False
     nearest_leaf_path_zones: frozenset[str] = frozenset()
+    milestone: str | None = None
     if not is_lost:
         leaves = _leaf_tags(best_kinds, world)
         leaf_zones = [(tag, _leaf_zone(tag, world)) for tag in leaves]
@@ -1663,36 +1723,74 @@ def annotate(
         # "win_fight" tag for the same holder) -- but "negotiate" adds no
         # such tag for the completing action itself, only (optionally) for
         # the offer being built. When the winning plan's last remaining
-        # step is negotiating with the true holder directly (no further
-        # material/fact/stance need), that step is itself a leaf, located
-        # at the holder's own zone -- without this, a plan already down to
-        # "just go negotiate" produced an empty leaf list, so a move
-        # straight to the holder's zone could never read as "advance".
-        if "negotiate" in best_kinds.get("route", ()) and believed_holder_zone is not None:
+        # step is negotiating with the true holder directly -- nothing else
+        # (has_item/knows/stance_ge) still open on ``best`` -- that step is
+        # itself a leaf, located at the holder's own zone (S1 review 1
+        # required fix 1: gated on "the rest is done", not unconditional --
+        # otherwise a plan that still needs, say, an offer item first
+        # wrongly treated "go negotiate" as already actionable, even while
+        # something else on the winning route was still unmet).
+        other_open = bool(
+            best_kinds.get("has_item")
+            or best_kinds.get("knows")
+            or best_kinds.get("stance_ge")
+        )
+        if (
+            "negotiate" in best_kinds.get("route", ())
+            and believed_holder_zone is not None
+            and not other_open
+        ):
             leaf_zones.append((("route", "negotiate"), believed_holder_zone))
-        leaves_here = any(z is None or z == zone for _tag, z in leaf_zones)
-        if not leaves_here:
+        # S1 review 1 required fix 3: once the goal item is already held,
+        # ``best`` (built by ``_travel`` for the delivery leg) only ever
+        # carries ("zone", ...) hop tags -- ``_leaf_tags`` has nothing to
+        # say about it, so without this the delivery zone was never a leaf
+        # and every homeward hop read as "prepare" at best.
+        if (
+            subject.goal.target is not None
+            and subject.has_item(subject.goal.target)
+            and subject.goal.deliver_to is not None
+        ):
+            leaf_zones.append((("goal", "deliver"), subject.goal.deliver_to))
+        here_leaves = [
+            (tag, leaf_zone)
+            for tag, leaf_zone in leaf_zones
+            if leaf_zone is None or leaf_zone == zone
+        ]
+        leaves_here = bool(here_leaves)
+        if leaves_here:
+            # S1 review 1 required fix 4: the recorded milestone is the
+            # same "next node" the classifier itself is using -- the
+            # nearest actionable leaf, current-zone leaves first -- not the
+            # old plan()-only _milestone(best).
+            tag, _leaf_zone_here = min(here_leaves, key=lambda pair: str(pair[0]))
+            milestone = f"{tag[0]}:{tag[1]}"
+        else:
             excluded = frozenset(world._excluded_zones(subject))
-            nearest: tuple[int, str, str, list[Any]] | None = None
+            nearest: tuple[int, str, tuple[str, Any], list[Any]] | None = None
             for tag, leaf_zone in leaf_zones:
                 if leaf_zone is None:
                     continue
-                edges = _shortest_route_path(world, zone, leaf_zone, excluded)
+                # S1 review 1 required fix 2: gated by requires_item (e.g.
+                # 船) -- a leaf across a route the subject can't actually
+                # cross yet is not "nearest" by an unreachable hop count.
+                edges = _reachable_shortest_path(world, subject, zone, leaf_zone, excluded)
                 if edges is None:
                     continue
-                candidate = (len(edges), str(tag), leaf_zone, edges)
+                candidate = (len(edges), str(tag), tag, edges)
                 if nearest is None or candidate[:2] < nearest[:2]:
                     nearest = candidate
             if nearest is not None:
                 nearest_leaf_path_zones = frozenset(
                     route.destination for route in nearest[3]
                 )
+                milestone = f"{nearest[2][0]}:{nearest[2][1]}"
 
     results: list[dict[str, Any]] = []
     for action in actions:
         base = {
             "plan": route_name,
-            "milestone": _milestone(best),
+            "milestone": milestone,
             "zone": zone,
             "inventory": inventory,
             "allies": allies,
@@ -1712,6 +1810,40 @@ def annotate(
                 }
             )
             continue
+
+        # Design judgment D (Opus review 1): fight/sabotage/neutralize aimed
+        # at the true holder, when the subject's own believed win
+        # probability (same p -- believed_strength-based -- that
+        # _acquire_from_subject uses for h) is below min_win_prob, is a
+        # hopeless gesture -- forced to detour/none regardless of whether
+        # it happens to sit on best (fight) or alt. Misattributed targets
+        # are untouched (those already resolve to detour/belief, never
+        # punished).
+        if action.verb in ("fight", "sabotage", "neutralize"):
+            target = action.meta.get("target")
+            if target is None and action.verb == "fight" and action.args:
+                target = action.args[0]
+            holder_subject = (
+                world.subjects.get(believed_holder_id)
+                if target == believed_holder_id and holder_is_true
+                else None
+            )
+            if holder_subject is not None:
+                mine = strength(subject, world, present)
+                theirs = believed_strength(subject, holder_subject, world, present)
+                scaled = max(-700.0, min(700.0, (mine - theirs) / world.contest["tau"]))
+                probability = 1.0 / (1.0 + math.exp(-scaled))
+                if probability < min_win_prob:
+                    results.append(
+                        {
+                            **base,
+                            "kind": "detour",
+                            "cause": "none",
+                            "h": [_finite_or_none(h_before), _finite_or_none(h_before)],
+                            "text": "勝ち目の薄い無謀な挑戦",
+                        }
+                    )
+                    continue
 
         matched = _match_advance_or_prepare(
             action,

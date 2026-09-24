@@ -171,7 +171,10 @@ def run_sweep(out_dir: Path) -> dict[str, Any]:
     return results
 
 
-def _run_ga(rho: float, out_dir: Path) -> dict[str, Any]:
+GA_SEEDS = (20260925, 20260926, 20260927)
+
+
+def _run_ga(rho: float, ga_seed: int, out_dir: Path) -> dict[str, Any]:
     cfg: dict[str, Any] = {
         "project": PROJECT,
         "template": TEMPLATE,
@@ -179,7 +182,7 @@ def _run_ga(rho: float, out_dir: Path) -> dict[str, Any]:
         "generations": 10,
         "population": 20,
         "seeds": 3,
-        "ga_seed": 20260925,
+        "ga_seed": ga_seed,
         "seed_base": 1,
         "keep": "all",
     }
@@ -189,18 +192,44 @@ def _run_ga(rho: float, out_dir: Path) -> dict[str, Any]:
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     reach_rate = summary["generations"][-1]["reach_rate"]
     best_q = max((cell.quality for cell in archive.cells.values()), default=None)
+    # plan §6: "最良qと埋まったマスの内容も併記" -- the occupied cell keys
+    # (leading category x volatility_bin, qd.Archive's own axis-1
+    # bucketing) alongside each cell's quality, not just the cell count.
+    cells = [
+        {"category": category, "volatility_bin": volatility_bin, "quality": round(elite.quality, 6)}
+        for (category, volatility_bin), elite in sorted(archive.cells.items())
+    ]
     return {
         "rho": rho,
+        "ga_seed": ga_seed,
         "archive_cells": len(archive.cells),
         "final_generation_reach_rate": reach_rate,
         "best_quality": best_q,
+        "cells": cells,
     }
 
 
 def run_ga_comparison(out_dir: Path) -> dict[str, Any]:
-    results = {}
+    # plan §4.2 recommended: 3+ GA seeds per rho, not just one -- a single
+    # seed's archive-cell count is too noisy to trust for the §4.3 "80% of
+    # rho=0's cell count" pass/fail line.
+    results: dict[str, Any] = {}
     for rho in (0.0, 1.0):
-        results[str(rho)] = _run_ga(rho, out_dir / f"ga-rho-{rho}")
+        per_seed = [
+            _run_ga(rho, ga_seed, out_dir / f"ga-rho-{rho}-seed-{ga_seed}")
+            for ga_seed in GA_SEEDS
+        ]
+        cell_counts = [r["archive_cells"] for r in per_seed]
+        results[str(rho)] = {
+            "per_seed": per_seed,
+            "archive_cells_mean": sum(cell_counts) / len(cell_counts),
+            "archive_cells_min": min(cell_counts),
+            "archive_cells_max": max(cell_counts),
+            "best_quality_max": max(
+                (r["best_quality"] for r in per_seed if r["best_quality"] is not None),
+                default=None,
+            ),
+        }
     (out_dir / "ga_report.json").write_text(
         json.dumps(results, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
