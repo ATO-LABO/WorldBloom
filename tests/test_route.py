@@ -129,6 +129,14 @@ class AnnotateTests(unittest.TestCase):
 
     def test_gathering_missing_ship_material_is_advance(self) -> None:
         self.momotaro.zone = "森"
+        # 縄 is granted for free by the day-1 scheduled event before the
+        # protagonist ever leaves 村 -- give it here too, so this scenario
+        # matches a state the real simulation can actually reach (縄's own
+        # investigate source is 村, which range.exclude now correctly
+        # blocks once he's left without the treasure -- review 2 required
+        # fix B; without this, the whole plan is genuinely unreachable and
+        # the scenario stops testing what it means to).
+        self.momotaro.inventory["縄"] = 1
         action = Action(
             "investigate",
             ("森",),
@@ -190,6 +198,7 @@ class AnnotateTests(unittest.TestCase):
         # candidate for the generic rapport-building rule) must not be
         # credited just because the target is friendly.
         self.momotaro.zone = "森"
+        self.momotaro.inventory["縄"] = 1  # see test_gathering_missing_ship_material_is_advance
         action = Action(
             "give_item",
             ("鬼の弟", "木材"),
@@ -300,6 +309,8 @@ class ReviewReproductionTests(unittest.TestCase):
         def setup(m, w):
             m.zone = "道中"
             m.inventory["木材"] = 2
+            m.inventory["縄"] = 1  # the day-1 scheduled grant; 村 (its own
+            # investigate source) is otherwise range.exclude'd (fix B)
 
         _m, _w, out = self._annotate(
             setup,
@@ -332,6 +343,105 @@ class ReviewReproductionTests(unittest.TestCase):
         oni = subjects["鬼"]
         self.assertTrue(oni.has_item("金棒"))
         self.assertFalse(_holder_appears_to_have(momotaro, oni, "金棒", world))
+
+    def test_r6_short_by_one_unit_is_still_advance(self) -> None:
+        # Opus review 2, required fix A: _acquire's old unconditional
+        # subject.has_item(item) (>=1) early-return made holding 1 of a
+        # material a recipe needs 2 of read as fully satisfied -- gathering
+        # more must stay "advance" whether the subject holds 0 or 1 already.
+        def setup_zero(m, w):
+            m.zone = "道中"
+            m.inventory["縄"] = 1
+
+        def setup_one(m, w):
+            m.zone = "道中"
+            m.inventory["縄"] = 1
+            m.inventory["木材"] = 1
+
+        for setup in (setup_zero, setup_one):
+            _m, _w, out = self._annotate(
+                setup, [Action("move", ("森",), {"dest": "森"})]
+            )
+            self.assertEqual(out[0]["kind"], "advance", msg=str(setup))
+
+    def test_r7_negotiate_never_used_for_a_non_objective_item(self) -> None:
+        # Required fix B: the real engine's _negotiate_candidates only ever
+        # offers to negotiate for the subject's own goal.target -- a
+        # companion holding a raw material (縄) must only be planned via
+        # fight, never "negotiated" for.
+        def setup(m, w):
+            m.zone = "道中"
+            m.inventory["木材"] = 2
+            w.subjects["犬"].inventory["縄"] = 1
+
+        momotaro, world, _out = self._annotate(setup, [])
+        state = plan(
+            momotaro, world, holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF
+        )
+        # 縄's own acquisition sub-problem must be tagged "fight", not
+        # "negotiate" -- and no stance_ge/offer-building tag for 縄's holder
+        # (犬) should appear at all, since negotiate was never considered
+        # for a non-objective item.
+        self.assertIn(("win_fight", "犬"), state["best"])
+        self.assertNotIn(("stance_ge", "犬"), state["best"])
+        self.assertNotIn(("stance_ge", "犬"), state["alt"])
+
+    def test_recommended1_delivery_leg_does_not_double_count_the_boat(self) -> None:
+        # Recommended fix 1: the delivery leg (origin=holder's zone) must
+        # assume a persistent (vehicle) item acquired on the way there is
+        # still in hand for the trip home, not silently re-plan building a
+        # second one. 鬼ヶ島 -> 海 -> 道中 -> 村 is 3 hops.
+        from gapengine.route import _travel
+
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "道中"
+        momotaro.inventory["木材"] = 2
+        momotaro.inventory["縄"] = 1
+        deliver_h, _best, _alt = _travel(
+            momotaro, world, "村", frozenset(), self.TRF,
+            origin="鬼ヶ島", excluded=frozenset(), assume_held=frozenset({"船"}),
+        )
+        self.assertEqual(deliver_h, 3.0)
+
+        # Without assume_held, a subject who genuinely doesn't hold 船 (and
+        # never will by assumption) legitimately has to build it again --
+        # this asserts the *fix* is what changes the number, not that "5"
+        # was never a valid answer to any question.
+        naive_h, _best2, _alt2 = _travel(
+            momotaro, world, "村", frozenset(), self.TRF, origin="鬼ヶ島", excluded=frozenset(),
+        )
+        self.assertGreater(naive_h, deliver_h)
+
+    def test_recommended2_protection_is_scoped_to_the_live_plan(self) -> None:
+        # Recommended fix 2: giving away the *last* きびだんご must not be
+        # blocked by 猿's trial (monkey_shortcut_trial, requires きびだんご)
+        # when that trial's grant (猿の知恵) is nowhere on the current
+        # best/alt plan -- momotaro already holds a free offer (勾玉).
+        def setup(m, w):
+            m.zone = "道中"
+            m.inventory["きびだんご"] = 1
+
+        _m, _w, out = self._annotate(
+            setup,
+            [Action("give_item", ("犬", "きびだんご"), {"target": "犬", "item": "きびだんご"})],
+        )
+        self.assertEqual(out[0]["kind"], "prepare")
+
+    def test_design_c_a_second_offer_is_a_detour_not_prepare(self) -> None:
+        # Design decision C (confirmed by the design role, 2026-09-24 review
+        # 2): once a free offer (勾玉) and the boat (船) are both already in
+        # hand, moving away to fetch/build a *second*, unnecessary offer
+        # (道中, to craft 鉄砲) is a plain detour -- not "prepare".
+        def setup(m, w):
+            m.zone = "海"
+            m.inventory["船"] = 1
+
+        _m, _w, out = self._annotate(
+            setup, [Action("move", ("道中",), {"dest": "道中"})]
+        )
+        self.assertEqual(out[0]["kind"], "detour")
+        self.assertEqual(out[0]["cause"], "none")
 
 
 class RouteWiringByteIdenticalTests(unittest.TestCase):
