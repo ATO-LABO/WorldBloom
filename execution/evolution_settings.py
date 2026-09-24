@@ -12,25 +12,12 @@ from __future__ import annotations
 from copy import deepcopy
 import os
 
-from execution.provenance import ConfigError, atomic_json, read_json
+from execution.output_settings import _read_settings
+from execution.provenance import ConfigError, atomic_json
 
 
 def default_processes():
     return min(8, os.cpu_count() or 1)
-
-
-def _read_settings(settings_path):
-    if settings_path is None:
-        return {}
-    try:
-        settings = read_json(settings_path)
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as error:
-        raise ConfigError("settings", "settings.json を読めません") from error
-    if not isinstance(settings, dict):
-        raise ConfigError("settings", "settings.json を読めません")
-    return settings
 
 
 def read_evolution_settings(settings_path):

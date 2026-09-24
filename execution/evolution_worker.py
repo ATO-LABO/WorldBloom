@@ -272,7 +272,11 @@ def main(argv=None):
             job["run_id"] != run.name or job["config_id"] != manifest["config_id"] or job["kind"] != "evolve"):
         raise ValueError("job manifest mismatch")
     config = read_json(run / "config.json")
-    cfg = {**manifest["evolution"], "out": run,
+    # WB-COMPUTE-001: the ⚙ setting recorded at submit wins over the config's
+    # frozen value; manifests from before it carry no "processes" key.
+    cfg = {**manifest["evolution"],
+           "processes": manifest.get("processes", manifest["evolution"]["processes"]),
+           "out": run,
            "project": contained(run, "inputs/projects/" + config["project_id"]),
            "template": contained(run, "inputs/templates/" + config["template_id"])}
 
