@@ -293,6 +293,20 @@ class Simulation:
             if key in meta
         }
 
+    def _route_meta(self) -> dict[str, Any] | None:
+        """WB-ROUTE-001 S1 §3: the protagonist policy's route.rho/
+        multipliers_hash, or None when there is no policy, no Route, or it
+        is disabled (rho<=0) -- mirrors ``_rationality_meta``'s "omit the
+        key entirely at the byte-identical default" rule."""
+
+        policy = self._protagonist_policy()
+        if policy is None:
+            return None
+        route = getattr(policy, "route", None)
+        if route is None or not getattr(route, "enabled", False):
+            return None
+        return {"rho": route.rho, "multipliers_hash": route.multipliers_hash()}
+
     def _genome_dict(self) -> dict[str, Any] | None:
         policy = self._protagonist_policy()
         if policy is None:
@@ -355,6 +369,9 @@ class Simulation:
         rationality_meta = self._rationality_meta()
         if rationality_meta is not None:
             header["rationality"] = rationality_meta
+        route_meta = self._route_meta()
+        if route_meta is not None:
+            header["route"] = route_meta
         return header
 
     def _event_row(

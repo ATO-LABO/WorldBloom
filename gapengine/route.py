@@ -87,9 +87,9 @@ sabotage/mislead against, or *moving toward*, the believed-but-wrong
 holder's zone -- recommended 4) is "belief". This template's own numbers
 never actually exercise "belief": momotaro_plus2's only misattribution
 lever, road_gossip, tops out at confidence 0.4, below treasure_thief's
-act_threshold 0.5, so the belief branch is provably unreachable here (记录
-のみ per the design review -- a world-content question for S2+, not fixed
-in S0).
+act_threshold 0.5, so the belief branch is provably unreachable here
+(recorded only, per the design review -- a world-content question for
+S2+, not fixed in S0).
 
 ``trial_reveal_facts`` (an optional ``route.yaml`` mapping of
 ``{giver_subject_id: fact_id}``): a trial giver who exists in the world data
@@ -223,6 +223,19 @@ _STANCE_RAISE_COST = 1.0  # ponytail: flat one-action cost once *some* lever
 # ---------------------------------------------------------------------------
 
 
+# S1 §2: base multiplier b per kind/cause -- route.yaml's own
+# `multipliers:` block overrides individual entries; see Route.multiplier.
+DEFAULT_MULTIPLIERS: dict[str, float] = {
+    "advance": 1.0,
+    "prepare": 0.5,
+    "detour:body": 1.0,  # a physical need is never punished
+    "detour:belief": 1.0,  # advances the subject's own (mistaken) plan
+    "detour:ignorance": 0.5,
+    "detour:none": 0.02,  # delta -- never fully zeroed out
+    "lost": 1.0,  # h==inf: the route layer has nothing to say, no modulation
+}
+
+
 def load_route_config(template_dir: str | Path) -> dict[str, Any] | None:
     """``templates/<genre>/route.yaml``, or None when the template has none
     (route stays disabled -- S0 default for every template but
@@ -239,13 +252,30 @@ def load_route_config(template_dir: str | Path) -> dict[str, Any] | None:
             str(giver): str(fact_id)
             for giver, fact_id in (raw.get("trial_reveal_facts") or {}).items()
         },
+        "rho": float(raw.get("rho", 0.0)),
+        "multipliers": {
+            str(key): float(value)
+            for key, value in (raw.get("multipliers") or {}).items()
+        },
     }
 
 
 class Route:
-    """S0: read-only planner/annotator, duck-typed into
+    """Read-only planner/annotator, duck-typed into
     ``gapengine.policy.Policy`` via its ``route`` kwarg (policy.py never
-    imports this module -- same pattern as ``rationality``)."""
+    imports this module -- same pattern as ``rationality``).
+
+    S1 §2: ``rho`` (0 by default) turns the S0 annotation into an actual
+    weight multiplier, ``m_route = b ** rho`` where ``b`` is
+    ``multipliers[kind]`` or ``multipliers[f"detour:{cause}"]``. At
+    ``rho == 0``, ``b ** 0 == 1.0`` for any positive ``b``, so multiplying
+    is always a mathematical no-op -- ``Route.enabled``/``Policy.reweight``
+    still gate the multiplication and its meta key on ``rho > 0`` (not on
+    whether a Route object exists at all) so a probe can keep constructing
+    ``Route(rho=0.0)`` purely to get S0-style annotations, while the GA path
+    (``gapengine/evolve.py``) constructs no Route object at all at rho=0 --
+    guaranteeing byte-identity with a route-free run trivially, rather than
+    relying on the "b**0==1.0" argument at runtime."""
 
     def __init__(
         self,
@@ -253,10 +283,16 @@ class Route:
         delta: float = 0.02,
         holder_belief_fact: str | None = None,
         trial_reveal_facts: Mapping[str, str] | None = None,
+        rho: float = 0.0,
+        multipliers: Mapping[str, float] | None = None,
     ) -> None:
         self.delta = float(delta)
         self.holder_belief_fact = holder_belief_fact
         self.trial_reveal_facts = dict(trial_reveal_facts or {})
+        self.rho = float(rho)
+        self.multipliers = dict(DEFAULT_MULTIPLIERS)
+        if multipliers:
+            self.multipliers.update({str(k): float(v) for k, v in multipliers.items()})
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "Route":
@@ -264,7 +300,40 @@ class Route:
             delta=float(cfg.get("delta", 0.02)),
             holder_belief_fact=cfg.get("holder_belief_fact"),
             trial_reveal_facts=cfg.get("trial_reveal_facts"),
+            rho=float(cfg.get("rho", 0.0)),
+            multipliers=cfg.get("multipliers"),
         )
+
+    @property
+    def enabled(self) -> bool:
+        """Whether ``multiplier()`` should ever return anything but 1.0 --
+        S1 §2's "ρ=0: no multiplication, no meta key" gate."""
+
+        return self.rho > 0.0
+
+    def multiplier(self, kind: str, cause: str | None) -> float:
+        """``b ** rho`` for this decision's ``kind``/``cause`` -- 1.0
+        unconditionally when ``not self.enabled`` (rho<=0), so a probe's
+        ``Route(rho=0.0)`` never touches a weight even though it still
+        calls ``annotate()`` for its own S0-style measurement."""
+
+        if not self.enabled:
+            return 1.0
+        key = kind if kind in ("advance", "prepare", "lost") else f"detour:{cause or 'none'}"
+        base = self.multipliers.get(key, 1.0)
+        return base ** self.rho
+
+    def multipliers_hash(self) -> str:
+        """A short, stable fingerprint of the active multiplier table, for
+        run headers/archive metadata (S1 §3) -- so two runs with the same
+        rho but a different route.yaml/override are distinguishable without
+        dumping the whole table into every header."""
+
+        import hashlib
+        import json
+
+        payload = json.dumps(self.multipliers, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
     def annotate(
         self,
@@ -541,8 +610,18 @@ def _acquire(
         )
         if travel_h == INF:
             continue
+        # S1 §1.4: a deficit of n units costs ceil(n / count) investigate
+        # actions, not a flat 1 -- e.g. 3 小判 (count=1/action) is 3 actions,
+        # not 1 (previously every deficit, however large, cost exactly 1).
+        deficit = max(1, needed - subject.inventory.get(item, 0))
+        per_action = max(1, int(source.get("count", 1) or 1))
+        gather_actions = math.ceil(deficit / per_action)
         options.append(
-            (travel_h + 1.0, frozenset({("has_item", item)}) | travel_best, travel_alt)
+            (
+                travel_h + float(gather_actions),
+                frozenset({("has_item", item)}) | travel_best,
+                travel_alt,
+            )
         )
 
     # 3. a trial's grant
@@ -777,7 +856,17 @@ def _acquire_from_subject(
 
     options: list[tuple[float, "Tags", "Tags", str]] = []
 
-    if "fight" in subject.verbs and world.target_role(subject, holder) != "ally":
+    # S1 §1.3: only a target the engine's own action_graph permission table
+    # actually allows fighting (typically: hostile only) is a fight
+    # candidate here -- reusing world.permission/world.target_role (the
+    # engine's own relation classification, not a reimplementation) instead
+    # of the old "!= ally" check, which let a merely-neutral companion
+    # (犬/猿/キジ, permission "restricted") register as a fight target for
+    # their held materials, wrongly tagging them boost_fight-worthy.
+    fight_allowed = (
+        world.permission("fight", world.target_role(subject, holder)) >= 1.0
+    )
+    if "fight" in subject.verbs and fight_allowed:
         present_here = world.present_subjects(subject.zone)
         mine = strength(subject, world, present_here)
         theirs = believed_strength(subject, holder, world, present_here)
@@ -1049,6 +1138,88 @@ def _kinds(tags: "Tags") -> dict[str, set[Any]]:
     return grouped
 
 
+def _leaf_tags(best_kinds: dict[str, set[Any]], world: World) -> list[tuple[str, Any]]:
+    """S1 §1.1: the subset of ``best`` that is *actionable right now* -- its
+    own prerequisites (materials for a craft, a trial's stance/item) are
+    already satisfied, so it doesn't wait on another still-open ``best``
+    node first. investigate/craft/trial/negotiate/fight candidates are
+    already leaf-gated by the engine's own candidate generation (a craft
+    candidate only exists when ``_can_craft`` is true, a trial candidate
+    only when its stance/item are met) -- this is only consulted for
+    classifying ``move`` (should leaving here read as advance, or only a
+    step toward the *nearest* leaf?)."""
+
+    leaves: list[tuple[str, Any]] = []
+    for item in sorted(best_kinds.get("has_item", ())):
+        recipe = world.recipes.get(item)
+        if recipe is not None:
+            if any(material in best_kinds.get("has_item", ()) for material in recipe):
+                continue  # blocked: a material is itself still an open need
+            leaves.append(("has_item", item))
+            continue
+        trial = next(
+            (t for t in world.trials if (t.get("grants") or {}).get("item") == item),
+            None,
+        )
+        if trial is not None:
+            giver = str(trial.get("giver", ""))
+            if giver in best_kinds.get("stance_ge", ()):
+                continue
+            required_item = (trial.get("requires") or {}).get("item")
+            if required_item is not None and required_item in best_kinds.get("has_item", ()):
+                continue
+        leaves.append(("has_item", item))
+    for fact_id in sorted(best_kinds.get("knows", ())):
+        leaves.append(("knows", fact_id))
+    for giver in sorted(best_kinds.get("stance_ge", ())):
+        leaves.append(("stance_ge", giver))
+    for holder_id in sorted(best_kinds.get("win_fight", ())):
+        leaves.append(("win_fight", holder_id))
+    return leaves
+
+
+def _leaf_zone(tag: tuple[str, Any], world: World) -> str | None:
+    """Where ``tag`` (one of ``_leaf_tags``'s results) can actually be
+    worked on -- None means "wherever the subject already is" (e.g. a
+    recipe with no ``craft_zone``)."""
+
+    kind, value = tag
+    if kind == "has_item":
+        item = str(value)
+        definition = world.items.get(item, {})
+        if item in world.recipes:
+            craft_zone = definition.get("craft_zone")
+            return str(craft_zone) if craft_zone is not None else None
+        for source in definition.get("sources", []) or []:
+            if source.get("type") == "investigate" and source.get("zone"):
+                return str(source["zone"])
+        trial = next(
+            (t for t in world.trials if (t.get("grants") or {}).get("item") == item),
+            None,
+        )
+        if trial is not None:
+            giver = world.subjects.get(str(trial.get("giver", "")))
+            if giver is not None:
+                return giver.zone
+        return None
+    if kind == "knows":
+        for source in world.facts.get(str(value), {}).get("sources", []) or []:
+            if source.get("type") != "investigate":
+                continue
+            if source.get("zone"):
+                return str(source["zone"])
+            agent = source.get("agent")
+            if agent is not None:
+                agent_subject = world.subjects.get(str(agent))
+                if agent_subject is not None:
+                    return agent_subject.zone
+        return None
+    if kind in ("stance_ge", "win_fight"):
+        peer = world.subjects.get(str(value))
+        return peer.zone if peer is not None else None
+    return None
+
+
 def _match_advance_or_prepare(
     action: Action,
     subject: Subject,
@@ -1060,6 +1231,8 @@ def _match_advance_or_prepare(
     believed_holder_id: str | None,
     believed_holder_zone: str | None,
     holder_is_true: bool,
+    leaves_here: bool,
+    nearest_leaf_path_zones: frozenset[str],
 ) -> str | None:
     verb = action.verb
 
@@ -1067,12 +1240,25 @@ def _match_advance_or_prepare(
         dest = action.meta.get("dest")
         # A misattributed believed holder's zone is never credited as
         # advance/prepare via the zone tag -- it falls through to
-        # _detour_cause's "belief" (2026-09-24 review recommended fix 4).
+        # _detour_cause's "belief".
         if not holder_is_true and dest is not None and dest == believed_holder_zone:
             return None
-        if dest in best_kinds.get("zone", ()):
+        # S1 §1.1: something is actionable right where the subject stands
+        # (a leaf whose own prerequisites are already met) -- no move can be
+        # "advance" (leaving before using it isn't the shortest path), but a
+        # move that still sits on the best route is a reasonable "prepare"
+        # (e.g. scouting ahead while a trial here could also be done).
+        if leaves_here:
+            if dest in best_kinds.get("zone", ()) or dest in alt_kinds.get("zone", ()):
+                return "prepare"
+            return None
+        # Nothing is actionable here -- only a move that is itself a hop on
+        # the shortest path to the *nearest* leaf's zone is "advance"; a
+        # move toward some other, farther leaf is still "prepare" (a
+        # reasonable, non-optimal thing to try).
+        if dest is not None and dest in nearest_leaf_path_zones:
             return "advance"
-        if dest in alt_kinds.get("zone", ()):
+        if dest in best_kinds.get("zone", ()) or dest in alt_kinds.get("zone", ()):
             return "prepare"
         return None
 
@@ -1170,14 +1356,20 @@ def _match_advance_or_prepare(
     return None
 
 
-def _detour_cause(
+def _body_or_belief_cause(
     action: Action,
     subject: Subject,
     world: World,
     believed_holder_id: str | None,
     believed_holder_zone: str | None,
-    h: float | None,
-) -> str:
+) -> str | None:
+    """The two causes that are meaningful *regardless* of whether the plan
+    is reachable (h finite or lost): a physically-forced pause, or acting
+    on a confident misattributed belief. Shared by ``_detour_cause`` and
+    ``_lost_cause`` (S1 §1.2) -- 迷子 (h==inf) still knows *why* the
+    subject rested or attacked the wrong target, even though it has
+    nothing to say about the plan itself."""
+
     verb = action.verb
 
     if verb in ("rest", "withdraw"):
@@ -1190,12 +1382,6 @@ def _detour_cause(
             or bool(action.meta.get("under_threat"))
         ):
             return "body"
-
-    if verb == "observe" and action.meta.get("target") == believed_holder_id:
-        return "ignorance"
-
-    if verb in ("investigate", "observe") and (h is None or h == INF):
-        return "ignorance"
 
     misattributed = (
         believed_holder_id is not None
@@ -1217,7 +1403,49 @@ def _detour_cause(
         if believed_holder_zone is not None and dest == believed_holder_zone:
             return "belief"
 
+    return None
+
+
+def _detour_cause(
+    action: Action,
+    subject: Subject,
+    world: World,
+    believed_holder_id: str | None,
+    believed_holder_zone: str | None,
+) -> str:
+    cause = _body_or_belief_cause(
+        action, subject, world, believed_holder_id, believed_holder_zone
+    )
+    if cause is not None:
+        return cause
+
+    # S1 §1.2: the h==inf branch that used to live here is gone -- an
+    # unreachable plan is now its own kind, "lost" (see _lost_cause), not a
+    # detour cause. This branch only ever fires with a finite h.
+    if action.verb == "observe" and action.meta.get("target") == believed_holder_id:
+        return "ignorance"
+
     return "none"
+
+
+def _lost_cause(
+    action: Action,
+    subject: Subject,
+    world: World,
+    believed_holder_id: str | None,
+    believed_holder_zone: str | None,
+) -> str:
+    """S1 §1.2: when h is unreachable (None/inf), the route layer has
+    nothing to say about the plan -- kind becomes "lost" and m_route is a
+    flat 1.0 (no modulation) regardless of cause. body/belief still get
+    recorded (for the text/report), but "ignorance" is not: it would be
+    redundant with "lost" itself (h finite ignorance -- observing the
+    believed holder -- is still a genuine detour cause, handled by
+    ``_detour_cause``, never reached when lost)."""
+
+    return _body_or_belief_cause(
+        action, subject, world, believed_holder_id, believed_holder_zone
+    ) or "none"
 
 
 # ---------------------------------------------------------------------------
@@ -1359,6 +1587,14 @@ def _detour_text(cause: str) -> str:
     return "特に理由のない寄り道"
 
 
+def _lost_text(cause: str) -> str:
+    if cause == "body":
+        return "疲労や危険のため一旦引いた"
+    if cause == "belief":
+        return "誤った思い込みに基づいて動いた"
+    return "先の見えないまま動いた"
+
+
 def annotate(
     subject: Subject,
     world: World,
@@ -1407,8 +1643,76 @@ def annotate(
         and world.relations.stance(peer.id, subject.id) >= world.companionship["threshold"]
     )
 
+    # S1 §1.2: an unreachable plan (h is None -- no target/holder at all --
+    # or INF -- every considered branch failed) has nothing to say; every
+    # candidate is "lost" and m_route never modulates it.
+    is_lost = h_before is None or h_before == INF
+
+    # S1 §1.1: precompute once per decision point (not per candidate) which
+    # leaves are actionable right here, and -- if none are -- the nearest
+    # leaf's zone and the shortest path to it (any hop on that path is
+    # "advance" for a move; every other best/alt zone is only "prepare").
+    leaves_here = False
+    nearest_leaf_path_zones: frozenset[str] = frozenset()
+    if not is_lost:
+        leaves = _leaf_tags(best_kinds, world)
+        leaf_zones = [(tag, _leaf_zone(tag, world)) for tag in leaves]
+        # _leaf_tags only ever covers has_item/knows/stance_ge/win_fight
+        # tags. A "fight" route's completion is already covered that way
+        # (_acquire_from_subject always pairs "route":"fight" with a
+        # "win_fight" tag for the same holder) -- but "negotiate" adds no
+        # such tag for the completing action itself, only (optionally) for
+        # the offer being built. When the winning plan's last remaining
+        # step is negotiating with the true holder directly (no further
+        # material/fact/stance need), that step is itself a leaf, located
+        # at the holder's own zone -- without this, a plan already down to
+        # "just go negotiate" produced an empty leaf list, so a move
+        # straight to the holder's zone could never read as "advance".
+        if "negotiate" in best_kinds.get("route", ()) and believed_holder_zone is not None:
+            leaf_zones.append((("route", "negotiate"), believed_holder_zone))
+        leaves_here = any(z is None or z == zone for _tag, z in leaf_zones)
+        if not leaves_here:
+            excluded = frozenset(world._excluded_zones(subject))
+            nearest: tuple[int, str, str, list[Any]] | None = None
+            for tag, leaf_zone in leaf_zones:
+                if leaf_zone is None:
+                    continue
+                edges = _shortest_route_path(world, zone, leaf_zone, excluded)
+                if edges is None:
+                    continue
+                candidate = (len(edges), str(tag), leaf_zone, edges)
+                if nearest is None or candidate[:2] < nearest[:2]:
+                    nearest = candidate
+            if nearest is not None:
+                nearest_leaf_path_zones = frozenset(
+                    route.destination for route in nearest[3]
+                )
+
     results: list[dict[str, Any]] = []
     for action in actions:
+        base = {
+            "plan": route_name,
+            "milestone": _milestone(best),
+            "zone": zone,
+            "inventory": inventory,
+            "allies": allies,
+        }
+
+        if is_lost:
+            cause = _lost_cause(
+                action, subject, world, believed_holder_id, believed_holder_zone
+            )
+            results.append(
+                {
+                    **base,
+                    "kind": "lost",
+                    "cause": cause,
+                    "h": [None, None],
+                    "text": _lost_text(cause),
+                }
+            )
+            continue
+
         matched = _match_advance_or_prepare(
             action,
             subject,
@@ -1420,19 +1724,14 @@ def annotate(
             believed_holder_id,
             believed_holder_zone,
             holder_is_true,
+            leaves_here,
+            nearest_leaf_path_zones,
         )
-        base = {
-            "plan": route_name,
-            "milestone": _milestone(best),
-            "zone": zone,
-            "inventory": inventory,
-            "allies": allies,
-        }
         if matched is not None:
-            # 2026-09-24 review recommended fix 2: only an *advancing*
-            # action is credited with reducing h -- prepare/detour keep
-            # h_before unchanged, since neither literally completes a node
-            # on the winning plan.
+            # review 2, recommended fix 2: only an *advancing* action is
+            # credited with reducing h -- prepare/detour keep h_before
+            # unchanged, since neither literally completes a node on the
+            # winning plan.
             h_after = (
                 round(max(0.0, h_before - 1.0), 6)
                 if matched == "advance" and h_before is not None and h_before != INF
@@ -1452,7 +1751,7 @@ def annotate(
             continue
 
         cause = _detour_cause(
-            action, subject, world, believed_holder_id, believed_holder_zone, h_before
+            action, subject, world, believed_holder_id, believed_holder_zone
         )
         results.append(
             {
