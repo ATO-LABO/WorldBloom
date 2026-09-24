@@ -71,7 +71,8 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertIsNone(self.initial(body)['view'])
         self.assertIn('settings.json を読めません', body)
         self.assertNotIn('data-gs-output', body)
-        self.assertEqual(body.count('data-gs-tab='), 3)
+        # WB-COMPUTE-001: nav gained a 4th tab ("計算").
+        self.assertEqual(body.count('data-gs-tab='), 4)
         self.assertIn('まだ登録されていません', body)
 
     def test_assets_are_served(self):
