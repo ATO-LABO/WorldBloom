@@ -108,11 +108,30 @@ def _qd_cfg() -> dict[str, Any]:
 
 
 def _run_one(
-    genome: Genome, seed: int, rho: float, out_dir: Path, *, s1_equivalent: bool = False
-) -> list[dict[str, Any]]:
+    genome: Genome,
+    seed: int,
+    rho: float,
+    out_dir: Path,
+    *,
+    s1_equivalent: bool = False,
+    capture_opportunities: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[list[dict[str, Any] | None]]]:
     """``s1_equivalent`` (S2 §6): strip motives/gene_affinity so this run is
     exactly S1's route.yaml -- the comparison point for "did S2 cost back
-    S1's own gains"."""
+    S1's own gains".
+
+    ``capture_opportunities`` (S2 §6 follow-up, "opportunity rate"):
+    Policy.reweight already annotates *every* candidate action, not just the
+    one eventually sampled (gapengine/policy.py's per-candidate
+    ``action.meta["policy"]["route"]`` loop), but the simulation's own
+    decision row only ever logs the one it picked. Rather than duplicating
+    that per-candidate annotation logic here, wrap the policy's bound
+    ``reweight`` so each call's full candidate list (already mutated with
+    its own ``route`` annotation dict by the *real* reweight) is captured in
+    call order -- one list per decision, aligned 1:1 with
+    ``_protagonist_decisions(rows, ...)`` since this is the only policy
+    wired into the run and Simulation.choose_action calls reweight exactly
+    once per decision that actually has candidates."""
 
     world = World.from_yaml(PROJECT / "world.yaml", action_graph_path=TEMPLATE / "action_graph.yaml")
     subjects = _load_subjects(PROJECT / "subjects")
@@ -123,10 +142,23 @@ def _run_one(
     if route is not None:
         route.rho = rho
     policy = Policy(genome, precedent=None, cfg=_action_cfg(), route=route)
+    opportunities: list[list[dict[str, Any] | None]] = []
+    if capture_opportunities:
+        original_reweight = policy.reweight
+
+        def _capturing_reweight(subject, world, present, weighted, *, turn=0, day=0):
+            result = original_reweight(subject, world, present, weighted, turn=turn, day=day)
+            opportunities.append(
+                [action.meta.get("policy", {}).get("route") for action, _ in weighted]
+            )
+            return result
+
+        policy.reweight = _capturing_reweight
     Simulation(
         seed, world, subjects, out_dir, policies={world.protagonist: policy}
     ).run()
-    return read_rows(out_dir / "layers.jsonl")
+    rows = read_rows(out_dir / "layers.jsonl")
+    return (rows, opportunities) if capture_opportunities else rows
 
 
 def _reached(rows: list[dict[str, Any]]) -> bool:
@@ -150,6 +182,7 @@ def _sweep_one_rho(
     genomes: list[tuple[str, Genome]],
     *,
     s1_equivalent: bool = False,
+    capture_opportunities: bool = False,
 ) -> dict[str, Any]:
     kind_counts: Counter[str] = Counter()
     cause_counts: Counter[str] = Counter()
@@ -161,6 +194,16 @@ def _sweep_one_rho(
     # the pooled totals.
     motive_counts: dict[str, Counter[str]] = {}
     plan_counts: dict[str, Counter[str]] = {}
+    # S2 §6 follow-up: "opportunity" counts (this decision had >=1 candidate
+    # tagged with motive M, whether or not it was the one sampled) alongside
+    # "selection" counts (the sampled candidate itself carried M) -- the
+    # per-motive selection *rate* is the pass/fail 4's own metric, since raw
+    # selection counts conflate "the gene made M more attractive" with "M
+    # simply came up more often" (S2 eval found: caution's count was low for
+    # the cautious genome not because caution loses selections, but because
+    # rest/withdraw candidates carrying it rarely come up at all).
+    motive_opportunities: dict[str, Counter[str]] = {}
+    motive_selections: dict[str, Counter[str]] = {}
     total_decisions = 0
     no_reason = 0
     runs = 0
@@ -171,9 +214,18 @@ def _sweep_one_rho(
     for genome_label, genome in genomes:
         motive_counts[genome_label] = Counter()
         plan_counts[genome_label] = Counter()
+        motive_opportunities[genome_label] = Counter()
+        motive_selections[genome_label] = Counter()
         for seed in SEEDS:
             seed_out = out_dir / genome_label / f"seed-{seed}"
-            rows = _run_one(genome, seed, rho, seed_out, s1_equivalent=s1_equivalent)
+            if capture_opportunities:
+                rows, opportunities = _run_one(
+                    genome, seed, rho, seed_out,
+                    s1_equivalent=s1_equivalent, capture_opportunities=True,
+                )
+            else:
+                rows = _run_one(genome, seed, rho, seed_out, s1_equivalent=s1_equivalent)
+                opportunities = []
             runs += 1
             reached = _reached(rows)
             if reached:
@@ -181,7 +233,15 @@ def _sweep_one_rho(
                 reached_turns.append(_final_turn(rows))
             category_counts[descriptor(rows, qd_cfg).category] += 1
 
-            for row in _protagonist_decisions(rows, "桃太郎"):
+            decisions = _protagonist_decisions(rows, "桃太郎")
+            if capture_opportunities and len(opportunities) != len(decisions):
+                raise RuntimeError(
+                    f"{genome_label}/seed-{seed}: {len(opportunities)} captured "
+                    f"reweight calls != {len(decisions)} protagonist decision rows "
+                    "-- the 1:1 call-order assumption in _run_one's docstring broke"
+                )
+
+            for decision_index, row in enumerate(decisions):
                 policy_meta = row.get("policy") or {}
                 route_meta = policy_meta.get("route")
                 if not isinstance(route_meta, dict):
@@ -198,6 +258,17 @@ def _sweep_one_rho(
                 plan = route_meta.get("plan")
                 if plan:
                     plan_counts[genome_label][str(plan)] += 1
+
+                if capture_opportunities:
+                    candidate_motives = {
+                        str(ann["motive"])
+                        for ann in opportunities[decision_index]
+                        if isinstance(ann, dict) and ann.get("cause") == "motive" and ann.get("motive")
+                    }
+                    for motive_id in candidate_motives:
+                        motive_opportunities[genome_label][motive_id] += 1
+                    if cause == "motive" and route_meta.get("motive"):
+                        motive_selections[genome_label][str(route_meta["motive"])] += 1
 
                 verb = row.get("verb")
                 args = row.get("args") or []
@@ -231,6 +302,24 @@ def _sweep_one_rho(
             )
             for label, counts in plan_counts.items()
         },
+        "motive_opportunity_counts_by_genome": {
+            label: dict(counts) for label, counts in motive_opportunities.items()
+        },
+        "motive_selection_counts_by_genome": {
+            label: dict(counts) for label, counts in motive_selections.items()
+        },
+        # S2 §6 follow-up, pass/fail condition 3's own metric: selections /
+        # opportunities per motive per genome. Absent (not 0.0) for a
+        # (genome, motive) pair that never got an opportunity at all, so a
+        # 0-opportunity genome can't misread as "0% selection rate".
+        "motive_selection_rate_by_genome": {
+            label: {
+                motive_id: motive_selections[label][motive_id] / opportunity_count
+                for motive_id, opportunity_count in motive_opportunities[label].items()
+                if opportunity_count
+            }
+            for label in motive_opportunities
+        },
     }
 
 
@@ -240,14 +329,19 @@ def run_sweep(
     *,
     rhos: tuple[float, ...] = RHOS,
     s2_extra: bool = True,
+    capture_opportunities: bool = False,
 ) -> dict[str, Any]:
     results = {}
     for rho in rhos:
         rho_dir = out_dir / f"rho-{rho}"
-        results[str(rho)] = _sweep_one_rho(rho, rho_dir, genomes)
+        results[str(rho)] = _sweep_one_rho(
+            rho, rho_dir, genomes, capture_opportunities=capture_opportunities
+        )
     if s2_extra and 1.0 in rhos:
         # S2 §6: the S1-equivalent comparison point at rho=1.0 (motives/
-        # gene_affinity stripped) -- what the plan calls "S1 設定".
+        # gene_affinity stripped) -- what the plan calls "S1 設定". Never
+        # worth capturing opportunities here: motives=None means every
+        # candidate's route annotation is motive-free by construction.
         rho_dir = out_dir / "rho-1.0-s1-equivalent"
         results["1.0-s1-equivalent"] = _sweep_one_rho(
             1.0, rho_dir, genomes, s1_equivalent=True
@@ -372,6 +466,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the S1-equivalent (motives/gene_affinity stripped) comparison runs.",
     )
+    parser.add_argument(
+        "--rhos", type=float, nargs="+", default=list(RHOS),
+        help="rho values to sweep (default: 0.0 0.5 1.0).",
+    )
+    parser.add_argument(
+        "--no-opportunities", action="store_true",
+        help="Skip the per-motive opportunity/selection-rate capture (S2 pass/fail 3).",
+    )
     return parser
 
 
@@ -380,7 +482,10 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     genomes = _genomes() if args.no_typical_genomes else _genomes() + _typical_genomes()
-    sweep = run_sweep(out_dir / "sweep", genomes, s2_extra=not args.no_s2_extra)
+    sweep = run_sweep(
+        out_dir / "sweep", genomes, rhos=tuple(args.rhos), s2_extra=not args.no_s2_extra,
+        capture_opportunities=not args.no_opportunities,
+    )
     print(json.dumps(sweep, ensure_ascii=False, indent=2, sort_keys=True))
     if not args.skip_ga:
         ga = run_ga_comparison(out_dir / "ga", s2_extra=not args.no_s2_extra)
