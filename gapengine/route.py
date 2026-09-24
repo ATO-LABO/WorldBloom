@@ -216,6 +216,10 @@ _STANCE_RAISE_COST = 1.0  # ponytail: flat one-action cost once *some* lever
 # (a giftable item, or persuasion) exists -- exact effect sizes are
 # rng-dependent (engine.verbs), so a precise cost isn't computable without
 # simulating (forbidden: the planner must not consume randomness).
+_BOOST_FALLBACK_COST = 1.0  # ponytail: S1 review 2 design judgment E -- flat
+# one-action stand-in for "train until strong enough" when no acquirable
+# item raises strength() either; train() itself has no effect size in this
+# symbolic h model (same rationale as _STANCE_RAISE_COST above).
 
 
 # ---------------------------------------------------------------------------
@@ -874,6 +878,28 @@ def _first_strength_item(
     return _combine(options)
 
 
+def _is_hostile(subject: Subject, target: Subject, world: World) -> bool:
+    """Whether the engine's own action_graph permission table actually
+    allows ``subject`` to fight ``target`` (S1 §1.3's own check, factored
+    out so design judgment D/E can share it without re-deriving it)."""
+
+    return world.permission("fight", world.target_role(subject, target)) >= 1.0
+
+
+def _believed_win_probability(
+    subject: Subject, target: Subject, world: World, present: Sequence[Subject]
+) -> float:
+    """The same believed-strength-based win probability ``_acquire_from_
+    subject``'s own fight-option ``rounds`` estimate uses -- factored out so
+    design judgment D (annotate()'s hopeless-fight override) and design
+    judgment E (the danger-zone gate below) never compute it differently."""
+
+    mine = strength(subject, world, present)
+    theirs = believed_strength(subject, target, world, present)
+    scaled = max(-700.0, min(700.0, (mine - theirs) / world.contest["tau"]))
+    return 1.0 / (1.0 + math.exp(-scaled))
+
+
 def _acquire_from_subject(
     item: str,
     holder: Subject,
@@ -883,6 +909,7 @@ def _acquire_from_subject(
     trial_reveal_facts: Mapping[str, str],
     *,
     is_objective: bool,
+    min_win_prob: float = 0.2,
 ) -> tuple[float, "Tags", "Tags", str | None]:
     """``is_objective`` (review 2, required fix B): the real engine's
     ``_negotiate_candidates`` only ever offers to negotiate for the
@@ -908,12 +935,6 @@ def _acquire_from_subject(
         return INF, frozenset(), frozenset(), None
     visiting = visiting | {key}
 
-    travel_h, travel_best, travel_alt = _travel(subject, world, holder.zone, visiting, trial_reveal_facts)
-    if travel_h == INF:
-        return INF, frozenset(), frozenset(), None
-
-    options: list[tuple[float, "Tags", "Tags", str]] = []
-
     # S1 §1.3: only a target the engine's own action_graph permission table
     # actually allows fighting (typically: hostile only) is a fight
     # candidate here -- reusing world.permission/world.target_role (the
@@ -921,15 +942,34 @@ def _acquire_from_subject(
     # of the old "!= ally" check, which let a merely-neutral companion
     # (犬/猿/キジ, permission "restricted") register as a fight target for
     # their held materials, wrongly tagging them boost_fight-worthy.
-    fight_allowed = (
-        world.permission("fight", world.target_role(subject, holder)) >= 1.0
+    fight_allowed = _is_hostile(subject, holder, world)
+    probability = (
+        _believed_win_probability(subject, holder, world, world.present_subjects(subject.zone))
+        if fight_allowed
+        else None
     )
+
+    # S1 review 2 design judgment E: for the objective's own *true* holder
+    # (never a misattributed/believed one -- "誤認経路は対象外"), hostile and
+    # believed-unwinnable, entering their zone at all is a real danger the
+    # plan must route around first -- getting strong enough is its own
+    # required node, ahead of travel. Scoped to is_objective (never a nested
+    # material's holder, out of design E's stated scope).
+    danger_gate = (
+        is_objective
+        and probability is not None
+        and probability < min_win_prob
+        and holder.id == world.holder(item)
+    )
+
+    travel_h, travel_best, travel_alt = _travel(subject, world, holder.zone, visiting, trial_reveal_facts)
+    if travel_h == INF:
+        return INF, frozenset(), frozenset(), None
+
+    options: list[tuple[float, "Tags", "Tags", str]] = []
+
     if "fight" in subject.verbs and fight_allowed:
-        present_here = world.present_subjects(subject.zone)
-        mine = strength(subject, world, present_here)
-        theirs = believed_strength(subject, holder, world, present_here)
-        scaled = max(-700.0, min(700.0, (mine - theirs) / world.contest["tau"]))
-        probability = 1.0 / (1.0 + math.exp(-scaled))
+        assert probability is not None
         rounds = (
             INF
             if probability <= 0.0
@@ -965,12 +1005,44 @@ def _acquire_from_subject(
     route_name = winner[3]
     h, best, alt = _combine([(o[0], o[1], o[2]) for o in options])
 
+    strength_h: float = INF
+    strength_best: "Tags" = frozenset()
+    strength_alt: "Tags" = frozenset()
     if is_objective:
         strength_h, strength_best, strength_alt = _first_strength_item(
             subject, world, visiting, trial_reveal_facts
         )
         if strength_h != INF:
             alt |= (strength_best | strength_alt) - best
+
+    if danger_gate:
+        # Only the "enter holder.zone" step itself -- the final hop
+        # landing there, plus the route-completion tags that only make
+        # sense once actually there -- is downgraded to alt (still a
+        # reasonable "prepare"), swapped out for the boost step as this
+        # level's actual leaf. Any *other* prerequisite already in best
+        # (materials/facts/stance needed en route, e.g. 船, or earlier hops
+        # that don't yet enter the danger zone) is untouched: it has
+        # nothing to do with the danger and stays advance-eligible.
+        # _first_strength_item's own h is reused as a monotonic (not exact
+        # -- design E accepts this) stand-in for "actions until p>=min_win_
+        # prob"; train() itself has no effect size in this symbolic model,
+        # hence the flat _BOOST_FALLBACK_COST when no item helps either.
+        boost_h = strength_h if strength_h != INF else _BOOST_FALLBACK_COST
+        strong_tags = frozenset({("strong_enough", holder.id)}) | strength_best
+        entry_tags = frozenset(
+            {
+                ("zone", holder.zone),
+                ("win_fight", holder.id),
+                ("route", "fight"),
+                ("route", "negotiate"),
+                ("boost_fight", holder.id),
+            }
+        )
+        demoted = best & entry_tags
+        best = (best - entry_tags) | strong_tags
+        alt = (alt | demoted | strength_alt) - strong_tags
+        h = boost_h + h
 
     return h, best, alt, route_name
 
@@ -1007,6 +1079,7 @@ def plan(
     *,
     holder_belief_fact: str | None = None,
     trial_reveal_facts: Mapping[str, str] | None = None,
+    min_win_prob: float = 0.2,
 ) -> dict[str, Any]:
     """The current best route to the ending, from ``subject``'s own
     knowledge. Read-only, rng-free. See the module docstring for the model.
@@ -1038,7 +1111,7 @@ def plan(
     holder_subject = world.subjects[believed_holder_id]
     acquire_h, acquire_best, acquire_alt, route_name = _acquire_from_subject(
         target, holder_subject, subject, world, frozenset({("item", target)}), reveal_facts,
-        is_objective=True,
+        is_objective=True, min_win_prob=min_win_prob,
     )
     if acquire_h == INF:
         return {"h": INF, "believed_holder": believed_holder_id, "best": frozenset(), "alt": frozenset(), "route": None}
@@ -1242,6 +1315,14 @@ def _leaf_tags(best_kinds: dict[str, set[Any]], world: World) -> list[tuple[str,
         leaves.append(("stance_ge", giver))
     for holder_id in sorted(best_kinds.get("win_fight", ())):
         leaves.append(("win_fight", holder_id))
+    # "strong_enough" (design judgment E) is deliberately NOT a leaf here --
+    # unlike every other leaf kind, it has no zone of its own, so folding it
+    # into this list would make leaves_here trivially true from anywhere,
+    # burying real, zoned leaves (e.g. gathering 木材 at 森) under "prepare"
+    # even though they have nothing to do with the danger. train()/
+    # companion-recruiting read it directly off best_kinds in
+    # _match_advance_or_prepare instead; annotate() falls back to it for
+    # milestone only when no real leaf is open or reachable.
     return leaves
 
 
@@ -1396,6 +1477,12 @@ def _match_advance_or_prepare(
         return None
 
     if verb == "train":
+        # S1 review 2 design judgment E: once "strong_enough" is the open
+        # leaf (entering the holder's zone was deferred for being too
+        # dangerous), training toward it is the actionable step -- advance,
+        # not merely prepare.
+        if best_kinds.get("strong_enough"):
+            return "advance"
         if best_kinds.get("boost_fight") or alt_kinds.get("boost_fight"):
             return "prepare"
         return None
@@ -1424,7 +1511,9 @@ def _match_advance_or_prepare(
             return "prepare"
         target = next((peer for peer in present if peer.id == target_id), None)
         if target is not None and _is_companion_candidate(subject, target, world):
-            return "prepare"
+            # S1 review 2 design judgment E: recruiting help is itself an
+            # advancing step once "strong_enough" is the open leaf.
+            return "advance" if best_kinds.get("strong_enough") else "prepare"
         return None
 
     return None
@@ -1618,6 +1707,11 @@ def _advance_text(
         return "目的物の持ち主と戦った"
 
     if verb == "train":
+        # S1 review 2 design judgment E: named text once training is
+        # specifically toward standing up to a too-strong holder.
+        strong_targets = sorted(kinds.get("strong_enough", ()), key=str)
+        if strong_targets:
+            return f"{strong_targets[0]}に立ち向かえるだけの力をつけるため鍛えた"
         return "戦いに備えて力をつけるため鍛えた"
 
     if verb == "rescue":
@@ -1673,6 +1767,7 @@ def annotate(
         world,
         holder_belief_fact=holder_belief_fact,
         trial_reveal_facts=trial_reveal_facts,
+        min_win_prob=min_win_prob,
     )
     h_before = state["h"]
     best = state["best"]
@@ -1785,6 +1880,31 @@ def annotate(
                     route.destination for route in nearest[3]
                 )
                 milestone = f"{nearest[2][0]}:{nearest[2][1]}"
+            elif best_kinds.get("strong_enough"):
+                # S1 review 2 design judgment E: no real, zoned leaf is open
+                # or reachable right now -- the only remaining need is
+                # getting strong enough, itself doable from anywhere.
+                milestone = f"strong_enough:{sorted(best_kinds['strong_enough'])[0]}"
+
+    # S1 review 2 design judgment E: standing right in a too-strong hostile
+    # holder's own zone (rather than still approaching it) flips the
+    # sensible move -- leaving is the advancing step, not staying. Scoped
+    # to the true, correctly-identified holder ("誤認経路は対象外"), and
+    # skipped once the subject *is* that holder (post-acquisition delivery,
+    # where believed_holder_id trivially becomes subject.id).
+    danger_zone_escape = False
+    if (
+        not is_lost
+        and holder_is_true
+        and believed_holder_id is not None
+        and believed_holder_id != subject.id
+        and zone == believed_holder_zone
+    ):
+        holder_subject = world.subjects.get(believed_holder_id)
+        if holder_subject is not None and _is_hostile(subject, holder_subject, world):
+            danger_zone_escape = (
+                _believed_win_probability(subject, holder_subject, world, present) < min_win_prob
+            )
 
     results: list[dict[str, Any]] = []
     for action in actions:
@@ -1811,6 +1931,24 @@ def annotate(
             )
             continue
 
+        # S1 review 2 design judgment E: at the true, hostile holder's own
+        # zone with a hopeless believed win probability, leaving (move or
+        # withdraw) is the advancing step -- staying to do nothing (a
+        # voluntary "rest", not covered by _body_or_belief_cause's body
+        # reason) already resolves to detour/none via the ordinary fallback
+        # below, so it needs no special case here.
+        if danger_zone_escape and action.verb in ("move", "withdraw"):
+            results.append(
+                {
+                    **base,
+                    "kind": "advance",
+                    "cause": None,
+                    "h": [_finite_or_none(h_before), _finite_or_none(h_before)],
+                    "text": f"まだ{believed_holder_id}には敵わないので{zone}を離れた",
+                }
+            )
+            continue
+
         # Design judgment D (Opus review 1): fight/sabotage/neutralize aimed
         # at the true holder, when the subject's own believed win
         # probability (same p -- believed_strength-based -- that
@@ -1829,10 +1967,7 @@ def annotate(
                 else None
             )
             if holder_subject is not None:
-                mine = strength(subject, world, present)
-                theirs = believed_strength(subject, holder_subject, world, present)
-                scaled = max(-700.0, min(700.0, (mine - theirs) / world.contest["tau"]))
-                probability = 1.0 / (1.0 + math.exp(-scaled))
+                probability = _believed_win_probability(subject, holder_subject, world, present)
                 if probability < min_win_prob:
                     results.append(
                         {

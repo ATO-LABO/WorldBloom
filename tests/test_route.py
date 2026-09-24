@@ -202,19 +202,21 @@ class AnnotateTests(unittest.TestCase):
         self.assertEqual(result["kind"], "lost")
         self.assertEqual(result["cause"], "none")
 
-    def test_befriending_oni_no_otouto_after_learning_of_him_is_prepare(self) -> None:
+    def test_befriending_oni_no_otouto_after_learning_of_him_is_advance(self) -> None:
         # Once 弟の消息 is known, 鬼の弟 is a legitimate *alternative*
         # waypoint toward a negotiate offer (brother_letter_trial grants
         # 弟の手紙) -- but momotaro already starts holding 勾玉, a free
-        # negotiate offer, so the *winning* plan never actually needs
-        # 弟の手紙: this is "prepare" (an alt-branch tag), not "advance"
-        # (review fix 2 -- the best/alt split -- pinned to a single expected
-        # value instead of accepting either, per the review's recommended
-        # fix 5). Credited via the stance_ge tag -- 弟の手紙 has a positive
-        # modifier and momotaro doesn't hold one yet, so review 3's
-        # _first_strength_item also independently picks it up (fix 3) --
-        # never via the generic companion rule, since 鬼の弟's ally_value is
-        # 0 (review 3 required fix 2).
+        # negotiate offer, so the *acquisition's own* winning plan never
+        # needs 弟の手紙, only review 3's _first_strength_item independently
+        # picking it up (fix 3) as a strength boost (never via the generic
+        # companion rule, since 鬼の弟's ally_value is 0 -- review 3 required
+        # fix 2). Originally "prepare" (an alt-branch tag) here.
+        #
+        # S1 review 2 design judgment E: momotaro is outmatched by 鬼 by
+        # default (base 50 vs believed 80) -- the danger-zone gate promotes
+        # the *whole* boost-item acquisition chain (including this
+        # stance_ge sub-step) into best, so persuading 鬼の弟 is now
+        # "advance" via the same pre-existing stance_ge rule, not a new one.
         self.momotaro.zone = "森"
         self.momotaro.knowledge.add("弟の消息")
         self.momotaro.inventory["縄"] = 1  # see test_gathering_missing_ship_material_is_advance
@@ -227,7 +229,7 @@ class AnnotateTests(unittest.TestCase):
             holder_belief_fact="treasure_thief",
             trial_reveal_facts={"鬼の弟": "弟の消息"},
         )[0]
-        self.assertEqual(result["kind"], "prepare")
+        self.assertEqual(result["kind"], "advance")
         self.assertEqual(result["cause"], None)
 
     def test_giving_away_a_still_needed_material_is_detour_none(self) -> None:
@@ -547,9 +549,15 @@ class ReviewReproductionTests(unittest.TestCase):
         # Required fix 1: holding 船+勾玉 at 海 (holder 鬼's zone is directly
         # reachable in one hop), moving away to 道中 must not be "advance"
         # just because 道中 happens to sit on the *eventual* homeward leg.
+        # 鉄砲 held (S1 review 2 design judgment E): momotaro is outmatched
+        # by 鬼 by default (base 50 vs believed 80) -- without it, the
+        # danger-zone gate takes over this exact scenario (道中 also
+        # happens to be where its own boost material is gathered), which
+        # is its own, separately covered behavior (DesignJudgmentETests).
         def setup(m, w):
             m.zone = "海"
             m.inventory["船"] = 1
+            m.inventory["鉄砲"] = 1
 
         _m, _w, out = self._annotate(
             setup,
@@ -559,9 +567,14 @@ class ReviewReproductionTests(unittest.TestCase):
         self.assertEqual(out[1]["kind"], "advance")
 
     def test_r1_h_does_not_increase_when_moving_toward_the_holder(self) -> None:
+        # 鉄砲 held for the same reason as the sibling test just above --
+        # otherwise design judgment E's own boost_h (tied to *current*
+        # position) breaks this scenario's monotonicity for an unrelated
+        # reason (see DesignJudgmentETests for that behavior instead).
         def setup(m, w):
             m.zone = "海"
             m.inventory["船"] = 1
+            m.inventory["鉄砲"] = 1
 
         momotaro, world, _out = self._annotate(setup, [])
         h_at_sea = plan(momotaro, world, holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF)["h"]
@@ -625,14 +638,21 @@ class ReviewReproductionTests(unittest.TestCase):
         # subject.has_item(item) (>=1) early-return made holding 1 of a
         # material a recipe needs 2 of read as fully satisfied -- gathering
         # more must stay "advance" whether the subject holds 0 or 1 already.
+        # 鉄砲 held (S1 review 2 design judgment E): without it, 小判 (also
+        # gatherable right here at 道中, toward the danger-zone gate's own
+        # boost item) becomes a second, currently-actionable leaf, and the
+        # existing S1-review-1 "don't leave what's actionable here" rule
+        # (unrelated to this test) demotes the move to 森 to "prepare".
         def setup_zero(m, w):
             m.zone = "道中"
             m.inventory["縄"] = 1
+            m.inventory["鉄砲"] = 1
 
         def setup_one(m, w):
             m.zone = "道中"
             m.inventory["縄"] = 1
             m.inventory["木材"] = 1
+            m.inventory["鉄砲"] = 1
 
         for setup in (setup_zero, setup_one):
             _m, _w, out = self._annotate(
@@ -731,7 +751,7 @@ class ReviewReproductionTests(unittest.TestCase):
         # moving there is a plain detour. (Review 3 required fix 3 narrowed
         # this: a *first*, not-yet-held strength item is prepare regardless
         # of an unrelated free offer -- see
-        # test_fix3_first_strength_item_is_prepare_even_with_a_free_offer --
+        # test_fix3_first_strength_item_is_advance_even_with_a_free_offer --
         # only a second copy of something already in hand stays a detour.)
         def setup(m, w):
             m.zone = "海"
@@ -744,11 +764,18 @@ class ReviewReproductionTests(unittest.TestCase):
         self.assertEqual(out[0]["kind"], "detour")
         self.assertEqual(out[0]["cause"], "none")
 
-    def test_fix3_first_strength_item_is_prepare_even_with_a_free_offer(self) -> None:
+    def test_fix3_first_strength_item_is_advance_even_with_a_free_offer(self) -> None:
         # Required fix 3 (2026-09-24 review 3): a *first* copy of a
-        # not-yet-held positive-strength-modifier item (鉄砲) is prepare
+        # not-yet-held positive-strength-modifier item (鉄砲) matters
         # regardless of design decision C -- it raises engine.contest.
         # strength() in any fight, independent of the free 勾玉 offer.
+        # Originally "prepare" here.
+        #
+        # S1 review 2 design judgment E: momotaro is outmatched by 鬼 by
+        # default (base 50 vs believed 80) -- the danger-zone gate promotes
+        # this acquisition (小判, toward 鉄砲) into best, so gathering it
+        # right where it's sourced (道中) is now "advance" via the ordinary
+        # investigate rule, not a new one.
         def setup(m, w):
             m.zone = "道中"
             m.inventory["縄"] = 1  # see test_gathering_missing_ship_material_is_advance
@@ -757,7 +784,7 @@ class ReviewReproductionTests(unittest.TestCase):
             setup,
             [Action("investigate", ("道中",), {"target": "道中", "gather": True})],
         )
-        self.assertEqual(out[0]["kind"], "prepare")
+        self.assertEqual(out[0]["kind"], "advance")
         self.assertEqual(out[0]["cause"], None)
 
     def test_fix2_ally_value_zero_target_is_not_a_generic_companion(self) -> None:
@@ -905,6 +932,114 @@ class DesignJudgmentDTests(unittest.TestCase):
         self.assertEqual(result["cause"], "belief")
 
 
+class DesignJudgmentETests(unittest.TestCase):
+    """WB-ROUTE-001 S1 Opus review 2, design judgment E: entering a too-
+    strong hostile holder's own zone is gated on a "strong_enough" leaf
+    (believed win probability >= route.yaml's min_win_prob) before the
+    winning acquisition plan gives credit for it -- getting strong (train,
+    a strength-modifier item, recruiting help) is the actionable step
+    while it's unmet, not the approach/entry itself. Found from eval2's
+    sweep data: 主導カテゴリ V jumped to 141/240 at rho=1.0 because momotaro
+    kept ferrying himself, still weak, straight into 鬼ヶ島 and getting
+    knocked down by 鬼 (211 -> 1221 losses across the sweep)."""
+
+    TRF = {"鬼の弟": "弟の消息"}
+
+    def test_entering_the_holder_zone_while_weak_is_not_advance(self) -> None:
+        # Default fixture: momotaro (base 50) vs 鬼 (believed base 80) --
+        # p~=0.098, well under min_win_prob (0.2). Holding 船 (so 鬼ヶ島 is
+        # directly reachable) used to make this move "advance" (the exact
+        # bug the eval data surfaced); it must not be while genuinely
+        # outmatched.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "海"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertNotEqual(result["kind"], "advance")
+
+    def test_training_while_weak_is_advance(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "道中"
+        momotaro.inventory["縄"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("train", (), {})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "advance")
+        self.assertIsNone(result["cause"])
+        self.assertIn("鬼", result["text"])
+
+    def test_withdrawing_from_the_holder_zone_while_weak_is_advance(self) -> None:
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("withdraw", (), {})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "advance")
+        self.assertIsNone(result["cause"])
+
+    def test_resting_idle_at_the_holder_zone_while_weak_is_detour_none(self) -> None:
+        # The mirror of the withdraw case above: staying and doing nothing
+        # (not forced by exhaustion/downed) is punished, not rewarded.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("rest", (), {"under_threat": False})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "none")
+
+    def test_winnable_entry_is_unaffected(self) -> None:
+        # 鉄砲 pushes p above min_win_prob -- ordinary classification
+        # applies, entering the holder's zone reads as advance again.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "海"
+        momotaro.inventory["船"] = 1
+        momotaro.inventory["鉄砲"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "advance")
+
+    def test_misattributed_target_is_not_gated(self) -> None:
+        # 猿 is not the true holder -- design E ("誤認経路は対象外") must
+        # never gate entry to *his* zone on strength, even though momotaro
+        # confidently (mis)believes he holds the treasure.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.beliefs["treasure_thief"] = Belief(value="猿", confidence=0.9)
+        momotaro.zone = "道中"
+        present = world.present_subjects(momotaro.zone)
+        h, best, _alt, _route = _acquire_from_subject(
+            "鬼ヶ島の宝物", subjects["猿"], momotaro, world, frozenset(), self.TRF,
+            is_objective=True,
+        )
+        self.assertNotIn(("strong_enough", "猿"), best)
+
+
 class S1Review1SiblingTests(unittest.TestCase):
     """WB-ROUTE-001 S1 Opus review 1 recommended: the same three S0-era
     scenarios AnnotateTests already covers, re-run in a *reachable* state
@@ -930,13 +1065,20 @@ class S1Review1SiblingTests(unittest.TestCase):
         self.assertEqual(result["kind"], "detour")
         self.assertEqual(result["cause"], "none")
 
-    def test_companion_small_talk_is_prepare_when_reachable(self) -> None:
+    def test_companion_small_talk_is_advance_when_reachable(self) -> None:
+        # Originally "prepare" here (S0-era companion-candidate rule). S1
+        # review 2 design judgment E: momotaro is outmatched by 鬼 by
+        # default (base 50 vs believed 80) -- recruiting help reads as
+        # "advance" while "strong_enough" is the open leaf, not merely
+        # prepare (see DesignJudgmentETests for the dedicated coverage;
+        # this only re-confirms the S0-era scenario still resolves
+        # sensibly once reachable).
         action = Action("share_knowledge", ("猿", "雑談"), {"target": "猿", "topic": "雑談"})
         result = annotate(
             self.momotaro, self.world, self._present(), [action],
             holder_belief_fact="treasure_thief",
         )[0]
-        self.assertEqual(result["kind"], "prepare")
+        self.assertEqual(result["kind"], "advance")
         self.assertIsNone(result["cause"])
 
     def test_off_plan_trial_material_is_not_protected_when_reachable(self) -> None:
