@@ -2220,6 +2220,13 @@ def annotate(
         holder_win_probability is not None and holder_win_probability < min_win_prob
     )
 
+    # S2 design judgment G: indices forced to detour/none by judgment F
+    # (moving into the too-strong true holder's own zone, still hopeless) --
+    # bravado's ``when`` treats these the same as D's hopeless fight, since
+    # F fires on the same true-holder/hostile/win-probability gate
+    # (danger_gate in compute_route_h) that produced holder_hopeless above.
+    danger_zone_entries: dict[int, str] = {}
+
     results: list[dict[str, Any]] = []
     for action in actions:
         base = {
@@ -2327,6 +2334,7 @@ def annotate(
                         "text": f"まだ敵わないのに{danger_holder}の元へ向かう無謀な行動",
                     }
                 )
+                danger_zone_entries[len(results) - 1] = danger_holder
                 continue
 
         matched = _match_advance_or_prepare(
@@ -2397,6 +2405,16 @@ def annotate(
                 if targets is not None and index < len(targets)
                 else subject.id
             )
+            # Design judgment G: a move forced to detour/none by judgment F
+            # (entering the too-strong true holder's own zone while still
+            # hopeless) has no fight-style target of its own (a move's
+            # target defaults to self) -- rebind it to that same holder so
+            # both the bravado predicate and its {target} text substitution
+            # read it as "the target holder", exactly like D's hopeless
+            # fight does.
+            danger_entry_holder = danger_zone_entries.get(index)
+            if danger_entry_holder is not None:
+                target = danger_entry_holder
             namespace = world.namespace(
                 subject,
                 present,
@@ -2409,7 +2427,10 @@ def annotate(
                     # judgment D's own override) from an unrelated
                     # hostile-target fight that also fell through to
                     # detour/none.
-                    "is_target_holder": target == believed_holder_id and holder_is_true,
+                    "is_target_holder": (
+                        (target == believed_holder_id and holder_is_true)
+                        or danger_entry_holder is not None
+                    ),
                     "holder_hopeless": holder_hopeless,
                 },
             )

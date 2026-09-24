@@ -1543,6 +1543,57 @@ class MotiveMatchingTests(unittest.TestCase):
         )[0]
         self.assertNotEqual(result.get("motive"), "bravado")
 
+    def test_bravado_overrides_the_hopeless_danger_zone_entry_move(self) -> None:
+        # S2 design judgment G: the move design judgment F forces to
+        # detour/none (entering the too-strong true holder's own zone while
+        # still hopeless -- same fixture as
+        # DesignJudgmentETests.test_entering_the_holder_zone_while_weak_is_
+        # detour_none) is now bravado-eligible for a reckless genome, with
+        # {target} naming the holder (鬼), not the zone.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "海"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"})
+        motives = load_motives(TEMPLATE)
+        reckless = self._genome(risk_tolerance=1.0)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            genome=reckless, candidate_genomes=[reckless], motives=motives,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "motive")
+        self.assertEqual(result["motive"], "bravado")
+        self.assertIn("鬼", result["text"])
+        self.assertAlmostEqual(result["gene_s"], 1.0)
+
+    def test_cautious_genome_still_gets_bravado_but_with_a_small_multiplier(self) -> None:
+        # Design judgment G note in the S2 plan: risk_tolerance only weights
+        # the motive's multiplier (via gene_s -> b), it never gates whether
+        # the candidate is relabelled motive:bravado in the first place --
+        # same "fires regardless" behavior as the fight case above.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "海"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"})
+        motives = load_motives(TEMPLATE)
+        cautious = self._genome(risk_tolerance=0.0)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            genome=cautious, candidate_genomes=[cautious], motives=motives,
+        )[0]
+        self.assertEqual(result["motive"], "bravado")
+        self.assertAlmostEqual(result["gene_s"], 0.0)
+        route = Route(rho=1.0, multipliers={"detour:none": 0.02})
+        self.assertAlmostEqual(
+            route.multiplier("detour", "motive", gene_s=result["gene_s"]), 0.02
+        )
+
     def test_care_for_ally_overrides_high_stance_give_item(self) -> None:
         # Same fixture as RouteMultiplierTests.
         # test_neutral_genome_is_still_modulated_when_rho_positive, but with
