@@ -140,6 +140,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--route-rho",
+        type=float,
+        default=None,
+        help=(
+            "WB-ROUTE-001 S1: override templates/<genre>/route.yaml's rho "
+            "(0 disables the route weighting layer; that is the template "
+            "default). Requesting rho>0 for a template with no route.yaml "
+            "is an error."
+        ),
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help=(
@@ -246,6 +257,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "max_judge_calls_per_run": args.rationality_max_calls,
             },
             "resume": args.resume,
+            "route": {"rho": args.route_rho},
             "resume_allow_code_change": args.resume_allow_code_change,
             "seed_base": args.seed_base,
             "seeds": args.seeds,

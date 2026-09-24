@@ -1,4 +1,16 @@
-delta: 0.02          # S1 で使う無理由の下限乗数（S0 では未使用、記録のみ）
+delta: 0.02          # detour/none の下限乗数（multipliers.detour:none と重複管理しない -- 後方互換のためフィールドは残す）
 holder_belief_fact: treasure_thief
 trial_reveal_facts:  # 2026-09-24 追記: このtrialのgiverは、対応するfactを知るまで
   鬼の弟: 弟の消息    # プランナーの立ち寄り先として現れない（村で弟の消息を調べて初めて存在を知る）
+
+# WB-ROUTE-001 S1: m_route = b ** rho。既定 rho=0.0（従来どおり無変調、バイト一致）。
+# scripts/evolve.py --route-rho や cfg["route"]["rho"] で上書きする。
+rho: 0.0
+multipliers:
+  advance: 1.0
+  prepare: 0.5
+  detour:body: 1.0
+  detour:belief: 1.0
+  detour:ignorance: 0.5
+  detour:none: 0.02
+  lost: 1.0

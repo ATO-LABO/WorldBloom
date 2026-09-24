@@ -53,6 +53,7 @@ from gapengine.rationality import (
     Rationality,
     RationalityTable,
 )
+from gapengine.route import Route, load_route_config
 
 
 _ENGINE_DIR = Path(__file__).resolve().parents[1] / "engine"
@@ -202,6 +203,42 @@ def _rationality_backend_cfg(
     rationality_yaml_backend = dict(rationality_yaml.get("backend") or {})
     rationality_override = dict(cfg.get("rationality") or {})
     return rationality_yaml, rationality_yaml_backend, rationality_override
+
+
+def _route_cfg(
+    cfg: Mapping[str, Any], template_dir: Path
+) -> dict[str, Any] | None:
+    """WB-ROUTE-001 S1 §3: templates/<genre>/route.yaml's own ``rho`` (S0
+    default 0.0), overridden by ``cfg["route"]["rho"]``
+    (scripts/evolve.py's ``--route-rho``) -- mirrors
+    ``_rationality_backend_cfg``'s "template default, cfg override" shape,
+    but route has no backend/table to build, just the multiplier config
+    ``gapengine.route.Route.from_config`` already knows how to read.
+
+    Returns None only when rho<=0 (route disabled -- byte-identical to a
+    route-free run, plan §2). Raises when rho>0 is requested for a template
+    with no route.yaml at all: silently ignoring a rho request would leave
+    an experimenter believing route was applied when it never ran."""
+
+    route_yaml = load_route_config(template_dir)
+    override = dict(cfg.get("route") or {})
+    rho_override = override.get("rho")
+    if rho_override is not None:
+        rho = float(rho_override)
+        if route_yaml is None:
+            raise ValueError(
+                f"route.rho={rho} requested but {template_dir} has no "
+                "route.yaml (route stays disabled for this template)"
+            )
+    elif route_yaml is not None:
+        rho = float(route_yaml["rho"])
+    else:
+        rho = 0.0
+    if rho <= 0.0:
+        return None
+    base = dict(route_yaml or {})
+    base["rho"] = rho
+    return base
 
 
 def _rule_ids(
@@ -366,6 +403,12 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         rationality_judge = _build_rationality_judge(rationality_cfg)
         rationality_new_path = out_dir / "rationality-new.jsonl"
 
+    # WB-ROUTE-001 S1 §3: unlike rationality, route carries no per-run
+    # state (no table, no judge calls) -- one Route built once per job is
+    # reused unchanged across every seed.
+    route_cfg = job.get("route_cfg")
+    route = Route.from_config(route_cfg) if route_cfg is not None else None
+
     runs: list[dict[str, Any]] = []
     for seed in seeds:
         _seed_checkpoint(job)
@@ -407,6 +450,7 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
                 rules,
                 cfg=action_cfg,
                 rationality=rationality,
+                route=route,
             )
         if antagonist_genome is not None:
             policies[antagonist] = Policy(
@@ -1022,6 +1066,7 @@ def _cfg_fingerprint(
     target_ending: Any,
     record_explanations: bool,
     rationality_cfg: Mapping[str, Any] | None,
+    route_cfg: Mapping[str, Any] | None = None,
 ) -> str:
     """WB-GA-RESUME: sha256 of every setting that changes what the GA
     computes -- resuming with a different value here is a bug (or a
@@ -1057,6 +1102,11 @@ def _cfg_fingerprint(
         num_ctx = rationality_cfg.get("num_ctx")
         if num_ctx is not None:
             payload["rationality"]["num_ctx"] = num_ctx
+    if route_cfg is not None:
+        payload["route"] = {
+            "rho": route_cfg["rho"],
+            "multipliers_hash": Route.from_config(route_cfg).multipliers_hash(),
+        }
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -1264,6 +1314,15 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             str(rationality_override.get("table") or (out_dir / "rationality.json"))
         )
 
+    # WB-ROUTE-001 S1 §3: rho<=0 (the template default) is None here, so a
+    # rho=0 run attaches no route_cfg to any job and stays byte-identical
+    # to a pre-S1 run (plan §2).
+    route_cfg = _route_cfg(cfg, template_dir)
+    route_enabled = route_cfg is not None
+    route_multipliers_hash = (
+        Route.from_config(route_cfg).multipliers_hash() if route_cfg is not None else None
+    )
+
     world_model = World.from_yaml(
         world_path,
         action_graph_path=action_graph_path,
@@ -1311,6 +1370,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         target_ending=world_model.target_ending,
         record_explanations=record_explanations,
         rationality_cfg=rationality_cfg,
+        route_cfg=route_cfg,
     )
     engine_hash = _engine_source_hash(_ENGINE_DIR)
     gapengine_hash = _engine_source_hash(_GAPENGINE_DIR)
@@ -1615,6 +1675,8 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             if rationality_enabled:
                 job["rationality_cfg"] = rationality_cfg
                 job["rationality_table_path"] = str(rationality_table_path)
+            if route_enabled:
+                job["route_cfg"] = route_cfg
         if observer is not None:
             observer.bind(jobs, generation, "protagonist")
         raw_results = _evaluate_jobs(jobs, processes, observer)
@@ -1727,6 +1789,11 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 if rationality_enabled:
                     job["rationality_cfg"] = rationality_cfg
                     job["rationality_table_path"] = str(rationality_table_path)
+                # Same reasoning as rationality_cfg above: the sampled
+                # protagonist genome here must see the same route weighting
+                # it gets in the main protagonist pass.
+                if route_enabled:
+                    job["route_cfg"] = route_cfg
             if observer is not None:
                 observer.bind(antagonist_jobs, generation, "antagonist")
             antagonist_raw_results = _evaluate_jobs(antagonist_jobs, processes, observer)
