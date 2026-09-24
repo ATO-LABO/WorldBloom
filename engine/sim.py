@@ -305,7 +305,15 @@ class Simulation:
         route = getattr(policy, "route", None)
         if route is None or not getattr(route, "enabled", False):
             return None
-        return {"rho": route.rho, "multipliers_hash": route.multipliers_hash()}
+        return {
+            "rho": route.rho,
+            "multipliers_hash": route.multipliers_hash(),
+            # WB-ROUTE-001 S2 §5: motives.yaml hash + gene_affinity, both
+            # None/0.0 (the S1 default) when the template has no motive
+            # table.
+            "gene_affinity": route.gene_affinity,
+            "motives_hash": route.motives_hash(),
+        }
 
     def _genome_dict(self) -> dict[str, Any] | None:
         policy = self._protagonist_policy()

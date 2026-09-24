@@ -200,6 +200,8 @@ from typing import Any, Mapping, Sequence, TYPE_CHECKING
 import yaml
 
 from engine.contest import believed_strength, strength
+from engine.predicate import compile_predicate_syntax
+from gapengine.genome import CATEGORIES
 
 if TYPE_CHECKING:
     from engine.actions import Action
@@ -240,6 +242,75 @@ DEFAULT_MULTIPLIERS: dict[str, float] = {
 }
 
 
+# S2 §2: the gene keys a motive's `gene:` field (optionally `-`-prefixed to
+# invert) may name. Kept as a frozenset (not hardcoded to a template's
+# active categories) so an unknown key is caught at load time rather than
+# silently defaulting to some magic strength.
+_MOTIVE_GENE_KEYS = frozenset(
+    {"risk_tolerance", "stance_shift_bias", "novelty_drive"}
+    | {f"category_weight.{category}" for category in CATEGORIES}
+)
+
+
+def load_motives(template_dir: str | Path) -> list[dict[str, Any]] | None:
+    """``templates/<genre>/motives.yaml`` (S2 §1), or None when the template
+    has none (no motive ever overrides a detour/none candidate -- same as a
+    template with no route.yaml at all)."""
+
+    path = Path(template_dir) / "motives.yaml"
+    if not path.is_file():
+        return None
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    if not isinstance(raw, list):
+        raise ValueError(f"{path} must be a YAML list of motive entries")
+
+    motives: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for index, entry in enumerate(raw):
+        if not isinstance(entry, Mapping):
+            raise ValueError(f"{path}: entry {index} must be a mapping")
+        motive_id = entry.get("id")
+        if not isinstance(motive_id, str) or not motive_id:
+            raise ValueError(f"{path}: entry {index} is missing a string id")
+        if motive_id in seen_ids:
+            raise ValueError(f"{path}: duplicate motive id {motive_id!r}")
+        seen_ids.add(motive_id)
+
+        when = entry.get("when")
+        if not isinstance(when, str) or not when.strip():
+            raise ValueError(f"{path}: {motive_id} is missing `when`")
+
+        verbs = entry.get("verbs")
+        if not isinstance(verbs, list) or not verbs:
+            raise ValueError(f"{path}: {motive_id} is missing `verbs`")
+
+        gene = entry.get("gene")
+        if not isinstance(gene, str) or not gene:
+            raise ValueError(f"{path}: {motive_id} is missing `gene`")
+        base_gene = gene[1:] if gene.startswith("-") else gene
+        if base_gene not in _MOTIVE_GENE_KEYS:
+            raise ValueError(
+                f"{path}: {motive_id} has unknown gene key {gene!r}"
+            )
+
+        text = entry.get("text")
+        if not isinstance(text, str) or not text:
+            raise ValueError(f"{path}: {motive_id} is missing `text`")
+
+        motives.append(
+            {
+                "id": motive_id,
+                "label": entry.get("label"),
+                "when": when,
+                "predicate": compile_predicate_syntax(when),
+                "verbs": frozenset(str(verb) for verb in verbs),
+                "gene": gene,
+                "text": text,
+            }
+        )
+    return motives
+
+
 def load_route_config(template_dir: str | Path) -> dict[str, Any] | None:
     """``templates/<genre>/route.yaml``, or None when the template has none
     (route stays disabled -- S0 default for every template but
@@ -265,7 +336,50 @@ def load_route_config(template_dir: str | Path) -> dict[str, Any] | None:
         # gesture, not a real branch of the plan -- forced to detour/none
         # regardless of whether it happens to sit on best or alt.
         "min_win_prob": float(raw.get("min_win_prob", 0.2)),
+        # S2 §4: gene_affinity (0 disables -- S1 identical) biases which
+        # route (named in route_category, e.g. fight/negotiate) plan()
+        # treats as cheapest, without changing the recorded h itself.
+        "gene_affinity": float(raw.get("gene_affinity", 0.0)),
+        "route_category": {
+            str(key): str(value)
+            for key, value in (raw.get("route_category") or {}).items()
+        },
+        # S2 §1: motives.yaml lives next to route.yaml -- loaded here so
+        # every caller of load_route_config (evolve.py, the eval/probe
+        # scripts, tests) gets it for free via Route.from_config.
+        "motives": load_motives(template_dir),
     }
+
+
+def _clip01(value: float) -> float:
+    return min(1.0, max(0.0, value))
+
+
+def gene_strength(
+    genome: Any, gene: str, category_mean: float | None = None
+) -> float:
+    """S2 §2: the 0..1 "how strongly does this genome lean into `gene`"
+    reading used both by motive multipliers (§3) and by gene_affinity route
+    selection (§4). ``genome`` is duck-typed (``gapengine.genome.Genome`` or
+    anything with the same four attributes) -- this module never imports
+    ``gapengine.policy``. A leading ``-`` inverts (``1 - s``)."""
+
+    negate = gene.startswith("-")
+    key = gene[1:] if negate else gene
+    if key.startswith("category_weight."):
+        category = key.split(".", 1)[1]
+        weight = float(genome.category_weight.get(category, 0.5))
+        mean = float(category_mean) if category_mean else 0.0
+        s = _clip01(weight / mean / 2.0) if mean > 0.0 else 0.5
+    elif key == "risk_tolerance":
+        s = _clip01(float(genome.risk_tolerance))
+    elif key == "stance_shift_bias":
+        s = _clip01((float(genome.stance_shift_bias) + 1.0) / 2.0)
+    elif key == "novelty_drive":
+        s = _clip01(float(genome.novelty_drive))
+    else:
+        raise ValueError(f"unknown gene key: {gene!r}")
+    return 1.0 - s if negate else s
 
 
 class Route:
@@ -293,6 +407,9 @@ class Route:
         rho: float = 0.0,
         multipliers: Mapping[str, float] | None = None,
         min_win_prob: float = 0.2,
+        motives: Sequence[Mapping[str, Any]] | None = None,
+        gene_affinity: float = 0.0,
+        route_category: Mapping[str, str] | None = None,
     ) -> None:
         self.holder_belief_fact = holder_belief_fact
         self.trial_reveal_facts = dict(trial_reveal_facts or {})
@@ -310,6 +427,28 @@ class Route:
             raise ValueError(
                 f"route.min_win_prob must be in [0, 1], got {self.min_win_prob!r}"
             )
+        # S2 §1: pre-compiled motive rules -- already validated (unique id,
+        # known gene key) by load_motives, but a directly-constructed Route
+        # (tests) may pass raw dicts without a compiled "predicate" -- accept
+        # either.
+        self.motives = [
+            motive if "predicate" in motive else {
+                **motive,
+                "predicate": compile_predicate_syntax(motive["when"]),
+                "verbs": frozenset(motive["verbs"]),
+            }
+            for motive in (motives or [])
+        ]
+        # S2 §4: 0 (default) is exactly S1 -- plan() never prefers a route by
+        # gene.
+        self.gene_affinity = float(gene_affinity)
+        if not 0.0 <= self.gene_affinity <= 1.0:
+            raise ValueError(
+                f"route.gene_affinity must be in [0, 1], got {self.gene_affinity!r}"
+            )
+        self.route_category = {
+            str(key): str(value) for key, value in (route_category or {}).items()
+        }
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "Route":
@@ -319,6 +458,9 @@ class Route:
             rho=float(cfg.get("rho", 0.0)),
             multipliers=cfg.get("multipliers"),
             min_win_prob=float(cfg.get("min_win_prob", 0.2)),
+            motives=cfg.get("motives"),
+            gene_affinity=float(cfg.get("gene_affinity", 0.0)),
+            route_category=cfg.get("route_category"),
         )
 
     @property
@@ -328,14 +470,28 @@ class Route:
 
         return self.rho > 0.0
 
-    def multiplier(self, kind: str, cause: str | None) -> float:
+    def multiplier(
+        self, kind: str, cause: str | None, gene_s: float | None = None
+    ) -> float:
         """``b ** rho`` for this decision's ``kind``/``cause`` -- 1.0
         unconditionally when ``not self.enabled`` (rho<=0), so a probe's
         ``Route(rho=0.0)`` never touches a weight even though it still
-        calls ``annotate()`` for its own S0-style measurement."""
+        calls ``annotate()`` for its own S0-style measurement.
+
+        S2 §3: ``cause == "motive"`` (annotate() only ever sets this when a
+        motive actually matched, always alongside a ``gene_s`` reading) uses
+        a dynamic base ``b = delta + (1 - delta) * gene_s`` instead of the
+        static ``multipliers`` table -- delta is ``multipliers["detour:none"]``
+        itself (no separate constant to keep in sync: at gene_s=0 a motive
+        is exactly as weighted as an unreasoned detour)."""
 
         if not self.enabled:
             return 1.0
+        if kind == "detour" and cause == "motive":
+            delta = self.multipliers.get("detour:none", 0.02)
+            s = 0.5 if gene_s is None else gene_s
+            base = delta + (1.0 - delta) * s
+            return base ** self.rho
         key = kind if kind in ("advance", "prepare", "lost") else f"detour:{cause or 'none'}"
         base = self.multipliers.get(key, 1.0)
         return base ** self.rho
@@ -352,12 +508,46 @@ class Route:
         payload = json.dumps(self.multipliers, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
+    def motives_hash(self) -> str | None:
+        """S2 §5: a fingerprint of motives.yaml (None when the template has
+        none), for run headers/archive metadata alongside gene_affinity --
+        multipliers_hash alone can't distinguish two runs whose motive table
+        differs."""
+
+        if not self.motives:
+            return None
+        import hashlib
+        import json
+
+        payload = json.dumps(
+            [
+                {
+                    "id": motive["id"],
+                    "when": motive["when"],
+                    "verbs": sorted(motive["verbs"]),
+                    "gene": motive["gene"],
+                    "text": motive["text"],
+                }
+                for motive in self.motives
+            ],
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
     def annotate(
         self,
         subject: Subject,
         world: World,
         present: Sequence[Subject],
         actions: Sequence[Action],
+        *,
+        turn: int = 0,
+        day: int = 0,
+        genome: Any = None,
+        category_mean: float | None = None,
+        targets: Sequence[str] | None = None,
+        candidate_genomes: Sequence[Any] | None = None,
     ) -> list[dict[str, Any]]:
         return annotate(
             subject,
@@ -367,6 +557,15 @@ class Route:
             holder_belief_fact=self.holder_belief_fact,
             trial_reveal_facts=self.trial_reveal_facts,
             min_win_prob=self.min_win_prob,
+            turn=turn,
+            day=day,
+            genome=genome,
+            category_mean=category_mean,
+            targets=targets,
+            candidate_genomes=candidate_genomes,
+            motives=self.motives,
+            gene_affinity=self.gene_affinity,
+            route_category=self.route_category,
         )
 
 
@@ -924,6 +1123,10 @@ def _acquire_from_subject(
     *,
     is_objective: bool,
     min_win_prob: float = 0.2,
+    genome: Any = None,
+    category_mean: float | None = None,
+    gene_affinity: float = 0.0,
+    route_category: Mapping[str, str] | None = None,
 ) -> tuple[float, "Tags", "Tags", str | None]:
     """``is_objective`` (review 2, required fix B): the real engine's
     ``_negotiate_candidates`` only ever offers to negotiate for the
@@ -1015,9 +1218,36 @@ def _acquire_from_subject(
     if not options:
         return INF, frozenset(), frozenset(), None
 
-    winner = min(options, key=lambda option: option[0])
+    # S2 §4: gene_affinity==0 (default, S1) or a route name absent from
+    # route_category (e.g. this is a non-objective material fight, which
+    # never has more than one option anyway) falls back to plain h --
+    # byte-identical winner/h/best/alt to S1. Only *which option wins* uses
+    # h_eff; the h that bubbles up stays that winner's own plain h (S2 §4:
+    # "記録する h は素の h のまま").
+    if gene_affinity and route_category and genome is not None:
+
+        def _eff_key(option: tuple[float, "Tags", "Tags", str]) -> float:
+            h_plain, _best, _alt, name = option
+            category = route_category.get(name)
+            if category is None:
+                return h_plain
+            s_route = gene_strength(
+                genome, f"category_weight.{category}", category_mean
+            )
+            return h_plain * (1.0 + gene_affinity * (1.0 - 2.0 * s_route))
+
+        winner = min(options, key=_eff_key)
+    else:
+        winner = min(options, key=lambda option: option[0])
     route_name = winner[3]
-    h, best, alt = _combine([(o[0], o[1], o[2]) for o in options])
+    h = winner[0]
+    best_tags: set[tuple[str, Any]] = set(winner[1])
+    pool: set[tuple[str, Any]] = set(winner[2])
+    for opt_h, opt_best, opt_alt, _name in options:
+        pool |= opt_best
+        pool |= opt_alt
+    best = frozenset(best_tags)
+    alt = frozenset(pool) - best
 
     strength_h: float = INF
     strength_best: "Tags" = frozenset()
@@ -1111,6 +1341,10 @@ def plan(
     holder_belief_fact: str | None = None,
     trial_reveal_facts: Mapping[str, str] | None = None,
     min_win_prob: float = 0.2,
+    genome: Any = None,
+    category_mean: float | None = None,
+    gene_affinity: float = 0.0,
+    route_category: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """The current best route to the ending, from ``subject``'s own
     knowledge. Read-only, rng-free. See the module docstring for the model.
@@ -1143,6 +1377,8 @@ def plan(
     acquire_h, acquire_best, acquire_alt, route_name = _acquire_from_subject(
         target, holder_subject, subject, world, frozenset({("item", target)}), reveal_facts,
         is_objective=True, min_win_prob=min_win_prob,
+        genome=genome, category_mean=category_mean,
+        gene_affinity=gene_affinity, route_category=route_category,
     )
     if acquire_h == INF:
         return {"h": INF, "believed_holder": believed_holder_id, "best": frozenset(), "alt": frozenset(), "route": None}
@@ -1787,11 +2023,33 @@ def annotate(
     holder_belief_fact: str | None = None,
     trial_reveal_facts: Mapping[str, str] | None = None,
     min_win_prob: float = 0.2,
+    turn: int = 0,
+    day: int = 0,
+    genome: Any = None,
+    category_mean: float | None = None,
+    targets: Sequence[str] | None = None,
+    candidate_genomes: Sequence[Any] | None = None,
+    motives: Sequence[Mapping[str, Any]] | None = None,
+    gene_affinity: float = 0.0,
+    route_category: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """One annotation dict per action in ``actions``, in order. Adds a few
     reporting-only fields (``zone``/``inventory``/``allies``) beyond the
     original plan so scripts/route_probe.py's report doesn't need to
-    reconstruct per-turn state from partial deltas."""
+    reconstruct per-turn state from partial deltas.
+
+    S2: ``genome``/``category_mean`` (§4) bias plan()'s own fight-vs-
+    negotiate route choice by gene, before any candidate is classified.
+    ``motives``/``targets`` (§1-3) run as a single pass *after* every
+    candidate's kind/cause is otherwise decided (below) -- only a candidate
+    that already came out ``detour``/``cause=="none"`` (S0/S1's "no reason"
+    bucket) is ever eligible to be relabelled ``cause="motive"``; advance/
+    prepare/body/belief/ignorance/lost are never touched. ``targets`` (one
+    candidate target id per action, defaulting to ``subject.id`` when
+    omitted) must be derived the same way ``gapengine.policy``'s own
+    candidate rules bind ``target`` -- Policy passes its own
+    ``_candidate_target`` list in, so a motive's ``when`` (e.g. ``stance(self,
+    target) >= 0.6``) means the same thing a policy rule's ``when`` does."""
 
     state = plan(
         subject,
@@ -1799,6 +2057,10 @@ def annotate(
         holder_belief_fact=holder_belief_fact,
         trial_reveal_facts=trial_reveal_facts,
         min_win_prob=min_win_prob,
+        genome=genome,
+        category_mean=category_mean,
+        gene_affinity=gene_affinity,
+        route_category=route_category,
     )
     h_before = state["h"]
     best = state["best"]
@@ -1937,6 +2199,27 @@ def annotate(
                 _believed_win_probability(subject, holder_subject, world, present) < min_win_prob
             )
 
+    # S2 §1 (bravado): the same believed win probability design judgment D
+    # uses below, computed once (identical for every candidate this
+    # decision point) so the post-loop motive pass can tell a genuinely
+    # hopeless fight against the *true* holder apart from an unrelated
+    # hostile-target fight that also happened to fall through to
+    # detour/none (which _match_advance_or_prepare never classifies for a
+    # non-holder target).
+    true_holder_subject = (
+        world.subjects.get(believed_holder_id)
+        if not is_lost and believed_holder_id is not None and holder_is_true
+        else None
+    )
+    holder_win_probability = (
+        _believed_win_probability(subject, true_holder_subject, world, present)
+        if true_holder_subject is not None
+        else None
+    )
+    holder_hopeless = (
+        holder_win_probability is not None and holder_win_probability < min_win_prob
+    )
+
     results: list[dict[str, Any]] = []
     for action in actions:
         base = {
@@ -1999,14 +2282,12 @@ def annotate(
             target = action.meta.get("target")
             if target is None and action.verb == "fight" and action.args:
                 target = action.args[0]
-            holder_subject = (
-                world.subjects.get(believed_holder_id)
-                if target == believed_holder_id and holder_is_true
-                else None
-            )
-            if holder_subject is not None:
-                probability = _believed_win_probability(subject, holder_subject, world, present)
-                if probability < min_win_prob:
+            if (
+                target == believed_holder_id
+                and holder_is_true
+                and holder_win_probability is not None
+            ):
+                if holder_win_probability < min_win_prob:
                     results.append(
                         {
                             **base,
@@ -2097,6 +2378,66 @@ def annotate(
                 "text": _detour_text(cause),
             }
         )
+
+    # S2 §1-3: a single pass over the *finished* results, after every other
+    # kind/cause decision above (D's hopeless-fight override, F's
+    # danger-zone-entry override, and the ordinary _detour_cause fallback
+    # all funnel into the same kind="detour"/cause="none" shape) -- only
+    # that shape is ever eligible for a motive. First matching motive (verb
+    # in motive["verbs"] and its predicate true) in motives.yaml's own
+    # order wins; no match leaves the candidate exactly as S0/S1 produced
+    # it ("特に理由のない寄り道").
+    if motives:
+        for index, action in enumerate(actions):
+            result = results[index]
+            if result["kind"] != "detour" or result["cause"] != "none":
+                continue
+            target = (
+                targets[index]
+                if targets is not None and index < len(targets)
+                else subject.id
+            )
+            namespace = world.namespace(
+                subject,
+                present,
+                turn=turn,
+                day=day,
+                bindings={
+                    "target": target,
+                    # S2 §1 (bravado): lets motives.yaml distinguish a
+                    # hopeless fight against the true goal holder (design
+                    # judgment D's own override) from an unrelated
+                    # hostile-target fight that also fell through to
+                    # detour/none.
+                    "is_target_holder": target == believed_holder_id and holder_is_true,
+                    "holder_hopeless": holder_hopeless,
+                },
+            )
+            for motive in motives:
+                if action.verb not in motive["verbs"]:
+                    continue
+                if not motive["predicate"].evaluate(namespace):
+                    continue
+                motive_genome = (
+                    candidate_genomes[index]
+                    if candidate_genomes is not None and index < len(candidate_genomes)
+                    else genome
+                )
+                gene_s = (
+                    gene_strength(motive_genome, motive["gene"], category_mean)
+                    if motive_genome is not None
+                    else 0.5
+                )
+                fill = result["zone"] if target == subject.id else target
+                text = motive["text"].replace("{target}", str(fill)).replace(
+                    "{zone}", str(result["zone"])
+                )
+                result["cause"] = "motive"
+                result["motive"] = motive["id"]
+                result["text"] = text
+                result["gene_s"] = round(gene_s, 6)
+                break
+
     return results
 
 

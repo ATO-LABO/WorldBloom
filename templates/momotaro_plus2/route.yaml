@@ -17,3 +17,11 @@ multipliers:
 # S1 レビュー1 設計判断D: holder への fight/sabotage/neutralize の本人believed勝率が
 # これ未満なら detour/none 扱い（勝ち目の薄い無謀な挑戦）。
 min_win_prob: 0.2
+
+# WB-ROUTE-001 S2 §4: 経路名(fight/negotiate)ごとのカテゴリ対応。最善経路の
+# 選択だけ h_eff = h * (1 + gene_affinity * (1 - 2*s_category)) で行う（h 自体は
+# 素のまま記録）。gene_affinity=0（既定）は S1 と同一。
+gene_affinity: 0.5
+route_category:
+  fight: I
+  negotiate: III
