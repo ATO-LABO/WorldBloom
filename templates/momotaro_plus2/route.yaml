@@ -1,4 +1,3 @@
-delta: 0.02          # detour/none の下限乗数（multipliers.detour:none と重複管理しない -- 後方互換のためフィールドは残す）
 holder_belief_fact: treasure_thief
 trial_reveal_facts:  # 2026-09-24 追記: このtrialのgiverは、対応するfactを知るまで
   鬼の弟: 弟の消息    # プランナーの立ち寄り先として現れない（村で弟の消息を調べて初めて存在を知る）
@@ -14,3 +13,7 @@ multipliers:
   detour:ignorance: 0.5
   detour:none: 0.02
   lost: 1.0
+
+# S1 レビュー1 設計判断D: holder への fight/sabotage/neutralize の本人believed勝率が
+# これ未満なら detour/none 扱い（勝ち目の薄い無謀な挑戦）。
+min_win_prob: 0.2

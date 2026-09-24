@@ -55,8 +55,8 @@ class RouteConfigTests(unittest.TestCase):
         cfg = load_route_config(TEMPLATE)
         self.assertIsNotNone(cfg)
         assert cfg is not None
-        self.assertEqual(cfg["delta"], 0.02)
         self.assertEqual(cfg["holder_belief_fact"], "treasure_thief")
+        self.assertEqual(cfg["min_win_prob"], 0.2)
 
     def test_template_without_route_yaml_is_disabled(self) -> None:
         self.assertIsNone(load_route_config(ROOT / "templates" / "momotaro"))
@@ -778,6 +778,184 @@ class ReviewReproductionTests(unittest.TestCase):
         inu = subjects["犬"]
         self.assertGreater(inu.ally_value, 0.0)
         self.assertTrue(_is_companion_candidate(momotaro, inu, world))
+
+
+class Review1ReproductionTests(unittest.TestCase):
+    """WB-ROUTE-001 S1 Opus review 1 (145d318, 1st pass): R1-R3 reproduction
+    cases from scratchpad/review/opus_s1_repro.py, pinned as regression
+    tests. Each is the concrete scenario a required fix was written for."""
+
+    TRF = {"鬼の弟": "弟の消息"}
+
+    def _annotate(self, *, zone, inventory, actions):
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = zone
+        momotaro.inventory.clear()
+        momotaro.inventory.update(inventory)
+        present = world.present_subjects(zone)
+        return annotate(
+            momotaro, world, present, actions,
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )
+
+    def test_r1_delivery_toward_deliver_to_is_advance_elsewhere_is_not(self) -> None:
+        # Required fix 3: holding the goal item (道中, 船 also held so the
+        # trip is otherwise unblocked), the only real leaf left is the
+        # delivery zone (村) -- moving there is advance, moving anywhere
+        # else is not.
+        out = self._annotate(
+            zone="道中",
+            inventory={"鬼ヶ島の宝物": 1, "船": 1},
+            actions=[
+                Action("move", ("村",), {"dest": "村"}),
+                Action("move", ("海",), {"dest": "海"}),
+                Action("move", ("森",), {"dest": "森"}),
+            ],
+        )
+        self.assertEqual(out[0]["kind"], "advance")
+        self.assertNotEqual(out[1]["kind"], "advance")
+        self.assertNotEqual(out[2]["kind"], "advance")
+
+    def test_r2_nearest_leaf_hop_respects_requires_item_gating(self) -> None:
+        # Required fix 2: at 海 without 船, the nearest *reachable* leaf
+        # (木材@森, gathering for 船) is one hop via 道中 -- the old
+        # ungated BFS instead measured the (unusable) direct hop to
+        # 鬼ヶ島 as nearer and left this move "prepare".
+        out = self._annotate(
+            zone="海",
+            inventory={"縄": 1, "きびだんご": 3, "勾玉": 1},
+            actions=[Action("move", ("道中",), {"dest": "道中"})],
+        )
+        self.assertEqual(out[0]["kind"], "advance")
+
+    def test_r3_negotiate_leaf_only_when_nothing_else_is_open(self) -> None:
+        # Required fix 1: at 鬼ヶ島 still needing an offer (きびだんご alone
+        # is short of 小判x3 for 鉄砲, the alternative build), "negotiate"
+        # is not yet actionable here -- moving toward the nearest still-open
+        # leaf (小判@道中) is advance.
+        out = self._annotate(
+            zone="鬼ヶ島",
+            inventory={"きびだんご": 1, "船": 1},
+            actions=[Action("move", ("海",), {"dest": "海"})],
+        )
+        self.assertEqual(out[0]["kind"], "advance")
+
+
+class DesignJudgmentDTests(unittest.TestCase):
+    """WB-ROUTE-001 S1 Opus review 1, design judgment D: a fight/sabotage/
+    neutralize aimed at the true holder is forced to detour/none once the
+    subject's own believed win probability drops below route.yaml's
+    min_win_prob (default 0.2) -- regardless of whether fight happens to be
+    the plan's best or alt branch."""
+
+    TRF = {"鬼の弟": "弟の消息"}
+
+    def test_hopeless_fight_against_the_holder_is_detour_none(self) -> None:
+        # Default fixture: momotaro (base 50) vs 鬼 (believed base 80) at
+        # 鬼ヶ島 with only 船 held -- p~=0.098, well under 0.2. Without the
+        # fix this was "prepare" (fight sits on alt, negotiate is best).
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("fight", ("鬼",), {"target": "鬼"})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "none")
+        self.assertEqual(result["text"], "勝ち目の薄い無謀な挑戦")
+
+    def test_winnable_fight_against_the_holder_is_unaffected(self) -> None:
+        # Same holder, but 鉄砲 (a strength modifier) pushes p to ~=0.78,
+        # above min_win_prob -- ordinary best/alt classification applies
+        # (fight is still alt here, negotiate remains cheaper -- "prepare").
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        momotaro.inventory["鉄砲"] = 1
+        present = world.present_subjects(momotaro.zone)
+        action = Action("fight", ("鬼",), {"target": "鬼"})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "prepare")
+        self.assertIsNone(result["cause"])
+
+    def test_hopeless_fight_against_a_misattributed_target_is_still_belief(self) -> None:
+        # A confidently misattributed target (belief, not the true holder)
+        # keeps its existing detour/belief classification (never punished)
+        # -- design D is scoped to the *true*, correctly-identified holder.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.beliefs["treasure_thief"] = Belief(value="猿", confidence=0.9)
+        momotaro.zone = "道中"
+        present = world.present_subjects(momotaro.zone)
+        action = Action("fight", ("猿",), {"target": "猿"})
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "belief")
+
+
+class S1Review1SiblingTests(unittest.TestCase):
+    """WB-ROUTE-001 S1 Opus review 1 recommended: the same three S0-era
+    scenarios AnnotateTests already covers, re-run in a *reachable* state
+    (holding 縄, unlike the plain 道中 fixture zone which is h=inf/"lost"
+    -- see AnnotateTests's own scenarios) so m_route's actual multiplier
+    (not "lost"'s unconditional 1.0) is what's being exercised."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+        self.momotaro = self.subjects["桃太郎"]
+        self.momotaro.zone = "道中"
+        self.momotaro.inventory["縄"] = 1
+
+    def _present(self):
+        return self.world.present_subjects(self.momotaro.zone)
+
+    def test_neutral_kiji_fight_is_detour_none_when_reachable(self) -> None:
+        action = Action("fight", ("キジ",), {"target": "キジ"})
+        result = annotate(
+            self.momotaro, self.world, self._present(), [action],
+            holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "none")
+
+    def test_companion_small_talk_is_prepare_when_reachable(self) -> None:
+        action = Action("share_knowledge", ("猿", "雑談"), {"target": "猿", "topic": "雑談"})
+        result = annotate(
+            self.momotaro, self.world, self._present(), [action],
+            holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "prepare")
+        self.assertIsNone(result["cause"])
+
+    def test_off_plan_trial_material_is_not_protected_when_reachable(self) -> None:
+        # 犬's trial (dog_loyalty_trial) wants きびだんご, but momotaro's
+        # winning plan (negotiate, offering 勾玉) never needs it -- giving
+        # away the last unit must not be credited just because some other
+        # trial happens to want it.
+        self.momotaro.inventory["きびだんご"] = 1
+        action = Action(
+            "give_item",
+            ("犬", "きびだんご"),
+            {"target": "犬", "item": "きびだんご"},
+        )
+        result = annotate(
+            self.momotaro, self.world, self._present(), [action],
+            holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "none")
 
 
 class RouteWiringByteIdenticalTests(unittest.TestCase):
