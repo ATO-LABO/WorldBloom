@@ -3,6 +3,7 @@ from http import HTTPStatus
 import ipaddress
 from urllib.parse import parse_qs, urlsplit
 
+from execution.evolution_settings import read_evolution_settings, write_evolution_settings
 from execution.output_settings import (
     current_generation, list_models, read_output_settings, test_generation,
     write_api_key, write_output_settings,
@@ -180,6 +181,10 @@ def dispatch(handler, parts, method):
                 "availability": {**availability, "label": _label(availability)},
                 "backends": view["backends"],
             })
+        elif method == "GET" and parts == ["api", "settings", "evolution"]:
+            handler._send_json(HTTPStatus.OK, read_evolution_settings(settings))
+        elif method == "POST" and parts == ["api", "settings", "evolution"]:
+            handler._send_json(HTTPStatus.OK, write_evolution_settings(settings, body))
         elif method == "GET" and parts == ["api", "outputs"]:
             handler._send_json(HTTPStatus.OK, {"outputs": jobs.outputs()})
         elif method == "GET" and len(parts) == 3 and parts[1] == "outputs":

@@ -94,7 +94,7 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
     advanced = ('<details class="cfg-adv"><summary>詳細設定 <span data-limit-summary></span></summary>'
         + genre_field + '<div class="rs-scale">'
         + number("乱数の開始値", "evolution.seed_base") + number("進化の乱数", "evolution.ga_seed")
-        + number("並列数", "evolution.processes", min_value=1) + '</div>'
+        + '</div><p class="rs-muted">並列数は ⚙ 全体設定の「計算」で指定します。</p>'
         + number("実行時間の上限", "execution_limits.wall_seconds", min_value=1, unit="秒")
         + '<p>共進化：敵役も並行して進化させます。メタ進化：ルールの有効・無効も探索します。</p>'
         '<p>説明記録を残すと、候補の選択・根拠・代償・転機を確認できます。</p>'

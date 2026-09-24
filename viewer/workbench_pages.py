@@ -649,8 +649,7 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
         '<div class="cols">'
         + _number_field("seed の開始値", "evolution.seed_base", values["evolution.seed_base"])
         + _number_field("GA の乱数種", "evolution.ga_seed", values["evolution.ga_seed"])
-        + _number_field("並列プロセス数", "evolution.processes", values["evolution.processes"], min_value=1)
-        + "</div>",
+        + "</div><p class=\"muted\">並列数は ⚙ 全体設定の「計算」で指定します。</p>",
     )
 
     section5b = _section(
@@ -745,7 +744,7 @@ def render_config_detail(config, control):
         ("seed数", _escape(ev["seeds"])),
         ("seed_base", _escape(ev["seed_base"])),
         ("ga_seed", _escape(ev["ga_seed"])),
-        ("processes", _escape(ev["processes"])),
+        ("並列数", "⚙ 全体設定に従う"),
         ("保存方針", _escape(ev["keep"])),
         ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("共進化", _escape(ev["coevolve"])),

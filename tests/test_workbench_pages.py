@@ -282,7 +282,7 @@ class WorkbenchTests(unittest.TestCase):
         for field in (
             "label", "project_id", "template_id",
             "evolution.generations", "evolution.population", "evolution.seeds",
-            "evolution.seed_base", "evolution.ga_seed", "evolution.processes",
+            "evolution.seed_base", "evolution.ga_seed",
             "evolution.keep", "evolution.world_expansion",
             "evolution.coevolve", "evolution.meta_evolution",
             "evolution.record_explanations", "evolution.target_ending",
@@ -294,6 +294,9 @@ class WorkbenchTests(unittest.TestCase):
         # WB-UI-021: no more generation.* fields on the run-config form --
         # text generation moved to the /configs 文章生成 card.
         self.assertNotIn('data-field="generation', body)
+        # WB-COMPUTE-001: processes moved to ⚙ 全体設定の「計算」-- no longer
+        # an editable field on the run-config form.
+        self.assertNotIn('data-field="evolution.processes"', body)
         self.assertIn('<option value="romance">romance</option>', body)
         self.assertIn('class="cfg-adv"', body)
         self.assertIn('<option value="reached" selected>結末に到達した結果</option>', body)
