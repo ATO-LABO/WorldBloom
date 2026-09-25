@@ -1,9 +1,9 @@
 ---
-ja_rev: "059738adbdef"
+ja_rev: "8fe7be517f72"
 ---
 # Run Settings
 
-This screen opens from "実行条件を決める →" (Decide run conditions →) on the world settings screen, or right after finishing "＋ 新しい世界を作る" (+ Create a new world) on the home screen. Here you decide how a single GA experiment run should behave, save it as a "config", and run it on the next screen. The GA experiment itself never calls an LLM (that only happens at the [text generation](generate-text.md) stage).
+This screen opens from "実行条件を決める →" (Decide run conditions →) on the world settings screen, or right after finishing "＋ 新しい世界を作る" (+ Create a new world) on the home screen. Here you decide how a single GA experiment run should behave, save it as a "config", and run it on the next screen. The GA experiment itself (candidate generation, weight computation, evolution) never calls an LLM. However, raising rationality κ (04. below) above 0 makes the run call a local judgment LLM (Ollama) for every GA decision — at least tens of seconds per run (one individual × seed pair), and it uses the GPU. Synopsis/text generation is a separate stage (see [Generate Text](generate-text.md)).
 
 When creating a new one, the config name is auto-filled once the world and genre are chosen (e.g. `2026-09-25 10:00 detective - 星を運ぶ街`; the genre part is the genre ID). You can also duplicate a previously saved config (the world and genre stay fixed when duplicating).
 
@@ -50,11 +50,17 @@ Other toggles:
 
 ## 04. Rationality (how consistently the protagonist picks sound moves)
 
-If the genre has `rationality.yaml` (LLM-based rationality judgment / Jev), this section always shows regardless of whether the judgment model is currently reachable. Reachability only affects κ's **default value**. When creating a new config, κ defaults to 0.6 (and the time limit automatically rises to 21600 seconds) if judgment is actually usable, or 0 (off) if not. Raising κ makes irrational moves less likely to be chosen. At 0, no rationality judgment happens at all.
+If the genre has `rationality.yaml` (LLM-based rationality judgment / Jev), this section always shows regardless of whether the judgment model is currently reachable. Reachability only affects κ's **default value**. When creating a new config, κ defaults to 0.6 (and the time limit automatically rises to 21600 seconds) if judgment is actually usable, or 0 (off) if not. Raising κ makes irrational moves less likely to be chosen. At 0, no rationality judgment happens at all, and Ollama is never called. When κ is above 0, an estimated run time is shown on screen, figured at roughly 90 seconds per run (including the judge call).
+
+## 05. Route (how hard to rein in detours) { #05 }
+
+Shown when the genre has `route.yaml` (the route layer — see [Route Layer](../concepts/route-layer.md)). Sets **ρ (0–1)**, how strongly the protagonist heads straight for the ending. 0 (the template's default) leaves things unmodulated, as before; the closer to 1, the more unreasoned detours (ones that don't even match the motive table) are avoided. Reasoned detours (body needs, mistaken beliefs, or ones matching the motive table) are never penalized regardless of ρ. Reasons for a detour come from the motive table (`motives.yaml`).
+
+On the new-config screen, and on the "1-click run" button on the home/world screens, ρ **defaults to 1.0** (unlike κ, ρ adds no compute cost). Duplicating/editing keeps the saved value as-is. If you switch genres to one whose template has no `route.yaml`, ρ automatically resets to disabled (unset).
 
 ## Advanced settings
 
-A collapsible section after 04, with these items.
+A collapsible section after 04 (and, when route shows, after 05 too), with these items.
 
 - **ジャンル (Genre)**: only selectable when creating new (fixed to match the source when duplicating)
 - **乱数の開始値 (seed_base, default 0)** / **進化の乱数 (ga_seed, default 1)**

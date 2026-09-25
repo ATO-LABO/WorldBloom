@@ -63,6 +63,7 @@ nav:
       - QD 格子: concepts/qd-map.md
       - Sifting: concepts/sifting.md
       - 決定論: concepts/determinism.md
+      - 道筋層: concepts/route-layer.md
   - 使い方:
       - 世界を作る: usage/create-world.md
       - 実行設定: usage/run-settings.md

@@ -1,5 +1,5 @@
 ---
-ja_rev: "ce3db2c58b60"
+ja_rev: "106d1344ed2a"
 ---
 # Templates
 
@@ -15,6 +15,8 @@ A "genre" (`templates/<genre>/`) defines a world's grammar, and a "world" (`proj
 | `qd.yaml` | The QD grid's axes: `categories` (row = leading category) and `volatility_bins` (column = volatility band) |
 | `rules.yaml` | Modifier rules. While a predicate holds, they temporarily adjust the genome's weights |
 | `rationality.yaml` (optional) | κ's (Jev rationality judgment) default value and the judge's backend settings. A genre without this behaves as if κ=0 |
+| `route.yaml` (optional) | Settings for the [route layer](../concepts/route-layer.md) (ρ's default, per-classification multipliers, etc.). A genre without this has no route layer at all (run settings shows no 05. Route section either) |
+| `motives.yaml` (optional, paired with route.yaml) | The route layer's motive table: a list of rules that gives a "no reason" detour a reason |
 
 All are YAML, and predicate strings (`when`, `condition`) are read with `engine/predicate.py`'s whitelist evaluator (`ast`-based; `eval` is never used). The same evaluator is shared across four places: modifier rules, foreshadowing payoff conditions, ending conditions (`world.yaml`'s `ending.when`), and `phase_rules`.
 
@@ -111,6 +113,67 @@ key_items: [きびだんご, 小判]
 ```
 
 κ is the strength of that genre's rationality judgment (Jev); run settings can override it with a value from 0–1 (see [Run Settings](../usage/run-settings.md)). A genre without this file behaves as if κ=0 (no judgment used).
+
+### route.yaml (ρ / route layer)
+
+```yaml
+holder_belief_fact: treasure_thief
+trial_reveal_facts:
+  鬼の弟: 弟の消息
+
+rho: 0.0
+multipliers:
+  advance: 1.0
+  prepare: 0.5
+  detour:body: 1.0
+  detour:belief: 1.0
+  detour:ignorance: 0.5
+  detour:none: 0.02
+  lost: 1.0
+
+min_win_prob: 0.2
+
+gene_affinity: 0.5
+route_category:
+  fight: I
+  negotiate: III
+```
+
+| Key | Meaning |
+|---|---|
+| `holder_belief_fact` | The ID of a fact the protagonist could be mistaken about regarding the goal item's holder (used by the [route layer](../concepts/route-layer.md)'s "belief" classification) |
+| `trial_reveal_facts` | A mapping (giver ID → fact ID) saying "this trial's giver doesn't appear as a waypoint in the planner until the subject has learned the paired fact" |
+| `rho` | ρ's default value. Can be overridden by 05. Route in run settings. Default 0.0 (unmodulated) |
+| `multipliers` | The base multiplier b per classification (`advance`/`prepare`/`detour:body`/`detour:belief`/`detour:ignorance`/`detour:none`/`lost`). Omitted keys keep their default |
+| `min_win_prob` | The minimum believed win probability for fighting/sabotaging/neutralizing the holder to count as "a fight worth taking." Below it, the action is a "no reason" detour (unless the motive table reclassifies it) |
+| `gene_affinity` | When more than one way exists to take the goal item from its holder (e.g. fight vs. negotiate), how much the genome tilts which one counts as the best plan (0–1, default 0 = always the lowest-cost one) |
+| `route_category` | The mapping `gene_affinity` reads from, between a route name (`fight`/`negotiate`, etc.) and an action category (I–VI) |
+
+A genre without this file has no route layer at all (run settings shows no 05. Route section either).
+
+### motives.yaml (motive table)
+
+```yaml
+- id: care_for_ally
+  label: 仲間を大事にする
+  when: "stance(self, target) >= 0.6"
+  verbs: [give_item, share_knowledge, persuade, pledge]
+  gene: category_weight.III
+  text: "{target}との絆を深めたくて{verb_text}"
+```
+
+An optional file that can only exist for genres with a `route.yaml`. The first entry (reading top to bottom) whose condition (`when`) and target action (`verbs`) both match wins.
+
+| Key | Meaning |
+|---|---|
+| `id` | The motive's unique ID |
+| `label` | The short name shown in the on-screen badge |
+| `when` | A predicate string (the `engine/predicate.py` evaluator). `target` binds to the candidate's target (or self, for a candidate with none) |
+| `verbs` | The verbs this motive can apply to |
+| `gene` | The genome key read for the motive's strength (`risk_tolerance`, `stance_shift_bias`, `novelty_drive`, or `category_weight.<I–VI>`). A leading `-` inverts it (e.g. `-risk_tolerance` is stronger the lower risk tolerance is) |
+| `text` | A reason-text template. Can interpolate `{target}`, `{verb_text}`, etc. |
+
+The motive table only ever applies to candidates that would otherwise be a "no reason" detour — it never touches advance/prepare/body/belief/ignorance/lost. A matched motive's actual weight scales continuously with the strength (0–1) of the gene named in `gene` (see [Route Layer](../concepts/route-layer.md)).
 
 ## Layout of `projects/<world>/`
 

@@ -1,5 +1,5 @@
 ---
-ja_rev: "773df8f51770"
+ja_rev: "3c98fc1352cb"
 ---
 # Changelog
 
@@ -7,6 +7,8 @@ The main changes that matter from a user's point of view, in date order. This is
 
 ## 2026-09-25
 
+- Added the [route layer](../concepts/route-layer.md): classifies protagonist decisions as advance, prepare, detour (body/ignorance/belief/motive/no reason), or lost, and reins in unreasoned detours with weight ρ. A motive table (`motives.yaml`) can give a detour a reason (only 桃太郎＋2 / Peach Boy+2 has this so far). Added the "05. Route" section to run settings, and reason badges (timeline, four-field panel, breakdown at the top of the cell page) to the results screen
+- Fixed a bug where GA runs launched from the screen (05. Route, 04. Rationality) didn't actually apply ρ, κ, or the rationality details you set. **Experiments created and run from the screen before this fix ran with ρ and κ disabled (ρ=0, κ off), regardless of what you specified**
 - Published this documentation site: a bilingual (Japanese/English) structure with five chapters — getting started, concepts, usage, reference, and guides
 - Changed the default backend for synopsis/text generation from `codex-cli` to `llama-server` (a local LLM)
 
