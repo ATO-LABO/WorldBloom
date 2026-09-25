@@ -5,7 +5,7 @@ sources:
   - "docsite/ja/usage/llm-backends.md"
   - "docsite/ja/usage/gpu-guard.md"
   - "templates/"
-reviewed: 4394c7ef86af65bb0f995a9071da5f1744e3ef87
+reviewed: "4394c7ef86af65bb0f995a9071da5f1744e3ef87"
 ---
 
 # FAQ

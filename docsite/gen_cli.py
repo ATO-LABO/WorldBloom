@@ -34,10 +34,10 @@ TARGETS = [
 
 def render(target: str) -> str:
     """The --help text for one script, with a stable width and no path leakage."""
-    env = dict(os.environ, COLUMNS="100", PYTHONIOENCODING="utf-8")
+    env = dict(os.environ, COLUMNS="100", PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
     result = subprocess.run(
         [sys.executable, target, "--help"],
-        cwd=ROOT, env=env, capture_output=True, text=True, check=True,
+        cwd=ROOT, env=env, capture_output=True, encoding="utf-8", check=True,
     )
     return result.stdout.replace("\r\n", "\n")
 

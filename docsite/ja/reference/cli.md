@@ -31,7 +31,7 @@ python scripts/evolve.py --project projects/momotaro_plus2 --template templates/
   --out C:\WorldBloom-data\runs\my-exp --generations 20 --population 100 --seeds 3
 ```
 
-出力先は Google Drive 上のリポジトリではなく、ローカルの `runs/<experiment>/` に置いてください（詳しくは[実行結果のファイル](run-outputs.md)）。
+出力先はリポジトリの外（ローカル）の `runs/<experiment>/` に置いてください（詳しくは[実行結果のファイル](run-outputs.md)）。
 
 ## scripts/synopsize.py — あらすじを生成する
 

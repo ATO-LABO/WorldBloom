@@ -28,9 +28,9 @@ WorldBloom.exe (the read-only build) still shows on-screen controls like the ado
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| モデルを指定してください (Please specify a model) | No model name entered in ⚙ Settings (no backend other than `claude-cli` fills this in automatically) | Enter a model name under the "文章生成" (Text generation) tab in ⚙ Settings. See [LLM Backends](../usage/llm-backends.md#model-defaults) |
+| モデルを指定してください (Please specify a model) | No model name entered in ⚙ 全体設定 (Global settings) (no backend other than `claude-cli` fills this in automatically) | Enter a model name under the "文章生成" (Text generation) tab in ⚙ 全体設定 (Global settings). See [LLM Backends](../usage/llm-backends.md#model-defaults) |
 | 実行ファイルが見つかりません (Executable not found) | `claude-cli` / `codex-cli` is selected but the `claude`/`codex` command isn't on PATH | Install the relevant CLI and add it to PATH |
-| 資格情報がありません (No credentials) | `anthropic` / `openai` is selected but no API key is saved | Save a key under the "APIキー" (API key) field in ⚙ Settings |
+| 資格情報がありません (No credentials) | `anthropic` / `openai` is selected but no API key is saved | Save a key under the "APIキー" (API key) field in ⚙ 全体設定 (Global settings) |
 | そのモデルは見つかりません (That model was not found) | The given model name doesn't exist on the backend (not pulled in Ollama, doesn't exist on the API, etc.) | Verify the model name, or fetch it following [LLM Backends](../usage/llm-backends.md) |
 | サーバーに接続できません (Can't reach the server) | Ollama / llama-server itself isn't running, or `base_url` is wrong | Start the server (or set up auto-start via [GPU Guard](../usage/gpu-guard.md)), or check `base_url` |
 | settings.json を読めません (Can't read settings.json) | `settings.json` is corrupted or unreadable | Check the file's contents (JSON syntax) |

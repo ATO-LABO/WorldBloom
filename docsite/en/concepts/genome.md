@@ -9,7 +9,7 @@ What WorldBloom evolves with its GA (genetic algorithm) is not the sequence of a
 
 | Gene | Count | Range | Neutral value | Meaning |
 |---|---|---|---|---|
-| Action-category weights `category_weight` | 6 | each [0.05, 1.0] | all 0.5 | How much it favors category I (self-reinforcement), II (perception & foreshadowing), III (relationship building), IV (status), V (movement & stalling), or VI (external intervention) |
+| Action-category weights `category_weight` | 6 | each [0.05, 1.0] | all 0.5 | How much it favors category I (self-reinforcement), II (perception & foreshadowing), III (relationship building), IV (Identity), V (movement & stalling), or VI (external intervention) |
 | Risk tolerance `risk_tolerance` | 1 | [0, 1] | 0.5 | Whether it takes on an opponent it believes is stronger, or backs off |
 | Direction of relationship shift `stance_shift_bias` | 1 | [-1, 1] | 0 | Whether it leans toward actions that draw closer to the other party (persuasion, gifts) or push them away (conflict, betrayal) |
 | Novelty drive `novelty_drive` | 1 | [0, 1] | 0 | How much it avoids storylines already seen in the canon or in prior generations |

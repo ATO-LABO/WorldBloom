@@ -1,7 +1,7 @@
 usage: world_demand.py [-h] [--all] [--subject SUBJECT] [--out OUT] [--save] experiment_dir
 
 Read-only "world demand" report CLI (WB-WORLDGROW-001, stage 2). Thin wrapper around
-gapengine.world_demand.build_report(): prints a Japanese zone table plus the "諡｡蠑ｵ繝医Μ繧ｬ繝ｼ" section
+gapengine.world_demand.build_report(): prints a Japanese zone table plus the "拡張トリガー" section
 (zones/verbs that whiff almost every time and eat a real share of the story's decisions --
 candidates for "the world's content is thin here"). Writes nothing under the experiment directory
 unless --save is given.

@@ -13,8 +13,8 @@ ja_rev: "0d8bf13aa19e"
 - Studio needs **Python 3.11+** on PATH (`pip install pyyaml`); Viewer does not
 - git is optional (without it, some provenance info in run output is simply left blank)
 
-!!! tip "Pick your LLM backend in ⚙ 設定 (Settings) first"
-    A GA experiment itself does not need an LLM at all — only synopsis/text generation does. If you plan to use generation, open the app's **⚙ 設定 (Settings)** screen first and choose a backend (Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない (no generation; save prompts only)) and a model name. With no settings at all, the default backend is llama-server (codex-cli in the v1.0.0-viewer release). Only claude-cli works with no model set (it falls back to `claude-sonnet-5`); every other backend requires you to set one yourself. Ollama and llama-server themselves are not bundled with WorldBloom; install them separately. See [LLM Backends](../usage/llm-backends.md).
+!!! tip "Pick your LLM backend in ⚙ 全体設定 (Global settings) first"
+    A GA experiment itself does not need an LLM at all — only synopsis/text generation does. If you plan to use generation, open the app's **⚙ 全体設定 (Global settings)** screen first and choose a backend (Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない (no generation; save prompts only)) and a model name. With no settings at all, the default backend is llama-server (codex-cli in the v1.0.0-viewer release). Only claude-cli works with no model set (it falls back to `claude-sonnet-5`); every other backend requires you to set one yourself. Ollama and llama-server themselves are not bundled with WorldBloom; install them separately. See [LLM Backends](../usage/llm-backends.md).
 
 === "Studio (full-featured)"
 

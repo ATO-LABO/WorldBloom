@@ -16,3 +16,6 @@ CLAUDE.md
 
 # LLM settings (API keys)
 settings.json
+
+# Local docs site build output
+_site/

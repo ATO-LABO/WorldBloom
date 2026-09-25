@@ -4,7 +4,7 @@ sources:
   - "execution/output_settings.py"
   - "execution/evolution_settings.py"
   - "viewer/app_desktop.py"
-reviewed: 72aaeae8379271e99357be2f967fa0cff3901a8d
+reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 ---
 # 設定
 

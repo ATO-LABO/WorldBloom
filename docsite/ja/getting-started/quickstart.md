@@ -1,5 +1,5 @@
 ---
-reviewed: 72aaeae8379271e99357be2f967fa0cff3901a8d
+reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 ---
 
 # クイックスタート（桃太郎で一周）

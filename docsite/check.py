@@ -33,7 +33,7 @@ def md_files(base: Path) -> set[str]:
 
 
 def front_matter(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
     if not text.startswith("---\n"):
         return {}
     end = text.find("\n---", 4)
@@ -101,7 +101,10 @@ def check_ja_sources() -> None:
         sources = meta.get("sources")
         if not sources:
             continue
-        reviewed = meta.get("reviewed")
+        if not isinstance(sources, list):
+            stale.append(f"ja/{rel}: sources がリストではありません（型={type(sources).__name__}）")
+            continue
+        reviewed = str(meta.get("reviewed") or "")
         if not reviewed:
             stale.append(f"ja/{rel}: reviewed が未設定")
             continue

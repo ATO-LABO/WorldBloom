@@ -42,7 +42,7 @@
 
 StorySim（同作者の別プロジェクト。世界と人物をシミュレートし、面白かったログを物語に書き起こす方式）から要素を切り取って再構築したもので、フォークではありません。
 
-詳しくは → [WorldBloom の仕組み](https://www.atom-box.jp/worldbloom/how-it-works/)（読み物）／ドキュメントの[概念](https://ato-labo.github.io/WorldBloom/docs/concepts/seven-layers/)（7層・遺伝子・QD 格子・Sifting・決定論）
+詳しくは → [WorldBloom の仕組み](https://www.atom-box.jp/worldbloom/how-it-works/)（読み物）／ドキュメントの[概念](https://ato-labo.github.io/WorldBloom/docs/concepts/overview/)（全体の流れ・7層・遺伝子・QD 格子・結末固定・行動タイプ・伏線・Sifting・決定論）
 
 ## できること
 
@@ -70,7 +70,7 @@ GPU 調停・進捗表示など運用まわりの機能は、ドキュメント�
 インストールから設定・コマンド・ファイル書式までの説明は、ドキュメントサイトにまとめています（日本語 / [English](https://ato-labo.github.io/WorldBloom/docs/en/)）。
 
 - [はじめに](https://ato-labo.github.io/WorldBloom/docs/) — 概要・[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)・[クイックスタート（桃太郎で一周）](https://ato-labo.github.io/WorldBloom/docs/getting-started/quickstart/)
-- [概念](https://ato-labo.github.io/WorldBloom/docs/concepts/seven-layers/) — 7層構造・遺伝子・QD 格子・Sifting・決定論
+- [概念](https://ato-labo.github.io/WorldBloom/docs/concepts/overview/) — 全体の流れ・7層構造・遺伝子・QD 格子・結末固定・行動タイプ・伏線・Sifting・決定論
 - [使い方](https://ato-labo.github.io/WorldBloom/docs/usage/create-world/) — 世界を作る・実行設定・結果を読む・文章生成・⚙ 設定・LLM バックエンド・GPU ガード・CLI
 - [リファレンス](https://ato-labo.github.io/WorldBloom/docs/reference/cli/) — CLI・settings.json・テンプレート書式・実行結果のファイル・HTTP API・[用語集](https://ato-labo.github.io/WorldBloom/docs/reference/glossary/)
 - [トラブルシューティング](https://ato-labo.github.io/WorldBloom/docs/guides/troubleshooting/)

@@ -24,7 +24,7 @@ When the run finishes, you see the QD map: a grid of leading category × volatil
 
 ## 5. Generate synopsis/text (optional, needs an LLM)
 
-From the adopted-candidates review screen, proceeding to generation opens a "**生成内容を確認** (Review what will be generated)" dialog; click "**生成を開始** (Start generation)" to run it. If you haven't chosen an LLM backend and model in ⚙ 設定 (Settings) yet, this step fails here — set that up first, see [LLM Backends](../usage/llm-backends.md). This step is optional: browsing the grid and synopses alone is a complete use case.
+From the adopted-candidates review screen, proceeding to generation opens a "**生成内容を確認** (Review what will be generated)" dialog; click "**生成を開始** (Start generation)" to run it. If you haven't chosen an LLM backend and model in ⚙ 全体設定 (Global settings) yet, this step fails here — set that up first, see [LLM Backends](../usage/llm-backends.md). This step is optional: browsing the grid and synopses alone is a complete use case.
 
 ## Running the same lap from the CLI
 

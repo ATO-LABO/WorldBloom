@@ -21,7 +21,7 @@ The default backend is `llama-server` (`codex-cli` in the v1.0.0-viewer distribu
 
 ### Who decides the model name { #model-defaults }
 
-**When using the ⚙ Settings screen**, only `claude-cli` falls back to `claude-sonnet-5` when the model field is empty. Every other backend requires you to enter a model name (trying to check the connection with it empty shows "モデルを指定してください", Please specify a model).
+**When using the ⚙ 全体設定 (Global settings) screen**, only `claude-cli` falls back to `claude-sonnet-5` when the model field is empty. Every other backend requires you to enter a model name (trying to check the connection with it empty shows "モデルを指定してください", Please specify a model).
 
 **On the CLI** (running `scripts/synopsize.py` / `scripts/narrate.py` directly), if `settings.json` has no `model` set, each backend falls back to:
 
@@ -95,11 +95,11 @@ Notes:
 
 ## CLI backends (claude-cli / codex-cli)
 
-These work as long as the `claude` or `codex` command is on PATH. If the executable isn't found, "接続を確認" (Check connection) in ⚙ Settings reports failure.
+These work as long as the `claude` or `codex` command is on PATH. If the executable isn't found, "接続を確認" (Check connection) in ⚙ 全体設定 (Global settings) reports failure.
 
 ## API backends (anthropic / openai)
 
-These need an API key. Save it separately under the "APIキー" (API key) field in ⚙ Settings (a saved value is never shown on screen).
+These need an API key. Save it separately under the "APIキー" (API key) field in ⚙ 全体設定 (Global settings) (a saved value is never shown on screen).
 
 ## Don't generate (none)
 

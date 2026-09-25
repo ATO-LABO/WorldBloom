@@ -1,5 +1,5 @@
 ---
-ja_rev: "fd73d3c3ffa6"
+ja_rev: "5ba98a3e4326"
 ---
 # Run Outputs
 
@@ -17,7 +17,7 @@ Running `python scripts/evolve.py --out <run dir>` produces the following under 
     ind-<i>/seed-<s>/layers.jsonl   # one run's raw log (all individuals only with --keep all)
   prompts/               # generation prompts saved by synopsize.py / narrate.py
   synopses.json          # synopsize.py's output
-  selection.json         # adopted/held/excluded choices made by a person on screen
+  selection.json         # adopted choices made by a person on screen (held/excluded live under control/)
   stories/               # full text written by narrate.py (adopted cells only)
 ```
 
@@ -74,8 +74,8 @@ Each line's `delta` is the seven layers' diff before and after that action. Dete
 `synopsize.py`, `narrate.py`, and the on-screen workflow connect as follows.
 
 - `synopses.json`: `{"entries": [{"cell": "I|high", "generation": 3, "seed": 0, "layers_path": "g3/ind-31/seed-0/layers.jsonl", "quality": 0.36, "reach_rate": 0.33, "synopsis": "…", "status": "ok"}], "backend": "ollama", "archive": "…/archive.json"}`
-- `selection.json`: `{"selected": ["III|high", "I|low", "V|mid"]}` (an array of cell keys, matching ✔ Adopted on screen)
-- `stories/<cell>.md`: the full text for each adopted cell. `stories/index.json` holds the listing
+- `selection.json`: `{"selected": ["III|high", "I|low", "V|mid"]}` (an array of **adopted** cell keys only; held/excluded state isn't in this file — it lives on the `control/` side, in `execution/selections.py`)
+- `stories/<cell>.md`: the full text for each adopted cell. The filename is a sanitized cell key, with `|` replaced by `-` (e.g. `I|low` → `I-low.md`). `stories/index.json` holds the listing
 
 ## `runs/` vs. `control/`
 

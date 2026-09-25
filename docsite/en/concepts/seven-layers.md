@@ -1,5 +1,5 @@
 ---
-ja_rev: "832f1f22ee60"
+ja_rev: "a8bfc67bd92a"
 ---
 # Seven Layers
 
@@ -15,7 +15,7 @@ WorldBloom's characters aren't represented as lines of dialogue or personality p
 | 6. Objective | Who's after what (`goal`) and who currently holds it (`world.objectives`) | Contests over a treasure. Transfer of possession and victory/defeat are handled separately |
 | 7. Delayed effects | Planted foreshadowing (`world.pending_effects`) and its resolution conditions | An earlier action pays off later. Unresolved foreshadowing is penalized in quality |
 
-On top of this there's **vitality**. It transitions `alive` → `downed` → `revived` / `dead`, and a downed character can return to `alive` via rescue by an ally or self-recovery. Death only happens when the winning side's action or item carries `lethal`. This lets a "pseudo death and revival" arise naturally as part of the story.
+On top of this there's **vitality**. It transitions `alive` → `downed` → `revived` / `dead`, and a downed character can return to `revived` via rescue by an ally or self-recovery. Death only happens when the winning side's action or item carries `lethal`. This lets a "pseudo death and revival" arise naturally as part of the story.
 
 ## Identity layer { #identity-layer }
 
@@ -31,11 +31,11 @@ On top of this there's **vitality**. It transitions `alive` → `downed` → `re
 
 ## Resource layer { #resource-layer }
 
-Three things: possessions `inventory`, reputation `reputation`, and drawable relationship capital (bonds). `sacrifice` and `grand_gesture` (a large gift or public act) are ways to spend assets or bonds in exchange for ability modifiers or phase-crossing conditions. Reputation rises through `donate`, drops sharply when a `pledge` is broken, and can move either way with `grand_gesture` since it's a public act whose success or failure is visible.
+Three things: possessions `inventory`, reputation `reputation`, and drawable relationship capital (bonds). `sacrifice` and `grand_gesture` (a large gift or public act) are ways to spend assets or bonds in exchange for ability modifiers or identity-passage conditions. Reputation rises through `donate`, drops sharply when a `pledge` is broken, and can move either way with `grand_gesture` since it's a public act whose success or failure is visible.
 
 ## Vitality transitions { #vitality-transitions }
 
-An `alive` character who loses to a non-lethal action becomes `downed`. The only action available while downed is `rest`, but they automatically recover to `revived` after a set number of turns, or sooner via a present ally's `rescue` action (recovery speed is affected by the strength of the relationship with that ally). `dead` only happens through `lethal_chance`, when the winning side's action or item carries `lethal` — an ordinary defeat only downs the character. A character the template marks `lethal_exempt` is protected even from lethal actions (a genre-level convention, not the engine steering toward an ending). This mechanism lets a high-volatility turn — "downed, then saved by an ally, then the tables turn" — arise from the ordinary rules rather than as a special-cased event.
+An `alive` character who loses to a non-lethal action becomes `downed`. The only action available while downed is `rest`, but they automatically recover to `revived` after a set number of turns, or immediately via a present ally's `rescue` action. The number of turns before automatic recovery is shortened by the count of present allies whose `stance` is at or above a threshold (it's the headcount of qualifying allies that matters, not the graded strength of any one relationship). `dead` only happens through `lethal_chance`, when the winning side's action or item carries `lethal` — an ordinary defeat only downs the character. A character the template marks `lethal_exempt` is protected even from lethal actions (a genre-level convention, not the engine steering toward an ending). This mechanism lets a high-volatility turn — "downed, then saved by an ally, then the tables turn" — arise from the ordinary rules rather than as a special-cased event.
 
 ## The relationship matrix (stance / bonds)
 

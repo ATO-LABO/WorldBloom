@@ -1,5 +1,5 @@
 ---
-ja_rev: "65765483ec17"
+ja_rev: "29de27ae1ed7"
 ---
 # Foreshadowing (Delayed Effects)
 
@@ -42,7 +42,7 @@ In most cases `plant` piggybacks on an existing verb's execution (`give_item`, `
 
 ## Penalty for unresolved foreshadowing
 
-If a `chosen` piece of foreshadowing meets its condition but the story ends without ever paying it off, quality q is docked **-0.05 per case** (`gapengine/qd.py`). This is the mechanism that lets the GA select against "a gun that's never fired" — foreshadowing that was planted but never used. `auto` foreshadowing never goes through a character's choice, so it's exempt from this penalty.
+If a `chosen` piece of foreshadowing is never paid off by the time the story ends, quality q is docked **-0.05 per case** (`dangling_effect_count` in `engine/phase2.py`, tallied in `gapengine/qd.py`). This applies unconditionally to every unresolved case, whether or not its payoff condition ever held. This is the mechanism that lets the GA select against "a gun that's never fired" — foreshadowing that was planted but never used. `auto` foreshadowing never goes through a character's choice, so it's exempt from this penalty.
 
 ## How it appears in the log (layers.jsonl)
 

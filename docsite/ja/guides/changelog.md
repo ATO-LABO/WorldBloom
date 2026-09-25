@@ -1,7 +1,7 @@
 ---
 sources:
   - "README.md"
-reviewed: 4394c7ef86af65bb0f995a9071da5f1744e3ef87
+reviewed: "4394c7ef86af65bb0f995a9071da5f1744e3ef87"
 ---
 
 # 変更履歴
@@ -25,7 +25,7 @@ reviewed: 4394c7ef86af65bb0f995a9071da5f1744e3ef87
 
 ## 2026-09-15
 
-- 第五回AIアートグランプリ D部門へ応募。Windows 配布版（[v1.0.0-viewer](https://github.com/ATO-LABO/WorldBloom/releases/tag/v1.0.0-viewer)）を公開: 閲覧専用の `WorldBloom.exe` と、GA実験の実行から文章生成まで行える `WorldBloom-Studio.exe` の2種類
+- 第五回AIアートグランプリ D部門へ応募。Windows 配布版（[v1.0.0-viewer](https://github.com/ATO-LABO/WorldBloom/releases/tag/v1.0.0-viewer)、タグの日時は 09-15〜16 にまたがる）を公開: 閲覧専用の `WorldBloom.exe` と、GA実験の実行から文章生成まで行える `WorldBloom-Studio.exe` の2種類
 - 公開ビューア（[https://ato-labo.github.io/WorldBloom/](https://ato-labo.github.io/WorldBloom/)）を公開。桃太郎・恋愛・探偵の3実験をインストール不要で閲覧可能に
 
 ## それ以前

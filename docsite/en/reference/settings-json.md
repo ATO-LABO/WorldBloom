@@ -1,5 +1,5 @@
 ---
-ja_rev: "673e11f85db4"
+ja_rev: "d50f83ae14d9"
 ---
 # settings.json
 
@@ -47,11 +47,12 @@ Defaults used when `model` is unset (`gapengine/synopsis.py`):
 | `anthropic`, `openai` | `api_key` | string | none | The API key. Once saved from the Settings screen, the value itself is never shown again on screen (the read-only API only returns the `has_api_key` boolean) |
 | `ollama` | `base_url` | string | `http://localhost:11434` | The Ollama server's URL |
 | `ollama` | `think` | boolean | `false` | Whether to enable thinking mode |
-| `ollama` | `options` | object | `{}` | Extra parameters merged straight into `/api/chat`'s `options` (temperature, etc.) |
+| `ollama` | `options` | object | `{"num_ctx": 16384, "num_predict": 4096}` | Extra parameters merged into `/api/chat`'s `options` (temperature, etc.). Only the keys you set override this default; the rest keep their default value |
 | `ollama` | `seed` | integer | none | If set, applied to `options.seed` |
 | `llama-server` | `base_url` | string | `http://127.0.0.1:8089` | llama-server's (OpenAI-compatible API) URL |
 | `llama-server` | `think` | boolean | `true` | Applied to `chat_template_kwargs.enable_thinking` |
-| `llama-server` | `options` | object | `{}` | Extra parameters merged into the `/v1/chat/completions` payload (`model`, `messages`, `stream`, and `chat_template_kwargs` are never overridden) |
+| `llama-server` | `options` | object | `{"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.0, "max_tokens": 8192}` | Extra parameters merged into the `/v1/chat/completions` payload. Only the keys you set override this default (`model`, `messages`, `stream`, and `chat_template_kwargs` are never overridden) |
+| `llama-server` | `seed` | integer | none | If set, applied to `payload.seed` |
 | `llama-server` | `launch` | array of strings | none | The command used to auto-start the server if `base_url` doesn't respond (see the example in [GPU Guard](../usage/gpu-guard.md)) |
 | `llama-server` | `startup_seconds` | number | 180 | Seconds to wait for `/health` to respond after auto-starting |
 | `claude-cli` | `command` | string | `claude` | The executable name to run |
