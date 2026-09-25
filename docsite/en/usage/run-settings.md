@@ -1,5 +1,5 @@
 ---
-ja_rev: "8fe7be517f72"
+ja_rev: "348dce9f02f4"
 ---
 # Run Settings
 
@@ -54,9 +54,9 @@ If the genre has `rationality.yaml` (LLM-based rationality judgment / Jev), this
 
 ## 05. Route (how hard to rein in detours) { #05 }
 
-Shown when the genre has `route.yaml` (the route layer — see [Route Layer](../concepts/route-layer.md)). Sets **ρ (0–1)**, how strongly the protagonist heads straight for the ending. 0 (the template's default) leaves things unmodulated, as before; the closer to 1, the more unreasoned detours (ones that don't even match the motive table) are avoided. Reasoned detours (body needs, mistaken beliefs, or ones matching the motive table) are never penalized regardless of ρ. Reasons for a detour come from the motive table (`motives.yaml`).
+Shown when the genre has `route.yaml` (the route layer — see [Route Layer](../concepts/route-layer.md)). Sets **ρ (0–1)**, how strongly the protagonist heads straight for the ending. 0 (the default across the engine, CLI, and template) means the route layer doesn't run at all, unmodulated as before; the closer to 1, the more unreasoned detours are avoided. Detours from body needs or mistaken beliefs are never penalized regardless of ρ. A detour matching the motive table (`motives.yaml`) is instead treated according to the strength of the gene that motive reads — a weak individual gets reined in almost as hard as an unreasoned one.
 
-On the new-config screen, and on the "1-click run" button on the home/world screens, ρ **defaults to 1.0** (unlike κ, ρ adds no compute cost). Duplicating/editing keeps the saved value as-is. If you switch genres to one whose template has no `route.yaml`, ρ automatically resets to disabled (unset).
+On the new-config screen, and on the "1-click run" button on the home/world screens for a genre whose template has a `route.yaml`, ρ **defaults to 1.0** (unlike κ, ρ adds no compute cost). Duplicating/editing keeps the saved value as-is. If you switch genres to one whose template has no `route.yaml`, ρ automatically resets to disabled (unset).
 
 ## Advanced settings
 

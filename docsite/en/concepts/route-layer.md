@@ -1,5 +1,5 @@
 ---
-ja_rev: "1105f56d28a2"
+ja_rev: "589f434c8ed6"
 ---
 # Route Layer
 
@@ -9,7 +9,7 @@ Only genres with a `route.yaml` support it. Currently that's just 桃太郎＋2 
 
 ## Classifying actions
 
-Each of the protagonist's decisions is classified against "the shortest plan to the ending," as follows. Classification always happens (even in measure-only mode, ρ=0), and the result is also used later as the reason badge in explanations.
+Each of the protagonist's decisions is classified against "the shortest plan to the ending," as follows. In a GA experiment (screen or CLI), this classification only happens — and gets recorded per decision — when run with ρ>0. At ρ=0 (the default), the route layer doesn't run at all, and nothing is classified or recorded (measurement-only scripts like `scripts/route_probe.py`/`scripts/route_eval.py` always classify, regardless of ρ). This same record is later used as the reason badge in explanations.
 
 | Classification | Meaning |
 |---|---|
@@ -26,7 +26,7 @@ The premise throughout is "judge only from the protagonist's own knowledge." The
 
 ## Weight ρ (how hard to rein in detours)
 
-Classification alone is just a judgment; whether it actually changes a candidate's weight is decided by **ρ (0–1)**. Each classification has a base multiplier b, and `m_route = b ** ρ` is multiplied together with the other multipliers that come from the [genome](genome.md) (m_cat, m_risk, m_stance, m_nov, and m_rat too for genres using κ) to produce the final weight.
+Each classification has a base multiplier b, and `m_route = b ** ρ` is multiplied together with the other multipliers that come from the [genome](genome.md) (m_cat, m_risk, m_stance, m_nov, and m_rat too for genres using κ) to produce the final weight. ρ decides both whether a candidate gets classified (advance / prepare / each detour cause / lost) at all, and how much that classification affects the weight.
 
 | Classification | Base multiplier b | Meaning at ρ=1 |
 |---|---|---|
@@ -38,7 +38,7 @@ Classification alone is just a judgment; whether it actually changes a candidate
 | Detour ⟨no reason⟩ | 0.02 | Almost never chosen |
 | Lost | 1.0 | No judgment (a state the route layer has nothing to say about) |
 
-At ρ=0 (the default), `b ** 0 = 1.0` for every classification, so nothing changes. The route layer measures but changes nothing — output stays byte-identical to an existing run. The higher ρ goes, the less likely unreasoned detours are to be chosen. Set this from [05. Route](../usage/run-settings.md#05) in run settings.
+At ρ=0, the route layer doesn't run at all (a GA experiment carries no route record whatsoever), so output stays byte-identical to an existing run. The higher ρ goes, the less likely unreasoned detours are to be chosen. The default is 0 across the engine, CLI, and template (`route.yaml`'s `rho`). In run settings on screen, only the new-config screen and the "1-click run" button (for a template with a `route.yaml`) default ρ to 1.0. Set this from [05. Route](../usage/run-settings.md#05) in run settings.
 
 ## The motive table (motives.yaml) — detours with a reason
 
@@ -69,8 +69,8 @@ For an individual with a weak lean toward that gene (gene_s=0), matching the mot
 
 ## Choosing a route by genome (gene_affinity)
 
-Setting `route.yaml`'s `gene_affinity` (default 0) and `route_category` (e.g. fight = category I, negotiate = category III) lets the genome's corresponding category weight slightly tilt which of several ways to take the goal item from its holder (fight vs. negotiate, say) counts as "the best plan." At `gene_affinity=0` (the default) the lowest-cost option is always the best one — identical to measuring with ρ alone. Raising it makes an individual with a stronger weight in the matching category more likely to see that route as "best" (the recorded h itself stays plain; only the choice of best route is affected).
+Setting `route.yaml`'s `gene_affinity` (default 0) and `route_category` (a mapping from route name to action category) lets the genome's corresponding category weight slightly tilt which of several ways to take the goal item from its holder (fight vs. negotiate, say) counts as "the best plan." At `gene_affinity=0` (the default) the lowest-cost option is always the best one. Raising it makes an individual with a stronger weight in the matching category more likely to see that route as "best" (the recorded h itself stays plain; only the choice of best route is affected). 桃太郎＋2 (Peach Boy+2)'s `route.yaml` sets `gene_affinity: 0.5` and `route_category: {fight: I, negotiate: III}`.
 
 ## Feeding into synopsis/text generation
 
-The reason text for detour ⟨motive⟩, ⟨belief⟩, ⟨body⟩, and ⟨ignorance⟩ actions is passed to the LLM that writes the synopsis/text as "the action's reason" (the generation prompt itself is instructed not to invent an unrecorded motive for an action with no recorded reason). On screen, the same reason text appears in [Read Results](../usage/read-results.md)'s timeline, four-field panel, and the breakdown at the top of the cell page.
+The reason text for every protagonist decision that carries a route record — advance and prepare included, regardless of classification or cause — is passed one at a time to the LLM that writes the synopsis/text, as "the action's reason." A detour ⟨no reason⟩ has no reason text; instead it's spelled out explicitly as "(no clear reason was recorded)." (Lost gets the fixed text "acted without any prospect of a way forward," except when its cause is body or belief.) The generation prompt itself is instructed not to invent an unrecorded motive for an action with no recorded reason. On screen, the same reason text appears in [Read Results](../usage/read-results.md)'s timeline, four-field panel, and the breakdown at the top of the cell page.
