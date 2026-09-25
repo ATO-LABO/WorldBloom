@@ -7,7 +7,7 @@
 - git は無くても動く（無い場合、実行の来歴に一部情報が記録されないだけ）
 
 !!! tip "文章生成（LLM）は最初に ⚙ 設定で選ぶ"
-    GA 実験そのものは LLM 無しで動きます。LLM が必要になるのは、あらすじ・本文の生成だけです。生成を使う場合は、最初にアプリの **⚙ 設定** 画面で接続先（Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない（プロンプト保存のみ））とモデル名を選んでください。何も設定していないときの既定の接続先は llama-server です（配布版 v1.0.0-viewer では codex-cli）。どちらの場合もモデル名は自動では決まらないため、必ず選ぶ必要があります。Ollama や llama-server 本体は WorldBloom に含まれていないので、別途インストールしてください。詳しくは [LLM バックエンド](../usage/llm-backends.md) を参照してください。
+    GA 実験そのものは LLM 無しで動きます。LLM が必要になるのは、あらすじ・本文の生成だけです。生成を使う場合は、最初にアプリの **⚙ 設定** 画面で接続先（Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない（プロンプト保存のみ））とモデル名を選んでください。何も設定していないときの既定の接続先は llama-server です（配布版 v1.0.0-viewer では codex-cli）。モデル名は claude-cli だけ未入力でも動きます（`claude-sonnet-5` が使われます）が、それ以外の接続先は必ず選ぶ必要があります。Ollama や llama-server 本体は WorldBloom に含まれていないので、別途インストールしてください。詳しくは [LLM バックエンド](../usage/llm-backends.md#model-defaults) を参照してください。
 
 === "Studio（フル機能）"
 
@@ -45,7 +45,7 @@
     python viewer/server.py --runs samples --port 5401
     ```
 
-    `http://127.0.0.1:5401/` を開きます。この起動方法では画面から編集・実行はできません（`--control` を付けていないため）。
+    `http://127.0.0.1:5401/` を開きます。この起動方法では画面から実験の実行・設定編集はできませんが、選定（採用チェックボックスなど）だけは書き込めます（`runs` 側の各実験フォルダに直接 `selection.json` として保存されます。`--control` を付けていないため）。
 
     自分で GA 実験を実行したりあらすじ・本文を生成し直したりする場合は、`--control` を付けて起動します（`runs`・`control` はリポジトリの外に置いてください）。
 

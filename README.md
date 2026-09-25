@@ -12,6 +12,7 @@
 [![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio--portable.zip-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip)
 [![公開ビューア](https://img.shields.io/badge/%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E8%A6%8B%E3%82%8B-%E5%85%AC%E9%96%8B%E3%83%93%E3%83%A5%E3%83%BC%E3%82%A2-2e7d4f?style=for-the-badge&logo=googlechrome&logoColor=white)](https://ato-labo.github.io/WorldBloom/)
 [![3分動画](https://img.shields.io/badge/3%E5%88%86%E3%81%A7%E3%82%8F%E3%81%8B%E3%82%8B-YouTube-c4302b?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/Yozi2qb2IQg)
+[![ドキュメント](https://img.shields.io/badge/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88-ato--labo.github.io-6f42c1?style=for-the-badge&logo=readthedocs&logoColor=white)](https://ato-labo.github.io/WorldBloom/docs/)
 
 </div>
 
@@ -50,42 +51,17 @@ StorySim（同作者の別プロジェクト。世界と人物をシミュレー
 - **系譜・転機の可視化**: 世代を追った戦略の推移と、物語の転機をグラフで表示
 - **Jev（合理性チェック層）**: 行動選択が「もっともらしいか」をκスライダーで調整しながら検証（開発中の機能）
 
-GPU 調停・進捗表示など運用まわりの機能は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照してください。
+GPU 調停・進捗表示など運用まわりの機能は、ドキュメントサイトの[使い方](https://ato-labo.github.io/WorldBloom/docs/usage/gpu-guard/)を参照してください。
 
 ## 試し方
 
-### A. exe で（Windows）
+**詳しい手順・スクリーンショット付きの説明は → [ドキュメントサイト](https://ato-labo.github.io/WorldBloom/docs/)（[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/) / [クイックスタート](https://ato-labo.github.io/WorldBloom/docs/getting-started/quickstart/)）**
 
-[WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) を展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます。
+- **A. exe で（Windows）**: [WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) を展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます（GA実験の実行には Python 3.11以上＋PyYAML が別途必要）。
+- **B. ブラウザで見るだけ**: インストール不要の [公開ビューア](https://ato-labo.github.io/WorldBloom/) で、桃太郎・恋愛・探偵の3実験の格子・あらすじ・本文を読めます。
+- **C. ソースから**: `git clone` して `pip install -r requirements.txt`（Python 3.11以上）。同梱の `samples/` をビューアで見る、自分で GA を回すなどの手順はドキュメントサイトの[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)にまとめています。
 
-（Python 3.11以上が別途必要です。詳細は同梱の README.txt を参照）
-
-### B. ブラウザで見るだけ
-
-インストール不要の [公開ビューア](https://ato-labo.github.io/WorldBloom/) で、桃太郎・恋愛・探偵の3実験の格子・あらすじ・本文を読めます。
-
-### C. ソースから
-
-必要なもの:
-
-- Python 3.11 以上（開発は 3.13）
-- `pip install -r requirements.txt`（PyYAML のみ）
-
-```
-git clone https://github.com/ATO-LABO/WorldBloom.git
-cd WorldBloom
-pip install -r requirements.txt
-```
-
-同梱の `samples/`（桃太郎・探偵・恋愛の3実験、格子・あらすじ・本文入り）をブラウザで見る:
-
-```
-python viewer/server.py --runs samples --port 5401
-```
-
-`http://127.0.0.1:5401/` を開く。リポジトリ内の `samples` は閲覧専用。
-
-自分で進化を回す・あらすじ/本文を生成し直す・無作為基準と比較する・回帰テストを回す場合の手順と、LLM バックエンドの設定（Ollama / Bonsai 2 / GPU ガードなど）は → [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+自分で進化を回す・あらすじ/本文を生成し直す・LLM バックエンドの設定・GPU ガードなどの使い方は、ドキュメントサイトの[使い方](https://ato-labo.github.io/WorldBloom/docs/usage/create-world/)を参照してください。開発者向け（回帰テスト・決定論の約束など）は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 ## もっと読む
 

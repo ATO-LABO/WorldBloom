@@ -71,6 +71,7 @@ nav:
       - Templates: reference/templates.md
       - Run Outputs: reference/run-outputs.md
       - HTTP API: reference/http-api.md
+      - Glossary: reference/glossary.md
   - Guides:
       - Troubleshooting: guides/troubleshooting.md
       - FAQ: guides/faq.md

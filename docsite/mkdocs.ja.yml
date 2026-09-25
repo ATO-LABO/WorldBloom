@@ -71,6 +71,7 @@ nav:
       - テンプレート: reference/templates.md
       - 実行結果のファイル: reference/run-outputs.md
       - HTTP API: reference/http-api.md
+      - 用語集: reference/glossary.md
   - ガイド:
       - トラブルシューティング: guides/troubleshooting.md
       - FAQ: guides/faq.md
