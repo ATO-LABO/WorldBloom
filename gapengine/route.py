@@ -1983,6 +1983,79 @@ _MOTIVE_VERB_ENDINGS = {
     "pledge": "誓いを結んだ",
 }
 
+def _milestone_move_text(
+    milestone: str,
+    dest: str | None,
+    believed_holder_id: str | None,
+    world: World,
+) -> str | None:
+    """S3.5 §1 review: the move's text is picked from ``milestone`` (the
+    single node -- ``"{kind}:{value}"`` -- that actually made this move
+    advance/prepare, per ``annotate()``/``_prepare_move_milestone``), not by
+    re-scanning every open node in priority order. That old scan named
+    whichever need happened to sort first among *all* still-open nodes, so a
+    move chosen to reach one milestone (e.g. 犬 for stance_ge) could be
+    captioned for an unrelated one (e.g. 木材 for has_item) when both were
+    open at once. Returns None for milestone kinds with no move-specific
+    text (e.g. strong_enough), leaving the caller's fallback to run."""
+
+    kind, _, value = milestone.partition(":")
+    if kind == "has_item":
+        definition = world.items.get(value, {})
+        if str(definition.get("craft_zone")) == dest:
+            return f"{value}を作るため{dest}へ向かった"
+        return f"{value}を手に入れるため{dest}へ向かった"
+    if kind == "knows":
+        return f"{value}について調べるため{dest}へ向かった"
+    if kind == "stance_ge":
+        # raising stance with Y (a trial giver or a negotiate/companion
+        # target) is "meeting them", never phrased as a fight.
+        return f"{value}と会うため{dest}へ向かった"
+    if kind == "win_fight":
+        return f"{value}を倒すため{dest}へ向かった"
+    if kind == "route" and value == "negotiate" and believed_holder_id is not None:
+        return f"{believed_holder_id}と話をつけるため{dest}へ向かった"
+    if kind == "goal" and value == "deliver":
+        return f"宝を持ち帰るため{dest}へ向かった"
+    return None
+
+
+def _prepare_move_milestone(
+    alt_kinds: dict[str, set[Any]],
+    world: World,
+    subject: Subject,
+    zone: str,
+    dest: str | None,
+) -> str | None:
+    """S3.5 §1: the milestone for a *prepare* move -- among alt's own
+    leaves (``_leaf_tags``), the one whose shortest path from ``zone``
+    actually runs through ``dest`` (nearest such leaf wins ties, same
+    ordering as annotate()'s best-side milestone). A leaf with no zone of
+    its own is already actionable anywhere, so it always qualifies."""
+
+    if dest is None:
+        return None
+    excluded = frozenset(world._excluded_zones(subject))
+    best: tuple[int, str, tuple[str, Any]] | None = None
+    for tag in _leaf_tags(alt_kinds, world):
+        leaf_zone = _leaf_zone(tag, world)
+        if leaf_zone is None:
+            candidate = (0, str(tag), tag)
+        else:
+            edges = _reachable_shortest_path(world, subject, zone, leaf_zone, excluded)
+            if edges is None:
+                continue
+            if dest not in {route.destination for route in edges}:
+                continue
+            candidate = (len(edges), str(tag), tag)
+        if best is None or candidate[:2] < best[:2]:
+            best = candidate
+    if best is None:
+        return None
+    kind, value = best[2]
+    return f"{kind}:{value}"
+
+
 def _advance_text(
     action: Action,
     subject: Subject,
@@ -1990,51 +2063,24 @@ def _advance_text(
     kinds: dict[str, set[Any]],
     *,
     believed_holder_id: str | None = None,
+    milestone: str | None = None,
 ) -> str:
     """Built from ``kinds`` (the tag pool an action actually matched against
     -- ``best`` for an "advance" result, ``alt`` for "prepare"). S3.5 §1:
-    a "move" is always textualized from the milestone that made it advance/
-    prepare in the first place (which node in ``kinds`` is actually open),
-    never the bare "移動して近づいた" while a real purpose can be named --
-    that generic text is now the last resort, not the common case."""
+    a "move" is always textualized from ``milestone`` -- the node that made
+    it advance/prepare in the first place -- never the bare "移動して近づ
+    いた" while a real purpose can be named; that generic text is now the
+    last resort (milestone absent, or naming a kind with no move text, e.g.
+    strong_enough), not the common case."""
 
     verb = action.verb
 
     if verb == "move":
         dest = action.meta.get("dest")
-        for item in sorted(kinds.get("has_item", ())):
-            definition = world.items.get(item, {})
-            if str(definition.get("craft_zone")) == dest:
-                return f"{item}を作るため{dest}へ向かった"
-        # trial / stance_ge:Y -- raising stance with Y (a trial giver or a
-        # negotiate/companion target) is "meeting them", never phrased as a
-        # fight. Not zone-gated to ``dest`` (unlike craft above): "会うため
-        # 向かった" is the purpose of the whole trip, true on any hop of it,
-        # not a claim that Y is standing at this particular waypoint.
-        for holder_id in sorted(kinds.get("stance_ge", ())):
-            return f"{holder_id}と会うため{dest}へ向かった"
-        # route:fight / win_fight:H
-        for holder_id in sorted(kinds.get("win_fight", ())):
-            return f"{holder_id}を倒すため{dest}へ向かった"
-        # route:negotiate -- the winning plan settles for talking, not
-        # fighting, so name that instead of the fight text above.
-        if "negotiate" in kinds.get("route", ()) and believed_holder_id is not None:
-            return f"{believed_holder_id}と話をつけるため{dest}へ向かった"
-        # goal:deliver -- the goal item is already held; the only leaf left
-        # is bringing it home (also not zone-gated: any hop homeward
-        # qualifies, not just the final one landing in deliver_to).
-        if subject.goal.target is not None and subject.has_item(subject.goal.target):
-            return f"宝を持ち帰るため{dest}へ向かった"
-        # 2026-09-24 review 2, recommended fix 5 / S3.5 §1 follow-up: name
-        # what the trip is still for (a still-needed material/fact) rather
-        # than falling straight to the generic "近づいた" whenever no
-        # holder/craft_zone matched -- including a waypoint hop whose *own*
-        # zone isn't the item's source (dest is just one hop closer to it;
-        # "手に入れるため" states the purpose, not the current location).
-        for item in sorted(kinds.get("has_item", ())):
-            return f"{item}を手に入れるため{dest}へ向かった"
-        for fact_id in sorted(kinds.get("knows", ())):
-            return f"{fact_id}について調べるため{dest}へ向かった"
+        if milestone is not None:
+            text = _milestone_move_text(milestone, dest, believed_holder_id, world)
+            if text is not None:
+                return text
         # companion -- no leaf tag covers recruiting (annotate()'s move
         # classifier reads "strong_enough" for that instead, see
         # _leaf_tags's docstring), so a move toward a plausible recruit
@@ -2118,6 +2164,13 @@ def _advance_text(
             purpose = _grant_purpose_text(trial)
             if purpose:
                 return f"{purpose}{target_id}と親しくなった"
+        # S3.5 review recommended fix: relation-building toward the goal
+        # item's own holder is about winning *them* over for a hand-off or
+        # negotiation, not recruiting a companion -- the default
+        # _RELATION_VERB_TEXT wording ("仲間に加わってほしくて") misnames
+        # that as a recruitment attempt.
+        if target_id == believed_holder_id and verb in _MOTIVE_VERB_ENDINGS:
+            return f"{target_id}と話をつけやすくしようと{_MOTIVE_VERB_ENDINGS[verb]}"
         return _RELATION_VERB_TEXT[verb].format(target=target_id)
 
     return f"{verb}で先へ進んだ"
@@ -2496,6 +2549,18 @@ def annotate(
                 if matched == "advance" and h_before is not None and h_before != INF
                 else _finite_or_none(h_before)
             )
+            # S3.5 §1: advance reuses the decision point's own milestone
+            # (computed above off best_kinds -- already the node this move
+            # advanced toward); a prepare move looks up its own milestone on
+            # alt, since alt's open leaves differ from best's.
+            if matched == "advance":
+                move_milestone = milestone
+            elif action.verb == "move":
+                move_milestone = _prepare_move_milestone(
+                    alt_kinds, world, subject, zone, action.meta.get("dest")
+                )
+            else:
+                move_milestone = None
             results.append(
                 {
                     **base,
@@ -2508,6 +2573,7 @@ def annotate(
                         world,
                         best_kinds if matched == "advance" else alt_kinds,
                         believed_holder_id=believed_holder_id,
+                        milestone=move_milestone,
                     ),
                 }
             )

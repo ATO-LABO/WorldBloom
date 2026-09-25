@@ -389,7 +389,7 @@ def describe_row(
     return text
 
 
-def _route_reason(route: Mapping[str, Any]) -> str | None:
+def route_reason(route: Mapping[str, Any]) -> str | None:
     """WB-ROUTE-001 S3: turn ``policy.route`` into a prose reason, or None
     when the route layer explicitly recorded "no reason". ``lost`` gets a
     fixed text -- except when its cause is body/belief (route.text is
@@ -434,7 +434,7 @@ def _scene_motives(
         motives.append(
             {
                 "event": describe_row(row, world_meta),
-                "why": _route_reason(route),
+                "why": route_reason(route),
                 "kind": route.get("kind"),
                 "cause": route.get("cause"),
                 # S4 §1.1: the reason badge needs the motive's own label

@@ -3,6 +3,8 @@ from html import escape
 import json
 from urllib.parse import quote
 
+from gapengine.scenes import route_reason
+
 LABELS = {"confirmed": "確認済み", "absent": "該当なし", "unknown": "不明"}
 VERBS = {"rethink":"再考", "confront":"告発", "neutralize":"無効化", "payoff":"伏線回収", "observe":"観察",
          "move":"移動", "investigate":"調査", "give_item":"譲渡", "rest":"休息", "train":"訓練", "fight":"対決",
@@ -131,7 +133,10 @@ def panel(explanation, item=None, *, details=True):
         # WB-ROUTE-001 S4 §1.2: one line naming the道筋 (route) kind/cause
         # right after the choice itself. explanation-dump count is untouched.
         label, css_class = route_badge(route)
-        why = route.get("text") or "はっきりした理由は記録されていない"
+        # WB-ROUTE-001 S4 review: reuse scenes.py's route_reason so the
+        # four-item panel and the scene timeline never disagree on the same
+        # decision's reason (lost/detour-none get the same override here).
+        why = route_reason(route) or "はっきりした理由は記録されていない"
         milestone = route.get("milestone")
         milestone_suffix = f"（次の節目: {e(milestone)}）" if milestone else ""
         body += (
