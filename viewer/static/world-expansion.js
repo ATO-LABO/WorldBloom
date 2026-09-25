@@ -65,6 +65,18 @@
       if (!confirm(`承認済みの拡張 ${count} 件をすべて提案中へ戻します。戻したあとは検査のやり直しが必要です。よろしいですか？`)) return;
       url = `/api/worlds/${encodeURIComponent(world)}/patches/reopen`;
       payload = {seen: {head: button.dataset.head}};
+    } else if (action === "retire") {
+      // WB-WORLDGROW-001 段階5a: yaml/gate は消えない（墓標リビジョン）が、
+      // 以後は適用中パッチから外れる -- 確認だけは取る。
+      const textarea = container ? container.querySelector("[data-retire-reason]") : null;
+      const reason = (textarea ? textarea.value : "").trim();
+      if (reason.length < 10) {
+        setMessage("枯らす理由を10文字以上入力してください。");
+        return;
+      }
+      if (!confirm("このパッチを枯らします（元に戻すには reopen が必要です）。よろしいですか？")) return;
+      url = `/api/worlds/${encodeURIComponent(world)}/patches/${encodeURIComponent(button.dataset.patch)}/retire`;
+      payload = {reason, experiment: button.dataset.experiment, seen: {head: button.dataset.head}};
     } else {
       return;
     }
