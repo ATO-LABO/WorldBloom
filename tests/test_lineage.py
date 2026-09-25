@@ -21,7 +21,7 @@ from test_viewer import _write_json
 
 from gapengine import lineage
 from gapengine.genome import CATEGORIES, Genome
-from gapengine.qd import Archive, Descriptor, Elite
+from gapengine.qd import Archive, Descriptor, Elite, read_rows
 from viewer.data import RunRepository
 
 
@@ -679,6 +679,215 @@ class CoevolveLineageRerunTests(unittest.TestCase):
                 "the original -- the antagonist likely ran without its own "
                 "precedent/action graph",
             )
+
+
+class RouteLineageRerunTests(unittest.TestCase):
+    """WB-WORLDGROW-002 stage 0: before restore_job_cfgs(), _rerun_node's job
+    carried no route_cfg at all, so a rho>0 experiment's ancestor rerun
+    silently walked a *different* (route-free) history than the archived
+    one -- run_individual() only ever attaches Route when a job carries
+    route_cfg. momotaro_plus2/route.yaml (rho=1.0 here) is the same
+    route-carrying template test_route.py's RouteEvolveWiringTests uses."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from gapengine.evolve import evolve
+
+        root = Path(__file__).resolve().parents[1]
+        project = root / "projects" / "momotaro_plus2"
+        template = root / "templates" / "momotaro_plus2"
+        cls.temporary = tempfile.TemporaryDirectory()
+        tmp_root = Path(cls.temporary.name)
+        cls.runs_root = tmp_root / "runs"
+        cls.archive = evolve(
+            {
+                "ga_seed": 1,
+                "generations": 5,
+                "keep": "all",  # nothing pruned: every original stays comparable
+                "population": 8,
+                "project": project,
+                "seed_base": 11,
+                "seeds": 2,
+                "template": template,
+                "out": cls.runs_root / "exp1",
+                "processes": 1,
+                "route": {"rho": 1.0},
+            }
+        )
+        cls.repository = RunRepository(cls.runs_root)
+        cls.experiment = cls.repository.experiment("exp1")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.temporary.cleanup()
+
+    def test_route_header_key_is_present(self) -> None:
+        # Confirms this fixture actually ran with route on (else the fix
+        # would go untested, same guard CoevolveLineageRerunTests uses for
+        # its own precedent.antagonist.json).
+        layer_files = sorted(self.experiment.glob("g0/ind-0/seed-*/layers.jsonl"))
+        self.assertTrue(layer_files)
+        header = json.loads(layer_files[0].read_text(encoding="utf-8").splitlines()[0])
+        self.assertIn("route", header)
+        self.assertEqual(header["route"]["rho"], 1.0)
+
+    def test_rerun_of_a_route_on_ancestor_byte_matches_original(self) -> None:
+        cells = json.loads(
+            (self.experiment / "archive.json").read_text(encoding="utf-8")
+        ).get("cells") or {}
+        self.assertTrue(cells)
+        cell_key = next(iter(cells))
+
+        report = lineage.build_lineage_report(self.repository, self.experiment, cell_key)
+        seed = report["seed"]
+        for entry in report["ancestry"]:
+            self.assertIsNone(entry["rerun_error"])
+
+        checked = 0
+        for entry in report["ancestry"]:
+            original_path = (
+                self.experiment
+                / f"g{entry['generation']}"
+                / f"ind-{entry['index']}"
+                / f"seed-{seed}"
+                / "layers.jsonl"
+            )
+            if not original_path.is_file():
+                continue  # a pruned ancestor has no original to compare against
+            rerun_path = (
+                self.experiment
+                / "lineage"
+                / lineage._safe_ref_name(entry["ref"])
+                / f"seed-{seed}"
+                / "layers.jsonl"
+            )
+            self.assertEqual(
+                rerun_path.read_bytes(),
+                original_path.read_bytes(),
+                f"rerun of {entry['ref']} (rho=1.0) did not byte-match the "
+                "original -- the ancestor rerun likely ran without route_cfg",
+            )
+            checked += 1
+        self.assertGreater(checked, 0)
+
+
+class RationalityLineageRerunTests(unittest.TestCase):
+    """WB-WORLDGROW-002 stage 0: same gap as RouteLineageRerunTests above,
+    but for rationality_cfg -- backend="fake" (deterministic, network-free,
+    gapengine.rationality.FakeJudge) keeps this test independent of Ollama/a
+    GPU while still exercising the same table_path/rationality_table_only
+    wiring a real kappa>0 experiment needs (see run_individual's
+    "rationality_table_only" flag and TableOnlyJudgeTests in
+    tests/test_rationality.py for the "ollama"-specific table-miss guard
+    this test doesn't need, since "fake" is always safe to call again)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from gapengine.evolve import evolve
+
+        root = Path(__file__).resolve().parents[1]
+        project = root / "projects" / "momotaro_plus2"
+        template = root / "templates" / "momotaro_plus2"
+        cls.temporary = tempfile.TemporaryDirectory()
+        tmp_root = Path(cls.temporary.name)
+        cls.runs_root = tmp_root / "runs"
+        cls.archive = evolve(
+            {
+                "ga_seed": 1,
+                "generations": 5,
+                "keep": "all",
+                "population": 8,
+                "project": project,
+                "seed_base": 11,
+                "seeds": 2,
+                "template": template,
+                "out": cls.runs_root / "exp1",
+                "processes": 1,
+                "rationality": {"kappa": 1.0, "backend": "fake"},
+            }
+        )
+        cls.repository = RunRepository(cls.runs_root)
+        cls.experiment = cls.repository.experiment("exp1")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.temporary.cleanup()
+
+    def test_rationality_header_key_is_present(self) -> None:
+        layer_files = sorted(self.experiment.glob("g0/ind-0/seed-*/layers.jsonl"))
+        self.assertTrue(layer_files)
+        header = json.loads(layer_files[0].read_text(encoding="utf-8").splitlines()[0])
+        self.assertIn("rationality", header)
+        self.assertEqual(header["rationality"]["kappa"], 1.0)
+        self.assertEqual(header["rationality"]["backend"], "fake")
+
+    def test_rerun_of_a_kappa_on_ancestor_matches_every_decision(self) -> None:
+        # Not a raw byte comparison (unlike RouteLineageRerunTests' route
+        # case): the shared rationality table keeps accumulating for the
+        # rest of the GA run after any one individual's own seed finishes
+        # (gapengine.evolve._merge_rationality_table overwrites it in
+        # place every generation, keeping no per-generation snapshot), so a
+        # rerun that reads the table's *current* (bigger) content
+        # legitimately writes a different header "rationality.table_hash_
+        # at_start" than the run originally recorded -- an informational
+        # field only (deliberately excluded from _cfg_fingerprint, plan
+        # §2.1), not a sign the replayed decisions differ. Every row's
+        # actual content -- what the subject decided and why -- is still
+        # required to match exactly.
+        cells = json.loads(
+            (self.experiment / "archive.json").read_text(encoding="utf-8")
+        ).get("cells") or {}
+        self.assertTrue(cells)
+        cell_key = next(iter(cells))
+
+        report = lineage.build_lineage_report(self.repository, self.experiment, cell_key)
+        seed = report["seed"]
+        for entry in report["ancestry"]:
+            self.assertIsNone(entry["rerun_error"])
+
+        checked = 0
+        for entry in report["ancestry"]:
+            original_path = (
+                self.experiment
+                / f"g{entry['generation']}"
+                / f"ind-{entry['index']}"
+                / f"seed-{seed}"
+                / "layers.jsonl"
+            )
+            if not original_path.is_file():
+                continue
+            rerun_path = (
+                self.experiment
+                / "lineage"
+                / lineage._safe_ref_name(entry["ref"])
+                / f"seed-{seed}"
+                / "layers.jsonl"
+            )
+            original_rows = read_rows(original_path)
+            rerun_rows = read_rows(rerun_path)
+            self.assertEqual(len(rerun_rows), len(original_rows))
+            for index, (rerun_row, original_row) in enumerate(zip(rerun_rows, original_rows)):
+                if index == 0:
+                    rerun_header = dict(rerun_row)
+                    original_header = dict(original_row)
+                    rerun_header.get("rationality", {}).pop("table_hash_at_start", None)
+                    original_header.get("rationality", {}).pop("table_hash_at_start", None)
+                    self.assertEqual(
+                        rerun_header,
+                        original_header,
+                        f"rerun of {entry['ref']} (kappa=1.0) header did not "
+                        "match beyond table_hash_at_start",
+                    )
+                    continue
+                self.assertEqual(
+                    rerun_row,
+                    original_row,
+                    f"rerun of {entry['ref']} (kappa=1.0) row {index} did not "
+                    "match -- the ancestor rerun likely ran without "
+                    "rationality_cfg",
+                )
+            checked += 1
+        self.assertGreater(checked, 0)
 
 
 if __name__ == "__main__":
