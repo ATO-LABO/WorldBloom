@@ -3,6 +3,8 @@ from html import escape
 import json
 from urllib.parse import quote
 
+from gapengine.scenes import route_reason
+
 LABELS = {"confirmed": "確認済み", "absent": "該当なし", "unknown": "不明"}
 VERBS = {"rethink":"再考", "confront":"告発", "neutralize":"無効化", "payoff":"伏線回収", "observe":"観察",
          "move":"移動", "investigate":"調査", "give_item":"譲渡", "rest":"休息", "train":"訓練", "fight":"対決",
@@ -19,6 +21,41 @@ def e(value):
 def verb_label(verb):
     # Short UI labels are intentionally separate from scenes.py prose templates.
     return VERBS.get(verb, f"未対応の行動（{verb}）")
+
+
+# WB-ROUTE-001 S4 §1.1: reason badges for a policy.route record (or a
+# scenes.py motive entry, same kind/cause/motive shape). Keyed the same way
+# gapengine.route.annotate() sets "kind"/"cause" -- no new colors, just
+# modifier classes on the existing ".tag" rule (see app.css ".tag.route-*").
+_ROUTE_KIND_LABELS = {
+    "advance": ("前進", "route-advance"),
+    "prepare": ("準備", "route-prepare"),
+    "lost": ("見通しなし", "route-lost"),
+}
+_ROUTE_DETOUR_LABELS = {
+    "body": ("身体", "route-body"),
+    "belief": ("思い込み", "route-belief"),
+    "ignorance": ("手探り", "route-ignorance"),
+    "none": ("理由なし", "route-none"),
+}
+
+
+def route_badge(route):
+    """(label, css_class) for a route/motive record's kind+cause. Falls back
+    to the motive id when an older run has no "motive_label" recorded."""
+    kind = route.get("kind")
+    cause = route.get("cause")
+    if kind == "detour" and cause == "motive":
+        label = route.get("motive_label") or route.get("motive") or "動機"
+        return str(label), "route-motive"
+    if kind == "detour":
+        found = _ROUTE_DETOUR_LABELS.get(cause)
+        if found:
+            return found
+    found = _ROUTE_KIND_LABELS.get(kind)
+    if found:
+        return found
+    return (str(kind) if kind else "不明"), "route-unknown"
 
 
 def action_text(item):
@@ -91,6 +128,21 @@ def panel(explanation, item=None, *, details=True):
         return f'<dt>{label} <span class="tag">{tag}</span></dt><dd>{e(text)}</dd>'
     body = '<dl class="four-items">'
     body += entry("選択", choice, f"T{item['turn']} {action_text(item)}／場所: {choice.get('zone') or '不明'}")
+    route = ((item.get("system") or {}).get("policy") or {}).get("route")
+    if route:
+        # WB-ROUTE-001 S4 §1.2: one line naming the道筋 (route) kind/cause
+        # right after the choice itself. explanation-dump count is untouched.
+        label, css_class = route_badge(route)
+        # WB-ROUTE-001 S4 review: reuse scenes.py's route_reason so the
+        # four-item panel and the scene timeline never disagree on the same
+        # decision's reason (lost/detour-none get the same override here).
+        why = route_reason(route) or "はっきりした理由は記録されていない"
+        milestone = route.get("milestone")
+        milestone_suffix = f"（次の節目: {e(milestone)}）" if milestone else ""
+        body += (
+            f'<p class="route-line">道筋: <span class="tag {css_class}">{e(label)}</span> '
+            f'{e(why)}{milestone_suffix}</p>'
+        )
     body += entry("根拠", grounds, knowledge_text(grounds))
     body += entry("即時の代償", cost, cost["text"])
     body += entry("転機", turning, turning_text(turning), turning=True)

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def frozen_experiment(root, *, explanations=True, coevolve=False):
     import shutil
     from execution.configs import ConfigStore
-    from gapengine.evolve import evolve
+    from gapengine.evolve import evolve, rationality_cfg_override, route_cfg_override
     root = Path(root)
     repo = root / "repo"
     project, template = repo / "projects/momotaro", repo / "templates/momotaro"
@@ -47,7 +47,9 @@ def frozen_experiment(root, *, explanations=True, coevolve=False):
     experiment = root / "runs/run-fixture"
     evolve({**manifest["evolution"], "out": experiment,
             "project": experiment / "inputs/projects/momotaro",
-            "template": experiment / "inputs/templates/momotaro"})
+            "template": experiment / "inputs/templates/momotaro",
+            "rationality": rationality_cfg_override(manifest["evolution"]),
+            "route": route_cfg_override(manifest["evolution"].get("route_rho"))})
     return experiment, project, template
 
 
@@ -192,7 +194,7 @@ def frozen_experiment_with_external_reference(root, *, mode):
     Returns (experiment, project, template, repo)."""
     import shutil
     from execution.configs import ConfigStore
-    from gapengine.evolve import evolve
+    from gapengine.evolve import evolve, rationality_cfg_override, route_cfg_override
     root = Path(root)
     repo = root / "repo"
     project, template = repo / "projects/momotaro", repo / "templates/momotaro"
@@ -239,7 +241,9 @@ def frozen_experiment_with_external_reference(root, *, mode):
     experiment = root / "runs/run-ext"
     evolve({**manifest["evolution"], "out": experiment,
             "project": experiment / "inputs/projects/momotaro",
-            "template": experiment / "inputs/templates/momotaro"})
+            "template": experiment / "inputs/templates/momotaro",
+            "rationality": rationality_cfg_override(manifest["evolution"]),
+            "route": route_cfg_override(manifest["evolution"].get("route_rho"))})
     _write_world_demand_for_sea(experiment)
     return experiment, project, template, repo
 

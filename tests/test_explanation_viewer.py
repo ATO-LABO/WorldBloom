@@ -215,5 +215,78 @@ class ExplanationViewerTests(unittest.TestCase):
             self.assertIn(declaration, rule[1])
 
 
+class PanelRouteLineTests(unittest.TestCase):
+    """WB-ROUTE-001 S4 §1.2: the four-item panel's own "道筋" line, and the
+    explanation-dump count staying exactly what it was (existing tests in
+    this module count it)."""
+
+    def test_route_line_appears_next_to_the_choice_and_dump_count_is_unchanged(self):
+        from gapengine.explanations import explain_rows
+        from viewer.explanation_ui import panel
+        from test_explanations import header, decision
+
+        row = decision(1, "craft", ["鉄砲"])
+        row["policy"] = {"route": {
+            "kind": "detour", "cause": "motive", "motive": "care_for_ally",
+            "motive_label": "仲間を大事にする", "text": "仲間との絆を深めたくて品を渡した",
+            "milestone": "has_item:鉄砲",
+        }}
+        explanation = explain_rows([header(), row])
+        without_dumps = panel(explanation, details=False)
+        self.assertIn('道筋: <span class="tag route-motive">仲間を大事にする</span>', without_dumps)
+        self.assertIn("仲間との絆を深めたくて品を渡した", without_dumps)
+        self.assertIn("（次の節目: has_item:鉄砲）", without_dumps)
+        self.assertNotIn('class="explanation-dump"', without_dumps)
+
+        with_dumps = panel(explanation)
+        self.assertEqual(with_dumps.count('class="explanation-dump"'), 2)
+
+    def test_no_route_line_when_row_has_no_policy(self):
+        from gapengine.explanations import explain_rows
+        from viewer.explanation_ui import panel
+        from test_explanations import header, decision
+
+        explanation = explain_rows([header(), decision(1, "guard")])
+        doc = panel(explanation, details=False)
+        self.assertNotIn("道筋:", doc)
+
+
+class RouteBadgeTests(unittest.TestCase):
+    """WB-ROUTE-001 S4 §1.1: (label, css_class) for every kind/cause the
+    route layer can produce, plus the motive_label/old-run fallback."""
+
+    def test_every_kind_cause_combination_has_a_label(self):
+        from viewer.explanation_ui import route_badge
+        cases = [
+            ({"kind": "advance", "cause": None}, ("前進", "route-advance")),
+            ({"kind": "prepare", "cause": None}, ("準備", "route-prepare")),
+            ({"kind": "detour", "cause": "body"}, ("身体", "route-body")),
+            ({"kind": "detour", "cause": "belief"}, ("思い込み", "route-belief")),
+            ({"kind": "detour", "cause": "ignorance"}, ("手探り", "route-ignorance")),
+            ({"kind": "detour", "cause": "none"}, ("理由なし", "route-none")),
+            ({"kind": "lost", "cause": "unreachable"}, ("見通しなし", "route-lost")),
+            ({"kind": "lost", "cause": "body"}, ("見通しなし", "route-lost")),
+        ]
+        for route, expected in cases:
+            self.assertEqual(route_badge(route), expected, route)
+
+    def test_motive_uses_its_own_label_or_falls_back_to_id(self):
+        from viewer.explanation_ui import route_badge
+        self.assertEqual(
+            route_badge({"kind": "detour", "cause": "motive",
+                         "motive": "care_for_ally", "motive_label": "仲間を大事にする"}),
+            ("仲間を大事にする", "route-motive"),
+        )
+        # Older run: recorded before motive_label existed at all.
+        self.assertEqual(
+            route_badge({"kind": "detour", "cause": "motive", "motive": "care_for_ally"}),
+            ("care_for_ally", "route-motive"),
+        )
+
+    def test_unknown_kind_falls_back_without_crashing(self):
+        from viewer.explanation_ui import route_badge
+        self.assertEqual(route_badge({}), ("不明", "route-unknown"))
+
+
 if __name__ == "__main__":
     unittest.main()

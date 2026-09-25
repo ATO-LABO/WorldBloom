@@ -1703,7 +1703,12 @@ class MotiveMatchingTests(unittest.TestCase):
         )[0]
         self.assertEqual(result["cause"], "motive")
         self.assertEqual(result["motive"], "care_for_ally")
+        self.assertEqual(result["motive_label"], "仲間を大事にする")
         self.assertIn("鬼の弟", result["text"])
+        # S4 §0(c): the ending now matches the verb actually taken
+        # (give_item -> "品を渡した"), not a fixed "絆を深めたかった" that
+        # read oddly for a give_item candidate.
+        self.assertEqual(result["text"], "鬼の弟との絆を深めたくて品を渡した")
 
     def test_curiosity_falls_back_to_zone_text_when_no_real_target(self) -> None:
         world, subjects = load_fixture()
@@ -1880,6 +1885,322 @@ class S2DeterminismTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             outputs.append(result.stdout)
         self.assertEqual(outputs[0], outputs[1])
+
+
+class AdvanceTextTests(unittest.TestCase):
+    """WB-ROUTE-001 S3.5 §1/§2: each milestone kind gets its own move text
+    (the S3 fallback "移動して近づいた" is now a last resort, not the common
+    case), and the relation-verb texts read as the subject's want, not an
+    already-achieved result."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+        self.momotaro = self.subjects["桃太郎"]
+
+    def test_craft_zone_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("move", ("海",), {"dest": "海"}),
+            self.momotaro,
+            self.world,
+            {"has_item": {"船"}},
+            milestone="has_item:船",
+        )
+        self.assertEqual(text, "船を作るため海へ向かった")
+
+    def test_gather_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("move", ("森",), {"dest": "森"}),
+            self.momotaro,
+            self.world,
+            {"has_item": {"木材"}},
+            milestone="has_item:木材",
+        )
+        self.assertEqual(text, "木材を手に入れるため森へ向かった")
+
+    def test_stance_ge_milestone_reads_as_meeting_not_fighting(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.subjects["猿"].zone = "道中"
+        text = _advance_text(
+            Action("move", ("道中",), {"dest": "道中"}),
+            self.momotaro,
+            self.world,
+            {"stance_ge": {"猿"}},
+            milestone="stance_ge:猿",
+        )
+        self.assertEqual(text, "猿と会うため道中へ向かった")
+
+    def test_win_fight_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.subjects["鬼"].zone = "鬼ヶ島"
+        text = _advance_text(
+            Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"}),
+            self.momotaro,
+            self.world,
+            {"win_fight": {"鬼"}},
+            milestone="win_fight:鬼",
+        )
+        self.assertEqual(text, "鬼を倒すため鬼ヶ島へ向かった")
+
+    def test_route_negotiate_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.subjects["鬼"].zone = "鬼ヶ島"
+        text = _advance_text(
+            Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"}),
+            self.momotaro,
+            self.world,
+            {"route": {"negotiate"}},
+            believed_holder_id="鬼",
+            milestone="route:negotiate",
+        )
+        self.assertEqual(text, "鬼と話をつけるため鬼ヶ島へ向かった")
+
+    def test_goal_deliver_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.momotaro.inventory["鬼ヶ島の宝物"] = 1
+        text = _advance_text(
+            Action("move", ("村",), {"dest": "村"}),
+            self.momotaro,
+            self.world,
+            {},
+            milestone="goal:deliver",
+        )
+        self.assertEqual(text, "宝を持ち帰るため村へ向かった")
+
+    def test_companion_milestone_when_no_other_leaf_matches(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.subjects["犬"].zone = "道中"
+        text = _advance_text(
+            Action("move", ("道中",), {"dest": "道中"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "仲間と合流するため道中へ向かった")
+
+    def test_milestone_text_survives_a_waypoint_hop_short_of_the_leaf(self) -> None:
+        """S3.5 §4 follow-up: a hop toward a leaf 2+ zones away (holder not
+        standing at this particular waypoint) still names the real purpose
+        -- "ため〜へ向かった" states intent/direction, not that the target is
+        physically at ``dest`` right now."""
+
+        from gapengine.route import _advance_text
+
+        self.subjects["鬼"].zone = "鬼ヶ島"  # not "海" -- still 1 hop further
+        text = _advance_text(
+            Action("move", ("海",), {"dest": "海"}),
+            self.momotaro,
+            self.world,
+            {"win_fight": {"鬼"}},
+            milestone="win_fight:鬼",
+        )
+        self.assertEqual(text, "鬼を倒すため海へ向かった")
+
+    def test_generic_fallback_is_last_resort(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "鬼ヶ島へ移動して近づいた")
+
+    def test_fight_names_the_goal_item_and_the_holder(self) -> None:
+        """S4 §0(a): "目的物の持ち主と戦った" alone named neither the goal
+        item nor who the holder actually is."""
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("fight", ("鬼",), {"target": "鬼"}),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id="鬼",
+        )
+        self.assertEqual(text, "鬼ヶ島の宝物を手に入れるため鬼と戦った")
+
+    def test_craft_names_the_vehicle_destination(self) -> None:
+        """S4 §0(b): a craft's reason text named nothing beyond the event
+        itself ("船を作った") -- 船 is a vehicle, so name where it takes the
+        subject (the believed goal holder's zone)."""
+        from gapengine.route import _advance_text
+
+        self.subjects["鬼"].zone = "鬼ヶ島"
+        text = _advance_text(
+            Action("craft", ("船",)),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id="鬼",
+        )
+        self.assertEqual(text, "鬼ヶ島へ渡るため船を作った")
+
+    def test_craft_names_the_fight_advantage(self) -> None:
+        """S4 §0(b): 鉄砲 raises fight strength -- name it as preparing to
+        face the believed holder, not just "鉄砲を作った"."""
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("craft", ("鉄砲",)),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id="鬼",
+        )
+        self.assertEqual(text, "鬼と渡り合うため鉄砲を作った")
+
+    def test_craft_with_no_known_purpose_stays_the_bare_event(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("craft", ("船",)),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id=None,
+        )
+        self.assertEqual(text, "先へ渡るため船を作った")
+
+    def test_relation_verb_texts_are_worded_as_intent_not_result(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("give_item", ("犬",), {"target": "犬", "item": "きびだんご"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "犬に仲間に加わってほしくて品を渡した")
+        self.assertNotIn("仲間を増やすため", text)
+        self.assertNotIn("仲間にした", text)
+
+        text = _advance_text(
+            Action("persuade", ("犬",), {"target": "犬"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "犬に仲間に加わってほしくて説得した")
+
+    def test_milestone_wins_over_an_unrelated_open_node_in_kinds(self) -> None:
+        """S4 review required fix: reproduces the reported mislabeling --
+        kinds carries several still-open nodes (犬/stance_ge, negotiate,
+        船/has_item) besides the real milestone (木材/has_item, gathered at
+        this hop's own destination). The old priority scan over ``kinds``
+        picked stance_ge first regardless of which node this move actually
+        serves; the milestone now decides directly."""
+
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("move", ("森",), {"dest": "森"}),
+            self.momotaro,
+            self.world,
+            {"has_item": {"木材", "船"}, "stance_ge": {"犬"}, "route": {"negotiate"}},
+            milestone="has_item:木材",
+        )
+        self.assertEqual(text, "木材を手に入れるため森へ向かった")
+
+    def test_milestone_wins_over_an_open_fight_leaf_elsewhere(self) -> None:
+        """Same bug, fight side: win_fight:鬼 sorted ahead of has_item in the
+        old scan order, so a wood-gathering hop at 森 was captioned as
+        marching on 鬼 even though 鬼 isn't reachable from this hop."""
+
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("move", ("森",), {"dest": "森"}),
+            self.momotaro,
+            self.world,
+            {"has_item": {"木材"}, "win_fight": {"鬼"}},
+            milestone="has_item:木材",
+        )
+        self.assertEqual(text, "木材を手に入れるため森へ向かった")
+
+    def test_give_item_to_the_goal_holder_reads_as_negotiation_not_recruitment(
+        self,
+    ) -> None:
+        """S4 review recommended fix: a relation-building action toward the
+        goal item's own holder (鬼) is about winning them over for a
+        hand-off, not recruiting a companion -- the default
+        _RELATION_VERB_TEXT wording ("仲間に加わってほしくて") misreads as
+        recruitment there."""
+
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("give_item", ("鬼",), {"target": "鬼", "item": "きびだんご"}),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id="鬼",
+        )
+        self.assertEqual(text, "鬼と話をつけやすくしようと品を渡した")
+        self.assertNotIn("仲間に加わってほしくて", text)
+
+
+class PrepareMoveMilestoneTests(unittest.TestCase):
+    """S4 review required fix: a prepare move's own milestone comes from
+    alt's leaves, gated to whether this hop's destination actually lies on
+    the shortest path to that leaf."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+        self.momotaro = self.subjects["桃太郎"]
+
+    def test_hop_toward_the_leaf_names_it(self) -> None:
+        from gapengine.route import _prepare_move_milestone
+
+        # 村 -> 道中 -> 森 is the shortest path to 木材 (sourced at 森);
+        # 道中 lies on it.
+        milestone = _prepare_move_milestone(
+            {"has_item": {"木材"}}, self.world, self.momotaro, "村", "道中"
+        )
+        self.assertEqual(milestone, "has_item:木材")
+
+    def test_hop_away_from_the_leaf_names_nothing(self) -> None:
+        from gapengine.route import _prepare_move_milestone
+
+        # 海 is not on the 村->道中->森 path to 木材.
+        milestone = _prepare_move_milestone(
+            {"has_item": {"木材"}}, self.world, self.momotaro, "村", "海"
+        )
+        self.assertIsNone(milestone)
+
+
+class RouteReasonParityTests(unittest.TestCase):
+    """S4 review recommended fix: the four-item panel (viewer/
+    explanation_ui.py) and the scene timeline (gapengine/scenes.py) must
+    agree on the reason text for the same route record -- both now call
+    gapengine.scenes.route_reason."""
+
+    def test_explanation_ui_reuses_scenes_route_reason(self) -> None:
+        from gapengine.scenes import route_reason
+        from viewer.explanation_ui import route_reason as ui_route_reason
+
+        self.assertIs(ui_route_reason, route_reason)
+
+    def test_lost_with_belief_cause_matches_across_both_call_sites(self) -> None:
+        from gapengine.scenes import route_reason
+
+        route = {"kind": "lost", "cause": "belief", "text": "誤った思い込みに基づいて動いた"}
+        self.assertEqual(route_reason(route), "誤った思い込みに基づいて動いた")
+
+    def test_detour_none_has_no_reason_at_either_call_site(self) -> None:
+        from gapengine.scenes import route_reason
+
+        route = {"kind": "detour", "cause": "none", "text": "勝ち目の薄い無謀な挑戦"}
+        self.assertIsNone(route_reason(route))
 
 
 if __name__ == "__main__":

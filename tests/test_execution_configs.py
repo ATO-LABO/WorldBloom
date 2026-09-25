@@ -463,6 +463,61 @@ class ConfigTests(unittest.TestCase):
                     "rationality_model", "rationality_num_ctx"):
             self.assertIsNone(legacy["evolution"][key])
 
+    # ------------------------------------------------------- WB-ROUTE-001 S4
+
+    def _plus2_spec(self, **evolution):
+        return {"label": "桃太郎 道筋", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+                "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all",
+                              **evolution}}
+
+    def test_reject_invalid_route_rho(self):
+        for bad in (True, False, -0.01, 1.01, "0.5", [0.5]):
+            with self.subTest(bad=bad), self.assertRaises(ConfigError):
+                self.store.preview({**self.spec, "evolution": {"route_rho": bad}})
+        for rho in (0, 0.0, 1, 1.0, 0.5, None):
+            with self.subTest(rho=rho):
+                self.store.preview({**self.spec, "evolution": {"route_rho": rho}})
+
+    def test_route_rho_forced_to_none_when_template_lacks_route_yaml(self):
+        """Mirrors test_kappa_forced_to_none_when_template_lacks_rationality_
+        yaml: a genre switch client-side must never carry another genre's ρ
+        onto a template with no route.yaml -- romance (self.spec) has none."""
+        saved = self.store.save(
+            {**self.spec, "evolution": {**self.spec["evolution"], "route_rho": 0.5}},
+            config_id="cfg-romance-rho")
+        self.assertIsNone(saved["evolution"]["route_rho"])
+        previewed = self.store.preview(
+            {**self.spec, "evolution": {**self.spec["evolution"], "route_rho": 0.5}})
+        self.assertIsNone(previewed["evolution"]["route_rho"])
+        duplicated = self.store.duplicate(
+            "cfg-romance-rho", {"evolution": {"route_rho": 0.7}}, new_id="cfg-romance-rho-dup")
+        self.assertIsNone(duplicated["evolution"]["route_rho"])
+
+    def test_route_rho_zero_normalizes_to_none_like_legacy(self):
+        zero = self.store.save(self._plus2_spec(route_rho=0), config_id="cfg-rho-zero")
+        none = self.store.save(self._plus2_spec(route_rho=None), config_id="cfg-rho-none")
+        absent = self.store.save(self._plus2_spec(), config_id="cfg-rho-absent")
+        self.assertIsNone(zero["evolution"]["route_rho"])
+        self.assertIsNone(none["evolution"]["route_rho"])
+        self.assertIsNone(absent["evolution"]["route_rho"])
+
+    def test_route_rho_kept_when_template_has_route_yaml(self):
+        saved = self.store.save(self._plus2_spec(route_rho=1.0), config_id="cfg-rho-kept")
+        self.assertEqual(saved["evolution"]["route_rho"], 1.0)
+
+    def test_prepare_run_route_rho_positive_adds_flag_and_zero_or_none_omits_it(self):
+        self.runtime()
+        self.store.save(self._plus2_spec(route_rho=1.0), config_id="cfg-rho-on")
+        manifest = self.store.prepare_run("cfg-rho-on", run_id="run-rho-on", job_id="job-rho-on")
+        self.assertIn("--route-rho", manifest["argv"])
+        self.assertIn("1.0", manifest["argv"])
+        for rho, cid in ((None, "cfg-rho-off-none"), (0, "cfg-rho-off-zero")):
+            with self.subTest(rho=rho):
+                self.store.save(self._plus2_spec(route_rho=rho), config_id=cid)
+                manifest = self.store.prepare_run(
+                    cid, run_id=f"run-{cid}", job_id=f"job-{cid}")
+                self.assertNotIn("--route-rho", manifest["argv"])
+
     def test_prepare_run_reads_a_genuinely_pre_wb_jev_002_config_json(self):
         """Opus review: prepare_run() reads config["evolution"] straight off
         disk (never through normalize()), so a config.json saved before
