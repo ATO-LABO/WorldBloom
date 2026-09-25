@@ -1,0 +1,9 @@
+usage: readable.py [-h] {generate,approve} ...
+
+One-shot reader-summary generation. No retries and no automatic approval.
+
+positional arguments:
+  {generate,approve}
+
+options:
+  -h, --help          show this help message and exit

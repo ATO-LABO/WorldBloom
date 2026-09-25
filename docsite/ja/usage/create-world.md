@@ -7,6 +7,7 @@ sources:
   - "viewer/genre_pages.py"
   - "viewer/world_expansion_view.py"
   - "execution/world_patch_approval.py"
+reviewed: 72aaeae8379271e99357be2f967fa0cff3901a8d
 ---
 # 世界を作る
 

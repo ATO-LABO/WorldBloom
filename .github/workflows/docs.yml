@@ -20,16 +20,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r docsite/requirements.txt
+        run: pip install -r requirements.txt -r docsite/requirements.txt
 
-      - name: Check ja/en page parity
-        run: python docsite/check_parity.py
+      - name: Check docs freshness (ja/en parity, translation/review staleness, CLI snippets)
+        run: python docsite/check.py
 
       # -d is resolved relative to the config file, so ../_site lands at the
       # repo root. ja first: its build cleans _site, which would wipe en.
