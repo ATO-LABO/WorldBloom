@@ -99,6 +99,47 @@ def select_runs(
     return selected
 
 
+# WB-ROUTE-001 S3.5 §4: the exact 10 (genome, seed) pairs S3 selected out of
+# S2's rho=1.0 sweep -- re-simulated here with the S3.5 route.py/scenes.py
+# changes so the "reason text" the LLM sees reflects §1-3, not S2's code.
+S35_GENOME_SEEDS: tuple[tuple[str, int], ...] = (
+    ("curious", 12),
+    ("curious", 13),
+    ("neutral", 1),
+    ("neutral", 5),
+    ("reckless", 1),
+    ("reckless", 5),
+    ("type-I", 1),
+    ("type-I", 2),
+    ("type-III", 10),
+    ("type-III", 19),
+)
+
+
+def regenerate_selected(out_dir: Path) -> list[tuple[str, int, Path]]:
+    """S3.5 §4: re-run ``S35_GENOME_SEEDS`` with the current code (same
+    genome/seed/rho=1.0 as S2/S3 used) instead of reading S2's old
+    layers.jsonl -- the route text those files hold predates S3.5 §1-3."""
+
+    from scripts.route_eval import _genomes, _run_one, _typical_genomes
+
+    lookup = dict(_genomes())
+    lookup.update(_typical_genomes())
+
+    selected: list[tuple[str, int, Path]] = []
+    for genome_label, seed in S35_GENOME_SEEDS:
+        genome = lookup[genome_label]
+        seed_out = out_dir / "runs" / genome_label / f"seed-{seed}"
+        rows = _run_one(genome, seed, 1.0, seed_out)
+        if not _reached(rows):
+            raise RuntimeError(
+                f"{genome_label}/seed-{seed}: no longer reaches the ending "
+                "under the current code -- S3.5 changed behavior, not just text"
+            )
+        selected.append((genome_label, seed, seed_out / "layers.jsonl"))
+    return selected
+
+
 def _strip_motives(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     stripped = []
     for scene in scenes:
@@ -108,22 +149,55 @@ def _strip_motives(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return stripped
 
 
+# S3.5 §4 mechanical report: which move text pattern a "why" line matches,
+# checked in this order (first match wins) so a text that happens to contain
+# more than one marker doesn't double count. "generic_move" is the S3
+# fallback ("{zone}へ移動して近づいた") the plan's pass condition 1 wants at
+# or below 5%; the others are S3.5 §1's named patterns.
+_WHY_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("craft", "を作るため"),
+    ("gather", "を手に入れるため"),
+    ("meet", "と会うため"),
+    ("defeat", "を倒すため"),
+    ("negotiate", "と話をつけるため"),
+    ("deliver", "宝を持ち帰るため"),
+    ("companion", "仲間と合流するため"),
+    ("investigate_fact", "について調べるため"),
+    ("generic_move", "へ移動して近づいた"),
+)
+
+
+def _classify_why(why: str) -> str:
+    for label, marker in _WHY_PATTERNS:
+        if marker in why:
+            return label
+    return "other"
+
+
 def _mechanical_stats(scenes: list[dict[str, Any]]) -> dict[str, Any]:
     total = 0
     with_reason = 0
     cause_counts: dict[str, int] = {}
+    pattern_counts: dict[str, int] = {}
     for scene in scenes:
         for motive in scene.get("motives") or []:
             total += 1
             cause = str(motive.get("cause"))
             cause_counts[cause] = cause_counts.get(cause, 0) + 1
-            if motive.get("why"):
+            why = motive.get("why")
+            if why:
                 with_reason += 1
+                label = _classify_why(str(why))
+                pattern_counts[label] = pattern_counts.get(label, 0) + 1
     return {
         "total_motive_decisions": total,
         "with_reason": with_reason,
         "with_reason_rate": (with_reason / total) if total else None,
         "cause_counts": cause_counts,
+        "why_pattern_counts": pattern_counts,
+        "generic_move_rate": (
+            (pattern_counts.get("generic_move", 0) / total) if total else None
+        ),
     }
 
 
@@ -136,6 +210,7 @@ def build_prompts(
     aggregate_total = 0
     aggregate_with_reason = 0
     aggregate_causes: dict[str, int] = {}
+    aggregate_patterns: dict[str, int] = {}
 
     for genome, seed, layers_path in selected:
         rows = read_rows(layers_path)
@@ -156,6 +231,8 @@ def build_prompts(
         aggregate_with_reason += stats["with_reason"]
         for cause, count in stats["cause_counts"].items():
             aggregate_causes[cause] = aggregate_causes.get(cause, 0) + count
+        for pattern, count in stats["why_pattern_counts"].items():
+            aggregate_patterns[pattern] = aggregate_patterns.get(pattern, 0) + count
 
         per_run.append(
             {
@@ -177,6 +254,12 @@ def build_prompts(
                 aggregate_with_reason / aggregate_total if aggregate_total else None
             ),
             "cause_counts": aggregate_causes,
+            "why_pattern_counts": aggregate_patterns,
+            "generic_move_rate": (
+                aggregate_patterns.get("generic_move", 0) / aggregate_total
+                if aggregate_total
+                else None
+            ),
         },
     }
     (out_dir / "mechanical_report.json").write_text(
@@ -293,6 +376,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--per-genome", type=int, default=2)
     parser.add_argument("--max-total", type=int, default=10)
     parser.add_argument(
+        "--regenerate",
+        action="store_true",
+        help=(
+            "S3.5 §4: ignore --sweep-dir/--per-genome/--max-total and instead "
+            "re-simulate S35_GENOME_SEEDS with the current code (out_dir/runs/"
+            "<genome>/seed-<n>/layers.jsonl), so the reason text reflects "
+            "S3.5 §1-3, not S2/S3's code."
+        ),
+    )
+    parser.add_argument(
         "--skip-generation",
         action="store_true",
         help="Only build prompts and the mechanical report.",
@@ -318,8 +411,10 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    selected = select_runs(
-        args.sweep_dir, per_genome=args.per_genome, max_total=args.max_total
+    selected = (
+        regenerate_selected(out_dir)
+        if args.regenerate
+        else select_runs(args.sweep_dir, per_genome=args.per_genome, max_total=args.max_total)
     )
     if not selected:
         print("no reached rho=1.0 runs found under", args.sweep_dir)

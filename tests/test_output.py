@@ -577,6 +577,32 @@ class RouteMotiveTests(unittest.TestCase):
             "先の見通しが立たないまま動いた",
         )
 
+    def test_lost_with_body_or_belief_cause_uses_route_text(self) -> None:
+        """S3.5 §3: lost is no longer an automatic override -- body/belief
+        causes keep their own recorded route.text (a fatigued or mistaken
+        wander still has a real reason), only other causes (e.g. plain
+        "unreachable") fall back to the fixed lost text above."""
+
+        for cause, text in (
+            ("body", "疲れが溜まっていたので休んだ"),
+            ("belief", "誤った思い込みに基づいて動いた"),
+        ):
+            rows = self._rows_with_route()
+            for row in rows:
+                if row.get("kind") == "decision" and row["turn"] == 2:
+                    row["policy"]["route"] = {
+                        "kind": "lost",
+                        "cause": cause,
+                        "h": [None, None],
+                        "plan": None,
+                        "milestone": None,
+                        "text": text,
+                    }
+            world_meta = load_world_meta(PROJECT, TEMPLATE)
+            scenes = extract_scenes(rows, world_meta)
+            turn_two = next(scene for scene in scenes if scene["turn"] == 2)
+            self.assertEqual(turn_two["motives"][0]["why"], text)
+
     def test_antagonist_decision_with_route_is_not_a_motive(self) -> None:
         rows = self._rows_with_route()
         for row in rows:
@@ -625,6 +651,10 @@ class RouteMotiveTests(unittest.TestCase):
             "「行動の理由」が示された行動は、その理由に沿って因果を書く",
             synopsis,
         )
+        self.assertIn(
+            "「行動の理由」は本人の意図であって、その結果ではない",
+            synopsis,
+        )
 
         narration = build_narration_prompt(
             {"cell": "x", "quality": 1, "reach_rate": 1.0},
@@ -635,6 +665,10 @@ class RouteMotiveTests(unittest.TestCase):
         self.assertIn(
             "理由は心理描写や会話に翻訳してよいが、理由そのものを別の動機に"
             "置き換えない。",
+            narration,
+        )
+        self.assertIn(
+            "「行動の理由」は本人の意図であって、その結果ではない",
             narration,
         )
 
