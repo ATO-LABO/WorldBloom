@@ -1,0 +1,54 @@
+# WB-ROUTE-001 S2 §1: motive table for detour/none candidates only --
+# advance/prepare/detour(body|belief|ignorance)/lost are never touched.
+# Same predicate language as rules.yaml (engine.predicate), evaluated in a
+# per-candidate namespace with `target` bound the same way
+# gapengine.policy's own candidate-scope rules bind it (the candidate's own
+# target, or self when it has none). First matching entry (verb in `verbs`
+# and `when` true), in this file's own order, wins.
+
+- id: care_for_ally
+  label: 仲間を大事にする
+  when: "stance(self, target) >= 0.6"
+  verbs: [give_item, share_knowledge, persuade, pledge]
+  gene: category_weight.III
+  text: "{target}との絆を深めたかった"
+
+# bravado は grudge より先に置く: 敵対的な持ち主への勝ち目の無い勝負は grudge の
+# when（stance<=-0.3）も満たすため、限定的な bravado を先に評価する（S2 レビュー前修正）。
+- id: bravado
+  label: 向こう見ず
+  # is_target_holder/holder_hopeless: gapengine.route.annotate() が候補ごとに
+  # 束縛する追加バインディング -- 目的物の真の持ち主への、S1 設計判断D で
+  # detour/none になった（believed win probability < min_win_prob の）挑戦、
+  # または S2 設計判断G: 設計判断F で detour/none になった「弱いまま持ち主の
+  # 区域へ入る move」か。move の場合 target は自動的に持ち主に束縛される。
+  when: "is_target_holder and holder_hopeless"
+  verbs: [fight, sabotage, neutralize, move]
+  gene: risk_tolerance
+  text: "勝ち目が薄いと知りながら、{target}に立ち向かわずにいられなかった"
+
+- id: grudge
+  label: 恨みを晴らす
+  when: "stance(self, target) <= -0.3"
+  verbs: [fight, sabotage, mislead]
+  gene: -stance_shift_bias
+  text: "{target}への怒りが収まらなかった"
+
+- id: curiosity
+  label: 好奇心
+  when: "True"
+  verbs: [investigate, observe]
+  gene: novelty_drive
+  # target が候補の実対象を持たない（investigate など）ときは _candidate_target
+  # が self にフォールバックする -- gapengine.route.annotate() 側でその場合
+  # だけ {target} を {zone} に差し替える（好奇心の対象が「場所」になる）。
+  text: "{target}のことが気になった"
+
+- id: caution
+  label: 慎重
+  # believed_weaker: engine.world.World.namespace の追加述語 (S2 で新設) --
+  # 主人公の strength() が対 antagonist の believed_strength() を下回るか。
+  when: "believed_weaker(self)"
+  verbs: [rest, withdraw]
+  gene: -risk_tolerance
+  text: "まだ鬼には敵わないと感じ、慎重になった"
