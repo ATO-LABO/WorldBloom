@@ -586,6 +586,7 @@ class ConfigStore:
             # this manifest-derived "evolution" dict is read straight off
             # disk here (not renormalized), unlike normalize()'s own inputs.
             kappa = config["evolution"].get("kappa")
+            rationality_table = None
             if kappa is not None:
                 # WB-JEV-002: the shared table lives under this store's own
                 # control root, one file per (template, model, method) so
@@ -611,6 +612,7 @@ class ConfigStore:
                     config["template_id"], _safe_path_token(model), _safe_path_token(method)))
                 table_path.parent.mkdir(parents=True, exist_ok=True)
                 argv.extend(["--rationality-table", str(table_path)])
+                rationality_table = str(table_path)
             manifest = {"schema_version": 1, "run_id": rid, "job_id": job_id,
                         "config_id": config_id, "created_at": _now(),
                         "input_manifest_sha256": config["input_manifest_sha256"],
@@ -620,6 +622,19 @@ class ConfigStore:
                         "processes": processes if processes is not None else config["evolution"]["processes"],
                         "target_endings": config["preview"]["target_endings"],
                         "execution_limits": config["execution_limits"],
+                        # WB-ROUTE-001 S4 follow-up: --rationality-table above is
+                        # the only place this run's shared judgment-table path is
+                        # computed, but it used to live only in argv, which the
+                        # frozen adapter (execution/evolution_worker.py) never
+                        # reads (it rebuilds cfg from this manifest's "evolution"
+                        # dict instead of parsing argv). Recording it here too
+                        # lets both the CLI (legacy_evolve_cli) and adapter
+                        # (evolution_worker) launch paths land on the same table
+                        # file. None (kappa<=0, or a manifest from before this
+                        # field existed) means "no persisted table" -- worker
+                        # falls back to evolve()'s own <out>/rationality.json
+                        # default, same as the CLI path always has.
+                        "rationality_table": rationality_table,
                         "status": "prepared"}
             atomic_json(staging / "config.json", config)
             atomic_json(staging / "input-manifest.json", inputs)
