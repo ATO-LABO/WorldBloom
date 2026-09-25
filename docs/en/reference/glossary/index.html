@@ -694,6 +694,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Route Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1666,6 +1694,22 @@
 <tr>
 <td>κ (kappa, rationality)</td>
 <td>The strength of a genre's rationality judgment (Jev). Set as a value from 0–1 in run settings. See <a href="../../usage/run-settings/">Run Settings</a></td>
+</tr>
+<tr>
+<td>Route layer</td>
+<td>A mechanism that classifies each protagonist decision against "the shortest plan to the ending" (advance / prepare / detour / lost) and reins in unreasoned detours with weight ρ. Only for genres with a <code>route.yaml</code> (currently only 桃太郎＋2 / Peach Boy+2). See <a href="../../concepts/route-layer/">Route Layer</a></td>
+</tr>
+<tr>
+<td>ρ (rho, route weight)</td>
+<td>A 0–1 value controlling how hard the route layer reins in unreasoned detours. 0 (default) means unmodulated, 1 means they're almost never chosen. Set in run settings. See <a href="../../concepts/route-layer/">Route Layer</a></td>
+</tr>
+<tr>
+<td>Motive table (motives.yaml)</td>
+<td>A prioritized list of rules that gives a would-be "unreasoned" detour a reason, scaled by genome strength. Lives at <code>templates/&lt;genre&gt;/motives.yaml</code>, one per genre. See <a href="../../concepts/route-layer/">Route Layer</a></td>
+</tr>
+<tr>
+<td>No reason</td>
+<td>One of the route layer's classifications: a detour that matches none of advance / prepare / body / ignorance / belief / the motive table. Raising ρ makes these almost never chosen</td>
 </tr>
 </tbody>
 </table>

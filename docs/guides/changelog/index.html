@@ -692,6 +692,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    道筋層
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1589,6 +1617,8 @@
 <p>利用者から見て意味のある主な変更を日付順にまとめます。個々のコミットの一覧ではありません。最新のリリース物は <a href="https://github.com/ATO-LABO/WorldBloom/releases">GitHub Releases</a> から取得できます。</p>
 <h2 id="2026-09-25">2026-09-25<a class="headerlink" href="#2026-09-25" title="Permanent link">&para;</a></h2>
 <ul>
+<li><a href="../../concepts/route-layer/">道筋層</a>を追加。主人公の決定を前進・準備・寄り道（身体・手探り・思い込み・動機・理由なし）・見通しなしに分類し、重み ρ で理由のない寄り道を抑える。動機表（<code>motives.yaml</code>）で寄り道に理由を与えられる（対応は桃太郎＋2のみ）。実行設定に「05. 道筋」の区画、結果画面に理由バッジ（タイムライン・四項目パネル・セルページ冒頭の内訳）を追加</li>
+<li>画面（実行設定の05.道筋・04.合理性）から実行した GA で ρ・κ・合理性の詳細設定が実際の実行に反映されていなかった不具合を修正。<strong>修正前（このコミット以前）に画面から作成・実行した実験は、指定した ρ・κ の値にかかわらず、それらが無効な（ρ=0・κ 無効の）状態で走っています</strong></li>
 <li>ドキュメントサイト（このサイト）を公開。日本語・英語のバイリンガル構成、はじめに・概念・使い方・リファレンス・ガイドの5章立て</li>
 <li>あらすじ・本文生成の既定の接続先を <code>codex-cli</code> から <code>llama-server</code>（ローカル LLM）へ変更</li>
 </ul>

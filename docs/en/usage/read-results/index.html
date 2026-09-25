@@ -694,6 +694,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Route Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -904,6 +932,17 @@
     <span class="md-ellipsis">
       
         Choice, rationale, cost, and turning point
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reason-badges-in-the-action-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reason badges in the action log
       
     </span>
   </a>
@@ -1546,6 +1585,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#reason-badges-in-the-action-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reason badges in the action log
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#comparison-lineage-and-turning-point-visualization" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1658,6 +1708,14 @@
 </table>
 <h2 id="choice-rationale-cost-and-turning-point">Choice, rationale, cost, and turning point<a class="headerlink" href="#choice-rationale-cost-and-turning-point" title="Permanent link">&para;</a></h2>
 <p>The candidate detail shows four fields — 選択 (Choice), 根拠 (Rationale), 代償 (Cost), 転機 (Turning point) — mechanically extracted from the log to explain what belief a given choice was made on, what it cost, and what it led to afterward. They're a way to read back a story's key decisions after the fact.</p>
+<p>Right after 選択 (Choice), the four-field panel can show a <strong>"道筋: (Route:)"</strong> line. This appears when the <a href="../../concepts/route-layer/">route layer</a> (an experiment run with ρ&gt;0) classified that decision as 前進 (advance), 準備 (prepare), 寄り道〈身体／手探り／思い込み／a motive's name／理由なし〉(detour ⟨body/ignorance/belief/a motive's name/no reason⟩), or 見通しなし (lost), along with its reason text. It's absent for experiments that don't use the route layer (ρ=0, or a run predating the route layer).</p>
+<h2 id="reason-badges-in-the-action-log">Reason badges in the action log<a class="headerlink" href="#reason-badges-in-the-action-log" title="Permanent link">&para;</a></h2>
+<p>For experiments that use the route layer, the timeline (物語の流れ, story flow) also shows lines explaining "why" a decision was made.</p>
+<ul>
+<li><strong>Timeline reason line</strong>: one line per route-bearing protagonist decision, formatted as <code>[classification label] event — reason</code>. For a detour ⟨no reason⟩, the reason part reads "no clear reason was recorded"</li>
+<li><strong>Breakdown at the top of the cell page</strong>: opening a candidate's detail shows a count of that run's protagonist decisions by classification, "前進 n／準備 n／寄り道 n〈うち理由なし n〉／見通しなし n" (advance n / prepare n / detour n ⟨of which n are unreasoned⟩ / lost n)</li>
+</ul>
+<p>Both are absent for experiments that don't use the route layer. See <a href="../../concepts/route-layer/">Route Layer</a> for what each classification and reason means.</p>
 <h2 id="comparison-lineage-and-turning-point-visualization">Comparison, lineage, and turning-point visualization<a class="headerlink" href="#comparison-lineage-and-turning-point-visualization" title="Permanent link">&para;</a></h2>
 <p>Selecting 2–4 representative candidates from different cells in the candidate list opens the comparison screen. It also has three tabs — 物語 (Story), 選択・根拠・代償・転機 (Choice, rationale, cost, turning point), and 実験データ (Run data) — with the run-data tab listing candidate ID, cell, generation, seed, quality, ending, and raw log for each. From a candidate's detail you can also go on to visualize its lineage and turning points.</p>
 <ul>

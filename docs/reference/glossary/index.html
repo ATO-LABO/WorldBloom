@@ -694,6 +694,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    道筋層
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1666,6 +1694,22 @@
 <tr>
 <td>κ（カッパ、合理性）</td>
 <td>ジャンルが持つ合理性判定（Jev）の強さ。実行設定で 0〜1 の値を指定する。詳しくは<a href="../../usage/run-settings/">実行設定</a></td>
+</tr>
+<tr>
+<td>道筋層</td>
+<td>主人公の決定を「結末までの最短の計画」に照らして前進・準備・寄り道・見通しなしに分類し、理由のない寄り道を重み ρ で抑える仕組み。<code>route.yaml</code> を持つジャンル（現在は桃太郎＋2のみ）だけが対象。詳しくは<a href="../../concepts/route-layer/">道筋層</a></td>
+</tr>
+<tr>
+<td>ρ（ロー、道筋の重み）</td>
+<td>道筋層が理由のない寄り道をどれだけ抑えるかを 0〜1 で指定する値。0（既定）で無変調、1 でほぼ選ばれなくなる。実行設定で指定する。詳しくは<a href="../../concepts/route-layer/">道筋層</a></td>
+</tr>
+<tr>
+<td>動機表（motives.yaml）</td>
+<td>「理由なし」になるはずの寄り道に、遺伝子の強さに応じて理由を与える規則の並び。ジャンルごとに <code>templates/&lt;ジャンル&gt;/motives.yaml</code> に置く。詳しくは<a href="../../concepts/route-layer/">道筋層</a></td>
+</tr>
+<tr>
+<td>理由なし</td>
+<td>道筋層の分類の1つ。前進・準備・身体・手探り・思い込み・動機表のどれにも当てはまらない寄り道。ρ を上げるとほとんど選ばれなくなる</td>
 </tr>
 </tbody>
 </table>
