@@ -771,6 +771,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -787,6 +805,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#output-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        文章生成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        計算
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        実行設定の保存版
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ジャンル
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1076,6 +1157,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1246,6 +1355,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#output-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        文章生成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        計算
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        実行設定の保存版
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ジャンル
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1265,21 +1426,88 @@
 
 
 <h1 id="_1">設定<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>このページで扱う予定の内容:</p>
-<ul>
-<li>⚙ 設定画面の各項目（LLM 接続先・並列数など）</li>
-<li><code>settings.json</code> との対応関係</li>
-</ul>
-<div class="admonition note">
-<p class="admonition-title">準備中</p>
-<p>このページはまだ書かれていません。ファイルとしての仕様は <a href="../../reference/settings-json/">settings.json</a> を参照してください。</p>
-</div>
+<p>画面右上（または <code>/configs</code>）の <strong>⚙ 全体設定</strong> から開きます。ここでの変更は特定の世界に紐づかず、<strong>すべての世界に共通</strong>です。実体はソースから動かす場合はリポジトリ直下、配布版exeでは <code>app/settings.json</code>（exeと同じフォルダの <code>app</code> フォルダの中）です。詳しいファイル仕様は<a href="../../reference/settings-json/">settings.json</a>を参照してください。4つのタブがあります。</p>
+<h2 id="output-settings">文章生成<a class="headerlink" href="#output-settings" title="Permanent link">&para;</a></h2>
+<p><a href="../generate-text/">あらすじ・本文の生成</a>に使う設定です。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>内容</th>
+<th>既定値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>生成方式（backend）</td>
+<td>Claude Code CLI / Codex CLI / Anthropic API / OpenAI API / ローカル Ollama / ローカルLLM（llama-server）/ 生成しない（プロンプト保存のみ）</td>
+<td><code>llama-server</code>（配布版 v1.0.0-viewer では <code>codex-cli</code>）</td>
+</tr>
+<tr>
+<td>モデル</td>
+<td>使用するモデル名</td>
+<td><code>claude-cli</code> は未入力でも <code>claude-sonnet-5</code> が使われます。それ以外は入力が必須です（<a href="../llm-backends/#model-defaults">LLM バックエンド</a>を参照）</td>
+</tr>
+<tr>
+<td>APIキー</td>
+<td>Anthropic API / OpenAI API を選んだときのみ表示。保存済みの値は画面に表示されません</td>
+<td>—</td>
+</tr>
+<tr>
+<td>候補数の上限</td>
+<td>1回の生成操作で扱う候補数の上限</td>
+<td><code>none</code> は0件、それ以外は1件</td>
+</tr>
+<tr>
+<td>1件の待ち時間</td>
+<td>候補1件あたりのタイムアウト（秒）</td>
+<td>Ollama/llama-server は900秒、それ以外は180秒</td>
+</tr>
+<tr>
+<td>全体の待ち時間</td>
+<td>生成ジョブ全体のタイムアウト（秒）</td>
+<td>Ollama/llama-server は3600秒、それ以外は240秒</td>
+</tr>
+<tr>
+<td>応答の保存上限（詳細設定）</td>
+<td>LLM の応答を保存する上限バイト数</td>
+<td>128000 bytes</td>
+</tr>
+</tbody>
+</table>
+<p>「接続を確認」ボタンは接続先・実行環境を確認するだけで、文章生成そのものは行いません。保存した設定は、保存後に開始する生成から適用されます（生成中のジョブには影響しません）。</p>
+<h2 id="_2">計算<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>GA 実験をこの PC でどれだけ並列に計算するかの設定です。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>内容</th>
+<th>既定値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GA の並列数（processes）</td>
+<td>GA の個体評価を同時に何本走らせるか。<strong>結果は変わらず、速さだけが変わります</strong></td>
+<td><code>min(8, このPCのCPUコア数)</code></td>
+</tr>
+</tbody>
+</table>
+<p>開発環境（20コア）の実測では、並列数8前後で速度が頭打ちになりました。保存後に開始するGA実験から適用されます。</p>
+<h2 id="_3">実行設定の保存版<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>これまでに保存した<a href="../run-settings/">実行設定</a>の一覧です。保存版は編集できません（内容を変えたい場合は「複製して調整」から複製します）。各項目から、対応する世界・ジャンル・実行規模（世代数×個体数×seed数）・作成日時・複製元を確認できます。</p>
+<h2 id="_4">ジャンル<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>登録済みのジャンル（テンプレート）の一覧です。各ジャンルについて、利用中の世界と、含まれる設定ファイル（行動のつながり・状況ごとの定石・行動の効果・展開のルール・候補の分類軸）を確認できます。編集は「ジャンルを編集」から行います（<a href="../create-world/#advanced-settings">世界を作る</a>を参照）。</p>
 
 
 
 
 
 
+
+  
+  
 
 
 

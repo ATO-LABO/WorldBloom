@@ -827,6 +827,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU ガード
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -843,6 +861,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        何をしてくれるか
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settingsjson" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        settings.json の書き方
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        画面での確認
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gpubusy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GpuBusy になったら
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1076,6 +1157,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1246,6 +1355,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        何をしてくれるか
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settingsjson" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        settings.json の書き方
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        画面での確認
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gpubusy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GpuBusy になったら
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1265,21 +1426,53 @@
 
 
 <h1 id="gpu">GPU ガード<a class="headerlink" href="#gpu" title="Permanent link">&para;</a></h1>
-<p>このページで扱う予定の内容:</p>
+<p>1枚の GPU を Ollama と llama-server の両方で使い回すとき（<a href="../llm-backends/#bonsai2-llama-server">Bonsai 2 27B のセットアップ</a>を参照）、手動での「生成前にサーバーを起動しておく」「Ollama 側のモデルを退避しておく」といった作業を、<code>settings.json</code> の <code>output.gpu_guard</code> を書くことで WorldBloom 側の仕組みに任せられます。</p>
+<h2 id="_1">何をしてくれるか<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p><code>gpu_guard</code> を設定すると、生成の前に自動で次を行います。</p>
 <ul>
-<li><code>gpu_guard</code> 設定によるリース・熱ガード・自動起動停止の仕組み</li>
-<li>Ollama と llama-server の同居調停</li>
+<li><strong>リース</strong>: マシン全体で1つの OS ファイルロック（既定 <code>%LOCALAPPDATA%\WorldBloom</code>、環境変数 <code>WORLDBLOOM_GPU_LEASE_DIR</code> で変更可）を取ってから生成します。他プロセスが握っていれば空くまで待ち、待っても空かなければ <code>GpuBusy</code> で失敗します（無期限には待ちません）。ロックを持つプロセスが異常終了すれば OS が自動的に解放します</li>
+<li><strong>Ollama との調停</strong>: <code>llama-server</code> を使う前に Ollama の <code>/api/ps</code> を2回観測し、遊休（応答が進んでいない）なら <code>keep_alive: 0</code> で自動的に退避させます。使用中と判定した間は待ち、リースの締め切りを過ぎたら <code>GpuBusy</code> で失敗します。逆方向（Ollama を使う前に llama-server が動いているか）は待たず、動作中ならその場で即座に <code>GpuBusy</code> になります（先に起動している側を優先し、両方が同時に VRAM を使い切ることを防ぎます）</li>
+<li><strong>自動起動・自動停止</strong>: <code>llama-server</code> の <code>base_url</code> に既に応答があれば、それ（人が起動したもの）をそのまま使い、止めません。応答が無く <code>launch</code>（起動コマンド）が設定されていれば自動で起動し、<code>startup_seconds</code>（既定180秒）まで起動を待ちます。生成が終われば、自分が起動したサーバーだけを自動で停止します。前回異常終了して残ったサーバーがあれば、次にリースを取った側が自動で終了させます</li>
+<li><strong>熱ガード</strong>: 各生成の前に GPU 温度（<code>nvidia-smi</code>）を確認し、<code>pause_at</code>（既定78℃）以上なら <code>resume_at</code>（既定70℃）以下に下がるまで <code>poll_seconds</code>（既定15秒）間隔で一時的に待ちます。<code>max_wait_seconds</code>（既定600秒）を過ぎても下がらない場合は、それ以上は待たずに生成を続行します（失敗にはしません）。温度が読めない環境ではそもそも待ちません</li>
 </ul>
-<div class="admonition note">
-<p class="admonition-title">準備中</p>
-<p>詳しい仕組みは現時点では <a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/DEVELOPMENT.md">docs/DEVELOPMENT.md</a> の「GPU ガード」節にまとまっています。</p>
-</div>
+<h2 id="settingsjson">settings.json の書き方<a class="headerlink" href="#settingsjson" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"default_backend"</span><span class="p">:</span><span class="w"> </span><span class="s2">"llama-server"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"gpu_guard"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"thermal"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"pause_at"</span><span class="p">:</span><span class="w"> </span><span class="mi">78</span><span class="p">,</span><span class="w"> </span><span class="nt">"resume_at"</span><span class="p">:</span><span class="w"> </span><span class="mi">70</span><span class="p">,</span><span class="w"> </span><span class="nt">"poll_seconds"</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span><span class="w"> </span><span class="nt">"max_wait_seconds"</span><span class="p">:</span><span class="w"> </span><span class="mi">600</span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"ollama_base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"observe_seconds"</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"llama-server"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://127.0.0.1:8089"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bonsai2-27b"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"think"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"options"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"temperature"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span><span class="p">,</span><span class="w"> </span><span class="nt">"top_p"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span><span class="w"> </span><span class="nt">"top_k"</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="nt">"min_p"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"presence_penalty"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"max_tokens"</span><span class="p">:</span><span class="w"> </span><span class="mi">8192</span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"launch"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"C:/path/to/llama-server.exe"</span><span class="p">,</span><span class="w"> </span><span class="s2">"-m"</span><span class="p">,</span><span class="w"> </span><span class="s2">"C:/path/to/Ternary-Bonsai-2-27B-PTQ1_0.gguf"</span><span class="p">,</span>
+<span class="w">        </span><span class="s2">"--alias"</span><span class="p">,</span><span class="w"> </span><span class="s2">"bonsai2-27b"</span><span class="p">,</span><span class="w"> </span><span class="s2">"-ngl"</span><span class="p">,</span><span class="w"> </span><span class="s2">"99"</span><span class="p">,</span><span class="w"> </span><span class="s2">"-np"</span><span class="p">,</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span><span class="w"> </span><span class="s2">"-c"</span><span class="p">,</span><span class="w"> </span><span class="s2">"10240"</span><span class="p">,</span><span class="w"> </span><span class="s2">"-fa"</span><span class="p">,</span><span class="w"> </span><span class="s2">"on"</span><span class="p">,</span>
+<span class="w">        </span><span class="s2">"--host"</span><span class="p">,</span><span class="w"> </span><span class="s2">"127.0.0.1"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--port"</span><span class="p">,</span><span class="w"> </span><span class="s2">"8089"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--reasoning-budget"</span><span class="p">,</span><span class="w"> </span><span class="s2">"2048"</span><span class="p">,</span>
+<span class="w">        </span><span class="s2">"--reasoning-budget-message"</span><span class="p">,</span><span class="w"> </span><span class="s2">"思考の上限に達した。ここで思考を終え、直ちに最終回答の本文だけを書く。"</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">"startup_seconds"</span><span class="p">:</span><span class="w"> </span><span class="mi">180</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>gpu_guard</code> キーが無ければ、これまでどおり何も起きません（既存の挙動を変えない no-op です）。キーがあれば、空オブジェクト <code>{}</code> でも有効になり、すべての項目に既定値が入ります。</p>
+<p><code>launch</code> の先頭要素は <code>.cmd</code> などのラッパーではなく、実行ファイル（exe）を直接指定してください。残ったサーバーの後始末は実行ファイル名の一致で本人確認しているため、ラッパー経由だと正しく後始末できません。</p>
+<h2 id="_2">画面での確認<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>画面ヘッダーの「動作状況」アイコンから、GPU・ローカルAIの動作状況（GPU温度・Ollama/llama-serverの稼働状態など）を確認できます。</p>
+<h2 id="gpubusy">GpuBusy になったら<a class="headerlink" href="#gpubusy" title="Permanent link">&para;</a></h2>
+<p>「他プロセスが GPU を握っている」「Ollama が使用中」「別の llama-server が動いている」のいずれかで、リースの締め切りまでに解消しなかった場合に発生します。しばらく待ってから再試行するか、競合している側の処理（別の生成ジョブ、Ollama での対話など）を終えてから再試行してください。</p>
 
 
 
 
 
 
+
+  
+  
 
 
 

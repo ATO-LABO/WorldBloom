@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/reference/http-api/">
+        <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/reference/glossary/">
       
       
-        <link rel="prev" href="../run-outputs/">
+        <link rel="prev" href="../http-api/">
       
       
-        <link rel="next" href="../glossary/">
+        <link rel="next" href="../../guides/troubleshooting/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>HTTP API - WorldBloom ドキュメント</title>
+        <title>用語集 - WorldBloom ドキュメント</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#http-api" class="md-skip">
+        <a href="#_1" class="md-skip">
           コンテンツにスキップ
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              HTTP API
+              用語集
             
           </span>
         </div>
@@ -1042,19 +1042,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../http-api/" class="md-nav__link">
         
   
   
@@ -1070,7 +1061,6 @@
   
 
       </a>
-      
     </li>
   
 
@@ -1080,10 +1070,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../glossary/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1099,6 +1116,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        入力
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        進化
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sifting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        格子（Sifting）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        出口
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1274,6 +1355,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        入力
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        進化
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sifting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        格子（Sifting）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        出口
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1292,22 +1425,221 @@
   
 
 
-<h1 id="http-api">HTTP API<a class="headerlink" href="#http-api" title="Permanent link">&para;</a></h1>
-<p>このページで扱う予定の内容:</p>
-<ul>
-<li><code>--control</code> 付きで起動したときに有効になる設定・ジョブ API</li>
-<li>閲覧専用モード（Viewer exe）で POST が 403 になる仕様</li>
-</ul>
-<div class="admonition note">
-<p class="admonition-title">準備中</p>
-<p>このページはまだ書かれていません。実装は <code>viewer/server.py</code>・<code>viewer/job_api.py</code> を参照してください。</p>
-</div>
+<h1 id="_1">用語集<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>WorldBloom の画面と、このドキュメントに出てくる用語をまとめます。画面上のヘルプ（用語にカーソルを合わせたときの説明）と同じ定義です。入力・進化・格子（Sifting）・出口の4つに分けています。</p>
+<h2 id="_2">入力<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>用語</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>世界（world）</td>
+<td>地名・経路・日数と登場人物の初期状態の組。<code>projects/&lt;世界&gt;</code> に置く。詳しくは<a href="../../usage/create-world/">世界を作る</a></td>
+</tr>
+<tr>
+<td>ジャンル（テンプレート）</td>
+<td>世界が使う文法の組。行動グラフ（使える行動と前提）、正典の傾向、効果表、ルール、格子の軸。<code>templates/&lt;ジャンル&gt;</code> に置く</td>
+</tr>
+<tr>
+<td>7層</td>
+<td>登場人物の状態モデル。能力・認識・資源・段階（フェーズ）・身分・目的物（対象）・伏線（遅延効果）。行動はこの層を直接読み書きする。詳しくは<a href="../../concepts/seven-layers/">7層構造</a></td>
+</tr>
+<tr>
+<td>生命状態（vitality）</td>
+<td>生きている（alive）／倒れた（downed）／蘇生した（revived）／死亡（dead）。倒れても味方の救出や自力回復で戻れる</td>
+</tr>
+<tr>
+<td>結末（target ending）</td>
+<td>状態に対する条件式。これを満たしたランだけが<a href="../../concepts/qd-map/">QD 格子</a>のアーカイブに入る</td>
+</tr>
+<tr>
+<td>正典（canon）</td>
+<td>そのジャンルで「よくある」行動の傾向。新規性志向の遺伝子が避ける対象であり、前例表の初期値</td>
+</tr>
+<tr>
+<td>伏線（遅延効果）</td>
+<td>先に置いた行動が後で効く仕組み。設置と回収の条件を持ち、未回収のまま終わると品質 q が減点される</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">進化<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>用語</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>遺伝子（戦略ベクトル）</td>
+<td>主人公の方針を表す9個の数値。詳しくは<a href="../../concepts/genome/">遺伝子（Genome）</a></td>
+</tr>
+<tr>
+<td>個体</td>
+<td>1つの遺伝子。世代ごとに個体数ぶん評価される</td>
+</tr>
+<tr>
+<td>世代</td>
+<td>GA の反復回数。世代ごとに個体を評価し、格子を更新する</td>
+</tr>
+<tr>
+<td>seed（種）</td>
+<td>乱数の種。同じ遺伝子でも種が違えば世界の初期条件が変わり、別の経緯になる（探偵なら真犯人が変わる）</td>
+</tr>
+<tr>
+<td>ラン</td>
+<td>1つの遺伝子×1つの種で世界を走らせた1回。結果は <code>layers.jsonl</code> というログになる</td>
+</tr>
+<tr>
+<td>実験（run）</td>
+<td>1回の GA 実行。実行設定（config）1つから生まれ、<code>runs/&lt;実験名&gt;</code> に記録が残る</td>
+</tr>
+<tr>
+<td>到達／到達率</td>
+<td>固定した結末に届いたか。到達率はその世代の全ラン（個体数×seed数）のうち届いた割合で、格子に入るためのゲートであり、探索が最大化する対象ではない</td>
+</tr>
+<tr>
+<td>前例表</td>
+<td>正典・前世代のアーカイブ・自己履歴から作る「もう見た筋書き」の表。新規性志向の遺伝子が避ける対象</td>
+</tr>
+<tr>
+<td>共進化</td>
+<td>敵役にも遺伝子を持たせ、主人公と交互に進化させるモード。既定はオフ</td>
+</tr>
+<tr>
+<td>メタ進化</td>
+<td>9つの数値遺伝子に加えて、ルールごとの有効・無効も探索するモード。既定はオフ</td>
+</tr>
+<tr>
+<td>無作為基準</td>
+<td>方針を持たない完全無作為な個体だけで結末に届く割合と多様性を測る対照実験（<code>scripts/random_baseline.py</code>）</td>
+</tr>
+<tr>
+<td>決定論</td>
+<td>同じ世界・遺伝子・種・前例表・エンジンなら、ログがバイト単位で一致すること。詳しくは<a href="../../concepts/determinism/">決定論</a></td>
+</tr>
+<tr>
+<td>κ（カッパ、合理性）</td>
+<td>ジャンルが持つ合理性判定（Jev）の強さ。実行設定で 0〜1 の値を指定する。詳しくは<a href="../../usage/run-settings/">実行設定</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="sifting">格子（Sifting）<a class="headerlink" href="#sifting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>用語</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>アーカイブ／格子</td>
+<td>到達したランを置く MAP-Elites の格子。各マスに最良の1本だけが残る。詳しくは<a href="../../concepts/qd-map/">QD 格子</a></td>
+</tr>
+<tr>
+<td>セル（マス）</td>
+<td>格子の区画。行は主導カテゴリ、列は起伏（volatility、low/mid/high）</td>
+</tr>
+<tr>
+<td>主導カテゴリ</td>
+<td>そのランで実際に多く効いた行動の種類（I 自己強化、II 認識と伏線、III 関係構築、IV 身分、V 移動と停滞、VI 外部介入）。遺伝子の傾向とは別の値</td>
+</tr>
+<tr>
+<td>起伏（volatility）</td>
+<td>主人公の7層の状態がターンごとにどれだけ揺れたかの分散。閾値は世代0の母集団で決めて固定する</td>
+</tr>
+<tr>
+<td>質 q</td>
+<td>結末に届いたランの質。目的物の移動、関係の振れ幅、復帰、力関係の逆転、新事実の獲得、信念の反転、前提を揃えた行動の連鎖を数え、空振りを減点する絶対尺度（0〜1）。q̄ はアーカイブ全体の平均</td>
+</tr>
+<tr>
+<td>占有マス</td>
+<td>アーカイブが埋まった区画の数。多いほど違う種類の物語が見つかっている</td>
+</tr>
+<tr>
+<td>相異度</td>
+<td>アーカイブに残ったラン同士がどれだけ違う経路を通ったかの平均。1に近いほど多様</td>
+</tr>
+<tr>
+<td>傾向</td>
+<td>その個体の遺伝子がいちばん重みを置く行動カテゴリ。主導カテゴリとは一致しないことがある</td>
+</tr>
+<tr>
+<td>親</td>
+<td>その個体を生んだ2つの個体</td>
+</tr>
+<tr>
+<td>系譜（主系）</td>
+<td>エリートから親を一本道でたどった列。二親のうち遺伝子が近い方だけを採用する</td>
+</tr>
+<tr>
+<td>転機</td>
+<td>主系の隣り合う親子を同じ種で再実行し、主人公の決定が最初に分かれた地点</td>
+</tr>
+<tr>
+<td>Sifting</td>
+<td>実験が残した候補をふるいにかけ、読む価値のあるものを採用する工程。詳しくは<a href="../../concepts/sifting/">Sifting</a></td>
+</tr>
+<tr>
+<td>選定状態</td>
+<td>✔ 採用（生成に進める）／⏸ 保留／✖ 除外／○ 未分類</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">出口<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>用語</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>候補ID</td>
+<td>実験・世代・個体・seed の組を一意に指すID。選定と生成はこの単位で記録される</td>
+</tr>
+<tr>
+<td>あらすじ生成（synopsize）</td>
+<td>格子の各ランから注目場面を抜き出し、LLM に短いあらすじを書かせる工程</td>
+</tr>
+<tr>
+<td>上映生成（narrate）</td>
+<td>採用した候補だけを LLM で長い本文にする工程</td>
+</tr>
+<tr>
+<td>backend / model</td>
+<td>本文を生成した方式とモデル名（例: <code>ollama</code> / <code>qwen3.5:9b-q4_K_M</code>）。詳しくは<a href="../../usage/llm-backends/">LLM バックエンド</a></td>
+</tr>
+<tr>
+<td>選択・根拠・代償・転機</td>
+<td>候補の詳細に出る4項目。ある選択が、どの信念を根拠に行われ、何を失い、後続の何につながったかをログから機械的に抽出したもの</td>
+</tr>
+<tr>
+<td>世界の自己拡張</td>
+<td>GA 実験中に空振りが続いた場所・行動から、足りない要素（場所・品・事実）を提案する仕組み。詳しくは<a href="../../usage/create-world/#world-expansion">世界を作る</a></td>
+</tr>
+<tr>
+<td>GPU ガード</td>
+<td>ローカル LLM（llama-server）と Ollama の GPU 使用を調停し、熱が下がるまで一時待機する仕組み。詳しくは<a href="../../usage/gpu-guard/">GPU ガード</a></td>
+</tr>
+</tbody>
+</table>
 
 
 
 
 
 
+
+  
+  
 
 
 
@@ -1339,7 +1671,7 @@
       <nav class="md-footer__inner md-grid" aria-label="フッター" >
         
           
-          <a href="../run-outputs/" class="md-footer__link md-footer__link--prev" aria-label="前: 実行結果のファイル">
+          <a href="../http-api/" class="md-footer__link md-footer__link--prev" aria-label="前: HTTP API">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1349,20 +1681,20 @@
                 前
               </span>
               <div class="md-ellipsis">
-                実行結果のファイル
+                HTTP API
               </div>
             </div>
           </a>
         
         
           
-          <a href="../glossary/" class="md-footer__link md-footer__link--next" aria-label="次: 用語集">
+          <a href="../../guides/troubleshooting/" class="md-footer__link md-footer__link--next" aria-label="次: トラブルシューティング">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 次
               </span>
               <div class="md-ellipsis">
-                用語集
+                トラブルシューティング
               </div>
             </div>
             <div class="md-footer__button md-icon">

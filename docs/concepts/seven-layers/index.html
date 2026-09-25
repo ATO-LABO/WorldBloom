@@ -460,6 +460,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7層構造
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -476,6 +494,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#stance-bonds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        関係行列（stance / bonds）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        勝負の解決は「差分ゲーム」
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#predicates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        述語（結末・伏線条件・ルールが共有する語彙）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        出来事の生成に LLM は関与しない
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1076,6 +1157,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1246,6 +1355,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#stance-bonds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        関係行列（stance / bonds）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        勝負の解決は「差分ゲーム」
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#predicates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        述語（結末・伏線条件・ルールが共有する語彙）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        出来事の生成に LLM は関与しない
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1265,14 +1426,77 @@
 
 
 <h1 id="7">7層構造<a class="headerlink" href="#7" title="Permanent link">&para;</a></h1>
-<p>WorldBloom は登場人物の状態を「7層構造」として持ちます。1. 能力層（真の基礎値・修飾）、2. 認識層（相手についての信念）、3. 資源層（所持品・評判・関係資本）、4. フェーズ層（通過した閾値・使用可能動詞）、5. 身分層（真の正体・見せている正体）、6. 対象層（目的物とその所持者）、7. 遅延効果層（伏線）。これに生死や再起を表す vitality を加えたものが、行動判定の唯一の状態です。射影や中間レイヤーは作らず、動詞（行動）はこの7層を直接読み書きします。</p>
-<p>7層構造の詳しい設計は ATOM-BOX の <a href="https://www.atom-box.jp/worldbloom/how-it-works/">WorldBloom の仕組み</a> にまとまっています。</p>
+<p>WorldBloom の登場人物は、台詞や性格の文章ではなく、実行時にそのまま保持する<strong>7つの層</strong>の数値・集合として表されます。行動（動詞）はこの層を直接読み書きし、<code>layers.jsonl</code> に書かれるログはその差分です。射影や中間レイヤーは無く、この7層が判定の唯一の状態です。</p>
+<table>
+<thead>
+<tr>
+<th>層</th>
+<th>中身</th>
+<th>物語での役割</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. 能力層</td>
+<td>真の基礎値 <code>base</code> と、道具・味方・事実による修飾値 <code>modifiers</code></td>
+<td>勝負の勝ち負けを決める。修行で上がり、弱体化で下がる</td>
+</tr>
+<tr>
+<td>2. 認識層</td>
+<td>相手の力についての信念 <code>beliefs_about</code>、知っている事実 <code>knowledge</code></td>
+<td>「金棒を知らずに挑んで負ける」を生む。認識のずれが物語を動かす</td>
+</tr>
+<tr>
+<td>3. 資源層</td>
+<td>持ち物 <code>inventory</code>、評判 <code>reputation</code>、引き出せる関係資本（bonds）</td>
+<td>犠牲や交渉の元手</td>
+</tr>
+<tr>
+<td>4. フェーズ層</td>
+<td>通過した閾値 <code>phase</code>（不可逆）、使える行動 <code>verbs</code></td>
+<td>鬼ヶ島に渡ると戻れない、渡って初めて使える行動がある</td>
+</tr>
+<tr>
+<td>5. 身分層</td>
+<td>本当の身分 <code>identity_true</code> と、見せている身分 <code>identity_displayed</code></td>
+<td>変装、偽主人公、露見</td>
+</tr>
+<tr>
+<td>6. 対象層</td>
+<td>誰が何を狙い（<code>goal</code>）、今誰が持っているか（<code>world.objectives</code>）</td>
+<td>宝の奪い合い。所有の移転と勝敗は別に扱う</td>
+</tr>
+<tr>
+<td>7. 遅延効果層</td>
+<td>仕込まれた伏線（<code>world.pending_effects</code>）と、その回収条件</td>
+<td>先に置いた行動が後で効く。未回収の伏線は品質の減点対象</td>
+</tr>
+</tbody>
+</table>
+<p>これに加えて<strong>生命状態（vitality）</strong>を持ちます。<code>alive</code>（生きている）→ <code>downed</code>（倒れた）→ <code>revived</code>（蘇生した）／<code>dead</code>（死亡）と遷移し、倒れても味方の救出や自力回復で <code>alive</code> に戻れます。死亡するのは、勝者側の行為や道具が <code>lethal</code> を持つときに限られます。これにより「疑似的な死と再生」が物語の一部として自然に現れます。</p>
+<h2 id="stance-bonds">関係行列（stance / bonds）<a class="headerlink" href="#stance-bonds" title="Permanent link">&para;</a></h2>
+<p>登場人物どうしの関係は <code>world.relations[a][b] = {affinity, awareness}</code> という1つの行列で表します。<strong>stance(a, b)</strong> は「a が b をどう見ているか」（affinity をそのまま読む向き）、<strong>bonds(a)</strong> は「a が引き出せる関係資本」（他者からの affinity の正の部分の合計）です。同じ行列を双方向に読むだけで、資源層の bonds と関係性の stance を二重に持ちません。</p>
+<h2 id="_1">勝負の解決は「差分ゲーム」<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>勝負は、両者の真の強さの差にロジスティック関数を掛けた確率で判定します（乱数を1回だけ消費）。ここで重要なのは、<strong>行動を決める側は「信じている強さ」（認識層）を使い、実際の勝敗は「真の強さ」（能力層）で決まる</strong>という非対称性です。金棒（<code>visible: false</code> の修飾値）を知らない桃太郎は、80対90で優勢だと信じて挑み、真の値120に負ける——この認識のずれこそが物語を駆動する仕組みです。</p>
+<h2 id="predicates">述語（結末・伏線条件・ルールが共有する語彙）<a class="headerlink" href="#predicates" title="Permanent link">&para;</a></h2>
+<p>結末の判定式、伏線の回収条件、行動の変調ルールは、すべて同じ述語の名前空間を共有します。代表的なものに <code>holds(a, item)</code>（所持）、<code>zone(a)</code>（居場所）、<code>stance(a, b)</code>（関係性）、<code>vitality(a)</code>（生命状態）、<code>believed_strength(a, b)</code>（a から見た b の信じている強さ）などがあります。桃太郎の結末は次のように書けます。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">ending</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">homecoming</span>
+<span class="w">    </span><span class="nt">when</span><span class="p">:</span><span class="w"> </span><span class="s">"holds(桃太郎,</span><span class="nv"> </span><span class="s">鬼ヶ島の宝物)</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">zone(桃太郎)</span><span class="nv"> </span><span class="s">==</span><span class="nv"> </span><span class="s">'村'"</span>
+<span class="w">    </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">鬼退治を果たし、宝を村へ持ち帰った</span>
+</code></pre></div>
+<p>この語彙は LLM へのあらすじプロンプトにも同じ辞書として渡されます。</p>
+<h2 id="llm">出来事の生成に LLM は関与しない<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h2>
+<p>各ターン、主人公はその場で可能な行動候補を列挙し、基礎の重み（気質と世界の状態）に<a href="../genome/">遺伝子</a>の乗数を掛けて1回だけ抽選します。行動の前提（観測してから無力化する、など）を満たさない候補はそもそも候補に並ばないため、因果の一貫性は構築的に保証されます。ここに LLM は一切入らず、出来事の列は純粋にシミュレーションの結果です。同じ世界・同じ遺伝子・同じ乱数の種なら、ログはバイト単位で一致します（詳しくは<a href="../determinism/">決定論</a>）。</p>
 
 
 
 
 
 
+
+  
+  
 
 
 

@@ -11,7 +11,7 @@
         <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/guides/troubleshooting/">
       
       
-        <link rel="prev" href="../../reference/http-api/">
+        <link rel="prev" href="../../reference/glossary/">
       
       
         <link rel="next" href="../faq/">
@@ -1064,6 +1064,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1141,6 +1169,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    トラブルシューティング
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1157,6 +1203,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        起動できない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        実行中に起きること
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#viewer-403" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viewer（閲覧専用ビルド）で操作すると 403 になる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM 生成が失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1246,6 +1355,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        起動できない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        実行中に起きること
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#viewer-403" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viewer（閲覧専用ビルド）で操作すると 403 になる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM 生成が失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1265,22 +1426,138 @@
 
 
 <h1 id="_1">トラブルシューティング<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>このページで扱う予定の内容:</p>
-<ul>
-<li>SmartScreen 警告への対処</li>
-<li>Viewer で操作すると 403 になる（仕様どおり）</li>
-<li>LLM 生成が失敗する（接続先未設定・モデル名未設定・GPU 競合）</li>
-</ul>
-<div class="admonition note">
-<p class="admonition-title">準備中</p>
-<p>このページはまだ書かれていません。</p>
-</div>
+<h2 id="_2">起動できない<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>原因</th>
+<th>対処</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows SmartScreen の警告が出る</td>
+<td>配布版 exe は署名されていない</td>
+<td>「詳細情報」→「実行」の順にクリックしてください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照</td>
+</tr>
+<tr>
+<td><code>pywebview の読み込みに失敗しました。配布フォルダが壊れている可能性があります。展開し直してください。</code></td>
+<td>配布 zip の展開が不完全</td>
+<td>zip を展開し直してください</td>
+</tr>
+<tr>
+<td><code>WorldBloom.exe と同じフォルダに app フォルダが見つかりません。</code>（Studio では <code>WorldBloom Studio.exe と同じフォルダに...</code>）</td>
+<td>exe だけを移動・単体配布した</td>
+<td>配布フォルダの構成（<code>WorldBloom.exe</code>／<code>WorldBloom-Studio.exe</code> と <code>app/</code> フォルダ）を崩さず、同じ場所に置いてください</td>
+</tr>
+<tr>
+<td>Studio が「GA実験の実行にはPython 3.11以上（PyYAML導入済み）が別途必要です」と表示する</td>
+<td>Studio 起動時に PATH 上の <code>python</code>/<code>python3</code>/<code>py</code> が見つからない、または見つかったものが 3.11 未満か PyYAML 未導入</td>
+<td><a href="https://www.python.org/downloads/">python.org</a> からインストールし、インストーラーで「Add python.exe to PATH」にチェック。インストール後 <code>pip install pyyaml</code> を実行し、Studio を再起動してください</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">実行中に起きること<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>原因</th>
+<th>対処</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GA 実験が <code>preparation_failed</code>（入力とコードの固定に失敗しました）で即座に止まる</td>
+<td>実行設定の入力に問題があるか、ソースから動かしている場合は <code>requirements.txt</code> など必要なファイルが揃っていない</td>
+<td>設定の入力を確認してください。ソース版では <code>requirements.txt</code> が読み込み対象のフォルダに存在するか確認してください</td>
+</tr>
+<tr>
+<td>実行中に停止しても結果の一部が欲しい</td>
+<td>停止は仕様どおりの動作</td>
+<td>「停止すると、閉じた世代までの結果は残ります」。<a href="../../usage/run-settings/">実行設定</a>を参照</td>
+</tr>
+<tr>
+<td>ポートが使用中で起動しない（ソースから <code>viewer/server.py</code> を起動する場合）</td>
+<td>指定したポートを他のプロセスが使っている</td>
+<td><code>--port</code> に別の番号を指定して起動し直してください</td>
+</tr>
+</tbody>
+</table>
+<h2 id="viewer-403">Viewer（閲覧専用ビルド）で操作すると 403 になる<a class="headerlink" href="#viewer-403" title="Permanent link">&para;</a></h2>
+<p>WorldBloom.exe（閲覧専用ビルド）は、採用・選定チェックボックスなど画面上の操作要素は表示されますが、書き込み系の操作（POST）はすべてサーバー側で <code>403 read-only build</code> として拒否します。<strong>これは仕様どおりの挙動です。</strong>編集・実行するには WorldBloom-Studio.exe を使ってください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照してください。</p>
+<h2 id="llm">LLM 生成が失敗する<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>原因</th>
+<th>対処</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>モデルを指定してください</td>
+<td>⚙ 設定でモデル名が未入力（<code>claude-cli</code> 以外はどの接続先でも自動では決まらない）</td>
+<td>⚙ 設定の「文章生成」タブでモデル名を入力してください。<a href="../../usage/llm-backends/#model-defaults">LLM バックエンド</a>を参照</td>
+</tr>
+<tr>
+<td>実行ファイルが見つかりません</td>
+<td><code>claude-cli</code> / <code>codex-cli</code> を選んでいるが <code>claude</code>/<code>codex</code> コマンドが PATH にない</td>
+<td>該当する CLI をインストールし、PATH を通してください</td>
+</tr>
+<tr>
+<td>資格情報がありません</td>
+<td><code>anthropic</code> / <code>openai</code> を選んでいるが APIキーが未保存</td>
+<td>⚙ 設定の「APIキー」欄からキーを保存してください</td>
+</tr>
+<tr>
+<td>そのモデルは見つかりません</td>
+<td>指定したモデル名が接続先に存在しない（Ollama で pull していない、API側にそのモデル名が無い等）</td>
+<td>モデル名を確認するか、<a href="../../usage/llm-backends/">LLM バックエンド</a>の手順でモデルを取得してください</td>
+</tr>
+<tr>
+<td>サーバーに接続できません</td>
+<td>Ollama / llama-server 本体が起動していない、または <code>base_url</code> が誤っている</td>
+<td>サーバーを起動する（または<a href="../../usage/gpu-guard/">GPU ガード</a>で自動起動を設定する）か、<code>base_url</code> を確認してください</td>
+</tr>
+<tr>
+<td>settings.json を読めません</td>
+<td><code>settings.json</code> が壊れている、または読み取れない</td>
+<td>ファイルの内容（JSON 構文）を確認してください</td>
+</tr>
+<tr>
+<td>モデル名が不正です</td>
+<td>モデル名に使えない文字が含まれている</td>
+<td>半角英数字・<code>.</code>・<code>_</code>・<code>:</code>・<code>/</code>・<code>-</code> のみで指定してください</td>
+</tr>
+<tr>
+<td>応答が途中で切れる（<code>finish_reason: "length"</code>）</td>
+<td>特に llama-server / Bonsai 2 で、サーバー起動時に <code>--reasoning-budget</code> を指定していない</td>
+<td>サーバー起動コマンドに <code>--reasoning-budget</code> を必ず含めてください。詳しくは<a href="../../usage/llm-backends/#bonsai2-llama-server">LLM バックエンド</a>を参照</td>
+</tr>
+<tr>
+<td><code>GpuBusy</code> で生成が失敗する</td>
+<td>GPU ガードのリースが取れない（他プロセスが GPU を使用中）</td>
+<td>しばらく待ってから再試行するか、競合している処理を終えてください。詳しくは<a href="../../usage/gpu-guard/#gpubusy">GPU ガード</a>を参照</td>
+</tr>
+<tr>
+<td>生成結果が「結果不明」になる</td>
+<td>LLM 呼び出し後に成否が確定できなかった</td>
+<td>二重生成の可能性を確認したうえで、案内される手順で明示的に再生成してください。詳しくは<a href="../../usage/generate-text/#retry">文章を生成する</a>を参照</td>
+</tr>
+</tbody>
+</table>
 
 
 
 
 
 
+
+  
+  
 
 
 
@@ -1312,7 +1589,7 @@
       <nav class="md-footer__inner md-grid" aria-label="フッター" >
         
           
-          <a href="../../reference/http-api/" class="md-footer__link md-footer__link--prev" aria-label="前: HTTP API">
+          <a href="../../reference/glossary/" class="md-footer__link md-footer__link--prev" aria-label="前: 用語集">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1322,7 +1599,7 @@
                 前
               </span>
               <div class="md-ellipsis">
-                HTTP API
+                用語集
               </div>
             </div>
           </a>
