@@ -239,6 +239,19 @@ def _scene_lines(
         lines.append(
             f"- ターン{scene.get('turn')}（{when}）: {events}"
         )
+        motives = scene.get("motives")
+        if isinstance(motives, list):
+            for motive in motives:
+                motive = _as_mapping(motive)
+                why = motive.get("why")
+                reason = (
+                    str(why)
+                    if why
+                    else "（はっきりした理由は記録されていない）"
+                )
+                lines.append(
+                    f"  行動の理由: {motive.get('event')} — {reason}"
+                )
         lines.append(
             f"  その時点の状態: "
             f"{_state_text(_as_mapping(scene.get('state')))}"
@@ -258,6 +271,18 @@ def _scene_lines(
                 + "／".join(str(value) for value in foreshadowing)
             )
     return lines
+
+
+def _has_motives(scenes: Sequence[Mapping[str, Any]]) -> bool:
+    """WB-ROUTE-001 S3: whether any scene carries at least one route-backed
+    motive entry -- gates the extra prompt instruction below so a route-free
+    run (rho=0, or predating the route layer) keeps a byte-identical
+    prompt."""
+
+    return any(
+        isinstance(scene.get("motives"), list) and scene.get("motives")
+        for scene in scenes
+    )
 
 
 def _character_text(world_meta: Mapping[str, Any]) -> str:
@@ -280,6 +305,13 @@ def build_synopsis_prompt(
     raw = _elite_dict(elite)
     cell = str(raw.get("cell", "不明"))
     scene_text = "\n".join(_scene_lines(scenes, detailed=False))
+    motive_instruction = (
+        "- 「行動の理由」が示された行動は、その理由に沿って因果を書く。"
+        "理由が記録されていない行動に、ログにない動機を創作しない"
+        "（書くなら迷いや気まぐれとして軽く扱うか省く）。\n"
+        if _has_motives(scenes)
+        else ""
+    )
 
     return (
         "あなたは物語のあらすじ作家です。質問や確認を返さず、"
@@ -302,7 +334,8 @@ def build_synopsis_prompt(
         "- 200〜300字の日本語のあらすじを一段落で書く。\n"
         "- 固定された結末を明かす。\n"
         "- 導入の説明より、道中の転機、選択、逆転を中心にする。\n"
-        "- ログにない人物、勝敗、所持品、因果を追加しない。\n\n"
+        "- ログにない人物、勝敗、所持品、因果を追加しない。\n"
+        f"{motive_instruction}\n"
         "## 出力形式\n"
         "あらすじ本文のみを出力する。見出し、箇条書き、前置き、"
         "質問、確認は出力しない。\n"
@@ -321,6 +354,15 @@ def build_narration_prompt(
     raw = _elite_dict(elite)
     cell = str(raw.get("cell", "不明"))
     scene_text = "\n".join(_scene_lines(scenes, detailed=True))
+    motive_instruction = (
+        "- 「行動の理由」が示された行動は、その理由に沿って因果を書く。"
+        "理由が記録されていない行動に、ログにない動機を創作しない"
+        "（書くなら迷いや気まぐれとして軽く扱うか省く）。\n"
+        "- 理由は心理描写や会話に翻訳してよいが、理由そのものを別の動機に"
+        "置き換えない。\n"
+        if _has_motives(scenes)
+        else ""
+    )
     synopsis_block = (
         f"\n## 選定時のあらすじ\n{synopsis.strip()}\n"
         if synopsis and synopsis.strip()
@@ -350,7 +392,8 @@ def build_narration_prompt(
         "- 露見では、隠していた側と知った側の心理変化を描く。\n"
         "- 裏切りでは、先行する関係や誓いを踏まえて心理を描く。\n"
         "- 状態値を数値のまま本文に書かず、行動や情景へ翻訳する。\n"
-        "- ログにない主要事件、勝敗、所持者交代、結末を追加しない。\n\n"
+        "- ログにない主要事件、勝敗、所持者交代、結末を追加しない。\n"
+        f"{motive_instruction}\n"
         "## 出力形式\n"
         "物語本文のみを出力する。タイトル、見出し、制作上の説明、"
         "前置き、質問、確認は出力しない。\n"
