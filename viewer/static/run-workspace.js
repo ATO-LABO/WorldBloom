@@ -209,6 +209,7 @@
     $("[data-range-prev]").disabled=rangeMode==="all"||start===0;
     $("[data-range-next]").disabled=rangeMode==="all"||end===last;
     const chosen=model.nodes.find(n=>n.id===selectedNode);
+    const parentLabel=(n,sep)=>n.parents.length?n.parents.map(esc).join(sep):(n.seedCell?`引き継ぎ（前の実験 ${esc(n.seedCell.replace("|"," × "))}）`:"親なし");
     const highlighted=chosen?.elite || null;
     const current=job.job_id && !terminal.has(job.state) || observed.generation !== observed.latest;
     const label=current?"この時点で残った血筋":"最後に残った血筋";
@@ -262,8 +263,8 @@
     $("[data-river-canvas]").append(chart);
     if(omitted)$("[data-river-canvas]").append(Object.assign(document.createElement("p"),{textContent:`その他の親子の線を${omitted}本省略しています。`}));
 
-    $("[data-node-info]").innerHTML=chosen?`<h3>選択中の個体</h3><p>第${chosen.generation+1}世代・個体${chosen.index}</p><p>${chosen.elite?"この時点で地図に残った代表":"記録された個体"}</p><dl><dt>型</dt><dd>${esc(chosen.cell?.replace("|"," × ")||"地図外")}</dd><dt>品質</dt><dd>${number(chosen.quality)?fmt(chosen.quality):"未計測"}</dd><dt>親</dt><dd>${chosen.parents.map(esc).join("<br>")||"親なし"}</dd></dl>${chosen.elite&&observed.generation===observed.latest?`<a href="/exp/${encodeURIComponent(observed.run_name)}/cell/${encodeURIComponent(chosen.elite)}/lineage">転機を見る ↗</a>`:""}`:'<h3>血筋を選ぶ</h3><p>図の点、または下の表から個体を選ぶと、詳細を確認できます。</p>';
-    $("[data-node-table]").innerHTML=`<table><thead><tr><th>世代・個体</th><th>型</th><th>品質</th><th>親</th></tr></thead><tbody>${model.nodes.filter(n=>n.generation>=start&&n.generation<=end).map(n=>`<tr><td><button data-node="${n.id}">第${n.generation+1}世代・${n.index}</button></td><td>${esc(n.cell||"地図外")}</td><td>${number(n.quality)?fmt(n.quality):"未計測"}</td><td>${n.parents.map(esc).join(" / ")||"親なし"}</td></tr>`).join("")}</tbody></table>`;
+    $("[data-node-info]").innerHTML=chosen?`<h3>選択中の個体</h3><p>第${chosen.generation+1}世代・個体${chosen.index}</p><p>${chosen.elite?"この時点で地図に残った代表":"記録された個体"}</p><dl><dt>型</dt><dd>${esc(chosen.cell?.replace("|"," × ")||"地図外")}</dd><dt>品質</dt><dd>${number(chosen.quality)?fmt(chosen.quality):"未計測"}</dd><dt>親</dt><dd>${parentLabel(chosen,"<br>")}</dd></dl>${chosen.elite&&observed.generation===observed.latest?`<a href="/exp/${encodeURIComponent(observed.run_name)}/cell/${encodeURIComponent(chosen.elite)}/lineage">転機を見る ↗</a>`:""}`:'<h3>血筋を選ぶ</h3><p>図の点、または下の表から個体を選ぶと、詳細を確認できます。</p>';
+    $("[data-node-table]").innerHTML=`<table><thead><tr><th>世代・個体</th><th>型</th><th>品質</th><th>親</th></tr></thead><tbody>${model.nodes.filter(n=>n.generation>=start&&n.generation<=end).map(n=>`<tr><td><button data-node="${n.id}">第${n.generation+1}世代・${n.index}</button></td><td>${esc(n.cell||"地図外")}</td><td>${number(n.quality)?fmt(n.quality):"未計測"}</td><td>${parentLabel(n," / ")}</td></tr>`).join("")}</tbody></table>`;
   }
   function selectNode(id){selectedNode=id;follow=false;generationControls();river();remember(true);$("[data-node-info]").setAttribute("tabindex","-1");$("[data-node-info]").focus({preventScroll:true});}
   const valueText=(v,m=metric)=>m==="reach_rate"?percent(v):fmt(v);

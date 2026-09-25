@@ -330,5 +330,23 @@ class RunWorkspaceTests(unittest.TestCase):
         self.assertIn("強い使用1体", html)
 
 
+class SeedGenomesRunWorkspaceTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5b: run_workspace.river_payload()'s own
+    "seedCell" field (run-workspace.js's parentLabel() reads it)."""
+    setUp = fixture.SeedGenomesReplayTests.setUp
+    get = fixture.SeedGenomesReplayTests.get
+
+    def test_seed_cell_reaches_the_river_payload(self):
+        status, text = self.get("/jobs/job-replay-seed?view-data=1&gen=0")
+        self.assertEqual(status, 200, text)
+        result = json.loads(text)["observation"]
+        node0 = next(n for n in result["river"]["nodes"] if n["index"] == 0)
+        self.assertEqual(node0["seedCell"], "II|mid")
+        node1 = next(n for n in result["river"]["nodes"] if n["index"] == 1)
+        # Opus review R4: seedCell is only present on a node that actually
+        # has one -- a seed-less node carries no key at all.
+        self.assertNotIn("seedCell", node1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -39,13 +39,20 @@ def river_payload(model):
     nodes = []
     for pair, node in model["index"].items():
         position = diagram["positions"].get(pair)
-        nodes.append({
+        entry = {
             "id": key(pair), "generation": pair[0], "index": pair[1],
             "cell": node.get("cell_key"), "quality": node.get("quality"),
             "parents": node.get("parent_refs", []), "position": position,
             "survives": sorted(model["survivor_map"].get(pair, [])),
             "elite": elite_ids.get(key(pair)),
-        })
+        }
+        # Opus review R4: only when set -- a seed-less experiment's embedded
+        # JSON must stay byte-identical to before WB-WORLDGROW-001 段階5b
+        # (run-workspace.js's parentLabel() already treats a missing/undefined
+        # seedCell the same as an explicit null).
+        if node.get("seed_cell"):
+            entry["seedCell"] = node["seed_cell"]
+        nodes.append(entry)
     return {
         "nodes": nodes,
         "edges": [{"parent": key(edge["parent"]), "child": key(edge["child"]),

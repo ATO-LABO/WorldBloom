@@ -82,6 +82,11 @@ WORLD_EXPANSION_LABELS = {"off": "しない", "detect": "検知のみ", "expand"
 def _world_expansion_label(value):
     return WORLD_EXPANSION_LABELS.get(value, value)
 
+
+def _seed_genomes_label(value):
+    """WB-WORLDGROW-001 段階5b: config detail views' "前の実験から引き継ぐ" row."""
+    return value if value else "しない"
+
 # WB-UI-021: /configs's 文章生成 card (execution/output_settings.py's backend choices).
 GENERATION_BACKEND_OPTIONS = (
     ("claude-cli", "Claude Code CLI（claude -p）"),
@@ -394,6 +399,9 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
         values[f"evolution.{key}"] = evolution[key]
     values["evolution.keep"] = evolution["keep"]
     values["evolution.world_expansion"] = evolution.get("world_expansion", "off")
+    # WB-WORLDGROW-001 段階5b: .get() -- a config saved before this stage
+    # added "seed_genomes" to evolution_defaults() has no such key either.
+    values["evolution.seed_genomes"] = evolution.get("seed_genomes")
     for key in ("coevolve", "meta_evolution", "record_explanations"):
         values[f"evolution.{key}"] = evolution[key]
     # .get(), not [...]: a config saved before WB-JEV-002 added "kappa" to
@@ -802,6 +810,7 @@ def render_config_detail(config, control):
         ("並列数", "⚙ 全体設定に従う"),
         ("保存方針", _escape(ev["keep"])),
         ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
+        ("前の実験から引き継ぐ", _escape(_seed_genomes_label(ev.get("seed_genomes")))),
         ("共進化", _escape(ev["coevolve"])),
         ("メタ進化", _escape(ev["meta_evolution"])),
         ("説明記録", _escape(ev["record_explanations"])),
@@ -1038,6 +1047,7 @@ def _run_plan(config, estimate, control, *, open_detail=False):
          f'{_escape(preview["planned_individual_evaluations"])} / {_escape(preview["planned_seed_evaluations"])}'),
         ("保存方針", _escape(ev["keep"])),
         ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
+        ("前の実験から引き継ぐ", _escape(_seed_genomes_label(ev.get("seed_genomes")))),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
         ("合理性 κ", _escape(_rationality_summary(_frozen_template_dir(control, config), ev))),
         ("道筋 ρ", _escape(_route_rho_summary(ev))),

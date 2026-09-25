@@ -1,5 +1,5 @@
 ---
-ja_rev: "348dce9f02f4"
+ja_rev: "f95ba98f0ac6"
 ---
 # Run Settings
 
@@ -41,6 +41,8 @@ If no individual reached the ending at all, the best individual's result is save
 | しない (Off, default) | off. Leaves the world unchanged |
 | 検知のみ (Detect only) | detect. Leaves the world unchanged; only tallies where actions came up empty |
 | 承認済みの拡張を適用 (Apply approved expansions) | expand. Applies approved patches (`projects/<world>/patches/*.yaml`) before the run, then does the same tally |
+
+**前の実験から引き継ぐ (Carry over from a previous experiment, evolution.seed_genomes)**: pick a completed prior experiment for the same world and genre, and only the personalities (genomes) of the individuals occupying its final map are carried into this experiment's generation 0. No precedent table, map, or volatility thresholds are carried over -- this experiment rebuilds them from scratch starting at generation 0. The default is "don't carry over", which stays byte-identical to before this feature.
 
 Other toggles:
 
