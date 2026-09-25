@@ -1,5 +1,5 @@
 ---
-ja_rev: "69faaa344209"
+ja_rev: "8eda305a2b08"
 ---
 # Genome
 
@@ -44,3 +44,9 @@ Raising novelty drive suppresses actions that are frequent in precedent, making 
 ## Crossover and mutation
 
 The next generation is built from parents drawn from individuals left in the archive (and top individuals from the previous generation). Crossover is uniform per gene dimension (inheriting either parent's value); mutation adds Gaussian noise to each dimension with a fixed probability, then clips it to range. A child doesn't inherit its parent's cell — which cell it lands in is decided by the actual run result.
+
+## Coevolution (giving the antagonist a genome too) { #coevolution }
+
+By default (off), the antagonist carries no genome and acts purely on temperament (`policy=None`). Turning on coevolution in [Run Settings](../usage/run-settings.md) gives the antagonist the same 9-scalar genome and its own QD archive, separate from the protagonist's, evaluating the protagonist path and the antagonist path alternately each generation. Turning it on doubles the evaluation count, so run time roughly doubles too.
+
+The antagonist's fitness isn't zero-sum (it isn't scored higher for beating the protagonist). It's evaluated to maximize **how much harder it made the protagonist's path, among runs that reached the ending** (turn count, volatility, how many times the balance of power flipped, etc.). This keeps evolution from drifting toward an antagonist so strong that no protagonist ever reaches the ending.

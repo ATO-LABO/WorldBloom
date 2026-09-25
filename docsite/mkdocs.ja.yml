@@ -54,8 +54,12 @@ nav:
       - インストール: getting-started/install.md
       - クイックスタート: getting-started/quickstart.md
   - 概念:
+      - 全体の流れ: concepts/overview.md
+      - 結末固定: concepts/fixed-ending.md
       - 7層構造: concepts/seven-layers.md
       - 遺伝子（Genome）: concepts/genome.md
+      - 行動タイプ I〜VI: concepts/action-types.md
+      - 伏線（遅延効果）: concepts/foreshadowing.md
       - QD 格子: concepts/qd-map.md
       - Sifting: concepts/sifting.md
       - 決定論: concepts/determinism.md
@@ -75,6 +79,7 @@ nav:
       - 実行結果のファイル: reference/run-outputs.md
       - HTTP API: reference/http-api.md
       - 用語集: reference/glossary.md
+      - 設計資料: reference/design-docs.md
   - ガイド:
       - トラブルシューティング: guides/troubleshooting.md
       - FAQ: guides/faq.md
