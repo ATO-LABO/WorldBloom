@@ -437,6 +437,11 @@ def _scene_motives(
                 "why": _route_reason(route),
                 "kind": route.get("kind"),
                 "cause": route.get("cause"),
+                # S4 §1.1: the reason badge needs the motive's own label
+                # (motives.yaml) to name a detour/motive row, not just its
+                # cause="motive" bucket.
+                "motive": route.get("motive"),
+                "motive_label": route.get("motive_label"),
             }
         )
     return motives

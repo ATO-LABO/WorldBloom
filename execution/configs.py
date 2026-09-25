@@ -144,6 +144,15 @@ def normalize(spec):
         # so prepare_run()'s CLI argv (and the frozen-runtime tests that
         # compare it against a hand-typed invocation) never see --kappa 0.
         values["kappa"] = None if kappa == 0 else float(kappa)
+    # WB-ROUTE-001 S4 §2: same 0-means-off normalization as kappa above, so
+    # a route_rho=0 config stays byte-identical to one that never set it
+    # (prepare_run()'s argv never sees --route-rho 0).
+    route_rho = values["route_rho"]
+    if route_rho is not None:
+        if (type(route_rho) is bool or not isinstance(route_rho, (int, float))
+                or not (0 <= route_rho <= 1)):
+            raise ConfigError("evolution.route_rho", "0〜1の数値を指定してください")
+        values["route_rho"] = None if route_rho == 0 else float(route_rho)
     if values["rationality_backend"] not in (None, "ollama", "none"):
         raise ConfigError("evolution.rationality_backend", "backendの指定が不正です")
     if values["rationality_method"] not in (None, "noul", "choice"):
@@ -446,6 +455,15 @@ class ConfigStore:
             key = f"templates/{spec['template_id']}/rationality.yaml"
             if key not in blobs:
                 spec["evolution"]["kappa"] = None
+        # WB-ROUTE-001 S4 §2: same guard for route_rho -- a genre switch
+        # (client-side, before submit) to a template with no route.yaml must
+        # not carry another genre's rho along (gapengine.evolve._route_cfg
+        # raises on rho>0 with no route.yaml, which would fail the whole GA
+        # run rather than just being ignored).
+        if spec["evolution"]["route_rho"] is not None:
+            key = f"templates/{spec['template_id']}/route.yaml"
+            if key not in blobs:
+                spec["evolution"]["route_rho"] = None
         with tempfile.TemporaryDirectory(prefix="wb-config-preview-") as temp:
             materialize(Path(temp), blobs)
             try:

@@ -47,6 +47,11 @@ def _world_entry(config, manifest):
 _SEARCH_CONDITION_KEYS = frozenset({
     "seed_base", "ga_seed", "generations", "population", "seeds",
     "target_ending", "meta_evolution", "coevolve",
+    # WB-ROUTE-001 S4 §2: unlike kappa (a post-hoc judge veto), route_rho
+    # weights the search itself -- a differing rho is a differing search
+    # condition, so it belongs in this set rather than kappa's own separate
+    # "shared table accumulation" warning below.
+    "route_rho",
 })
 
 

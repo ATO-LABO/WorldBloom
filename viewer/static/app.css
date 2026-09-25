@@ -1120,6 +1120,17 @@ td {
   color: var(--muted);
 }
 
+/* WB-ROUTE-001 S4 §1.1: reason badges -- modifiers on the existing .tag
+   rule, no new colors. */
+.tag.route-advance { color: var(--ws-confirm); border-color: var(--ws-confirm); }
+.tag.route-prepare { color: var(--accent); border-color: var(--accent); }
+.tag.route-motive,
+.tag.route-belief { color: var(--warm); border-color: var(--warm); }
+.tag.route-body,
+.tag.route-ignorance,
+.tag.route-lost { color: var(--ws-muted); border-color: var(--ws-control-line); }
+.tag.route-none { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
+
 .foreshadow {
   border-color: #8b6db3;
 }

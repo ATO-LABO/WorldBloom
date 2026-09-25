@@ -1703,7 +1703,12 @@ class MotiveMatchingTests(unittest.TestCase):
         )[0]
         self.assertEqual(result["cause"], "motive")
         self.assertEqual(result["motive"], "care_for_ally")
+        self.assertEqual(result["motive_label"], "仲間を大事にする")
         self.assertIn("鬼の弟", result["text"])
+        # S4 §0(c): the ending now matches the verb actually taken
+        # (give_item -> "品を渡した"), not a fixed "絆を深めたかった" that
+        # read oddly for a give_item candidate.
+        self.assertEqual(result["text"], "鬼の弟との絆を深めたくて品を渡した")
 
     def test_curiosity_falls_back_to_zone_text_when_no_real_target(self) -> None:
         world, subjects = load_fixture()
@@ -2002,6 +2007,62 @@ class AdvanceTextTests(unittest.TestCase):
             {},
         )
         self.assertEqual(text, "鬼ヶ島へ移動して近づいた")
+
+    def test_fight_names_the_goal_item_and_the_holder(self) -> None:
+        """S4 §0(a): "目的物の持ち主と戦った" alone named neither the goal
+        item nor who the holder actually is."""
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("fight", ("鬼",), {"target": "鬼"}),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id="鬼",
+        )
+        self.assertEqual(text, "鬼ヶ島の宝物を手に入れるため鬼と戦った")
+
+    def test_craft_names_the_vehicle_destination(self) -> None:
+        """S4 §0(b): a craft's reason text named nothing beyond the event
+        itself ("船を作った") -- 船 is a vehicle, so name where it takes the
+        subject (the believed goal holder's zone)."""
+        from gapengine.route import _advance_text
+
+        self.subjects["鬼"].zone = "鬼ヶ島"
+        text = _advance_text(
+            Action("craft", ("船",)),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id="鬼",
+        )
+        self.assertEqual(text, "鬼ヶ島へ渡るため船を作った")
+
+    def test_craft_names_the_fight_advantage(self) -> None:
+        """S4 §0(b): 鉄砲 raises fight strength -- name it as preparing to
+        face the believed holder, not just "鉄砲を作った"."""
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("craft", ("鉄砲",)),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id="鬼",
+        )
+        self.assertEqual(text, "鬼と渡り合うため鉄砲を作った")
+
+    def test_craft_with_no_known_purpose_stays_the_bare_event(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("craft", ("船",)),
+            self.momotaro,
+            self.world,
+            {},
+            believed_holder_id=None,
+        )
+        self.assertEqual(text, "先へ渡るため船を作った")
 
     def test_relation_verb_texts_are_worded_as_intent_not_result(self) -> None:
         from gapengine.route import _advance_text

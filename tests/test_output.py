@@ -603,6 +603,28 @@ class RouteMotiveTests(unittest.TestCase):
             turn_two = next(scene for scene in scenes if scene["turn"] == 2)
             self.assertEqual(turn_two["motives"][0]["why"], text)
 
+    def test_motive_and_motive_label_pass_through_to_the_scene(self) -> None:
+        """WB-ROUTE-001 S4 §1.1: the reason badge needs "motive"/
+        "motive_label" alongside kind/cause -- both come straight from
+        policy.route, unchanged when the run has neither key at all."""
+        rows = self._rows_with_route()
+        for row in rows:
+            if row.get("kind") == "decision" and row["turn"] == 2:
+                row["policy"]["route"]["cause"] = "motive"
+                row["policy"]["route"]["motive"] = "care_for_ally"
+                row["policy"]["route"]["motive_label"] = "仲間を大事にする"
+        world_meta = load_world_meta(PROJECT, TEMPLATE)
+        scenes = extract_scenes(rows, world_meta)
+        turn_two = next(scene for scene in scenes if scene["turn"] == 2)
+        self.assertEqual(turn_two["motives"][0]["motive"], "care_for_ally")
+        self.assertEqual(turn_two["motives"][0]["motive_label"], "仲間を大事にする")
+
+        # Turn 3's route dict never set these keys -- .get() is None, not KeyError.
+        turn_three = next(scene for scene in scenes if scene["turn"] == 3)
+        motive = next(m for m in turn_three["motives"] if m["kind"] == "detour")
+        self.assertIsNone(motive["motive"])
+        self.assertIsNone(motive["motive_label"])
+
     def test_antagonist_decision_with_route_is_not_a_motive(self) -> None:
         rows = self._rows_with_route()
         for row in rows:
