@@ -463,6 +463,34 @@ def restore_job_cfgs(
         if isinstance(route_meta, Mapping)
         else None
     )
+    if route_cfg is not None and isinstance(route_meta, Mapping):
+        # WB-WORLDGROW-002 stage 0 review recommendation b: route_cfg here
+        # rebuilds multipliers/motives/gene_affinity from template_dir's
+        # *current* route.yaml (there is no manifest.json to read the
+        # original run's own frozen route.yaml back from) -- if that
+        # template has since been edited, a rerun would silently walk a
+        # different route than the one recorded in this header. Comparing
+        # the restored Route's own hashes against the header's recorded
+        # ones (engine.sim's header-writer -- see gapengine/route.py's
+        # multipliers_hash/motives_hash) turns a silent divergence into an
+        # explicit error instead.
+        restored = Route.from_config(route_cfg)
+        recorded = {
+            "multipliers_hash": route_meta.get("multipliers_hash"),
+            "motives_hash": route_meta.get("motives_hash"),
+            "gene_affinity": route_meta.get("gene_affinity"),
+        }
+        current = {
+            "multipliers_hash": restored.multipliers_hash(),
+            "motives_hash": restored.motives_hash(),
+            "gene_affinity": restored.gene_affinity,
+        }
+        if current != recorded:
+            raise ValueError(
+                f"{template_dir} の route.yaml (またはmotives.yaml) が "
+                f"{experiment} の記録時と異なります: recorded={recorded} "
+                f"current={current}"
+            )
     rationality_meta = header.get("rationality")
     if not isinstance(rationality_meta, Mapping) or not (
         float(rationality_meta.get("kappa", 0.0)) > 0.0

@@ -10,11 +10,14 @@ import json
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import yaml
 
+from gapengine import world_patch_trial
 from gapengine.evolve import evolve
+from gapengine.rationality import RationalityTableMissError
 from gapengine.world_patch_trial import run_trial
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +81,63 @@ class RunTrialTests(unittest.TestCase):
         self.assertEqual(result["seeds_per_run"], 2)
         self.assertEqual(result["base_source"], "repository")  # no manifest.json for this fixture
         self.assertIsNone(result["trigger"])
+
+
+class RationalityTableMissTrialTests(unittest.TestCase):
+    """WB-WORLDGROW-002 stage 0 review, required item 1: a kappa>0 trial's
+    patched-world job almost always needs a judgment the shared rationality
+    table has no entry for (a patch adds zones/items/candidates the
+    original run never saw), raising RationalityTableMissError -- that is
+    expected, not a patch defect, so run_trial must record it apart from
+    trial["errors"] and report "reference_only", never "contract_failed"
+    the way the generic Exception branch reports any other job error.
+
+    Injects RationalityTableMissError via a run_individual monkeypatch
+    (network-free/deterministic) rather than wiring a real kappa>0
+    backend="ollama" experiment: the behavior under test is run_trial's own
+    exception routing, already independently covered for the "backend
+    empty, judge never reached" case by RationalityTrialReproductionTests
+    above and for TableOnlyJudge's own raise by
+    tests/test_rationality.py's TableOnlyJudgeTests."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory()
+        root = Path(cls._tmp.name)
+        fast_project = _make_fast_project(root)
+        evolve({
+            "ga_seed": 29, "generations": 2, "keep": "all", "population": 5, "processes": 1,
+            "project": fast_project, "seed_base": 31, "seeds": 1, "template": TEMPLATE,
+            "out": root / "experiment",
+        })
+        cls.experiment = root / "experiment"
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def test_table_miss_on_patched_world_is_reference_only_not_contract_failed(self) -> None:
+        patch = {"id": "p-kappamiss1", "title": "合理性表なし試走", "add": VALID_ADD}
+        real_run_individual = world_patch_trial.run_individual
+
+        def flaky(job):
+            if Path(job["world_path"]).parent.name == "patched":
+                raise RationalityTableMissError(
+                    "κ>0 のため判定器が要ります（表に無い判定が1件）。"
+                )
+            return real_run_individual(job)
+
+        with tempfile.TemporaryDirectory() as work:
+            with unittest.mock.patch.object(world_patch_trial, "run_individual", side_effect=flaky):
+                result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+
+        self.assertEqual(result["errors"], [])
+        self.assertTrue(result["rationality_table_miss"])
+        self.assertEqual(
+            {entry["world"] for entry in result["rationality_table_miss"]}, {"patched"}
+        )
+        self.assertEqual(result["state"], "reference_only")
+        self.assertTrue(any("κ>0" in reason for reason in result["reasons"]))
 
 
 VALID_ADD_PLUS2 = {
