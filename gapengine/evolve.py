@@ -53,6 +53,7 @@ from gapengine.rationality import (
     Rationality,
     RationalityTable,
 )
+from gapengine.route import Route, load_route_config
 
 
 _ENGINE_DIR = Path(__file__).resolve().parents[1] / "engine"
@@ -202,6 +203,93 @@ def _rationality_backend_cfg(
     rationality_yaml_backend = dict(rationality_yaml.get("backend") or {})
     rationality_override = dict(cfg.get("rationality") or {})
     return rationality_yaml, rationality_yaml_backend, rationality_override
+
+
+def route_cfg_override(route_rho: float | None) -> dict[str, Any]:
+    """Builds the nested ``cfg["route"]`` override ``_route_cfg()`` reads
+    (``{"rho": ...}``) from the flat ``route_rho`` key shared by
+    scripts/evolve.py's ``--route-rho`` argument and the UI's evolution
+    config (execution/configs.py's ``route_rho``). One place to do this
+    nesting so every caller agrees on it -- the frozen UI adapter
+    (execution/evolution_worker.py) used to pass its flat manifest straight
+    through, so _route_cfg() never saw the override and a run's route_rho
+    setting was silently ignored (WB-ROUTE-001 S4 bugfix).
+
+    See ``rationality_cfg_override`` below for kappa/rationality_*, which had
+    the identical bug and is fixed the same way (scope widened by user
+    decision after the route_rho fix landed)."""
+
+    return {"rho": route_rho}
+
+
+def rationality_cfg_override(flat: Mapping[str, Any]) -> dict[str, Any]:
+    """Builds the nested ``cfg["rationality"]`` override
+    ``_rationality_backend_cfg()`` reads, from the flat keys shared by
+    scripts/evolve.py's argparse dests (pass ``vars(args)``) and the UI's
+    evolution config (execution/configs.py's ``normalize()``, pass
+    ``manifest["evolution"]`` or ``config["evolution"]``): ``kappa``,
+    ``rationality_backend``, ``rationality_method``, ``rationality_model``,
+    ``rationality_num_ctx``, ``rationality_table``, ``rationality_max_calls``.
+
+    Same bug and same fix shape as ``route_cfg_override``: the frozen UI
+    adapter (execution/evolution_worker.py) used to spread its flat manifest
+    straight into cfg, so a job's kappa/rationality_* settings never reached
+    the nested shape _rationality_backend_cfg() reads and were silently
+    ignored (WB-ROUTE-001 S4 follow-up). ``rationality_table`` from the flat
+    source is always None here (execution/configs.py's normalize() never
+    accepts it from the API) -- callers that computed a real persisted-table
+    path themselves (execution/configs.py's prepare_run(), for the shared
+    Ollama judgment table) must overwrite the returned dict's "table" key."""
+
+    return {
+        "kappa": flat.get("kappa"),
+        "backend": flat.get("rationality_backend"),
+        "method": flat.get("rationality_method"),
+        "model": flat.get("rationality_model"),
+        "num_ctx": flat.get("rationality_num_ctx"),
+        "table": flat.get("rationality_table"),
+        "max_judge_calls_per_run": flat.get("rationality_max_calls"),
+    }
+
+
+def _route_cfg(
+    cfg: Mapping[str, Any], template_dir: Path
+) -> dict[str, Any] | None:
+    """WB-ROUTE-001 S1 §3: templates/<genre>/route.yaml's own ``rho`` (S0
+    default 0.0), overridden by ``cfg["route"]["rho"]``
+    (scripts/evolve.py's ``--route-rho``) -- mirrors
+    ``_rationality_backend_cfg``'s "template default, cfg override" shape,
+    but route has no backend/table to build, just the multiplier config
+    ``gapengine.route.Route.from_config`` already knows how to read.
+
+    Returns None only when rho<=0 (route disabled -- byte-identical to a
+    route-free run, plan §2). Raises when rho>0 is requested for a template
+    with no route.yaml at all: silently ignoring a rho request would leave
+    an experimenter believing route was applied when it never ran."""
+
+    route_yaml = load_route_config(template_dir)
+    override = dict(cfg.get("route") or {})
+    rho_override = override.get("rho")
+    if rho_override is not None:
+        rho = float(rho_override)
+        # S1 review 1 recommended fix: an explicit --route-rho 0 (disabling
+        # route, the template default) must never error just because the
+        # template has no route.yaml -- only an actual rho>0 request needs
+        # one to apply.
+        if rho > 0.0 and route_yaml is None:
+            raise ValueError(
+                f"route.rho={rho} requested but {template_dir} has no "
+                "route.yaml (route stays disabled for this template)"
+            )
+    elif route_yaml is not None:
+        rho = float(route_yaml["rho"])
+    else:
+        rho = 0.0
+    if rho <= 0.0:
+        return None
+    base = dict(route_yaml or {})
+    base["rho"] = rho
+    return base
 
 
 def _rule_ids(
@@ -366,6 +454,12 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         rationality_judge = _build_rationality_judge(rationality_cfg)
         rationality_new_path = out_dir / "rationality-new.jsonl"
 
+    # WB-ROUTE-001 S1 §3: unlike rationality, route carries no per-run
+    # state (no table, no judge calls) -- one Route built once per job is
+    # reused unchanged across every seed.
+    route_cfg = job.get("route_cfg")
+    route = Route.from_config(route_cfg) if route_cfg is not None else None
+
     runs: list[dict[str, Any]] = []
     for seed in seeds:
         _seed_checkpoint(job)
@@ -407,6 +501,7 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
                 rules,
                 cfg=action_cfg,
                 rationality=rationality,
+                route=route,
             )
         if antagonist_genome is not None:
             policies[antagonist] = Policy(
@@ -1022,6 +1117,7 @@ def _cfg_fingerprint(
     target_ending: Any,
     record_explanations: bool,
     rationality_cfg: Mapping[str, Any] | None,
+    route_cfg: Mapping[str, Any] | None = None,
 ) -> str:
     """WB-GA-RESUME: sha256 of every setting that changes what the GA
     computes -- resuming with a different value here is a bug (or a
@@ -1057,6 +1153,17 @@ def _cfg_fingerprint(
         num_ctx = rationality_cfg.get("num_ctx")
         if num_ctx is not None:
             payload["rationality"]["num_ctx"] = num_ctx
+    if route_cfg is not None:
+        route_obj = Route.from_config(route_cfg)
+        payload["route"] = {
+            "rho": route_cfg["rho"],
+            "multipliers_hash": route_obj.multipliers_hash(),
+            # WB-ROUTE-001 S2 §5: distinguishes two rho>0 runs whose
+            # motive table/gene_affinity differ but whose multipliers_hash
+            # happens to match.
+            "gene_affinity": route_obj.gene_affinity,
+            "motives_hash": route_obj.motives_hash(),
+        }
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -1264,6 +1371,19 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             str(rationality_override.get("table") or (out_dir / "rationality.json"))
         )
 
+    # WB-ROUTE-001 S1 §3: rho<=0 (the template default) is None here, so a
+    # rho=0 run attaches no route_cfg to any job and stays byte-identical
+    # to a pre-S1 run (plan §2).
+    route_cfg = _route_cfg(cfg, template_dir)
+    route_enabled = route_cfg is not None
+    route_object = Route.from_config(route_cfg) if route_cfg is not None else None
+    route_multipliers_hash = route_object.multipliers_hash() if route_object is not None else None
+    # WB-ROUTE-001 S2 §5: motives.yaml hash + gene_affinity alongside
+    # multipliers_hash, both None/0.0 when the template has no motive table
+    # (S1-identical).
+    route_motives_hash = route_object.motives_hash() if route_object is not None else None
+    route_gene_affinity = route_object.gene_affinity if route_object is not None else None
+
     world_model = World.from_yaml(
         world_path,
         action_graph_path=action_graph_path,
@@ -1311,6 +1431,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         target_ending=world_model.target_ending,
         record_explanations=record_explanations,
         rationality_cfg=rationality_cfg,
+        route_cfg=route_cfg,
     )
     engine_hash = _engine_source_hash(_ENGINE_DIR)
     gapengine_hash = _engine_source_hash(_GAPENGINE_DIR)
@@ -1615,6 +1736,8 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             if rationality_enabled:
                 job["rationality_cfg"] = rationality_cfg
                 job["rationality_table_path"] = str(rationality_table_path)
+            if route_enabled:
+                job["route_cfg"] = route_cfg
         if observer is not None:
             observer.bind(jobs, generation, "protagonist")
         raw_results = _evaluate_jobs(jobs, processes, observer)
@@ -1727,6 +1850,11 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 if rationality_enabled:
                     job["rationality_cfg"] = rationality_cfg
                     job["rationality_table_path"] = str(rationality_table_path)
+                # Same reasoning as rationality_cfg above: the sampled
+                # protagonist genome here must see the same route weighting
+                # it gets in the main protagonist pass.
+                if route_enabled:
+                    job["route_cfg"] = route_cfg
             if observer is not None:
                 observer.bind(antagonist_jobs, generation, "antagonist")
             antagonist_raw_results = _evaluate_jobs(antagonist_jobs, processes, observer)
@@ -1946,6 +2074,18 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         if world_patch_ids:
             summary_payload["world_patches"] = world_patch_ids
             summary_payload["world_expansion_patches"] = raw_world_patches
+        if route_enabled:
+            # S1 review 1 recommended fix: summary.json is the display-only,
+            # human-facing counterpart of the per-run header (already
+            # carries route.rho/multipliers_hash, see
+            # RouteEvolveWiringTests) -- an experimenter reading only the GA
+            # summary had no way to tell route was even on.
+            summary_payload["route"] = {
+                "rho": route_cfg["rho"],
+                "multipliers_hash": route_multipliers_hash,
+                "gene_affinity": route_gene_affinity,
+                "motives_hash": route_motives_hash,
+            }
         if coevolve:
             summary_payload.update(
                 {

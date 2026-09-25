@@ -495,5 +495,205 @@ class OutputStageTests(unittest.TestCase):
             self.assertFalse((stories_dir / "III-high.md").exists())
 
 
+class RouteMotiveTests(unittest.TestCase):
+    """WB-ROUTE-001 S3: policy.route -> scenes.py "motives" ->
+    synopsis.py's "行動の理由" lines and prompt instruction."""
+
+    def _rows_with_route(self) -> list[dict[str, object]]:
+        rows = json.loads(json.dumps(_rows()))
+        for row in rows:
+            if row.get("kind") != "decision":
+                continue
+            if row["turn"] == 2:  # the "observe" decision (advance)
+                row["policy"] = {
+                    "route": {
+                        "kind": "advance",
+                        "cause": None,
+                        "h": [1.0, 0.0],
+                        "plan": None,
+                        "milestone": None,
+                        "text": "鬼の正体を探るため観察した",
+                    }
+                }
+            elif row["turn"] == 3:  # the "fight" decision (detour/none)
+                row["policy"] = {
+                    "route": {
+                        "kind": "detour",
+                        "cause": "none",
+                        "h": [1.0, 1.0],
+                        "plan": None,
+                        "milestone": None,
+                        "text": "特に理由のない寄り道",
+                    }
+                }
+        return rows
+
+    def test_motives_added_only_for_protagonist_decisions_with_route(
+        self,
+    ) -> None:
+        world_meta = load_world_meta(PROJECT, TEMPLATE)
+        scenes = extract_scenes(self._rows_with_route(), world_meta)
+
+        turn_two = next(scene for scene in scenes if scene["turn"] == 2)
+        self.assertEqual(len(turn_two["motives"]), 1)
+        self.assertEqual(turn_two["motives"][0]["kind"], "advance")
+        self.assertEqual(turn_two["motives"][0]["cause"], None)
+        self.assertEqual(
+            turn_two["motives"][0]["why"],
+            "鬼の正体を探るため観察した",
+        )
+
+        turn_three = next(scene for scene in scenes if scene["turn"] == 3)
+        motive = next(
+            m for m in turn_three["motives"] if m["kind"] == "detour"
+        )
+        self.assertEqual(motive["cause"], "none")
+        self.assertIsNone(motive["why"])
+
+        # Turn 4 (the ending event, no decision row at all) never gets a
+        # "motives" key -- not even an empty list.
+        turn_four = next(scene for scene in scenes if scene["turn"] == 4)
+        self.assertNotIn("motives", turn_four)
+
+    def test_lost_kind_gets_a_fixed_reason_regardless_of_route_text(
+        self,
+    ) -> None:
+        rows = self._rows_with_route()
+        for row in rows:
+            if row.get("kind") == "decision" and row["turn"] == 2:
+                row["policy"]["route"] = {
+                    "kind": "lost",
+                    "cause": "unreachable",
+                    "h": [None, None],
+                    "plan": None,
+                    "milestone": None,
+                    "text": "この文字列は使われない",
+                }
+        world_meta = load_world_meta(PROJECT, TEMPLATE)
+        scenes = extract_scenes(rows, world_meta)
+        turn_two = next(scene for scene in scenes if scene["turn"] == 2)
+        self.assertEqual(
+            turn_two["motives"][0]["why"],
+            "先の見通しが立たないまま動いた",
+        )
+
+    def test_lost_with_body_or_belief_cause_uses_route_text(self) -> None:
+        """S3.5 §3: lost is no longer an automatic override -- body/belief
+        causes keep their own recorded route.text (a fatigued or mistaken
+        wander still has a real reason), only other causes (e.g. plain
+        "unreachable") fall back to the fixed lost text above."""
+
+        for cause, text in (
+            ("body", "疲れが溜まっていたので休んだ"),
+            ("belief", "誤った思い込みに基づいて動いた"),
+        ):
+            rows = self._rows_with_route()
+            for row in rows:
+                if row.get("kind") == "decision" and row["turn"] == 2:
+                    row["policy"]["route"] = {
+                        "kind": "lost",
+                        "cause": cause,
+                        "h": [None, None],
+                        "plan": None,
+                        "milestone": None,
+                        "text": text,
+                    }
+            world_meta = load_world_meta(PROJECT, TEMPLATE)
+            scenes = extract_scenes(rows, world_meta)
+            turn_two = next(scene for scene in scenes if scene["turn"] == 2)
+            self.assertEqual(turn_two["motives"][0]["why"], text)
+
+    def test_motive_and_motive_label_pass_through_to_the_scene(self) -> None:
+        """WB-ROUTE-001 S4 §1.1: the reason badge needs "motive"/
+        "motive_label" alongside kind/cause -- both come straight from
+        policy.route, unchanged when the run has neither key at all."""
+        rows = self._rows_with_route()
+        for row in rows:
+            if row.get("kind") == "decision" and row["turn"] == 2:
+                row["policy"]["route"]["cause"] = "motive"
+                row["policy"]["route"]["motive"] = "care_for_ally"
+                row["policy"]["route"]["motive_label"] = "仲間を大事にする"
+        world_meta = load_world_meta(PROJECT, TEMPLATE)
+        scenes = extract_scenes(rows, world_meta)
+        turn_two = next(scene for scene in scenes if scene["turn"] == 2)
+        self.assertEqual(turn_two["motives"][0]["motive"], "care_for_ally")
+        self.assertEqual(turn_two["motives"][0]["motive_label"], "仲間を大事にする")
+
+        # Turn 3's route dict never set these keys -- .get() is None, not KeyError.
+        turn_three = next(scene for scene in scenes if scene["turn"] == 3)
+        motive = next(m for m in turn_three["motives"] if m["kind"] == "detour")
+        self.assertIsNone(motive["motive"])
+        self.assertIsNone(motive["motive_label"])
+
+    def test_antagonist_decision_with_route_is_not_a_motive(self) -> None:
+        rows = self._rows_with_route()
+        for row in rows:
+            if row.get("kind") == "decision" and row["turn"] == 2:
+                row["subject"] = "鬼"
+        world_meta = load_world_meta(PROJECT, TEMPLATE)
+        scenes = extract_scenes(rows, world_meta)
+        turn_two = next(
+            (scene for scene in scenes if scene["turn"] == 2), None
+        )
+        if turn_two is not None:
+            self.assertNotIn("motives", turn_two)
+
+    def test_old_runs_without_policy_are_byte_identical(self) -> None:
+        world_meta = load_world_meta(PROJECT, TEMPLATE)
+        old_scenes = extract_scenes(_rows(), world_meta)
+        for scene in old_scenes:
+            self.assertNotIn("motives", scene)
+
+        elite = {"cell": "III|high", "quality": 0.75, "reach_rate": 1.0}
+        synopsis = build_synopsis_prompt(elite, old_scenes, world_meta)
+        narration = build_narration_prompt(
+            elite, old_scenes, world_meta, synopsis="桃太郎は鬼を退けた。"
+        )
+        self.assertNotIn("行動の理由", synopsis)
+        self.assertNotIn("行動の理由", narration)
+
+    def test_scene_lines_render_reason_and_no_reason_rows(self) -> None:
+        world_meta = load_world_meta(PROJECT, TEMPLATE)
+        scenes = extract_scenes(self._rows_with_route(), world_meta)
+
+        synopsis = build_synopsis_prompt(
+            {"cell": "x", "quality": 1, "reach_rate": 1.0}, scenes, world_meta
+        )
+        self.assertIn(
+            "行動の理由: 桃太郎が（鬼）観察した。結果は観察に成功した — "
+            "鬼の正体を探るため観察した",
+            synopsis,
+        )
+        self.assertIn(
+            "行動の理由: 桃太郎が（鬼）戦った。結果は勝った。鬼ヶ島の宝物"
+            "の新しい所持先は桃太郎 — （はっきりした理由は記録されていない）",
+            synopsis,
+        )
+        self.assertIn(
+            "「行動の理由」が示された行動は、その理由に沿って因果を書く",
+            synopsis,
+        )
+        self.assertIn(
+            "「行動の理由」は本人の意図であって、その結果ではない",
+            synopsis,
+        )
+
+        narration = build_narration_prompt(
+            {"cell": "x", "quality": 1, "reach_rate": 1.0},
+            scenes,
+            world_meta,
+            synopsis="桃太郎は鬼を退けた。",
+        )
+        self.assertIn(
+            "理由は心理描写や会話に翻訳してよいが、理由そのものを別の動機に"
+            "置き換えない。",
+            narration,
+        )
+        self.assertIn(
+            "「行動の理由」は本人の意図であって、その結果ではない",
+            narration,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

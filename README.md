@@ -7,37 +7,42 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ATO-LABO/WorldBloom)](https://github.com/ATO-LABO/WorldBloom/releases/latest)
 
+<a href="https://youtu.be/Yozi2qb2IQg"><img src="https://img.youtube.com/vi/Yozi2qb2IQg/maxresdefault.jpg" width="640" alt="WorldBloom 3分ダイジェスト動画のサムネイル"></a>
+
 [![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio--portable.zip-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip)
+[![公開ビューア](https://img.shields.io/badge/%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E8%A6%8B%E3%82%8B-%E5%85%AC%E9%96%8B%E3%83%93%E3%83%A5%E3%83%BC%E3%82%A2-2e7d4f?style=for-the-badge&logo=googlechrome&logoColor=white)](https://ato-labo.github.io/WorldBloom/)
+[![3分動画](https://img.shields.io/badge/3%E5%88%86%E3%81%A7%E3%82%8F%E3%81%8B%E3%82%8B-YouTube-c4302b?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/Yozi2qb2IQg)
+[![ドキュメント](https://img.shields.io/badge/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88-ato--labo.github.io-6f42c1?style=for-the-badge&logo=readthedocs&logoColor=white)](https://ato-labo.github.io/WorldBloom/docs/)
 
 </div>
 
-展開して `WorldBloom-Studio.exe` を開くだけ。
+## これは何か
 
-世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます。
+物語の**設定と結末を先に決める**と、そのあいだの道のりを何千通りもシミュレーションで試し、結末にたどり着いたものの中から面白い展開を選べるツールです。
 
-（Python 3.11以上が別途必要です。詳細は同梱の README.txt を参照）
-
-インストールせずブラウザで見るだけなら → [公開ビューア](https://ato-labo.github.io/WorldBloom/)
-
-（桃太郎・恋愛・探偵の3実験）
-
-3分でわかるダイジェスト動画 → [YouTube](https://youtu.be/Yozi2qb2IQg)
-
-<p align="center">
-  <a href="https://youtu.be/Yozi2qb2IQg"><img src="https://img.youtube.com/vi/Yozi2qb2IQg/maxresdefault.jpg" width="640" alt="WorldBloom 3分ダイジェスト動画のサムネイル"></a>
-</p>
+昔話・恋愛もの・探偵ものなど「結末が分かっている物語」は、結末そのものより道中にこそ面白さがあります。WorldBloom は、その道中を人の代わりに探し出し、選ばれた展開だけを文章にします。
 
 <p align="center">
   <img src="docs/images/readme-hero.png" width="820" alt="WorldBloomビューアのSifting画面。進化で見つかった物語の展開が格子状に並び、あらすじが表示されている">
 </p>
 
-## これは何か
+## 制作哲学
 
-物語の**設定と結末を先に固定**し、そのあいだの道のりだけを GA（遺伝的アルゴリズム）×シミュレーションで探すツールです。「結末が既知の物語」（昔話、恋愛もの、探偵もの）は、結末そのものではなく道中の経路にこそ面白さがある、という前提に立っています。
+人もまた、世界の中で起こる自然現象のひとつです。場所、人と人との関係、時間。主人公を取り巻く世界を十分に定義すれば、物語は自然とその方向へ転がり出します。だから物語を作ることは、世界を作ることです。
+
+人の選択も、関係と条件の網の目から生まれます（スピノザ、サポルスキー、仏教の「縁起」）。WorldBloom は「自由意志は存在しない」とする説を支持する立場で作られています。それでも登場人物には自由があります。原因なしに選べることではなく、外から曲げられずに自分の性質のままに動けること、老荘思想の「自然（おのずから然る）」です。「キャラクターが勝手に動き出す」とはその自由を得た瞬間であり、「ご都合展開」とは作者の「作為」がその自由を奪った跡です。
+
+そして意味は、出来事のあとからやってきます（予測符号化・能動的推論、ガザニガの「解釈者」、ベムの自己知覚理論）。だから WorldBloom は、まず GA とシミュレーションで世界の中の行動を起こし、それを LLM が解釈して物語にします。
+
+全文 → [WorldBloom の制作哲学](https://www.atom-box.jp/worldbloom/philosophy/)
+
+## 仕組み（要約）
 
 主体は7層構造（力・認識・資源・段階・身分・目的物・伏線）＋ vitality で表現し、遺伝子は行動系列ではなく「戦略ベクトル」（9スカラー）です。固定シードで走らせたシミュレーションのうち、固定結末に到達したものだけを MAP-Elites 格子（主導カテゴリ I〜VI × volatility）に残します。**出来事の生成に LLM は関与しません。**格子に残ったあらすじは人が読んで選び、選ばれた道のりだけを LLM が本文化します。
 
 StorySim（同作者の別プロジェクト。世界と人物をシミュレートし、面白かったログを物語に書き起こす方式）から要素を切り取って再構築したもので、フォークではありません。
+
+詳しくは → [WorldBloom の仕組み](https://www.atom-box.jp/worldbloom/how-it-works/)（読み物）／ドキュメントの[概念](https://ato-labo.github.io/WorldBloom/docs/concepts/overview/)（全体の流れ・7層・遺伝子・QD 格子・結末固定・行動タイプ・伏線・Sifting・決定論）
 
 ## できること
 
@@ -45,41 +50,49 @@ StorySim（同作者の別プロジェクト。世界と人物をシミュレー
 - **世界の自己拡張**: 実験結果から世界設定の拡張案を提案させ、承認/却下したうえで拡張あり/なしの結果を比較
 - **系譜・転機の可視化**: 世代を追った戦略の推移と、物語の転機をグラフで表示
 - **Jev（合理性チェック層）**: 行動選択が「もっともらしいか」をκスライダーで調整しながら検証（開発中の機能）
-- **ローカル GPU の自動調停**: Ollama と llama-server の同居調停・熱ガード・自動起動停止・プリロード/アンロード
-- **実行進捗の可視化**: 生成中の進捗スピナー・パーセント・残り時間(ETA)表示
 
-仕組みの詳細は後述の[解説ページ](#解説ページatom-box-サイト)を参照してください。
+GPU 調停・進捗表示など運用まわりの機能は、ドキュメントサイトの[使い方](https://ato-labo.github.io/WorldBloom/docs/usage/create-world/)（[GPU ガード](https://ato-labo.github.io/WorldBloom/docs/usage/gpu-guard/)ほか）を参照してください。
 
-自分で進化を回す・文章を生成し直す場合は、以下のソースから実行してください。
+## 試し方
 
-## 必要なもの
+**詳しい手順は → [ドキュメントサイト](https://ato-labo.github.io/WorldBloom/docs/)（[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/) / [クイックスタート](https://ato-labo.github.io/WorldBloom/docs/getting-started/quickstart/)）**
 
-- Python 3.11 以上（開発は 3.13）
-- `pip install -r requirements.txt`（PyYAML のみ）
+- **A. exe で（Windows）**: [WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) を展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます（GA実験の実行には Python 3.11以上＋PyYAML が別途必要）。
+- **B. ブラウザで見るだけ**: インストール不要の [公開ビューア](https://ato-labo.github.io/WorldBloom/) で、桃太郎・恋愛・探偵の3実験の格子・あらすじ・本文を読めます。
+- **C. ソースから**: `git clone` して `pip install -r requirements.txt`（Python 3.11以上）。同梱の `samples/` をビューアで見る、自分で GA を回すなどの手順はドキュメントサイトの[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)にまとめています。
 
-LLM を使ったあらすじ・本文生成のバックエンド設定（Ollama / Bonsai 2 / GPU ガードなど）は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照してください。
+自分で進化を回す・あらすじ/本文を生成し直す・LLM バックエンドの設定・GPU ガードなどの使い方は、ドキュメントサイトの[使い方](https://ato-labo.github.io/WorldBloom/docs/usage/create-world/)を参照してください。コマンドの引数や settings.json の全項目は[リファレンス](https://ato-labo.github.io/WorldBloom/docs/reference/cli/)、困ったときは[トラブルシューティング](https://ato-labo.github.io/WorldBloom/docs/guides/troubleshooting/)へ。開発者向け（回帰テスト・決定論の約束など）は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
-## 5分で試す
+## もっと読む
 
-### (a) clone
+### ドキュメント（手順・リファレンス）
 
-```
-git clone https://github.com/ATO-LABO/WorldBloom.git
-cd WorldBloom
-pip install -r requirements.txt
-```
+インストールから設定・コマンド・ファイル書式までの説明は、ドキュメントサイトにまとめています（日本語 / [English](https://ato-labo.github.io/WorldBloom/docs/en/)）。
 
-### (b) サンプルをビューアで見る
+- [はじめに](https://ato-labo.github.io/WorldBloom/docs/) — 概要・[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)・[クイックスタート（桃太郎で一周）](https://ato-labo.github.io/WorldBloom/docs/getting-started/quickstart/)
+- [概念](https://ato-labo.github.io/WorldBloom/docs/concepts/overview/) — 全体の流れ・7層構造・遺伝子・QD 格子・結末固定・行動タイプ・伏線・Sifting・決定論
+- [使い方](https://ato-labo.github.io/WorldBloom/docs/usage/create-world/) — 世界を作る・実行設定・結果を読む・文章生成・⚙ 設定・LLM バックエンド・GPU ガード・CLI
+- [リファレンス](https://ato-labo.github.io/WorldBloom/docs/reference/cli/) — CLI・settings.json・テンプレート書式・実行結果のファイル・HTTP API・[用語集](https://ato-labo.github.io/WorldBloom/docs/reference/glossary/)
+- [トラブルシューティング](https://ato-labo.github.io/WorldBloom/docs/guides/troubleshooting/)
 
-同梱の `samples/`（桃太郎・探偵・恋愛の3実験、格子・あらすじ・本文入り）をブラウザで見る:
+### 読み物（ATOM-BOX サイト）
 
-```
-python viewer/server.py --runs samples --port 5401
-```
+仕組みや背景を読み物として整理したページを公式サイトに置いています。コードを読む前の入口としてはこちらが向いています。
 
-`http://127.0.0.1:5401/` を開く。リポジトリ内の `samples` は閲覧専用。
+- [WorldBloom（ハブ）](https://www.atom-box.jp/worldbloom/) — 概要・できること・ダウンロード
+- [WorldBloom の制作哲学](https://www.atom-box.jp/worldbloom/philosophy/) — 物語を書くことは世界を作ること。意味は行動のあとに生まれる
+- [WorldBloom の仕組み](https://www.atom-box.jp/worldbloom/how-it-works/) — 7 層構造、遺伝子、結末固定、QD 格子、出口
+- [WorldBloom を試す](https://www.atom-box.jp/worldbloom/get-started/) — Studio / 公開ビューア / ソースからの実行
+- [なぜ GA と LLM を組み合わせるのか](https://www.atom-box.jp/worldbloom/ga-and-llm/) — 両者の得手不得手と分業の理由
+- [物語生成研究の中での位置づけ](https://www.atom-box.jp/worldbloom/background/) — Tale-Spin、進化的生成、MAP-Elites、LLM 長編生成との関係と参考文献
+- [生成例: 桃太郎](https://www.atom-box.jp/worldbloom/example-momotaro/) — 同梱サンプル exp12 の格子・あらすじ・本文
+- [用語集](https://www.atom-box.jp/worldbloom/glossary/) — 画面と解説に出る用語の定義
 
-自分で進化を回す・あらすじ/本文を生成し直す・無作為基準と比較する・回帰テストを回す場合の手順は → [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+### 開発者向け（docs/）
+
+- 開発者向けガイド（回帰テスト・決定論の約束・exe ビルド・ドキュメントの更新）: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- 詳細設計: [docs/2026-09-11_gapengine-detailed-design.md](docs/2026-09-11_gapengine-detailed-design.md)
+- ビューア UI/UX 設計: [docs/2026-09-12_viewer-ux-design.md](docs/2026-09-12_viewer-ux-design.md)
 
 ## リポジトリ構成
 
@@ -94,28 +107,13 @@ projects/    世界と主体の初期状態（7層）。momotaro / detective / r
 samples/     ビューアで開ける最小サンプル（3実験。scripts/pack_samples.py で生成）
 tests/       回帰テスト（unittest）
 docs/        設計書・実装計画・開示文書
+docsite/     ドキュメントサイトの原稿（日英、MkDocs）。main への push で自動公開
 ```
 
 ラン出力は既定でリポジトリ外に置く（`--out` で明示する）。`samples/` は例外で、配布用にリポジトリへ含めている。
 
-## 解説ページ（ATOM-BOX サイト）
-
-仕組みや背景を読み物として整理したページを公式サイトに置いています。コードを読む前の入口としてはこちらが向いています。
-
-- [WorldBloom（ハブ）](https://www.atom-box.jp/worldbloom/) — 概要・できること・ダウンロード
-- [WorldBloom の仕組み](https://www.atom-box.jp/worldbloom/how-it-works/) — 7 層構造、遺伝子、結末固定、QD 格子、出口
-- [WorldBloom を試す](https://www.atom-box.jp/worldbloom/get-started/) — Studio / 公開ビューア / ソースからの実行
-- [なぜ GA と LLM を組み合わせるのか](https://www.atom-box.jp/worldbloom/ga-and-llm/) — 両者の得手不得手と分業の理由
-- [物語生成研究の中での位置づけ](https://www.atom-box.jp/worldbloom/background/) — Tale-Spin、進化的生成、MAP-Elites、LLM 長編生成との関係と参考文献
-- [生成例: 桃太郎](https://www.atom-box.jp/worldbloom/example-momotaro/) — 同梱サンプル exp12 の格子・あらすじ・本文
-- [用語集](https://www.atom-box.jp/worldbloom/glossary/) — 画面と解説に出る用語の定義
-
-## ドキュメント
-
-- 開発者向けガイド（GA実験・LLMバックエンド設定・回帰テスト）: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
-- 詳細設計: [docs/2026-09-11_gapengine-detailed-design.md](docs/2026-09-11_gapengine-detailed-design.md)
-- ビューア UI/UX 設計: [docs/2026-09-12_viewer-ux-design.md](docs/2026-09-12_viewer-ux-design.md)
-
-## ライセンス
+## ライセンス・作者
 
 [Apache License 2.0](LICENSE)。Copyright 2026 ATO-LABO.
+
+開発: ATO-LABO（秋山智哉）。技術的な質問や共同制作の相談は [ATOM-BOX Contact](https://www.atom-box.jp/contact/) からどうぞ。

@@ -253,14 +253,14 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("cfg-test", body)
 
         # WB-UI-021: /configs carries the single 文章生成 card, defaulted from
-        # an absent settings.json (DEFAULT_BACKEND = codex-cli).
+        # an absent settings.json (DEFAULT_BACKEND = llama-server).
         self.assertIn('<section class="gs-panel" id="output" data-gs-panel="output">', body)
         self.assertIn('data-wb="output-settings"', body)
         self.assertIn(
             '<select id="f-backend" name="backend" data-field="backend">',
             body,
         )
-        self.assertIn('<option value="codex-cli" selected>', body)
+        self.assertIn('<option value="llama-server" selected>', body)
 
         status, body, _ = self.get_status("/configs/cfg-test")
         self.assertEqual(status, 200, body)
@@ -282,7 +282,7 @@ class WorkbenchTests(unittest.TestCase):
         for field in (
             "label", "project_id", "template_id",
             "evolution.generations", "evolution.population", "evolution.seeds",
-            "evolution.seed_base", "evolution.ga_seed", "evolution.processes",
+            "evolution.seed_base", "evolution.ga_seed",
             "evolution.keep", "evolution.world_expansion",
             "evolution.coevolve", "evolution.meta_evolution",
             "evolution.record_explanations", "evolution.target_ending",
@@ -294,6 +294,9 @@ class WorkbenchTests(unittest.TestCase):
         # WB-UI-021: no more generation.* fields on the run-config form --
         # text generation moved to the /configs 文章生成 card.
         self.assertNotIn('data-field="generation', body)
+        # WB-COMPUTE-001: processes moved to ⚙ 全体設定の「計算」-- no longer
+        # an editable field on the run-config form.
+        self.assertNotIn('data-field="evolution.processes"', body)
         self.assertIn('<option value="romance">romance</option>', body)
         self.assertIn('class="cfg-adv"', body)
         self.assertIn('<option value="reached" selected>結末に到達した結果</option>', body)
@@ -317,6 +320,27 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertNotIn('data-field="evolution.kappa"', body)
         self.assertNotIn("合理性（主人公がどれだけ筋の通った手を選ぶか）", body)
+
+    # ------------------------------------------------------- WB-ROUTE-001 S4
+
+    def test_no_route_section_for_genre_without_route_yaml(self):
+        # "momotaro" has no templates/momotaro/route.yaml -- the section and
+        # the ρ field must both be absent.
+        status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn('data-field="evolution.route_rho"', body)
+        self.assertNotIn("道筋（寄り道の抑え方）", body)
+
+    def test_route_rho_section_and_default_for_genre_with_route_yaml(self):
+        # "momotaro_plus2" has route.yaml -- a brand new form defaults ρ to
+        # 1.0 (unlike κ, ρ has no extra compute cost to default away from).
+        status, body, _ = self.get_status(
+            "/configs/new?project=momotaro_plus2&template=momotaro_plus2")
+        self.assertEqual(status, 200, body)
+        self.assertIn("道筋（寄り道の抑え方）", body)
+        rho_tag = self._input_tag(body, "evolution.route_rho")
+        self.assertIn('type="range"', rho_tag)
+        self.assertIn('value="1.0"', rho_tag)
 
     def test_kappa_slider_defaults_to_0_6_and_raises_wall_seconds_when_judge_available(self):
         with patch("viewer.workbench_pages._ollama_availability",
@@ -566,7 +590,7 @@ class WorkbenchTests(unittest.TestCase):
     def test_output_settings_api_round_trip(self):
         status, before = self.http("GET", "/api/settings/output")
         self.assertEqual(status, 200, before)
-        self.assertEqual(before["backend"], "codex-cli")
+        self.assertEqual(before["backend"], "llama-server")
         self.assertIsNone(before["model"])
         self.assertIn("availability", before)
 

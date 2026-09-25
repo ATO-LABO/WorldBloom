@@ -195,7 +195,7 @@ if mode == "fail":
             anchor = "from __future__ import annotations\n"
             addition = instrumentation
         else:
-            anchor = ("    def prepare_run(self, config_id, *, run_id=None, job_id):\n" if stage == "prepare"
+            anchor = ("    def prepare_run(self, config_id, *, run_id=None, job_id, processes=None):\n" if stage == "prepare"
                       else "    def verify_run(self, run_id):\n")
             addition = "".join("        " + line + "\n" for line in instrumentation.splitlines())
         self.assertEqual(source.count(anchor), 1)

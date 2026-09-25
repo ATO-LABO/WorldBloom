@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from gapengine.evolve import evolve
+from gapengine.evolve import evolve, rationality_cfg_override, route_cfg_override
 from gapengine.qd import Archive
 from gapengine.world_patch import PatchError, absolutize_references, apply_patches, approved_patches
 
@@ -140,6 +140,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--route-rho",
+        type=float,
+        default=None,
+        help=(
+            "WB-ROUTE-001 S1: override templates/<genre>/route.yaml's rho "
+            "(0 disables the route weighting layer; that is the template "
+            "default). Requesting rho>0 for a template with no route.yaml "
+            "is an error."
+        ),
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help=(
@@ -236,16 +247,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "population": args.population,
             "processes": args.processes,
             "project": project,
-            "rationality": {
-                "kappa": args.kappa,
-                "backend": args.rationality_backend,
-                "method": args.rationality_method,
-                "model": args.rationality_model,
-                "num_ctx": args.rationality_num_ctx,
-                "table": args.rationality_table,
-                "max_judge_calls_per_run": args.rationality_max_calls,
-            },
+            "rationality": rationality_cfg_override(vars(args)),
             "resume": args.resume,
+            "route": route_cfg_override(args.route_rho),
             "resume_allow_code_change": args.resume_allow_code_change,
             "seed_base": args.seed_base,
             "seeds": args.seeds,

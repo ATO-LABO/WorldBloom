@@ -74,6 +74,8 @@ def wait_until_cool(
     """Block while the GPU is at or above pause_at. Returns seconds waited."""
 
     settings = {**DEFAULT_THERMAL, **(thermal or {})}
+    if settings.get("enabled") is False:
+        return 0.0
     temperature = read()
     if temperature is None or temperature < settings["pause_at"]:
         return 0.0

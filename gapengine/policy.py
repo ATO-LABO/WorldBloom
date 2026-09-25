@@ -173,6 +173,7 @@ class Policy:
         cfg: Mapping[str, Any] | None = None,
         annotate_only: bool = False,
         rationality: Any = None,
+        route: Any = None,
     ) -> None:
         self.genome = genome
         self.precedent = precedent
@@ -191,6 +192,11 @@ class Policy:
         # policy.py free of a dependency on the rationality module). Only the
         # protagonist's Policy ever gets one; antagonists are out of scope.
         self.rationality = rationality
+        # WB-ROUTE-001 S0: an optional gapengine.route.Route (duck-typed via
+        # .annotate -- no import here, same reasoning as .rationality above).
+        # Measurement only: it never changes a weight, only adds
+        # action.meta["policy"]["route"] below.
+        self.route = route
 
     @property
     def precedent_hash(self) -> str | None:
@@ -269,10 +275,14 @@ class Policy:
         # explicit annotate_only=True (e.g. the probe's read-only recording
         # policy) always wins and, per the multipliers() gate just below,
         # never spends a judge call either.
+        # WB-ROUTE-001 S1 §2: route is treated the same way -- it is a
+        # constraint on the plan, not a personality trait, so at rho>0 it
+        # must still steer even a personality-less genome.
         annotation_only = self.annotate_only or (
             self.genome.is_neutral()
             and not self.rules
             and not (self.rationality is not None and self.rationality.enabled)
+            and not (self.route is not None and self.route.enabled)
         )
 
         if (
@@ -289,15 +299,6 @@ class Policy:
         else:
             m_rats = [1.0] * len(classified)
             p_rats = [None] * len(classified)
-
-        candidate_acts = {
-            act_key(classification, action)
-            for action, _, classification in classified
-        }
-        normalized_candidates = frozenset(
-            normalize_act(value) for value in candidate_acts
-        )
-        self_history = self._history_table(subject)
 
         turn_namespace = world.namespace(
             subject,
@@ -324,12 +325,18 @@ class Policy:
             rule for rule in self.rules if rule["scope"] == "candidate"
         ]
 
-        output: list[tuple[Action, float]] = []
-        for index, (action, weight, classification) in enumerate(classified):
-            m_rat = m_rats[index]
-            p_rat = p_rats[index]
+        # WB-ROUTE-001 S2 §2: route's motive matching needs the same
+        # candidate-target binding and turn+candidate-rule-adjusted genome
+        # a candidate-scope policy rule's own `when` uses -- computed once
+        # here (not per motive) and reused below for m_cat/m_risk/etc, so
+        # the two never disagree about "this candidate's effective genome".
+        actions_only = [action for action, _, _ in classified]
+        targets = [
+            _candidate_target(action, subject, world) for action in actions_only
+        ]
+        effective_genomes: list[Genome] = []
+        for action, target in zip(actions_only, targets):
             if candidate_rules:
-                target = _candidate_target(action, subject, world)
                 candidate_namespace = world.namespace(
                     subject,
                     present,
@@ -344,18 +351,63 @@ class Policy:
                 ]
             else:
                 candidate_adjustments = []
-
-            effective_genome = (
+            effective_genomes.append(
                 turn_genome
                 if not candidate_adjustments
                 else _adjust_genome(
                     self.genome,
-                    [
-                        *turn_adjustments,
-                        *candidate_adjustments,
-                    ],
+                    [*turn_adjustments, *candidate_adjustments],
                 )
             )
+
+        # WB-ROUTE-001 S0/S1/S2: annotate every candidate (including
+        # annotation-only/neutral-genome decisions) before any weighting.
+        # At rho<=0 this only ever *records* (m_routes below stays all
+        # 1.0s -- see Route.multiplier); at rho>0 it also modulates weight.
+        # S2 §4's gene_affinity route selection is a once-per-decision
+        # choice (not per candidate), so it gets the turn-scope genome, not
+        # any one candidate's target-adjusted one.
+        route_annotations = (
+            self.route.annotate(
+                subject,
+                world,
+                present,
+                actions_only,
+                turn=int(turn),
+                day=int(day),
+                genome=turn_genome,
+                category_mean=category_mean,
+                targets=targets,
+                candidate_genomes=effective_genomes,
+            )
+            if self.route is not None
+            else None
+        )
+        if self.route is not None and self.route.enabled:
+            m_routes = [
+                self.route.multiplier(
+                    ann["kind"], ann.get("cause"), ann.get("gene_s")
+                )
+                for ann in route_annotations
+            ]
+        else:
+            m_routes = [1.0] * len(classified)
+
+        candidate_acts = {
+            act_key(classification, action)
+            for action, _, classification in classified
+        }
+        normalized_candidates = frozenset(
+            normalize_act(value) for value in candidate_acts
+        )
+        self_history = self._history_table(subject)
+
+        output: list[tuple[Action, float]] = []
+        for index, (action, weight, classification) in enumerate(classified):
+            m_rat = m_rats[index]
+            p_rat = p_rats[index]
+            m_route = m_routes[index]
+            effective_genome = effective_genomes[index]
 
             action_key = act_key(classification, action)
             normalized_action = normalize_act(action_key)
@@ -423,12 +475,19 @@ class Policy:
                 action.meta["policy"]["p_rat"] = (
                     round(p_rat, 12) if p_rat is not None else None
                 )
+            if route_annotations is not None:
+                action.meta["policy"]["route"] = route_annotations[index]
+                # S1 §2: m_route is recorded only at rho>0 -- at rho<=0 it is
+                # always exactly 1.0 (b**0), and the plan requires ρ=0 to add
+                # no meta key at all (byte-identity with a route-free run).
+                if self.route is not None and self.route.enabled:
+                    action.meta["policy"]["m_route"] = round(m_route, 12)
 
             if not annotation_only:
                 output.append(
                     (
                         action,
-                        weight * m_rat * m_cat * m_risk * m_stance * m_nov,
+                        weight * m_route * m_rat * m_cat * m_risk * m_stance * m_nov,
                     )
                 )
 

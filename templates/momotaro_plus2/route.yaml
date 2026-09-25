@@ -1,0 +1,27 @@
+holder_belief_fact: treasure_thief
+trial_reveal_facts:  # 2026-09-24 追記: このtrialのgiverは、対応するfactを知るまで
+  鬼の弟: 弟の消息    # プランナーの立ち寄り先として現れない（村で弟の消息を調べて初めて存在を知る）
+
+# WB-ROUTE-001 S1: m_route = b ** rho。既定 rho=0.0（従来どおり無変調、バイト一致）。
+# scripts/evolve.py --route-rho や cfg["route"]["rho"] で上書きする。
+rho: 0.0
+multipliers:
+  advance: 1.0
+  prepare: 0.5
+  detour:body: 1.0
+  detour:belief: 1.0
+  detour:ignorance: 0.5
+  detour:none: 0.02
+  lost: 1.0
+
+# S1 レビュー1 設計判断D: holder への fight/sabotage/neutralize の本人believed勝率が
+# これ未満なら detour/none 扱い（勝ち目の薄い無謀な挑戦）。
+min_win_prob: 0.2
+
+# WB-ROUTE-001 S2 §4: 経路名(fight/negotiate)ごとのカテゴリ対応。最善経路の
+# 選択だけ h_eff = h * (1 + gene_affinity * (1 - 2*s_category)) で行う（h 自体は
+# 素のまま記録）。gene_affinity=0（既定）は S1 と同一。
+gene_affinity: 0.5
+route_category:
+  fight: I
+  negotiate: III

@@ -5,7 +5,7 @@ from viewer import pages, run_summary
 E, U = pages._escape, pages._url_segment
 
 
-def render(handler, values, *, projects, templates, worlds, parent=None, rationality=None):
+def render(handler, values, *, projects, templates, worlds, parent=None, rationality=None, route=None):
     from viewer import workbench_pages as wb, library_pages, run_browse
     store = wb._job_store(handler)
     from execution.library import LibraryStore
@@ -91,10 +91,11 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         )
     else:
         rationality_section = ""
+    route_section = wb._route_section(values, heading_prefix="05. ") if route is not None else ""
     advanced = ('<details class="cfg-adv"><summary>詳細設定 <span data-limit-summary></span></summary>'
         + genre_field + '<div class="rs-scale">'
         + number("乱数の開始値", "evolution.seed_base") + number("進化の乱数", "evolution.ga_seed")
-        + number("並列数", "evolution.processes", min_value=1) + '</div>'
+        + '</div><p class="rs-muted">並列数は ⚙ 全体設定の「計算」で指定します。</p>'
         + number("実行時間の上限", "execution_limits.wall_seconds", min_value=1, unit="秒")
         + '<p>共進化：敵役も並行して進化させます。メタ進化：ルールの有効・無効も探索します。</p>'
         '<p>説明記録を残すと、候補の選択・根拠・代償・転機を確認できます。</p>'
@@ -110,7 +111,7 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         '<section><h2>02. 探索の規模</h2><div class="rs-scale">' + scale
         + '</div><p class="rs-muted">同じ個体を、異なる初期条件で評価します。1世代あたり <span data-per-gen></span> 回。</p></section>'
         '<section><h2>03. 保存と進化</h2>' + keep + expansion + '<div class="rs-toggles">' + toggles + '</div></section>'
-        + rationality_section + advanced + '</div>'
+        + rationality_section + route_section + advanced + '</div>'
         + run_summary.render({k.removeprefix("evolution."): v for k, v in values.items() if k.startswith("evolution.")}, editable=True)
         +
         '<footer class="rw-footer rs-footer">'
