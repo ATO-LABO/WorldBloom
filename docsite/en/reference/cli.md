@@ -1,5 +1,5 @@
 ---
-ja_rev: "6aff353c6e14"
+ja_rev: "a442841ce61c"
 ---
 # CLI
 
@@ -19,7 +19,7 @@ Example:
 
 ```powershell
 python scripts/evolve.py --project projects/momotaro_plus2 --template templates/momotaro_plus2 `
-  --out C:\Projects\WorldBloom-local\runs\my-exp --generations 20 --population 100 --seeds 3
+  --out C:\WorldBloom-data\runs\my-exp --generations 20 --population 100 --seeds 3
 ```
 
 Point the output directory at somewhere local, not the repository on Google Drive (see [Run Outputs](run-outputs.md)).
@@ -99,5 +99,5 @@ Without `--control`, it runs as a read-only viewer where every write API is reje
 Example (starting with full functionality):
 
 ```powershell
-python viewer/server.py --runs C:\Projects\WorldBloom-local\runs --control C:\Projects\WorldBloom-local\control
+python viewer/server.py --runs C:\WorldBloom-data\runs --control C:\WorldBloom-data\control
 ```

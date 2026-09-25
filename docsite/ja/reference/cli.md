@@ -28,7 +28,7 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 
 ```powershell
 python scripts/evolve.py --project projects/momotaro_plus2 --template templates/momotaro_plus2 `
-  --out C:\Projects\WorldBloom-local\runs\my-exp --generations 20 --population 100 --seeds 3
+  --out C:\WorldBloom-data\runs\my-exp --generations 20 --population 100 --seeds 3
 ```
 
 出力先は Google Drive 上のリポジトリではなく、ローカルの `runs/<experiment>/` に置いてください（詳しくは[実行結果のファイル](run-outputs.md)）。
@@ -108,5 +108,5 @@ python scripts/evolve.py --project projects/momotaro_plus2 --template templates/
 例（フル機能で起動）:
 
 ```powershell
-python viewer/server.py --runs C:\Projects\WorldBloom-local\runs --control C:\Projects\WorldBloom-local\control
+python viewer/server.py --runs C:\WorldBloom-data\runs --control C:\WorldBloom-data\control
 ```

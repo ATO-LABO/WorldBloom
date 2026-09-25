@@ -1,9 +1,9 @@
 ---
-ja_rev: "5e1353ae5105"
+ja_rev: "fd73d3c3ffa6"
 ---
 # Run Outputs
 
-Running `python scripts/evolve.py --out <run dir>` produces the following under `<run dir>` (from an actual measurement — 1 generation, 2 individuals, 1 seed on `momotaro_plus2`, under `C:\Projects\WorldBloom-local\runs\docs-phase3\`).
+Running `python scripts/evolve.py --out <run dir>` produces the following under `<run dir>` (from an actual measurement — 1 generation, 2 individuals, 1 seed on `momotaro_plus2`).
 
 ```
 <run dir>/
