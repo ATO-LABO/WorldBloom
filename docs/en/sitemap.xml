@@ -5,11 +5,27 @@
          <lastmod>2026-09-25</lastmod>
     </url>
     <url>
+         <loc>https://ato-labo.github.io/WorldBloom/docs/en/concepts/action-types/</loc>
+         <lastmod>2026-09-25</lastmod>
+    </url>
+    <url>
          <loc>https://ato-labo.github.io/WorldBloom/docs/en/concepts/determinism/</loc>
          <lastmod>2026-09-25</lastmod>
     </url>
     <url>
+         <loc>https://ato-labo.github.io/WorldBloom/docs/en/concepts/fixed-ending/</loc>
+         <lastmod>2026-09-25</lastmod>
+    </url>
+    <url>
+         <loc>https://ato-labo.github.io/WorldBloom/docs/en/concepts/foreshadowing/</loc>
+         <lastmod>2026-09-25</lastmod>
+    </url>
+    <url>
          <loc>https://ato-labo.github.io/WorldBloom/docs/en/concepts/genome/</loc>
+         <lastmod>2026-09-25</lastmod>
+    </url>
+    <url>
+         <loc>https://ato-labo.github.io/WorldBloom/docs/en/concepts/overview/</loc>
          <lastmod>2026-09-25</lastmod>
     </url>
     <url>
@@ -46,6 +62,10 @@
     </url>
     <url>
          <loc>https://ato-labo.github.io/WorldBloom/docs/en/reference/cli/</loc>
+         <lastmod>2026-09-25</lastmod>
+    </url>
+    <url>
+         <loc>https://ato-labo.github.io/WorldBloom/docs/en/reference/design-docs/</loc>
          <lastmod>2026-09-25</lastmod>
     </url>
     <url>

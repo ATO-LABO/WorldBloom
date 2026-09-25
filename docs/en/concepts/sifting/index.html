@@ -451,6 +451,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fixed-ending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fixed Ending
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../seven-layers/" class="md-nav__link">
         
   
@@ -487,6 +543,62 @@
     
   
     Genome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../action-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Action Types I–VI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foreshadowing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foreshadowing
   
 
     
@@ -544,6 +656,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sifting
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -560,6 +690,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#screen-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screen layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selection-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selection status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compare-lineage-turning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison, lineage, and turning points
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1104,6 +1286,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/design-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1274,6 +1484,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#screen-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screen layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selection-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selection status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compare-lineage-turning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison, lineage, and turning points
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1293,16 +1544,54 @@
 
 
 <h1 id="sifting">Sifting<a class="headerlink" href="#sifting" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Not translated yet</p>
-<p>This page has not been translated into English yet. Please switch to 日本語 with the language selector (文A) at the top right to read the Japanese version.</p>
-</div>
+<p>Sifting is the process where a human reads the candidates left in the <a href="../qd-map/">QD Map</a> and decides which are worth turning into a synopsis or prose. In WorldBloom, judging "is this interesting" is always done by a human, never by the LLM (the LLM's only role is turning the chosen path into prose).</p>
+<h2 id="screen-layout">Screen layout<a class="headerlink" href="#screen-layout" title="Permanent link">&para;</a></h2>
+<p>Clicking a grid cell opens the candidate's detail across three tabs.</p>
+<ul>
+<li><strong>物語 (Story)</strong>: this candidate's synopsis (if generated), the ending, and links to detailed rationale/generation status</li>
+<li><strong>選択とメモ (Choices &amp; notes)</strong>: the selection status and a free-text notes field</li>
+<li><strong>実験データ (Run data)</strong>: run data such as candidate ID, generation, individual, and seed, plus a link to the raw log (<code>layers.jsonl</code>)</li>
+</ul>
+<h2 id="selection-status">Selection status<a class="headerlink" href="#selection-status" title="Permanent link">&para;</a></h2>
+<p>Each candidate carries one of four statuses.</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✔ 採用 (Adopted)</td>
+<td>Proceed to generation</td>
+</tr>
+<tr>
+<td>⏸ 保留 (Held)</td>
+<td>Decide later</td>
+</tr>
+<tr>
+<td>✖ 除外 (Excluded)</td>
+<td>Don't use</td>
+</tr>
+<tr>
+<td>○ 未分類 (Unsorted, default)</td>
+<td>Not judged yet</td>
+</tr>
+</tbody>
+</table>
+<p>Only adopted candidates go on to <a href="../../usage/generate-text/">generate a synopsis/text</a>. A held candidate can be revisited later and switched to adopted. Selection status and notes are saved as a "selection version" — if another tab or run already saved a newer version, a later save is rejected (to prevent overwrites, you need to reload the latest state before saving).</p>
+<h2 id="compare-lineage-turning">Comparison, lineage, and turning points<a class="headerlink" href="#compare-lineage-turning" title="Permanent link">&para;</a></h2>
+<p>Selecting 2–4 representative candidates from different cells opens a comparison screen. You can read them side by side across three tabs: synopsis, "choice/rationale/cost/turning point", and run data (candidate ID, cell, generation, seed, quality, ending, raw log). From a candidate's detail you can also visualize the <strong>lineage (main line)</strong> — the single line traced back through parents from that individual, letting you see which decisions accumulated into this story across generations — and the <strong>turning point</strong> — re-running an adjacent parent/child pair on the lineage with the same random seed to show where the protagonist's decision first diverged. Use these when you want to trace "why this story turned out this way" as evolutionary history.</p>
 
 
 
 
 
 
+
+  
+  
 
 
 
