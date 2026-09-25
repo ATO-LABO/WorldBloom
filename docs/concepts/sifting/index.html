@@ -544,6 +544,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sifting
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -560,6 +578,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        画面の構成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        選定状態
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compare-lineage-turning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        比較・系譜・転機
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1076,6 +1146,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1246,6 +1344,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        画面の構成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        選定状態
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compare-lineage-turning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        比較・系譜・転機
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1265,14 +1404,54 @@
 
 
 <h1 id="sifting">Sifting<a class="headerlink" href="#sifting" title="Permanent link">&para;</a></h1>
-<p>Sifting は、QD 格子に残った候補を人が読んで選ぶ工程です。画面上では格子のセルをクリックして候補の「物語」「選択とメモ」「実験データ」を確認し、気に入ったものを採用（保留に戻すことも可能）します。採用した候補だけが、次のあらすじ・本文生成の対象になります。出来事の生成そのものに LLM は関与せず、Sifting で選ばれた道のりだけを LLM が文章にします。</p>
-<p>Sifting の設計意図は ATOM-BOX の <a href="https://www.atom-box.jp/worldbloom/how-it-works/">WorldBloom の仕組み</a> を参照してください。</p>
+<p>Sifting（ふるい分け）は、<a href="../qd-map/">QD 格子</a>に残った候補を人が読み、あらすじ・本文にする価値があるかを選ぶ工程です。WorldBloom で「面白いかどうか」を判断するのは常に人であり、LLM ではありません（LLM の役割は選ばれた道のりを文章にすることだけです）。</p>
+<h2 id="_1">画面の構成<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>格子のセルをクリックすると、候補の詳細が3つのタブで開きます。</p>
+<ul>
+<li><strong>物語</strong>: この候補のあらすじ（生成済みの場合）、結末、詳しい根拠・生成状況へのリンク</li>
+<li><strong>選択とメモ</strong>: 選定状態と自由記述のメモ</li>
+<li><strong>実験データ</strong>: 候補ID・世代・個体・seed などの実験データ、原記録（<code>layers.jsonl</code>）へのリンク</li>
+</ul>
+<h2 id="_2">選定状態<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>候補には次の4つの状態のいずれかを付けます。</p>
+<table>
+<thead>
+<tr>
+<th>状態</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✔ 採用</td>
+<td>生成に進める</td>
+</tr>
+<tr>
+<td>⏸ 保留</td>
+<td>あとで決める</td>
+</tr>
+<tr>
+<td>✖ 除外</td>
+<td>使わない</td>
+</tr>
+<tr>
+<td>○ 未分類</td>
+<td>まだ判断していない（既定）</td>
+</tr>
+</tbody>
+</table>
+<p>採用した候補だけが、次の<a href="../../usage/generate-text/">あらすじ・本文の生成</a>の対象になります。保留にした候補はあとから見直して採用に切り替えられます。選定状態とメモは「選定版」として保存され、他のタブ・実行から先に保存されていると版が進み、あとからの保存は拒否されます（上書き防止のため、保存前に最新の状態を読み直す必要があります）。</p>
+<h2 id="compare-lineage-turning">比較・系譜・転機<a class="headerlink" href="#compare-lineage-turning" title="Permanent link">&para;</a></h2>
+<p>異なる区画の代表候補を2〜4件選んで並べると、比較画面が開きます。あらすじ・「選択・根拠・代償・転機」・実験データ（候補ID・区画・世代・seed・品質・結末・原記録）の3タブで読み比べられます。また、ある候補がどの世代のどの親から生まれたかを一本道でたどる<strong>系譜（主系）</strong>と、隣り合う親子を同じ乱数の種で再実行して主人公の決定が最初に分かれた地点を示す<strong>転機</strong>の可視化もあります。「なぜこの物語になったか」を進化の履歴として確認したいときに使います。</p>
 
 
 
 
 
 
+
+  
+  
 
 
 

@@ -855,6 +855,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI での作業手順
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -871,6 +889,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-ga" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. GA 実験を回す
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. あらすじ・本文を生成する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 決定論・回帰テスト
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1076,6 +1146,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1246,6 +1344,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-ga" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. GA 実験を回す
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. あらすじ・本文を生成する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 決定論・回帰テスト
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1265,23 +1404,46 @@
 
 
 <h1 id="cli">CLI での作業手順<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
-<p>このページで扱う予定の内容:</p>
+<p>Studio 画面を使わず、コマンドラインだけで GA 実験からあらすじ・本文の生成まで一周する手順です。引数の一覧は<a href="../../reference/cli/">CLI</a>を参照してください。</p>
+<h2 id="1-ga">1. GA 実験を回す<a class="headerlink" href="#1-ga" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>python scripts/evolve.py --project projects/momotaro --template templates/momotaro \
+  --out &lt;出力先&gt;/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
+</code></pre></div>
 <ul>
-<li><code>scripts/evolve.py</code> で GA 実験を回す</li>
-<li><code>scripts/synopsize.py</code> / <code>scripts/narrate.py</code> であらすじ・本文を生成する</li>
-<li><code>scripts/random_baseline.py</code> で無作為基準と比較する</li>
-<li>回帰テストの回し方</li>
+<li><code>--project</code> / <code>--template</code> は同梱の <code>basic</code> / <code>momotaro</code> / <code>momotaro_plus</code> / <code>momotaro_plus2</code> / <code>detective</code> / <code>romance</code> が使えます（<code>templates/</code> 配下の一覧。<code>basic</code> は共通の基本ルールで、それ単体をジャンルとして指定することはあまりありません）</li>
+<li>出力先はリポジトリ外を推奨します（<code>.gitignore</code> は <code>runs/</code> を無視しますが、リポジトリ内に大量の実験出力を置くべきではありません）</li>
+<li>所要時間の目安: 世代数×個体数×seed数にほぼ比例します。既定の規模（20世代×100個体×3seed）は20コアで約1時間が目安です（並列数は<a href="../settings/">設定</a>の「計算」で指定します）</li>
+<li>完了すると <code>&lt;出力先&gt;/exp1/archive.json</code> に格子（アーカイブ）が書き出されます。<code>cells=&lt;件数&gt;</code> は結末に到達して格子に残った代表個体の数です</li>
 </ul>
-<div class="admonition note">
-<p class="admonition-title">準備中</p>
-<p>コマンド例は現時点では <a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/DEVELOPMENT.md">docs/DEVELOPMENT.md</a> にまとまっています。引数の一覧は <a href="../../reference/cli/">CLI</a> を参照してください。</p>
-</div>
+<p>無作為な方針だけで結末に届く割合と多様性を測る対照実験も行えます。</p>
+<div class="highlight"><pre><span></span><code>python scripts/random_baseline.py --project projects/momotaro --template templates/momotaro --out &lt;出力先&gt;/baseline
+</code></pre></div>
+<h2 id="2">2. あらすじ・本文を生成する<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>python scripts/synopsize.py --archive &lt;出力先&gt;/exp1/archive.json --runs &lt;出力先&gt;/exp1 \
+  --out &lt;出力先&gt;/exp1/synopses.json --backend ollama --project projects/momotaro --template templates/momotaro
+
+python scripts/narrate.py --archive &lt;出力先&gt;/exp1/archive.json --selection &lt;出力先&gt;/exp1/selection.json \
+  --out &lt;出力先&gt;/exp1/stories --backend ollama --project projects/momotaro --template templates/momotaro
+</code></pre></div>
+<ul>
+<li><code>--backend</code> は <code>claude-cli</code> / <code>codex-cli</code> / <code>anthropic</code> / <code>openai</code> / <code>ollama</code> / <code>llama-server</code> / <code>none</code> から選べます（<a href="../llm-backends/#model-defaults">LLM バックエンド</a>を参照）。<code>none</code> を指定すると LLM を呼び出さず、プロンプトだけを保存します</li>
+<li>上の例の <code>--backend ollama</code> は <code>settings.json</code> が無い（または <code>model</code> を書いていない）と、既定モデル <code>qwen3.6:35b</code> を要求します。<a href="../llm-backends/">LLM バックエンド</a>の手順で <code>qwen3.5:9b-q4_K_M</code> などを pull 済みの場合は、<code>settings.json</code> の <code>output.ollama.model</code> にそのモデル名を書いてください</li>
+<li><code>selection.json</code> は <code>{"selected": ["III|high"]}</code> の形式です（キーは格子のセル = <code>カテゴリ|volatility区分</code>。実際に確認したキー例: <code>I|mid</code>, <code>II|high</code>, <code>III|low</code> など）</li>
+<li>あらすじの確認・格子セルの選定は、<code>--control</code> 付きで起動したビューア画面からも行えます</li>
+</ul>
+<h2 id="3">3. 決定論・回帰テスト<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>python -m unittest discover -s tests -v
+</code></pre></div>
+<p>決定論・中立遺伝子の無変調・前提違反ゼロ・伏線の減点・vitality の遷移などを確認します。<code>engine/</code> <code>gapengine/</code> を変更したときは必ず実行してください。詳しくは<a href="../../concepts/determinism/">決定論</a>を参照してください。</p>
 
 
 
 
 
 
+
+  
+  
 
 
 

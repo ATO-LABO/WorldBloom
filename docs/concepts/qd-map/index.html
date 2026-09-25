@@ -516,6 +516,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QD 格子
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -532,6 +550,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        アーカイブに入るための条件
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2つの軸
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#q" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        品質 q（絶対スケール）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        画面での読み方
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1076,6 +1157,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1246,6 +1355,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        アーカイブに入るための条件
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2つの軸
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#q" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        品質 q（絶対スケール）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        画面での読み方
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1265,14 +1426,47 @@
 
 
 <h1 id="qd">QD 格子<a class="headerlink" href="#qd" title="Permanent link">&para;</a></h1>
-<p>固定結末に到達したランだけを、MAP-Elites の格子（アーカイブ）に入れます。軸は2つ: <strong>主導カテゴリ</strong>（主人公の有効な決定イベントで最も多かった行動カテゴリ）と、<strong>volatility</strong>（層ベクトルの変化量の分散、物語の起伏の激しさ）です。既定は6×3の格子で、ジャンルごとにテンプレート側で軸の段階数を調整できます。各セルには品質スコアが最も高い代表個体と、その模範ランのログが記録されます。</p>
-<p>格子の考え方は ATOM-BOX の <a href="https://www.atom-box.jp/worldbloom/how-it-works/">WorldBloom の仕組み</a> を参照してください。</p>
+<p>WorldBloom は、結末に到達したランを点数の高い順に1本だけ残すのではなく、<strong>質と多様性を両立させる格子（MAP-Elites によるアーカイブ）</strong>に並べます。これにより「鬼と和解する桃太郎」と「仲間を犠牲にして勝つ桃太郎」のように、種類の違う物語がどちらも生き残ります。</p>
+<h2 id="_1">アーカイブに入るための条件<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>各遺伝子は、あらかじめ固定した複数の乱数の種（seed）で走らせます。<a href="../seven-layers/#predicates">結末</a>に到達したランだけがアーカイブに入る資格を持ちます（到達しなかったランには「条件をどこまで満たしたか」の部分点だけを与え、次世代の親選びに使います）。世界側を結末に合わせて曲げることはしないため、到達率は一般に低く出ます（決して探索が最大化する目標ではなく、あくまでアーカイブに入るための入場ゲートです）。</p>
+<h2 id="2">2つの軸<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>軸</th>
+<th>決め方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主導カテゴリ（行）</td>
+<td>主人公の決定イベントのうち、実際に7層へ変化を与えた（<code>effective</code>）ものだけを数え、最も多く効いた行動カテゴリ。移動の反復のような雑音は除きます。<strong>遺伝子側のカテゴリ重みの傾向とは別の値</strong>で、両者は一致しないことがあります</td>
+</tr>
+<tr>
+<td>volatility（列、起伏）</td>
+<td>主人公の7層の状態をターンごとにベクトル化し、直前のターンとの変化量の分散。値の閾値は、世代0の母集団を三分位で区切って固定します</td>
+</tr>
+</tbody>
+</table>
+<p>既定の格子は6行×3列（起伏を low / mid / high に区切る）で、軸に使うカテゴリの範囲や段階数はジャンルのテンプレート（<code>templates/&lt;genre&gt;/qd.yaml</code>）で調整できます。各セルには<strong>品質が最も高い代表個体（模範ラン）1本だけ</strong>が残り、あとから品質の高い個体が現れたときだけ入れ替わります。</p>
+<h2 id="q">品質 q（絶対スケール）<a class="headerlink" href="#q" title="Permanent link">&para;</a></h2>
+<p>品質 q は、他のランと比べた相対評価ではなく、0〜1の<strong>絶対スケール</strong>で計算します。</p>
+<ul>
+<li>加点: 目的物の移動回数、関係の振れ幅、倒れてからの復帰、力関係の逆転、新事実の獲得、信念の反転、前提を揃えた行動の連鎖（例: 観測してから無力化する、といった一連の流れが完成した回数）</li>
+<li>減点: 空振り（無効な結果に終わった判定）の多さ、同じ (行動, 対象) の3連続以上、退避・待機の比率、未回収の伏線（回収条件が指定された伏線が最後まで回収されなかったもの）</li>
+</ul>
+<p>絶対スケールであるため、世界の作り方によって出やすい水準が異なります（未回収になりがちな伏線を多く仕込んだ世界は、構造的に q が低く出ます）。アーカイブ全体の平均を q̄ と呼びます。</p>
+<h2 id="_2">画面での読み方<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>実行結果の画面には、格子の<strong>占有マス</strong>（埋まった区画の数。多いほど違う種類の物語が見つかっている）と、<strong>相異度</strong>（アーカイブに残ったラン同士がどれだけ違う経路を通ったかの平均。1に近いほど多様）が表示されます。セルを開くと、その代表個体の<strong>到達</strong>（このエリートが評価されたシードのうち結末に届いた回数）や、生成した世代・親（2つの個体）を確認できます。詳しい読み方は<a href="../../usage/read-results/">結果を読む</a>を参照してください。</p>
 
 
 
 
 
 
+
+  
+  
 
 
 
