@@ -10,7 +10,7 @@
 - git is optional (without it, some provenance info in run output is simply left blank)
 
 !!! tip "Pick your LLM backend in ⚙ 設定 (Settings) first"
-    A GA experiment itself does not need an LLM at all — only synopsis/text generation does. If you plan to use generation, open the app's **⚙ 設定 (Settings)** screen first and choose a backend (Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない (no generation; save prompts only)) and a model name. With no settings at all, the default backend is llama-server (codex-cli in the v1.0.0-viewer release). Either way the model name is never chosen automatically, so you must set it yourself. Ollama and llama-server themselves are not bundled with WorldBloom; install them separately. See [LLM Backends](../usage/llm-backends.md).
+    A GA experiment itself does not need an LLM at all — only synopsis/text generation does. If you plan to use generation, open the app's **⚙ 設定 (Settings)** screen first and choose a backend (Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない (no generation; save prompts only)) and a model name. With no settings at all, the default backend is llama-server (codex-cli in the v1.0.0-viewer release). Only claude-cli works with no model set (it falls back to `claude-sonnet-5`); every other backend requires you to set one yourself. Ollama and llama-server themselves are not bundled with WorldBloom; install them separately. See [LLM Backends](../usage/llm-backends.md).
 
 === "Studio (full-featured)"
 
@@ -48,7 +48,7 @@
     python viewer/server.py --runs samples --port 5401
     ```
 
-    Open `http://127.0.0.1:5401/`. This mode has no editing or run controls (no `--control` flag).
+    Open `http://127.0.0.1:5401/`. This mode has no run controls or config editing, but Sifting's selection checkboxes still write — directly to each experiment's `selection.json` under `runs`, bypassing job management (no `--control` flag).
 
     To run your own GA experiments or regenerate synopses/text, start with `--control` (keep `runs`/`control` outside the repository):
 
