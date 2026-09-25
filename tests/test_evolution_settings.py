@@ -106,3 +106,36 @@ class PrepareRunProcessesOverrideTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GpuThermalSettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-gpu-thermal-")
+        self.addCleanup(self.temp.cleanup)
+        self.settings_path = Path(self.temp.name) / "settings.json"
+
+    def _thermal(self):
+        import json
+        return json.loads(self.settings_path.read_text(encoding="utf-8"))["output"]["gpu_guard"]["thermal"]
+
+    def test_toggle_and_threshold_round_trip_and_keep_other_thermal_keys(self):
+        from gapengine.gpu_guard import wait_until_cool
+        atomic_json(self.settings_path, {"output": {"gpu_guard": {"observe_seconds": 15, "thermal": {"poll_seconds": 15, "pause_at": 78, "resume_at": 70}}}})
+        view = read_evolution_settings(self.settings_path)
+        self.assertEqual((view["thermal_enabled"], view["pause_at"]), (True, 78))
+        view = write_evolution_settings(self.settings_path, {"processes": 2, "thermal_enabled": True, "pause_at": 72})
+        self.assertEqual(view["pause_at"], 72)
+        self.assertEqual(self._thermal(), {"poll_seconds": 15, "pause_at": 72, "resume_at": 64, "enabled": True})
+        write_evolution_settings(self.settings_path, {"thermal_enabled": False, "pause_at": 72})
+        self.assertFalse(read_evolution_settings(self.settings_path)["thermal_enabled"])
+        # Disabled thermal guard never waits, even when the GPU is hot.
+        self.assertEqual(wait_until_cool(self._thermal(), read=lambda: 99.0, sleep=lambda s: self.fail("slept")), 0.0)
+        with self.assertRaises(ConfigError):
+            write_evolution_settings(self.settings_path, {"pause_at": 40})
+
+    def test_saving_processes_alone_does_not_create_gpu_guard(self):
+        atomic_json(self.settings_path, {"output": {"default_backend": "none"}})
+        view = read_evolution_settings(self.settings_path)
+        write_evolution_settings(self.settings_path, {"processes": 2, "thermal_enabled": view["thermal_enabled"], "pause_at": view["pause_at"]})
+        import json
+        self.assertNotIn("gpu_guard", json.loads(self.settings_path.read_text(encoding="utf-8"))["output"])

@@ -54,11 +54,17 @@
     let csaved = initial.compute;
     let cbusy = false;
     const cfield = $("#gs-processes", cform);
-    const cvalues = () => ({ processes: cfield.value === "" ? null : Number(cfield.value) });
-    const cdifferent = () => JSON.stringify(cvalues()) !== JSON.stringify({ processes: csaved.processes });
+    const tfield = $("#gs-thermal-enabled", cform);
+    const pfield = $("#gs-pause_at", cform);
+    const num = f => f.value === "" ? null : Number(f.value);
+    const cvalues = () => ({ processes: num(cfield), thermal_enabled: tfield.checked, pause_at: num(pfield) });
+    const pick = s => ({ processes: s.processes, thermal_enabled: s.thermal_enabled, pause_at: s.pause_at });
+    const cdifferent = () => JSON.stringify(cvalues()) !== JSON.stringify(pick(csaved));
+    const cfill = () => { cfield.value = csaved.processes; tfield.checked = csaved.thermal_enabled; pfield.value = csaved.pause_at; };
     function cdrawSaved() {
       const dl = $("[data-gs-compute-saved]", cform); dl.replaceChildren();
       appendText(dl, "dt", "並列数"); appendText(dl, "dd", `${csaved.processes}`);
+      appendText(dl, "dt", "GPU ガード"); appendText(dl, "dd", csaved.thermal_enabled ? `オン（${csaved.pause_at}℃で一時停止）` : "オフ");
     }
     function cupdate(message) {
       const changed = cdifferent();
@@ -68,12 +74,13 @@
       $("[data-gs-compute-save]", cform).disabled = cbusy || !changed;
       $("[data-gs-compute-reset]", cform).disabled = cbusy || !changed;
       $("[data-gs-compute-fields]", cform).disabled = cbusy;
+      pfield.disabled = cbusy || !tfield.checked;
       $("[data-gs-compute-status]", cform).textContent =
         message || (changed ? "変更はまだ保存されていません" : "保存済みの設定を表示しています");
     }
     cform.addEventListener("input", () => { $("[data-compute-form-error]", cform).textContent = ""; cupdate(); });
     $("[data-gs-compute-reset]", cform).addEventListener("click", () => {
-      cfield.value = csaved.processes; cupdate("変更を戻しました。保存済みの設定を表示しています");
+      cfill(); cupdate("変更を戻しました。保存済みの設定を表示しています");
     });
     cform.addEventListener("submit", async event => {
       event.preventDefault();
@@ -81,7 +88,7 @@
       cbusy = true; cupdate("設定を保存中…");
       try {
         csaved = await api("/api/settings/evolution", cvalues());
-        cfield.value = csaved.processes; cdrawSaved();
+        cfill(); cdrawSaved();
         cbusy = false; cupdate("設定を保存しました。次に開始するGA実験から適用されます");
       } catch (e) {
         cbusy = false;

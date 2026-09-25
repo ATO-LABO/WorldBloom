@@ -31,6 +31,8 @@
 .gs-editor { padding:22px 30px; overflow:auto; min-width:0; }
 .gs-shell fieldset { border:0; padding:0; margin:0; min-width:0; }
 .gs-field { display:flex; flex-direction:column; gap:7px; font-size:.87rem; margin-bottom:17px; }
+.gs-check { display:flex; align-items:center; gap:8px; font-size:.87rem; margin-bottom:17px; }
+.gs-shell .gs-check input { width:auto; margin:0; padding:0; }
 .gs-shell input,.gs-shell select { font:inherit; font-size:15px; color:var(--ws-text); width:100%; min-width:0; background:var(--ws-surface); border:1px solid var(--ws-control-line); border-radius:var(--ws-radius); padding:8px 12px; }
 .gs-input { display:flex; align-items:center; background:var(--ws-surface); border:1px solid var(--ws-control-line); border-radius:var(--ws-radius); }
 .gs-input input { border:0; background:transparent; }

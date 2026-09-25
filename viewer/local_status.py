@@ -178,7 +178,7 @@ def snapshot(
         preload_state = dict(_preload_state)
 
     rows = [
-        _temperature_row(thermal, guard_enabled, read=temperature_read),
+        _temperature_row(thermal, guard_enabled and thermal.get("enabled") is not False, read=temperature_read),
         _lease_row(guard, enabled=guard_enabled, state=lease_state),
         _llama_row(llama_config, is_ready=llama_is_ready),
         _ollama_row(guard, ollama_config, list_models=ollama_list_models, loaded_models=ollama_loaded_models),
