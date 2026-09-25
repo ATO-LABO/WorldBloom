@@ -303,7 +303,8 @@ def prepare(args, job, folder):
             from execution.world_patch_job import prepare as prepare_patch
             manifest = prepare_patch(configs, job, request)
         else:
-            manifest = configs.prepare_run(request["config_id"], run_id=job["run_id"], job_id=args.job)
+            manifest = configs.prepare_run(request["config_id"], run_id=job["run_id"], job_id=args.job,
+                                            processes=job.get("processes"))
             configs.verify_run(job["run_id"])
         atomic(folder / "prepared.json", manifest)
         return 0

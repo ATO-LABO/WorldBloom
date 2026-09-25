@@ -512,6 +512,22 @@ class ViewerPageTests(unittest.TestCase):
             self.assertNotIn("data-quick-start", html)
             self.assertEqual(html.count("<a "), 1)
 
+    def test_quick_start_passes_route_rho_only_when_route_yaml_exists(self):
+        # WB-ROUTE-001 S4 §2: momotaro_plus2 has templates/momotaro_plus2/
+        # route.yaml, momotaro does not -- rho carries no compute cost
+        # (unlike kappa), so the quick-start button passes it outright.
+        repo = Path(pages.__file__).resolve().parents[1]
+        with_route = pages.quick_start_actions(
+            "momotaro_plus2", "momotaro_plus2", "桃太郎", "/configs/new", repo=repo,
+        )
+        self.assertIn('data-route-rho="1.0"', with_route)
+        self.assertIn("道筋 ρ=1.0 で実行", with_route)
+        without_route = pages.quick_start_actions(
+            "momotaro", "momotaro", "桃太郎", "/configs/new", repo=repo,
+        )
+        self.assertNotIn("data-route-rho", without_route)
+        self.assertNotIn("道筋 ρ", without_route)
+
     def test_quick_start_actions_escapes_and_wires_data_attrs(self):
         html = pages.quick_start_actions(
             "momo\"taro", "roman<ce", "桃太郎 & 一味", "/configs/new?project=momotaro&template=romance",
@@ -522,6 +538,44 @@ class ViewerPageTests(unittest.TestCase):
         self.assertIn('data-world-name="桃太郎 &amp; 一味"', html)
         self.assertNotIn('"roman<ce"', html)
         self.assertEqual(html.count("<a "), 2)
+
+
+class RouteReasonBadgeTests(unittest.TestCase):
+    """WB-ROUTE-001 S4 §1.2: the timeline reason line and the run-level
+    breakdown, both additive-only (no "motives"/no route -> unchanged)."""
+
+    def test_motive_line_renders_badge_event_and_reason(self):
+        line = pages._motive_line({
+            "event": "森を調べた", "why": "木材を集めた",
+            "kind": "advance", "cause": None,
+        })
+        self.assertIn('<span class="tag route-advance">前進</span>', line)
+        self.assertIn("森を調べた", line)
+        self.assertIn("木材を集めた", line)
+
+    def test_motive_line_falls_back_when_reason_is_none(self):
+        line = pages._motive_line({
+            "event": "鬼と戦った", "why": None, "kind": "detour", "cause": "none",
+        })
+        self.assertIn("はっきりした理由は記録されていない", line)
+        self.assertIn('route-none', line)
+
+    def test_route_breakdown_counts_kinds_and_none_subset(self):
+        decisions = [
+            {"subject": "桃太郎", "system": {"policy": {"route": {"kind": "advance", "cause": None}}}},
+            {"subject": "桃太郎", "system": {"policy": {"route": {"kind": "prepare", "cause": None}}}},
+            {"subject": "桃太郎", "system": {"policy": {"route": {"kind": "detour", "cause": "none"}}}},
+            {"subject": "桃太郎", "system": {"policy": {"route": {"kind": "detour", "cause": "motive"}}}},
+            {"subject": "桃太郎", "system": {"policy": {"route": {"kind": "lost", "cause": "x"}}}},
+            {"subject": "鬼", "system": {"policy": {"route": {"kind": "advance", "cause": None}}}},
+        ]
+        line = pages._route_breakdown(decisions, "桃太郎")
+        self.assertEqual(line, "前進 1／準備 1／寄り道 2〈うち理由なし 1〉／見通しなし 1")
+
+    def test_route_breakdown_is_none_without_any_route(self):
+        decisions = [{"subject": "桃太郎", "system": {"policy": None}}]
+        self.assertIsNone(pages._route_breakdown(decisions, "桃太郎"))
+        self.assertIsNone(pages._route_breakdown([], "桃太郎"))
 
 
 if __name__ == "__main__":

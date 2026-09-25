@@ -389,6 +389,64 @@ def describe_row(
     return text
 
 
+def route_reason(route: Mapping[str, Any]) -> str | None:
+    """WB-ROUTE-001 S3: turn ``policy.route`` into a prose reason, or None
+    when the route layer explicitly recorded "no reason". ``lost`` gets a
+    fixed text -- except when its cause is body/belief (route.text is
+    written for those two causes even while lost, S3.5 §3: a fatigued or
+    mistaken wander still has a real reason to report, not the flat "no
+    plan reaches anywhere" text). Every other kind/cause (advance, prepare,
+    detour with cause in motive/belief/body/ignorance) reuses route.text as-
+    is -- it is already natural Japanese, S0-S2. detour/none is the one
+    case with no reason to report."""
+
+    kind = route.get("kind")
+    cause = route.get("cause")
+    if kind == "lost" and cause not in ("body", "belief"):
+        return "先の見通しが立たないまま動いた"
+    if kind == "detour" and cause == "none":
+        return None
+    text = route.get("text")
+    return str(text) if text is not None else None
+
+
+def _scene_motives(
+    narrative_rows: Sequence[Mapping[str, Any]],
+    world_meta: Mapping[str, Any],
+    protagonist: str,
+) -> list[dict[str, Any]]:
+    """One entry per protagonist decision row in this scene that carries a
+    ``policy.route`` (WB-ROUTE-001 S1+, GA 経路では rho>0 のときだけ --
+    評価・プローブは rho=0 でも注釈用に Route を持つので、そちらのランには
+    route が付く場合がある). Rows without a route
+    (rho=0, or a run predating the route layer) are skipped entirely, so a
+    scene with no route-bearing decisions ends up with no motives here --
+    ``extract_scenes`` leaves the "motives" key off the scene dict in that
+    case, keeping old runs byte-identical."""
+
+    motives: list[dict[str, Any]] = []
+    for row in narrative_rows:
+        if row.get("kind") != "decision" or row.get("subject") != protagonist:
+            continue
+        route = _as_mapping(_as_mapping(row.get("policy")).get("route"))
+        if not route:
+            continue
+        motives.append(
+            {
+                "event": describe_row(row, world_meta),
+                "why": route_reason(route),
+                "kind": route.get("kind"),
+                "cause": route.get("cause"),
+                # S4 §1.1: the reason badge needs the motive's own label
+                # (motives.yaml) to name a detour/motive row, not just its
+                # cause="motive" bucket.
+                "motive": route.get("motive"),
+                "motive_label": route.get("motive_label"),
+            }
+        )
+    return motives
+
+
 def _scene_rows(
     rows: Sequence[Mapping[str, Any]],
     protagonist: str,
@@ -482,26 +540,28 @@ def extract_scenes(
             if description
         ]
         first = narrative_rows[0]
-        candidates.append(
-            {
-                "turn": turn,
-                "day": int(first.get("day", 0)),
-                "slot": first.get("slot"),
-                "delta_l1": magnitudes.get(turn, 0.0),
-                "priority": max(priorities),
-                "reasons": reasons,
-                "events": [
-                    describe_row(row, world_meta)
-                    for row in narrative_rows
-                ],
-                "state": _state_summary(
-                    snapshot,
-                    turn_rows,
-                    world_meta,
-                ),
-                "foreshadowing": list(dict.fromkeys(foreshadowing)),
-            }
-        )
+        scene = {
+            "turn": turn,
+            "day": int(first.get("day", 0)),
+            "slot": first.get("slot"),
+            "delta_l1": magnitudes.get(turn, 0.0),
+            "priority": max(priorities),
+            "reasons": reasons,
+            "events": [
+                describe_row(row, world_meta)
+                for row in narrative_rows
+            ],
+            "state": _state_summary(
+                snapshot,
+                turn_rows,
+                world_meta,
+            ),
+            "foreshadowing": list(dict.fromkeys(foreshadowing)),
+        }
+        motives = _scene_motives(narrative_rows, world_meta, protagonist)
+        if motives:
+            scene["motives"] = motives
+        candidates.append(scene)
 
     kept = sorted(
         candidates,

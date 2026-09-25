@@ -1,140 +1,55 @@
 # 開発者向けガイド
 
-ソースから GA 実験を回す・独自の LLM バックエンドであらすじ/本文を生成し直す場合の手順です。同梱サンプルをビューアで眺めるだけなら [README](../README.md) の「5分で試す」で足ります。
+このリポジトリのコードに変更を加える場合の手順です。GA 実験の回し方・LLM バックエンドの設定・CLI の使い方など、利用者向けの手順は[ドキュメントサイト](https://ato-labo.github.io/WorldBloom/docs/)にまとまっています。
 
-## LLM バックエンドの設定
+- [CLI での作業手順](https://ato-labo.github.io/WorldBloom/docs/usage/cli-workflow/)（`scripts/evolve.py` / `synopsize.py` / `narrate.py` / `random_baseline.py` の使い方）
+- [LLM バックエンド](https://ato-labo.github.io/WorldBloom/docs/usage/llm-backends/)（Ollama・Bonsai 2（llama-server）のセットアップ、`settings.json` の書き方）
+- [GPU ガード](https://ato-labo.github.io/WorldBloom/docs/usage/gpu-guard/)（自動起動・調停・熱ガードの仕組みと設定）
+- [決定論](https://ato-labo.github.io/WorldBloom/docs/concepts/determinism/)（決定論が成り立つ理由）
 
-あらすじ・本文の生成に LLM を使う場合（任意）。既定はローカルの Ollama＋Qwen3.5（本応募の提出物はこのモデルで生成。詳細は開示文書を参照）:
+同梱サンプルをビューアで眺めるだけなら [README](../README.md) の「試し方」で足ります。
 
-1. [Ollama](https://ollama.com) をインストール
-2. `ollama pull qwen3.5:9b-q4_K_M`
+## 決定論の約束
 
-より大きなモデル（`qwen3.6:35b` など）への切り替えも `--backend`/`settings.json` の `model` で可能ですが、提出済みの本文・あらすじの生成条件とは異なります。
+同じ `(world, genome, seed, precedent, engine hash)` の組で、`layers.jsonl` はバイト単位で一致します。乱数は単一の `random.Random(seed)`（GA側は `random.Random(ga_seed)` と分離）、候補生成と Policy（遺伝子の変調）は乱数を消費せず、同点のタイブレークは名前順です。**この前提を崩す変更（乱数の消費順序が変わる変更など）は、設計書にその旨を明記してください。**
 
-代替として `claude-cli` / `codex-cli` / Anthropic API / OpenAI API のいずれかも選べます（`--backend` で切り替え）。
-
-### settings.json を作る（Ollama を使う場合）
-
-```json
-{
-  "output": {
-    "ollama": {
-      "model": "qwen3.5:9b-q4_K_M",
-      "base_url": "http://localhost:11434",
-      "think": false,
-      "options": {"num_ctx": 16384, "num_predict": 4096}
-    }
-  }
-}
-```
-
-`options` は既定（`num_ctx` 16384・`num_predict` 4096）に上書きマージされるので、変えたいキーだけ書けばよい。`think` は思考トークンを抑えるため既定で `false`。`settings.json` は `.gitignore` 対象（APIキーを含み得るため）。
-
-### Bonsai 2 27B（llama-server）を使う場合
-
-PrismML の Ternary Bonsai 2 27B は独自量子化形式のため Ollama では動かず、PrismML フォーク版 llama.cpp の `llama-server`（OpenAI 互換 API）でのみ動く。
-
-1. フォーク版バイナリを入手する: [PrismML-Eng/llama.cpp の releases](https://github.com/PrismML-Eng/llama.cpp/releases) から Windows なら `win-cuda-12.4` の `llama-...-bin-...zip` と `cudart-...zip` の両方（CUDA ランタイムが別 zip なので片方だけでは動かない）
-2. GGUF を入手する: Hugging Face `prism-ml/Ternary-Bonsai-2-27B-gguf` の `PTQ1_0`
-3. サーバーを起動する:
+## 回帰テスト
 
 ```
-llama-server.exe -m Ternary-Bonsai-2-27B-PTQ1_0.gguf --alias bonsai2-27b -ngl 99 -np 1 -c 10240 -fa on --port 8089 --host 127.0.0.1 --reasoning-budget 2048 --reasoning-budget-message "思考の上限に達した。ここで思考を終え、直ちに最終回答の本文だけを書く。"
+python -m unittest discover -s tests -v
 ```
 
-`--alias` は必須（省略するとモデル名がファイルパスになり、`settings.json` の `model` と一致しなくなる）。`--reasoning-budget` も必須（思考トークンの上限はサーバー起動フラグでしか効かず、リクエスト側で送っても無視されるため、これが無いと `finish_reason: "length"` で応答が打ち切られ、WorldBloom 側は失敗として扱う）。
+決定論・中立遺伝子の無変調・前提違反ゼロ・伏線の減点・vitality の遷移などを確認します。対象は `engine/` `gapengine/`（GA・分類器・前例表・7層のロジック）を変更したときで、`viewer/`（表示のみ）や一回きりの `scripts/` 実行など決定論に影響しない変更では省略してかまいません。
 
-`settings.json`（手動起動のまま使う場合）:
+## 開発時の起動
 
-```json
-{
-  "output": {
-    "default_backend": "llama-server",
-    "llama-server": {
-      "base_url": "http://127.0.0.1:8089",
-      "model": "bonsai2-27b",
-      "think": true,
-      "options": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.0, "max_tokens": 8192}
-    }
-  }
-}
-```
-
-注意:
-- VRAM 8GB では Ollama のモデルと同居できない。生成前に `ollama ps` で Ollama 側のモデルが退避済み（unloaded）か確認する
-- ノート GPU は連続生成で 86℃ に達することがある。長時間連続実行する場合は休止を挟む
-
-#### GPU ガード（自動起動・調停・熱ガード）
-
-上の2つの注意点と「生成前にサーバーを手で起動しておく」手間は、`settings.json` に `launch`（サーバー起動コマンド）と `gpu_guard` を書けば WorldBloom 側の仕組みで解決できる:
-
-```json
-{
-  "output": {
-    "default_backend": "llama-server",
-    "gpu_guard": {
-      "thermal": {"pause_at": 78, "resume_at": 70, "poll_seconds": 15, "max_wait_seconds": 600},
-      "ollama_base_url": "http://localhost:11434",
-      "observe_seconds": 15
-    },
-    "llama-server": {
-      "base_url": "http://127.0.0.1:8089",
-      "model": "bonsai2-27b",
-      "think": true,
-      "options": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.0, "max_tokens": 8192},
-      "launch": ["C:/path/to/llama-server.exe", "-m", "C:/path/to/Ternary-Bonsai-2-27B-PTQ1_0.gguf",
-        "--alias", "bonsai2-27b", "-ngl", "99", "-np", "1", "-c", "10240", "-fa", "on",
-        "--host", "127.0.0.1", "--port", "8089", "--reasoning-budget", "2048",
-        "--reasoning-budget-message", "思考の上限に達した。ここで思考を終え、直ちに最終回答の本文だけを書く。"],
-      "startup_seconds": 180
-    }
-  }
-}
-```
-
-`gpu_guard` キーが無ければ今まで通り何も起きない（既存の挙動を変えない完全な no-op）。あれば生成の前に以下を自動で行う:
-
-- **リース**: マシン全体で1つの OS ファイルロック（既定 `%LOCALAPPDATA%\WorldBloom`、`WORLDBLOOM_GPU_LEASE_DIR` で変更可）を取ってから生成する。他プロセスが握っていれば空くまで待ち、待っても空かなければ `GpuBusy` で失敗する（無期限には待たない）。ロックを持つプロセスが異常終了すれば OS が自動的に解放する
-- **Ollama との調停**: `llama-server` を使う前に Ollama の `/api/ps` を2回観測し、遊休（応答の `expires_at` が進んでいない）なら `keep_alive: 0` で自動退避する。使用中（誰かが呼んでいる）と判定した間は待ち、リースの締め切りを過ぎたら `GpuBusy` で失敗する。Ollama 側から見ても、到達可能な llama-server が動いていれば `GpuBusy` で待たせるので、片方が VRAM を使い切ったまま両方が動くことはない
-- **自動起動・自動停止**: `llama-server` の `base_url` に既に応答があればそれ（人が起動したもの）をそのまま使い、止めない。応答が無く `launch` があれば自動で起動し（`launch` の先頭要素は `.cmd` などのラッパーではなく exe を直接指すこと。残ったサーバーの後始末は実行ファイル名の一致で本人確認するため）、`startup_seconds`（既定180秒）まで起動を待つ。生成が終われば自分が起動したサーバーだけを自動で停止する。前回異常終了して残ったサーバーがあれば、次にリースを取った側が自動で終了させる
-- **熱ガード**: 各生成の前に GPU 温度（`nvidia-smi`）を確認し、`pause_at`（既定78℃）以上なら `resume_at`（既定70℃）以下に下がるまで `poll_seconds` 間隔で待つ（`max_wait_seconds` で打ち切る）。温度が読めない環境では止めない
-- `gpu_guard` は空オブジェクト `{}` でも有効（全項目に既定値が入る）
-
-Jev などこの仕組みの外で GPU を使うコードも、`gapengine.gpu_guard.gpu_lease(owner, wait_seconds=...)` を取ってから GPU を使えば同じ調停に参加できる（同一プロセス内での再入は待たずに通る）。
-
-## 自分で進化を回す
+ソースからビューアを起動する場合は、リポジトリ直下で次を実行します（`runs`・`control` はリポジトリの外に置いてください）。
 
 ```
-python scripts/evolve.py --project projects/momotaro --template templates/momotaro \
-  --out <出力先>/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
+python viewer/server.py --runs <runsの場所> --control <controlの場所> --port 5401
 ```
 
-所要時間の目安: 20コアで約1時間（実測: exp12 が6プロセスで約70分。計測は2026-09-14時点のコードに基づくため、その後のGA/ビューア側の性能改善（WB-OPT-001〜003）で実際はこれより速くなっている可能性がある）。出力先はリポジトリ外を推奨（`.gitignore` は `runs/` を無視するが、リポジトリ内に大量の実験出力を置くべきではない）。`--project` / `--template` は `momotaro` / `detective` / `romance` の3ジャンルを同梱。
+`--control` を付けない場合、画面から実験の実行・設定編集はできませんが、選定（採用チェックボックスなど）だけは書き込めます。この操作はジョブ管理を経由せず、`runs` 側の各実験フォルダに直接 `selection.json` を書き込みます（`viewer/data.py` の `toggle_selection()` が `directory_lock` を取って書く、`--control` 用の `JobStore` を介さない経路）。詳しくは[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)の「ソースから」を参照してください。
 
-## あらすじ化・本文化
+## GPU 調停の仕組みに外部コードから参加する
 
-```
-python scripts/synopsize.py --archive <出力先>/exp1/archive.json --runs <出力先>/exp1 \
-  --out <出力先>/exp1/synopses.json --backend ollama --project projects/momotaro --template templates/momotaro
+`gpu_guard` の仕組み（[GPU ガード](https://ato-labo.github.io/WorldBloom/docs/usage/gpu-guard/)）の外で GPU を使うコード（Jev の判定など）も、`gapengine.gpu_guard.gpu_lease(owner, wait_seconds=...)` を取ってから GPU を使えば同じ調停に参加できます（同一プロセス内での再入は待たずに通ります）。
 
-python scripts/narrate.py --archive <出力先>/exp1/archive.json --selection <出力先>/exp1/selection.json \
-  --out <出力先>/exp1/stories --backend ollama --project projects/momotaro --template templates/momotaro
-```
+## 配布用 exe のビルド
 
-`selection.json` は `{"selected": ["III|high"]}` の形（格子のセルキー = カテゴリ|volatility_bin）。あらすじの確認・格子セルの選定はビューア（`--control` 付きで起動時）からも行える。
+`viewer/app_desktop.py`（pywebview の起動エントリ）と `viewer/build_exe.cmd`（PyInstaller のビルドスクリプト）で、閲覧専用の `WorldBloom.exe` とフル機能の `WorldBloom-Studio.exe` の2本を作ります。
 
-## 無作為基準との比較
+1. `viewer\build_exe.cmd` を実行すると、PyInstaller の dist フォルダに `WorldBloom.exe` と `WorldBloom-Studio.exe` が生成されます（`app_desktop.py` 1本から、実行時のファイル名で動作モードを切り替える設計です）
+2. 配布フォルダを組み立てます。各 exe と同じ場所に `app/` フォルダを作り、次を丸ごとコピーします: `viewer/` `execution/` `gapengine/` `engine/` `scripts/` `templates/` `projects/` `requirements.txt`（閲覧専用の配布物には `samples/` も同梱します）
+3. 自作パッケージ（`viewer`/`execution`/`gapengine`/`engine`/`scripts`）は exe に焼き込まず、配布フォルダの `app/` に生ファイルとして置いたものを実行時に動的 import（`importlib.import_module`）する設計です。再ビルド後は、PyInstaller の build フォルダにできる `PYZ-00.toc` を開き、`viewer.` `execution.` `gapengine.` `engine.` `scripts.` で始まるエントリが無いことを確認してください（あれば、古いコードが exe 内に焼き込まれてしまっています）
+4. Studio 版は、配布前にテストで作られた `runs/`・`control/` フォルダを配布フォルダから削除してください（無ければ初回起動時に自動生成されます）
 
-```
-python scripts/random_baseline.py --project projects/momotaro --template templates/momotaro --out <出力先>/baseline
-```
+`requirements.txt` を `app/` に含め忘れると、実行時の来歴記録（`execution/provenance.py` の `code_snapshot()`）が失敗し、GA 実験が起動直後に止まります。`scripts/` を含め忘れると `ModuleNotFoundError: No module named 'scripts'` になります。どちらも起動はできてしまうため、再ビルドのたびに疑ってください。
 
-方針を持たない完全無作為なシードだけで結末に届く経路の多様性を測る、GAの効果を測るための対照実験。
+## ドキュメントの更新
 
-## 決定論・回帰テスト
+ドキュメントサイトの原稿は `docsite/{ja,en}/`（Material for MkDocs）です。
 
-同じ `(world, genome, seed, precedent)` の組で `layers.jsonl` はバイト一致します。回帰テスト:
-
-```
-python -m unittest discover -s tests
-```
+- **ビルド・プレビュー**: `mkdocs serve -f docsite/mkdocs.ja.yml`（英語版は `mkdocs.en.yml`）。CI と同じ厳密さで確認するなら `mkdocs build --strict -f docsite/mkdocs.ja.yml -d <出力先>`。どちらもリポジトリ直下から実行してください（`snippets` の埋め込みパスがリポジトリ直下基準のため）
+- **CLI のヘルプを変えたら**: `python docsite/gen_cli.py` を実行して `docsite/snippets/cli/*.txt` を再生成してください（[CLI](https://ato-labo.github.io/WorldBloom/docs/reference/cli/)ページはこのスニペットを埋め込んでいるだけです）。CI と同じ結果にするため、スニペット生成は Python 3.13 で行ってください
+- **`python docsite/check.py` の読み方**: ja/en のページ一覧が一致しない場合と、CLIスニペットが古い場合は exit 1（ビルドを壊す）。en ページの `ja_rev`（front matter）が対応する ja ページ本文（front matter を除く）の現在のハッシュと一致しない、または未設定の場合は「要追従/未翻訳」として警告表示のみ（翻訳を終えたら `python docsite/check.py --ja-rev ja/<ページ>.md` の値を ja_rev に書く）。ja ページの `reviewed:`（front matter、最後に内容を確認したコミットSHA）以降に `sources:` のファイルが変わっていれば「情報源が更新されたページ」として警告表示のみ。どちらも exit code には影響しないので、CI が通っていても一覧は確認してください

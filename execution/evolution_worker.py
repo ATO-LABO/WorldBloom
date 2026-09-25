@@ -20,7 +20,8 @@ if __package__ in (None, ""):
 
 from execution.provenance import (ConfigError, atomic_json, canonical, contained,
     directory_lock, identifier, publish_directory, read_json, sha256, write_bytes)
-from gapengine.evolve import EvolutionCancelled, _cell_for_run, evolve
+from gapengine.evolve import (EvolutionCancelled, _cell_for_run, evolve,
+    rationality_cfg_override, route_cfg_override)
 
 
 def candidate_identity(run_id, event):
@@ -272,9 +273,33 @@ def main(argv=None):
             job["run_id"] != run.name or job["config_id"] != manifest["config_id"] or job["kind"] != "evolve"):
         raise ValueError("job manifest mismatch")
     config = read_json(run / "config.json")
-    cfg = {**manifest["evolution"], "out": run,
+    # WB-COMPUTE-001: the ⚙ setting recorded at submit wins over the config's
+    # frozen value; manifests from before it carry no "processes" key.
+    #
+    # WB-ROUTE-001 S4 bugfix (scope widened to kappa/rationality_* per user
+    # decision): manifest["evolution"] carries route_rho/kappa/rationality_*
+    # as flat keys (execution/configs.py's normalize()), but
+    # gapengine.evolve._route_cfg()/_rationality_backend_cfg() only read the
+    # nested cfg["route"]/cfg["rationality"] shapes scripts/evolve.py's own
+    # --route-rho/--kappa/... CLI wiring builds. Spreading manifest["evolution"]
+    # straight into cfg (as this used to) means those overrides never reach
+    # evolve() -- a run's settings from the UI job screen were silently
+    # ignored. route_cfg_override()/rationality_cfg_override() do the same
+    # nesting scripts/evolve.py's main() does, so both launch paths agree.
+    rationality = rationality_cfg_override(manifest["evolution"])
+    # rationality_table is never in manifest["evolution"] itself (normalize()
+    # never accepts it from the API) -- prepare_run() computes the real
+    # shared-table path separately and records it at manifest["rationality_table"]
+    # (None for kappa<=0, or an old manifest predating that field) so the CLI
+    # and adapter launch paths land on the same table file.
+    rationality["table"] = manifest.get("rationality_table")
+    cfg = {**manifest["evolution"],
+           "processes": manifest.get("processes", manifest["evolution"]["processes"]),
+           "out": run,
            "project": contained(run, "inputs/projects/" + config["project_id"]),
-           "template": contained(run, "inputs/templates/" + config["template_id"])}
+           "template": contained(run, "inputs/templates/" + config["template_id"]),
+           "rationality": rationality,
+           "route": route_cfg_override(manifest["evolution"].get("route_rho"))}
 
     def cancelled():
         current = worker.read_job(jobs, folder)

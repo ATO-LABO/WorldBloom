@@ -223,6 +223,16 @@
       });
     }
 
+    // WB-ROUTE-001 S4 §2: the ρ slider's live numeric readout -- same
+    // pattern as κ above, but no eta/warning pair (ρ adds no compute cost).
+    const routeRhoInput = form.querySelector('[data-field="evolution.route_rho"]');
+    const routeRhoOutput = form.querySelector("[data-route-rho-output]");
+    if (routeRhoInput && routeRhoOutput) {
+      routeRhoInput.addEventListener("input", () => {
+        routeRhoOutput.textContent = routeRhoInput.value;
+      });
+    }
+
     // WB-JEV-002 (coordinator review): the judge-time estimate and
     // wall-limit warning, recomputed live -- mirrors
     // execution/configs.py's planned_seed_evaluations math (coevolve
@@ -1389,12 +1399,20 @@
         }
         link.dataset.busy = "1";
         const projectId = link.dataset.project;
+        const body = {
+          label: quickLabel(link.dataset.worldName, link.dataset.template),
+          project_id: projectId,
+          template_id: link.dataset.template,
+        };
+        // WB-ROUTE-001 S4 §2: the button only carries data-route-rho when
+        // the genre has a route.yaml (see pages.quick_start_actions) --
+        // ρ adds no compute cost, so it is always 1.0 here, never left to
+        // the config form's own default.
+        if (link.dataset.routeRho) {
+          body.evolution = { route_rho: Number(link.dataset.routeRho) };
+        }
         try {
-          const { status, json } = await api("POST", "/api/configs", {
-            label: quickLabel(link.dataset.worldName, link.dataset.template),
-            project_id: projectId,
-            template_id: link.dataset.template,
-          });
+          const { status, json } = await api("POST", "/api/configs", body);
           if (status === 201 && json && json.config_id) {
             window.location.href =
               `/jobs?world=${encodeURIComponent(projectId)}&config=${encodeURIComponent(json.config_id)}`;

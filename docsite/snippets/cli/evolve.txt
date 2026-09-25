@@ -1,0 +1,68 @@
+usage: evolve.py [-h] --project PROJECT --template TEMPLATE --out OUT [--generations GENERATIONS]
+                 [--population POPULATION] [--seeds SEEDS] [--seed-base SEED_BASE]
+                 [--ga-seed GA_SEED] [--processes PROCESSES] [--keep {all,reached,exemplar}]
+                 [--coevolve] [--meta-evolution]
+                 [--target-ending TARGET_ENDING [TARGET_ENDING ...]]
+                 [--record-explanations | --no-record-explanations]
+                 [--world-expansion {off,detect,expand}] [--kappa KAPPA]
+                 [--rationality-backend {ollama,none}] [--rationality-method {noul,choice}]
+                 [--rationality-model RATIONALITY_MODEL]
+                 [--rationality-num-ctx RATIONALITY_NUM_CTX]
+                 [--rationality-table RATIONALITY_TABLE]
+                 [--rationality-max-calls RATIONALITY_MAX_CALLS] [--route-rho ROUTE_RHO]
+                 [--resume] [--resume-allow-code-change]
+
+Run deterministic MAP-Elites evolution.
+
+options:
+  -h, --help            show this help message and exit
+  --project PROJECT
+  --template TEMPLATE
+  --out OUT
+  --generations GENERATIONS
+  --population POPULATION
+  --seeds SEEDS
+  --seed-base SEED_BASE
+  --ga-seed GA_SEED
+  --processes PROCESSES
+  --keep {all,reached,exemplar}
+  --coevolve            Coevolve a separate antagonist population and archive.
+  --meta-evolution      Evolve per-rule enable bits in addition to the nine scalar genes.
+  --target-ending TARGET_ENDING [TARGET_ENDING ...]
+                        Override target ending ids; any listed ending counts as reached.
+  --record-explanations, --no-record-explanations
+                        Record bounded choice candidates for the explanation viewer (default: on).
+  --world-expansion {off,detect,expand}
+                        Off leaves the world unchanged; detect aggregates zone/verb whiff triggers
+                        after evolution ends; expand applies this project's approved patches
+                        (projects/<name>/patches/*.yaml) before the run, then detects.
+  --kappa KAPPA         WB-JEV-001 Stage 2: override templates/<genre>/rationality.yaml's kappa (0
+                        disables the rationality layer; that is the template default).
+  --rationality-backend {ollama,none}
+                        Override rationality.yaml's judge backend.
+  --rationality-method {noul,choice}
+                        Override rationality.yaml's judge method (yes/no vs multiple-choice).
+  --rationality-model RATIONALITY_MODEL
+                        Override rationality.yaml's judge model name.
+  --rationality-num-ctx RATIONALITY_NUM_CTX
+                        WB-JEV-003: override the Ollama judge's context window size (num_ctx).
+                        Default: rationality.yaml's backend.num_ctx, or Ollama's own default
+                        (16384) if that is unset too.
+  --rationality-table RATIONALITY_TABLE
+                        Path to the persisted rationality table JSON (default:
+                        <out>/rationality.json).
+  --rationality-max-calls RATIONALITY_MAX_CALLS
+                        Cap on judge calls (candidates for noul, chunks for choice) per simulation
+                        run; overrides rationality.yaml's max_judge_calls_per_run (default:
+                        unlimited).
+  --route-rho ROUTE_RHO
+                        WB-ROUTE-001 S1: override templates/<genre>/route.yaml's rho (0 disables
+                        the route weighting layer; that is the template default). Requesting rho>0
+                        for a template with no route.yaml is an error.
+  --resume              WB-GA-RESUME: resume from the last generation completed in
+                        <out>/ga_state.json instead of starting over.
+  --resume-allow-code-change
+                        WB-GA-RESUME: with --resume, downgrade an engine_hash/gapengine_hash
+                        mismatch to a warning instead of refusing (for an intentional mid-run code
+                        change). cfg_fingerprint mismatches -- a different experiment -- are
+                        always refused.

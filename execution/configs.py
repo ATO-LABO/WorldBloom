@@ -144,6 +144,15 @@ def normalize(spec):
         # so prepare_run()'s CLI argv (and the frozen-runtime tests that
         # compare it against a hand-typed invocation) never see --kappa 0.
         values["kappa"] = None if kappa == 0 else float(kappa)
+    # WB-ROUTE-001 S4 §2: same 0-means-off normalization as kappa above, so
+    # a route_rho=0 config stays byte-identical to one that never set it
+    # (prepare_run()'s argv never sees --route-rho 0).
+    route_rho = values["route_rho"]
+    if route_rho is not None:
+        if (type(route_rho) is bool or not isinstance(route_rho, (int, float))
+                or not (0 <= route_rho <= 1)):
+            raise ConfigError("evolution.route_rho", "0〜1の数値を指定してください")
+        values["route_rho"] = None if route_rho == 0 else float(route_rho)
     if values["rationality_backend"] not in (None, "ollama", "none"):
         raise ConfigError("evolution.rationality_backend", "backendの指定が不正です")
     if values["rationality_method"] not in (None, "noul", "choice"):
@@ -446,6 +455,15 @@ class ConfigStore:
             key = f"templates/{spec['template_id']}/rationality.yaml"
             if key not in blobs:
                 spec["evolution"]["kappa"] = None
+        # WB-ROUTE-001 S4 §2: same guard for route_rho -- a genre switch
+        # (client-side, before submit) to a template with no route.yaml must
+        # not carry another genre's rho along (gapengine.evolve._route_cfg
+        # raises on rho>0 with no route.yaml, which would fail the whole GA
+        # run rather than just being ignored).
+        if spec["evolution"]["route_rho"] is not None:
+            key = f"templates/{spec['template_id']}/route.yaml"
+            if key not in blobs:
+                spec["evolution"]["route_rho"] = None
         with tempfile.TemporaryDirectory(prefix="wb-config-preview-") as temp:
             materialize(Path(temp), blobs)
             try:
@@ -528,7 +546,7 @@ class ConfigStore:
         parent = config_id if prior_expand == spec_expand else None
         return self.save(spec, config_id=new_id, parent_config_id=parent)
 
-    def prepare_run(self, config_id, *, run_id=None, job_id):
+    def prepare_run(self, config_id, *, run_id=None, job_id, processes=None):
         rid = identifier(("run-" + uuid.uuid4().hex) if run_id is None else run_id, "run_id")
         identifier(job_id, "job_id")
         config, inputs, source = self._bundle(config_id)
@@ -558,11 +576,17 @@ class ConfigStore:
                 elif value is not None:
                     argv.append(flag)
                     argv.extend(value if isinstance(value, list) else [str(value)])
+            if processes is not None:
+                # PC-side operational setting (WB-COMPUTE-001), not part of what the
+                # config means: overrides the frozen evolution.processes value in the
+                # argv only -- config["evolution"]/config_sha256 stay untouched.
+                argv[argv.index("--processes") + 1] = str(processes)
             # .get(), not [...]: a config.json saved before WB-JEV-002 added
             # these keys to evolution_defaults() has none of them at all, and
             # this manifest-derived "evolution" dict is read straight off
             # disk here (not renormalized), unlike normalize()'s own inputs.
             kappa = config["evolution"].get("kappa")
+            rationality_table = None
             if kappa is not None:
                 # WB-JEV-002: the shared table lives under this store's own
                 # control root, one file per (template, model, method) so
@@ -588,14 +612,29 @@ class ConfigStore:
                     config["template_id"], _safe_path_token(model), _safe_path_token(method)))
                 table_path.parent.mkdir(parents=True, exist_ok=True)
                 argv.extend(["--rationality-table", str(table_path)])
+                rationality_table = str(table_path)
             manifest = {"schema_version": 1, "run_id": rid, "job_id": job_id,
                         "config_id": config_id, "created_at": _now(),
                         "input_manifest_sha256": config["input_manifest_sha256"],
                         "config_sha256": sha256(canonical(config)),
                         "runtime_manifest_sha256": sha256(canonical(runtime)),
                         "argv": argv, "evolution": config["evolution"],
+                        "processes": processes if processes is not None else config["evolution"]["processes"],
                         "target_endings": config["preview"]["target_endings"],
                         "execution_limits": config["execution_limits"],
+                        # WB-ROUTE-001 S4 follow-up: --rationality-table above is
+                        # the only place this run's shared judgment-table path is
+                        # computed, but it used to live only in argv, which the
+                        # frozen adapter (execution/evolution_worker.py) never
+                        # reads (it rebuilds cfg from this manifest's "evolution"
+                        # dict instead of parsing argv). Recording it here too
+                        # lets both the CLI (legacy_evolve_cli) and adapter
+                        # (evolution_worker) launch paths land on the same table
+                        # file. None (kappa<=0, or a manifest from before this
+                        # field existed) means "no persisted table" -- worker
+                        # falls back to evolve()'s own <out>/rationality.json
+                        # default, same as the CLI path always has.
+                        "rationality_table": rationality_table,
                         "status": "prepared"}
             atomic_json(staging / "config.json", config)
             atomic_json(staging / "input-manifest.json", inputs)

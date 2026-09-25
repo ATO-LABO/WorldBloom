@@ -399,6 +399,9 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
     # .get(), not [...]: a config saved before WB-JEV-002 added "kappa" to
     # evolution_defaults() has no such key at all.
     values["evolution.kappa"] = evolution.get("kappa")
+    # .get(): a config saved before WB-ROUTE-001 S4 added "route_rho" to
+    # evolution_defaults() has no such key either.
+    values["evolution.route_rho"] = evolution.get("route_rho")
     values["evolution.target_ending"] = (
         ", ".join(evolution["target_ending"]) if evolution.get("target_ending") else ""
     )
@@ -439,6 +442,17 @@ def _rationality_form_context(repo, template_id):
             "available": bool(probe["available"]), "reason": probe["reason"]}
 
 
+def _route_form_context(repo, template_id):
+    """WB-ROUTE-001 S4 §2: whether templates/<template_id>/route.yaml
+    exists. Unlike κ's context, ρ needs no live probe (there is no external
+    judge to reach) -- None leaves the ρ section out of the form entirely,
+    same None-means-no-section contract as _rationality_form_context."""
+    if not template_id:
+        return None
+    path = repo / "templates" / template_id / "route.yaml"
+    return {} if path.is_file() else None
+
+
 def _frozen_template_dir(control, config):
     """The template snapshot frozen into this config at save time (WB-JEV-002
     Opus review), under this config's own control/configs/<id>/inputs --
@@ -466,6 +480,15 @@ def _rationality_summary(template_dir, evolution):
     method = override.get("method") or rationality_yaml.get("method", "noul")
     model = rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
     return f"{kappa}（{method} / {model}）"
+
+
+def _route_rho_summary(evolution):
+    """"1.0" or "無効", for the saved-config detail page and the run
+    screen's config summary (WB-ROUTE-001 S4 §2, mirrors
+    _rationality_summary's own contract but needs no frozen template dir --
+    ρ has no backend/model to report)."""
+    rho = evolution.get("route_rho")
+    return "無効" if rho is None else str(rho)
 
 
 def _kappa_field(value):
@@ -524,6 +547,38 @@ def _rationality_section(values, ctx, *, total_runs, wall_seconds, heading_prefi
         + f'<p class="hint" id="kappa-status">{_escape(status)}</p>'
         + f'<p class="hint">{_escape(RATIONALITY_NOTE)}</p>'
         + eta_html
+        + "</div></section>"
+    )
+
+
+def _route_rho_field(value):
+    return (
+        '<div class="field">'
+        '<label for="f-evolution.route_rho">ρ（0〜1）<span class="key">route_rho</span></label>'
+        '<div class="kappa-row">'
+        f'<input id="f-evolution.route_rho" type="range" name="evolution.route_rho" '
+        f'data-field="evolution.route_rho" min="0" max="1" step="0.05" value="{_escape(value)}" '
+        'aria-describedby="route-rho-desc">'
+        f'<output for="f-evolution.route_rho" data-route-rho-output>{_escape(value)}</output>'
+        "</div>"
+        '<span class="field-error" data-error-for="evolution.route_rho" role="alert"></span>'
+        "</div>"
+    )
+
+
+def _route_section(values, *, heading_prefix=""):
+    """WB-ROUTE-001 S4 §2: "05. 道筋" -- only rendered when the template has
+    a route.yaml at all (caller checks _route_form_context first, same
+    None-means-omit contract as _rationality_section)."""
+    rho_value = values.get("evolution.route_rho") or 0
+    return (
+        '<section class="cfg-sec" data-wb="route"><div class="cfg-sec-head">'
+        f"<h2>{_escape(heading_prefix)}道筋（寄り道の抑え方）</h2>"
+        '<p class="desc" id="route-rho-desc">主人公が結末へまっすぐ向かう強さ。'
+        "0 で従来どおり、1 で理由のない寄り道をほとんど選ばない。"
+        "寄り道の理由は動機表（motives.yaml）で与える。</p>"
+        '</div><div class="cfg-sec-body">'
+        + _route_rho_field(rho_value)
         + "</div></section>"
     )
 
@@ -649,8 +704,7 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
         '<div class="cols">'
         + _number_field("seed の開始値", "evolution.seed_base", values["evolution.seed_base"])
         + _number_field("GA の乱数種", "evolution.ga_seed", values["evolution.ga_seed"])
-        + _number_field("並列プロセス数", "evolution.processes", values["evolution.processes"], min_value=1)
-        + "</div>",
+        + "</div><p class=\"muted\">並列数は ⚙ 全体設定の「計算」で指定します。</p>",
     )
 
     section5b = _section(
@@ -745,7 +799,7 @@ def render_config_detail(config, control):
         ("seed数", _escape(ev["seeds"])),
         ("seed_base", _escape(ev["seed_base"])),
         ("ga_seed", _escape(ev["ga_seed"])),
-        ("processes", _escape(ev["processes"])),
+        ("並列数", "⚙ 全体設定に従う"),
         ("保存方針", _escape(ev["keep"])),
         ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("共進化", _escape(ev["coevolve"])),
@@ -754,6 +808,7 @@ def render_config_detail(config, control):
         ("結末", _escape(ending_text)),
         ("実行時間上限（秒）", _escape(config["execution_limits"]["wall_seconds"])),
         ("合理性 κ", _escape(_rationality_summary(_frozen_template_dir(control, config), ev))),
+        ("道筋 ρ", _escape(_route_rho_summary(ev))),
     ]) + '<p class="muted">列の値は次の版で変更可</p>'
     fixed = preview["fixed_parameters"]
     fixed_section = _dl([
@@ -985,6 +1040,7 @@ def _run_plan(config, estimate, control, *, open_detail=False):
         ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
         ("合理性 κ", _escape(_rationality_summary(_frozen_template_dir(control, config), ev))),
+        ("道筋 ρ", _escape(_route_rho_summary(ev))),
     ])
     # A running job's page reloads on every publication_revision change
     # (workbench.js's poll loop), which would otherwise re-collapse this
@@ -2148,6 +2204,7 @@ def _configs_new(handler):
             evolution=parent["evolution"], execution_limits=parent["execution_limits"],
         )
         rationality_ctx = _rationality_form_context(repo, values["template_id"])
+        route_ctx = _route_form_context(repo, values["template_id"])
     else:
         values = _new_config_values()
         project_preset = query.get("project", [None])[0]
@@ -2174,13 +2231,22 @@ def _configs_new(handler):
                 values["execution_limits.wall_seconds"] = 21600
             else:
                 values["evolution.kappa"] = 0
+        # WB-ROUTE-001 S4 §2 (design judgment): a brand new form defaults ρ
+        # to 1.0 when the genre actually has a route.yaml -- ρ carries no
+        # extra compute cost (unlike κ), so there is no reason to default it
+        # off. Never touches a duplicate/edit's own saved value (handled
+        # above, outside this branch). The engine/CLI/template default stays
+        # 0 (None) so existing tests and past runs stay reproducible.
+        route_ctx = _route_form_context(repo, values["template_id"])
+        if route_ctx is not None:
+            values["evolution.route_rho"] = 1.0
         if values["project_id"] and values["template_id"]:
             values["label"] = quick_label(
                 world_names.get(values["project_id"], values["project_id"]), values["template_id"])
     from viewer import run_settings
     return run_settings.render(handler, values, projects=projects, templates=templates, worlds=worlds,
                                parent=parent if from_id is not None else None,
-                               rationality=rationality_ctx)
+                               rationality=rationality_ctx, route=route_ctx)
 
 
 def _configs_detail(handler, cid):

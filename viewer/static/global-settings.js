@@ -7,13 +7,14 @@
   const $$ = (selector, scope = root) => [...scope.querySelectorAll(selector)];
   const form = $("[data-gs-output]");
   let loadModels = () => {};
+  const TABS = ["output", "compute", "configs", "genres"];
   const urlState = () => {
     const url = new URL(location.href);
     const legacy = url.hash.slice(1);
-    return { tab: ["output", "configs", "genres"].includes(legacy) ? legacy : url.searchParams.get("tab") || initial.tab, item: url.searchParams.get("item") };
+    return { tab: TABS.includes(legacy) ? legacy : url.searchParams.get("tab") || initial.tab, item: url.searchParams.get("item") };
   };
   function show(tab, item) {
-    if (!["output", "configs", "genres"].includes(tab)) tab = "output";
+    if (!TABS.includes(tab)) tab = "output";
     $$("[data-gs-panel]").forEach(p => { p.hidden = p.dataset.gsPanel !== tab; });
     $$("[data-gs-tab]").forEach(a => {
       if (a.dataset.gsTab === tab) a.setAttribute("aria-current", "page");
@@ -47,6 +48,59 @@
     $("[data-gs-count]", panel).textContent = `${count} / ${rows.length}件`;
     $("[data-gs-no-match]", panel).hidden = count !== 0 || rows.length === 0;
   }));
+  (function setupCompute() {
+    const cform = $("[data-gs-compute]");
+    if (!cform) return;
+    let csaved = initial.compute;
+    let cbusy = false;
+    const cfield = $("#gs-processes", cform);
+    const tfield = $("#gs-thermal-enabled", cform);
+    const pfield = $("#gs-pause_at", cform);
+    const num = f => f.value === "" ? null : Number(f.value);
+    const cvalues = () => ({ processes: num(cfield), thermal_enabled: tfield.checked, pause_at: num(pfield) });
+    const pick = s => ({ processes: s.processes, thermal_enabled: s.thermal_enabled, pause_at: s.pause_at });
+    const cdifferent = () => JSON.stringify(cvalues()) !== JSON.stringify(pick(csaved));
+    const cfill = () => { cfield.value = csaved.processes; tfield.checked = csaved.thermal_enabled; pfield.value = csaved.pause_at; };
+    function cdrawSaved() {
+      const dl = $("[data-gs-compute-saved]", cform); dl.replaceChildren();
+      appendText(dl, "dt", "並列数"); appendText(dl, "dd", `${csaved.processes}`);
+      appendText(dl, "dt", "GPU ガード"); appendText(dl, "dd", csaved.thermal_enabled ? `オン（${csaved.pause_at}℃で一時停止）` : "オフ");
+    }
+    function cupdate(message) {
+      const changed = cdifferent();
+      const badge = $("[data-gs-compute-dirty]");
+      badge.textContent = changed ? "未保存の変更" : "保存済み";
+      badge.classList.toggle("is-dirty", changed);
+      $("[data-gs-compute-save]", cform).disabled = cbusy || !changed;
+      $("[data-gs-compute-reset]", cform).disabled = cbusy || !changed;
+      $("[data-gs-compute-fields]", cform).disabled = cbusy;
+      pfield.disabled = cbusy || !tfield.checked;
+      $("[data-gs-compute-status]", cform).textContent =
+        message || (changed ? "変更はまだ保存されていません" : "保存済みの設定を表示しています");
+    }
+    cform.addEventListener("input", () => { $("[data-compute-form-error]", cform).textContent = ""; cupdate(); });
+    $("[data-gs-compute-reset]", cform).addEventListener("click", () => {
+      cfill(); cupdate("変更を戻しました。保存済みの設定を表示しています");
+    });
+    cform.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (cbusy || !cdifferent() || !cform.reportValidity()) return;
+      cbusy = true; cupdate("設定を保存中…");
+      try {
+        csaved = await api("/api/settings/evolution", cvalues());
+        cfill(); cdrawSaved();
+        cbusy = false; cupdate("設定を保存しました。次に開始するGA実験から適用されます");
+      } catch (e) {
+        cbusy = false;
+        $("[data-compute-form-error]", cform).textContent = (e && e.message) || "保存できませんでした";
+        cupdate("保存できませんでした。変更内容は残っています");
+      }
+    });
+    addEventListener("beforeunload", event => {
+      if (cdifferent() || cbusy) { event.preventDefault(); event.returnValue = ""; }
+    });
+    cdrawSaved(); cupdate();
+  })();
   if (!form) { syncURL(); return; }
 
   let saved = initial.view;

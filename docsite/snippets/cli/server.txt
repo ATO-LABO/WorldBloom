@@ -1,0 +1,11 @@
+usage: server.py [-h] --runs RUNS [--host HOST] [--port PORT] [--control CONTROL] [--repo REPO]
+
+View WorldBloom experiment archives.
+
+options:
+  -h, --help         show this help message and exit
+  --runs RUNS        Root containing WorldBloom experiment directories.
+  --host HOST        Listen address; defaults to loopback only.
+  --port PORT
+  --control CONTROL  Enable persistent configuration/job APIs at this control root.
+  --repo REPO
