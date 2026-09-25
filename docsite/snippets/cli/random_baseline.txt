@@ -1,0 +1,15 @@
+usage: random_baseline.py [-h] --project PROJECT --template TEMPLATE --out OUT [--seeds SEEDS]
+                          [--seed-base SEED_BASE]
+                          [--target-ending TARGET_ENDING [TARGET_ENDING ...]]
+
+Run a policy-free random-seed baseline.
+
+options:
+  -h, --help            show this help message and exit
+  --project PROJECT
+  --template TEMPLATE
+  --out OUT
+  --seeds SEEDS
+  --seed-base SEED_BASE
+  --target-ending TARGET_ENDING [TARGET_ENDING ...]
+                        Override target ending ids; any listed ending counts as reached.

@@ -1,0 +1,20 @@
+usage: narrate.py [-h] --archive ARCHIVE --selection SELECTION --out OUT [--runs RUNS]
+                  [--synopses SYNOPSES]
+                  [--backend {claude-cli,codex-cli,anthropic,openai,ollama,llama-server,none}]
+                  [--project PROJECT] [--template TEMPLATE] [--settings SETTINGS]
+                  [--timeout TIMEOUT]
+
+Narrate human-selected archive elites.
+
+options:
+  -h, --help            show this help message and exit
+  --archive ARCHIVE
+  --selection SELECTION
+  --out OUT
+  --runs RUNS           Run root; defaults to the archive directory.
+  --synopses SYNOPSES   Optional synopses.json used as selection context.
+  --backend {claude-cli,codex-cli,anthropic,openai,ollama,llama-server,none}
+  --project PROJECT
+  --template TEMPLATE
+  --settings SETTINGS
+  --timeout TIMEOUT

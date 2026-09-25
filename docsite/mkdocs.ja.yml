@@ -1,0 +1,86 @@
+site_name: WorldBloom ドキュメント
+site_url: https://ato-labo.github.io/WorldBloom/docs/
+repo_url: https://github.com/ATO-LABO/WorldBloom
+docs_dir: ja
+
+theme:
+  name: material
+  language: ja
+  features:
+    - navigation.sections
+    - navigation.footer
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: [docsite/snippets]
+      check_paths: true
+
+validation:
+  omitted_files: warn
+  unrecognized_links: warn
+  anchors: warn
+
+extra:
+  alternate:
+    - name: 日本語
+      link: /WorldBloom/docs/
+      lang: ja
+    - name: English
+      link: /WorldBloom/docs/en/
+      lang: en
+
+nav:
+  - はじめに:
+      - 概要: index.md
+      - インストール: getting-started/install.md
+      - クイックスタート: getting-started/quickstart.md
+  - 概念:
+      - 全体の流れ: concepts/overview.md
+      - 結末固定: concepts/fixed-ending.md
+      - 7層構造: concepts/seven-layers.md
+      - 遺伝子（Genome）: concepts/genome.md
+      - 行動タイプ I〜VI: concepts/action-types.md
+      - 伏線（遅延効果）: concepts/foreshadowing.md
+      - QD 格子: concepts/qd-map.md
+      - Sifting: concepts/sifting.md
+      - 決定論: concepts/determinism.md
+  - 使い方:
+      - 世界を作る: usage/create-world.md
+      - 実行設定: usage/run-settings.md
+      - 結果を読む: usage/read-results.md
+      - 文章を生成する: usage/generate-text.md
+      - 設定: usage/settings.md
+      - LLM バックエンド: usage/llm-backends.md
+      - GPU ガード: usage/gpu-guard.md
+      - CLI での作業手順: usage/cli-workflow.md
+  - リファレンス:
+      - CLI: reference/cli.md
+      - settings.json: reference/settings-json.md
+      - テンプレート: reference/templates.md
+      - 実行結果のファイル: reference/run-outputs.md
+      - HTTP API: reference/http-api.md
+      - 用語集: reference/glossary.md
+      - 設計資料: reference/design-docs.md
+  - ガイド:
+      - トラブルシューティング: guides/troubleshooting.md
+      - FAQ: guides/faq.md
+      - 変更履歴: guides/changelog.md

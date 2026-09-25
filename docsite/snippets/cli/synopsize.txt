@@ -1,0 +1,19 @@
+usage: synopsize.py [-h] --archive ARCHIVE --runs RUNS --out OUT
+                    [--backend {claude-cli,codex-cli,anthropic,openai,ollama,llama-server,none}]
+                    [--project PROJECT] [--template TEMPLATE] [--settings SETTINGS]
+                    [--cells CELLS [CELLS ...]] [--timeout TIMEOUT]
+
+Generate synopses for all archive elites.
+
+options:
+  -h, --help            show this help message and exit
+  --archive ARCHIVE
+  --runs RUNS
+  --out OUT
+  --backend {claude-cli,codex-cli,anthropic,openai,ollama,llama-server,none}
+  --project PROJECT
+  --template TEMPLATE
+  --settings SETTINGS
+  --cells CELLS [CELLS ...]
+                        Only update these archive cell keys; preserve other entries.
+  --timeout TIMEOUT

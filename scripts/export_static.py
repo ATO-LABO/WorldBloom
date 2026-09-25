@@ -4,6 +4,11 @@ Reads run artifacts under --runs (archive.json/summary.json/synopses.json/
 selection.json/stories/) and writes a self-contained static site under --out:
 one index.html with a MAP-Elites grid per experiment, plus one HTML page per
 selected story. No JS, no external assets.
+
+--out is wiped before writing. Never point it at a gh-pages checkout: that
+branch also holds the docs site under docs/ (published by
+.github/workflows/docs.yml). Export elsewhere, then copy index.html and
+stories/ over.
 """
 from __future__ import annotations
 
