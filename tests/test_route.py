@@ -1169,6 +1169,91 @@ class DesignJudgmentETests(unittest.TestCase):
         self.assertNotIn(("has_item", "秘宝"), alt2)
 
 
+class DesignJudgmentHTests(unittest.TestCase):
+    """WB-ROUTE-001 S2 design judgment H (Opus review): rest/withdraw whose
+    real driver is fatigue/stress -- not a tactical read of the enemy --
+    must resolve to detour/body with its own text, not fall through to
+    detour/none where the caution motive (believed_weaker) would
+    misattribute it. Same weak-momotaro-at-鬼ヶ島 fixture as
+    DesignJudgmentETests (believed_weaker(self) is true there)."""
+
+    TRF = {"鬼の弟": "弟の消息"}
+
+    def _weak_momotaro(self):
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        momotaro.zone = "鬼ヶ島"
+        momotaro.inventory["船"] = 1
+        return world, momotaro
+
+    def test_tired_rest_is_detour_body_not_caution(self) -> None:
+        world, momotaro = self._weak_momotaro()
+        momotaro.stamina = 7.0  # ratio 0.5 <= REST_FATIGUE_STAMINA_RATIO (0.6)
+        momotaro.stress = 0.0
+        present = world.present_subjects(momotaro.zone)
+        action = Action("rest", (), {"under_threat": False})
+        motives = load_motives(TEMPLATE)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            motives=motives,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "body")
+        self.assertEqual(result["text"], "疲れが溜まっていたので休んだ")
+
+    def test_stressed_withdraw_is_detour_body_not_caution(self) -> None:
+        world, momotaro = self._weak_momotaro()
+        momotaro.stamina = momotaro.stamina_max
+        momotaro.stress = 5.0  # > WITHDRAW_STRESS_THRESHOLD (4.0)
+        present = world.present_subjects(momotaro.zone)
+        action = Action("withdraw", (), {"under_threat": False})
+        motives = load_motives(TEMPLATE)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            motives=motives,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "body")
+        self.assertEqual(result["text"], "心労がかさみ、ひとまず気を落ち着けた")
+
+    def test_rested_calm_rest_still_gets_caution(self) -> None:
+        # Below both new thresholds (full stamina, no stress) -- unchanged
+        # from before judgment H: falls to detour/none, then the caution
+        # motive (believed_weaker) claims it.
+        world, momotaro = self._weak_momotaro()
+        momotaro.stamina = momotaro.stamina_max
+        momotaro.stress = 0.0
+        present = world.present_subjects(momotaro.zone)
+        action = Action("rest", (), {"under_threat": False})
+        motives = load_motives(TEMPLATE)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            motives=motives,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "motive")
+        self.assertEqual(result["motive"], "caution")
+
+    def test_rested_calm_withdraw_still_gets_caution(self) -> None:
+        world, momotaro = self._weak_momotaro()
+        momotaro.stamina = momotaro.stamina_max
+        momotaro.stress = 0.0
+        present = world.present_subjects(momotaro.zone)
+        action = Action("withdraw", (), {"under_threat": False})
+        motives = load_motives(TEMPLATE)
+        result = annotate(
+            momotaro, world, present, [action],
+            holder_belief_fact="treasure_thief", trial_reveal_facts=self.TRF,
+            motives=motives,
+        )[0]
+        self.assertEqual(result["kind"], "detour")
+        self.assertEqual(result["cause"], "motive")
+        self.assertEqual(result["motive"], "caution")
+
+
 class S1Review1SiblingTests(unittest.TestCase):
     """WB-ROUTE-001 S1 Opus review 1 recommended: the same three S0-era
     scenarios AnnotateTests already covers, re-run in a *reachable* state

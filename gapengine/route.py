@@ -188,6 +188,23 @@ required before closing S0):
    possession, not present/known allies' -- an ally's own inventory doesn't
    feed into the *subject's* ``strength()``, only ``peer.ally_value`` does,
    so ally-possession is largely moot here.
+
+S2 design judgment H (Opus review, WB-ROUTE-001 S2): a caution motive
+(believed_weaker) was being attached to rest/withdraw candidates whose real
+driver was fatigue or stress rather than a tactical read of the enemy --
+53/82 of one sweep's caution picks were actually below-threshold
+tired/stressed states. ``_body_or_belief_cause`` now widens "body" (S1's
+exhausted/downed/under_threat bar is untouched) to also cover a tired rest
+(stamina ratio <= ``REST_FATIGUE_STAMINA_RATIO``) and a stressed withdraw
+(stress above ``WITHDRAW_STRESS_THRESHOLD``, matching the stress term in
+``engine.actions._withdraw_candidates``'s own weight formula), each with
+its own text; caution can now only ever attach to a rest/withdraw that
+clears both bars (genuinely idle, not tired or stressed). ``h`` itself is
+*not* used for this classification and never will be: it is a report-only
+number that can jump non-monotonically across a ``strong_enough`` node's
+open/closed edge (an ally joining or leaving, or a strength item being
+gained/lost, changes what the backward search considers reachable), so it
+is a fine thing to log but the wrong thing to key a cause off of.
 """
 
 from __future__ import annotations
@@ -1786,19 +1803,43 @@ def _match_advance_or_prepare(
     return None
 
 
+# S2 design judgment H: rest/withdraw that the engine itself is already
+# leaning on for a physical reason -- tired (stamina) or stressed -- but
+# that doesn't (yet) meet the existing exhausted/downed/under_threat bar.
+# Below these thresholds it used to fall all the way through to
+# detour/none, where the caution motive (believed_weaker) could claim it
+# even though the real driver was fatigue/stress, not a tactical read of
+# the enemy. Both stay cause="body" (multiplier untouched, S1 §2's
+# "detour:body": 1.0) -- only the *text* is more specific; caution now
+# only ever attaches to a rest/withdraw that isn't covered by either.
+REST_FATIGUE_STAMINA_RATIO = 0.6  # tired-but-not-exhausted band above
+# exhausted_ratio (0.2 in every shipped world.yaml) that engine.actions's
+# rest weight already responds to (rest_weight grows as (1-ratio)**2, so
+# it is already climbing well before "exhausted" trips).
+WITHDRAW_STRESS_THRESHOLD = 4.0  # engine/actions.py's _withdraw_candidates:
+# weight = 0.08 + max(0.0, subject.stress - 4.0) * 0.35 -- 4.0 is exactly
+# the stress level below which that term is 0 (weight sits at its 0.08
+# floor); any stress above it is what actually pushes withdraw's weight up,
+# so it's the minimal stress value that is a genuine driver of the choice.
+
+
 def _body_or_belief_cause(
     action: Action,
     subject: Subject,
     world: World,
     believed_holder_id: str | None,
     believed_holder_zone: str | None,
-) -> str | None:
+) -> tuple[str, str] | tuple[None, None]:
     """The two causes that are meaningful *regardless* of whether the plan
     is reachable (h finite or lost): a physically-forced pause, or acting
     on a confident misattributed belief. Shared by ``_detour_cause`` and
     ``_lost_cause`` (S1 §1.2) -- 迷子 (h==inf) still knows *why* the
     subject rested or attacked the wrong target, even though it has
-    nothing to say about the plan itself."""
+    nothing to say about the plan itself.
+
+    Returns ``(cause, reason)``: ``reason`` only ever distinguishes which
+    body sub-condition fired (for text), never affects the multiplier
+    lookup (still keyed on ``cause`` alone)."""
 
     verb = action.verb
 
@@ -1811,7 +1852,11 @@ def _body_or_belief_cause(
             or ratio <= exhausted_ratio
             or bool(action.meta.get("under_threat"))
         ):
-            return "body"
+            return "body", "existing"
+        if verb == "rest" and ratio <= REST_FATIGUE_STAMINA_RATIO:
+            return "body", "rest_fatigue"
+        if verb == "withdraw" and subject.stress > WITHDRAW_STRESS_THRESHOLD:
+            return "body", "withdraw_stress"
 
     misattributed = (
         believed_holder_id is not None
@@ -1826,14 +1871,14 @@ def _body_or_belief_cause(
         and misattributed
         and target == believed_holder_id
     ):
-        return "belief"
+        return "belief", None
 
     if verb == "move" and misattributed:
         dest = action.meta.get("dest")
         if believed_holder_zone is not None and dest == believed_holder_zone:
-            return "belief"
+            return "belief", None
 
-    return None
+    return None, None
 
 
 def _detour_cause(
@@ -1842,20 +1887,20 @@ def _detour_cause(
     world: World,
     believed_holder_id: str | None,
     believed_holder_zone: str | None,
-) -> str:
-    cause = _body_or_belief_cause(
+) -> tuple[str, str | None]:
+    cause, reason = _body_or_belief_cause(
         action, subject, world, believed_holder_id, believed_holder_zone
     )
     if cause is not None:
-        return cause
+        return cause, reason
 
     # S1 §1.2: the h==inf branch that used to live here is gone -- an
     # unreachable plan is now its own kind, "lost" (see _lost_cause), not a
     # detour cause. This branch only ever fires with a finite h.
     if action.verb == "observe" and action.meta.get("target") == believed_holder_id:
-        return "ignorance"
+        return "ignorance", None
 
-    return "none"
+    return "none", None
 
 
 def _lost_cause(
@@ -1864,7 +1909,7 @@ def _lost_cause(
     world: World,
     believed_holder_id: str | None,
     believed_holder_zone: str | None,
-) -> str:
+) -> tuple[str, str | None]:
     """S1 §1.2: when h is unreachable (None/inf), the route layer has
     nothing to say about the plan -- kind becomes "lost" and m_route is a
     flat 1.0 (no modulation) regardless of cause. body/belief still get
@@ -1873,9 +1918,10 @@ def _lost_cause(
     believed holder -- is still a genuine detour cause, handled by
     ``_detour_cause``, never reached when lost)."""
 
-    return _body_or_belief_cause(
+    cause, reason = _body_or_belief_cause(
         action, subject, world, believed_holder_id, believed_holder_zone
-    ) or "none"
+    )
+    return (cause, reason) if cause is not None else ("none", None)
 
 
 # ---------------------------------------------------------------------------
@@ -1996,9 +2042,17 @@ def _advance_text(
     return f"{verb}で先へ進んだ"
 
 
-def _detour_text(cause: str) -> str:
+def _body_text(reason: str | None) -> str:
+    if reason == "rest_fatigue":
+        return "疲れが溜まっていたので休んだ"
+    if reason == "withdraw_stress":
+        return "心労がかさみ、ひとまず気を落ち着けた"
+    return "疲労や危険のため一旦引いた"
+
+
+def _detour_text(cause: str, reason: str | None = None) -> str:
     if cause == "body":
-        return "疲労や危険のため一旦引いた"
+        return _body_text(reason)
     if cause == "ignorance":
         return "次の手が分からず調べた"
     if cause == "belief":
@@ -2006,9 +2060,9 @@ def _detour_text(cause: str) -> str:
     return "特に理由のない寄り道"
 
 
-def _lost_text(cause: str) -> str:
+def _lost_text(cause: str, reason: str | None = None) -> str:
     if cause == "body":
-        return "疲労や危険のため一旦引いた"
+        return _body_text(reason)
     if cause == "belief":
         return "誤った思い込みに基づいて動いた"
     return "先の見えないまま動いた"
@@ -2238,7 +2292,7 @@ def annotate(
         }
 
         if is_lost:
-            cause = _lost_cause(
+            cause, reason = _lost_cause(
                 action, subject, world, believed_holder_id, believed_holder_zone
             )
             results.append(
@@ -2247,7 +2301,7 @@ def annotate(
                     "kind": "lost",
                     "cause": cause,
                     "h": [None, None],
-                    "text": _lost_text(cause),
+                    "text": _lost_text(cause, reason),
                 }
             )
             continue
@@ -2374,7 +2428,7 @@ def annotate(
             )
             continue
 
-        cause = _detour_cause(
+        cause, reason = _detour_cause(
             action, subject, world, believed_holder_id, believed_holder_zone
         )
         results.append(
@@ -2383,7 +2437,7 @@ def annotate(
                 "kind": "detour",
                 "cause": cause,
                 "h": [_finite_or_none(h_before), _finite_or_none(h_before)],
-                "text": _detour_text(cause),
+                "text": _detour_text(cause, reason),
             }
         )
 

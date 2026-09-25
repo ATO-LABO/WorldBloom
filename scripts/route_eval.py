@@ -34,6 +34,7 @@ never under the Drive-mounted repo.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import random
 import sys
@@ -47,6 +48,7 @@ if str(ROOT) not in sys.path:
 
 import yaml
 
+from engine.actions import Action
 from engine.sim import Simulation
 from engine.world import World
 from gapengine.evolve import _load_subjects, evolve
@@ -452,6 +454,121 @@ def run_ga_comparison(out_dir: Path, *, ga_seeds: tuple[int, ...] = GA_SEEDS, s2
     return results
 
 
+GENE_SWAP_LABELS: tuple[str, ...] = ("neutral", "cautious", "reckless")
+GENE_SWAP_SEEDS: tuple[int, ...] = tuple(range(1, 21))
+
+
+def run_caution_gene_swap(
+    out_dir: Path, *, seeds: tuple[int, ...] = GENE_SWAP_SEEDS
+) -> dict[str, Any]:
+    """S2 design judgment H, pass/fail condition 4: a same-state gene swap
+    comparison, not just raw counts -- for every protagonist decision point
+    of a neutral-genome, rho=1.0 run (seeds 1..20) where a caution candidate
+    (motive=="caution") is present, freeze that decision's raw candidate
+    list/state and recompute Policy.reweight under neutral/cautious/reckless
+    genomes on copies of it, recording caution's share of the total output
+    weight for each. Passes when the cautious genome's mean share is bigger
+    than neutral's (a cautious personality actually leans into caution more,
+    on the exact same states -- not just because caution opportunities
+    happen to come up more often for it). Reference harness: Opus review's
+    scratchpad/review/opus_s2_h.py + opus_s2_caution.py (counterfactual
+    reweight on a deep-copied candidate list, same idea, leaner here)."""
+
+    route_cfg = load_route_config(TEMPLATE)
+    genomes = {
+        "neutral": Genome.neutral(),
+        "cautious": _typical_genome(risk_tolerance=0.0),
+        "reckless": _typical_genome(risk_tolerance=1.0),
+    }
+    acfg = _action_cfg()
+
+    def _make_policy(genome: Genome) -> Policy:
+        route = Route.from_config(route_cfg)
+        route.rho = 1.0
+        return Policy(genome, precedent=None, cfg=acfg, route=route)
+
+    # The base run's own driving policy must stay a *separate* Policy
+    # instance from the counterfactual "neutral" one below -- reweight gets
+    # monkeypatched onto it, and reusing the same object for both would make
+    # the counterfactual "neutral" call recurse straight back into the
+    # wrapper.
+    base_policy = _make_policy(genomes["neutral"])
+    policies = {label: _make_policy(genome) for label, genome in genomes.items()}
+
+    def _caution_share(annotated: list[tuple[Action, float]]) -> float:
+        total = sum(weight for _, weight in annotated)
+        caution = sum(
+            weight
+            for action, weight in annotated
+            if (action.meta.get("policy") or {}).get("route", {}).get("motive")
+            == "caution"
+        )
+        return caution / total if total else 0.0
+
+    shares: dict[str, list[float]] = {label: [] for label in genomes}
+    opportunities = 0
+    total_decisions = 0
+
+    def _swap_reweight(subject, world, present, weighted, *, turn=0, day=0):
+        nonlocal opportunities, total_decisions
+        total_decisions += 1
+        per_label: dict[str, list[tuple[Action, float]]] = {}
+        for label, policy in policies.items():
+            frozen = [
+                (Action(a.verb, tuple(a.args), copy.deepcopy(a.meta)), w)
+                for a, w in weighted
+            ]
+            per_label[label] = policy.reweight(
+                subject, world, present, frozen, turn=turn, day=day
+            )
+        has_caution = any(
+            (action.meta.get("policy") or {}).get("route", {}).get("motive")
+            == "caution"
+            for action, _ in per_label["neutral"]
+        )
+        if has_caution:
+            opportunities += 1
+            for label in genomes:
+                shares[label].append(_caution_share(per_label[label]))
+        # the real run must proceed on the base (neutral) policy's own
+        # result -- the counterfactual calls above never touch simulation
+        # state, only the deep-copied candidate lists.
+        return per_label["neutral"]
+
+    base_policy.reweight = _swap_reweight
+
+    for seed in seeds:
+        world = World.from_yaml(
+            PROJECT / "world.yaml", action_graph_path=TEMPLATE / "action_graph.yaml"
+        )
+        subjects = _load_subjects(PROJECT / "subjects")
+        Simulation(
+            seed, world, subjects, out_dir / f"seed-{seed}",
+            policies={world.protagonist: base_policy},
+        ).run()
+
+    result = {
+        "seeds": list(seeds),
+        "total_decisions": total_decisions,
+        "caution_opportunities": opportunities,
+        "mean_caution_weight_share": {
+            label: (sum(values) / len(values) if values else None)
+            for label, values in shares.items()
+        },
+        "passes_cautious_gt_neutral": (
+            bool(shares["cautious"]) and bool(shares["neutral"]) and (
+                (sum(shares["cautious"]) / len(shares["cautious"]))
+                > (sum(shares["neutral"]) / len(shares["neutral"]))
+            )
+        ),
+    }
+    (out_dir / "caution_gene_swap.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return result
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=Path(r"C:\Projects\WorldBloom-local\runs\route-s2\eval"))
@@ -474,6 +591,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-opportunities", action="store_true",
         help="Skip the per-motive opportunity/selection-rate capture (S2 pass/fail 3).",
     )
+    parser.add_argument(
+        "--caution-gene-swap", action="store_true",
+        help=(
+            "S2 design judgment H pass/fail 4: same-state gene swap "
+            "comparison of caution's weight share (neutral/cautious/reckless, "
+            "seeds 1..20, rho=1.0)."
+        ),
+    )
     return parser
 
 
@@ -490,6 +615,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.skip_ga:
         ga = run_ga_comparison(out_dir / "ga", s2_extra=not args.no_s2_extra)
         print(json.dumps(ga, ensure_ascii=False, indent=2, sort_keys=True))
+    if args.caution_gene_swap:
+        swap = run_caution_gene_swap(out_dir / "caution-gene-swap")
+        print(json.dumps(swap, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
 
