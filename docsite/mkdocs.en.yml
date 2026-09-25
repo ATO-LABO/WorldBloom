@@ -1,0 +1,77 @@
+site_name: WorldBloom Docs
+site_url: https://ato-labo.github.io/WorldBloom/docs/en/
+repo_url: https://github.com/ATO-LABO/WorldBloom
+docs_dir: en
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.footer
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+validation:
+  omitted_files: warn
+  unrecognized_links: warn
+  anchors: warn
+
+extra:
+  alternate:
+    - name: 日本語
+      link: /WorldBloom/docs/
+      lang: ja
+    - name: English
+      link: /WorldBloom/docs/en/
+      lang: en
+
+nav:
+  - Getting Started:
+      - Introduction: index.md
+      - Install: getting-started/install.md
+      - Quickstart: getting-started/quickstart.md
+  - Concepts:
+      - Seven Layers: concepts/seven-layers.md
+      - Genome: concepts/genome.md
+      - QD Map: concepts/qd-map.md
+      - Sifting: concepts/sifting.md
+      - Determinism: concepts/determinism.md
+  - Usage:
+      - Create a World: usage/create-world.md
+      - Run Settings: usage/run-settings.md
+      - Read Results: usage/read-results.md
+      - Generate Text: usage/generate-text.md
+      - Settings: usage/settings.md
+      - LLM Backends: usage/llm-backends.md
+      - GPU Guard: usage/gpu-guard.md
+      - CLI Workflow: usage/cli-workflow.md
+  - Reference:
+      - CLI: reference/cli.md
+      - settings.json: reference/settings-json.md
+      - Templates: reference/templates.md
+      - Run Outputs: reference/run-outputs.md
+      - HTTP API: reference/http-api.md
+  - Guides:
+      - Troubleshooting: guides/troubleshooting.md
+      - FAQ: guides/faq.md
+      - Changelog: guides/changelog.md
