@@ -9,8 +9,8 @@ usage: evolve.py [-h] --project PROJECT --template TEMPLATE --out OUT [--generat
                  [--rationality-model RATIONALITY_MODEL]
                  [--rationality-num-ctx RATIONALITY_NUM_CTX]
                  [--rationality-table RATIONALITY_TABLE]
-                 [--rationality-max-calls RATIONALITY_MAX_CALLS] [--resume]
-                 [--resume-allow-code-change]
+                 [--rationality-max-calls RATIONALITY_MAX_CALLS] [--route-rho ROUTE_RHO]
+                 [--resume] [--resume-allow-code-change]
 
 Run deterministic MAP-Elites evolution.
 
@@ -55,6 +55,10 @@ options:
                         Cap on judge calls (candidates for noul, chunks for choice) per simulation
                         run; overrides rationality.yaml's max_judge_calls_per_run (default:
                         unlimited).
+  --route-rho ROUTE_RHO
+                        WB-ROUTE-001 S1: override templates/<genre>/route.yaml's rho (0 disables
+                        the route weighting layer; that is the template default). Requesting rho>0
+                        for a template with no route.yaml is an error.
   --resume              WB-GA-RESUME: resume from the last generation completed in
                         <out>/ga_state.json instead of starting over.
   --resume-allow-code-change
