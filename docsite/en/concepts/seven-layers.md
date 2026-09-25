@@ -1,5 +1,5 @@
 ---
-ja_rev: "2bae66f21de0"
+ja_rev: "832f1f22ee60"
 ---
 # Seven Layers
 
@@ -16,6 +16,26 @@ WorldBloom's characters aren't represented as lines of dialogue or personality p
 | 7. Delayed effects | Planted foreshadowing (`world.pending_effects`) and its resolution conditions | An earlier action pays off later. Unresolved foreshadowing is penalized in quality |
 
 On top of this there's **vitality**. It transitions `alive` → `downed` → `revived` / `dead`, and a downed character can return to `alive` via rescue by an ally or self-recovery. Death only happens when the winning side's action or item carries `lethal`. This lets a "pseudo death and revival" arise naturally as part of the story.
+
+## Identity layer { #identity-layer }
+
+`identity_true` (true identity) and `identity_displayed` (displayed identity) are held separately. The `disguise` action splits the two apart, and until `identity_seen` (exposed) is set — through repeated `observe` or a `confront` — every other character can only treat this character by the name in `identity_displayed`. The relationship matrix, hostility checks, and role priors for action candidates are all read against the true identity once exposed, or the displayed identity otherwise (`perceived_name`). The moment of exposure switches the other party's stance to the value for the true identity, which is why a reveal scene works as a turning point in the story. A world template can pre-declare an initial relationship toward the disguised identity (e.g. affinity toward "a traveling merchant").
+
+## Phase layer { #phase-layer }
+
+`phase` is the set of irreversible thresholds a character has crossed (e.g. "crossed the border"). A world template's `phase_rules` declares which zone entry crosses which threshold, and which actions that enables or disables. Because crossing can't be undone, it produces irreversible progression like "once you cross to Ogre Island, you can't go back to the village — but in exchange, some actions are only available there." The actually-selectable actions (`availableActions`) are the intersection of that character's verbs, those whose [action-type](action-types.md) premises are satisfied, and those not disabled by the current `phase`.
+
+## Objective layer and transfer of possession { #target-layer }
+
+"Who's after what" (`goal`) and "who currently holds that objective" (the holder in `world.objectives`) are held separately. This separation means **transfer of possession and the outcome of a confrontation are handled as separate events**. An objective can change hands not only by fighting for it, but also through `negotiate` (the requesting side) and `concede` (the holding side conceding) — it can transfer without a fight if the relationship is good enough, or even without that if an exchange of assets (a trade) goes through. `concede` is both a transfer of possession and a reconciliation: once it goes through, hostility between the two sides is cleared, so a fight can't be picked again right after the handover. Momotaro's "bring the treasure home" ending can be reached via this negotiation route without ever defeating the ogre (a different path to the same ending).
+
+## Resource layer { #resource-layer }
+
+Three things: possessions `inventory`, reputation `reputation`, and drawable relationship capital (bonds). `sacrifice` and `grand_gesture` (a large gift or public act) are ways to spend assets or bonds in exchange for ability modifiers or phase-crossing conditions. Reputation rises through `donate`, drops sharply when a `pledge` is broken, and can move either way with `grand_gesture` since it's a public act whose success or failure is visible.
+
+## Vitality transitions { #vitality-transitions }
+
+An `alive` character who loses to a non-lethal action becomes `downed`. The only action available while downed is `rest`, but they automatically recover to `revived` after a set number of turns, or sooner via a present ally's `rescue` action (recovery speed is affected by the strength of the relationship with that ally). `dead` only happens through `lethal_chance`, when the winning side's action or item carries `lethal` — an ordinary defeat only downs the character. A character the template marks `lethal_exempt` is protected even from lethal actions (a genre-level convention, not the engine steering toward an ending). This mechanism lets a high-volatility turn — "downed, then saved by an ally, then the tables turn" — arise from the ordinary rules rather than as a special-cased event.
 
 ## The relationship matrix (stance / bonds)
 
@@ -38,6 +58,6 @@ ending:
 
 This same vocabulary is passed to the LLM's synopsis prompt as the same dictionary.
 
-## No LLM is involved in generating events
+## No LLM is involved in generating events { #no-llm-in-simulation }
 
 Each turn, the protagonist enumerates the action candidates possible at that moment, multiplies the base weight (from temperament and world state) by the [genome](genome.md)'s multipliers, and draws once. Candidates that don't satisfy an action's premise (e.g. observe before neutralizing) never even make it into the candidate list, so causal consistency is guaranteed by construction. No LLM enters here at all — the sequence of events is purely a simulation result. Given the same world, the same genome, and the same random seed, the log matches byte for byte (see [Determinism](determinism.md) for details).

@@ -54,8 +54,12 @@ nav:
       - Install: getting-started/install.md
       - Quickstart: getting-started/quickstart.md
   - Concepts:
+      - Overview: concepts/overview.md
+      - Fixed Ending: concepts/fixed-ending.md
       - Seven Layers: concepts/seven-layers.md
       - Genome: concepts/genome.md
+      - Action Types I–VI: concepts/action-types.md
+      - Foreshadowing: concepts/foreshadowing.md
       - QD Map: concepts/qd-map.md
       - Sifting: concepts/sifting.md
       - Determinism: concepts/determinism.md
@@ -75,6 +79,7 @@ nav:
       - Run Outputs: reference/run-outputs.md
       - HTTP API: reference/http-api.md
       - Glossary: reference/glossary.md
+      - Design Docs: reference/design-docs.md
   - Guides:
       - Troubleshooting: guides/troubleshooting.md
       - FAQ: guides/faq.md
