@@ -1,0 +1,89 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docsite/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docsite/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r docsite/requirements.txt
+
+      - name: Check ja/en page parity
+        run: python docsite/check_parity.py
+
+      # -d is resolved relative to the config file, so ../_site lands at the
+      # repo root. ja first: its build cleans _site, which would wipe en.
+      - name: Build ja site
+        run: mkdocs build --strict -f docsite/mkdocs.ja.yml -d ../_site
+
+      - name: Build en site (into ja site's /en)
+        run: mkdocs build --strict -f docsite/mkdocs.en.yml -d ../_site/en
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-site
+          path: _site
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: docs-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs-site
+          path: _site
+
+      - name: Deploy to gh-pages/docs
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin gh-pages
+          git worktree add ghp origin/gh-pages
+
+          # Refuse to touch gh-pages if it doesn't look like the existing
+          # published viewer (never run mkdocs gh-deploy here: that would
+          # wipe the whole branch, including the public viewer).
+          test -f ghp/index.html
+
+          rm -rf ghp/docs
+          cp -r _site ghp/docs
+
+          cd ghp
+          git add docs
+          if git diff --cached --quiet; then
+            echo "No docs changes to publish."
+            exit 0
+          fi
+          git commit -m "docs: publish docsite build ($GITHUB_SHA)"
+          git push origin HEAD:gh-pages
