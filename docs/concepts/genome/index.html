@@ -14,7 +14,7 @@
         <link rel="prev" href="../seven-layers/">
       
       
-        <link rel="next" href="../qd-map/">
+        <link rel="next" href="../action-types/">
       
       
         
@@ -451,6 +451,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体の流れ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fixed-ending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    結末固定
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../seven-layers/" class="md-nav__link">
         
   
@@ -593,10 +649,77 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#coevolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        共進化（敵役にも遺伝子を持たせる）
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../action-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    行動タイプ I〜VI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foreshadowing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    伏線（遅延効果）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1196,6 +1319,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/design-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設計資料
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1427,6 +1578,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#coevolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        共進化（敵役にも遺伝子を持たせる）
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1513,6 +1675,9 @@
 <p>新規性志向を上げるほど、前例で頻出する行動が抑えられ、稀な行動が相対的に選ばれやすくなります。0 のときは前例表の影響を受けません。</p>
 <h2 id="_2">交叉・突然変異<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>次の世代は、アーカイブに残った個体（および前世代の上位個体）を親として作られます。交叉は遺伝子の次元ごとに一様（どちらかの親の値を継ぐ）、突然変異は次元ごとに一定確率でガウス揺らぎを加えたのち範囲にクリップします。子が入るセルは親のセルを引き継がず、実際の実行結果で決まります。</p>
+<h2 id="coevolution">共進化（敵役にも遺伝子を持たせる）<a class="headerlink" href="#coevolution" title="Permanent link">&para;</a></h2>
+<p>既定（オフ）では、敵役は遺伝子を持たず、気質だけで行動します（<code>policy=None</code>）。<a href="../../usage/run-settings/">実行設定</a>で共進化（coevolve）をオンにすると、敵役側にも同じ9スカラーの遺伝子と、主人公とは別の QD アーカイブを持たせ、世代ごとに主人公パス・敵役パスを交互に評価します。オンにすると評価回数が2倍になるため、実行時間もおおむね2倍になります。</p>
+<p>敵役側の適応度はゼロサム（主人公を負かすほど高評価）にはしません。<strong>「結末に到達したランの中で、主人公の道のりをどれだけ険しくしたか」</strong>（ターン数、起伏、力関係の逆転回数など）を最大化する方向で評価します。敵役が強すぎて主人公が誰も結末に届かなくなる方向には進化が向かわない、という歯止めです。</p>
 
 
 
@@ -1570,13 +1735,13 @@
         
         
           
-          <a href="../qd-map/" class="md-footer__link md-footer__link--next" aria-label="次: QD 格子">
+          <a href="../action-types/" class="md-footer__link md-footer__link--next" aria-label="次: 行動タイプ I〜VI">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 次
               </span>
               <div class="md-ellipsis">
-                QD 格子
+                行動タイプ I〜VI
               </div>
             </div>
             <div class="md-footer__button md-icon">

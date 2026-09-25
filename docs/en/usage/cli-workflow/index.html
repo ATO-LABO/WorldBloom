@@ -449,6 +449,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/fixed-ending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fixed Ending
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/seven-layers/" class="md-nav__link">
         
   
@@ -485,6 +541,62 @@
     
   
     Genome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/action-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Action Types I–VI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/foreshadowing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foreshadowing
   
 
     
@@ -855,6 +967,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Workflow
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -871,6 +1001,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-run-a-ga-experiment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Run a GA experiment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-generate-synopsistext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate synopsis/text
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-determinism-regression-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Determinism / regression tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1104,6 +1286,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/design-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1274,6 +1484,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-run-a-ga-experiment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Run a GA experiment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-generate-synopsistext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate synopsis/text
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-determinism-regression-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Determinism / regression tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1293,16 +1544,46 @@
 
 
 <h1 id="cli-workflow">CLI Workflow<a class="headerlink" href="#cli-workflow" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Not translated yet</p>
-<p>This page has not been translated into English yet. Please switch to 日本語 with the language selector (文A) at the top right to read the Japanese version.</p>
-</div>
+<p>How to go from a GA experiment to synopsis/text generation using only the command line, without the Studio screens. See <a href="../../reference/cli/">CLI</a> for the full list of arguments.</p>
+<h2 id="1-run-a-ga-experiment">1. Run a GA experiment<a class="headerlink" href="#1-run-a-ga-experiment" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>python scripts/evolve.py --project projects/momotaro --template templates/momotaro \
+  --out &lt;output dir&gt;/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
+</code></pre></div>
+<ul>
+<li><code>--project</code> / <code>--template</code> can be any of the bundled <code>basic</code> / <code>momotaro</code> / <code>momotaro_plus</code> / <code>momotaro_plus2</code> / <code>detective</code> / <code>romance</code> (the full list is under <code>templates/</code>; <code>basic</code> holds the shared base rules and is rarely specified on its own as a genre)</li>
+<li>An output directory outside the repository is recommended (<code>.gitignore</code> ignores <code>runs/</code>, but you shouldn't keep a large volume of experiment output inside the repository anyway)</li>
+<li>Rough time cost: scales close to linearly with generations × population × seeds. The default size (20 generations × 100 population × 3 seeds) takes about an hour on 20 cores as a guideline (the process count is set under "Compute" in <a href="../settings/">Settings</a>)</li>
+<li>On completion, the grid (archive) is written to <code>&lt;output dir&gt;/exp1/archive.json</code>. <code>cells=&lt;count&gt;</code> is the number of representative individuals that reached the ending and stayed in the grid</li>
+</ul>
+<p>You can also run a control experiment that measures the reach rate and diversity produced by purely random policies.</p>
+<div class="highlight"><pre><span></span><code>python scripts/random_baseline.py --project projects/momotaro --template templates/momotaro --out &lt;output dir&gt;/baseline
+</code></pre></div>
+<h2 id="2-generate-synopsistext">2. Generate synopsis/text<a class="headerlink" href="#2-generate-synopsistext" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>python scripts/synopsize.py --archive &lt;output dir&gt;/exp1/archive.json --runs &lt;output dir&gt;/exp1 \
+  --out &lt;output dir&gt;/exp1/synopses.json --backend ollama --project projects/momotaro --template templates/momotaro
+
+python scripts/narrate.py --archive &lt;output dir&gt;/exp1/archive.json --selection &lt;output dir&gt;/exp1/selection.json \
+  --out &lt;output dir&gt;/exp1/stories --backend ollama --project projects/momotaro --template templates/momotaro
+</code></pre></div>
+<ul>
+<li><code>--backend</code> can be <code>claude-cli</code> / <code>codex-cli</code> / <code>anthropic</code> / <code>openai</code> / <code>ollama</code> / <code>llama-server</code> / <code>none</code> (see <a href="../llm-backends/#model-defaults">LLM Backends</a>). <code>none</code> skips the LLM call entirely and only saves the prompts</li>
+<li>The <code>--backend ollama</code> example above requires the default model <code>qwen3.6:35b</code> if there is no <code>settings.json</code> (or it has no <code>model</code> set). If you already pulled something like <code>qwen3.5:9b-q4_K_M</code> following <a href="../llm-backends/">LLM Backends</a>, put that model name under <code>output.ollama.model</code> in <code>settings.json</code></li>
+<li><code>selection.json</code> has the shape <code>{"selected": ["III|high"]}</code> (the key is a grid cell = <code>category|volatility band</code>; examples actually seen: <code>I|mid</code>, <code>II|high</code>, <code>III|low</code>, etc.)</li>
+<li>Reviewing synopses and picking grid cells can also be done from the viewer screens started with <code>--control</code></li>
+</ul>
+<h2 id="3-determinism-regression-tests">3. Determinism / regression tests<a class="headerlink" href="#3-determinism-regression-tests" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>python -m unittest discover -s tests -v
+</code></pre></div>
+<p>Checks determinism, that the neutral genome applies no modulation, zero premise violations, foreshadowing penalties, and vitality transitions. Always run this after changing <code>engine/</code> or <code>gapengine/</code>. See <a href="../../concepts/determinism/">Determinism</a> for details.</p>
 
 
 
 
 
 
+
+  
+  
 
 
 
