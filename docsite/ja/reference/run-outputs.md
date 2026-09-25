@@ -26,7 +26,7 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
     ind-<i>/seed-<s>/layers.jsonl   # 1ラン分の生ログ（--keep all のときのみ全個体分）
   prompts/               # synopsize.py / narrate.py が保存した生成用プロンプト
   synopses.json          # synopsize.py の出力
-  selection.json         # 画面で人が選んだ採用・保留・除外
+  selection.json         # 画面で人が選んだ採用（保留・除外は control/ 側が持つ）
   stories/               # narrate.py が書いた本文（採用したセルのみ）
 ```
 
@@ -83,8 +83,8 @@ QD（MAP-Elites）アーカイブ本体。
 `synopsize.py`・`narrate.py`・画面の3点は次のように連携します。
 
 - `synopses.json`: `{"entries": [{"cell": "I|high", "generation": 3, "seed": 0, "layers_path": "g3/ind-31/seed-0/layers.jsonl", "quality": 0.36, "reach_rate": 0.33, "synopsis": "…", "status": "ok"}], "backend": "ollama", "archive": "…/archive.json"}`
-- `selection.json`: `{"selected": ["III|high", "I|low", "V|mid"]}`（セルキーの配列。画面の✔採用と対応）
-- `stories/<cell>.md`: 採用したセルごとの本文。`stories/index.json` に一覧が入ります
+- `selection.json`: `{"selected": ["III|high", "I|low", "V|mid"]}`（**採用**したセルキーだけの配列。保留・除外の状態はこのファイルには無く、`control/`側（`execution/selections.py`）が持ちます） 
+- `stories/<cell>.md`: 採用したセルごとの本文。ファイル名はセルキーの `|` を `-` に置き換えた無害化名（例: `I|low` → `I-low.md`）。`stories/index.json` に一覧が入ります
 
 ## `runs/` と `control/` の違い
 

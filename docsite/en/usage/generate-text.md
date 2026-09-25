@@ -3,7 +3,7 @@ ja_rev: "a1cc08e22c99"
 ---
 # Generate Text
 
-Generating the events themselves never involves an LLM. The LLM only comes in at two stages: turning candidates adopted in [Sifting](../concepts/sifting.md) into a **synopsis**, and turning that synopsis into **prose**. Before generating, choose an LLM connection under ⚙ Settings (see [LLM Backends](llm-backends.md)).
+Generating the events themselves never involves an LLM. The LLM only comes in at two stages: turning candidates adopted in [Sifting](../concepts/sifting.md) into a **synopsis**, and turning that synopsis into **prose**. Before generating, choose an LLM connection under ⚙ 全体設定 (Global settings) (see [LLM Backends](llm-backends.md)).
 
 ## Kinds
 
@@ -46,4 +46,4 @@ The suggested retry method depends on the situation.
 
 ## Reusing text-generation settings across experiments
 
-Text-generation settings (backend, model name, limits, etc.) are stored separately from run settings (the GA config), under the "文章生成" (Text generation) section of ⚙ **全体設定** (Global settings) (see [Settings](settings.md)). There is no per-experiment generation config, so generating from a different experiment reuses the same settings as-is. To change them, open ⚙ Settings before generating.
+Text-generation settings (backend, model name, limits, etc.) are stored separately from run settings (the GA config), under the "文章生成" (Text generation) section of ⚙ **全体設定** (Global settings) (see [Settings](settings.md)). There is no per-experiment generation config, so generating from a different experiment reuses the same settings as-is. To change them, open ⚙ 全体設定 (Global settings) before generating.

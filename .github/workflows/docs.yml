@@ -6,10 +6,16 @@ on:
     paths:
       - "docsite/**"
       - ".github/workflows/docs.yml"
+      - "scripts/**"
+      - "viewer/server.py"
+      - "requirements.txt"
   pull_request:
     paths:
       - "docsite/**"
       - ".github/workflows/docs.yml"
+      - "scripts/**"
+      - "viewer/server.py"
+      - "requirements.txt"
   workflow_dispatch: {}
 
 permissions:
@@ -25,7 +31,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install dependencies
         run: pip install -r requirements.txt -r docsite/requirements.txt

@@ -1,5 +1,5 @@
 ---
-ja_rev: "a442841ce61c"
+ja_rev: "e7e940e79c4c"
 ---
 # CLI
 
@@ -22,7 +22,7 @@ python scripts/evolve.py --project projects/momotaro_plus2 --template templates/
   --out C:\WorldBloom-data\runs\my-exp --generations 20 --population 100 --seeds 3
 ```
 
-Point the output directory at somewhere local, not the repository on Google Drive (see [Run Outputs](run-outputs.md)).
+Point the output directory somewhere outside the repository (local), not inside it (see [Run Outputs](run-outputs.md)).
 
 ## scripts/synopsize.py — generate synopses
 

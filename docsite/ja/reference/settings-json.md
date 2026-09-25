@@ -57,11 +57,12 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 | `anthropic`, `openai` | `api_key` | 文字列 | なし | APIキー。⚙設定から保存すると画面には値そのものが表示されない（読み取り専用APIは `has_api_key` の真偽値だけを返す） |
 | `ollama` | `base_url` | 文字列 | `http://localhost:11434` | Ollama サーバーのURL |
 | `ollama` | `think` | 真偽値 | `false` | 思考モードを有効にするか |
-| `ollama` | `options` | オブジェクト | `{}` | `/api/chat` の `options` にそのまま渡すマージ用の追加パラメータ（temperature等） |
+| `ollama` | `options` | オブジェクト | `{"num_ctx": 16384, "num_predict": 4096}` | `/api/chat` の `options` にマージする追加パラメータ（temperature等）。指定したキーだけがこの既定値を上書きし、他は既定値のまま残る |
 | `ollama` | `seed` | 整数 | なし | 指定すると `options.seed` に反映 |
 | `llama-server` | `base_url` | 文字列 | `http://127.0.0.1:8089` | llama-server（OpenAI互換API）のURL |
 | `llama-server` | `think` | 真偽値 | `true` | `chat_template_kwargs.enable_thinking` に反映 |
-| `llama-server` | `options` | オブジェクト | `{}` | `/v1/chat/completions` のペイロードにマージする追加パラメータ（`model`・`messages`・`stream`・`chat_template_kwargs` は上書きされない） |
+| `llama-server` | `options` | オブジェクト | `{"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.0, "max_tokens": 8192}` | `/v1/chat/completions` のペイロードにマージする追加パラメータ。指定したキーだけがこの既定値を上書きする（`model`・`messages`・`stream`・`chat_template_kwargs` は上書きされない） |
+| `llama-server` | `seed` | 整数 | なし | 指定すると `payload.seed` に反映 |
 | `llama-server` | `launch` | 文字列の配列 | なし | `base_url` に応答が無いとき自動起動するコマンド（例は[GPU ガード](../usage/gpu-guard.md)の設定例を参照） |
 | `llama-server` | `startup_seconds` | 数値 | 180 | 自動起動後、`/health` が応答するまで待つ秒数 |
 | `claude-cli` | `command` | 文字列 | `claude` | 実行する実行ファイル名 |

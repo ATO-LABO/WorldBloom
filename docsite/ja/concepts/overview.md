@@ -2,7 +2,7 @@
 sources:
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "README.md"
-reviewed: 4394c7ef86af65bb0f995a9071da5f1744e3ef87
+reviewed: "4394c7ef86af65bb0f995a9071da5f1744e3ef87"
 ---
 # 全体の流れ
 

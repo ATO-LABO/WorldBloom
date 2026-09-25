@@ -32,14 +32,24 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 
 ### action_graph.yaml
 
+`templates/momotaro_plus2/action_graph.yaml` は `nodes:`（行動一覧）・`edges:`（行動間の前提条件）・`permission:`（対象の役割ごとの許可レベル）・`restricted_weight:`（`restricted` の重み係数）の4区画で構成されます。
+
 ```yaml
-- {verb: train, category: I, subtype: self_strengthen, risk: neutral, sign: 0}
-- {verb: investigate, category: I, subtype: gather, risk: neutral, sign: 0, when: gather}
-- {verb: fight, category: I, subtype: weaken_direct, risk: risky, sign: -1}
-- {verb: give_item, category: III, subtype: gift, risk: neutral, sign: 1}
+nodes:
+  - {verb: train, category: I, subtype: self_strengthen, risk: neutral, sign: 0}
+  - {verb: fight, category: I, subtype: weaken_direct, risk: risky, sign: -1}
+
+permission:
+  fight: {hostile: allow, neutral: restricted, ally: restricted}
+
+restricted_weight: 0.15
 ```
 
 `category` は QD 格子の行（I 自己強化・II 認識と伏線・III 関係構築・IV 身分・V 移動と停滞・VI 外部介入）。`sign` は行動の方向性（+1 協調的・-1 敵対的・0 中立）で novelty・品質 q の計算に使います。
+
+分類は文脈単位で決まります。`nodes:` の同じ動詞でも `when` 条件が成立するかどうかで別の行に分類されます。例えば `investigate` は `when: gather` が成立すれば I（自己強化）、それ以外は II（認識と伏線）。`move` は `crossing`（身分の境界越え）が成立すれば V（移動と停滞）、それ以外は `category: null`（QD格子の対象外）です。
+
+`permission:` は行動の対象の役割（`hostile`/`neutral`/`ally`）ごとに `allow`/`restricted`/`deny` を定義します。`restricted` は候補から除外されるのではなく、`restricted_weight`（既定 0.15）倍に重みが下がった状態で候補に残ります。
 
 ### canon.yaml
 
@@ -83,7 +93,7 @@ categories: [I, II, III, IV, V, VI]
 volatility_bins: [low, mid, high]
 ```
 
-同梱3ジャンルの違い: `momotaro`（桃太郎系）は行動カテゴリを I〜VI 全6種、`detective`（探偵）・`romance`（恋愛）は I〜III の3種だけを軸にしています（後者はテンプレートの `action_graph.yaml` 自体が扱う行動の幅が狭いため）。`volatility_bins` はどのジャンルも共通で `[low, mid, high]`。閾値は世代0の母集団の分散から自動算出され、`archive.json` の `volatility_thresholds` に記録されます。
+同梱ジャンル（`templates/` 配下: `basic`・`detective`・`momotaro`・`momotaro_plus`・`momotaro_plus2`・`romance`）のうち、`momotaro`（桃太郎系）は行動カテゴリを I〜VI 全6種、`detective`（探偵）・`romance`（恋愛）は I〜III の3種だけを軸にしています（後者はテンプレートの `action_graph.yaml` 自体が扱う行動の幅が狭いため）。`volatility_bins` はどのジャンルも共通で `[low, mid, high]`。閾値は世代0の母集団の分散から自動算出され、`archive.json` の `volatility_thresholds` に記録されます。
 
 ### rules.yaml
 
@@ -97,7 +107,7 @@ volatility_bins: [low, mid, high]
   description: 敵対相手にはより攻撃的に
 ```
 
-`scope` は `candidate`（候補ごと。`target` が束縛される）か `turn`（ターンごと）。`adjust` は `category_weight.<I〜VI>` または `risk_tolerance` を一時的に加算するキー。`g_eff = clip(genome + Σ 該当ルールの adjust)` として実際の重みに使われます。
+`scope` は `candidate`（候補ごと。`target` が束縛される）か `turn`（ターンごと）。`adjust` は `category_weight.<I〜VI>`・`risk_tolerance`・`stance_shift_bias`・`novelty_drive` を一時的に加算するキー。`g_eff = clip(genome + Σ 該当ルールの adjust)` として実際の重みに使われます。
 
 ### rationality.yaml（κ／Jev）
 
@@ -147,7 +157,7 @@ ending:
 target_ending: [homecoming, homecoming_shared]
 ```
 
-`ending.when` は述語文字列 or `{agent, goal}` の2形式。`target_ending` に列挙した結末に届いたランだけが[QD 格子](../concepts/qd-map.md)のアーカイブに入ります。`zones`/`routes`/`items`/`facts` はそれぞれ7層の「対象層」「資源層」「認識層」に対応する世界側のデータです（詳しくは[7層構造](../concepts/seven-layers.md)）。
+`ending.when` は述語文字列 or `{agent, goal}` の2形式。`target_ending` に列挙した結末に届いたランだけが[QD 格子](../concepts/qd-map.md)のアーカイブに入ります。`zones`/`routes` は7層の「フェーズ層」（`phase_rules` による越境判定の土台）、`items` は「資源層」（持ち物として `inventory` に入る）、`facts` は「認識層」（`knowledge`・`beliefs_about` の元になる秘匿事実）に対応する世界側のデータです（詳しくは[7層構造](../concepts/seven-layers.md)）。
 
 ### subjects/*.yaml の主なキー
 

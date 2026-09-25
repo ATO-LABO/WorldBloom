@@ -5,7 +5,7 @@ ja_rev: "19139d2636fb"
 
 ## Does the GA experiment (evolution) need an LLM?
 
-No. No LLM is involved in the GA experiment itself (simulating the world, evolving the genome, accumulating results into the QD map). The LLM is only used for [generating synopses and full text](../usage/generate-text.md), after a person has chosen candidates left in the grid. If you just want to see results without generating text, set the backend to "生成しない" (Don't generate, `none`) in ⚙ Settings — it only saves the prompts and skips actual generation. See [LLM Backends](../usage/llm-backends.md) for details.
+No. No LLM is involved in the GA experiment itself (simulating the world, evolving the genome, accumulating results into the QD map). The LLM is only used for [generating synopses and full text](../usage/generate-text.md), after a person has chosen candidates left in the grid. If you just want to see results without generating text, set the backend to "生成しない" (Don't generate, `none`) in ⚙ 全体設定 (Global settings) — it only saves the prompts and skips actual generation. See [LLM Backends](../usage/llm-backends.md) for details.
 
 ## Why doesn't event generation use an LLM?
 

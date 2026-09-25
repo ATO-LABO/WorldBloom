@@ -41,7 +41,7 @@ A summary of terms used on WorldBloom's screens and throughout this documentatio
 |---|---|
 | Archive / grid | The MAP-Elites grid holding runs that reached the ending. Each cell keeps only its single best run. See [QD Map](../concepts/qd-map.md) |
 | Cell | A cell of the grid. Rows are the leading category, columns are volatility (low/mid/high) |
-| Leading category | The kind of action that actually had the most effect in that run (I self-reinforcement, II perception & foreshadowing, III relationship building, IV status, V movement & stalling, VI external intervention). A different value from the genome's tendency |
+| Leading category | The kind of action that actually had the most effect in that run (I self-reinforcement, II perception & foreshadowing, III relationship building, IV Identity, V movement & stalling, VI external intervention). A different value from the genome's tendency |
 | Volatility | The variance of how much the protagonist's seven-layer state swung turn to turn. Thresholds are fixed from generation 0's population |
 | Quality q | The quality of a run that reached the ending. An absolute scale (0–1) that counts objective movement, swings in relationships, recoveries, reversals of power, gaining new facts, belief reversals, and chains of premise-aligned actions, and penalizes actions that came up empty. q̄ is the average across the whole archive |
 | Occupied cells | The number of filled cells in the archive. More means more different kinds of stories found |

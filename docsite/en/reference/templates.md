@@ -1,5 +1,5 @@
 ---
-ja_rev: "200ea82dcbcf"
+ja_rev: "ce3db2c58b60"
 ---
 # Templates
 
@@ -20,14 +20,24 @@ All are YAML, and predicate strings (`when`, `condition`) are read with `engine/
 
 ### action_graph.yaml
 
+`templates/momotaro_plus2/action_graph.yaml` has four sections: `nodes:` (the action list), `edges:` (prerequisites between actions), `permission:` (allowed level per target role), and `restricted_weight:` (the weight multiplier for `restricted`).
+
 ```yaml
-- {verb: train, category: I, subtype: self_strengthen, risk: neutral, sign: 0}
-- {verb: investigate, category: I, subtype: gather, risk: neutral, sign: 0, when: gather}
-- {verb: fight, category: I, subtype: weaken_direct, risk: risky, sign: -1}
-- {verb: give_item, category: III, subtype: gift, risk: neutral, sign: 1}
+nodes:
+  - {verb: train, category: I, subtype: self_strengthen, risk: neutral, sign: 0}
+  - {verb: fight, category: I, subtype: weaken_direct, risk: risky, sign: -1}
+
+permission:
+  fight: {hostile: allow, neutral: restricted, ally: restricted}
+
+restricted_weight: 0.15
 ```
 
-`category` is a row of the QD grid (I self-reinforcement, II perception & foreshadowing, III relationship building, IV status, V movement & stalling, VI external intervention). `sign` is the action's directionality (+1 cooperative, -1 hostile, 0 neutral), used in computing novelty and quality q.
+`category` is a row of the QD grid (I self-reinforcement, II perception & foreshadowing, III relationship building, IV Identity, V movement & stalling, VI external intervention). `sign` is the action's directionality (+1 cooperative, -1 hostile, 0 neutral), used in computing novelty and quality q.
+
+Classification is context-dependent: the same verb in `nodes:` can land on a different row depending on whether its `when` condition holds. For example `investigate` is category I (self-reinforcement) when `when: gather` holds, otherwise II (perception & foreshadowing). `move` is category V (movement & stalling) when `crossing` (an identity-passage move) holds, otherwise `category: null` (outside the QD grid).
+
+`permission:` gives an `allow`/`restricted`/`deny` level per target role (`hostile`/`neutral`/`ally`). `restricted` doesn't exclude the candidate — it stays in the candidate pool with its weight scaled down by `restricted_weight` (default 0.15).
 
 ### canon.yaml
 
@@ -71,7 +81,7 @@ categories: [I, II, III, IV, V, VI]
 volatility_bins: [low, mid, high]
 ```
 
-How the three bundled genres differ: `momotaro` (the Momotaro family) uses all six action categories I–VI, while `detective` and `romance` use only the three categories I–III as axes (their `action_graph.yaml` itself covers a narrower range of actions). `volatility_bins` is `[low, mid, high]` for every genre. The thresholds are computed automatically from generation 0's population variance and recorded in `archive.json`'s `volatility_thresholds`.
+Among the bundled genres (under `templates/`: `basic`, `detective`, `momotaro`, `momotaro_plus`, `momotaro_plus2`, `romance`), `momotaro` (the Momotaro family) uses all six action categories I–VI, while `detective` and `romance` use only the three categories I–III as axes (their `action_graph.yaml` itself covers a narrower range of actions). `volatility_bins` is `[low, mid, high]` for every genre. The thresholds are computed automatically from generation 0's population variance and recorded in `archive.json`'s `volatility_thresholds`.
 
 ### rules.yaml
 
@@ -85,7 +95,7 @@ How the three bundled genres differ: `momotaro` (the Momotaro family) uses all s
   description: 敵対相手にはより攻撃的に
 ```
 
-`scope` is either `candidate` (per candidate — `target` gets bound) or `turn` (per turn). `adjust` keys are `category_weight.<I–VI>` or `risk_tolerance`, added temporarily. It's used as the actual weight via `g_eff = clip(genome + Σ matching rules' adjust)`.
+`scope` is either `candidate` (per candidate — `target` gets bound) or `turn` (per turn). `adjust` keys are `category_weight.<I–VI>`, `risk_tolerance`, `stance_shift_bias`, or `novelty_drive`, added temporarily. It's used as the actual weight via `g_eff = clip(genome + Σ matching rules' adjust)`.
 
 ### rationality.yaml (κ / Jev)
 
@@ -135,7 +145,7 @@ ending:
 target_ending: [homecoming, homecoming_shared]
 ```
 
-`ending.when` takes either a predicate string or `{agent, goal}`. Only runs that reach an ending listed in `target_ending` enter the [QD Map](../concepts/qd-map.md)'s archive. `zones`/`routes`/`items`/`facts` are the world-side data behind the seven layers' object/resource/perception layers respectively (see [Seven Layers](../concepts/seven-layers.md)).
+`ending.when` takes either a predicate string or `{agent, goal}`. Only runs that reach an ending listed in `target_ending` enter the [QD Map](../concepts/qd-map.md)'s archive. `zones`/`routes` are the world-side data behind the seven layers' Phase layer (the basis for `phase_rules`' crossing checks), `items` behind the Resource layer (they end up in `inventory`), and `facts` behind the Perception layer (the source of `knowledge`/`beliefs_about`) (see [Seven Layers](../concepts/seven-layers.md)).
 
 ### Main keys in subjects/*.yaml
 

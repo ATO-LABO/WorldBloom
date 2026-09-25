@@ -3,7 +3,7 @@ sources:
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "templates/momotaro/effects.yaml"
   - "gapengine/qd.py"
-reviewed: 4394c7ef86af65bb0f995a9071da5f1744e3ef87
+reviewed: "4394c7ef86af65bb0f995a9071da5f1744e3ef87"
 ---
 # 伏線（遅延効果）
 
@@ -46,7 +46,7 @@ reviewed: 4394c7ef86af65bb0f995a9071da5f1744e3ef87
 
 ## 回収されない伏線の減点
 
-`chosen` の伏線が、条件を満たしたまま最後まで回収されずに物語が終わると、品質 q が**1件あたり −0.05** 減点されます（`gapengine/qd.py`）。「撃たれない銃」——仕込んだのに一度も使われない伏線——を GA に淘汰させるための仕組みです。`auto` の伏線は人物の選択を経ないため、この減点の対象にはなりません。
+`chosen` の伏線が最後まで回収されずに物語が終わると、品質 q が**1件あたり −0.05** 減点されます（`engine/phase2.py` の `dangling_effect_count`、集計は `gapengine/qd.py`）。回収条件が一度も成立しなかった場合を含め、未回収であれば条件の成否に関係なくすべて減点対象です。「撃たれない銃」——仕込んだのに一度も使われない伏線——を GA に淘汰させるための仕組みです。`auto` の伏線は人物の選択を経ないため、この減点の対象にはなりません。
 
 ## ログ（layers.jsonl）での見え方
 

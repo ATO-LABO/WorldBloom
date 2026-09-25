@@ -1,5 +1,5 @@
 ---
-ja_rev: "907437b76082"
+ja_rev: "773df8f51770"
 ---
 # Changelog
 
@@ -22,7 +22,7 @@ The main changes that matter from a user's point of view, in date order. This is
 
 ## 2026-09-15
 
-- Submitted to the 5th AI Art Grand Prix, Division D. Published a Windows distributed build ([v1.0.0-viewer](https://github.com/ATO-LABO/WorldBloom/releases/tag/v1.0.0-viewer)): a read-only `WorldBloom.exe` and a `WorldBloom-Studio.exe` that can run GA experiments through to text generation
+- Submitted to the 5th AI Art Grand Prix, Division D. Published a Windows distributed build ([v1.0.0-viewer](https://github.com/ATO-LABO/WorldBloom/releases/tag/v1.0.0-viewer), tagged sometime across 09-15 to 09-16): a read-only `WorldBloom.exe` and a `WorldBloom-Studio.exe` that can run GA experiments through to text generation
 - Published the public viewer ([https://ato-labo.github.io/WorldBloom/](https://ato-labo.github.io/WorldBloom/)), letting anyone browse the Momotaro, romance, and detective experiments with no install
 
 ## Earlier

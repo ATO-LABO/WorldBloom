@@ -5,7 +5,7 @@ sources:
   - "viewer/compare_pages.py"
   - "viewer/lineage_pages.py"
   - "viewer/server.py"
-reviewed: 72aaeae8379271e99357be2f967fa0cff3901a8d
+reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 ---
 # 結果を読む
 

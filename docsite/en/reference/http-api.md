@@ -1,5 +1,5 @@
 ---
-ja_rev: "aae94c852743"
+ja_rev: "759098047e20"
 ---
 # HTTP API
 
@@ -8,7 +8,7 @@ ja_rev: "aae94c852743"
 
 ## When it's enabled
 
-- Starting with just `python viewer/server.py --runs <runs>`, the write endpoints under `/api/...` **can't be used** (there's no `job_store`, so they return `503 unavailable`). Only the read-only `GET /api/status/local` always works.
+- Starting with just `python viewer/server.py --runs <runs>` (no `--control`), there's no `job_store`, so `/api/...` returns `503 unavailable` for **GET as well as POST**. The only exceptions are `GET /api/status/local` and `POST /api/status/local/preload`/`POST /api/status/local/unload`, which never go through `job_store` and always work.
 - Starting with `--control <control>` enables `ConfigStore` and `JobStore`, making the config/job/generation APIs in the table below available.
 - The distributed **Viewer exe** (the read-only viewer) rejects every POST outright with `403 "read-only build"`, via `viewer/app_desktop.py`'s `_ReadOnlyHandler.do_POST`, even if `--control` is passed (to prevent writes into `samples/`). The adopt/select checkboxes on screen are still clickable in this build in appearance, but clicking them returning 403 is by design. The **Studio exe** has no such restriction and runs with full functionality.
 
@@ -28,8 +28,8 @@ ja_rev: "aae94c852743"
 | GET | `/api/configs/<id>` | Detail of a single run-setting config |
 | POST | `/api/configs/preview` | Preview a run config without saving it (scale, ETA, etc.) |
 | POST | `/api/configs` | Save a run-setting config |
-| POST | `/api/configs/<id>/duplicate` | Duplicate a run-setting config |
-| GET | `/api/settings/output` | Current values on the ⚙ Settings "文章生成" (Text generation) tab |
+| POST | `/api/configs/<id>/duplicate` | Duplicate a run-setting config (implemented in `viewer/workbench_pages.py`) |
+| GET | `/api/settings/output` | Current values on the ⚙ 全体設定 (Global settings) "文章生成" (Text generation) tab |
 | POST | `/api/settings/output` | Update text-generation settings (backend/model/limits) |
 | POST | `/api/settings/output/api-key` | Save the anthropic/openai API key (write-only; can't be read back) |
 | GET | `/api/settings/output/models` | List of selectable models (ollama/llama-server query the real server) |
@@ -46,16 +46,16 @@ ja_rev: "aae94c852743"
 
 ## World / genre editing API (`viewer/library_pages.py`)
 
-Works with `--control` regardless of whether `job_store` is present (editing a world/genre is independent of GA experiments).
+Editing a world/genre is functionally independent of GA experiments, but every handler here goes through `_require_job_store`, so it still needs a `job_store` (i.e. starting with `--control`). There is no `GET /api/worlds` or `GET /api/genres` — the listing is embedded in the screen's HTML.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET / POST | `/api/worlds` | List worlds / create a new one |
+| POST | `/api/worlds` | Create a new world |
 | POST | `/api/worlds/<id>/edit` | Edit a world (the screen's "世界を編集", Edit world) |
 | POST | `/api/worlds/<id>/basics` | Save only a world's basic info |
 | POST | `/api/worlds/<id>/files` | Save a YAML file under a world |
 | POST | `/api/worlds/<id>/validate` | Validate a world's YAML (doesn't save) |
-| GET / POST | `/api/genres` | List genres / create a new one |
+| POST | `/api/genres` | Create a new genre |
 | POST | `/api/genres/<id>/files` | Save a YAML file under a genre |
 | POST | `/api/genres/<id>/{save,parse,check}` | Save / parse / validate in the genre editor |
 | POST | `/api/worlds/<id>/patches/<patch_id>/{approve,reject}` | Approve / reject a world self-expansion patch |
@@ -65,8 +65,10 @@ Works with `--control` regardless of whether `job_store` is present (editing a w
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/exp/<experiment>/selection` | Update adopt/hold/exclude selection state (this path works even without a `job_store`, unlike the read-only viewer's other routes; it's rejected via `assert_run_idle` while that run is in progress) |
+| POST | `/exp/<experiment>/selection` | Update adopt/hold/exclude selection state. No `X-WorldBloom-Client` header needed, and it works without a `job_store`; it's only rejected via `assert_run_idle` when a `job_store` exists and that run is in progress |
 | POST | `/exp/<experiment>/delete` | Delete an experiment (the whole `runs/<experiment>/`). Requires `job_store` |
 | POST | `/exp/<experiment>/cell/<cell>/reader-summary` | Generate a reader-facing summary for one cell |
+| GET / POST | `/api/runs/<rid>/selection` | Get / update one run's selection state (`viewer/run_catalog.py`) |
+| POST | `/api/runs/<rid>/world-patch` | Propose or check a world self-expansion patch (`propose`/`check`; requires `job_store`, `viewer/run_catalog.py`) |
 
-There's more beyond this — `viewer/run_catalog.py` (`/api/runs`, `/api/selected`) and `viewer/workbench_pages.py` (mostly GET routes for screen display, aside from `/api/configs/<id>/duplicate`) — but these are all internal APIs matching UI operations on screen. See each file's `dispatch()`/`_resolve()` for the exact list.
+There's more beyond this — `viewer/run_catalog.py` (`/api/runs`, `/api/selected`) and `viewer/workbench_pages.py` (mostly GET routes for screen display) — but these are all internal APIs matching UI operations on screen. See each file's `dispatch()`/`_resolve()` for the exact list.
