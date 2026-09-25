@@ -198,6 +198,12 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if not parts:
             self._send_html(pages.index_page(self.repository, job_store=job_store))
             return
+        if parts == ["version"]:
+            from viewer import version
+            check = parse_qs(urlsplit(self.path).query).get("check") == ["1"]
+            self._send_html(pages.document("バージョン情報", version.render_body(check),
+                                           job_store=job_store, show_phase_band=False))
+            return
         if len(parts) == 2 and parts[0] == "static":
             name = parts[1]
             payload = static_path(name).read_bytes()
