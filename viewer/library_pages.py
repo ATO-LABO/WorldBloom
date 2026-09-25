@@ -17,9 +17,12 @@ from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from execution.worker import TERMINAL
 from execution.world_patch_approval import (StalePatch as _StalePatch, approve as _approve_patch,
-                                            reject as _reject_patch, reopen as _reopen_patch)
-from gapengine.world_patch import ID_RE as _PATCH_ID_RE, PatchError as _WorldPatchError, stack_head as _patch_stack_head
-from viewer import action_catalog, data, pages, job_api, world_expansion_view, world_graph
+                                            reject as _reject_patch, reopen as _reopen_patch,
+                                            retire as _retire_patch)
+from gapengine.world_patch import (ID_RE as _PATCH_ID_RE, PatchError as _WorldPatchError,
+                                  approved_patches as _approved_patches, stack_head as _patch_stack_head)
+from gapengine.world_patch_usage import patch_usage as _patch_usage
+from viewer import action_catalog, data, pages, job_api, world_demand_view, world_expansion_view, world_graph
 from viewer.workbench_pages import _guidance_page, _job_store, _query
 
 _escape = pages._escape
@@ -805,6 +808,36 @@ def _reopen_body(body):
     return seen["head"]
 
 
+def _retire_body(body):
+    # WB-WORLDGROW-001 段階5a: the usage table is never taken from the
+    # browser (段階3bと同じ原則 -- 測定値をブラウザ送信に依存しない) -- only
+    # reason/experiment/seen come from the request; retire()'s own usage
+    # evidence is computed server-side just before writing.
+    if not isinstance(body, dict) or set(body) != {"reason", "experiment", "seen"}:
+        raise ConfigError("request", "reason・experiment・seen を指定してください", code="bad_request")
+    reason = body["reason"]
+    if not isinstance(reason, str) or not (10 <= len(reason.strip()) <= 500):
+        raise ConfigError("reason", "淘汰の理由は10文字以上で書いてください", code="bad_request")
+    experiment = body["experiment"]
+    if not isinstance(experiment, str) or not experiment:
+        raise ConfigError("experiment", "実験名を指定してください", code="bad_request")
+    seen = body["seen"]
+    if not isinstance(seen, dict) or set(seen) != {"head"} or not isinstance(seen["head"], str):
+        raise ConfigError("seen", "seen の形式が不正です", code="bad_request")
+    return reason.strip(), experiment, seen["head"]
+
+
+def _protagonist_for(handler, experiment):
+    try:
+        config = data._read_json(handler.repository.safe_path(experiment, "config.json"))
+    except (OSError, ValueError) as error:
+        raise ConfigError("experiment", "この実験の設定を読み込めません", code="bad_request") from error
+    protagonist = (config.get("preview") or {}).get("protagonist") if isinstance(config, dict) else None
+    if not isinstance(protagonist, str) or not protagonist:
+        raise ConfigError("experiment", "この実験の人物情報を読み込めません", code="bad_request")
+    return protagonist
+
+
 def _proposal_shas(project, patch_id):
     """(patch_sha256, gate_sha256) for the currently proposed patch, or
     (None, None) if either file is missing / unreadable right now."""
@@ -894,6 +927,52 @@ def _reopen_patch_action(handler, world_id):
     handler._send_json(HTTPStatus.OK, {"ok": True, "patch_ids": reopened})
 
 
+def _retire_patch_action(handler, world_id, patch_id):
+    """WB-WORLDGROW-001 段階5a: wither an already-applied patch. `experiment`
+    (a run name) names which experiment's representative individuals the
+    usage table is measured against -- resolved and read here, never taken
+    from the browser (retire() writes that table into retire.json verbatim)."""
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
+    body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
+    reason, experiment_name, seen_head = _retire_body(body)
+    _patch_id_arg(patch_id)
+    project, template = _resolve_world_patch_dirs(job_store, world_id)
+    _reject_running_job(job_store)
+    experiment = world_demand_view.resolve_root(handler.repository, experiment_name)
+    if experiment is None:
+        raise ConfigError("experiment", "実験が見つかりません", code="bad_request")
+    protagonist = _protagonist_for(handler, experiment)
+    try:
+        active = _approved_patches(project)
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    try:
+        # M1 (Opus review): a ConfigStore-prepared experiment (the only kind
+        # the screen can ever expand-run) has no top-level archive.json --
+        # handler.repository.archive() already resolves the catalog's
+        # published/<revision>/archive.json the same verified way every
+        # other candidate/archive read on this screen does.
+        experiment_archive = handler.repository.archive(experiment)
+    except ConfigError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError, data.MissingResource) as error:
+        raise ConfigError("experiment", "実験の記録を読み込めません", code="bad_request") from error
+    try:
+        usage = _patch_usage(experiment, protagonist, active, archive=experiment_archive).get(patch_id)
+    except (OSError, ValueError, KeyError, TypeError, data.MissingResource) as error:
+        raise ConfigError("experiment", "使用状況を計算できませんでした", code="bad_request") from error
+    try:
+        revision = _retire_patch(project, template, patch_id, reason, experiment=experiment,
+                                  expect_head=seen_head, usage=usage)
+    except _StalePatch as error:
+        raise ConfigError("seen", _STALE_MESSAGE, code="conflict") from error
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": patch_id, "rev": revision["rev"]})
+
+
 # --------------------------------------------------------------------------
 # Dispatch
 # --------------------------------------------------------------------------
@@ -919,9 +998,10 @@ def _resolve(parts, method):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "genres" and parts[3] == "validate":
             return _validate_genre, (parts[2],)
         if (len(parts) == 6 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
-                and parts[5] in ("approve", "reject")):
-            return ((_approve_patch_action if parts[5] == "approve" else _reject_patch_action),
-                    (parts[2], parts[4]))
+                and parts[5] in ("approve", "reject", "retire")):
+            action_by_verb = {"approve": _approve_patch_action, "reject": _reject_patch_action,
+                              "retire": _retire_patch_action}
+            return action_by_verb[parts[5]], (parts[2], parts[4])
         if (len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
                 and parts[4] == "reopen"):
             return _reopen_patch_action, (parts[2],)
