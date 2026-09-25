@@ -1882,5 +1882,148 @@ class S2DeterminismTests(unittest.TestCase):
         self.assertEqual(outputs[0], outputs[1])
 
 
+class AdvanceTextTests(unittest.TestCase):
+    """WB-ROUTE-001 S3.5 §1/§2: each milestone kind gets its own move text
+    (the S3 fallback "移動して近づいた" is now a last resort, not the common
+    case), and the relation-verb texts read as the subject's want, not an
+    already-achieved result."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+        self.momotaro = self.subjects["桃太郎"]
+
+    def test_craft_zone_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("move", ("海",), {"dest": "海"}),
+            self.momotaro,
+            self.world,
+            {"has_item": {"船"}},
+        )
+        self.assertEqual(text, "船を作るため海へ向かった")
+
+    def test_gather_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("move", ("森",), {"dest": "森"}),
+            self.momotaro,
+            self.world,
+            {"has_item": {"木材"}},
+        )
+        self.assertEqual(text, "木材を手に入れるため森へ向かった")
+
+    def test_stance_ge_milestone_reads_as_meeting_not_fighting(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.subjects["猿"].zone = "道中"
+        text = _advance_text(
+            Action("move", ("道中",), {"dest": "道中"}),
+            self.momotaro,
+            self.world,
+            {"stance_ge": {"猿"}},
+        )
+        self.assertEqual(text, "猿と会うため道中へ向かった")
+
+    def test_win_fight_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.subjects["鬼"].zone = "鬼ヶ島"
+        text = _advance_text(
+            Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"}),
+            self.momotaro,
+            self.world,
+            {"win_fight": {"鬼"}},
+        )
+        self.assertEqual(text, "鬼を倒すため鬼ヶ島へ向かった")
+
+    def test_route_negotiate_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.subjects["鬼"].zone = "鬼ヶ島"
+        text = _advance_text(
+            Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"}),
+            self.momotaro,
+            self.world,
+            {"route": {"negotiate"}},
+            believed_holder_id="鬼",
+        )
+        self.assertEqual(text, "鬼と話をつけるため鬼ヶ島へ向かった")
+
+    def test_goal_deliver_milestone(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.momotaro.inventory["鬼ヶ島の宝物"] = 1
+        text = _advance_text(
+            Action("move", ("村",), {"dest": "村"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "宝を持ち帰るため村へ向かった")
+
+    def test_companion_milestone_when_no_other_leaf_matches(self) -> None:
+        from gapengine.route import _advance_text
+
+        self.subjects["犬"].zone = "道中"
+        text = _advance_text(
+            Action("move", ("道中",), {"dest": "道中"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "仲間と合流するため道中へ向かった")
+
+    def test_milestone_text_survives_a_waypoint_hop_short_of_the_leaf(self) -> None:
+        """S3.5 §4 follow-up: a hop toward a leaf 2+ zones away (holder not
+        standing at this particular waypoint) still names the real purpose
+        -- "ため〜へ向かった" states intent/direction, not that the target is
+        physically at ``dest`` right now."""
+
+        from gapengine.route import _advance_text
+
+        self.subjects["鬼"].zone = "鬼ヶ島"  # not "海" -- still 1 hop further
+        text = _advance_text(
+            Action("move", ("海",), {"dest": "海"}),
+            self.momotaro,
+            self.world,
+            {"win_fight": {"鬼"}},
+        )
+        self.assertEqual(text, "鬼を倒すため海へ向かった")
+
+    def test_generic_fallback_is_last_resort(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("move", ("鬼ヶ島",), {"dest": "鬼ヶ島"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "鬼ヶ島へ移動して近づいた")
+
+    def test_relation_verb_texts_are_worded_as_intent_not_result(self) -> None:
+        from gapengine.route import _advance_text
+
+        text = _advance_text(
+            Action("give_item", ("犬",), {"target": "犬", "item": "きびだんご"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "犬に仲間に加わってほしくて品を渡した")
+        self.assertNotIn("仲間を増やすため", text)
+        self.assertNotIn("仲間にした", text)
+
+        text = _advance_text(
+            Action("persuade", ("犬",), {"target": "犬"}),
+            self.momotaro,
+            self.world,
+            {},
+        )
+        self.assertEqual(text, "犬に仲間に加わってほしくて説得した")
+
+
 if __name__ == "__main__":
     unittest.main()

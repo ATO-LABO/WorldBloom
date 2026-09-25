@@ -1943,17 +1943,31 @@ def _grant_purpose_text(trial: dict[str, Any] | None) -> str | None:
 
 
 _RELATION_VERB_TEXT = {
-    "share_knowledge": "と話した",
-    "give_item": "に品を渡した",
-    "persuade": "を説得した",
-    "pledge": "と誓いを結んだ",
+    # S3.5 §2: worded as the subject's want ("...てほしくて"/"...ようと"), not
+    # a claimed outcome -- an LLM given "仲間を増やすため{target}に品を渡し
+    # た" tended to write it up as "仲間にした" (recruiting *achieved*),
+    # which the fact log never claims (recruiting only succeeds once stance
+    # crosses companionship's threshold, elsewhere in the log if at all).
+    "share_knowledge": "{target}に仲間として頼れると分かってほしくて話した",
+    "give_item": "{target}に仲間に加わってほしくて品を渡した",
+    "persuade": "{target}に仲間に加わってほしくて説得した",
+    "pledge": "{target}と支え合おうと誓いを結んだ",
 }
 
 def _advance_text(
-    action: Action, subject: Subject, world: World, kinds: dict[str, set[Any]]
+    action: Action,
+    subject: Subject,
+    world: World,
+    kinds: dict[str, set[Any]],
+    *,
+    believed_holder_id: str | None = None,
 ) -> str:
     """Built from ``kinds`` (the tag pool an action actually matched against
-    -- ``best`` for an "advance" result, ``alt`` for "prepare")."""
+    -- ``best`` for an "advance" result, ``alt`` for "prepare"). S3.5 §1:
+    a "move" is always textualized from the milestone that made it advance/
+    prepare in the first place (which node in ``kinds`` is actually open),
+    never the bare "移動して近づいた" while a real purpose can be named --
+    that generic text is now the last resort, not the common case."""
 
     verb = action.verb
 
@@ -1963,21 +1977,49 @@ def _advance_text(
             definition = world.items.get(item, {})
             if str(definition.get("craft_zone")) == dest:
                 return f"{item}を作るため{dest}へ向かった"
-        for holder_id in sorted(kinds.get("win_fight", ())) + sorted(kinds.get("stance_ge", ())):
-            holder = world.subjects.get(str(holder_id))
-            if holder is not None and holder.zone == dest:
-                return f"{holder_id}のもとへ向かった"
-        # 2026-09-24 review 2, recommended fix 5: name what's actually at
-        # dest (a still-needed material/fact source) rather than falling
-        # straight to the generic "近づいた" whenever no holder/craft_zone
-        # matched -- e.g. a waypoint hop toward a *further* zone otherwise
-        # gave no hint of purpose at all.
+        # trial / stance_ge:Y -- raising stance with Y (a trial giver or a
+        # negotiate/companion target) is "meeting them", never phrased as a
+        # fight. Not zone-gated to ``dest`` (unlike craft above): "会うため
+        # 向かった" is the purpose of the whole trip, true on any hop of it,
+        # not a claim that Y is standing at this particular waypoint.
+        for holder_id in sorted(kinds.get("stance_ge", ())):
+            return f"{holder_id}と会うため{dest}へ向かった"
+        # route:fight / win_fight:H
+        for holder_id in sorted(kinds.get("win_fight", ())):
+            return f"{holder_id}を倒すため{dest}へ向かった"
+        # route:negotiate -- the winning plan settles for talking, not
+        # fighting, so name that instead of the fight text above.
+        if "negotiate" in kinds.get("route", ()) and believed_holder_id is not None:
+            return f"{believed_holder_id}と話をつけるため{dest}へ向かった"
+        # goal:deliver -- the goal item is already held; the only leaf left
+        # is bringing it home (also not zone-gated: any hop homeward
+        # qualifies, not just the final one landing in deliver_to).
+        if subject.goal.target is not None and subject.has_item(subject.goal.target):
+            return f"宝を持ち帰るため{dest}へ向かった"
+        # 2026-09-24 review 2, recommended fix 5 / S3.5 §1 follow-up: name
+        # what the trip is still for (a still-needed material/fact) rather
+        # than falling straight to the generic "近づいた" whenever no
+        # holder/craft_zone matched -- including a waypoint hop whose *own*
+        # zone isn't the item's source (dest is just one hop closer to it;
+        # "手に入れるため" states the purpose, not the current location).
         for item in sorted(kinds.get("has_item", ())):
-            if _sourced_at_zone(item, world, str(dest)):
-                return f"{item}を集めるため{dest}へ向かった"
+            return f"{item}を手に入れるため{dest}へ向かった"
         for fact_id in sorted(kinds.get("knows", ())):
-            if _fact_sourced_here(fact_id, world, str(dest), set()):
-                return f"{fact_id}について調べるため{dest}へ向かった"
+            return f"{fact_id}について調べるため{dest}へ向かった"
+        # companion -- no leaf tag covers recruiting (annotate()'s move
+        # classifier reads "strong_enough" for that instead, see
+        # _leaf_tags's docstring), so a move toward a plausible recruit
+        # standing at dest is named directly here.
+        companion = next(
+            (
+                peer
+                for peer in sorted(world.subjects.values(), key=lambda s: s.id)
+                if peer.zone == dest and _is_companion_candidate(subject, peer, world)
+            ),
+            None,
+        )
+        if companion is not None:
+            return f"仲間と合流するため{dest}へ向かった"
         return f"{dest}へ移動して近づいた"
 
     if verb == "investigate":
@@ -2037,7 +2079,7 @@ def _advance_text(
             purpose = _grant_purpose_text(trial)
             if purpose:
                 return f"{purpose}{target_id}と親しくなった"
-        return f"仲間を増やすため{target_id}{_RELATION_VERB_TEXT[verb]}"
+        return _RELATION_VERB_TEXT[verb].format(target=target_id)
 
     return f"{verb}で先へ進んだ"
 
@@ -2422,7 +2464,11 @@ def annotate(
                     "cause": None,
                     "h": [_finite_or_none(h_before), h_after],
                     "text": _advance_text(
-                        action, subject, world, best_kinds if matched == "advance" else alt_kinds
+                        action,
+                        subject,
+                        world,
+                        best_kinds if matched == "advance" else alt_kinds,
+                        believed_holder_id=believed_holder_id,
                     ),
                 }
             )
