@@ -205,6 +205,53 @@ def _rationality_backend_cfg(
     return rationality_yaml, rationality_yaml_backend, rationality_override
 
 
+def route_cfg_override(route_rho: float | None) -> dict[str, Any]:
+    """Builds the nested ``cfg["route"]`` override ``_route_cfg()`` reads
+    (``{"rho": ...}``) from the flat ``route_rho`` key shared by
+    scripts/evolve.py's ``--route-rho`` argument and the UI's evolution
+    config (execution/configs.py's ``route_rho``). One place to do this
+    nesting so every caller agrees on it -- the frozen UI adapter
+    (execution/evolution_worker.py) used to pass its flat manifest straight
+    through, so _route_cfg() never saw the override and a run's route_rho
+    setting was silently ignored (WB-ROUTE-001 S4 bugfix).
+
+    See ``rationality_cfg_override`` below for kappa/rationality_*, which had
+    the identical bug and is fixed the same way (scope widened by user
+    decision after the route_rho fix landed)."""
+
+    return {"rho": route_rho}
+
+
+def rationality_cfg_override(flat: Mapping[str, Any]) -> dict[str, Any]:
+    """Builds the nested ``cfg["rationality"]`` override
+    ``_rationality_backend_cfg()`` reads, from the flat keys shared by
+    scripts/evolve.py's argparse dests (pass ``vars(args)``) and the UI's
+    evolution config (execution/configs.py's ``normalize()``, pass
+    ``manifest["evolution"]`` or ``config["evolution"]``): ``kappa``,
+    ``rationality_backend``, ``rationality_method``, ``rationality_model``,
+    ``rationality_num_ctx``, ``rationality_table``, ``rationality_max_calls``.
+
+    Same bug and same fix shape as ``route_cfg_override``: the frozen UI
+    adapter (execution/evolution_worker.py) used to spread its flat manifest
+    straight into cfg, so a job's kappa/rationality_* settings never reached
+    the nested shape _rationality_backend_cfg() reads and were silently
+    ignored (WB-ROUTE-001 S4 follow-up). ``rationality_table`` from the flat
+    source is always None here (execution/configs.py's normalize() never
+    accepts it from the API) -- callers that computed a real persisted-table
+    path themselves (execution/configs.py's prepare_run(), for the shared
+    Ollama judgment table) must overwrite the returned dict's "table" key."""
+
+    return {
+        "kappa": flat.get("kappa"),
+        "backend": flat.get("rationality_backend"),
+        "method": flat.get("rationality_method"),
+        "model": flat.get("rationality_model"),
+        "num_ctx": flat.get("rationality_num_ctx"),
+        "table": flat.get("rationality_table"),
+        "max_judge_calls_per_run": flat.get("rationality_max_calls"),
+    }
+
+
 def _route_cfg(
     cfg: Mapping[str, Any], template_dir: Path
 ) -> dict[str, Any] | None:

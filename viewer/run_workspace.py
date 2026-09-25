@@ -286,6 +286,10 @@ def _condition_html(handler, view, control=None, state=None):
         # disagree with what the run actually did.
         from viewer import workbench_pages as wb
         rows.append(("合理性 κ", wb._rationality_summary(wb._frozen_template_dir(control, config), ev)))
+    if config and ev.get("route_rho") is not None:
+        # WB-ROUTE-001 S4 §2: same shown-only-when-set contract as κ above.
+        from viewer import workbench_pages as wb
+        rows.append(("道筋 ρ", wb._route_rho_summary(ev)))
     cid = config.get("config_id")
     dl_items = "".join(f"<dt>{E(k)}</dt><dd>{E(v)}</dd>" for k, v in rows)
     dl_items += f"<dt>世界の拡張</dt><dd>{_world_row_html(handler, state, ev.get('world_expansion'))}</dd>"

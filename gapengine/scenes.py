@@ -389,18 +389,22 @@ def describe_row(
     return text
 
 
-def _route_reason(route: Mapping[str, Any]) -> str | None:
+def route_reason(route: Mapping[str, Any]) -> str | None:
     """WB-ROUTE-001 S3: turn ``policy.route`` into a prose reason, or None
     when the route layer explicitly recorded "no reason". ``lost`` gets a
-    fixed text (route.text is not written for that kind); every other kind/
-    cause (advance, prepare, detour with cause in motive/belief/body/
-    ignorance) reuses route.text as-is -- it is already natural Japanese,
-    S0-S2. detour/none is the one case with no reason to report."""
+    fixed text -- except when its cause is body/belief (route.text is
+    written for those two causes even while lost, S3.5 §3: a fatigued or
+    mistaken wander still has a real reason to report, not the flat "no
+    plan reaches anywhere" text). Every other kind/cause (advance, prepare,
+    detour with cause in motive/belief/body/ignorance) reuses route.text as-
+    is -- it is already natural Japanese, S0-S2. detour/none is the one
+    case with no reason to report."""
 
     kind = route.get("kind")
-    if kind == "lost":
+    cause = route.get("cause")
+    if kind == "lost" and cause not in ("body", "belief"):
         return "先の見通しが立たないまま動いた"
-    if kind == "detour" and route.get("cause") == "none":
+    if kind == "detour" and cause == "none":
         return None
     text = route.get("text")
     return str(text) if text is not None else None
@@ -412,7 +416,9 @@ def _scene_motives(
     protagonist: str,
 ) -> list[dict[str, Any]]:
     """One entry per protagonist decision row in this scene that carries a
-    ``policy.route`` (WB-ROUTE-001 S1+, only at rho>0). Rows without a route
+    ``policy.route`` (WB-ROUTE-001 S1+, GA 経路では rho>0 のときだけ --
+    評価・プローブは rho=0 でも注釈用に Route を持つので、そちらのランには
+    route が付く場合がある). Rows without a route
     (rho=0, or a run predating the route layer) are skipped entirely, so a
     scene with no route-bearing decisions ends up with no motives here --
     ``extract_scenes`` leaves the "motives" key off the scene dict in that
@@ -428,9 +434,14 @@ def _scene_motives(
         motives.append(
             {
                 "event": describe_row(row, world_meta),
-                "why": _route_reason(route),
+                "why": route_reason(route),
                 "kind": route.get("kind"),
                 "cause": route.get("cause"),
+                # S4 §1.1: the reason badge needs the motive's own label
+                # (motives.yaml) to name a detour/motive row, not just its
+                # cause="motive" bucket.
+                "motive": route.get("motive"),
+                "motive_label": route.get("motive_label"),
             }
         )
     return motives

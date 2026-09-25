@@ -487,5 +487,168 @@ class EvolutionHttpTests(unittest.TestCase):
             self.assertEqual((root / path).read_bytes(), data)
 
 
+@unittest.skipUnless(os.name == "nt", "Windows supervisor contract")
+class EvolutionHttpRouteRhoTests(unittest.TestCase):
+    """WB-ROUTE-001 S4 bugfix regression: a run's route_rho (set on the job
+    screen) used to be silently ignored end-to-end -- execution/
+    evolution_worker.py's main() built cfg from manifest["evolution"]'s flat
+    route_rho, but gapengine.evolve._route_cfg() only reads the nested
+    cfg["route"]["rho"] shape. This drives a real job through the actual
+    frozen adapter subprocess (not a direct evolve() call), so it only
+    passes once the manifest-to-cfg wiring itself is fixed."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-route-http-")
+        self.base = Path(self.temp.name)
+        self.repo = self.base / "repo"
+        self.repo.mkdir()
+        for name in ("engine", "gapengine", "scripts", "execution", "projects", "templates"):
+            shutil.copytree(ROOT / name, self.repo / name, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copyfile(ROOT / "requirements.txt", self.repo / "requirements.txt")
+        self.configs = ConfigStore(self.repo, self.base / "control", self.base / "runs")
+        self.configs.save({"label": "route", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+            "evolution": {"generations": 1, "population": 1, "seeds": 1, "processes": 1, "route_rho": 1.0}},
+            config_id="cfg-route")
+        self.jobs = JobStore(self.configs, cancel_grace_seconds=5)
+        self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
+        self.configs.runs.mkdir(exist_ok=True)
+        self.server.repository = RunRepository(self.configs.runs)
+        self.server.job_store = self.jobs
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True)
+        self.thread.start()
+        self.addCleanup(self.cleanup)
+
+    def cleanup(self):
+        cleanup_http_fixture(self.server, self.thread, self.jobs.root, self.temp)
+
+    def http(self, method, path, body=None):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            conn.request(method, path, None if body is None else json.dumps(body),
+                headers={"Content-Type": "application/json", "X-WorldBloom-Client": "1"})
+            response = conn.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            conn.close()
+
+    def test_route_rho_from_job_reaches_the_ga(self):
+        status, job = self.http("POST", "/api/jobs",
+            {"request_id": "route-req", "kind": "evolve", "config_id": "cfg-route"})
+        self.assertEqual(status, 202, job)
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            status, value = self.http("GET", "/api/jobs/" + job["job_id"])
+            self.assertEqual(status, 200, value)
+            if value["state"] in worker.TERMINAL:
+                break
+            time.sleep(0.05)
+        else:
+            self.fail("real GA did not reach terminal state")
+        self.assertEqual(value["state"], "succeeded", value)
+        run_root = self.configs.runs / job["run_id"]
+        layer_files = sorted(run_root.glob("g0/ind-0/seed-*/layers.jsonl"))
+        self.assertTrue(layer_files)
+        lines = [json.loads(line) for path in layer_files
+                 for line in path.read_text(encoding="utf-8").splitlines()]
+        header = lines[0]
+        self.assertEqual(header["kind"], "header")
+        self.assertIn("route", header)
+        protagonist = header["protagonist"]
+        decisions = [row for row in lines
+                     if row.get("kind") == "decision" and row.get("subject") == protagonist]
+        self.assertTrue(decisions)
+        self.assertTrue(any(row.get("policy") and "route" in row["policy"] for row in decisions))
+
+
+@unittest.skipUnless(os.name == "nt", "Windows supervisor contract")
+class EvolutionJobRationalityAndConsistencyTests(unittest.TestCase):
+    """WB-ROUTE-001 S4 follow-up (kappa/rationality_* scope widening, user
+    decision): mirrors EvolutionHttpRouteRhoTests but for kappa, and
+    additionally checks that the frozen adapter path (execution/
+    evolution_worker.py, the default handler when that file is present) and
+    the legacy CLI path (scripts/evolve.py, forced by removing the adapter
+    file from the repo before prepare_run() freezes runtime/ -- the same
+    trick tests/test_execution_jobs.py's fixture() uses to reach
+    "legacy_evolve_cli" in execution/worker.py) agree on what a job's
+    route_rho/kappa settings mean: same manifest evolution config, same
+    deterministic seeds, byte-equal layers.jsonl. Uses JobStore.submit()
+    directly rather than the HTTP API -- no server needed for either."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-route-kappa-")
+        self.addCleanup(self.temp.cleanup)
+        self.base = Path(self.temp.name)
+
+    def _make_store(self, name, *, remove_adapter):
+        repo = self.base / name / "repo"
+        repo.mkdir(parents=True)
+        for pkg in ("engine", "gapengine", "scripts", "execution", "projects", "templates"):
+            shutil.copytree(ROOT / pkg, repo / pkg, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copyfile(ROOT / "requirements.txt", repo / "requirements.txt")
+        if remove_adapter:
+            (repo / "execution/evolution_worker.py").unlink()
+        configs = ConfigStore(repo, self.base / name / "control", self.base / name / "runs")
+        jobs = JobStore(configs, cancel_grace_seconds=5)
+        self.addCleanup(self._cleanup_jobs, jobs)
+        return configs, jobs
+
+    def _cleanup_jobs(self, jobs):
+        if jobs.root.exists():
+            for folder in jobs.root.glob("job-*"):
+                job = read_json(folder / "job.json")
+                identity = (job.get("receipt") or {}).get("identity") or job.get("launch_identity")
+                if identity:
+                    try:
+                        worker.terminate_verified(identity)
+                    except OSError:
+                        pass
+
+    def _run_to_terminal(self, jobs, job_id, timeout=45):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            job = jobs.get(job_id)
+            if job["state"] in worker.TERMINAL:
+                return job
+            time.sleep(0.05)
+        self.fail("job did not reach terminal state")
+
+    def test_kappa_from_job_reaches_the_ga(self):
+        # backend "none" (gapengine.rationality's AlwaysNoneJudge) is a real,
+        # network-free judge -- kappa>0 exercises the whole apparatus without
+        # ever calling Ollama.
+        configs, jobs = self._make_store("kappa", remove_adapter=False)
+        configs.save({"label": "kappa", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+            "evolution": {"generations": 1, "population": 1, "seeds": 1, "processes": 1,
+                          "kappa": 1.0, "rationality_backend": "none"}}, config_id="cfg-kappa")
+        job, _ = jobs.submit({"request_id": "kappa-req", "kind": "evolve", "config_id": "cfg-kappa"})
+        job = self._run_to_terminal(jobs, job["job_id"])
+        self.assertEqual(job["state"], "succeeded", job)
+        run_root = configs.runs / job["run_id"]
+        layer_files = sorted(run_root.glob("g0/ind-0/seed-*/layers.jsonl"))
+        self.assertTrue(layer_files)
+        header = json.loads(layer_files[0].read_text(encoding="utf-8").splitlines()[0])
+        self.assertIn("rationality", header)
+        self.assertEqual(header["rationality"]["kappa"], 1.0)
+        self.assertEqual(header["rationality"]["backend"], "none")
+
+    def test_adapter_and_cli_paths_agree_on_route_rho_and_kappa(self):
+        spec = {"label": "consistency", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+                "evolution": {"generations": 1, "population": 2, "seeds": 1, "processes": 1,
+                              "route_rho": 1.0, "kappa": 1.0, "rationality_backend": "none"}}
+        results = {}
+        for label, remove_adapter in (("adapter", False), ("cli", True)):
+            configs, jobs = self._make_store(label, remove_adapter=remove_adapter)
+            configs.save(spec, config_id="cfg-consistency")
+            job, _ = jobs.submit({"request_id": "consistency-req", "kind": "evolve", "config_id": "cfg-consistency"})
+            job = self._run_to_terminal(jobs, job["job_id"])
+            self.assertEqual(job["state"], "succeeded", (label, job))
+            run_root = configs.runs / job["run_id"]
+            logs = {p.relative_to(run_root).as_posix(): p.read_bytes()
+                    for p in run_root.rglob("layers.jsonl")}
+            self.assertTrue(logs)
+            results[label] = logs
+        self.assertEqual(results["adapter"], results["cli"])
+
+
 if __name__ == "__main__":
     unittest.main()
