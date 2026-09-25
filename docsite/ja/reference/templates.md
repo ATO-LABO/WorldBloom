@@ -10,8 +10,11 @@ sources:
   - "templates/momotaro_plus2/rationality.yaml"
   - "projects/momotaro_plus2/world.yaml"
   - "projects/momotaro_plus2/subjects/01_ojiisan.yaml"
+  - "templates/momotaro_plus2/route.yaml"
+  - "templates/momotaro_plus2/motives.yaml"
+  - "gapengine/route.py"
   - "docs/2026-09-11_gapengine-detailed-design.md"
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+reviewed: "9765a5cbd9e8fab7a136d509381a7f59bf3899cb"
 ---
 # テンプレート
 
@@ -27,6 +30,8 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 | `qd.yaml` | QD 格子の軸。`categories`（行の主導カテゴリ）と `volatility_bins`（列の起伏区分） |
 | `rules.yaml` | 修飾ルール。述語が成立する間だけ遺伝子の重みを一時的に加減する |
 | `rationality.yaml`（任意） | κ（Jev 合理性判定）の既定値・判定器のバックエンド設定。無いジャンルは κ=0 相当で動く |
+| `route.yaml`（任意） | [道筋層](../concepts/route-layer.md)の設定（ρ の既定値・分類ごとの倍率など）。無いジャンルは道筋層自体が存在しない（実行設定にも05.道筋の区画は出ない） |
+| `motives.yaml`（任意、route.yaml とセット） | 道筋層の動機表。「理由なし」の寄り道に理由を与える規則の並び |
 
 すべて YAML で、述語文字列（`when`・`condition`）は `engine/predicate.py` のホワイトリスト評価器（`ast` ベース、`eval` は使わない）で読みます。同じ評価器を修飾ルール・伏線の回収条件・結末条件（`world.yaml` の `ending.when`）・`phase_rules` の4か所で共有します。
 
@@ -123,6 +128,67 @@ key_items: [きびだんご, 小判]
 ```
 
 κ はそのジャンルが持つ合理性判定（Jev）の強さで、実行設定側で 0〜1 の値を上書きできます（詳しくは[実行設定](../usage/run-settings.md)）。このファイルが無いジャンルは κ=0 相当（判定を使わない）で動きます。
+
+### route.yaml（ρ／道筋層）
+
+```yaml
+holder_belief_fact: treasure_thief
+trial_reveal_facts:
+  鬼の弟: 弟の消息
+
+rho: 0.0
+multipliers:
+  advance: 1.0
+  prepare: 0.5
+  detour:body: 1.0
+  detour:belief: 1.0
+  detour:ignorance: 0.5
+  detour:none: 0.02
+  lost: 1.0
+
+min_win_prob: 0.2
+
+gene_affinity: 0.5
+route_category:
+  fight: I
+  negotiate: III
+```
+
+| キー | 意味 |
+|---|---|
+| `holder_belief_fact` | 目的物の持ち主について、本人が誤って信じうる事実のID（[道筋層](../concepts/route-layer.md)の「思い込み」判定に使う） |
+| `trial_reveal_facts` | 「この試練の依頼主は、対応する事実を知るまでプランナーの立ち寄り先として現れない」というマッピング（依頼主ID→事実ID） |
+| `rho` | ρ の既定値。実行設定側の05.道筋で上書きできる。既定 0.0（無変調） |
+| `multipliers` | 分類ごとの基礎倍率 b（`advance`/`prepare`/`detour:body`/`detour:belief`/`detour:ignorance`/`detour:none`/`lost`）。省略したキーは既定値のまま |
+| `min_win_prob` | 持ち主への対決・妨害・無力化を「勝ち目がある挑戦」とみなす、本人が信じる最低勝率。これを下回ると寄り道〈理由なし〉（動機表次第でさらに再分類）扱いになる |
+| `gene_affinity` | 目的物の入手手段が複数ある局面（対決 vs 交渉など）で、どちらを最善の計画とみなすかを遺伝子でどれだけ傾けるか（0〜1、既定 0＝常にコスト最小の方） |
+| `route_category` | `gene_affinity` が参照する、経路名（`fight`/`negotiate` など）と行動カテゴリ（I〜VI）の対応 |
+
+このファイルが無いジャンルには道筋層自体が存在しません（実行設定に05.道筋の区画も出ません）。
+
+### motives.yaml（動機表）
+
+```yaml
+- id: care_for_ally
+  label: 仲間を大事にする
+  when: "stance(self, target) >= 0.6"
+  verbs: [give_item, share_knowledge, persuade, pledge]
+  gene: category_weight.III
+  text: "{target}との絆を深めたくて{verb_text}"
+```
+
+`route.yaml` があるジャンルにだけ置ける、任意のファイルです。上から見て最初に条件（`when`）と対象の行動（`verbs`）が一致した1件が採用されます。
+
+| キー | 意味 |
+|---|---|
+| `id` | 動機の一意なID |
+| `label` | 画面のバッジに出す短い名前 |
+| `when` | 述語文字列（`engine/predicate.py` の評価器）。`target` は候補の対象（無い候補では自分自身）に束縛される |
+| `verbs` | この動機が対象にできる動詞の一覧 |
+| `gene` | 動機の強さを読む遺伝子キー（`risk_tolerance`・`stance_shift_bias`・`novelty_drive`・`category_weight.<I〜VI>`）。先頭に `-` を付けると値を反転する（例: `-risk_tolerance` はリスク許容度が低いほど強い） |
+| `text` | 理由文のテンプレート。`{target}`・`{verb_text}` などを差し込める |
+
+動機表は「寄り道〈理由なし〉になるはずだった候補」だけに適用され、前進・準備・身体・思い込み・手探り・見通しなしの行動には一切影響しません。一致した動機の実際の重みは、`gene` で指定した遺伝子の強さ（0〜1）に応じて連続的に変わります（詳しくは[道筋層](../concepts/route-layer.md)）。
 
 ## `projects/<世界>/` の構成
 

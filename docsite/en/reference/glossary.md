@@ -1,5 +1,5 @@
 ---
-ja_rev: "7c3e188e092a"
+ja_rev: "e1476de2c4a2"
 ---
 # Glossary
 
@@ -34,6 +34,10 @@ A summary of terms used on WorldBloom's screens and throughout this documentatio
 | Random baseline | A control experiment (`scripts/random_baseline.py`) measuring the reach rate and diversity of purely policy-free, fully random individuals |
 | Determinism | The property that the log matches byte for byte given the same world, genome, seed, precedent table, and engine. See [Determinism](../concepts/determinism.md) |
 | κ (kappa, rationality) | The strength of a genre's rationality judgment (Jev). Set as a value from 0–1 in run settings. See [Run Settings](../usage/run-settings.md) |
+| Route layer | A mechanism that classifies each protagonist decision against "the shortest plan to the ending" (advance / prepare / detour / lost) and reins in unreasoned detours with weight ρ. Only for genres with a `route.yaml` (currently only 桃太郎＋2 / Peach Boy+2). See [Route Layer](../concepts/route-layer.md) |
+| ρ (rho, route weight) | A 0–1 value controlling how hard the route layer reins in unreasoned detours. 0 (default) means unmodulated, 1 means they're almost never chosen. Set in run settings. See [Route Layer](../concepts/route-layer.md) |
+| Motive table (motives.yaml) | A prioritized list of rules that gives a would-be "unreasoned" detour a reason, scaled by genome strength. Lives at `templates/<genre>/motives.yaml`, one per genre. See [Route Layer](../concepts/route-layer.md) |
+| No reason | One of the route layer's classifications: a detour that matches none of advance / prepare / body / ignorance / belief / the motive table. Raising ρ makes these almost never chosen |
 
 ## Grid (Sifting)
 

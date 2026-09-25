@@ -63,6 +63,7 @@ nav:
       - QD Map: concepts/qd-map.md
       - Sifting: concepts/sifting.md
       - Determinism: concepts/determinism.md
+      - Route Layer: concepts/route-layer.md
   - Usage:
       - Create a World: usage/create-world.md
       - Run Settings: usage/run-settings.md

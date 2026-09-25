@@ -1,5 +1,5 @@
 ---
-ja_rev: "42aa0b9bcee9"
+ja_rev: "4d418a6b4fba"
 ---
 # Read Results
 
@@ -39,6 +39,17 @@ The candidate list screen shows these columns for each candidate:
 ## Choice, rationale, cost, and turning point
 
 The candidate detail shows four fields — 選択 (Choice), 根拠 (Rationale), 代償 (Cost), 転機 (Turning point) — mechanically extracted from the log to explain what belief a given choice was made on, what it cost, and what it led to afterward. They're a way to read back a story's key decisions after the fact.
+
+Right after 選択 (Choice), the four-field panel can show a **"道筋: (Route:)"** line. This appears when the [route layer](../concepts/route-layer.md) (an experiment run with ρ>0) classified that decision as 前進 (advance), 準備 (prepare), 寄り道〈身体／手探り／思い込み／a motive's name〉(detour ⟨body/ignorance/belief/a motive's name⟩), or 見通しなし (lost), along with its reason text. It's absent for experiments that don't use the route layer (ρ=0, or a run predating the route layer).
+
+## Reason badges in the action log
+
+For experiments that use the route layer, the timeline (物語の流れ, story flow) also shows lines explaining "why" a decision was made.
+
+- **Timeline reason line**: one line per route-bearing protagonist decision, formatted as `[classification label] event — reason`
+- **Breakdown at the top of the cell page**: opening a candidate's detail shows a count of that run's protagonist decisions by classification, "前進 n／準備 n／寄り道 n〈うち理由なし n〉／見通しなし n" (advance n / prepare n / detour n ⟨of which n are unreasoned⟩ / lost n)
+
+Both are absent for experiments that don't use the route layer. See [Route Layer](../concepts/route-layer.md) for what each classification and reason means.
 
 ## Comparison, lineage, and turning-point visualization
 
