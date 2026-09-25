@@ -12,7 +12,7 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 ---
 # 実行結果のファイル
 
-`python scripts/evolve.py --out <実験フォルダ>` を実行すると、`<実験フォルダ>` 配下に以下が生成されます（実際に `momotaro_plus2` で1世代・2個体・1seedを回した実測、`C:\Projects\WorldBloom-local\runs\docs-phase3\` 配下）。
+`python scripts/evolve.py --out <実験フォルダ>` を実行すると、`<実験フォルダ>` 配下に以下が生成されます（実際に `momotaro_plus2` で1世代・2個体・1seedを回した実測）。
 
 ```
 <実験フォルダ>/
