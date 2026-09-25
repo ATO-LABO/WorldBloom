@@ -321,6 +321,27 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn('data-field="evolution.kappa"', body)
         self.assertNotIn("合理性（主人公がどれだけ筋の通った手を選ぶか）", body)
 
+    # ------------------------------------------------------- WB-ROUTE-001 S4
+
+    def test_no_route_section_for_genre_without_route_yaml(self):
+        # "momotaro" has no templates/momotaro/route.yaml -- the section and
+        # the ρ field must both be absent.
+        status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn('data-field="evolution.route_rho"', body)
+        self.assertNotIn("道筋（寄り道の抑え方）", body)
+
+    def test_route_rho_section_and_default_for_genre_with_route_yaml(self):
+        # "momotaro_plus2" has route.yaml -- a brand new form defaults ρ to
+        # 1.0 (unlike κ, ρ has no extra compute cost to default away from).
+        status, body, _ = self.get_status(
+            "/configs/new?project=momotaro_plus2&template=momotaro_plus2")
+        self.assertEqual(status, 200, body)
+        self.assertIn("道筋（寄り道の抑え方）", body)
+        rho_tag = self._input_tag(body, "evolution.route_rho")
+        self.assertIn('type="range"', rho_tag)
+        self.assertIn('value="1.0"', rho_tag)
+
     def test_kappa_slider_defaults_to_0_6_and_raises_wall_seconds_when_judge_available(self):
         with patch("viewer.workbench_pages._ollama_availability",
                    return_value={"available": True, "reason": None}):

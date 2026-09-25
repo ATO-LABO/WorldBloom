@@ -11,7 +11,7 @@
   when: "stance(self, target) >= 0.6"
   verbs: [give_item, share_knowledge, persuade, pledge]
   gene: category_weight.III
-  text: "{target}との絆を深めたかった"
+  text: "{target}との絆を深めたくて{verb_text}"
 
 # bravado は grudge より先に置く: 敵対的な持ち主への勝ち目の無い勝負は grudge の
 # when（stance<=-0.3）も満たすため、限定的な bravado を先に評価する（S2 レビュー前修正）。

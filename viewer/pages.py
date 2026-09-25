@@ -786,10 +786,15 @@ def quick_start_actions(world_id, genre, world_name, run_href, *, css_class="", 
     cls = f' class="{_escape(css_class)}"' if css_class else ""
     if not world_id or not genre:
         return f'<a{cls} href="{_escape(run_href)}">{_escape(text)}</a>'
+    # WB-ROUTE-001 S4 §2: ρ carries no extra compute cost (unlike κ), so the
+    # quick-start button passes route_rho=1.0 outright when the genre has a
+    # route.yaml, rather than deferring to the config form.
+    has_route = (repo / "templates" / genre / "route.yaml").is_file()
+    route_attr = ' data-route-rho="1.0"' if has_route else ""
     quick = (
         f'<a{cls} href="{_escape(run_href)}" data-quick-start '
         f'data-project="{_escape(world_id)}" data-template="{_escape(genre)}" '
-        f'data-world-name="{_escape(world_name)}">{_escape(text)}</a>'
+        f'data-world-name="{_escape(world_name)}"{route_attr}>{_escape(text)}</a>'
     )
     result = quick + f' <a href="{_escape(run_href)}">設定を変更して実行</a>'
     if (repo / "templates" / genre / "rationality.yaml").is_file():
@@ -802,6 +807,8 @@ def quick_start_actions(world_id, genre, world_name, run_href, *, css_class="", 
         # just "hint", which app.css only styles under .cfg-form) so this
         # also looks right on the world page, outside any config form.
         result += ' <span class="hint muted">合理性（κ）は実行設定で指定します。</span>'
+    if has_route:
+        result += ' <span class="hint muted">道筋 ρ=1.0 で実行</span>'
     return result
 
 
@@ -1283,6 +1290,20 @@ def _state_chips(
 
 
 
+def _motive_line(motive: Mapping[str, Any]) -> str:
+    # WB-ROUTE-001 S4 §1.2: one line per protagonist decision the scene
+    # carries a route for -- "[ラベル] 出来事 — 理由文". Scenes with no
+    # "motives" key (rho=0 runs, or a run predating the route layer) never
+    # call this at all, so their output is unchanged.
+    label, css_class = explanation_ui.route_badge(motive)
+    why = motive.get("why") or "はっきりした理由は記録されていない"
+    return (
+        f'<p class="detail motive-line">'
+        f'<span class="tag {css_class}">{_escape(label)}</span> '
+        f'{_escape(motive.get("event"))} — {_escape(why)}</p>'
+    )
+
+
 def _timeline(view_model: Mapping[str, Any]) -> str:
     grouped: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
     for scene in view_model["scenes"]:
@@ -1308,6 +1329,9 @@ def _timeline(view_model: Mapping[str, Any]) -> str:
             )
             if scene.get("turning"):
                 tags += '<span class="tag">転機候補</span>'
+            motive_lines = "".join(
+                _motive_line(motive) for motive in scene.get("motives") or []
+            )
             delta = (
                 f'<span class="delta">Δ {data._number(scene.get("delta_l1")):.2f}</span>'
                 if data._number(scene.get("delta_l1")) > 0
@@ -1334,6 +1358,7 @@ def _timeline(view_model: Mapping[str, Any]) -> str:
                 f'<span class="turn">T{turn} {_escape(scene.get("slot"))}</span>'
                 f"{events}{details}"
                 f'<div class="scene-tags">{tags}{foreshadowing}{delta}</div>'
+                f"{motive_lines}"
                 f"{npc}</article>"
             )
         sections.append(
@@ -1395,6 +1420,37 @@ def _raw_table(rows: Sequence[Mapping[str, Any]]) -> str:
     )
 
 
+def _route_breakdown(
+    decisions: Sequence[Mapping[str, Any]], protagonist: str
+) -> str | None:
+    """WB-ROUTE-001 S4 §1.2: one summary line of the protagonist's decision
+    kinds for this run, or None when no decision carries a policy.route
+    (rho=0 runs, or a run predating the route layer -- unchanged output)."""
+    counts = {"advance": 0, "prepare": 0, "detour": 0, "detour_none": 0, "lost": 0}
+    seen = False
+    for item in decisions:
+        if item.get("subject") != protagonist:
+            continue
+        route = ((item.get("system") or {}).get("policy") or {}).get("route")
+        if not route:
+            continue
+        seen = True
+        kind = route.get("kind")
+        if kind in ("advance", "prepare", "lost"):
+            counts[kind] += 1
+        elif kind == "detour":
+            counts["detour"] += 1
+            if route.get("cause") == "none":
+                counts["detour_none"] += 1
+    if not seen:
+        return None
+    return (
+        f'前進 {counts["advance"]}／準備 {counts["prepare"]}／'
+        f'寄り道 {counts["detour"]}〈うち理由なし {counts["detour_none"]}〉／'
+        f'見通しなし {counts["lost"]}'
+    )
+
+
 def cell_page(
     repository: data.RunRepository,
     experiment_name: str,
@@ -1447,10 +1503,18 @@ def cell_page(
         str(parent)
         for parent in model["parents"]
     ) or "—"
+    route_breakdown = _route_breakdown(
+        model["explanation"]["decisions"], model["protagonist"]
+    )
+    route_breakdown_html = (
+        f'<p class="muted route-breakdown">{_escape(route_breakdown)}</p>'
+        if route_breakdown
+        else ""
+    )
     story_panel = (
         '<section class="card story-section"><div class="section-heading"><h2>物語の流れ</h2>'
         f'<nav class="view-modes">{" ".join(mode_links)}</nav></div>'
-        f'{_timeline(model)}</section>'
+        f'{route_breakdown_html}{_timeline(model)}</section>'
     )
     if model["explanation"].get("reader_summary"):
         reader_panel = '<section class="card reader-primary">' + reader_ui.panel(model["explanation"]) + '</section>'

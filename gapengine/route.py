@@ -1942,6 +1942,24 @@ def _grant_purpose_text(trial: dict[str, Any] | None) -> str | None:
     return None
 
 
+def _craft_purpose_text(
+    item: str, world: World, believed_holder_id: str | None
+) -> str | None:
+    """S3.5 review §0(b): a craft's own reason text was just restating the
+    event ("鉄砲を作った"/"船を作った"). Name the item's use instead, from
+    the two generic signals the engine already exposes: ``vehicle`` (crosses
+    to wherever the believed goal holder stands) and a strength-contributing
+    ``modifier`` (helps face that same holder down)."""
+    definition = world.items.get(item, {})
+    holder = world.subjects.get(believed_holder_id) if believed_holder_id else None
+    if definition.get("vehicle", False):
+        return f"{holder.zone}へ渡るため" if holder is not None else "先へ渡るため"
+    modifier = definition.get("modifier") or {}
+    if modifier.get("kind") == "item" and holder is not None:
+        return f"{holder.id}と渡り合うため"
+    return None
+
+
 _RELATION_VERB_TEXT = {
     # S3.5 §2: worded as the subject's want ("...てほしくて"/"...ようと"), not
     # a claimed outcome -- an LLM given "仲間を増やすため{target}に品を渡し
@@ -1952,6 +1970,17 @@ _RELATION_VERB_TEXT = {
     "give_item": "{target}に仲間に加わってほしくて品を渡した",
     "persuade": "{target}に仲間に加わってほしくて説得した",
     "pledge": "{target}と支え合おうと誓いを結んだ",
+}
+
+# S3.5 review §0(c): a motive's own text (motives.yaml) may end in
+# "{verb_text}" to name the actual action taken, rather than baking one verb
+# in (care_for_ally fires on give_item/share_knowledge/persuade/pledge alike,
+# so "絆を深めたかった" alone read oddly on a give_item).
+_MOTIVE_VERB_ENDINGS = {
+    "give_item": "品を渡した",
+    "share_knowledge": "話した",
+    "persuade": "説得した",
+    "pledge": "誓いを結んだ",
 }
 
 def _advance_text(
@@ -2046,7 +2075,8 @@ def _advance_text(
 
     if verb == "craft":
         item = action.args[0] if action.args else "品"
-        return f"{item}を作った"
+        purpose = _craft_purpose_text(item, world, believed_holder_id)
+        return f"{purpose}{item}を作った" if purpose else f"{item}を作った"
 
     if verb == "trial":
         trial_id = action.meta.get("trial_id")
@@ -2059,6 +2089,15 @@ def _advance_text(
         return "目的物を譲るよう交渉した"
 
     if verb == "fight":
+        # S3.5 review §0(a): name the goal item and the holder, not just
+        # "目的物の持ち主" -- fight's own target arg is the holder (see
+        # engine.actions._fight_candidates), subject.goal.target the item.
+        target = action.args[0] if action.args else believed_holder_id
+        item = subject.goal.target
+        if item is not None and target is not None:
+            return f"{item}を手に入れるため{target}と戦った"
+        if target is not None:
+            return f"{target}と戦った"
         return "目的物の持ち主と戦った"
 
     if verb == "train":
@@ -2550,11 +2589,18 @@ def annotate(
                     else 0.5
                 )
                 fill = result["zone"] if target == subject.id else target
-                text = motive["text"].replace("{target}", str(fill)).replace(
-                    "{zone}", str(result["zone"])
+                text = (
+                    motive["text"]
+                    .replace("{target}", str(fill))
+                    .replace("{zone}", str(result["zone"]))
+                    .replace(
+                        "{verb_text}",
+                        _MOTIVE_VERB_ENDINGS.get(action.verb, "動いた"),
+                    )
                 )
                 result["cause"] = "motive"
                 result["motive"] = motive["id"]
+                result["motive_label"] = motive["label"]
                 result["text"] = text
                 result["gene_s"] = round(gene_s, 6)
                 break
