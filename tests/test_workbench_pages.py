@@ -253,14 +253,14 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("cfg-test", body)
 
         # WB-UI-021: /configs carries the single 文章生成 card, defaulted from
-        # an absent settings.json (DEFAULT_BACKEND = codex-cli).
+        # an absent settings.json (DEFAULT_BACKEND = llama-server).
         self.assertIn('<section class="gs-panel" id="output" data-gs-panel="output">', body)
         self.assertIn('data-wb="output-settings"', body)
         self.assertIn(
             '<select id="f-backend" name="backend" data-field="backend">',
             body,
         )
-        self.assertIn('<option value="codex-cli" selected>', body)
+        self.assertIn('<option value="llama-server" selected>', body)
 
         status, body, _ = self.get_status("/configs/cfg-test")
         self.assertEqual(status, 200, body)
@@ -569,7 +569,7 @@ class WorkbenchTests(unittest.TestCase):
     def test_output_settings_api_round_trip(self):
         status, before = self.http("GET", "/api/settings/output")
         self.assertEqual(status, 200, before)
-        self.assertEqual(before["backend"], "codex-cli")
+        self.assertEqual(before["backend"], "llama-server")
         self.assertIsNone(before["model"])
         self.assertIn("availability", before)
 

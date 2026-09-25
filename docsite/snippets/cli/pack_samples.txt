@@ -1,0 +1,9 @@
+usage: pack_samples.py [-h] --runs RUNS --out OUT --experiments EXPERIMENTS [EXPERIMENTS ...]
+
+Copy minimal viewer-readable samples out of experiment runs.
+
+options:
+  -h, --help            show this help message and exit
+  --runs RUNS
+  --out OUT
+  --experiments EXPERIMENTS [EXPERIMENTS ...]
