@@ -2,6 +2,7 @@
 sources:
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "viewer/pages.py"
+reviewed: 72aaeae8379271e99357be2f967fa0cff3901a8d
 ---
 # QD 格子
 

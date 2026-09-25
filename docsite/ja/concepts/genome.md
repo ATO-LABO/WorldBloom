@@ -3,6 +3,7 @@ sources:
   - "gapengine/genome.py"
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "gapengine/policy.py"
+reviewed: 72aaeae8379271e99357be2f967fa0cff3901a8d
 ---
 # 遺伝子（Genome）
 

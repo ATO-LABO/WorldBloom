@@ -45,3 +45,11 @@ python viewer/server.py --runs <runsの場所> --control <controlの場所> --po
 4. Studio 版は、配布前にテストで作られた `runs/`・`control/` フォルダを配布フォルダから削除してください（無ければ初回起動時に自動生成されます）
 
 `requirements.txt` を `app/` に含め忘れると、実行時の来歴記録（`execution/provenance.py` の `code_snapshot()`）が失敗し、GA 実験が起動直後に止まります。`scripts/` を含め忘れると `ModuleNotFoundError: No module named 'scripts'` になります。どちらも起動はできてしまうため、再ビルドのたびに疑ってください。
+
+## ドキュメントの更新
+
+ドキュメントサイトの原稿は `docsite/{ja,en}/`（Material for MkDocs）です。
+
+- **ビルド・プレビュー**: `mkdocs serve -f docsite/mkdocs.ja.yml`（英語版は `mkdocs.en.yml`）。CI と同じ厳密さで確認するなら `mkdocs build --strict -f docsite/mkdocs.ja.yml -d <出力先>`
+- **CLI のヘルプを変えたら**: `python docsite/gen_cli.py` を実行して `docsite/snippets/cli/*.txt` を再生成してください（[CLI](https://ato-labo.github.io/WorldBloom/docs/reference/cli/)ページはこのスニペットを埋め込んでいるだけです）
+- **`python docsite/check.py` の読み方**: ja/en のページ一覧が一致しない場合と、CLIスニペットが古い場合は exit 1（ビルドを壊す）。en ページの `ja_rev`（front matter）が対応する ja ページ本文（front matter を除く）の現在のハッシュと一致しない、または未設定の場合は「要追従/未翻訳」として警告表示のみ（翻訳を終えたら `python docsite/check.py --ja-rev ja/<ページ>.md` の値を ja_rev に書く）。ja ページの `reviewed:`（front matter、最後に内容を確認したコミットSHA）以降に `sources:` のファイルが変わっていれば「情報源が更新されたページ」として警告表示のみ。どちらも exit code には影響しないので、CI が通っていても一覧は確認してください

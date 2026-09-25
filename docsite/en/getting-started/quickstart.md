@@ -1,3 +1,7 @@
+---
+ja_rev: "30c3da611397"
+---
+
 # Quickstart (one lap with Momotaro)
 
 Using the Studio build (or the source build started with `--control`), this walks through one full lap with the Momotaro world.

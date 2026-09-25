@@ -1,3 +1,7 @@
+---
+ja_rev: "62512f147383"
+---
+
 # WorldBloom Docs
 
 A tool that lets you fix a story's **setting and ending first**, then tries thousands of simulated paths between them and picks the interesting ones that actually reach that ending. A genetic algorithm (GA) drives the simulation, and only the chosen paths are turned into prose by an LLM.

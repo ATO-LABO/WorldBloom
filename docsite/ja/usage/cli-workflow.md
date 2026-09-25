@@ -5,6 +5,7 @@ sources:
   - "scripts/narrate.py"
   - "scripts/random_baseline.py"
   - "templates/"
+reviewed: 72aaeae8379271e99357be2f967fa0cff3901a8d
 ---
 
 # CLI での作業手順

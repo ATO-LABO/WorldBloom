@@ -1,3 +1,7 @@
+---
+ja_rev: "0d8bf13aa19e"
+---
+
 # Install
 
 !!! note "The app's screens are Japanese-only"
