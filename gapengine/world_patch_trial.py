@@ -90,7 +90,7 @@ def _select_cells(archive: dict, max_runs: int) -> list[tuple[str, dict]]:
 def _job(*, ctx: dict, world_path: Path, out_dir: Path, elite: dict,
          index: int, seeds: list[int], precedent_json: str, antagonist_precedent_json,
          antagonist_genome) -> dict[str, Any]:
-    return {
+    job = {
         "action_cfg": ctx["action_cfg"],
         "action_graph_path": (str(ctx["action_graph_path"]) if ctx["action_graph_path"] is not None else None),
         "antagonist": ctx["antagonist"],
@@ -112,6 +112,64 @@ def _job(*, ctx: dict, world_path: Path, out_dir: Path, elite: dict,
         "target_ending": ctx["target_ending"],
         "world_path": str(world_path),
     }
+    # WB-WORLDGROW-002 stage 0: without these, a base/patched/reproduction
+    # trial run of an rho>0/kappa>0 experiment silently walked a
+    # route-free/rationality-free history -- reproduction's byte comparison
+    # against the original layers.jsonl then always mismatched
+    # (state -> reference_only). ctx["route_cfg"]/["rationality_cfg"] are
+    # gapengine.lineage._resolve_world_context's restore_job_cfgs() result
+    # (this module's `ctx` is built by that same function).
+    if ctx.get("route_cfg") is not None:
+        job["route_cfg"] = ctx["route_cfg"]
+    if ctx.get("rationality_cfg") is not None:
+        job["rationality_cfg"] = ctx["rationality_cfg"]
+        job["rationality_table_path"] = str(ctx["rationality_table_path"])
+        # Never places a live judge call during a trial run -- only replays
+        # judgments the experiment's own shared table already has (plan §0
+        # item 3: "試走で判定器を呼ぶかは今回は決めない。呼ばない").
+        job["rationality_table_only"] = True
+    return job
+
+
+def _reproduction_matches(rerun_path: Path, original_path: Path) -> bool:
+    """True when `rerun_path` reproduces `original_path` -- byte-identical,
+    or identical everywhere except the header's
+    ``rationality.table_hash_at_start`` (WB-WORLDGROW-002 stage 0: a
+    kappa>0 experiment's shared rationality table keeps accumulating for
+    the rest of the GA run after any one individual's own seed finishes --
+    gapengine.evolve._merge_rationality_table overwrites it in place every
+    generation, keeping no per-generation snapshot -- so a reproduction
+    run reading the table's *current*, bigger content legitimately starts
+    from a hash the original individual never saw, even though every
+    decision it actually made, replayed from that same table, still
+    matches exactly. This field is deliberately excluded from
+    gapengine.evolve._cfg_fingerprint for the same reason: it is
+    bookkeeping about *how* a value was computed, not part of *what* a run
+    computes, so treating it as a mismatch here would report a perfectly
+    faithful kappa>0 reproduction as "reference_only")."""
+
+    rerun_bytes, original_bytes = rerun_path.read_bytes(), original_path.read_bytes()
+    if rerun_bytes == original_bytes:
+        return True
+    rerun_rows, original_rows = read_rows(rerun_path), read_rows(original_path)
+    if len(rerun_rows) != len(original_rows):
+        return False
+    for index, (rerun_row, original_row) in enumerate(zip(rerun_rows, original_rows)):
+        if rerun_row == original_row:
+            continue
+        if index != 0:
+            return False
+        rerun_header, original_header = dict(rerun_row), dict(original_row)
+        for header in (rerun_header, original_header):
+            rationality = dict(header.get("rationality") or {})
+            rationality.pop("table_hash_at_start", None)
+            if rationality:
+                header["rationality"] = rationality
+            else:
+                header.pop("rationality", None)
+        if rerun_header != original_header:
+            return False
+    return True
 
 
 def _trigger_counts(report: dict, zones: set[str], verb: str) -> dict[str, int]:
@@ -232,7 +290,7 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
                 job = _job(**common, world_path=paths["base"], out_dir=out, seeds=[original_seed])
                 job["record_explanations"] = recorded
                 rerun = run_individual(job)
-                if (out / rerun["runs"][0]["layers_path"]).read_bytes() == original.read_bytes():
+                if _reproduction_matches(out / rerun["runs"][0]["layers_path"], original):
                     trial["reproduction"]["identical"] += 1
                 else:
                     trial["reproduction"]["mismatched"].append(cell)
