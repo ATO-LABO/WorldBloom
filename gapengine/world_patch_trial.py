@@ -14,6 +14,7 @@ from engine.sim import _engine_source_hash
 from gapengine import lineage
 from gapengine.evolve import run_individual
 from gapengine.qd import read_rows
+from gapengine.rationality import RationalityTableMissError
 from gapengine.world_demand import collect
 from gapengine.world_patch import (PATCH_RULES_VERSION, PatchError, absolutize_references, materialize,
                                    template_identifiers)
@@ -44,6 +45,14 @@ def individual_count(individuals):
 
 
 def trial_state(trial):
+    # WB-WORLDGROW-002 stage 0 review, required item 1: a kappa>0 experiment's
+    # patched world almost always needs a judgment the shared table has no
+    # entry for (a patch adds candidates/zones the original run never saw),
+    # raising RationalityTableMissError -- that is expected and not a patch
+    # defect, so it must read as "reference_only" (judge required, cannot
+    # measure), never as "contract_failed" the way any other job error does.
+    if trial.get("rationality_table_miss"):
+        return "reference_only"
     if trial.get("errors") or trial.get("contract", {}).get("violations"):
         return "contract_failed"
     evidence, reproduction = trial.get("evidence") or {}, trial.get("reproduction") or {}
@@ -131,45 +140,12 @@ def _job(*, ctx: dict, world_path: Path, out_dir: Path, elite: dict,
     return job
 
 
-def _reproduction_matches(rerun_path: Path, original_path: Path) -> bool:
-    """True when `rerun_path` reproduces `original_path` -- byte-identical,
-    or identical everywhere except the header's
-    ``rationality.table_hash_at_start`` (WB-WORLDGROW-002 stage 0: a
-    kappa>0 experiment's shared rationality table keeps accumulating for
-    the rest of the GA run after any one individual's own seed finishes --
-    gapengine.evolve._merge_rationality_table overwrites it in place every
-    generation, keeping no per-generation snapshot -- so a reproduction
-    run reading the table's *current*, bigger content legitimately starts
-    from a hash the original individual never saw, even though every
-    decision it actually made, replayed from that same table, still
-    matches exactly. This field is deliberately excluded from
-    gapengine.evolve._cfg_fingerprint for the same reason: it is
-    bookkeeping about *how* a value was computed, not part of *what* a run
-    computes, so treating it as a mismatch here would report a perfectly
-    faithful kappa>0 reproduction as "reference_only")."""
-
-    rerun_bytes, original_bytes = rerun_path.read_bytes(), original_path.read_bytes()
-    if rerun_bytes == original_bytes:
-        return True
-    rerun_rows, original_rows = read_rows(rerun_path), read_rows(original_path)
-    if len(rerun_rows) != len(original_rows):
-        return False
-    for index, (rerun_row, original_row) in enumerate(zip(rerun_rows, original_rows)):
-        if rerun_row == original_row:
-            continue
-        if index != 0:
-            return False
-        rerun_header, original_header = dict(rerun_row), dict(original_row)
-        for header in (rerun_header, original_header):
-            rationality = dict(header.get("rationality") or {})
-            rationality.pop("table_hash_at_start", None)
-            if rationality:
-                header["rationality"] = rationality
-            else:
-                header.pop("rationality", None)
-        if rerun_header != original_header:
-            return False
-    return True
+# _reproduction_matches lives on gapengine.lineage (used by both that
+# module's own ancestor-rerun comparison, recommendation "a" of the
+# WB-WORLDGROW-002 stage 0 review, and this module's reproduction check
+# below) -- one place to define "byte-identical except the known-harmless
+# rationality.table_hash_at_start drift" so the two never disagree about it.
+_reproduction_matches = lineage._reproduction_matches
 
 
 def _trigger_counts(report: dict, zones: set[str], verb: str) -> dict[str, int]:
@@ -241,7 +217,14 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
              "contract": contract_check(paths["patched"], paths["patched"].parent / "subjects", patch,
                                          action_graph_path=ctx["action_graph_path"]),
              "pairs": [], "passed": False, "statistics": {"defined": False,
-                "note": "v1 は統計的な合否を出さない。規約は複数世界で較正してから導入する"}}
+                "note": "v1 は統計的な合否を出さない。規約は複数世界で較正してから導入する"},
+             # WB-WORLDGROW-002 stage 0 review, required item 1: cells where a
+             # job hit RationalityTableMissError (kappa>0, a decision the
+             # shared table has no judgment for) -- kept apart from
+             # trial["errors"] so trial_state() reports "reference_only"
+             # ("judge required, cannot measure") instead of "contract_failed"
+             # ("patch rejected") for something the patch itself didn't cause.
+             "rationality_table_miss": []}
     layers = {"base": [], "patched": []}
     engine_hashes, seen = set(), set()
     for cell, elite in _select_cells(archive, len(archive.get("cells", {}))):
@@ -294,6 +277,11 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
                     trial["reproduction"]["identical"] += 1
                 else:
                     trial["reproduction"]["mismatched"].append(cell)
+            except RationalityTableMissError as error:
+                trial["reproduction"]["mismatched"].append(cell)
+                trial["rationality_table_miss"].append(
+                    {"cell": cell, "world": "reproduction", "error": str(error)}
+                )
             except Exception as error:
                 trial["reproduction"]["mismatched"].append(cell)
                 trial["errors"].append({"cell": cell, "world": "reproduction", "error": repr(error)})
@@ -305,6 +293,10 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
                 job["subjects_dir"] = str(paths[label].parent / "subjects")
                 result = run_individual(job)
                 sides[label] = (result["runs"], out)
+            except RationalityTableMissError as error:
+                trial["rationality_table_miss"].append(
+                    {"cell": cell, "world": label, "error": str(error)}
+                )
             except Exception as error:
                 trial["errors"].append({"cell": cell, "world": label, "error": repr(error)})
         if len(sides) != 2:
@@ -356,4 +348,9 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
     if skipped:
         trial["reasons"].append("陰性検査省略: " + "、".join(
             f"{n['subject']}(規則{n['rule_index']})" for n in skipped))
+    if trial["rationality_table_miss"]:
+        trial["reasons"].append(
+            f"κ>0 のため判定器が要ります（表に無い判定 {len(trial['rationality_table_miss'])} 件）。"
+            "この試走は共有の合理性表だけでは再現できません"
+        )
     return trial
