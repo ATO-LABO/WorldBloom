@@ -694,6 +694,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Route Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1238,6 +1266,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#routeyaml-route-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route.yaml (ρ / route layer)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#motivesyaml-motive-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        motives.yaml (motive table)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1657,6 +1707,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#routeyaml-route-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route.yaml (ρ / route layer)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#motivesyaml-motive-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        motives.yaml (motive table)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1756,6 +1828,14 @@
 <td><code>rationality.yaml</code> (optional)</td>
 <td>κ's (Jev rationality judgment) default value and the judge's backend settings. A genre without this behaves as if κ=0</td>
 </tr>
+<tr>
+<td><code>route.yaml</code> (optional)</td>
+<td>Settings for the <a href="../../concepts/route-layer/">route layer</a> (ρ's default, per-classification multipliers, etc.). A genre without this has no route layer at all (run settings shows no 05. Route section either)</td>
+</tr>
+<tr>
+<td><code>motives.yaml</code> (optional, paired with route.yaml)</td>
+<td>The route layer's motive table: a list of rules that gives a "no reason" detour a reason</td>
+</tr>
 </tbody>
 </table>
 <p>All are YAML, and predicate strings (<code>when</code>, <code>condition</code>) are read with <code>engine/predicate.py</code>'s whitelist evaluator (<code>ast</code>-based; <code>eval</code> is never used). The same evaluator is shared across four places: modifier rules, foreshadowing payoff conditions, ending conditions (<code>world.yaml</code>'s <code>ending.when</code>), and <code>phase_rules</code>.</p>
@@ -1826,6 +1906,111 @@
 <span class="nt">key_items</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">きびだんご</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">小判</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>κ is the strength of that genre's rationality judgment (Jev); run settings can override it with a value from 0–1 (see <a href="../../usage/run-settings/">Run Settings</a>). A genre without this file behaves as if κ=0 (no judgment used).</p>
+<h3 id="routeyaml-route-layer">route.yaml (ρ / route layer)<a class="headerlink" href="#routeyaml-route-layer" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nt">holder_belief_fact</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">treasure_thief</span>
+<span class="nt">trial_reveal_facts</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">鬼の弟</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">弟の消息</span>
+
+<span class="nt">rho</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0</span>
+<span class="nt">multipliers</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">advance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
+<span class="w">  </span><span class="nt">prepare</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span>
+<span class="w">  </span><span class="nt">detour:body</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
+<span class="w">  </span><span class="nt">detour:belief</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
+<span class="w">  </span><span class="nt">detour:ignorance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span>
+<span class="w">  </span><span class="nt">detour:none</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.02</span>
+<span class="w">  </span><span class="nt">lost</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
+
+<span class="nt">min_win_prob</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
+
+<span class="nt">gene_affinity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span>
+<span class="nt">route_category</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">fight</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">I</span>
+<span class="w">  </span><span class="nt">negotiate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">III</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>holder_belief_fact</code></td>
+<td>The ID of a fact the protagonist could be mistaken about regarding the goal item's holder (used by the <a href="../../concepts/route-layer/">route layer</a>'s "belief" classification)</td>
+</tr>
+<tr>
+<td><code>trial_reveal_facts</code></td>
+<td>A mapping (giver ID → fact ID) saying "this trial's giver doesn't appear as a waypoint in the planner until the subject has learned the paired fact"</td>
+</tr>
+<tr>
+<td><code>rho</code></td>
+<td>ρ's default value. Can be overridden by 05. Route in run settings. Default 0.0 (unmodulated)</td>
+</tr>
+<tr>
+<td><code>multipliers</code></td>
+<td>The base multiplier b per classification (<code>advance</code>/<code>prepare</code>/<code>detour:body</code>/<code>detour:belief</code>/<code>detour:ignorance</code>/<code>detour:none</code>/<code>lost</code>). Omitted keys keep their default</td>
+</tr>
+<tr>
+<td><code>min_win_prob</code></td>
+<td>The minimum believed win probability for fighting/sabotaging/neutralizing the holder to count as "a fight worth taking." Below it, the action is a "no reason" detour (unless the motive table reclassifies it)</td>
+</tr>
+<tr>
+<td><code>gene_affinity</code></td>
+<td>When more than one way exists to take the goal item from its holder (e.g. fight vs. negotiate), how much the genome tilts which one counts as the best plan (0–1, default 0 = always the lowest-cost one)</td>
+</tr>
+<tr>
+<td><code>route_category</code></td>
+<td>The mapping <code>gene_affinity</code> reads from, between a route name (<code>fight</code>/<code>negotiate</code>, etc.) and an action category (I–VI)</td>
+</tr>
+</tbody>
+</table>
+<p>A genre without this file has no route layer at all (run settings shows no 05. Route section either).</p>
+<h3 id="motivesyaml-motive-table">motives.yaml (motive table)<a class="headerlink" href="#motivesyaml-motive-table" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">care_for_ally</span>
+<span class="w">  </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">仲間を大事にする</span>
+<span class="w">  </span><span class="nt">when</span><span class="p">:</span><span class="w"> </span><span class="s">"stance(self,</span><span class="nv"> </span><span class="s">target)</span><span class="nv"> </span><span class="s">&gt;=</span><span class="nv"> </span><span class="s">0.6"</span>
+<span class="w">  </span><span class="nt">verbs</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">give_item</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">share_knowledge</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">persuade</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">pledge</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">gene</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">category_weight.III</span>
+<span class="w">  </span><span class="nt">text</span><span class="p">:</span><span class="w"> </span><span class="s">"{target}との絆を深めたくて{verb_text}"</span>
+</code></pre></div>
+<p>An optional file that can only exist for genres with a <code>route.yaml</code>. The first entry (reading top to bottom) whose condition (<code>when</code>) and target action (<code>verbs</code>) both match wins.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>The motive's unique ID</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>The short name shown in the on-screen badge</td>
+</tr>
+<tr>
+<td><code>when</code></td>
+<td>A predicate string (the <code>engine/predicate.py</code> evaluator). <code>target</code> binds to the candidate's target (or self, for a candidate with none)</td>
+</tr>
+<tr>
+<td><code>verbs</code></td>
+<td>The verbs this motive can apply to</td>
+</tr>
+<tr>
+<td><code>gene</code></td>
+<td>The genome key read for the motive's strength (<code>risk_tolerance</code>, <code>stance_shift_bias</code>, <code>novelty_drive</code>, or <code>category_weight.&lt;I–VI&gt;</code>). A leading <code>-</code> inverts it (e.g. <code>-risk_tolerance</code> is stronger the lower risk tolerance is)</td>
+</tr>
+<tr>
+<td><code>text</code></td>
+<td>A reason-text template. Can interpolate <code>{target}</code>, <code>{verb_text}</code>, etc.</td>
+</tr>
+</tbody>
+</table>
+<p>The motive table only ever applies to candidates that would otherwise be a "no reason" detour — it never touches advance/prepare/body/belief/ignorance/lost. A matched motive's actual weight scales continuously with the strength (0–1) of the gene named in <code>gene</code> (see <a href="../../concepts/route-layer/">Route Layer</a>).</p>
 <h2 id="layout-of-projectsworld">Layout of <code>projects/&lt;world&gt;/</code><a class="headerlink" href="#layout-of-projectsworld" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

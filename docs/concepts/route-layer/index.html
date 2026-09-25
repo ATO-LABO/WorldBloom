@@ -1,6 +1,6 @@
 
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="ja" class="no-js">
   <head>
     
       <meta charset="utf-8">
@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/en/reference/glossary/">
+        <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/concepts/route-layer/">
       
       
-        <link rel="prev" href="../http-api/">
+        <link rel="prev" href="../determinism/">
       
       
-        <link rel="next" href="../design-docs/">
+        <link rel="next" href="../../usage/create-world/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Glossary - WorldBloom Docs</title>
+        <title>道筋層 - WorldBloom ドキュメント</title>
       
     
     
@@ -70,8 +70,8 @@
     <div data-md-component="skip">
       
         
-        <a href="#glossary" class="md-skip">
-          Skip to content
+        <a href="#_1" class="md-skip">
+          コンテンツにスキップ
         </a>
       
     </div>
@@ -85,8 +85,8 @@
   
 
 <header class="md-header md-header--shadow" data-md-component="header">
-  <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="WorldBloom Docs" class="md-header__button md-logo" aria-label="WorldBloom Docs" data-md-component="logo">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="WorldBloom ドキュメント" class="md-header__button md-logo" aria-label="WorldBloom ドキュメント" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -100,13 +100,13 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            WorldBloom Docs
+            WorldBloom ドキュメント
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Glossary
+              道筋層
             
           </span>
         </div>
@@ -120,7 +120,7 @@
       <div class="md-header__option">
   <div class="md-select">
     
-    <button class="md-header__button md-icon" aria-label="Select language">
+    <button class="md-header__button md-icon" aria-label="言語切り替え">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
     </button>
     <div class="md-select__inner">
@@ -154,16 +154,16 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
         
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
       </label>
-      <nav class="md-search__options" aria-label="Search">
+      <nav class="md-search__options" aria-label="検索">
         
-        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
           
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
@@ -176,7 +176,7 @@
       <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
         <div class="md-search-result" data-md-component="search-result">
           <div class="md-search-result__meta">
-            Initializing search
+            検索を初期化
           </div>
           <ol class="md-search-result__list" role="presentation"></ol>
         </div>
@@ -188,7 +188,7 @@
     
     
       <div class="md-header__source">
-        <a href="https://github.com/ATO-LABO/WorldBloom" title="Go to repository" class="md-source" data-md-component="source">
+        <a href="https://github.com/ATO-LABO/WorldBloom" title="リポジトリへ" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
@@ -222,19 +222,19 @@
 
 
 
-<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+<nav class="md-nav md-nav--primary" aria-label="ナビゲーション" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="WorldBloom Docs" class="md-nav__button md-logo" aria-label="WorldBloom Docs" data-md-component="logo">
+    <a href="../.." title="WorldBloom ドキュメント" class="md-nav__button md-logo" aria-label="WorldBloom ドキュメント" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
-    WorldBloom Docs
+    WorldBloom ドキュメント
   </label>
   
     <div class="md-nav__source">
-      <a href="https://github.com/ATO-LABO/WorldBloom" title="Go to repository" class="md-source" data-md-component="source">
+      <a href="https://github.com/ATO-LABO/WorldBloom" title="リポジトリへ" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
@@ -277,7 +277,7 @@
   <span class="md-ellipsis">
     
   
-    Getting Started
+    はじめに
   
 
     
@@ -293,7 +293,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Getting Started
+    はじめに
   
 
           </label>
@@ -313,7 +313,7 @@
   <span class="md-ellipsis">
     
   
-    Introduction
+    概要
   
 
     
@@ -341,7 +341,7 @@
   <span class="md-ellipsis">
     
   
-    Install
+    インストール
   
 
     
@@ -369,629 +369,7 @@
   <span class="md-ellipsis">
     
   
-    Quickstart
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
-        
-          
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Concepts
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Concepts
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/overview/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/fixed-ending/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Fixed Ending
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/seven-layers/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Seven Layers
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/genome/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Genome
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/action-types/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Action Types I–VI
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/foreshadowing/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Foreshadowing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/qd-map/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    QD Map
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/sifting/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Sifting
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/determinism/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Determinism
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../concepts/route-layer/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Route Layer
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
-        
-          
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Usage
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Usage
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/create-world/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Create a World
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/run-settings/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Run Settings
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/read-results/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Read Results
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/generate-text/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Generate Text
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/settings/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Settings
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/llm-backends/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LLM Backends
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/gpu-guard/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    GPU Guard
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/cli-workflow/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Workflow
+    クイックスタート
   
 
     
@@ -1034,17 +412,17 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Reference
+    概念
   
 
     
@@ -1055,12 +433,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Reference
+    概念
   
 
           </label>
@@ -1073,14 +451,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/" class="md-nav__link">
+      <a href="../overview/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    CLI
+    全体の流れ
   
 
     
@@ -1101,14 +479,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../settings-json/" class="md-nav__link">
+      <a href="../fixed-ending/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    settings.json
+    結末固定
   
 
     
@@ -1129,14 +507,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../templates/" class="md-nav__link">
+      <a href="../seven-layers/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Templates
+    7層構造
   
 
     
@@ -1157,14 +535,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../run-outputs/" class="md-nav__link">
+      <a href="../genome/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Run Outputs
+    遺伝子（Genome）
   
 
     
@@ -1185,14 +563,126 @@
   
   
     <li class="md-nav__item">
-      <a href="../http-api/" class="md-nav__link">
+      <a href="../action-types/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    HTTP API
+    行動タイプ I〜VI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foreshadowing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    伏線（遅延効果）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qd-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QD 格子
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sifting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sifting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../determinism/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    決定論
   
 
     
@@ -1229,7 +719,7 @@
   <span class="md-ellipsis">
     
   
-    Glossary
+    道筋層
   
 
     
@@ -1247,7 +737,7 @@
   <span class="md-ellipsis">
     
   
-    Glossary
+    道筋層
   
 
     
@@ -1259,7 +749,7 @@
       
         
 
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+<nav class="md-nav md-nav--secondary" aria-label="目次">
   
   
   
@@ -1268,15 +758,15 @@
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
-      Table of contents
+      目次
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#input" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Input
+        行動の分類
       
     </span>
   </a>
@@ -1284,10 +774,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#evolution" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Evolution
+        重み ρ（寄り道をどれだけ抑えるか）
       
     </span>
   </a>
@@ -1295,10 +785,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#grid-sifting" class="md-nav__link">
+  <a href="#motivesyaml" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Grid (Sifting)
+        動機表（motives.yaml）——理由のある寄り道
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="動機表（motives.yaml）——理由のある寄り道">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        遺伝子の強さが選ばれやすさを変える
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gene_affinity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        遺伝子による経路選び（gene_affinity）
       
     </span>
   </a>
@@ -1306,10 +824,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#output" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Output
+        あらすじ・本文生成への反映
       
     </span>
   </a>
@@ -1325,6 +843,65 @@
 
               
             
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使い方
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使い方
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
               
                 
   
@@ -1332,14 +909,465 @@
   
   
     <li class="md-nav__item">
-      <a href="../design-docs/" class="md-nav__link">
+      <a href="../../usage/create-world/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Design Docs
+    世界を作る
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/run-settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    実行設定
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/read-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    結果を読む
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/generate-text/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    文章を生成する
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/llm-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM バックエンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/gpu-guard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU ガード
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI での作業手順
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リファレンス
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    リファレンス
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/settings-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    settings.json
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    テンプレート
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/run-outputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    実行結果のファイル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/http-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    用語集
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/design-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設計資料
   
 
     
@@ -1390,7 +1418,7 @@
   <span class="md-ellipsis">
     
   
-    Guides
+    ガイド
   
 
     
@@ -1406,7 +1434,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Guides
+    ガイド
   
 
           </label>
@@ -1426,7 +1454,7 @@
   <span class="md-ellipsis">
     
   
-    Troubleshooting
+    トラブルシューティング
   
 
     
@@ -1482,7 +1510,7 @@
   <span class="md-ellipsis">
     
   
-    Changelog
+    変更履歴
   
 
     
@@ -1516,7 +1544,7 @@
                   <div class="md-sidebar__inner">
                     
 
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+<nav class="md-nav md-nav--secondary" aria-label="目次">
   
   
   
@@ -1525,15 +1553,15 @@
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
-      Table of contents
+      目次
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#input" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Input
+        行動の分類
       
     </span>
   </a>
@@ -1541,10 +1569,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#evolution" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Evolution
+        重み ρ（寄り道をどれだけ抑えるか）
       
     </span>
   </a>
@@ -1552,10 +1580,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#grid-sifting" class="md-nav__link">
+  <a href="#motivesyaml" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Grid (Sifting)
+        動機表（motives.yaml）——理由のある寄り道
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="動機表（motives.yaml）——理由のある寄り道">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        遺伝子の強さが選ばれやすさを変える
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gene_affinity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        遺伝子による経路選び（gene_affinity）
       
     </span>
   </a>
@@ -1563,10 +1619,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#output" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Output
+        あらすじ・本文生成への反映
       
     </span>
   </a>
@@ -1593,228 +1649,159 @@
   
 
 
-<h1 id="glossary">Glossary<a class="headerlink" href="#glossary" title="Permanent link">&para;</a></h1>
-<p>A summary of terms used on WorldBloom's screens and throughout this documentation. These match the definitions in the on-screen help (the explanation shown when hovering over a term). Grouped into four areas: input, evolution, grid (Sifting), and output.</p>
-<h2 id="input">Input<a class="headerlink" href="#input" title="Permanent link">&para;</a></h2>
+<h1 id="_1">道筋層（寄り道に理由を持たせる）<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>主人公は基本的に、結末へいちばん近い道筋をまっすぐ進みます。そこから外れる行動（寄り道）には、本来なら何か原因があるはずです——身体の都合、情報不足、思い込み、心情。<strong>道筋層</strong>は、GA が生成した主人公の各決定を「結末に対してどんな意味を持つ行動だったか」で分類し、理由のない寄り道を重み ρ で抑え、理由のある寄り道には動機表で理由を与える仕組みです。7層そのものは変更せず、<a href="../genome/">Policy</a> が候補の重みを決める際の、もう1つの乗数として働きます。</p>
+<p>対応テンプレートは <code>route.yaml</code> を持つジャンルだけです。現在は桃太郎＋2（<code>momotaro_plus2</code>）のみで、それ以外のジャンルでは道筋層は存在せず、画面にも出ません。</p>
+<h2 id="_2">行動の分類<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>主人公の決定1つひとつは、「結末までの最短の計画」と照らして次のいずれかに分類されます。GA 実験（画面・CLI とも）では、ρ&gt;0 で実行したときだけこの分類が行われ、決定ごとに記録されます。ρ=0（既定）では道筋層そのものが動かず、分類も一切記録されません（<code>scripts/route_probe.py</code>・<code>scripts/route_eval.py</code> のような計測専用スクリプトは、ρ に関わらず常に分類だけを行います）。あとで説明の理由バッジとしても、この記録が使われます。</p>
 <table>
 <thead>
 <tr>
-<th>Term</th>
-<th>Meaning</th>
+<th>分類</th>
+<th>意味</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>World</td>
-<td>A bundle of place names, routes, day count, and characters' starting state, plus a target ending. Lives under <code>projects/&lt;world&gt;</code>. See <a href="../../usage/create-world/">Create a World</a></td>
+<td>前進</td>
+<td>計画中の道筋を実際に進める行動</td>
 </tr>
 <tr>
-<td>Genre (template)</td>
-<td>The set of grammar a world uses: the action graph (available actions and their premises), canon tendencies, effect tables, rules, and grid axes. Lives under <code>templates/&lt;genre&gt;</code></td>
+<td>準備</td>
+<td>最善ではないが筋の通った選択肢（別ルートの下準備、仲間の勧誘など）を進める行動</td>
 </tr>
 <tr>
-<td>Seven layers</td>
-<td>The state model for a character: ability, perception, resources, phase, identity, objective, and foreshadowing (delayed effects). Actions read and write these layers directly. See <a href="../../concepts/seven-layers/">Seven Layers</a></td>
+<td>寄り道〈身体〉</td>
+<td>疲労・負傷など、本人の身体の都合による行動（休息など）。罰はしない</td>
 </tr>
 <tr>
-<td>Vitality</td>
-<td>Alive / downed / revived / dead. Even after being downed, a character can return via rescue by an ally or self-recovery</td>
+<td>寄り道〈手探り〉</td>
+<td>まだ知らないことを探る行動（調査・観察など）</td>
 </tr>
 <tr>
-<td>Target ending</td>
-<td>A condition expressed over state. Only runs that satisfy it enter the <a href="../../concepts/qd-map/">QD Map</a>'s archive</td>
+<td>寄り道〈思い込み〉</td>
+<td>本人が誤って信じている情報に基づく行動。本人の中では筋が通っている</td>
 </tr>
 <tr>
-<td>Canon</td>
-<td>The "commonly seen" tendencies of actions in that genre. What a novelty-seeking genome avoids, and the initial value of the precedent table</td>
+<td>寄り道〈動機〉</td>
+<td>下記の動機表に一致した行動。動機の強さ（遺伝子）に応じて扱いが変わる</td>
 </tr>
 <tr>
-<td>Foreshadowing (delayed effect)</td>
-<td>A mechanism where an earlier action pays off later. Has a setup and a resolution condition; ending unresolved costs a penalty to quality q</td>
+<td>寄り道〈理由なし〉</td>
+<td>上のどれにも当てはまらない、計画から外れた行動</td>
+</tr>
+<tr>
+<td>見通しなし</td>
+<td>そもそも結末までの計画が立たない状態（h が無限大）。道筋層は何も判定しない</td>
 </tr>
 </tbody>
 </table>
-<h2 id="evolution">Evolution<a class="headerlink" href="#evolution" title="Permanent link">&para;</a></h2>
+<p>「本人の知識だけで判断する」のが前提です。世界の裏の真実（<code>world.truth</code>）は一切読まず、本人が知っている・信じている情報（対象の所在、関係、信じている強さなど）だけを使います。裏で誰が何を持っているかを知らないのに、それを見透かしたかのように動く、ということは起きません。</p>
+<h2 id="_3">重み ρ（寄り道をどれだけ抑えるか）<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>分類ごとの基礎倍率 b を ρ 乗した <code>m_route = b ** ρ</code> が、<a href="../genome/">遺伝子</a>由来の他の乗数（m_cat・m_risk・m_stance・m_nov、κ を使うジャンルでは m_rat も）と掛け合わされて最終的な重みになります。ρ が候補の分類（前進・準備・寄り道の各原因・見通しなし）そのものと、その分類が重みにどれだけ効くかの両方を決めます。</p>
 <table>
 <thead>
 <tr>
-<th>Term</th>
-<th>Meaning</th>
+<th>分類</th>
+<th>基礎倍率 b</th>
+<th>ρ=1 での意味</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Genome (strategy vector)</td>
-<td>9 numbers representing the protagonist's policy. See <a href="../../concepts/genome/">Genome</a></td>
+<td>前進</td>
+<td>1.0</td>
+<td>変化なし</td>
 </tr>
 <tr>
-<td>Individual</td>
-<td>A single genome. Evaluated once per population count, every generation</td>
+<td>準備</td>
+<td>0.5</td>
+<td>半分に抑える</td>
 </tr>
 <tr>
-<td>Generation</td>
-<td>One iteration of the GA. Evaluates individuals and updates the grid each time</td>
+<td>寄り道〈身体〉</td>
+<td>1.0</td>
+<td>罰しない（身体の都合はいつでも正当）</td>
 </tr>
 <tr>
-<td>Seed</td>
-<td>A random seed. Even the same genome produces a different set of starting conditions — and so a different outcome — under a different seed (e.g. a different culprit, in a detective story)</td>
+<td>寄り道〈思い込み〉</td>
+<td>1.0</td>
+<td>罰しない（本人の中では筋が通った計画を進めている）</td>
 </tr>
 <tr>
-<td>Run</td>
-<td>One execution of the world for one genome × one seed. Its result becomes a log called <code>layers.jsonl</code></td>
+<td>寄り道〈手探り〉</td>
+<td>0.5</td>
+<td>半分に抑える</td>
 </tr>
 <tr>
-<td>Experiment (run)</td>
-<td>One full GA execution. Born from a single run config, with its record kept under <code>runs/&lt;experiment name&gt;</code></td>
+<td>寄り道〈理由なし〉</td>
+<td>0.02</td>
+<td>ほぼ選ばれなくなる</td>
 </tr>
 <tr>
-<td>Reach / reach rate</td>
-<td>Whether the fixed ending was reached. The reach rate is the fraction of all runs in that generation (population × seeds) that reached it — a gate for entering the grid, not a target the search maximizes</td>
-</tr>
-<tr>
-<td>Precedent table</td>
-<td>A table of "storylines already seen," built from canon, the previous generation's archive, and self-history. What a novelty-seeking genome avoids</td>
-</tr>
-<tr>
-<td>Coevolution</td>
-<td>A mode where the antagonist also carries a genome and evolves alongside the protagonist. Off by default</td>
-</tr>
-<tr>
-<td>Meta-evolution</td>
-<td>A mode that, in addition to the 9 numeric genes, also searches over enabling/disabling each rule. Off by default</td>
-</tr>
-<tr>
-<td>Random baseline</td>
-<td>A control experiment (<code>scripts/random_baseline.py</code>) measuring the reach rate and diversity of purely policy-free, fully random individuals</td>
-</tr>
-<tr>
-<td>Determinism</td>
-<td>The property that the log matches byte for byte given the same world, genome, seed, precedent table, and engine. See <a href="../../concepts/determinism/">Determinism</a></td>
-</tr>
-<tr>
-<td>κ (kappa, rationality)</td>
-<td>The strength of a genre's rationality judgment (Jev). Set as a value from 0–1 in run settings. See <a href="../../usage/run-settings/">Run Settings</a></td>
-</tr>
-<tr>
-<td>Route layer</td>
-<td>A mechanism that classifies each protagonist decision against "the shortest plan to the ending" (advance / prepare / detour / lost) and reins in unreasoned detours with weight ρ. Only for genres with a <code>route.yaml</code> (currently only 桃太郎＋2 / Peach Boy+2). See <a href="../../concepts/route-layer/">Route Layer</a></td>
-</tr>
-<tr>
-<td>ρ (rho, route weight)</td>
-<td>A 0–1 value controlling how hard the route layer reins in unreasoned detours. 0 (default) means unmodulated, 1 means they're almost never chosen. Set in run settings. See <a href="../../concepts/route-layer/">Route Layer</a></td>
-</tr>
-<tr>
-<td>Motive table (motives.yaml)</td>
-<td>A prioritized list of rules that gives a would-be "unreasoned" detour a reason, scaled by genome strength. Lives at <code>templates/&lt;genre&gt;/motives.yaml</code>, one per genre. See <a href="../../concepts/route-layer/">Route Layer</a></td>
-</tr>
-<tr>
-<td>No reason</td>
-<td>One of the route layer's classifications: a detour that matches none of advance / prepare / body / ignorance / belief / the motive table. Raising ρ makes these almost never chosen</td>
+<td>見通しなし</td>
+<td>1.0</td>
+<td>判定なし（道筋層が何も言えない状態）</td>
 </tr>
 </tbody>
 </table>
-<h2 id="grid-sifting">Grid (Sifting)<a class="headerlink" href="#grid-sifting" title="Permanent link">&para;</a></h2>
+<p>ρ=0 では道筋層そのものが動かず（GA 実験に道筋の記録が一切付かず）、既存の実行結果とバイト単位で一致します。ρ を上げるほど、理由のない寄り道が選ばれにくくなります。既定値はエンジン・CLI・テンプレート（<code>route.yaml</code> の <code>rho</code>）ではいずれも 0 です。画面の実行設定では、新規作成画面と「1クリックで実行」ボタン（<code>route.yaml</code> があるテンプレートのときだけ）に限り、ρ に既定で 1.0 が入ります。実行設定の画面では<a href="../../usage/run-settings/#05">実行設定の「05. 道筋」</a>から指定します。</p>
+<h2 id="motivesyaml">動機表（motives.yaml）——理由のある寄り道<a class="headerlink" href="#motivesyaml" title="Permanent link">&para;</a></h2>
+<p>「寄り道〈理由なし〉」になるはずだった候補だけが、動機表と照合されます（前進・準備・身体・思い込み・手探り・見通しなしの行動は動機表の対象外です）。動機表はジャンルごとに <code>templates/&lt;ジャンル&gt;/motives.yaml</code> に置く、優先順位付きの規則の並びで、上から見て最初に一致した1件が採用されます。</p>
+<p>桃太郎＋2 に定義されている5つの動機:</p>
 <table>
 <thead>
 <tr>
-<th>Term</th>
-<th>Meaning</th>
+<th>動機</th>
+<th>条件（例）</th>
+<th>対象の行動</th>
+<th>効く遺伝子</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Archive / grid</td>
-<td>The MAP-Elites grid holding runs that reached the ending. Each cell keeps only its single best run. See <a href="../../concepts/qd-map/">QD Map</a></td>
+<td>仲間思い</td>
+<td>相手への好感度が高い</td>
+<td>譲渡・情報共有・説得・誓約</td>
+<td>関係構築（カテゴリIII）の重み</td>
 </tr>
 <tr>
-<td>Cell</td>
-<td>A cell of the grid. Rows are the leading category, columns are volatility (low/mid/high)</td>
+<td>向こう見ず</td>
+<td>勝ち目の薄い相手にそれでも挑む</td>
+<td>対決・妨害・無効化・その区域への移動</td>
+<td>リスク許容度</td>
 </tr>
 <tr>
-<td>Leading category</td>
-<td>The kind of action that actually had the most effect in that run (I self-reinforcement, II perception &amp; foreshadowing, III relationship building, IV Identity, V movement &amp; stalling, VI external intervention). A different value from the genome's tendency</td>
+<td>恨み</td>
+<td>相手への好感度が低い</td>
+<td>対決・妨害・誘導</td>
+<td>関係を動かす向き（下げる方向ほど強い）</td>
 </tr>
 <tr>
-<td>Volatility</td>
-<td>The variance of how much the protagonist's seven-layer state swung turn to turn. Thresholds are fixed from generation 0's population</td>
+<td>好奇心</td>
+<td>いつでも</td>
+<td>調査・観察</td>
+<td>新規性志向</td>
 </tr>
 <tr>
-<td>Quality q</td>
-<td>The quality of a run that reached the ending. An absolute scale (0–1) that counts objective movement, swings in relationships, recoveries, reversals of power, gaining new facts, belief reversals, and chains of premise-aligned actions, and penalizes actions that came up empty. q̄ is the average across the whole archive</td>
-</tr>
-<tr>
-<td>Occupied cells</td>
-<td>The number of filled cells in the archive. More means more different kinds of stories found</td>
-</tr>
-<tr>
-<td>Diversity</td>
-<td>The average of how different the paths of runs left in the archive are from each other. Closer to 1 means more diverse</td>
-</tr>
-<tr>
-<td>Tendency</td>
-<td>The action category that individual's genome weights most heavily. Can differ from the leading category</td>
-</tr>
-<tr>
-<td>Parent</td>
-<td>The two individuals that produced this individual</td>
-</tr>
-<tr>
-<td>Lineage (main line)</td>
-<td>The single line traced back through parents from an elite. Of the two parents, only the one with the closer genome is followed</td>
-</tr>
-<tr>
-<td>Turning point</td>
-<td>The point, when re-running an adjacent parent/child pair on the main line with the same seed, where the protagonist's decision first diverged</td>
-</tr>
-<tr>
-<td>Sifting</td>
-<td>The process of sifting through the candidates an experiment left behind and adopting the ones worth reading. See <a href="../../concepts/sifting/">Sifting</a></td>
-</tr>
-<tr>
-<td>Selection status</td>
-<td>✔ Adopted (proceed to generation) / ⏸ Held / ✖ Excluded / ○ Unsorted</td>
+<td>慎重</td>
+<td>自分が相手より弱いと信じている</td>
+<td>休息・撤退</td>
+<td>リスク許容度（低いほど強い）</td>
 </tr>
 </tbody>
 </table>
-<h2 id="output">Output<a class="headerlink" href="#output" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Term</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Candidate ID</td>
-<td>An ID uniquely identifying an (experiment, generation, individual, seed) combination. Selection and generation are recorded at this granularity</td>
-</tr>
-<tr>
-<td>Synopsis generation (synopsize)</td>
-<td>The process of pulling notable scenes from each run in the grid and having the LLM write a short synopsis</td>
-</tr>
-<tr>
-<td>Narration generation (narrate)</td>
-<td>The process of turning only the adopted candidates into full-length prose with the LLM</td>
-</tr>
-<tr>
-<td>backend / model</td>
-<td>The method and model name used to generate the text (e.g. <code>ollama</code> / <code>qwen3.5:9b-q4_K_M</code>). See <a href="../../usage/llm-backends/">LLM Backends</a></td>
-</tr>
-<tr>
-<td>Choice, rationale, cost, turning point</td>
-<td>Four fields shown in a candidate's detail: what belief a given choice was made on, what it cost, and what it led to afterward, mechanically extracted from the log</td>
-</tr>
-<tr>
-<td>World self-expansion</td>
-<td>A mechanism that proposes missing elements (places, items, facts) from places and actions that kept coming up empty during a GA experiment. See <a href="../../usage/create-world/#world-expansion">Create a World</a></td>
-</tr>
-<tr>
-<td>GPU Guard</td>
-<td>A mechanism that coordinates GPU use between the local LLM (llama-server) and Ollama, and pauses briefly until temperature drops. See <a href="../../usage/gpu-guard/">GPU Guard</a></td>
-</tr>
-</tbody>
-</table>
+<p>各行は「対象・条件・動機の理由文」を持ち、たとえば向こう見ずなら「勝ち目が薄いと知りながら、{対象}に立ち向かわずにいられなかった」という理由文が記録されます。</p>
+<h3 id="_4">遺伝子の強さが選ばれやすさを変える<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<p>動機に一致した寄り道は、身体・思い込みのように無条件で罰なし（b=1.0）にはなりません。代わりに、動機ごとに指定された遺伝子の強さ <code>gene_s</code>（0〜1）に応じて基礎倍率が連続的に変わります。</p>
+<div class="highlight"><pre><span></span><code>base = delta + (1 - delta) * gene_s   （delta は「理由なし」の倍率 0.02）
+m_route = base ** rho
+</code></pre></div>
+<p>その遺伝子への傾きが弱い個体（gene_s=0）では、動機に一致していても「理由なし」とほぼ同じ扱いになります。傾きが強い個体（gene_s=1）では、身体・思い込みと同じ b=1.0（罰なし）まで扱いが上がります。「動機表に載っている」だけでは自由に寄り道できるわけではなく、その動機に見合うだけ遺伝子が強くなければ、その寄り道はやはり抑えられます。</p>
+<h2 id="gene_affinity">遺伝子による経路選び（gene_affinity）<a class="headerlink" href="#gene_affinity" title="Permanent link">&para;</a></h2>
+<p><code>route.yaml</code> の <code>gene_affinity</code>（既定 0）と <code>route_category</code>（経路名→行動カテゴリの対応）を設定すると、目的物の持ち主から奪う手段が複数ある局面（対決 vs 交渉など）で、どちらを「最善の計画」とみなすかが個体の遺伝子（対応するカテゴリの重み）でわずかに傾きます。<code>gene_affinity=0</code>（既定）では常にコストが低い方を最善とみなします。値を上げるほど、対応するカテゴリの重みが強い個体ほどその経路を「最善」と見なしやすくなります（記録される h 自体は素のままで、最善経路の選択にだけ影響します）。桃太郎＋2 の <code>route.yaml</code> では <code>gene_affinity: 0.5</code>、<code>route_category: {fight: I, negotiate: III}</code>（対決=カテゴリI、交渉=カテゴリIII）が設定されています。</p>
+<h2 id="_5">あらすじ・本文生成への反映<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>道筋を持つ主人公の決定（前進・準備を含め、分類・原因を問わずすべて）の理由文は、あらすじ・本文を書く LLM へのプロンプトに「行動の理由」として1件ずつ渡ります。寄り道〈理由なし〉には理由文がなく、代わりに「（はっきりした理由は記録されていない）」と明記されます（見通しなしは、身体・思い込みが原因の場合を除き「先の見通しが立たないまま動いた」という固定文）。生成プロンプト自身は「理由が記録されていない行動に、ログにない動機を創作しない」よう指示されます。画面上では、<a href="../../usage/read-results/">結果を読む</a>のタイムライン・四項目パネル・セルページ冒頭の内訳として、同じ理由文が表示されます。</p>
 
 
 
@@ -1843,7 +1830,7 @@
           <button type="button" class="md-top md-icon" data-md-component="top" hidden>
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
-  Back to top
+  ページトップへ戻る
 </button>
         
       </main>
@@ -1852,33 +1839,33 @@
   
     
       
-      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+      <nav class="md-footer__inner md-grid" aria-label="フッター" >
         
           
-          <a href="../http-api/" class="md-footer__link md-footer__link--prev" aria-label="Previous: HTTP API">
+          <a href="../determinism/" class="md-footer__link md-footer__link--prev" aria-label="前: 決定論">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
             </div>
             <div class="md-footer__title">
               <span class="md-footer__direction">
-                Previous
+                前
               </span>
               <div class="md-ellipsis">
-                HTTP API
+                決定論
               </div>
             </div>
           </a>
         
         
           
-          <a href="../design-docs/" class="md-footer__link md-footer__link--next" aria-label="Next: Design Docs">
+          <a href="../../usage/create-world/" class="md-footer__link md-footer__link--next" aria-label="次: 世界を作る">
             <div class="md-footer__title">
               <span class="md-footer__direction">
-                Next
+                次
               </span>
               <div class="md-ellipsis">
-                Design Docs
+                世界を作る
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1915,7 +1902,7 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>

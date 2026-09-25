@@ -694,6 +694,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Route Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -887,6 +915,17 @@
     <span class="md-ellipsis">
       
         04. Rationality (how consistently the protagonist picks sound moves)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        05. Route (how hard to rein in detours)
       
     </span>
   </a>
@@ -1568,6 +1607,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        05. Route (how hard to rein in detours)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#advanced-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1610,7 +1660,7 @@
 
 
 <h1 id="run-settings">Run Settings<a class="headerlink" href="#run-settings" title="Permanent link">&para;</a></h1>
-<p>This screen opens from "実行条件を決める →" (Decide run conditions →) on the world settings screen, or right after finishing "＋ 新しい世界を作る" (+ Create a new world) on the home screen. Here you decide how a single GA experiment run should behave, save it as a "config", and run it on the next screen. The GA experiment itself never calls an LLM (that only happens at the <a href="../generate-text/">text generation</a> stage).</p>
+<p>This screen opens from "実行条件を決める →" (Decide run conditions →) on the world settings screen, or right after finishing "＋ 新しい世界を作る" (+ Create a new world) on the home screen. Here you decide how a single GA experiment run should behave, save it as a "config", and run it on the next screen. The GA experiment itself (candidate generation, weight computation, evolution) never calls an LLM. However, raising rationality κ (04. below) above 0 makes the run call a local judgment LLM (Ollama) for every GA decision — at least tens of seconds per run (one individual × seed pair), and it uses the GPU. Synopsis/text generation is a separate stage (see <a href="../generate-text/">Generate Text</a>).</p>
 <p>When creating a new one, the config name is auto-filled once the world and genre are chosen (e.g. <code>2026-09-25 10:00 detective - 星を運ぶ街</code>; the genre part is the genre ID). You can also duplicate a previously saved config (the world and genre stay fixed when duplicating).</p>
 <h2 id="01-world-and-ending">01. World and ending<a class="headerlink" href="#01-world-and-ending" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1700,9 +1750,12 @@
 <li><strong>メタ進化 (meta_evolution, default off)</strong>: in addition to the 9 numeric genes, also searches over enabling/disabling each rule</li>
 </ul>
 <h2 id="04-rationality-how-consistently-the-protagonist-picks-sound-moves">04. Rationality (how consistently the protagonist picks sound moves)<a class="headerlink" href="#04-rationality-how-consistently-the-protagonist-picks-sound-moves" title="Permanent link">&para;</a></h2>
-<p>If the genre has <code>rationality.yaml</code> (LLM-based rationality judgment / Jev), this section always shows regardless of whether the judgment model is currently reachable. Reachability only affects κ's <strong>default value</strong>. When creating a new config, κ defaults to 0.6 (and the time limit automatically rises to 21600 seconds) if judgment is actually usable, or 0 (off) if not. Raising κ makes irrational moves less likely to be chosen. At 0, no rationality judgment happens at all.</p>
+<p>If the genre has <code>rationality.yaml</code> (LLM-based rationality judgment / Jev), this section always shows regardless of whether the judgment model is currently reachable. Reachability only affects κ's <strong>default value</strong>. When creating a new config, κ defaults to 0.6 (and the time limit automatically rises to 21600 seconds) if judgment is actually usable, or 0 (off) if not. Raising κ makes irrational moves less likely to be chosen. At 0, no rationality judgment happens at all, and Ollama is never called. When κ is above 0, an estimated run time is shown on screen, figured at roughly 90 seconds per run (including the judge call).</p>
+<h2 id="05">05. Route (how hard to rein in detours)<a class="headerlink" href="#05" title="Permanent link">&para;</a></h2>
+<p>Shown when the genre has <code>route.yaml</code> (the route layer — see <a href="../../concepts/route-layer/">Route Layer</a>). Sets <strong>ρ (0–1)</strong>, how strongly the protagonist heads straight for the ending. 0 (the default across the engine, CLI, and template) means the route layer doesn't run at all, unmodulated as before; the closer to 1, the more unreasoned detours are avoided. Detours from body needs or mistaken beliefs are never penalized regardless of ρ. A detour matching the motive table (<code>motives.yaml</code>) is instead treated according to the strength of the gene that motive reads — a weak individual gets reined in almost as hard as an unreasoned one.</p>
+<p>On the new-config screen, and on the "1-click run" button on the home/world screens for a genre whose template has a <code>route.yaml</code>, ρ <strong>defaults to 1.0</strong> (unlike κ, ρ adds no compute cost). Duplicating/editing keeps the saved value as-is. If you switch genres to one whose template has no <code>route.yaml</code>, ρ automatically resets to disabled (unset).</p>
 <h2 id="advanced-settings">Advanced settings<a class="headerlink" href="#advanced-settings" title="Permanent link">&para;</a></h2>
-<p>A collapsible section after 04, with these items.</p>
+<p>A collapsible section after 04 (and, when route shows, after 05 too), with these items.</p>
 <ul>
 <li><strong>ジャンル (Genre)</strong>: only selectable when creating new (fixed to match the source when duplicating)</li>
 <li><strong>乱数の開始値 (seed_base, default 0)</strong> / <strong>進化の乱数 (ga_seed, default 1)</strong></li>

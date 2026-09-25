@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/en/reference/glossary/">
+        <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/en/concepts/route-layer/">
       
       
-        <link rel="prev" href="../http-api/">
+        <link rel="prev" href="../determinism/">
       
       
-        <link rel="next" href="../design-docs/">
+        <link rel="next" href="../../usage/create-world/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Glossary - WorldBloom Docs</title>
+        <title>Route Layer - WorldBloom Docs</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#glossary" class="md-skip">
+        <a href="#route-layer" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Glossary
+              Route Layer
             
           </span>
         </div>
@@ -394,8 +394,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -406,11 +408,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
           <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
@@ -431,7 +433,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -449,7 +451,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/overview/" class="md-nav__link">
+      <a href="../overview/" class="md-nav__link">
         
   
   
@@ -477,7 +479,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/fixed-ending/" class="md-nav__link">
+      <a href="../fixed-ending/" class="md-nav__link">
         
   
   
@@ -505,7 +507,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/seven-layers/" class="md-nav__link">
+      <a href="../seven-layers/" class="md-nav__link">
         
   
   
@@ -533,7 +535,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/genome/" class="md-nav__link">
+      <a href="../genome/" class="md-nav__link">
         
   
   
@@ -561,7 +563,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/action-types/" class="md-nav__link">
+      <a href="../action-types/" class="md-nav__link">
         
   
   
@@ -589,7 +591,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/foreshadowing/" class="md-nav__link">
+      <a href="../foreshadowing/" class="md-nav__link">
         
   
   
@@ -617,7 +619,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/qd-map/" class="md-nav__link">
+      <a href="../qd-map/" class="md-nav__link">
         
   
   
@@ -645,7 +647,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/sifting/" class="md-nav__link">
+      <a href="../sifting/" class="md-nav__link">
         
   
   
@@ -673,7 +675,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/determinism/" class="md-nav__link">
+      <a href="../determinism/" class="md-nav__link">
         
   
   
@@ -698,10 +700,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../concepts/route-layer/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Route Layer
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -717,6 +746,98 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#classifying-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Classifying actions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#weight-how-hard-to-rein-in-detours" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Weight ρ (how hard to rein in detours)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-motive-table-motivesyaml-detours-with-a-reason" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The motive table (motives.yaml) — detours with a reason
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The motive table (motives.yaml) — detours with a reason">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#genome-strength-changes-how-much-its-chosen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Genome strength changes how much it's chosen
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-a-route-by-genome-gene_affinity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a route by genome (gene_affinity)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feeding-into-synopsistext-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feeding into synopsis/text generation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1016,8 +1137,6 @@
       
   
   
-    
-  
   
   
     
@@ -1030,11 +1149,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -1055,7 +1174,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1073,7 +1192,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/" class="md-nav__link">
+      <a href="../../reference/cli/" class="md-nav__link">
         
   
   
@@ -1101,7 +1220,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../settings-json/" class="md-nav__link">
+      <a href="../../reference/settings-json/" class="md-nav__link">
         
   
   
@@ -1129,7 +1248,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../templates/" class="md-nav__link">
+      <a href="../../reference/templates/" class="md-nav__link">
         
   
   
@@ -1157,7 +1276,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../run-outputs/" class="md-nav__link">
+      <a href="../../reference/run-outputs/" class="md-nav__link">
         
   
   
@@ -1185,7 +1304,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../http-api/" class="md-nav__link">
+      <a href="../../reference/http-api/" class="md-nav__link">
         
   
   
@@ -1210,37 +1329,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Glossary
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../reference/glossary/" class="md-nav__link">
         
   
   
@@ -1256,70 +1348,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#input" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Input
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#evolution" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Evolution
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#grid-sifting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Grid (Sifting)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#output" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1332,7 +1360,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../design-docs/" class="md-nav__link">
+      <a href="../../reference/design-docs/" class="md-nav__link">
         
   
   
@@ -1530,10 +1558,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#input" class="md-nav__link">
+  <a href="#classifying-actions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Input
+        Classifying actions
       
     </span>
   </a>
@@ -1541,10 +1569,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#evolution" class="md-nav__link">
+  <a href="#weight-how-hard-to-rein-in-detours" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Evolution
+        Weight ρ (how hard to rein in detours)
       
     </span>
   </a>
@@ -1552,10 +1580,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#grid-sifting" class="md-nav__link">
+  <a href="#the-motive-table-motivesyaml-detours-with-a-reason" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Grid (Sifting)
+        The motive table (motives.yaml) — detours with a reason
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The motive table (motives.yaml) — detours with a reason">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#genome-strength-changes-how-much-its-chosen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Genome strength changes how much it's chosen
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-a-route-by-genome-gene_affinity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a route by genome (gene_affinity)
       
     </span>
   </a>
@@ -1563,10 +1619,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#output" class="md-nav__link">
+  <a href="#feeding-into-synopsistext-generation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Output
+        Feeding into synopsis/text generation
       
     </span>
   </a>
@@ -1593,228 +1649,159 @@
   
 
 
-<h1 id="glossary">Glossary<a class="headerlink" href="#glossary" title="Permanent link">&para;</a></h1>
-<p>A summary of terms used on WorldBloom's screens and throughout this documentation. These match the definitions in the on-screen help (the explanation shown when hovering over a term). Grouped into four areas: input, evolution, grid (Sifting), and output.</p>
-<h2 id="input">Input<a class="headerlink" href="#input" title="Permanent link">&para;</a></h2>
+<h1 id="route-layer">Route Layer<a class="headerlink" href="#route-layer" title="Permanent link">&para;</a></h1>
+<p>The protagonist basically walks the straightest path to the ending. Straying from it (a detour) should, in principle, have a cause — a bodily need, missing information, a mistaken belief, a feeling. The <strong>route layer</strong> classifies each of the protagonist's GA-generated decisions by what it means relative to the ending, reins in unreasoned detours with weight ρ, and lets a motive table supply reasons for the ones that do have them. It leaves the seven layers themselves untouched, acting as one more multiplier when <a href="../genome/">Policy</a> decides a candidate's weight.</p>
+<p>Only genres with a <code>route.yaml</code> support it. Currently that's just 桃太郎＋2 (Peach Boy+2, <code>momotaro_plus2</code>) — other genres have no route layer at all, and it doesn't appear on screen for them.</p>
+<h2 id="classifying-actions">Classifying actions<a class="headerlink" href="#classifying-actions" title="Permanent link">&para;</a></h2>
+<p>Each of the protagonist's decisions is classified against "the shortest plan to the ending," as follows. In a GA experiment (screen or CLI), this classification only happens — and gets recorded per decision — when run with ρ&gt;0. At ρ=0 (the default), the route layer doesn't run at all, and nothing is classified or recorded (measurement-only scripts like <code>scripts/route_probe.py</code>/<code>scripts/route_eval.py</code> always classify, regardless of ρ). This same record is later used as the reason badge in explanations.</p>
 <table>
 <thead>
 <tr>
-<th>Term</th>
+<th>Classification</th>
 <th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>World</td>
-<td>A bundle of place names, routes, day count, and characters' starting state, plus a target ending. Lives under <code>projects/&lt;world&gt;</code>. See <a href="../../usage/create-world/">Create a World</a></td>
+<td>Advance</td>
+<td>An action that actually moves the planned route forward</td>
 </tr>
 <tr>
-<td>Genre (template)</td>
-<td>The set of grammar a world uses: the action graph (available actions and their premises), canon tendencies, effect tables, rules, and grid axes. Lives under <code>templates/&lt;genre&gt;</code></td>
+<td>Prepare</td>
+<td>Not the optimal choice, but a sensible one (laying groundwork for another route, recruiting an ally, etc.)</td>
 </tr>
 <tr>
-<td>Seven layers</td>
-<td>The state model for a character: ability, perception, resources, phase, identity, objective, and foreshadowing (delayed effects). Actions read and write these layers directly. See <a href="../../concepts/seven-layers/">Seven Layers</a></td>
+<td>Detour ⟨body⟩</td>
+<td>An action driven by the protagonist's own bodily needs — fatigue, injury (e.g. resting). Never penalized</td>
 </tr>
 <tr>
-<td>Vitality</td>
-<td>Alive / downed / revived / dead. Even after being downed, a character can return via rescue by an ally or self-recovery</td>
+<td>Detour ⟨ignorance⟩</td>
+<td>An action exploring something the protagonist doesn't yet know (investigating, observing)</td>
 </tr>
 <tr>
-<td>Target ending</td>
-<td>A condition expressed over state. Only runs that satisfy it enter the <a href="../../concepts/qd-map/">QD Map</a>'s archive</td>
+<td>Detour ⟨belief⟩</td>
+<td>An action based on information the protagonist mistakenly believes. It makes sense from their own point of view</td>
 </tr>
 <tr>
-<td>Canon</td>
-<td>The "commonly seen" tendencies of actions in that genre. What a novelty-seeking genome avoids, and the initial value of the precedent table</td>
+<td>Detour ⟨motive⟩</td>
+<td>An action matching an entry in the motive table below. How it's treated depends on the strength (genome) of that motive</td>
 </tr>
 <tr>
-<td>Foreshadowing (delayed effect)</td>
-<td>A mechanism where an earlier action pays off later. Has a setup and a resolution condition; ending unresolved costs a penalty to quality q</td>
+<td>Detour ⟨no reason⟩</td>
+<td>A detour from the plan that matches none of the above</td>
+</tr>
+<tr>
+<td>Lost</td>
+<td>A state where no plan to the ending exists at all (h is infinite). The route layer makes no judgment here</td>
 </tr>
 </tbody>
 </table>
-<h2 id="evolution">Evolution<a class="headerlink" href="#evolution" title="Permanent link">&para;</a></h2>
+<p>The premise throughout is "judge only from the protagonist's own knowledge." The world's hidden truth (<code>world.truth</code>) is never read — only what the protagonist actually knows or believes (a target's current location, relationships, believed strength, etc.) is used. The protagonist never acts as if it can see through information it was never given.</p>
+<h2 id="weight-how-hard-to-rein-in-detours">Weight ρ (how hard to rein in detours)<a class="headerlink" href="#weight-how-hard-to-rein-in-detours" title="Permanent link">&para;</a></h2>
+<p>Each classification has a base multiplier b, and <code>m_route = b ** ρ</code> is multiplied together with the other multipliers that come from the <a href="../genome/">genome</a> (m_cat, m_risk, m_stance, m_nov, and m_rat too for genres using κ) to produce the final weight. ρ decides both whether a candidate gets classified (advance / prepare / each detour cause / lost) at all, and how much that classification affects the weight.</p>
 <table>
 <thead>
 <tr>
-<th>Term</th>
-<th>Meaning</th>
+<th>Classification</th>
+<th>Base multiplier b</th>
+<th>Meaning at ρ=1</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Genome (strategy vector)</td>
-<td>9 numbers representing the protagonist's policy. See <a href="../../concepts/genome/">Genome</a></td>
+<td>Advance</td>
+<td>1.0</td>
+<td>Unchanged</td>
 </tr>
 <tr>
-<td>Individual</td>
-<td>A single genome. Evaluated once per population count, every generation</td>
+<td>Prepare</td>
+<td>0.5</td>
+<td>Halved</td>
 </tr>
 <tr>
-<td>Generation</td>
-<td>One iteration of the GA. Evaluates individuals and updates the grid each time</td>
+<td>Detour ⟨body⟩</td>
+<td>1.0</td>
+<td>Never penalized (a bodily need is always legitimate)</td>
 </tr>
 <tr>
-<td>Seed</td>
-<td>A random seed. Even the same genome produces a different set of starting conditions — and so a different outcome — under a different seed (e.g. a different culprit, in a detective story)</td>
+<td>Detour ⟨belief⟩</td>
+<td>1.0</td>
+<td>Never penalized (the protagonist is still pursuing a plan that makes sense to them)</td>
 </tr>
 <tr>
-<td>Run</td>
-<td>One execution of the world for one genome × one seed. Its result becomes a log called <code>layers.jsonl</code></td>
+<td>Detour ⟨ignorance⟩</td>
+<td>0.5</td>
+<td>Halved</td>
 </tr>
 <tr>
-<td>Experiment (run)</td>
-<td>One full GA execution. Born from a single run config, with its record kept under <code>runs/&lt;experiment name&gt;</code></td>
+<td>Detour ⟨no reason⟩</td>
+<td>0.02</td>
+<td>Almost never chosen</td>
 </tr>
 <tr>
-<td>Reach / reach rate</td>
-<td>Whether the fixed ending was reached. The reach rate is the fraction of all runs in that generation (population × seeds) that reached it — a gate for entering the grid, not a target the search maximizes</td>
-</tr>
-<tr>
-<td>Precedent table</td>
-<td>A table of "storylines already seen," built from canon, the previous generation's archive, and self-history. What a novelty-seeking genome avoids</td>
-</tr>
-<tr>
-<td>Coevolution</td>
-<td>A mode where the antagonist also carries a genome and evolves alongside the protagonist. Off by default</td>
-</tr>
-<tr>
-<td>Meta-evolution</td>
-<td>A mode that, in addition to the 9 numeric genes, also searches over enabling/disabling each rule. Off by default</td>
-</tr>
-<tr>
-<td>Random baseline</td>
-<td>A control experiment (<code>scripts/random_baseline.py</code>) measuring the reach rate and diversity of purely policy-free, fully random individuals</td>
-</tr>
-<tr>
-<td>Determinism</td>
-<td>The property that the log matches byte for byte given the same world, genome, seed, precedent table, and engine. See <a href="../../concepts/determinism/">Determinism</a></td>
-</tr>
-<tr>
-<td>κ (kappa, rationality)</td>
-<td>The strength of a genre's rationality judgment (Jev). Set as a value from 0–1 in run settings. See <a href="../../usage/run-settings/">Run Settings</a></td>
-</tr>
-<tr>
-<td>Route layer</td>
-<td>A mechanism that classifies each protagonist decision against "the shortest plan to the ending" (advance / prepare / detour / lost) and reins in unreasoned detours with weight ρ. Only for genres with a <code>route.yaml</code> (currently only 桃太郎＋2 / Peach Boy+2). See <a href="../../concepts/route-layer/">Route Layer</a></td>
-</tr>
-<tr>
-<td>ρ (rho, route weight)</td>
-<td>A 0–1 value controlling how hard the route layer reins in unreasoned detours. 0 (default) means unmodulated, 1 means they're almost never chosen. Set in run settings. See <a href="../../concepts/route-layer/">Route Layer</a></td>
-</tr>
-<tr>
-<td>Motive table (motives.yaml)</td>
-<td>A prioritized list of rules that gives a would-be "unreasoned" detour a reason, scaled by genome strength. Lives at <code>templates/&lt;genre&gt;/motives.yaml</code>, one per genre. See <a href="../../concepts/route-layer/">Route Layer</a></td>
-</tr>
-<tr>
-<td>No reason</td>
-<td>One of the route layer's classifications: a detour that matches none of advance / prepare / body / ignorance / belief / the motive table. Raising ρ makes these almost never chosen</td>
+<td>Lost</td>
+<td>1.0</td>
+<td>No judgment (a state the route layer has nothing to say about)</td>
 </tr>
 </tbody>
 </table>
-<h2 id="grid-sifting">Grid (Sifting)<a class="headerlink" href="#grid-sifting" title="Permanent link">&para;</a></h2>
+<p>At ρ=0, the route layer doesn't run at all (a GA experiment carries no route record whatsoever), so output stays byte-identical to an existing run. The higher ρ goes, the less likely unreasoned detours are to be chosen. The default is 0 across the engine, CLI, and template (<code>route.yaml</code>'s <code>rho</code>). In run settings on screen, only the new-config screen and the "1-click run" button (for a template with a <code>route.yaml</code>) default ρ to 1.0. Set this from <a href="../../usage/run-settings/#05">05. Route</a> in run settings.</p>
+<h2 id="the-motive-table-motivesyaml-detours-with-a-reason">The motive table (motives.yaml) — detours with a reason<a class="headerlink" href="#the-motive-table-motivesyaml-detours-with-a-reason" title="Permanent link">&para;</a></h2>
+<p>Only candidates that would otherwise become "detour ⟨no reason⟩" are checked against the motive table (advance, prepare, body, belief, ignorance, and lost actions are never eligible). The motive table is a prioritized list of rules per genre, at <code>templates/&lt;genre&gt;/motives.yaml</code> — the first entry (reading top to bottom) that matches wins.</p>
+<p>The five motives defined for 桃太郎＋2 (Peach Boy+2):</p>
 <table>
 <thead>
 <tr>
-<th>Term</th>
-<th>Meaning</th>
+<th>Motive</th>
+<th>Condition (example)</th>
+<th>Applies to</th>
+<th>Genome that matters</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Archive / grid</td>
-<td>The MAP-Elites grid holding runs that reached the ending. Each cell keeps only its single best run. See <a href="../../concepts/qd-map/">QD Map</a></td>
+<td>Caring for an ally</td>
+<td>High affinity toward the target</td>
+<td>give_item, share_knowledge, persuade, pledge</td>
+<td>Relationship-building (category III) weight</td>
 </tr>
 <tr>
-<td>Cell</td>
-<td>A cell of the grid. Rows are the leading category, columns are volatility (low/mid/high)</td>
+<td>Bravado</td>
+<td>Standing up to a target despite low odds</td>
+<td>fight, sabotage, neutralize, moving into their zone</td>
+<td>Risk tolerance</td>
 </tr>
 <tr>
-<td>Leading category</td>
-<td>The kind of action that actually had the most effect in that run (I self-reinforcement, II perception &amp; foreshadowing, III relationship building, IV Identity, V movement &amp; stalling, VI external intervention). A different value from the genome's tendency</td>
+<td>Grudge</td>
+<td>Low affinity toward the target</td>
+<td>fight, sabotage, mislead</td>
+<td>Stance-shift bias (stronger the more it points away)</td>
 </tr>
 <tr>
-<td>Volatility</td>
-<td>The variance of how much the protagonist's seven-layer state swung turn to turn. Thresholds are fixed from generation 0's population</td>
+<td>Curiosity</td>
+<td>Always</td>
+<td>investigate, observe</td>
+<td>Novelty drive</td>
 </tr>
 <tr>
-<td>Quality q</td>
-<td>The quality of a run that reached the ending. An absolute scale (0–1) that counts objective movement, swings in relationships, recoveries, reversals of power, gaining new facts, belief reversals, and chains of premise-aligned actions, and penalizes actions that came up empty. q̄ is the average across the whole archive</td>
-</tr>
-<tr>
-<td>Occupied cells</td>
-<td>The number of filled cells in the archive. More means more different kinds of stories found</td>
-</tr>
-<tr>
-<td>Diversity</td>
-<td>The average of how different the paths of runs left in the archive are from each other. Closer to 1 means more diverse</td>
-</tr>
-<tr>
-<td>Tendency</td>
-<td>The action category that individual's genome weights most heavily. Can differ from the leading category</td>
-</tr>
-<tr>
-<td>Parent</td>
-<td>The two individuals that produced this individual</td>
-</tr>
-<tr>
-<td>Lineage (main line)</td>
-<td>The single line traced back through parents from an elite. Of the two parents, only the one with the closer genome is followed</td>
-</tr>
-<tr>
-<td>Turning point</td>
-<td>The point, when re-running an adjacent parent/child pair on the main line with the same seed, where the protagonist's decision first diverged</td>
-</tr>
-<tr>
-<td>Sifting</td>
-<td>The process of sifting through the candidates an experiment left behind and adopting the ones worth reading. See <a href="../../concepts/sifting/">Sifting</a></td>
-</tr>
-<tr>
-<td>Selection status</td>
-<td>✔ Adopted (proceed to generation) / ⏸ Held / ✖ Excluded / ○ Unsorted</td>
+<td>Caution</td>
+<td>Believing oneself weaker than the target</td>
+<td>rest, withdraw</td>
+<td>Risk tolerance (stronger the lower it is)</td>
 </tr>
 </tbody>
 </table>
-<h2 id="output">Output<a class="headerlink" href="#output" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Term</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Candidate ID</td>
-<td>An ID uniquely identifying an (experiment, generation, individual, seed) combination. Selection and generation are recorded at this granularity</td>
-</tr>
-<tr>
-<td>Synopsis generation (synopsize)</td>
-<td>The process of pulling notable scenes from each run in the grid and having the LLM write a short synopsis</td>
-</tr>
-<tr>
-<td>Narration generation (narrate)</td>
-<td>The process of turning only the adopted candidates into full-length prose with the LLM</td>
-</tr>
-<tr>
-<td>backend / model</td>
-<td>The method and model name used to generate the text (e.g. <code>ollama</code> / <code>qwen3.5:9b-q4_K_M</code>). See <a href="../../usage/llm-backends/">LLM Backends</a></td>
-</tr>
-<tr>
-<td>Choice, rationale, cost, turning point</td>
-<td>Four fields shown in a candidate's detail: what belief a given choice was made on, what it cost, and what it led to afterward, mechanically extracted from the log</td>
-</tr>
-<tr>
-<td>World self-expansion</td>
-<td>A mechanism that proposes missing elements (places, items, facts) from places and actions that kept coming up empty during a GA experiment. See <a href="../../usage/create-world/#world-expansion">Create a World</a></td>
-</tr>
-<tr>
-<td>GPU Guard</td>
-<td>A mechanism that coordinates GPU use between the local LLM (llama-server) and Ollama, and pauses briefly until temperature drops. See <a href="../../usage/gpu-guard/">GPU Guard</a></td>
-</tr>
-</tbody>
-</table>
+<p>Each entry carries a target, a condition, and the motive's reason text — for bravado, for example, the recorded reason is "勝ち目が薄いと知りながら、{target}に立ち向かわずにいられなかった" (unable to stop confronting {target}, even knowing the odds were slim).</p>
+<h3 id="genome-strength-changes-how-much-its-chosen">Genome strength changes how much it's chosen<a class="headerlink" href="#genome-strength-changes-how-much-its-chosen" title="Permanent link">&para;</a></h3>
+<p>A detour matched to a motive doesn't automatically get the unconditional pass (b=1.0) that body/belief detours do. Instead, its base multiplier varies continuously with the strength <code>gene_s</code> (0–1) of the gene the motive names:</p>
+<div class="highlight"><pre><span></span><code>base = delta + (1 - delta) * gene_s   (delta is the "no reason" multiplier, 0.02)
+m_route = base ** rho
+</code></pre></div>
+<p>For an individual with a weak lean toward that gene (gene_s=0), matching the motive gets treated almost the same as "no reason." For one with a strong lean (gene_s=1), it's treated the same as body/belief (b=1.0, unpenalized). Simply appearing in the motive table doesn't grant free rein to detour — without a genome strong enough for that motive, the detour is still reined in.</p>
+<h2 id="choosing-a-route-by-genome-gene_affinity">Choosing a route by genome (gene_affinity)<a class="headerlink" href="#choosing-a-route-by-genome-gene_affinity" title="Permanent link">&para;</a></h2>
+<p>Setting <code>route.yaml</code>'s <code>gene_affinity</code> (default 0) and <code>route_category</code> (a mapping from route name to action category) lets the genome's corresponding category weight slightly tilt which of several ways to take the goal item from its holder (fight vs. negotiate, say) counts as "the best plan." At <code>gene_affinity=0</code> (the default) the lowest-cost option is always the best one. Raising it makes an individual with a stronger weight in the matching category more likely to see that route as "best" (the recorded h itself stays plain; only the choice of best route is affected). 桃太郎＋2 (Peach Boy+2)'s <code>route.yaml</code> sets <code>gene_affinity: 0.5</code> and <code>route_category: {fight: I, negotiate: III}</code>.</p>
+<h2 id="feeding-into-synopsistext-generation">Feeding into synopsis/text generation<a class="headerlink" href="#feeding-into-synopsistext-generation" title="Permanent link">&para;</a></h2>
+<p>The reason text for every protagonist decision that carries a route record — advance and prepare included, regardless of classification or cause — is passed one at a time to the LLM that writes the synopsis/text, as "the action's reason." A detour ⟨no reason⟩ has no reason text; instead it's spelled out explicitly as "(no clear reason was recorded)." (Lost gets the fixed text "acted without any prospect of a way forward," except when its cause is body or belief.) The generation prompt itself is instructed not to invent an unrecorded motive for an action with no recorded reason. On screen, the same reason text appears in <a href="../../usage/read-results/">Read Results</a>'s timeline, four-field panel, and the breakdown at the top of the cell page.</p>
 
 
 
@@ -1855,7 +1842,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../http-api/" class="md-footer__link md-footer__link--prev" aria-label="Previous: HTTP API">
+          <a href="../determinism/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Determinism">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1865,20 +1852,20 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                HTTP API
+                Determinism
               </div>
             </div>
           </a>
         
         
           
-          <a href="../design-docs/" class="md-footer__link md-footer__link--next" aria-label="Next: Design Docs">
+          <a href="../../usage/create-world/" class="md-footer__link md-footer__link--next" aria-label="Next: Create a World">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Design Docs
+                Create a World
               </div>
             </div>
             <div class="md-footer__button md-icon">

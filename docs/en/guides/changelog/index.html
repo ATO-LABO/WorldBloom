@@ -692,6 +692,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Route Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1589,6 +1617,8 @@
 <p>The main changes that matter from a user's point of view, in date order. This isn't a list of individual commits. Get the latest release artifacts from <a href="https://github.com/ATO-LABO/WorldBloom/releases">GitHub Releases</a>.</p>
 <h2 id="2026-09-25">2026-09-25<a class="headerlink" href="#2026-09-25" title="Permanent link">&para;</a></h2>
 <ul>
+<li>Added the <a href="../../concepts/route-layer/">route layer</a>: classifies protagonist decisions as advance, prepare, detour (body/ignorance/belief/motive/no reason), or lost, and reins in unreasoned detours with weight ρ. A motive table (<code>motives.yaml</code>) can give a detour a reason (only 桃太郎＋2 / Peach Boy+2 has this so far). Added the "05. Route" section to run settings, and reason badges (timeline, four-field panel, breakdown at the top of the cell page) to the results screen</li>
+<li>Fixed a bug where GA runs launched from the screen (05. Route, 04. Rationality) didn't actually apply ρ, κ, or the rationality details you set. <strong>Experiments created and run from the screen before this fix ran with ρ and κ disabled (ρ=0, κ off), regardless of what you specified</strong></li>
 <li>Published this documentation site: a bilingual (Japanese/English) structure with five chapters — getting started, concepts, usage, reference, and guides</li>
 <li>Changed the default backend for synopsis/text generation from <code>codex-cli</code> to <code>llama-server</code> (a local LLM)</li>
 </ul>

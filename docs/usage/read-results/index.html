@@ -694,6 +694,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    道筋層
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -914,7 +942,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        比較・系譜・転機の可視化
+        行動ログの理由バッジ
       
     </span>
   </a>
@@ -923,6 +951,17 @@
       
         <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        比較・系譜・転機の可視化
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         実行履歴と削除
@@ -1549,7 +1588,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        比較・系譜・転機の可視化
+        行動ログの理由バッジ
       
     </span>
   </a>
@@ -1558,6 +1597,17 @@
       
         <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        比較・系譜・転機の可視化
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         実行履歴と削除
@@ -1658,14 +1708,22 @@
 </table>
 <h2 id="_2">選択・根拠・代償・転機<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>候補の詳細には、ある選択が「どの信念を根拠に行われ、何を失い、後続の何につながったか」をログから機械的に抽出した4項目（選択・根拠・代償・転機）が表示されます。物語の中の重要な決定を、あとから読み解くための手がかりです。</p>
-<h2 id="_3">比較・系譜・転機の可視化<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>四項目パネルには、「選択」の直後に<strong>「道筋:」</strong>の行が出ることがあります。これは<a href="../../concepts/route-layer/">道筋層</a>（ρ&gt;0 で実行した実験）が、その決定を「前進」「準備」「寄り道〈身体／手探り／思い込み／動機の名前／理由なし〉」「見通しなし」のどれに分類したかと、その理由文を示す行です。道筋層を使っていない実験（ρ=0、または道筋層より前に実行した実験）では表示されません。</p>
+<h2 id="_3">行動ログの理由バッジ<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>道筋層を使った実験では、タイムライン（物語の流れ）の中にも、その決定が「なぜ」その行動だったかを示す行が挟まります。</p>
+<ul>
+<li><strong>タイムラインの理由行</strong>: <code>[分類のラベル] 出来事 — 理由</code> の形で、道筋を持つ主人公の決定1件ごとに1行表示されます。寄り道〈理由なし〉の行は、理由の部分が「はっきりした理由は記録されていない」になります</li>
+<li><strong>セルページ冒頭の内訳</strong>: 候補の詳細を開いた先頭に「前進 n／準備 n／寄り道 n〈うち理由なし n〉／見通しなし n」という、そのランの主人公の決定を分類ごとに数えた内訳が出ます</li>
+</ul>
+<p>いずれも道筋層を使っていない実験では表示されません。分類・理由の意味は<a href="../../concepts/route-layer/">道筋層</a>を参照してください。</p>
+<h2 id="_4">比較・系譜・転機の可視化<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>候補一覧から異なる区画の代表候補を2〜4件選ぶと、比較画面が開きます。比較画面も「あらすじ」「選択・根拠・代償・転機」「実験データ」の3タブで、実験データタブには候補ID・区画・世代・seed・品質・結末・原記録が並びます。また、候補の詳細から系譜・転機の可視化に進めます。</p>
 <ul>
 <li><strong>系譜（主系）</strong>: そのエリートから親をたどった一本道。世代を遡って、どの決定が積み重なってこの物語になったかを確認できます</li>
 <li><strong>転機</strong>: 系譜上の隣り合う親子を同じ乱数の種で再実行し、主人公の決定が最初に分かれた地点を示します。「なぜこの物語になったのか」を、進化の履歴として辿れます</li>
 </ul>
 <p>再現できなかった祖先がある場合は、その理由（再現エラー）が表示されます。</p>
-<h2 id="_4">実行履歴と削除<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h2 id="_5">実行履歴と削除<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>実行を開始すると「履歴」に記録が残り、あとから見返せます。実験が不要になった場合は、実験一覧の「削除」ボタンから削除できます。削除すると、その実験に紐づく候補・選定状態・生成済み本文・世界の自己拡張の提案などが連鎖的に削除されます（元に戻せません）。</p>
 
 
