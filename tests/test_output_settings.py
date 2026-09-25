@@ -56,10 +56,11 @@ class OutputSettingsTests(unittest.TestCase):
         self.assertFalse(self.settings_path.exists())
         view = read_output_settings(self.settings_path)
         self.assertEqual(view["backend"], DEFAULT_BACKEND)
-        self.assertEqual(view["backend"], "codex-cli")
+        self.assertEqual(view["backend"], "llama-server")
         self.assertIsNone(view["model"])
-        self.assertEqual(view["limits"], {"max_calls": 1, "call_timeout_seconds": 180,
-            "wall_seconds": 240, "max_saved_response_bytes": 128000})
+        # llama-server is a local backend, so it gets the long local-LLM limits.
+        self.assertEqual(view["limits"], {"max_calls": 1, "call_timeout_seconds": 900,
+            "wall_seconds": 3600, "max_saved_response_bytes": 128000})
         self.assertEqual(set(view["backends"]), set(BACKENDS))
         for backend in BACKENDS:
             if backend == "claude-cli":
@@ -76,9 +77,9 @@ class OutputSettingsTests(unittest.TestCase):
         self.assertEqual(read_output_settings(None), view)
 
     def test_resolves_the_existing_minimal_shape_unchanged(self):
-        # This is the exact shape the real repo settings.json is in today --
-        # WB-UI-021 must keep it working with zero migration.
-        self.write({"output": {"codex-cli": {"model": "gpt-5.6-sol"}}})
+        # WB-UI-021's minimal shape, plus the default_backend it now needs
+        # since the implicit default moved from codex-cli to llama-server.
+        self.write({"output": {"default_backend": "codex-cli", "codex-cli": {"model": "gpt-5.6-sol"}}})
         view = read_output_settings(self.settings_path)
         self.assertEqual(view["backend"], "codex-cli")
         self.assertEqual(view["model"], "gpt-5.6-sol")
@@ -96,7 +97,7 @@ class OutputSettingsTests(unittest.TestCase):
     # --------------------------------------------------------------- write
 
     def test_write_preserves_credentials_and_never_returns_them(self):
-        self.write({"output": {"codex-cli": {"model": "old-model", "api_key": "DO-NOT-LEAK",
+        self.write({"output": {"default_backend": "codex-cli", "codex-cli": {"model": "old-model", "api_key": "DO-NOT-LEAK",
             "command": "codex", "base_url": "http://leak.example"}}})
         view = write_output_settings(self.settings_path, {"model": "new-model"})
         self.assertEqual(view["model"], "new-model")

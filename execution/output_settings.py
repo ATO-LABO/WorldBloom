@@ -16,7 +16,7 @@ from execution.configs import _integer, _model, generation_availability
 from execution.provenance import ConfigError, atomic_json, read_json
 from gapengine.synopsis import BACKENDS
 
-DEFAULT_BACKEND = "codex-cli"
+DEFAULT_BACKEND = "llama-server"
 LIMIT_FIELDS = ("max_calls", "call_timeout_seconds", "wall_seconds", "max_saved_response_bytes")
 VERIFIED_MODELS_LIMIT = 20
 
