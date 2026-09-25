@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -256,6 +257,19 @@ def river_model(
         raise data.MissingResource(f"generation results not found: {experiment_name}")
 
     index = build_index(generations)
+    # WB-WORLDGROW-001 段階5b: g0/population.json's own "seed_cell" (only
+    # present on a run whose --seed-genomes seeded generation 0) -- best
+    # effort, a missing/malformed file just means no seed labels.
+    try:
+        population_path = repository.safe_path(experiment, "g0/population.json")
+        population_raw = json.loads(population_path.read_text(encoding="utf-8"))
+        for item in population_raw:
+            if isinstance(item, Mapping) and "seed_cell" in item:
+                node = index.get((0, int(item["index"])))
+                if node is not None:
+                    node["seed_cell"] = str(item["seed_cell"])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     edges, unresolved_count = resolve_parents(index, generations_count)
     archive = snapshot_archive if snapshot_archive is not None else repository.archive(experiment)
     cells = data._as_mapping(archive.get("cells"))
@@ -290,7 +304,8 @@ def river_model(
             node["cell_key"] for node in index.values() if node.get("cell_key")
         )
     diagram = layout(index, edges, survivor_map, band_order)
-    parentless = sum(not node.get("parent_refs") for node in index.values())
+    parentless = sum(not node.get("parent_refs") and not node.get("seed_cell") for node in index.values())
+    seeded = sum(bool(not node.get("parent_refs") and node.get("seed_cell")) for node in index.values())
     offmap = sum(node.get("cell_key") is None for node in index.values())
     return {
         "experiment": experiment_name,
@@ -307,6 +322,7 @@ def river_model(
             "population": max((len(results) for results in generations), default=0),
             "survivors": len(survivor_map),
             "parentless": parentless,
+            "seeded": seeded,
             "offmap": offmap,
             "unresolved": unresolved_count,
             "elites": len(elite_nodes),
@@ -330,7 +346,13 @@ def _node_title(node: Mapping) -> str:
     cell_text = (node.get("cell_key") or "地図外").replace("|", " × ")
     quality = "q なし" if node.get("quality") is None else f"q {float(node['quality']):.3f}"
     parent_text = " × ".join(_parent_display(ref) for ref in node.get("parent_refs", ()))
-    suffix = f"・親: {parent_text}" if parent_text else "・親なし"
+    seed_cell = node.get("seed_cell")
+    if parent_text:
+        suffix = f"・親: {parent_text}"
+    elif seed_cell:
+        suffix = f"・引き継ぎ（{seed_cell.replace('|', ' × ')}）"
+    else:
+        suffix = "・親なし"
     return (
         f"第 {int(node['generation']) + 1} 世代の個体 #{int(node['index'])}・"
         f"{cell_text}・{quality}{suffix}"
@@ -354,8 +376,9 @@ def river_parts(model: Mapping, base_url: str) -> tuple[str, str, str]:
         f"{counts['generations']} 世代 × {counts['population']} 体 = {counts['total']} 体。"
         f"地図に残った {counts['elites']} つの物語の血筋は "
         f"{counts['survivors']} 体（{percent:.0f}%）。"
-        f"親なしの新顔 {counts['parentless']} 体。"
-        f"地図に載らなかった個体 {counts['offmap']} 体。"
+        f"親なしの新顔 {counts['parentless']} 体"
+        + (f"・前の実験から引き継いだ個体 {counts['seeded']} 体。" if counts.get("seeded") else "。")
+        + f"地図に載らなかった個体 {counts['offmap']} 体。"
     )
     if counts["unresolved"]:
         summary += f"親を特定できなかった参照 {counts['unresolved']} 本。"

@@ -136,7 +136,7 @@ w' = w × m_cat × m_risk × m_stance × m_nov
 
 **乗数**: `m_nov = (1 − p_prec + ε)^novelty_drive`（ε=0.02）。novelty_drive=0 で 1。前例で支配的な行動（p≈1）は強く抑えられ、稀な行動は相対的に浮く。
 
-**再現性**: 表は `precedent.json` として世代ディレクトリに保存し、sim は読み取り専用で参照。GA 側乱数は `random.Random(ga_seed)` で sim の `random.Random(seed)` と分離。
+**再現性**: 表は `precedent.json` として世代ディレクトリに保存し、sim は読み取り専用で参照。GA 側乱数は `random.Random(ga_seed)` で sim の `random.Random(seed)` と分離。WB-WORLDGROW-001 段階5b「遺伝子の引き継ぎ」で `--seed-genomes` を指定すると、第0世代の先頭 seeded 個体分は `Genome.random(ga_rng, ...)` を呼ばず（乱数を消費しない）、残り枠のみ通常どおり `ga_rng` から生成する。乱数消費順が変わるのは seed_genomes 指定時のみで、未指定時は従来どおりバイト一致する。
 
 **却下**: 「同世代の他個体」を前例にする案（逐次では未来参照、並列では順序依存で非決定）。「全評価個体」を前例にする案は E2 で「アーカイブのみ」と比較してから決める（既定はアーカイブのみ）。
 

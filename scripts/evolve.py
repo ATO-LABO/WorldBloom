@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
@@ -81,6 +83,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=("Off leaves the world unchanged; detect aggregates zone/verb whiff "
               "triggers after evolution ends; expand applies this project's approved "
               "patches (projects/<name>/patches/*.yaml) before the run, then detects."),
+    )
+    parser.add_argument(
+        "--seed-genomes",
+        type=Path,
+        default=None,
+        help=("WB-WORLDGROW-001 段階5b: 前の実験の最終アーカイブの genome を第0世代に"
+              "使う。seed_genomes.json か、その実験の実験ディレクトリを指定する。"),
     )
     parser.add_argument(
         "--kappa",
@@ -228,6 +237,44 @@ def _expanded_project(project: Path, out: Path, template: Path | None = None) ->
     return expanded
 
 
+def _resolved_seed_genomes(value: Path, out: Path, *, resume: bool = False) -> Path:
+    """--seed-genomes accepts either a seed_genomes.json file directly, or
+    an experiment directory (its own final archive is converted). The
+    latter is materialized once at <out>/seed_genomes.json so evolve()'s
+    own gapengine.seed_genomes.load() only ever reads a plain file.
+
+    --resume reuses that already-materialized file instead of rewriting it:
+    rewriting recomputes captured_at=now() every launch, which changes the
+    frozen seed_genomes.json's bytes (and therefore its sha256) on every
+    --resume even though --seed-genomes points at the same source -- that
+    sha256 feeds _cfg_fingerprint, so a resumed run would always be refused
+    as "a different experiment" the moment --resume is combined with a
+    directory-form --seed-genomes."""
+    if not value.is_dir():
+        return value
+    target = out / "seed_genomes.json"
+    if resume and target.is_file():
+        return target
+    from gapengine.seed_genomes import from_archive
+    from gapengine.world_patch_usage import load_archive
+    archive, raw, source = load_archive(value)
+    doc = {
+        "schema_version": 1,
+        "source": {
+            "run_id": value.resolve().name,
+            "archive_path": source,
+            "archive_sha256": hashlib.sha256(raw).hexdigest(),
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "genomes": from_archive(archive),
+    }
+    out.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(doc, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+    )
+    return target
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.resume:
@@ -235,6 +282,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     project = args.project
     if args.world_expansion == "expand":
         project = _expanded_project(args.project, args.out, args.template)
+    seed_genomes = (
+        _resolved_seed_genomes(args.seed_genomes, args.out, resume=args.resume)
+        if args.seed_genomes is not None
+        else None
+    )
     archive = evolve(
         {
             "record_explanations": args.record_explanations,
@@ -252,6 +304,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "route": route_cfg_override(args.route_rho),
             "resume_allow_code_change": args.resume_allow_code_change,
             "seed_base": args.seed_base,
+            "seed_genomes": seed_genomes,
             "seeds": args.seeds,
             "target_ending": args.target_ending,
             "template": args.template,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from copy import deepcopy
 import re
 import shutil
 import sys
@@ -54,6 +55,7 @@ from gapengine.rationality import (
     RationalityTable,
 )
 from gapengine.route import Route, load_route_config
+from gapengine.seed_genomes import load as load_seed_genomes, reconcile as reconcile_seed_genome
 
 
 _ENGINE_DIR = Path(__file__).resolve().parents[1] / "engine"
@@ -1118,6 +1120,7 @@ def _cfg_fingerprint(
     record_explanations: bool,
     rationality_cfg: Mapping[str, Any] | None,
     route_cfg: Mapping[str, Any] | None = None,
+    seed_genomes_sha256: str | None = None,
 ) -> str:
     """WB-GA-RESUME: sha256 of every setting that changes what the GA
     computes -- resuming with a different value here is a bug (or a
@@ -1164,6 +1167,8 @@ def _cfg_fingerprint(
             "gene_affinity": route_obj.gene_affinity,
             "motives_hash": route_obj.motives_hash(),
         }
+    if seed_genomes_sha256 is not None:
+        payload["seed_genomes"] = seed_genomes_sha256
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -1290,6 +1295,26 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     rules = list(_load_yaml(template_dir / "rules.yaml", []))
     rule_ids = _rule_ids(rules) if meta_evolution else ()
     canon = load_canon(template_dir / "canon.yaml")
+
+    # WB-WORLDGROW-001 stage 5b: seed_genomes (--seed-genomes) carries only
+    # a prior experiment's final-archive genomes into this run's generation
+    # 0 -- no precedent, no scores, no volatility thresholds. Off (the
+    # default, None) must stay byte-identical to a pre-5b run: no fingerprint
+    # payload key, no seed_cell, no summary.json key.
+    seed_genomes_path = cfg.get("seed_genomes")
+    seed_pool: list[Genome] = []
+    seed_sha256: str | None = None
+    seed_source: dict[str, Any] | None = None
+    if seed_genomes_path is not None:
+        raw_seed_bytes = Path(str(seed_genomes_path)).read_bytes()
+        seed_sha256 = hashlib.sha256(raw_seed_bytes).hexdigest()
+        seed_doc = load_seed_genomes(seed_genomes_path)
+        seed_source = dict(seed_doc.get("source") or {})
+        seed_cells_order = [str(entry["cell"]) for entry in seed_doc["genomes"]]
+        seed_pool = [
+            reconcile_seed_genome(entry["genome"], rule_ids=rule_ids)
+            for entry in seed_doc["genomes"]
+        ]
 
     # Read once, raw: World.from_yaml below parses world_path into typed
     # attributes and drops any "expansion" key -- summary_payload needs the
@@ -1432,6 +1457,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         record_explanations=record_explanations,
         rationality_cfg=rationality_cfg,
         route_cfg=route_cfg,
+        seed_genomes_sha256=seed_sha256,
     )
     engine_hash = _engine_source_hash(_ENGINE_DIR)
     gapengine_hash = _engine_source_hash(_GAPENGINE_DIR)
@@ -1568,8 +1594,13 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                     + "（WB-GA-RESUME以前の実行か、stateが失われています）"
                 )
 
+    seed_cell_by_index: dict[int, str] = {}
     if start_generation == 0:
-        population = [
+        seeded = seed_pool[:population_size]
+        seed_cell_by_index = {
+            index: seed_cells_order[index] for index in range(len(seeded))
+        }
+        population = [(genome, []) for genome in seeded] + [
             (
                 Genome.random(
                     ga_rng,
@@ -1577,7 +1608,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 ),
                 [],
             )
-            for _ in range(population_size)
+            for _ in range(population_size - len(seeded))
         ]
         antagonist_population = (
             [
@@ -1666,6 +1697,11 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                     "genome": genome.to_dict(),
                     "index": index,
                     "parents": parents,
+                    **(
+                        {"seed_cell": seed_cell_by_index[index]}
+                        if generation == 0 and index in seed_cell_by_index
+                        else {}
+                    ),
                 }
                 for index, (genome, parents) in enumerate(population)
             ],
@@ -2071,6 +2107,13 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             summary_payload["meta_evolution"] = True
         if world_expansion != "off":
             summary_payload["world_expansion"] = world_expansion
+        if seed_pool:
+            summary_payload["seed_genomes"] = {
+                "sha256": seed_sha256,
+                "used": min(len(seed_pool), population_size),
+                "available": len(seed_pool),
+                "source": deepcopy(seed_source) if seed_source is not None else None,
+            }
         if world_patch_ids:
             summary_payload["world_patches"] = world_patch_ids
             summary_payload["world_expansion_patches"] = raw_world_patches

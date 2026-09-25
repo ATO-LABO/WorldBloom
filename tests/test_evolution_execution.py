@@ -631,6 +631,39 @@ class EvolutionJobRationalityAndConsistencyTests(unittest.TestCase):
         self.assertEqual(header["rationality"]["kappa"], 1.0)
         self.assertEqual(header["rationality"]["backend"], "none")
 
+    def test_seed_genomes_from_job_reaches_the_ga(self):
+        # WB-WORLDGROW-001 段階5b: mirrors test_kappa_from_job_reaches_the_ga
+        # -- drives two real jobs through the adapter path (execution/
+        # evolution_worker.py's main()), the second one's config pointing
+        # --seed-genomes at the first's run_id, and checks the frozen
+        # inputs/seed_genomes.json and g0/population.json's seed_cell
+        # actually land in the second run's output.
+        configs, jobs = self._make_store("seed", remove_adapter=False)
+        configs.save({"label": "seed-source", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+            "evolution": {"generations": 1, "population": 3, "seeds": 2, "processes": 1}}, config_id="cfg-seed-source")
+        source_job, _ = jobs.submit({"request_id": "seed-source-req", "kind": "evolve", "config_id": "cfg-seed-source"})
+        source_job = self._run_to_terminal(jobs, source_job["job_id"])
+        self.assertEqual(source_job["state"], "succeeded", source_job)
+        source_run_id = source_job["run_id"]
+        source_archive = read_json(configs.runs / source_run_id / "archive.json")
+        self.assertTrue(source_archive["cells"], "source run must reach at least one cell to seed from")
+
+        configs.save({"label": "seeded", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+            "evolution": {"generations": 1, "population": 2, "seeds": 1, "processes": 1,
+                          "seed_genomes": source_run_id}}, config_id="cfg-seeded")
+        seeded_job, _ = jobs.submit({"request_id": "seeded-req", "kind": "evolve", "config_id": "cfg-seeded"})
+        seeded_job = self._run_to_terminal(jobs, seeded_job["job_id"])
+        self.assertEqual(seeded_job["state"], "succeeded", seeded_job)
+        run_root = configs.runs / seeded_job["run_id"]
+        self.assertTrue((run_root / "inputs/seed_genomes.json").is_file())
+        population = json.loads((run_root / "g0/population.json").read_text(encoding="utf-8"))
+        seeded = [item for item in population if "seed_cell" in item]
+        self.assertTrue(seeded)
+        for item in seeded:
+            self.assertEqual(item["parents"], [])
+        summary = json.loads((run_root / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["seed_genomes"]["source"]["run_id"], source_run_id)
+
     def test_adapter_and_cli_paths_agree_on_route_rho_and_kappa(self):
         spec = {"label": "consistency", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
                 "evolution": {"generations": 1, "population": 2, "seeds": 1, "processes": 1,

@@ -4,9 +4,9 @@ usage: evolve.py [-h] --project PROJECT --template TEMPLATE --out OUT [--generat
                  [--coevolve] [--meta-evolution]
                  [--target-ending TARGET_ENDING [TARGET_ENDING ...]]
                  [--record-explanations | --no-record-explanations]
-                 [--world-expansion {off,detect,expand}] [--kappa KAPPA]
-                 [--rationality-backend {ollama,none}] [--rationality-method {noul,choice}]
-                 [--rationality-model RATIONALITY_MODEL]
+                 [--world-expansion {off,detect,expand}] [--seed-genomes SEED_GENOMES]
+                 [--kappa KAPPA] [--rationality-backend {ollama,none}]
+                 [--rationality-method {noul,choice}] [--rationality-model RATIONALITY_MODEL]
                  [--rationality-num-ctx RATIONALITY_NUM_CTX]
                  [--rationality-table RATIONALITY_TABLE]
                  [--rationality-max-calls RATIONALITY_MAX_CALLS] [--route-rho ROUTE_RHO]
@@ -36,6 +36,9 @@ options:
                         Off leaves the world unchanged; detect aggregates zone/verb whiff triggers
                         after evolution ends; expand applies this project's approved patches
                         (projects/<name>/patches/*.yaml) before the run, then detects.
+  --seed-genomes SEED_GENOMES
+                        WB-WORLDGROW-001 段階5b: 前の実験の最終アーカイブの genome を第0世代に使う。seed_genomes.json
+                        か、その実験の実験ディレクトリを指定する。
   --kappa KAPPA         WB-JEV-001 Stage 2: override templates/<genre>/rationality.yaml's kappa (0
                         disables the rationality layer; that is the template default).
   --rationality-backend {ollama,none}
