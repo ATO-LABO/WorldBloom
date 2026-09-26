@@ -412,7 +412,7 @@ class TriggerRateKindTests(unittest.TestCase):
 
     def test_ignorance_rate_side_zero_total_skips_percentage(self):
         text = wev._ignorance_rate_side({"count": 0, "total": 0, "share": None})
-        self.assertEqual(text, "0 回中 0 回")
+        self.assertEqual(text, "その場所の道筋付き決定 0 回")
         self.assertNotIn("%", text)
 
     def test_ignorance_rate_side_non_numeric_is_an_em_dash(self):
@@ -427,7 +427,7 @@ class TriggerRateKindTests(unittest.TestCase):
 
     def test_blocked_rate_side_zero_total_skips_percentage(self):
         text = wev._blocked_rate_side({"count": 0, "lost_total": 0, "lost_rate": None})
-        self.assertEqual(text, "0 回中 0 回")
+        self.assertEqual(text, "見通しなし 0 回")
 
     def test_trigger_rate_text_dispatches_by_kind(self):
         ignorance = {"kind": "ignorance", "zone": "森",
@@ -441,7 +441,7 @@ class TriggerRateKindTests(unittest.TestCase):
                    "patched": {"count": 0, "lost_total": 0, "lost_rate": None}}
         self.assertEqual(wev._trigger_rate_text(blocked),
                          "ベース 見通しなし 1801 回のうちこのきっかけが原因 1801 回（道筋付き決定の100.0%が見通しなし） → "
-                         "適用後 0 回中 0 回")
+                         "適用後 見通しなし 0 回")
 
     def test_trigger_rate_label_by_kind(self):
         self.assertEqual(wev._trigger_rate_label({"kind": "whiff"}), "きっかけの空振り率")
@@ -465,7 +465,7 @@ class TriggerRateKindTests(unittest.TestCase):
         html = wev._trial_html(trial)
         self.assertIn("きっかけの見通しなし決定", html)
         self.assertIn("ベース 見通しなし 1801 回のうちこのきっかけが原因 1801 回（道筋付き決定の100.0%が見通しなし）", html)
-        self.assertIn("適用後 0 回中 0 回", html)
+        self.assertIn("適用後 見通しなし 0 回", html)
 
 
 class LoadTests(unittest.TestCase):
