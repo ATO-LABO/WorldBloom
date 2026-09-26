@@ -14,6 +14,8 @@ import tempfile
 import threading
 import unittest
 import zipfile
+import zlib
+from unittest.mock import patch
 
 import yaml
 
@@ -255,6 +257,21 @@ class ZipImportTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             zip_to_files(b"not a zip file")
 
+    def test_zip_to_files_rejects_corrupt_deflate_stream(self):
+        # zipfile.ZipFile() itself opens fine (the central directory is
+        # intact); it's decompressing a corrupt deflate stream inside one
+        # entry that fails, with zlib.error -- a different exception than
+        # zipfile.BadZipFile, and previously uncaught here. Reproducing a
+        # byte-exact corrupt deflate stream is fragile (zlib.error depends on
+        # internal decompressor state), so this patches the read path to
+        # raise it directly, which is what zip_to_files must translate into
+        # a ConfigError (400) rather than letting it escape as a bare 500.
+        raw = _make_zip({"world.yaml": "name: x"})
+        with patch.object(zipfile.ZipFile, "open",
+                          side_effect=zlib.error("Error -3 while decompressing data: invalid distance too far back")):
+            with self.assertRaises(ConfigError):
+                zip_to_files(raw)
+
     def test_zip_to_files_rejects_ambiguous_root(self):
         raw = _make_zip({"a/world.yaml": "name: x", "b/world.yaml": "name: y"})
         with self.assertRaises(ConfigError):
@@ -317,6 +334,14 @@ class ZipImportTests(unittest.TestCase):
         genres = {w["id"]: w["genre"] for w in self.store.worlds()}
         self.assertIsNone(genres["imported4"])
 
+    def test_import_world_with_null_gapengine_does_not_persist_a_literal_null(self):
+        files = {"world.yaml": "name: x\ngapengine: null\n"}
+        self.store.import_world("imported4b", files=files, name="")
+        raw = (self.repo / "projects/imported4b/world.yaml").read_text(encoding="utf-8")
+        self.assertNotIn("gapengine", raw)
+        world = yaml.safe_load(raw)
+        self.assertNotIn("gapengine", world)
+
     def test_import_world_with_valid_gapengine_is_kept(self):
         files = {"world.yaml": "name: x\ngapengine:\n  action_graph: templates/momotaro/action_graph.yaml\n  effects: templates/momotaro/effects.yaml\n"}
         self.store.import_world("imported5", files=files, name="")
@@ -367,7 +392,18 @@ class ZipImportTests(unittest.TestCase):
         for rel, text in files.items():
             if rel == "world.yaml":
                 continue
-            self.assertEqual((self.repo / "projects/imported-clone" / rel).read_text(encoding="utf-8"), text)
+            self.assertEqual((self.repo / "projects/imported-clone" / rel).read_bytes(), text.encode("utf-8"))
+
+    def test_import_world_writes_subjects_without_line_ending_translation(self):
+        # write_text() re-translates "\n" to os.linesep on Windows, turning a
+        # CRLF source ("\r\n") into "\r\r\n" -- a blank line inside every
+        # folded/literal YAML block scalar. subjects/ must go through
+        # write_bytes() instead, so a CRLF-authored file round-trips exactly.
+        files = {"world.yaml": "name: x", "subjects/01_a.yaml": "id: a\r\ndescription: |\r\n  line one\r\n  line two\r\n"}
+        self.store.import_world("imported-crlf", files=files, name="")
+        written = (self.repo / "projects/imported-crlf/subjects/01_a.yaml").read_bytes()
+        self.assertEqual(written, files["subjects/01_a.yaml"].encode("utf-8"))
+        self.assertNotIn(b"\r\r\n", written)
 
     def test_import_world_then_preview_succeeds(self):
         # WB-WORLD-IMPORT-001 §5(a): a ZIP of a real world round-trips through

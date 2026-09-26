@@ -23,7 +23,7 @@ Fields common to all three:
 
 Creating the world takes you to that world's **world settings screen** (below). Characters, places, and the initial story start out empty and are filled in afterward.
 
-## World settings screen (per-world tabs)
+## World settings screen (per-world tabs) { #world-settings }
 
 Opening a world (or clicking "世界を開く", Open world, from its card on the home screen) shows five tabs for viewing and editing its settings.
 

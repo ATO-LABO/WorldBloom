@@ -210,5 +210,38 @@ class WorldImportTests(unittest.TestCase):
         self.assertIn('name="mode" value="import"', markup)
         self.assertIn('data-zip-input', markup)
 
+    def test_import_without_genre_then_pick_one_via_edit_then_preview_succeeds(self):
+        # End-to-end: import a genre-less ZIP over HTTP, pick a genre via the
+        # world-settings "genre" edit operation, then confirm the resulting
+        # world.yaml actually drives a successful ConfigStore.preview() --
+        # not just that the two writes individually look right.
+        base = self.repo / 'projects/momotaro'
+        entries = {'world.yaml': (base / 'world.yaml').read_text(encoding='utf-8')}
+        for path in sorted((base / 'subjects').glob('*.yaml')):
+            entries[f'subjects/{path.name}'] = path.read_text(encoding='utf-8')
+        world = yaml.safe_load(entries['world.yaml'])
+        del world['gapengine']
+        entries['world.yaml'] = yaml.safe_dump(world, allow_unicode=True, sort_keys=False)
+
+        status, payload = self.http('POST', '/api/worlds', self.import_body(
+            world_id='e2e-genre-pick', zip_base64=_zip_b64(entries)))
+        self.assertEqual(status, 201, payload)
+        store = LibraryStore(self.repo)
+        self.assertIsNone(store._genre_of('e2e-genre-pick', yaml.safe_load(store.read('world', 'e2e-genre-pick', 'world.yaml'))))
+
+        from execution.world_editor import snapshot
+        revision = snapshot(store, 'e2e-genre-pick')['revision']
+        status, result = self.http('POST', '/api/worlds/e2e-genre-pick/edit', {
+            'revision': revision, 'operation': 'genre', 'target': None, 'values': {'template_id': 'momotaro'}})
+        self.assertEqual(status, 200, result)
+
+        saved = yaml.safe_load(store.read('world', 'e2e-genre-pick', 'world.yaml'))
+        self.assertEqual(saved['gapengine']['action_graph'], 'templates/momotaro/action_graph.yaml')
+        self.assertEqual(saved['gapengine']['effects'], 'templates/momotaro/effects.yaml')
+
+        preview = self.server.job_store.configs.preview(
+            {'label': 'e2e', 'project_id': 'e2e-genre-pick', 'template_id': 'momotaro'})
+        self.assertEqual(preview['preview']['world_name'], '桃太郎')
+
 
 if __name__=='__main__': unittest.main()

@@ -177,6 +177,33 @@ class WorldEditorTests(unittest.TestCase):
         status, error = self.submit('genre', {'template_id': 'basic'}, revision=revision)
         self.assertEqual(status, 409, error)
 
+    def test_genre_operation_rejects_path_traversal_ids(self):
+        # ".." resolves to store.repo itself under "templates" / "..", which
+        # is_dir() alone would accept -- identifier() must reject it (and any
+        # other non-identifier value) with a 400, not a 500 or a written
+        # path-traversing gapengine value.
+        before = self.current()['revision']
+        for template_id in ('..', '', '../projects', '../templates/basic'):
+            with self.subTest(template_id=template_id):
+                status, error = self.submit('genre', {'template_id': template_id})
+                self.assertEqual(status, 400, error)
+        self.assertEqual(before, self.current()['revision'])
+        world = self.current()['world']
+        self.assertNotIn('..', yaml.safe_dump(world))
+
+    def test_genre_operation_survives_non_dict_gapengine(self):
+        # A world.yaml with a corrupt/non-mapping gapengine (e.g. imported
+        # with "gapengine: something-else") must not 500 when a genre is
+        # picked afterward; the corrupt value is simply replaced.
+        store = LibraryStore(self.repo)
+        world = yaml.safe_load(store.read('world', 'momotaro', 'world.yaml'))
+        world['gapengine'] = 'not-a-mapping'
+        store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
+        status, result = self.submit('genre', {'template_id': 'basic'})
+        self.assertEqual(status, 200, result)
+        saved = yaml.safe_load((self.repo / 'projects/momotaro/world.yaml').read_text(encoding='utf-8'))
+        self.assertEqual(saved['gapengine']['action_graph'], 'templates/basic/action_graph.yaml')
+
     def test_failed_atomic_save_preserves_original(self):
         store=LibraryStore(self.repo)
         body={'revision':self.current()['revision'],'operation':'intro','target':None,'values':{'text':'test'}}

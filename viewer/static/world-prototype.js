@@ -22,6 +22,7 @@
   const entry = p => p.range?.entry || '未設定';
   const goal = p => (p?.goal?.target ? `${p.goal.target}${p.goal.deliver_to ? `を${p.goal.deliver_to}へ届ける` : 'を求める'}` : '未入力');
   const role = p => p.id === w.protagonist ? '主人公' : p.id === w.antagonist ? '敵役' : '';
+  const genreName = id => model.genres.find(g=>g.id===id)?.name || id;
   const edit = (key,label='編集') => model.editable ? `<button type="button" data-edit="${key}">✎ ${label}</button>` : '';
   const head = (title,action='') => `<div class="wp-section-head"><h2>${title}</h2>${action}</div>`;
   const title = (name,sub='',action='') => `<div class="wp-title"><h1 tabindex="-1">${esc(name)}</h1>${action}</div>${sub?`<p class="wp-subtitle">${esc(sub)}</p>`:''}`;
@@ -41,7 +42,7 @@
     const expansionHtml = expansionTemplate ? expansionTemplate.innerHTML : '';
     return title(model.name,'この世界の前提を確認する') +
       `<section class="wp-section">${head('どんな世界？',edit('overview'))}<p>${absent(model.overview)}</p></section>`+
-      `<section class="wp-section">${head('ジャンル',edit('genre'))}<p>${model.genre ? esc(model.genre) : '未設定（実行前に選んでください）'}</p></section>`+
+      `<section class="wp-section">${head('ジャンル',edit('genre'))}<p>${model.genre ? esc(genreName(model.genre)) : '未設定（実行前に選んでください）'}</p></section>`+
       `<div class="wp-columns"><section><h2>物語の出発点</h2><p>${hero?`${esc(hero.id)}は${esc(entry(hero))}にいる。`:'主人公は未指定です。'}</p></section><section><h2>目指す結末</h2><p>${esc(goal(hero))}</p></section></div>`+
       `<section class="wp-section">${head('この世界を構成するもの')}<button class="wp-jump" data-screen="people"><strong>登場人物</strong><span>${esc(people.map(p=>p.id).join('、')) || 'まだいません'}</span><span>→</span></button><button class="wp-jump" data-screen="places"><strong>場所</strong><span>${esc(zones.map(z=>z.name).join('、')) || 'まだありません'}</span><span>→</span></button><button class="wp-jump" data-screen="story"><strong>初期物語</strong><span>シミュレーション開始時点の導入・状況</span><span>→</span></button><button class="wp-jump" data-screen="time"><strong>時間</strong><span>${esc(time())}</span><span>→</span></button></section>`+
       `<details class="wp-section"><summary>詳しい世界設定</summary><p>状況別の定石・行動図鑑・設定ファイルは、<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced">詳細設定</a>で確認できます。</p></details>`+
@@ -142,13 +143,13 @@
     if (!model.editable || blocked) return;
     opener=trigger; changed=false;
     let name='',fields=[];
-    const field=(key,label,value,type='textarea',options=null)=>({key,label,value,type,options});
+    const field=(key,label,value,type='textarea',options=null,required=false)=>({key,label,value,type,options,required});
     if(key==='overview'||key==='intro'){
       name=key==='overview'?'世界の説明を編集':'導入文を編集';fields=[...(key==='overview'?[field('name','世界の名前',model.name,'text')]:[]),field('text','文章',model[key])];
       applyEdit=values=>({operation:key,target:null,values});
     }else if(key==='genre'){
       name='ジャンルを選ぶ';
-      fields=[field('template_id','ジャンル',model.genre||'','select',model.genres.map(g=>[g.id,g.name]))];
+      fields=[field('template_id','ジャンル',model.genre||'','select',[['','選んでください'],...model.genres.map(g=>[g.id,g.name])],true)];
       applyEdit=values=>({operation:'genre',target:null,values});
     }else if(key==='time'){
       name='時間の範囲を編集';fields=[field('days','日数',w.time?.days||16,'number'),field('slots','時間帯（読点で区切る）',(w.time?.slots||[]).join('、'),'text')];
@@ -172,7 +173,7 @@
       applyEdit=v=>({operation:'route',target:{from:zones[place].name,index:Number(key.split(':')[1])},values:{item:v.item,cost:Number(v.cost)}});
     }else return;
     document.getElementById('wp-dialog-title').textContent=name;
-    document.getElementById('wp-fields').innerHTML=fields.map(f=>`<label for="wp-field-${f.key}">${esc(f.label)}</label>`+(f.type==='textarea'?`<textarea id="wp-field-${f.key}" name="${f.key}">${esc(f.value)}</textarea>`:f.type==='select'?`<select id="wp-field-${f.key}" name="${f.key}">${f.options.map(([value,label])=>`<option value="${esc(value)}" ${value===f.value?'selected':''}>${esc(label)}</option>`).join('')}</select>`:`<input id="wp-field-${f.key}" name="${f.key}" type="${f.type}" value="${esc(f.value)}" ${f.type==='number'?`min="${f.key==='cost'?'0.0001':'1'}" step="${f.key==='cost'?'any':'1'}" max="10000" required`:''}>`)).join('')+'<p id="wp-edit-error" role="alert"></p>';
+    document.getElementById('wp-fields').innerHTML=fields.map(f=>`<label for="wp-field-${f.key}">${esc(f.label)}</label>`+(f.type==='textarea'?`<textarea id="wp-field-${f.key}" name="${f.key}">${esc(f.value)}</textarea>`:f.type==='select'?`<select id="wp-field-${f.key}" name="${f.key}" ${f.required?'required':''}>${f.options.map(([value,label])=>`<option value="${esc(value)}" ${value===f.value?'selected':''}>${esc(label)}</option>`).join('')}</select>`:`<input id="wp-field-${f.key}" name="${f.key}" type="${f.type}" value="${esc(f.value)}" ${f.type==='number'?`min="${f.key==='cost'?'0.0001':'1'}" step="${f.key==='cost'?'any':'1'}" max="10000" required`:''}>`)).join('')+'<p id="wp-edit-error" role="alert"></p>';
     dialog.showModal();
   }
   root.addEventListener('click',e=>{
