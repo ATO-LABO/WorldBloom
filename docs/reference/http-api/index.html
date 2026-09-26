@@ -816,6 +816,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../usage/import-world/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    世界を ZIP から取り込む
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/run-settings/" class="md-nav__link">
         
   
@@ -1767,12 +1795,12 @@
 <tr>
 <td>POST</td>
 <td><code>/api/worlds</code></td>
-<td>世界の新規作成</td>
+<td>世界の新規作成（<code>mode</code>: <code>new</code>|<code>copy</code>|<code>import</code>。<code>import</code> はZIPからの取り込み）</td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/worlds/&lt;id&gt;/edit</code></td>
-<td>世界の編集（画面の「世界を編集」）</td>
+<td>世界の編集（画面の「世界を編集」。<code>operation: genre</code> でジャンルの選択・変更も行う）</td>
 </tr>
 <tr>
 <td>POST</td>
