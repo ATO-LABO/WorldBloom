@@ -489,6 +489,49 @@ class RouteTriggerTests(unittest.TestCase):
             self.assertEqual(triggers[0]["runs"], runs)
             self.assertGreaterEqual(triggers[0]["count"], n)
 
+    def test_exemplar_outside_the_run_layers_pattern_is_still_scanned_for_whiff(self) -> None:
+        # S1 review 2 required fix C2: an exemplar whose own layers_path
+        # doesn't match _RUN_LAYERS_RE (so it's in `paths` but not in
+        # `route_paths`) must still be read for whiff -- the pre-fix code
+        # only ever iterated route_paths whenever it was given, silently
+        # dropping this file out of the scan entirely.
+        with tempfile.TemporaryDirectory() as tmp:
+            experiment_dir = Path(tmp)
+            n = world_demand.WHIFFS_MIN
+
+            def _write(rel_path, decisions):
+                path = experiment_dir / rel_path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in self._rows(decisions)),
+                    encoding="utf-8",
+                )
+
+            exemplar_rel = "custom/exemplar/layers.jsonl"  # does not match _RUN_LAYERS_RE
+            _write(exemplar_rel, [
+                ("investigate", {"explanation": {"zone": "海"}, "effective": False, "result": "invalid"})
+                for _ in range(n)
+            ])
+            archive = {"cells": {"0": {"exemplar": {"layers_path": exemplar_rel}}}}
+            (experiment_dir / "archive.json").write_text(json.dumps(archive), encoding="utf-8")
+
+            report = world_demand.build_report(experiment_dir)  # exemplars mode (default)
+
+            self.assertEqual(report["population"]["mode"], "exemplars")
+            self.assertEqual(report["files"], 1)
+            self.assertEqual(report["skipped_paths"], 0)
+            self.assertEqual(report["subject_decisions"], n)
+            whiff = [t for t in report["triggers"] if t["kind"] == "whiff"]
+            self.assertEqual(len(whiff), 1)
+            self.assertEqual(whiff[0]["zone"], "海")
+
+            # And the missing-file half of the same fix: skipped_paths must
+            # count this exemplar too when its file is simply absent.
+            (experiment_dir / "custom" / "exemplar" / "layers.jsonl").unlink()
+            report_missing = world_demand.build_report(experiment_dir)
+            self.assertEqual(report_missing["files"], 0)
+            self.assertEqual(report_missing["skipped_paths"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

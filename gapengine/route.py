@@ -2283,8 +2283,14 @@ def _can_forcibly_take(
     material)."""
 
     if "fight" in subject.verbs and _is_hostile(subject, holder, world):
+        # S1 review 2 recommended fix R1: present_subjects(subject.zone), not
+        # holder.zone -- mirrors plan()'s own _acquire_from_subject and the
+        # old _blocked_take, both of which read the *acting* subject's own
+        # zone here. The two only differ once holder.zone != subject.zone
+        # (a reachable-but-not-yet-there holder), where this function's own
+        # "mirrors _acquire_from_subject" docstring claim didn't actually hold.
         probability = _believed_win_probability(
-            subject, holder, world, world.present_subjects(holder.zone)
+            subject, holder, world, world.present_subjects(subject.zone)
         )
         if probability > 0.0:
             return True  # a long fight still eventually wins
@@ -2302,9 +2308,10 @@ def _blocked_take(
 ) -> BlockedResult:
     """Only ``_blocked_on``'s own top-level acquire step calls this
     (``is_objective=True``) -- ``_blocked_item``'s nested holder branch
-    inlines the same reach/take-or-not shape itself so it can bucket a
-    reachable-but-untakeable holder into its own ``holders`` list instead
-    of a generic nested nested requirement (M1)."""
+    inlines the same reach/take-or-not shape itself so it can bucket every
+    believed-other-holder (S1 review 2 C1: reachable-but-untakeable,
+    unreachable, or nested-blocked alike) into its own ``holders`` list
+    instead of a generic nested requirement (M1)."""
 
     holder_blocked = _blocked_zone(subject, world, holder.zone, visiting)
     if holder_blocked is not None:
@@ -2425,14 +2432,21 @@ def _blocked_item(
         holder_subject = world.subjects[holder_id]
         if _holder_appears_to_have(subject, holder_subject, item, world):
             holder_blocked = _blocked_zone(subject, world, holder_subject.zone, visiting)
-            if holder_blocked is None:
-                if _can_forcibly_take(subject, holder_subject, world, is_objective=False):
-                    return None
-                holders.append(holder_id)
-            elif holder_blocked[0] == "reach":
-                zones.add(holder_blocked[1])
-            else:
-                nested.append(holder_blocked)
+            if holder_blocked is None and _can_forcibly_take(subject, holder_subject, world, is_objective=False):
+                return None
+            # S1 review 2 required fix C1: `holders` names every other
+            # holder believed to have the item (M1's own spec), regardless
+            # of whether their zone happens to be reachable right now --
+            # the pre-fix code only ever added a holder when their zone was
+            # reachable-but-untakeable, silently dropping 424/1801 (23.5%)
+            # of the real data's held_by entries whose holder's zone was
+            # itself unreachable or nested-blocked.
+            holders.append(holder_id)
+            if holder_blocked is not None:
+                if holder_blocked[0] == "reach":
+                    zones.add(holder_blocked[1])
+                else:
+                    nested.append(holder_blocked)
 
     if nested:
         return nested[0]

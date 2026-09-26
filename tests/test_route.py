@@ -434,6 +434,30 @@ class BlockedOnTests(unittest.TestCase):
         self.assertEqual(result["blocked_detail"]["zones"], ["村"])
         self.assertEqual(result["blocked_detail"]["reason"], "sources_unreachable")
 
+    def test_held_by_includes_a_holder_whose_own_zone_is_currently_unreachable(self) -> None:
+        # S1 review 2 required fix C1: `held_by` names every other holder
+        # believed to have the item (M1's own spec), not only the ones whose
+        # zone happens to be reachable right now -- unlike the ally-holding
+        # test above (犬, at 道中, reachable), おばあさん never leaves 村
+        # (subjects/02_obaasan.yaml's range.zones == [村]), itself excluded
+        # here (momotaro hasn't got the treasure yet). The pre-fix code
+        # dropped a holder from held_by whenever their own zone was
+        # unreachable or nested-blocked (real sweep data: 424/1801, 23.5%,
+        # went missing this way -- おばあさん and おじいさん never appeared
+        # at all).
+        self.momotaro.zone = "道中"
+        self.subjects["おばあさん"].inventory["縄"] = 1
+        action = Action("fight", ("キジ",), {"target": "キジ"})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects("道中"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "lost")
+        self.assertEqual(result["blocked_on"], "has_item:縄")
+        self.assertEqual(result["blocked_detail"]["held_by"], ["おばあさん"])
+        self.assertEqual(result["blocked_detail"]["zones"], ["村"])
+        self.assertEqual(result["blocked_detail"]["reason"], "sources_unreachable")
+
     def test_reach_only_when_treasure_already_held_and_destination_has_no_path_at_all(self) -> None:
         # M1: "reach:" only ever names the delivery destination or the
         # believed holder's own zone, and only when there is genuinely no
@@ -454,6 +478,28 @@ class BlockedOnTests(unittest.TestCase):
         self.assertEqual(result["kind"], "lost")
         self.assertEqual(result["blocked_on"], "reach:村")
         self.assertEqual(result["blocked_detail"], {"reason": "destination_unreachable"})
+
+    def test_reach_requirement_when_the_believed_holders_own_zone_is_unreachable(self) -> None:
+        # S1 review 2 R5: no unit test previously covered
+        # holder_zone_unreachable (only destination_unreachable, above).
+        # Unlike test_reach_requirement_when_the_only_source_zone_is_excluded
+        # (an item-gated route still has *a* path, so _blocked_zone digs into
+        # the nested has_item requirement instead), severing 鬼ヶ島's only
+        # incoming edge leaves genuinely no path there at all -- _blocked_zone
+        # returns a bare ("reach", "鬼ヶ島", {}) immediately, before any
+        # item-gating is even inspected.
+        self.momotaro.zone = "道中"
+        self.world.routes["海"] = tuple(
+            route for route in self.world.routes["海"] if route.destination != "鬼ヶ島"
+        )
+        action = Action("fight", ("キジ",), {"target": "キジ"})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects("道中"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "lost")
+        self.assertEqual(result["blocked_on"], "reach:鬼ヶ島")
+        self.assertEqual(result["blocked_detail"], {"reason": "holder_zone_unreachable"})
 
     def test_m2_delivery_leg_ignores_current_exclusion_like_plan_does(self) -> None:
         # M2 regression: holding 縄 (not yet the treasure) at 道中, the real
