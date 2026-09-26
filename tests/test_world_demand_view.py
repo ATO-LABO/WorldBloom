@@ -180,6 +180,27 @@ class WorldDemandViewTests(unittest.TestCase):
         rendered = world_demand_view.demand_block(self.repository, self.experiment, propose_run="exp-viewer")
         self.assertIn('data-patch-action="propose" data-run="exp-viewer" data-trigger="2"', rendered)
 
+    def test_ignorance_and_blocked_triggers_are_skipped_until_stage_2_4(self) -> None:
+        # WB-WORLDGROW-002 S1: this card only ever renders "whiff" triggers
+        # (verb/whiffs-shaped) -- an "ignorance"/"blocked" one from a
+        # route-wired run must not blow up _trigger_li nor shift the whiff
+        # trigger's own raw index (kept from test_raw_index_survives_a_
+        # non_mapping_trigger's same "non-Mapping counts toward the index"
+        # contract -- kind-skipped entries count the same way).
+        _write_json(self.experiment / "world_demand.json", {
+            "schema_version": 2, "zones": [],
+            "triggers": [
+                {"kind": "ignorance", "zone": "森", "count": 20, "share": 0.5},
+                {"kind": "whiff", "zone": "海", "verb": "investigate", "count": 3, "whiffs": 3, "wasted_share": 0.5},
+                {"kind": "blocked", "requirement": "reach:村", "count": 20, "share": 1.0, "zones": [["道中", 20]]},
+            ]})
+        rendered = world_demand_view.demand_block(self.repository, self.experiment, propose_run="exp-viewer")
+        self.assertIn("investigate", rendered)
+        self.assertNotIn("ignorance", rendered)
+        self.assertNotIn("blocked", rendered)
+        self.assertNotIn("reach:村", rendered)
+        self.assertIn('data-patch-action="propose" data-run="exp-viewer" data-trigger="1"', rendered)
+
     def test_time_estimate_needs_an_investigate_trigger(self) -> None:
         _write_json(self.experiment / "world_demand.json", {
             "schema_version": 1, "zones": [],

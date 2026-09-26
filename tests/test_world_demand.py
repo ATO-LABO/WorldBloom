@@ -243,13 +243,146 @@ class WorldDemandTest(unittest.TestCase):
 
             report = world_demand.build_report(experiment_dir, use_all=True)
 
-            self.assertEqual(report["schema_version"], 1)
+            self.assertEqual(report["schema_version"], 2)
             self.assertEqual(report["thresholds"], {
                 "whiff_rate_min": world_demand.WHIFF_RATE_MIN,
                 "wasted_share_min": world_demand.WASTED_SHARE_MIN,
                 "whiffs_min": world_demand.WHIFFS_MIN,
+                "ignorance_min": world_demand.IGNORANCE_MIN,
+                "ignorance_share_min": world_demand.IGNORANCE_SHARE_MIN,
+                "blocked_min": world_demand.BLOCKED_MIN,
+                "blocked_share_min": world_demand.BLOCKED_SHARE_MIN,
             })
             self.assertIsNone(report["archive"])  # no archive.json in this fixture
+            # WB-WORLDGROW-002 S1: no row here carries a policy.route dict
+            # (route-free/rho=0 run) -- the new keys come back empty, and
+            # nothing above (triggers/zones/verb_counts) is affected.
+            self.assertEqual(report["route_counts"], {})
+            self.assertEqual(report["blocked_counts"], {})
+            self.assertEqual([t["kind"] for t in report["triggers"] if t["kind"] != "whiff"], [])
+
+
+def _route(kind, cause=None, blocked_on=None):
+    return {"policy": {"route": {"kind": kind, "cause": cause, "blocked_on": blocked_on,
+                                  "h": [None, None], "plan": None, "milestone": None,
+                                  "text": "使われない"}}}
+
+
+class RouteTriggerTests(unittest.TestCase):
+    """WB-WORLDGROW-002 S1: the two new trigger kinds read from
+    policy.route -- 'ignorance' (detour/cause=ignorance clustered in a
+    zone) and 'blocked' (lost/blocked_on repeated for the same
+    requirement). whiff's own trigger shape/order/index is untouched."""
+
+    def _rows(self, decisions):
+        rows = [{"kind": "header", "protagonist": "たろう"}]
+        for verb, extra in decisions:
+            fields = {"kind": "decision", "subject": "たろう", "verb": verb, "result": "ok"}
+            fields.update(extra)
+            rows.append(_row(**fields))
+        return rows
+
+    def _collect(self, decisions):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "layers.jsonl"
+            path.write_text(
+                "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in self._rows(decisions)),
+                encoding="utf-8",
+            )
+            return world_demand.collect([path])
+
+    def test_ignorance_trigger_requires_both_thresholds(self) -> None:
+        n = world_demand.IGNORANCE_MIN
+        # 森: n ignorance decisions out of exactly n (share=1.0) -- triggers.
+        decisions = [
+            ("investigate", {"explanation": {"zone": "森"}, **_route("detour", "ignorance")})
+            for _ in range(n)
+        ]
+        # 海: n-1 ignorance decisions -- below IGNORANCE_MIN, must not trigger.
+        decisions += [
+            ("investigate", {"explanation": {"zone": "海"}, **_route("detour", "ignorance")})
+            for _ in range(n - 1)
+        ]
+        # 村: n ignorance decisions, but padded with advance decisions so
+        # share (n / (n+3n)) stays below IGNORANCE_SHARE_MIN -- must not trigger.
+        decisions += [
+            ("investigate", {"explanation": {"zone": "村"}, **_route("detour", "ignorance")})
+            for _ in range(n)
+        ]
+        decisions += [
+            ("move", {"explanation": {"zone": "村"}, **_route("advance")})
+            for _ in range(3 * n)
+        ]
+        report = self._collect(decisions)
+        triggers = {t["zone"] for t in report["triggers"] if t["kind"] == "ignorance"}
+        self.assertEqual(triggers, {"森"})
+        forest = next(t for t in report["triggers"] if t["kind"] == "ignorance")
+        self.assertEqual(forest["count"], n)
+        self.assertEqual(forest["share"], 1.0)
+        self.assertEqual(report["route_counts"]["森"], {"detour:ignorance": n})
+
+    def test_blocked_trigger_requires_both_thresholds(self) -> None:
+        n = world_demand.BLOCKED_MIN
+        # 縄 is blocked n times out of exactly n lost decisions (share=1.0).
+        decisions = [
+            ("fight", {"explanation": {"zone": "道中"}, **_route("lost", blocked_on="has_item:縄")})
+            for _ in range(n)
+        ]
+        report = self._collect(decisions)
+        triggers = [t for t in report["triggers"] if t["kind"] == "blocked"]
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(triggers[0]["requirement"], "has_item:縄")
+        self.assertEqual(triggers[0]["count"], n)
+        self.assertEqual(triggers[0]["share"], 1.0)
+        self.assertEqual(triggers[0]["zones"], [("道中", n)])
+        self.assertEqual(report["blocked_counts"]["has_item:縄"], {"count": n, "zones": {"道中": n}})
+
+    def test_blocked_below_share_min_does_not_trigger(self) -> None:
+        n = world_demand.BLOCKED_MIN
+        # has_item:縄 blocked n times, but padded with other lost decisions
+        # (a different, never-repeating requirement each time) so its own
+        # share of all lost decisions drops below BLOCKED_SHARE_MIN.
+        decisions = [
+            ("fight", {"explanation": {"zone": "道中"}, **_route("lost", blocked_on="has_item:縄")})
+            for _ in range(n)
+        ]
+        decisions += [
+            ("fight", {"explanation": {"zone": "道中"}, **_route("lost", blocked_on=f"knows:x{i}")})
+            for i in range(3 * n)
+        ]
+        report = self._collect(decisions)
+        self.assertEqual([t for t in report["triggers"] if t["kind"] == "blocked"], [])
+
+    def test_lost_without_blocked_on_is_counted_but_never_a_requirement(self) -> None:
+        # blocked_on is None whenever _blocked_on couldn't name a single
+        # requirement (S1 §3.5 design judgment) -- these still count toward
+        # lost_total (the share denominator) but never appear as a trigger.
+        decisions = [
+            ("fight", {"explanation": {"zone": "道中"}, **_route("lost")})
+            for _ in range(world_demand.BLOCKED_MIN)
+        ]
+        report = self._collect(decisions)
+        self.assertEqual(report["blocked_counts"], {})
+        self.assertEqual([t for t in report["triggers"] if t["kind"] == "blocked"], [])
+
+    def test_whiff_trigger_order_and_index_are_unaffected_by_new_kinds(self) -> None:
+        # A route-carrying run that also clears the whiff thresholds --
+        # whiff must stay first and keep its own (zone, verb) content;
+        # ignorance/blocked are only ever appended after it.
+        n = max(world_demand.IGNORANCE_MIN, world_demand.WHIFFS_MIN)
+        decisions = [
+            ("investigate", {"explanation": {"zone": "海"}, "effective": False, "result": "invalid"})
+            for _ in range(n)
+        ]
+        decisions += [
+            ("investigate", {"explanation": {"zone": "森"}, **_route("detour", "ignorance")})
+            for _ in range(n)
+        ]
+        report = self._collect(decisions)
+        self.assertEqual(report["triggers"][0]["kind"], "whiff")
+        self.assertEqual(report["triggers"][0]["zone"], "海")
+        self.assertEqual(report["triggers"][0]["verb"], "investigate")
+        self.assertEqual(report["triggers"][1]["kind"], "ignorance")
 
 
 if __name__ == "__main__":

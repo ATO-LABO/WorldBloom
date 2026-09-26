@@ -184,12 +184,22 @@ def demand_block(repository: "data.RunRepository", experiment: Any, state: Any =
             '（実行設定の「世界の拡張」を「検知のみ」か「承認済みの拡張を適用」にして回した実験で出ます）。</p></section>'
         )
 
-    triggers = data._as_list(report.get("triggers"))
-    if triggers:
-        rows = "".join(_trigger_li(index, t, propose_run) for index, t in enumerate(triggers) if isinstance(t, Mapping))
+    # WB-WORLDGROW-002 S1: world_demand.collect() now also returns
+    # "ignorance"/"blocked" triggers (shaped differently -- no verb/whiffs)
+    # on a route-wired run. Rendering them is stage 2-4's own work
+    # (gapengine/world_patch_propose.py etc.); until then this card skips
+    # them by kind the same way it already skips a non-Mapping entry --
+    # the raw index (which the propose button keys off) still counts every
+    # entry, whiff or not.
+    all_triggers = data._as_list(report.get("triggers"))
+    whiff_triggers = [
+        (index, t) for index, t in enumerate(all_triggers)
+        if isinstance(t, Mapping) and t.get("kind", "whiff") == "whiff"
+    ]
+    if whiff_triggers:
+        rows = "".join(_trigger_li(index, t, propose_run) for index, t in whiff_triggers)
         # Only where a button actually appears -- the estimate alone would hang in the air.
-        can_propose = propose_run and any(
-            isinstance(t, Mapping) and t.get("verb") == "investigate" for t in triggers)
+        can_propose = propose_run and any(t.get("verb") == "investigate" for _, t in whiff_triggers)
         note = _PROPOSE_TIME_NOTE if can_propose else ""
         trigger_html = f"{note}<ul>{rows}</ul>"
     else:

@@ -2202,6 +2202,237 @@ def _lost_text(cause: str, reason: str | None = None) -> str:
     return "先の見えないまま動いた"
 
 
+# ---------------------------------------------------------------------------
+# WB-WORLDGROW-002 S1: naming the one requirement a "lost" (h==inf) plan is
+# stuck on, for gapengine/world_demand.py's "blocked" trigger. Diagnostic
+# only -- called from annotate() strictly *after* is_lost is already true
+# (h/kind/cause are already decided), so nothing here can feed back into
+# classification, weights, or rng; a wrong or missing answer only means a
+# demand-report row is blank, never a wrong decision.
+#
+# ponytail: reimplements _acquire's/_acquire_from_subject's branch *shape*
+# (fixed order: craft's fact then materials, investigate sources, trial
+# grants, take-from-holder) without their exact cost math (win-probability
+# comparisons, gene-weighted route choice) -- good enough to name the single
+# requirement with no path at all, not to reproduce plan()'s own h. Trial
+# reveal-fact gating and route requires_item gating ARE followed (they can
+# make an otherwise-open branch a dead end); stance/offer gaps never are,
+# because raising stance is always eventually possible in the real planner
+# too (_STANCE_RAISE_COST is finite, never INF). If a spot check ever finds
+# this naming a different requirement than the real plan() is stuck on,
+# fix this function -- nothing downstream of "lost" itself depends on it.
+def _blocked_zone(
+    subject: Subject,
+    world: World,
+    dest: str,
+    visiting: frozenset[Any],
+    *,
+    origin: str | None = None,
+) -> str | None:
+    """None when ``dest`` is reachable (not the blocker); otherwise the one
+    requirement (a route's ``requires_item``, or ``dest`` itself when no
+    path exists at all) standing in the way."""
+
+    origin_zone = subject.zone if origin is None else origin
+    if origin_zone == dest:
+        return None
+    excluded = frozenset(world._excluded_zones(subject))
+    edges = _shortest_route_path(world, origin_zone, dest, excluded)
+    if edges is None:
+        return f"reach:{dest}"
+    for route in edges:
+        item = route.requires_item
+        if item is not None and not subject.has_item(item):
+            return _blocked_item(item, subject, world, visiting)
+    return None
+
+
+def _blocked_take(
+    item: str,
+    holder: Subject,
+    subject: Subject,
+    world: World,
+    visiting: frozenset[Any],
+    *,
+    is_objective: bool,
+) -> str | None:
+    """Mirrors ``_acquire_from_subject``'s own branch shape (fight vs.
+    negotiate only -- craft/investigate/trial never apply to taking a
+    specific item directly from a named holder). Negotiate, once reachable,
+    never dead-ends here (a stance raise is always finite-cost in the real
+    planner -- see module note above)."""
+
+    holder_blocked = _blocked_zone(subject, world, holder.zone, visiting)
+    if holder_blocked is not None:
+        return holder_blocked
+    if "fight" in subject.verbs and _is_hostile(subject, holder, world):
+        probability = _believed_win_probability(
+            subject, holder, world, world.present_subjects(subject.zone)
+        )
+        if probability > 0.0:
+            return None  # a long fight still eventually wins
+    if is_objective and "negotiate" in subject.verbs:
+        return None  # a trade offer, or raising stance, is always available once reached
+    return f"has_item:{item}"
+
+
+def _blocked_item(
+    item: str,
+    subject: Subject,
+    world: World,
+    visiting: frozenset[Any],
+    trial_reveal_facts: Mapping[str, str] = {},
+) -> str | None:
+    """None when some way to get ``item`` is open (not the blocker);
+    otherwise the single requirement (fixed order: craft, investigate,
+    trial, take-from-holder -- same order ``_acquire`` tries them) standing
+    in the way of the first branch that has any path defined at all."""
+
+    if subject.inventory.get(item, 0) >= 1:
+        return None
+    key = ("item", item)
+    if key in visiting:
+        return f"has_item:{item}"
+    visiting = visiting | {key}
+    definition = world.items.get(item, {})
+    candidates: list[str] = []
+
+    if item in world.recipes:
+        needed_fact = (definition.get("requires") or {}).get("knowledge")
+        fact_blocked = None
+        if needed_fact is not None and needed_fact not in subject.knowledge:
+            fact_blocked = _blocked_fact(str(needed_fact), subject, world, visiting)
+        material_blocked = None
+        if fact_blocked is None:
+            for material, qty in sorted(world.recipes[item].items()):
+                if subject.inventory.get(material, 0) >= qty:
+                    continue
+                material_blocked = _blocked_item(
+                    material, subject, world, visiting, trial_reveal_facts
+                )
+                if material_blocked is not None:
+                    break
+        if fact_blocked is None and material_blocked is None:
+            return None
+        candidates.append(fact_blocked or material_blocked)
+
+    for source in definition.get("sources", []) or []:
+        if source.get("type") != "investigate" or not source.get("zone"):
+            continue
+        zone_blocked = _blocked_zone(subject, world, str(source["zone"]), visiting)
+        if zone_blocked is None:
+            return None
+        candidates.append(zone_blocked)
+
+    for trial in world.trials:
+        grants = trial.get("grants") or {}
+        if str(grants.get("item", "")) != item:
+            continue
+        giver_id = str(trial.get("giver", ""))
+        giver = world.subjects.get(giver_id)
+        if giver is None or giver_id == subject.id:
+            continue
+        reveal_fact = trial_reveal_facts.get(giver_id)
+        reveal_blocked = None
+        if reveal_fact is not None and reveal_fact not in subject.knowledge:
+            reveal_blocked = _blocked_fact(reveal_fact, subject, world, visiting)
+        giver_blocked = (
+            _blocked_zone(subject, world, giver.zone, visiting)
+            if reveal_blocked is None
+            else None
+        )
+        required_item = (trial.get("requires") or {}).get("item")
+        item_blocked = None
+        if reveal_blocked is None and giver_blocked is None and required_item is not None:
+            item_blocked = _blocked_item(
+                str(required_item), subject, world, visiting, trial_reveal_facts
+            )
+        if reveal_blocked is None and giver_blocked is None and item_blocked is None:
+            return None
+        candidates.append(reveal_blocked or giver_blocked or item_blocked)
+
+    holder_id = world.holder(item)
+    if holder_id is not None and holder_id != subject.id and holder_id in world.subjects:
+        holder_subject = world.subjects[holder_id]
+        if _holder_appears_to_have(subject, holder_subject, item, world):
+            holder_blocked = _blocked_take(
+                item, holder_subject, subject, world, visiting, is_objective=False
+            )
+            if holder_blocked is None:
+                return None
+            candidates.append(holder_blocked)
+
+    return candidates[0] if candidates else f"has_item:{item}"
+
+
+def _blocked_fact(
+    fact_id: str, subject: Subject, world: World, visiting: frozenset[Any]
+) -> str | None:
+    """None when some investigate source for ``fact_id`` is reachable (not
+    the blocker); otherwise ``knows:<fact_id>`` -- no source is itself ever
+    a nested item/fact requirement (facts have no craft/trial branch)."""
+
+    if fact_id in subject.knowledge:
+        return None
+    key = ("fact", fact_id)
+    if key in visiting:
+        return f"knows:{fact_id}"
+    visiting = visiting | {key}
+    for source in world.facts.get(fact_id, {}).get("sources", []) or []:
+        if source.get("type") != "investigate":
+            continue
+        zone = source.get("zone")
+        agent = source.get("agent")
+        if zone is not None:
+            travel_zone = str(zone)
+        elif agent is not None:
+            agent_subject = world.subjects.get(str(agent))
+            if agent_subject is None:
+                continue
+            travel_zone = agent_subject.zone
+        else:
+            continue
+        if _blocked_zone(subject, world, travel_zone, visiting) is None:
+            return None
+    return f"knows:{fact_id}"
+
+
+def _blocked_on(
+    subject: Subject,
+    world: World,
+    holder_belief_fact: str | None,
+    trial_reveal_facts: Mapping[str, str],
+) -> str | None:
+    """Best-effort single requirement a "lost" plan (``h`` None or INF) is
+    stuck on -- ``has_item:<item>``, ``knows:<fact>``, or ``reach:<zone>``.
+    None when no single requirement can be named (no goal at all, or even
+    the believed holder is unknown -- S1 §3.5 design judgment: naming
+    nothing is preferable to guessing)."""
+
+    target = subject.goal.target
+    if target is None:
+        return None
+    if subject.has_item(target):
+        deliver_to = subject.goal.deliver_to
+        if deliver_to is None:
+            return None
+        return _blocked_zone(subject, world, deliver_to, frozenset())
+    believed_holder_id = _believed_holder(subject, world, target, holder_belief_fact)
+    if believed_holder_id is None or believed_holder_id not in world.subjects:
+        return None
+    holder_subject = world.subjects[believed_holder_id]
+    acquire_blocked = _blocked_take(
+        target, holder_subject, subject, world, frozenset(), is_objective=True
+    )
+    if acquire_blocked is not None:
+        return acquire_blocked
+    if subject.goal.deliver_to is not None:
+        return _blocked_zone(
+            subject, world, subject.goal.deliver_to, frozenset(), origin=holder_subject.zone
+        )
+    return None
+
+
 def annotate(
     subject: Subject,
     world: World,
@@ -2282,6 +2513,11 @@ def annotate(
     # or INF -- every considered branch failed) has nothing to say; every
     # candidate is "lost" and m_route never modulates it.
     is_lost = h_before is None or h_before == INF
+
+    # S1 §1: computed only in the (rare) lost branch, purely for
+    # gapengine/world_demand.py's "blocked" trigger -- see _blocked_on's own
+    # docstring for why this can never affect kind/cause/h/rng above.
+    blocked_on = _blocked_on(subject, world, holder_belief_fact, trial_reveal_facts or {}) if is_lost else None
 
     # S1 §1.1: precompute once per decision point (not per candidate) which
     # leaves are actionable right here, and -- if none are -- the nearest
@@ -2436,6 +2672,7 @@ def annotate(
                     "cause": cause,
                     "h": [None, None],
                     "text": _lost_text(cause, reason),
+                    "blocked_on": blocked_on,
                 }
             )
             continue

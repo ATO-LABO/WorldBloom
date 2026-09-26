@@ -46,9 +46,22 @@ def _print_table(report: dict) -> None:
     triggers = report.get("triggers") or []
     if not triggers:
         print("    拡張トリガーなし")
+    # WB-WORLDGROW-002 S1: "ignorance"/"blocked" (route-wired runs only)
+    # are shaped differently from the original "whiff" trigger -- printed
+    # plainly here (stage 2-4 owns the screen/proposal wording).
     for t in triggers:
-        print(f"    {t['zone']} で {t['verb']}: {t['count']} 回中 {t['whiffs']} 回が空振り"
-              f"（空振り率 {t['whiff_rate']:.0%}、全滞在決定の {t['wasted_share']:.1%}）")
+        kind = t.get("kind", "whiff")
+        if kind == "whiff":
+            print(f"    [whiff] {t['zone']} で {t['verb']}: {t['count']} 回中 {t['whiffs']} 回が空振り"
+                  f"（空振り率 {t['whiff_rate']:.0%}、全滞在決定の {t['wasted_share']:.1%}）")
+        elif kind == "ignorance":
+            print(f"    [ignorance] {t['zone']}: 手探り {t['count']} 回"
+                  f"（その場所の道筋付き決定の {t['share']:.1%}）")
+        elif kind == "blocked":
+            print(f"    [blocked] {t['requirement']}: 見通しなし {t['count']} 回"
+                  f"（全見通しなし決定の {t['share']:.1%}、主な場所 {t['zones']}）")
+        else:
+            print(f"    [{kind}] {t}")
 
 
 def main(argv=None) -> int:

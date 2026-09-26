@@ -381,6 +381,109 @@ class S1CarryoverTests(unittest.TestCase):
         self.assertEqual(h_missing_two, 2.0)
 
 
+class BlockedOnTests(unittest.TestCase):
+    """WB-WORLDGROW-002 S1: a "lost" (h==inf) annotation's blocked_on --
+    the single requirement (has_item:.../knows:.../reach:...) the plan is
+    stuck on, for gapengine/world_demand.py's "blocked" trigger. Diagnostic
+    only (see route.py's _blocked_on docstring) -- these three are the
+    representative cases the S1 plan asks to spot-check, one per format."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+        self.momotaro = self.subjects["桃太郎"]
+
+    def test_reach_requirement_when_the_only_source_zone_is_excluded(self) -> None:
+        # Same fixture as S1CarryoverTests.test_unreachable_plan_is_kind_
+        # lost_not_detour: at 道中 without 縄, 鬼ヶ島 needs 船, 船 needs 縄,
+        # and 縄's only source (村) is excluded until the treasure is held
+        # -- the true root cause is 村 itself, not 縄 (has_item:縄 would
+        # still be correct but less specific than what actually blocks it).
+        self.momotaro.zone = "道中"
+        action = Action("fight", ("キジ",), {"target": "キジ"})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects("道中"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "lost")
+        self.assertEqual(result["blocked_on"], "reach:村")
+
+    def test_knows_requirement_when_a_craft_fact_has_no_source(self) -> None:
+        # 船 needs 造船術, which momotaro starts already knowing (world.yaml)
+        # and which has no investigate source at all -- forgetting it here
+        # makes 船 uncraftable regardless of materials (縄 held so that
+        # branch is ruled out), and there is nowhere in the world to relearn
+        # it, so the plan is stuck on the fact itself.
+        self.momotaro.zone = "道中"
+        self.momotaro.knowledge.discard("造船術")
+        self.momotaro.inventory["縄"] = 1
+        action = Action("fight", ("キジ",), {"target": "キジ"})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects("道中"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "lost")
+        self.assertEqual(result["blocked_on"], "knows:造船術")
+
+    def test_has_item_requirement_when_neither_fight_nor_negotiate_is_available(self) -> None:
+        # Standing right in front of 鬼 (holder reachable, nothing to
+        # travel), but with both verbs that could ever take the treasure
+        # from him removed -- _acquire_from_subject's options are
+        # genuinely empty, so the target itself (not a nested material) is
+        # the blocker.
+        self.momotaro.zone = "鬼ヶ島"
+        self.momotaro.inventory["船"] = 1
+        self.momotaro.verbs.discard("fight")
+        self.momotaro.verbs.discard("negotiate")
+        action = Action("rest", meta={"under_threat": False})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects("鬼ヶ島"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "lost")
+        self.assertEqual(result["blocked_on"], "has_item:鬼ヶ島の宝物")
+
+    def test_none_when_no_goal(self) -> None:
+        self.momotaro.goal.target = None
+        action = Action("rest", meta={"under_threat": False})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects(self.momotaro.zone),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "lost")
+        self.assertIsNone(result["blocked_on"])
+
+    def test_deterministic_and_read_only(self) -> None:
+        self.momotaro.zone = "道中"
+        before_inventory = dict(self.momotaro.inventory)
+        before_knowledge = set(self.momotaro.knowledge)
+        action = Action("fight", ("キジ",), {"target": "キジ"})
+        first = annotate(
+            self.momotaro, self.world, self.world.present_subjects("道中"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]["blocked_on"]
+        second = annotate(
+            self.momotaro, self.world, self.world.present_subjects("道中"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]["blocked_on"]
+        self.assertEqual(first, second)
+        self.assertEqual(self.momotaro.inventory, before_inventory)
+        self.assertEqual(self.momotaro.knowledge, before_knowledge)
+
+    def test_never_computed_when_not_lost(self) -> None:
+        # A finite-h decision's dict has no blocked_on key at all -- only
+        # "lost" results ever carry it (S1: computed strictly after is_lost
+        # is already decided, so it can never influence kind/cause/h here).
+        self.momotaro.zone = "森"
+        self.momotaro.inventory["縄"] = 1
+        action = Action("investigate", ("森",), {"target": "森", "gather": True})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects("森"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "advance")
+        self.assertNotIn("blocked_on", result)
+
+
 class RouteMultiplierTests(unittest.TestCase):
     """WB-ROUTE-001 S1 §2/§5: m_route = b**rho, and rho<=0 is a strict
     mathematical/behavioral no-op."""
