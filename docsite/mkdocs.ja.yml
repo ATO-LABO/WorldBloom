@@ -66,6 +66,7 @@ nav:
       - 道筋層: concepts/route-layer.md
   - 使い方:
       - 世界を作る: usage/create-world.md
+      - 世界を ZIP から取り込む: usage/import-world.md
       - 実行設定: usage/run-settings.md
       - 結果を読む: usage/read-results.md
       - 文章を生成する: usage/generate-text.md

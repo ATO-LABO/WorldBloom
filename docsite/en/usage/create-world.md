@@ -1,5 +1,5 @@
 ---
-ja_rev: "e06506590d92"
+ja_rev: "f9d48e6697b7"
 ---
 # Create a World
 
@@ -9,26 +9,27 @@ A "world" is the full setup a GA experiment runs on: characters, places, time, a
 
 Open this from the home screen ("**世界を選ぶ**", Pick a world) via "**＋ 新しい世界を作る**" (+ Create a new world).
 
-Choose one of two ways to create it:
+Choose one of three ways to create it:
 
 - **新しく作る** (Create new): start from an empty world. The genre defaults to the shared base rules (`basic`) and can be changed later.
 - **既存の世界から作る** (Create from an existing world): pick a source world from the list and copy its settings. The source world itself is unaffected. You can also pick a different genre (from a searchable list) at copy time.
+- **ZIPから取り込む** (Import from ZIP): import a `world.yaml`/`subjects/*.yaml` set built by an AI (Codex, Claude Code, Gemini, etc.) as a ZIP. See [Import a World from ZIP](import-world.md) for details.
 
-Fields common to both:
+Fields common to all three:
 
-- **世界の名前** (World name) — required, up to 120 characters
+- **世界の名前** (World name) — required, up to 120 characters (optional for "Import from ZIP" — if left blank, the `name` from the ZIP's `world.yaml` is used)
 - **世界の概要** (World overview) — optional, up to 8000 characters (this field only appears for "Create new")
 - Opening **詳細設定** (Advanced settings) lets you edit the **世界ID** (World ID): alphanumerics, hyphens and underscores only (1–96 characters); by default it's auto-filled as `world-` followed by 12 random characters
 
 Creating the world takes you to that world's **world settings screen** (below). Characters, places, and the initial story start out empty and are filled in afterward.
 
-## World settings screen (per-world tabs)
+## World settings screen (per-world tabs) { #world-settings }
 
 Opening a world (or clicking "世界を開く", Open world, from its card on the home screen) shows five tabs for viewing and editing its settings.
 
 | Tab | Contents |
 |---|---|
-| 世界の概要 (World overview) | Edit the name and overview. Any approved or proposed changes from world self-expansion (below) are shown here |
+| 世界の概要 (World overview) | Edit the name and overview. A world with no genre set (e.g. one created via [Import from ZIP](import-world.md)) can pick one here. Any approved or proposed changes from world self-expansion (below) are shown here |
 | 登場人物 (Characters) | View and edit each character's parameters (9 stats), starting position, etc. |
 | 場所 (Places) | The list of places (zones) and the connections between them |
 | 初期物語 (Initial story) | Edit the opening text (the situation at the start) |

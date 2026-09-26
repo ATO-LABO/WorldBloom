@@ -7,7 +7,7 @@ sources:
   - "viewer/workbench_pages.py"
   - "viewer/library_pages.py"
   - "viewer/run_catalog.py"
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+reviewed: "281fe6aede8ab22d63e61f07b5a7a6bd8280b5e0"
 ---
 # HTTP API
 
@@ -58,8 +58,8 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 
 | メソッド | パス | 用途 |
 |---|---|---|
-| POST | `/api/worlds` | 世界の新規作成 |
-| POST | `/api/worlds/<id>/edit` | 世界の編集（画面の「世界を編集」） |
+| POST | `/api/worlds` | 世界の新規作成（`mode`: `new`\|`copy`\|`import`。`import` はZIPからの取り込み） |
+| POST | `/api/worlds/<id>/edit` | 世界の編集（画面の「世界を編集」。`operation: genre` でジャンルの選択・変更も行う） |
 | POST | `/api/worlds/<id>/basics` | 世界の基本情報のみ保存 |
 | POST | `/api/worlds/<id>/files` | 世界配下のYAMLファイルを保存 |
 | POST | `/api/worlds/<id>/validate` | 世界のYAMLを検証（保存はしない） |

@@ -1,9 +1,13 @@
 ---
-ja_rev: "4991e96b42e4"
+ja_rev: "309301dd014d"
 ---
 # Changelog
 
 The main changes that matter from a user's point of view, in date order. This isn't a list of individual commits. Get the latest release artifacts from [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases).
+
+## 2026-09-27
+
+- Added "Import from ZIP" to world creation: bring in a `world.yaml`/`subjects/*.yaml` set built by an AI (Codex, Claude Code, Gemini, etc.) as a ZIP (see [Import a World from ZIP](../usage/import-world.md)). The genre can be omitted and picked later from the world settings screen
 
 ## 2026-09-26
 

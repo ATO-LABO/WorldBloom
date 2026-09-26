@@ -7,11 +7,14 @@ the already-tested execution.configs.ConfigStore.preview.
 """
 from __future__ import annotations
 
+import io
 import os
 import re
 import shutil
 import uuid
 import tempfile
+import zipfile
+import zlib
 from pathlib import Path
 
 import yaml
@@ -24,12 +27,145 @@ GENRE_FILES = ("action_graph.yaml", "canon.yaml", "effects.yaml", "qd.yaml", "ru
 
 _SUBJECT_REL = re.compile(r"subjects/([A-Za-z0-9_-]{1,64})\.yaml")
 _GENRE_PATH = re.compile(r"^templates/([A-Za-z0-9][A-Za-z0-9_-]{0,95})/")
+_ACTION_GRAPH_REL = re.compile(r"^templates/([A-Za-z0-9][A-Za-z0-9_-]{0,95})/action_graph\.yaml$")
+_EFFECTS_REL = re.compile(r"^templates/([A-Za-z0-9][A-Za-z0-9_-]{0,95})/effects\.yaml$")
 
 MAX_BYTES = 256 * 1024
 # rules.yaml/effects.yaml may be empty (execution/configs.py's _describe
 # already documents a missing/empty file as a fallback default); every other
 # library file must parse to a non-empty mapping or list.
 _ALLOW_EMPTY = {"rules.yaml", "effects.yaml"}
+
+MAX_ZIP_BYTES = 47 * 1024  # base64-encoded upload cap enforced by the caller (viewer/library_pages.py).
+MAX_ZIP_ENTRIES = 200  # ponytail: flat cap against many-small-entries amplification; raise if a real world needs more subjects.
+MAX_ZIP_TOTAL = 2 * 1024 * 1024  # decompressed total, on top of the per-entry MAX_BYTES cap (zip-bomb guard).
+
+
+def zip_to_files(raw: bytes) -> dict[str, str]:
+    """Turn an uploaded world ZIP into {rel: text}, ready for LibraryStore.import_world().
+
+    Never extracts to disk (each entry is read into memory and capped at
+    MAX_BYTES) so a crafted entry name can only ever land on "world.yaml" or
+    "subjects/<name>.yaml" -- the same two shapes _validate_rel already
+    allows -- regardless of what path the archive itself claims.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            return _zip_entries_to_files(archive)
+    except (zipfile.BadZipFile, zlib.error, RuntimeError, NotImplementedError, EOFError) as error:
+        # A corrupt deflate stream raises zlib.error, an encrypted entry
+        # raises RuntimeError, an unsupported compression method raises
+        # NotImplementedError, and a truncated archive can raise EOFError --
+        # none of these are zipfile.BadZipFile, so uncaught they'd propagate
+        # out of the HTTP handler as a bare 500 (server.py's do_POST only
+        # maps ConfigError/ForbiddenPath/MissingResource/BadRequest to a
+        # clean status; anything else becomes a dropped connection, which
+        # the create-world screen shows as "作成結果を確認できませんでした").
+        raise ConfigError("zip_base64", "ZIPとして読めません", code="bad_request") from error
+
+
+def _zip_entries_to_files(archive) -> dict[str, str]:
+    candidates = []  # (normalized_path, ZipInfo)
+    world_yaml_prefixes = []
+    for info in archive.infolist():
+        if info.is_dir():
+            continue
+        normalized = info.filename.replace("\\", "/")
+        if normalized.startswith("__MACOSX/"):
+            continue
+        basename = normalized.rsplit("/", 1)[-1]
+        if not basename or basename.startswith("."):
+            continue
+        candidates.append((normalized, info))
+        if basename == "world.yaml":
+            world_yaml_prefixes.append(normalized[: -len("world.yaml")])
+    if not world_yaml_prefixes:
+        raise ConfigError("zip_base64", "ZIPにworld.yamlがありません", code="bad_request")
+    shortest_length = min(len(prefix) for prefix in world_yaml_prefixes)
+    shortest_prefixes = {prefix for prefix in world_yaml_prefixes if len(prefix) == shortest_length}
+    if len(shortest_prefixes) > 1:
+        raise ConfigError("zip_base64", "world.yamlの場所が一意に決まりません", code="bad_request")
+    root_prefix = next(iter(shortest_prefixes))
+
+    files: dict[str, str] = {}
+    seen_casefold = set()
+    total = 0
+    for normalized, info in candidates:
+        if not normalized.startswith(root_prefix):
+            continue
+        rel = normalized[len(root_prefix):]
+        if rel != "world.yaml" and not _SUBJECT_REL.fullmatch(rel):
+            if rel.startswith("subjects/"):
+                raise ConfigError("zip_base64", f"{rel}: 対象外のファイル名です", code="bad_request")
+            continue
+        if rel in files or rel.casefold() in seen_casefold:
+            raise ConfigError("zip_base64", f"{rel}: ZIP内に重複しています", code="bad_request")
+        if len(files) >= MAX_ZIP_ENTRIES:
+            raise ConfigError("zip_base64", f"ファイル数が多すぎます（{MAX_ZIP_ENTRIES}件以内）", code="bad_request")
+        with archive.open(info) as stream:
+            data = stream.read(MAX_BYTES + 1)
+        if len(data) > MAX_BYTES:
+            raise ConfigError("zip_base64", f"{rel}: 256KB以内にしてください", code="bad_request")
+        total += len(data)
+        if total > MAX_ZIP_TOTAL:
+            raise ConfigError("zip_base64", "展開後の合計サイズが大きすぎます（2MB以内）", code="bad_request")
+        try:
+            files[rel] = data.decode("utf-8").lstrip("﻿")
+        except UnicodeDecodeError as error:
+            raise ConfigError("zip_base64", f"{rel}: UTF-8として読めません", code="bad_request") from error
+        seen_casefold.add(rel.casefold())
+    return files
+
+
+def _check_text(rel, text):
+    """The syntax/shape checks _write_file applies before touching disk --
+    factored out so import_world() can run them on ZIP-supplied text before
+    _publish_world() ever stages anything."""
+    if not isinstance(text, str) or len(text.encode("utf-8")) > MAX_BYTES:
+        raise ConfigError("content", "256KB以内のテキストを指定してください", code="bad_request")
+    try:
+        loaded = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise ConfigError("content", "YAMLとして読めません", code="bad_request") from error
+    name = rel.rsplit("/", 1)[-1]
+    if loaded is None and name not in _ALLOW_EMPTY:
+        raise ConfigError("content", "空にできないファイルです", code="bad_request")
+    if loaded is not None and not isinstance(loaded, (dict, list)):
+        raise ConfigError("content", "YAMLの形式が不正です", code="bad_request")
+
+
+def _import_genre(repo, world):
+    """gapengine キーが無ければ未設定（None）を返す。あれば action_graph・
+    effects のちょうど2キーで、両方が同じ templates/<id>/ を指し、その
+    ジャンルが実在することまで確認し、正規化した文字列を world に書き戻す。"""
+    gapengine = world.get("gapengine")
+    if gapengine is None:
+        world.pop("gapengine", None)  # "gapengine: null" must not persist as a literal null
+        return None
+    bad_shape = ConfigError("zip_base64", "gapengineはaction_graphとeffectsの2項目で指定してください", code="bad_request")
+    if not isinstance(gapengine, dict) or set(gapengine) != {"action_graph", "effects"}:
+        raise bad_shape
+    graph, effects = gapengine["action_graph"], gapengine["effects"]
+    bad_path = ConfigError(
+        "zip_base64",
+        "gapengine.action_graphはtemplates/<ジャンル>/action_graph.yamlの形で指定してください（effectsも同じジャンル）",
+        code="bad_request")
+    if not isinstance(graph, str) or not isinstance(effects, str):
+        raise bad_path
+    graph_match = _ACTION_GRAPH_REL.fullmatch(graph.replace("\\", "/"))
+    effects_match = _EFFECTS_REL.fullmatch(effects.replace("\\", "/"))
+    if not graph_match or not effects_match or graph_match.group(1) != effects_match.group(1):
+        raise bad_path
+    genre_id = graph_match.group(1)
+    if not (repo / "templates" / genre_id).is_dir():
+        raise ConfigError(
+            "zip_base64",
+            f'ZIPのジャンル「{genre_id}」（templates/{genre_id}/）がありません。'
+            '先にジャンルを作るか、world.yamlのgapengineを削除して未設定で取り込んでください',
+            code="bad_request")
+    world["gapengine"] = {"action_graph": f"templates/{genre_id}/action_graph.yaml",
+                          "effects": f"templates/{genre_id}/effects.yaml"}
+    return genre_id
 
 
 def _load_yaml_or_none(path):
@@ -149,17 +285,7 @@ class LibraryStore:
 
     def _write_file(self, kind, owner_id, rel, text):
         _validate_rel(kind, rel)
-        if not isinstance(text, str) or len(text.encode("utf-8")) > MAX_BYTES:
-            raise ConfigError("content", "256KB以内のテキストを指定してください", code="bad_request")
-        try:
-            loaded = yaml.safe_load(text)
-        except yaml.YAMLError as error:
-            raise ConfigError("content", "YAMLとして読めません", code="bad_request") from error
-        name = rel.rsplit("/", 1)[-1]
-        if loaded is None and name not in _ALLOW_EMPTY:
-            raise ConfigError("content", "空にできないファイルです", code="bad_request")
-        if loaded is not None and not isinstance(loaded, (dict, list)):
-            raise ConfigError("content", "YAMLの形式が不正です", code="bad_request")
+        _check_text(rel, text)
         base = self._base(kind, owner_id)
         if not base.is_dir():
             raise ConfigError(kind + "_id", "対象がありません", code="not_found")
@@ -209,7 +335,7 @@ class LibraryStore:
         _reject_symlinks(source)
         return self._publish_world(new_id, source=source, name=name, genre_id=genre_id)
 
-    def _publish_world(self, new_id, *, world=None, source=None, name=None, genre_id=None):
+    def _publish_world(self, new_id, *, world=None, source=None, name=None, genre_id=None, subjects=None):
         # Stage outside projects: listings never expose a half-created world.
         with directory_lock(self.repo / "projects"):
             dest = contained(self.repo / "projects", new_id)
@@ -238,9 +364,46 @@ class LibraryStore:
                     world["gapengine"] = graph
                 else:
                     (staged / "subjects").mkdir(parents=True)
+                    # ZIP import: subjects/ text is written verbatim (no
+                    # YAML re-dump), so a person file's comments survive the
+                    # trip -- unlike world.yaml below, which is always
+                    # re-serialized and therefore never keeps its comments.
+                    for rel, text in sorted((subjects or {}).items()):
+                        # write_bytes, not write_text: on Windows, write_text
+                        # re-translates "\n" to os.linesep, turning a CRLF
+                        # source ("\r\n") into "\r\r\n" and inserting a blank
+                        # line into every folded/literal YAML block scalar.
+                        (staged / rel).write_bytes(text.encode("utf-8"))
                 (staged / "world.yaml").write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
                 staged.rename(dest)
         return new_id
+
+    def import_world(self, new_id, *, files, name):
+        """Publish a world from ZIP-derived {rel: text} (execution.library.
+        zip_to_files output). Never re-serializes subjects/ text (keeps
+        author comments); world.yaml is re-parsed and re-dumped like every
+        other creation path, so its comments do not survive."""
+        identifier(new_id, "world_id")
+        if not isinstance(files, dict) or "world.yaml" not in files:
+            raise ConfigError("zip_base64", "ZIPにworld.yamlがありません", code="bad_request")
+        for rel, text in files.items():
+            _validate_rel("world", rel)
+            _check_text(rel, text)
+        world = yaml.safe_load(files["world.yaml"])
+        if not isinstance(world, dict):
+            raise ConfigError("content", "world.yamlの形式が不正です", code="bad_request")
+
+        form_name = self._text(name, "name", maximum=120)
+        if not form_name:
+            zip_name = world.get("name")
+            form_name = self._text(zip_name if isinstance(zip_name, str) else "", "name", maximum=120)
+        if not form_name:
+            raise ConfigError("name", "名前を入力してください（ZIPのnameも空です）", code="bad_request")
+        world["name"] = form_name
+
+        _import_genre(self.repo, world)
+        subjects = {rel: text for rel, text in files.items() if rel != "world.yaml"}
+        return self._publish_world(new_id, world=world, subjects=subjects)
 
     def update_world_basics(self, world_id, changes):
         if not isinstance(changes, dict) or not changes or set(changes) - {"name", "overview", "initial_story"}:
