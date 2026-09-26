@@ -1,5 +1,5 @@
 ---
-ja_rev: "0d8bf13aa19e"
+ja_rev: "c9226baf3fc0"
 ---
 
 # Install
@@ -68,4 +68,4 @@ The distributed exe files are unsigned, so SmartScreen may warn on first launch.
 
 ## Where the downloads actually live
 
-Distributed builds are on [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases). As of this writing the latest tag is `v1.0.0-viewer`, with two attached files: `WorldBloom-portable.zip` (Viewer) and `WorldBloom-Studio-portable.zip` (Studio).
+Distributed builds are on [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases). As of this writing the latest tag is `v1.1.0`, with two attached files: `WorldBloom-portable.zip` (Viewer) and `WorldBloom-Studio-portable.zip` (Studio).
