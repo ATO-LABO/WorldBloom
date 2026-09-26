@@ -621,3 +621,11 @@ details.we-usage p{margin:4px 0 0;padding:0 8px}
 
 [data-patch-job]{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
 [data-patch-job] [role="status"]{margin:0;flex:1 1 240px}
+
+/* WB-WORLDGROW-001 段階5c-2: epoch chain progress strip (viewer/epoch_view.py). */
+.epoch-chain-strip{border:1px solid var(--ws-line);border-radius:var(--ws-radius);background:var(--ws-panel-bg);padding:10px 16px;margin:0 24px 12px}
+.epoch-chain-status{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0}
+.epoch-chain-status button{font-size:13px;padding:6px 10px;min-height:0}
+.epoch-chain-history{margin-top:6px;font-size:13px;color:var(--rw-muted)}
+.epoch-chain-history ol{margin:6px 0 0;padding-left:20px}
+.epoch-chain-hint{color:var(--ws-confirm);margin:0 0 10px}

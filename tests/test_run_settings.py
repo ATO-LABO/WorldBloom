@@ -100,6 +100,77 @@ class RunSettingsTests(unittest.TestCase):
         self.assertIn('<option value="detect">', body)
         self.assertIn('<option value="expand">', body)
 
+    def test_growth_select_defaults_to_off_and_hides_the_extra_fields(self):
+        status, body, _ = self.get_status('/configs/new?project=romance')
+        self.assertEqual(status, 200, body)
+        self.assertIn('data-field="growth.mode"', body)
+        self.assertIn('data-field="growth.epochs"', body)
+        self.assertIn('data-field="growth.auto_retire"', body)
+        self.assertIn('<option value="off" selected>しない（既定）</option>', body)
+        self.assertIn('data-growth-extra hidden', body)
+        markup = SettingsMarkup(body)
+        self.assertEqual(len(markup.fields), len(set(markup.fields)))
+
+    def test_growth_config_save_round_trips_and_carries_to_duplicate(self):
+        # M3 (Opus review): growth.mode != off forces evolution.world_expansion
+        # to "expand", which reads the approved-patches stack under
+        # directory_lock(project/"patches") -- self.configs here is
+        # ConfigStore(ROOT, ...) (real repo), so this redirects .repo to an
+        # isolated temp copy for the duration of the save/read, the same
+        # pattern test_workbench_pages.py's own growth detail test uses.
+        import re
+        temp = fixture.Path(fixture.tempfile.mkdtemp(prefix='wb-growth-repo-'))
+        self.addCleanup(fixture.shutil.rmtree, temp, ignore_errors=True)
+        temp_repo = temp / 'repo'
+        for name in ('projects', 'templates'):
+            fixture.shutil.copytree(fixture.ROOT / name, temp_repo / name)
+        real_patches = fixture.ROOT / 'projects' / 'romance' / 'patches'
+        self.addCleanup(lambda: self.assertFalse(real_patches.exists(),
+                                                  'growth save must never touch the real repo\'s patches/'))
+        with fixture.patch.object(self.configs, 'repo', temp_repo):
+            status, saved = self.http('POST', '/api/configs', {
+                'label': '育成試験', 'project_id': 'romance', 'template_id': 'romance',
+                'evolution': {'generations': 1, 'population': 1, 'seeds': 1},
+                'growth': {'mode': 'manual', 'epochs': 5, 'auto_retire': False}})
+            self.assertEqual(status, 201, saved)
+            self.assertEqual(saved['growth'], {'mode': 'manual', 'epochs': 5, 'auto_retire': False})
+            status, body, _ = self.get_status('/configs/new?from=' + saved['config_id'])
+        self.assertEqual(status, 200, body)
+        self.assertIn('<option value="manual" selected>', body)
+        self.assertNotIn('data-growth-extra hidden', body)
+        match = re.search(r'<input[^>]*data-field="growth\.epochs"[^>]*>', body)
+        self.assertIsNotNone(match, 'no <input data-field="growth.epochs"> in body')
+        self.assertIn('value="5"', match.group(0))
+
+    def test_seed_genomes_select_lists_completed_runs_only(self):
+        # WB-WORLDGROW-001 段階5b: default is empty (no carry-over), and only
+        # a completed (succeeded/partial) evolve job's run_id becomes a
+        # candidate -- a running job's run_id must never be offered.
+        self.fake.add(fixture._job('job-seed-done', 'run-seed-done', 'succeeded'))
+        self.fake.add(fixture._job('job-seed-running', 'run-seed-running', 'running'))
+        status, body, _ = self.get_status('/configs/new?project=romance')
+        self.assertEqual(status, 200, body)
+        self.assertIn('data-field="evolution.seed_genomes"', body)
+        self.assertIn('data-error-for="evolution.seed_genomes"', body)
+        self.assertIn('<option value="" selected>引き継がない（既定）</option>', body)
+        self.assertIn('<option value="run-seed-done">', body)
+        self.assertNotIn('<option value="run-seed-running">', body)
+
+    def test_seed_genomes_select_filters_by_template_too(self):
+        # Opus review R3: same project but a different genre (template_id)
+        # must not offer its run as a seed candidate.
+        self.configs.save({
+            "label": "他ジャンル", "project_id": "romance", "template_id": "detective",
+            "evolution": {"generations": 1, "population": 1, "seeds": 1},
+        }, config_id="cfg-other-genre")
+        self.fake.add(fixture._job('job-seed-same-genre', 'run-seed-same-genre', 'succeeded'))
+        self.fake.add(fixture._job('job-seed-other-genre', 'run-seed-other-genre', 'succeeded',
+                                    config_id='cfg-other-genre'))
+        status, body, _ = self.get_status('/configs/new?project=romance')
+        self.assertEqual(status, 200, body)
+        self.assertIn('run-seed-same-genre', body)
+        self.assertNotIn('run-seed-other-genre', body)
+
     def test_new_settings_and_static_files(self):
         status, body, _ = self.get_status('/configs/new?project=romance')
         self.assertEqual(status, 200)

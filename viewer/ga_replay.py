@@ -257,6 +257,28 @@ def replay_model(handler, job, axes, generation=None):
         if not raw_results:
             return None
 
+        # WB-WORLDGROW-001 段階5b: g0/population.json's own "seed_cell" (only
+        # ever present on a run whose --seed-genomes seeded generation 0) and
+        # summary.json's seed_genomes.source.run_id -- best-effort, missing/
+        # malformed data just means no seed labels, never a broken panel.
+        seed_cell_by_index: dict[int, str] = {}
+        seed_run: str | None = None
+        if generation == 0:
+            try:
+                population_raw = json.loads(
+                    handler.repository.safe_path(root, "g0/population.json").read_text(encoding="utf-8"))
+                seed_cell_by_index = {
+                    int(item["index"]): str(item["seed_cell"])
+                    for item in population_raw if isinstance(item, dict) and "seed_cell" in item
+                }
+                if seed_cell_by_index:
+                    summary_raw = json.loads(
+                        handler.repository.safe_path(root, "summary.json").read_text(encoding="utf-8"))
+                    seed_run = ((summary_raw.get("seed_genomes") or {}).get("source") or {}).get("run_id")
+            except _MODEL_ERRORS:
+                seed_cell_by_index = {}
+                seed_run = None
+
         if generation == 0:
             prev_cells = {}
         else:
@@ -280,10 +302,13 @@ def replay_model(handler, job, axes, generation=None):
                  "classification_status": entry.get("classification_status")},
                 prev_cells, final_cells,
             )
-            individuals.append({
+            individual = {
                 "index": index, "parents": parent_refs, "genome": genome,
                 "cell_key": cell_key, "outcome": outcome,
-            })
+            }
+            if index in seed_cell_by_index:
+                individual["seed_cell"] = seed_cell_by_index[index]
+            individuals.append(individual)
 
         counts = {"new": 0, "replaced": 0, "rejected": 0, "unreached": 0, "unclassified": 0, "kept": 0}
         for individual in individuals:
@@ -304,7 +329,7 @@ def replay_model(handler, job, axes, generation=None):
             individual["origins"] = gene_origins(genome, parent_genomes[0], parent_genomes[1])
 
         categories, bins = axes
-        return {
+        model = {
             "generation": generation,
             "max_generation": latest_generation,
             "categories": list(categories),
@@ -322,6 +347,13 @@ def replay_model(handler, job, axes, generation=None):
             "population": len(individuals),
             "counts": counts,
         }
+        # Opus review R4: only when set -- a seed-less run's embedded JSON
+        # must stay byte-identical to before WB-WORLDGROW-001 段階5b
+        # (render_panel()/ga_replay.js already treat a missing seed_run the
+        # same as None/undefined).
+        if seed_run:
+            model["seed_run"] = seed_run
+        return model
     except _MODEL_ERRORS as error:
         # No logging idiom exists elsewhere in viewer/ to hook into; stderr
         # is enough for this to show up in the same place a startup/worker
@@ -348,9 +380,13 @@ def _outcome_sentence(outcome):
     return text
 
 
-def _replay_list_item(individual):
+def _replay_list_item(individual, seed_run=None):
     parents = individual["parents"]
-    if not parents:
+    seed_cell = individual.get("seed_cell")
+    if not parents and seed_cell:
+        cell_text = seed_cell.replace("|", " × ")
+        lineage_text = f'前の実験 {seed_run} の「{cell_text}」の代表から引き継いだ性格' if seed_run else f'前の実験の「{cell_text}」の代表から引き継いだ性格'
+    elif not parents:
         lineage_text = "親なしの新顔（ランダムな性格）"
     elif len(parents) == 1:
         lineage_text = f'親: {parents[0]["display"]}'
@@ -427,7 +463,8 @@ def render_panel(model, base_url):
         f'<div class="ga-replay" data-replay="{_escape(payload)}"></div>',
         '<details class="ga-replay-text"><summary>文章で読む</summary><ol class="ga-replay-list">',
     ]
-    parts.extend(_replay_list_item(individual) for individual in representatives)
+    seed_run = model.get("seed_run")
+    parts.extend(_replay_list_item(individual, seed_run) for individual in representatives)
     parts.append('</ol></details>')
     parts.append('</div>')
     return "".join(parts)

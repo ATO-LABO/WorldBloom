@@ -232,5 +232,52 @@ class RiverRealRunTests(unittest.TestCase):
             thread.join(timeout=5)
 
 
+class SeedGenomesRiverTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5b: river_model()'s own g0/population.json read
+    (seed_cell) and the "親なしの新顔"/summary/_node_title carry-over text."""
+
+    @classmethod
+    def setUpClass(cls):
+        from gapengine.seed_genomes import from_archive
+        from test_gapengine import TEMPLATE as MOMOTARO_TEMPLATE, make_reaching_project
+        cls.temporary = tempfile.TemporaryDirectory()
+        cls.runs_root = Path(cls.temporary.name) / "runs"
+        project = make_reaching_project(Path(cls.temporary.name))
+        common = {"ga_seed": 3, "generations": 1, "keep": "all", "population": 4,
+                  "project": project, "seed_base": 11, "seeds": 1, "template": MOMOTARO_TEMPLATE,
+                  "processes": 1, "record_explanations": False}
+        evolve({**common, "out": cls.runs_root / "source"})
+        source_archive = json.loads((cls.runs_root / "source" / "archive.json").read_text(encoding="utf-8"))
+        entries = from_archive(source_archive)
+        assert entries, "source run must reach at least one cell to seed from"
+        seed_path = cls.runs_root / "seed_genomes.json"
+        seed_path.write_text(json.dumps({"schema_version": 1,
+            "source": {"run_id": "exp-prior"}, "genomes": entries}, ensure_ascii=False), encoding="utf-8")
+        evolve({**common, "seed_genomes": seed_path, "out": cls.runs_root / "seeded"})
+        cls.repository = data.RunRepository(cls.runs_root)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temporary.cleanup()
+
+    def test_river_model_carries_seed_cell_into_counts_and_node_title(self):
+        model = lineage_river.river_model(self.repository, "seeded")
+        seeded_nodes = [node for node in model["index"].values() if node.get("seed_cell")]
+        self.assertTrue(seeded_nodes)
+        self.assertGreater(model["counts"]["seeded"], 0)
+        node = seeded_nodes[0]
+        title = lineage_river._node_title(node)
+        self.assertIn(f"引き継ぎ（{node['seed_cell'].replace('|', ' × ')}）", title)
+
+        summary, _diagram, _legend = lineage_river.river_parts(model, "/exp/seeded/river")
+        self.assertIn(f"前の実験から引き継いだ個体 {model['counts']['seeded']} 体", summary)
+
+    def test_river_model_off_run_has_no_seeded_count_or_carry_over_text(self):
+        model = lineage_river.river_model(self.repository, "source")
+        self.assertEqual(model["counts"]["seeded"], 0)
+        summary, _diagram, _legend = lineage_river.river_parts(model, "/exp/source/river")
+        self.assertNotIn("前の実験から引き継いだ個体", summary)
+
+
 if __name__ == "__main__":
     unittest.main()

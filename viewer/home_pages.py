@@ -116,9 +116,11 @@ def genre_card(genre, worlds, editable):
     used = [worlds.get(w, w) for w in genre.get("used_by", [])]
     search = " ".join([name, genre["id"], description, *used])
     action = f'<a class="hl-open" href="/genres/{U(genre["id"])}">ジャンルを開く →</a>' if editable else '<p class="hl-readonly">編集はWorldBloom Studioで利用できます。</p>'
+    expansions = genre.get("expansions") or 0
     return (f'<article class="hl-genre-card" data-home-card data-search="{E(search)}">'
             f'<span class="hl-tag">共通のルール</span><h2>{E(name)}</h2>'
-            f'<p class="hl-description">{E(description)}</p><p class="hl-facts">使っている世界 {len(used)}件</p>'
+            f'<p class="hl-description">{E(description)}</p>'
+            f'<p class="hl-facts">使っている世界 {len(used)}件 <span>・</span> 資産 {E(expansions)}件</p>'
             f'<p class="hl-roles">{E("、".join(used) if used else "まだ使われていません")}</p>{action}</article>')
 
 

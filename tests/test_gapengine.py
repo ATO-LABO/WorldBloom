@@ -20,6 +20,7 @@ from engine.verbs import VerbEngine
 from engine.world import World
 from gapengine.classify import classify
 from gapengine.evolve import (
+    _cfg_fingerprint,
     _generation_lineage_summary,
     _lineage_stats,
     _prune_layers,
@@ -38,7 +39,9 @@ from gapengine.qd import (
     reached,
     shaped,
 )
+from gapengine.seed_genomes import from_archive as seed_genomes_from_archive
 from scripts.evolve import build_parser as build_evolve_parser
+from scripts.evolve import main as evolve_cli_main
 from scripts.random_baseline import (
     build_parser as build_baseline_parser,
     main as baseline_main,
@@ -2301,6 +2304,218 @@ class Phase4GapEngineTests(unittest.TestCase):
             quality(rethink_rows, world_meta),
             quality(base_rows, world_meta),
         )
+
+
+def _write_seed_genomes(path: Path, entries: list[dict[str, Any]], *, source: dict[str, Any] | None = None) -> None:
+    doc = {"schema_version": 1, "source": source or {}, "genomes": entries}
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+
+class SeedGenomesGapEngineTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5b "遺伝子の引き継ぎ": --seed-genomes/cfg["seed_genomes"]."""
+
+    def _common(self, project: Path) -> dict[str, Any]:
+        return {
+            "ga_seed": 7,
+            "generations": 1,
+            "keep": "all",
+            "population": 4,
+            "processes": 1,
+            "project": project,
+            "seed_base": 11,
+            "seeds": 1,
+            "template": TEMPLATE,
+        }
+
+    def test_off_is_byte_identical_no_seed_cell_no_summary_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            common = self._common(project)
+            evolve({**common, "out": root / "legacy"})
+            evolve({**common, "seed_genomes": None, "out": root / "explicit-none"})
+
+            def snapshot(name: str) -> dict[Path, bytes]:
+                base = root / name
+                return {p.relative_to(base): p.read_bytes() for p in base.rglob("*") if p.is_file()}
+
+            legacy = snapshot("legacy")
+            explicit = snapshot("explicit-none")
+            self.assertEqual(legacy, explicit)
+            summary = json.loads(legacy[Path("summary.json")].decode("utf-8"))
+            self.assertNotIn("seed_genomes", summary)
+            population = json.loads(legacy[Path("g0/population.json")].decode("utf-8"))
+            self.assertTrue(all("seed_cell" not in item for item in population))
+
+    def test_seeded_run_is_deterministic_and_matches_archive_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_project = make_reaching_project(root / "source-project")
+            source_common = self._common(source_project)
+            evolve({**source_common, "population": 6, "out": root / "source"})
+            source_archive = json.loads((root / "source" / "archive.json").read_text(encoding="utf-8"))
+            expected_order = seed_genomes_from_archive(source_archive)
+            self.assertGreater(len(expected_order), 0)
+
+            seed_path = root / "seed_genomes.json"
+            _write_seed_genomes(seed_path, expected_order, source={"run_id": "run-source"})
+
+            seed_common = self._common(make_reaching_project(root / "seed-project"))
+            seed_common["seed_genomes"] = seed_path
+            evolve({**seed_common, "out": root / "seeded-1"})
+            evolve({**seed_common, "out": root / "seeded-2"})
+
+            def snapshot(name: str) -> dict[Path, bytes]:
+                base = root / name
+                return {p.relative_to(base): p.read_bytes() for p in base.rglob("*") if p.is_file()}
+
+            self.assertEqual(snapshot("seeded-1"), snapshot("seeded-2"))
+
+            population = json.loads((root / "seeded-1" / "g0" / "population.json").read_text(encoding="utf-8"))
+            by_index = {item["index"]: item for item in population}
+            population_size = seed_common["population"]
+            expected_used = expected_order[:population_size]
+            for i, entry in enumerate(expected_used):
+                item = by_index[i]
+                self.assertEqual(item["seed_cell"], entry["cell"])
+                self.assertEqual(item["parents"], [])
+                self.assertEqual(item["genome"]["category_weight"], entry["genome"]["category_weight"])
+            for i in range(len(expected_used), population_size):
+                self.assertNotIn("seed_cell", by_index[i])
+
+            summary = json.loads((root / "seeded-1" / "summary.json").read_text(encoding="utf-8"))
+            self.assertIn("seed_genomes", summary)
+            self.assertEqual(summary["seed_genomes"]["available"], len(expected_order))
+            self.assertEqual(summary["seed_genomes"]["used"], min(len(expected_order), population_size))
+            self.assertEqual(summary["seed_genomes"]["source"]["run_id"], "run-source")
+
+    def test_population_truncated_to_population_size(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            entries = [
+                {"cell": f"I|{i}", "quality": 1.0 - i * 0.1, "generation": 0,
+                 "genome": Genome.neutral().to_dict()}
+                for i in range(6)
+            ]
+            seed_path = root / "seed_genomes.json"
+            _write_seed_genomes(seed_path, entries)
+
+            # More seeds than population: only the first `population` entries are used.
+            fewer_project = make_reaching_project(root / "fewer-project")
+            common = self._common(fewer_project)
+            common["population"] = 3
+            common["seed_genomes"] = seed_path
+            evolve({**common, "out": root / "fewer"})
+            population = json.loads((root / "fewer" / "g0" / "population.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(population), 3)
+            self.assertTrue(all("seed_cell" in item for item in population))
+            self.assertEqual({item["seed_cell"] for item in population}, {"I|0", "I|1", "I|2"})
+
+            # Fewer seeds than population: the remainder is filled by Genome.random.
+            more_project = make_reaching_project(root / "more-project")
+            common2 = self._common(more_project)
+            common2["population"] = 8
+            common2["seed_genomes"] = seed_path
+            evolve({**common2, "out": root / "more"})
+            population2 = json.loads((root / "more" / "g0" / "population.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(population2), 8)
+            seeded = [item for item in population2 if "seed_cell" in item]
+            unseeded = [item for item in population2 if "seed_cell" not in item]
+            self.assertEqual(len(seeded), 6)
+            self.assertEqual(len(unseeded), 2)
+
+    def test_reconciles_rule_bits_against_current_rule_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = make_reaching_project(root)
+            genome = Genome.neutral().to_dict()
+            # A stale rule id from a template that has since changed, plus a
+            # missing bit for a rule the current template does have -- both
+            # must be reconciled away by gapengine.seed_genomes.reconcile().
+            genome["rule_bits"] = {"hostile_lean": False, "no_longer_exists": True}
+            seed_path = root / "seed_genomes.json"
+            _write_seed_genomes(seed_path, [{"cell": "I|low", "quality": 1.0, "generation": 0, "genome": genome}])
+
+            common = self._common(project)
+            common["meta_evolution"] = True
+            common["seed_genomes"] = seed_path
+            evolve({**common, "out": root / "meta"})
+            population = json.loads((root / "meta" / "g0" / "population.json").read_text(encoding="utf-8"))
+            seeded = next(item for item in population if item.get("seed_cell") == "I|low")
+            rule_bits = seeded["genome"]["rule_bits"]
+            self.assertIn("hostile_lean", rule_bits)
+            self.assertFalse(rule_bits["hostile_lean"])
+            self.assertNotIn("no_longer_exists", rule_bits)
+            self.assertIn("after_crossing", rule_bits)
+            self.assertTrue(rule_bits["after_crossing"])  # missing bit defaults to enabled
+
+    def test_fingerprint_differs_when_seed_genomes_is_set(self) -> None:
+        kwargs = dict(
+            project_dir=PROJECT, template_dir=TEMPLATE, population_size=4, seed_count=1,
+            seed_base=0, ga_seed=1, keep="all", coevolve=False, meta_evolution=False,
+            target_ending=None, record_explanations=False, rationality_cfg=None, route_cfg=None,
+        )
+        off = _cfg_fingerprint(**kwargs)
+        seeded_a = _cfg_fingerprint(**kwargs, seed_genomes_sha256="a" * 64)
+        seeded_b = _cfg_fingerprint(**kwargs, seed_genomes_sha256="b" * 64)
+        self.assertNotEqual(off, seeded_a)
+        self.assertNotEqual(seeded_a, seeded_b)
+
+    def test_cli_accepts_experiment_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_project = make_reaching_project(root / "source-project")
+            evolve({**self._common(source_project), "out": root / "source"})
+
+            seed_project = make_reaching_project(root / "seed-project")
+            out_dir = root / "via-cli"
+            exit_code = evolve_cli_main([
+                "--project", str(seed_project), "--template", str(TEMPLATE),
+                "--out", str(out_dir), "--generations", "1", "--population", "4",
+                "--seeds", "1", "--seed-base", "11", "--ga-seed", "7", "--keep", "all",
+                "--seed-genomes", str(root / "source"),
+            ])
+            self.assertEqual(exit_code, 0)
+            self.assertTrue((out_dir / "seed_genomes.json").is_file())
+            population = json.loads((out_dir / "g0" / "population.json").read_text(encoding="utf-8"))
+            self.assertTrue(any("seed_cell" in item for item in population))
+
+    def test_cli_resume_reuses_materialized_seed_genomes_file(self) -> None:
+        # Opus review M1: --seed-genomes <experiment dir> used to be
+        # re-materialized (with a fresh captured_at) on every launch, so
+        # --resume with the same directory-form --seed-genomes always
+        # changed inputs/seed_genomes.json's bytes/sha256 -- which feeds
+        # _cfg_fingerprint -- and was therefore always refused as "a
+        # different experiment". --resume must reuse the file already
+        # written by the first (non-resumed) launch instead.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_project = make_reaching_project(root / "source-project")
+            evolve({**self._common(source_project), "out": root / "source"})
+
+            seed_project = make_reaching_project(root / "seed-project")
+            out_dir = root / "via-cli-resume"
+            base_args = [
+                "--project", str(seed_project), "--template", str(TEMPLATE),
+                "--out", str(out_dir), "--population", "4", "--seeds", "1",
+                "--seed-base", "11", "--ga-seed", "7", "--keep", "all",
+                "--seed-genomes", str(root / "source"),
+            ]
+            exit_code = evolve_cli_main([*base_args, "--generations", "1"])
+            self.assertEqual(exit_code, 0)
+            materialized = out_dir / "seed_genomes.json"
+            self.assertTrue(materialized.is_file())
+            first_bytes = materialized.read_bytes()
+
+            # Same source, --resume, more generations: must not rewrite the
+            # frozen seed_genomes.json (and therefore must not change the
+            # sha256 the first launch's cfg_fingerprint already pinned).
+            exit_code = evolve_cli_main([*base_args, "--generations", "2", "--resume"])
+            self.assertEqual(exit_code, 0, "resume must not be refused as a different experiment")
+            self.assertEqual(materialized.read_bytes(), first_bytes)
+            population = json.loads((out_dir / "g0" / "population.json").read_text(encoding="utf-8"))
+            self.assertTrue(any("seed_cell" in item for item in population))
+            self.assertTrue((out_dir / "g1").is_dir())
 
 
 class LineageStatsTests(unittest.TestCase):

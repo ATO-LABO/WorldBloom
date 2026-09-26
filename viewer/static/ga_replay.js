@@ -454,7 +454,10 @@
       });
       if (step >= 4 && individual.cell_key) landCell(individual.cell_key, landingQuality(individual.outcome), { highlight: true });
       setProgress(index, step);
-      const descriptions = [parents.length ? "記録された親の特徴を確認します。" : "親なしの新顔です。", "子の特徴を確認します。灰色は親由来と確定できない値です。", "どちらの親とも異なる値を示します。", "保存されたシミュレーション結果をたどります。", individual.cell_key ? "記録された地図の型を示します。" : "この個体は地図に載りませんでした。", outcomeSentence(individual.outcome)];
+      const parentlessDescription = individual.seed_cell
+        ? `前の実験から引き継いだ性格です（${individual.seed_cell.replace("|", " × ")}）。`
+        : "親なしの新顔です。";
+      const descriptions = [parents.length ? "記録された親の特徴を確認します。" : parentlessDescription, "子の特徴を確認します。灰色は親由来と確定できない値です。", "どちらの親とも異なる値を示します。", "保存されたシミュレーション結果をたどります。", individual.cell_key ? "記録された地図の型を示します。" : "この個体は地図に載りませんでした。", outcomeSentence(individual.outcome)];
       announce(`個体 #${individual.index}・${STEP_NAMES[step]}: ${descriptions[step]}`);
     };
 
@@ -528,7 +531,9 @@
         // lands at the same fraction of the bar a two-parent individual's
         // simulate step would (P5).
         individual.genes.forEach((v, i) => setBar(rowChild, i, v, "var(--muted)"));
-        caption.textContent = "親なしの新顔。ランダムな性格から始める";
+        caption.textContent = individual.seed_cell
+          ? `前の実験${model.seed_run ? ` ${model.seed_run}` : ""}の「${individual.seed_cell.replace("|", " × ")}」から引き継いだ性格から始める`
+          : "親なしの新顔。ランダムな性格から始める";
         await wait(1400, token);
         if (token !== runToken) return;
       }

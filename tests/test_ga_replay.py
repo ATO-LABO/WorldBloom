@@ -489,6 +489,66 @@ class ReplayHttpTests(unittest.TestCase):
         self.assertIn("親なしの新顔", body)
 
 
+class SeedGenomesReplayTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5b: g0/population.json's "seed_cell" (plus
+    summary.json's seed_genomes.source.run_id) replaces the parentless
+    "親なしの新顔" wording with a carried-over-personality one, for a
+    representative individual at generation 0 only."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-ga-replay-seed-")
+        self.addCleanup(self.temp.cleanup)
+        base = Path(self.temp.name)
+        self.runs = base / "runs"
+        self.runs.mkdir()
+        control = base / "control"
+        configs = ConfigStore(ROOT, control, self.runs)
+        configs.save({
+            "label": "replay-seed", "project_id": "romance", "template_id": "romance",
+            "evolution": {"generations": 2, "population": 4, "seeds": 1},
+        }, config_id="cfg-replay-seed")
+        self.fake = FakeJobStore(configs)
+        self.run_id = "run-ga-replay-seed"
+        root = _hand_published_replay_run(self.runs, self.run_id, "cfg-replay-seed")
+        # ind-0's actual g0 outcome (from the shared fixture) is unrelated to
+        # its seed_cell -- seed_cell only ever describes ancestry, never the
+        # outcome cell, so using a different cell here checks the two are
+        # never conflated.
+        population = [
+            {"genome": GENOME_A, "index": 0, "parents": [], "seed_cell": "II|mid"},
+            {"genome": GENOME_B, "index": 1, "parents": []},
+        ]
+        write_bytes(root / "g0" / "population.json", canonical(population))
+        write_bytes(root / "summary.json",
+                    canonical({"seed_genomes": {"source": {"run_id": "run-prior-seed"}}}))
+        self.fake.add(_job("job-replay-seed", self.run_id, "succeeded",
+                            config_id="cfg-replay-seed", publication_revision=2))
+        self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
+        self.server.repository = RunRepository(self.runs, control_root=control, jobs=self.fake)
+        self.server.job_store = self.fake
+        self.server.settings_path = base / "settings.json"
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+        thread.start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def get(self, path):
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.server.server_port}{path}", timeout=5) as response:
+                return response.status, response.read().decode("utf-8")
+        except urllib.error.HTTPError as error:
+            return error.code, error.read().decode("utf-8")
+
+    def test_seed_cell_replaces_parentless_new_face_text(self):
+        status, body = self.get("/jobs/job-replay-seed?gen=0")
+        self.assertEqual(status, 200, body)
+        # ind-0 (seed_cell set) gets the carried-over wording...
+        self.assertIn("前の実験 run-prior-seed の「II × mid」の代表から引き継いだ性格", body)
+        # ...but ind-1 (no seed_cell) keeps the plain parentless wording --
+        # only a genuinely seeded individual's text changes.
+        self.assertIn("親なしの新顔（ランダムな性格）", body)
+
+
 class ReplayModelDirectTests(unittest.TestCase):
     """Exercises replay_model() directly (no HTTP) against the same
     hand-built fixture, for assertions that need to inspect the model or

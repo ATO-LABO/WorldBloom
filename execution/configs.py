@@ -8,6 +8,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 import inspect
+import json
 import os
 from pathlib import Path
 import re
@@ -25,8 +26,10 @@ from gapengine.genome import Genome
 from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
 from gapengine.policy import _compile_rules
 from gapengine.precedent import load_canon
+from gapengine.seed_genomes import from_archive as seed_genomes_from_archive
 from gapengine.synopsis import _backend_config
-from gapengine.world_patch import PatchError, apply_patches, approved_patches, template_identifiers
+from gapengine.world_patch import LIBRARY_DIR, PatchError, apply_patches, approved_patches, template_identifiers
+from gapengine.world_patch_usage import load_archive as load_seed_archive
 from scripts.evolve import build_parser
 from execution.provenance import (
     ConfigError, atomic_json, canonical, code_snapshot, contained, directory_lock,
@@ -100,11 +103,38 @@ def quick_label(world_name, genre):
     return f"{stamp} {genre} - {world_name}"
 
 
+def _growth(spec_growth):
+    """None (mode="off"/absent) means "no growth key at all" -- the caller
+    must not add "growth" to the saved document in that case, so an
+    unspecified/off config stays byte-identical to one saved before
+    WB-WORLDGROW-001 段階5c ever existed. growth never enters `evolution`
+    (its keys must match scripts/evolve.py's parser dests one-to-one --
+    see evolution_defaults()) and is never handed to prepare_run()'s argv
+    loop, which only ever iterates config["evolution"]."""
+    if spec_growth is None:
+        return None
+    _keys(spec_growth, {"mode", "epochs", "auto_retire"}, "growth")
+    mode = spec_growth.get("mode", "off")
+    if mode not in ("off", "auto", "manual"):
+        raise ConfigError("growth.mode", "育成モードの指定が不正です")
+    if mode == "off":
+        return None
+    epochs = spec_growth.get("epochs", 3)
+    _integer(epochs, "growth.epochs", 1)
+    if epochs > 10:
+        raise ConfigError("growth.epochs", "エポック数は1〜10で指定してください")
+    auto_retire = spec_growth.get("auto_retire", mode == "auto")
+    if type(auto_retire) is not bool:
+        raise ConfigError("growth.auto_retire", "真偽値を指定してください")
+    return {"mode": mode, "epochs": epochs, "auto_retire": auto_retire}
+
+
 def normalize(spec):
     _keys(spec, {"label", "project_id", "template_id", "evolution",
-                 "execution_limits", "generation"}, "config")
+                 "execution_limits", "generation", "growth"}, "config")
     if "generation" in spec:
         raise ConfigError("generation", "文章生成の設定は ⚙ 設定で行います（実行設定には含めません）")
+    growth = _growth(spec.get("growth"))
     result = {"label": spec.get("label", "")}
     if not isinstance(result["label"], str) or not result["label"].strip() or len(result["label"]) > 200:
         raise ConfigError("label", "設定名を1〜200文字で入力してください")
@@ -125,6 +155,17 @@ def normalize(spec):
         raise ConfigError("evolution.keep", "保存方針が不正です")
     if values["world_expansion"] not in ("off", "detect", "expand"):
         raise ConfigError("evolution.world_expansion", "世界の拡張の指定が不正です")
+    if growth is not None:
+        # WB-WORLDGROW-001 段階5c §9: growth!=off always runs the chain's
+        # own expand-run experiments, regardless of what the form's "世界の
+        # 拡張" radio was set to.
+        values["world_expansion"] = "expand"
+    # WB-WORLDGROW-001 段階5b: "" (フォームの未選択) は off と同じ None に。
+    seed_genomes = values["seed_genomes"]
+    if seed_genomes == "":
+        values["seed_genomes"] = None
+    elif seed_genomes is not None:
+        values["seed_genomes"] = identifier(seed_genomes, "evolution.seed_genomes")
     endings = values["target_ending"]
     if endings is not None and (not isinstance(endings, list) or not endings
             or any(not isinstance(x, str) or not x for x in endings)
@@ -177,6 +218,8 @@ def normalize(spec):
     _keys(limits, {"wall_seconds"}, "execution_limits")
     result["execution_limits"] = {"wall_seconds": _integer(
         limits.get("wall_seconds", 3600), "execution_limits.wall_seconds", 1)}
+    if growth is not None:
+        result["growth"] = growth
     return result
 
 
@@ -256,7 +299,7 @@ def generation_availability(generation, settings_path=None):
             "reason": None if available else "credentials_missing"}
 
 
-def _capture_inputs(repo, spec):
+def _capture_inputs(repo, spec, runs=None):
     """Read a closed YAML set once; rebase only World's external graph reference."""
     blobs, records = {}, {}
     def add(path):
@@ -283,6 +326,8 @@ def _capture_inputs(repo, spec):
         add(p)
     for p in sorted(template.rglob("*")):
         contained(repo, p.relative_to(repo).as_posix())
+        if LIBRARY_DIR in p.relative_to(template).parts:
+            continue
         if p.is_file() and p.suffix in (".yaml", ".yml"):
             add(p)
     try:
@@ -341,6 +386,76 @@ def _capture_inputs(repo, spec):
                                               sort_keys=False).encode("utf-8")
             patch_records = [{"id": patch["id"], "sha256": sha256(raw)} for patch, raw in verified]
             records[world_key]["world_patches"] = patch_records
+    rid = spec["evolution"].get("seed_genomes")
+    if rid is not None:
+        if runs is None:
+            raise ConfigError("evolution.seed_genomes", "引き継ぎ元の実行を確認できません")
+        run_dir = contained(runs, rid)
+        if not run_dir.is_dir():
+            raise ConfigError("evolution.seed_genomes", "引き継ぎ元の実行が見つかりません", code="not_found")
+        try:
+            run_config = read_json(contained(run_dir, "config.json"))
+        except (OSError, ValueError) as error:
+            raise ConfigError("evolution.seed_genomes", "引き継ぎ元の実行の設定を読み取れません", code="not_found") from error
+        if (run_config.get("project_id") != spec["project_id"]
+                or run_config.get("template_id") != spec["template_id"]):
+            raise ConfigError("evolution.seed_genomes", "引き継ぎ元は同じ世界・同じジャンルの実験を選んでください")
+        # Opus review R2: a ConfigStore-managed run always has BOTH a
+        # top-level archive.json (a mutable, display-only copy that every
+        # generation simply overwrites -- see gapengine/evolve.py) and, once
+        # at least one generation is published, an immutable, sha-verified
+        # published/<rev>/archive.json. load_seed_archive() (gapengine.
+        # world_patch_usage.load_archive) prefers the top-level file when
+        # present, which here would let a tampered/stale top-level file pass
+        # through unverified and would freeze a still-running run's
+        # not-yet-sealed state. Prefer published/current.json's revision
+        # whenever it exists; fall back to load_seed_archive() (top-level,
+        # or a legacy run with no published/ at all) only when it doesn't.
+        published_pointer = contained(run_dir, "published/current.json")
+        if published_pointer.is_file():
+            try:
+                pointer = read_json(published_pointer)
+                revision = pointer["revision"]
+                raw_archive = contained(run_dir, f"published/{revision}/archive.json").read_bytes()
+                publication = read_json(contained(run_dir, f"published/{revision}/manifest.json"))
+                expected_sha256 = publication["files"]["archive"]["sha256"]
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise ConfigError("evolution.seed_genomes", "引き継ぎ元の公開情報を読み取れません", code="not_found") from error
+            if sha256(raw_archive) != expected_sha256:
+                raise ConfigError("evolution.seed_genomes", "引き継ぎ元のアーカイブが変更されています", code="snapshot_changed")
+            try:
+                archive = json.loads(raw_archive)
+            except ValueError as error:
+                raise ConfigError("evolution.seed_genomes", "引き継ぎ元のアーカイブが不正です") from error
+            source = f"published/{revision}"
+        else:
+            try:
+                archive, raw_archive, source = load_seed_archive(run_dir)
+            except (OSError, ValueError) as error:
+                raise ConfigError("evolution.seed_genomes", "引き継ぎ元のアーカイブが見つかりません", code="not_found") from error
+            revision = None
+        try:
+            seed_entries = seed_genomes_from_archive(archive)
+        except ValueError as error:
+            raise ConfigError("evolution.seed_genomes", "引き継ぎ元のアーカイブが不正です") from error
+        if not seed_entries:
+            raise ConfigError("evolution.seed_genomes", "引き継ぎ元のアーカイブにデータがありません", code="empty_seed_archive")
+        for seed_entry in seed_entries:
+            try:
+                Genome.from_dict(seed_entry["genome"])
+            except (ValueError, TypeError, KeyError) as error:
+                raise ConfigError("evolution.seed_genomes", "引き継ぎ元の遺伝子が不正です") from error
+        seed_doc = {"schema_version": 1,
+                     "source": {"run_id": rid, "config_id": run_config.get("config_id"),
+                                "project_id": run_config["project_id"], "template_id": run_config["template_id"],
+                                "archive_path": source, "archive_sha256": sha256(raw_archive),
+                                "revision": revision, "captured_at": _now()},
+                     "genomes": seed_entries}
+        key = "seed_genomes.json"
+        data = canonical(seed_doc)
+        blobs[key] = data
+        records[key] = {"path": key, "source_path": str(run_dir), "source_sha256": sha256(raw_archive),
+                        "source_bytes": len(raw_archive), "transformation": "seed_genomes_from_archive"}
     entries = [{**records[p], "sha256": sha256(b), "bytes": len(b)}
                for p, b in sorted(blobs.items())]
     return blobs, {"schema_version": 1, "files": entries}
@@ -430,8 +545,23 @@ class ConfigStore:
     def _prepare(self, spec, parent=None):
         spec = normalize(spec)
         if parent is None:
+            rid = spec["evolution"].get("seed_genomes")
+            if rid is not None:
+                try:
+                    self.verify_run(rid)
+                except FileNotFoundError as error:
+                    raise ConfigError("evolution.seed_genomes", "引き継ぎ元の実行が見つかりません", code="not_found") from error
+                except ConfigError:
+                    raise
+                except (ValueError, KeyError) as error:
+                    # verify_run() reads complete.json/manifest.json straight
+                    # off disk (json.JSONDecodeError is a ValueError; a
+                    # truncated/empty seal or manifest KeyErrors on its own
+                    # required fields) -- a malformed run must surface as a
+                    # normal field error here, not an uncaught 500.
+                    raise ConfigError("evolution.seed_genomes", "引き継ぎ元の実行の記録が壊れています", code="not_found") from error
             try:
-                blobs, manifest = _capture_inputs(self.repo, spec)
+                blobs, manifest = _capture_inputs(self.repo, spec, runs=self.runs)
             except FileNotFoundError as error:
                 raise ConfigError("inputs", "必要な入力ファイルがありません") from error
         else:
@@ -441,6 +571,8 @@ class ConfigStore:
             prior_expand = prior["evolution"].get("world_expansion", "off") == "expand"
             spec_expand = spec["evolution"]["world_expansion"] == "expand"
             if prior_expand != spec_expand:
+                raise ConfigError("parent_config_id", "複製元と異なる入力は新規設定として保存してください")
+            if prior["evolution"].get("seed_genomes") != spec["evolution"].get("seed_genomes"):
                 raise ConfigError("parent_config_id", "複製元と異なる入力は新規設定として保存してください")
             blobs = {r["path"]: contained(root / "inputs", r["path"]).read_bytes()
                      for r in manifest["files"]}
@@ -532,9 +664,19 @@ class ConfigStore:
         original = self.get(config_id)
         spec = {k: original[k] for k in ("label", "project_id", "template_id",
                 "evolution", "execution_limits")}
+        # R5 (Opus review, WB-WORLDGROW-001 段階5c): a growth-enabled config
+        # used to lose its growth on duplicate (spec never carried it over)
+        # -- carry it forward like every other field; `changes` may still
+        # replace or clear it below.
+        if "growth" in original:
+            spec["growth"] = original["growth"]
         changes = changes or {}
         for key, value in changes.items():
-            spec[key] = {**spec[key], **value} if key in ("evolution", "execution_limits") and isinstance(value, dict) else value
+            if (key in ("evolution", "execution_limits", "growth")
+                    and isinstance(value, dict) and isinstance(spec.get(key), dict)):
+                spec[key] = {**spec[key], **value}
+            else:
+                spec[key] = value
         # Unlike project_id/template_id (hidden, fixed fields on the "duplicate to
         # edit" form), evolution.world_expansion is an editable radio there. Toggling
         # to/from "expand" makes the frozen inputs incompatible with the parent
@@ -542,8 +684,21 @@ class ConfigStore:
         # instead of dead-ending the save, the same way changing project_id would
         # require a fresh (non-duplicate) config if it were reachable from the UI.
         prior_expand = original["evolution"].get("world_expansion") == "expand"
-        spec_expand = (spec.get("evolution") or {}).get("world_expansion") == "expand"
-        parent = config_id if prior_expand == spec_expand else None
+        # R5: growth.mode != off forces world_expansion to "expand" at
+        # normalize() time regardless of what spec["evolution"] itself says
+        # -- judge the parent-compatibility check by that *effective* value,
+        # not the pre-normalize one, or turning growth on (or leaving it on
+        # while flipping world_expansion off in the same call) would wrongly
+        # keep a parent whose frozen inputs are about to change out from
+        # under it (normalize() would then dead-end the save instead).
+        spec_growth_mode = (spec.get("growth") or {}).get("mode", "off")
+        spec_expand = (spec.get("evolution") or {}).get("world_expansion") == "expand" or spec_growth_mode != "off"
+        # WB-WORLDGROW-001 段階5b: same treatment for seed_genomes -- changing
+        # which run's archive seeds generation 0 makes the frozen inputs
+        # incompatible with the parent config's own frozen seed_genomes.json.
+        prior_seed = original["evolution"].get("seed_genomes")
+        spec_seed = spec["evolution"].get("seed_genomes")
+        parent = config_id if prior_expand == spec_expand and prior_seed == spec_seed else None
         return self.save(spec, config_id=new_id, parent_config_id=parent)
 
     def prepare_run(self, config_id, *, run_id=None, job_id, processes=None):
@@ -570,6 +725,14 @@ class ConfigStore:
                 flag = "--" + key.replace("_", "-")
                 if key == "record_explanations":
                     argv.append(flag if value else "--no-record-explanations")
+                elif key == "seed_genomes":
+                    # WB-WORLDGROW-001 段階5b: config["evolution"]["seed_genomes"]
+                    # is the *source run's* run_id (normalize()'s identifier
+                    # check); the frozen inputs/seed_genomes.json this run's own
+                    # snapshot carries is what scripts/evolve.py actually reads.
+                    if value is not None:
+                        argv.append(flag)
+                        argv.append(str(final / "inputs/seed_genomes.json"))
                 elif type(value) is bool:
                     if value:
                         argv.append(flag)
