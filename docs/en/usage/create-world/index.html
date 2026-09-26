@@ -14,7 +14,7 @@
         <link rel="prev" href="../../concepts/route-layer/">
       
       
-        <link rel="next" href="../run-settings/">
+        <link rel="next" href="../import-world/">
       
       
         
@@ -861,7 +861,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#world-settings-screen-per-world-tabs" class="md-nav__link">
+  <a href="#world-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
         World settings screen (per-world tabs)
@@ -897,6 +897,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import-world/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import a World from ZIP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1541,7 +1569,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#world-settings-screen-per-world-tabs" class="md-nav__link">
+  <a href="#world-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
         World settings screen (per-world tabs)
@@ -1597,19 +1625,20 @@
 <p>A "world" is the full setup a GA experiment runs on: characters, places, time, and the target ending. Once you've built a world here, you run GA experiments against it from <a href="../run-settings/">Run Settings</a>.</p>
 <h2 id="create-a-new-world">Create a new world<a class="headerlink" href="#create-a-new-world" title="Permanent link">&para;</a></h2>
 <p>Open this from the home screen ("<strong>世界を選ぶ</strong>", Pick a world) via "<strong>＋ 新しい世界を作る</strong>" (+ Create a new world).</p>
-<p>Choose one of two ways to create it:</p>
+<p>Choose one of three ways to create it:</p>
 <ul>
 <li><strong>新しく作る</strong> (Create new): start from an empty world. The genre defaults to the shared base rules (<code>basic</code>) and can be changed later.</li>
 <li><strong>既存の世界から作る</strong> (Create from an existing world): pick a source world from the list and copy its settings. The source world itself is unaffected. You can also pick a different genre (from a searchable list) at copy time.</li>
+<li><strong>ZIPから取り込む</strong> (Import from ZIP): import a <code>world.yaml</code>/<code>subjects/*.yaml</code> set built by an AI (Codex, Claude Code, Gemini, etc.) as a ZIP. See <a href="../import-world/">Import a World from ZIP</a> for details.</li>
 </ul>
-<p>Fields common to both:</p>
+<p>Fields common to all three:</p>
 <ul>
-<li><strong>世界の名前</strong> (World name) — required, up to 120 characters</li>
+<li><strong>世界の名前</strong> (World name) — required, up to 120 characters (optional for "Import from ZIP" — if left blank, the <code>name</code> from the ZIP's <code>world.yaml</code> is used)</li>
 <li><strong>世界の概要</strong> (World overview) — optional, up to 8000 characters (this field only appears for "Create new")</li>
 <li>Opening <strong>詳細設定</strong> (Advanced settings) lets you edit the <strong>世界ID</strong> (World ID): alphanumerics, hyphens and underscores only (1–96 characters); by default it's auto-filled as <code>world-</code> followed by 12 random characters</li>
 </ul>
 <p>Creating the world takes you to that world's <strong>world settings screen</strong> (below). Characters, places, and the initial story start out empty and are filled in afterward.</p>
-<h2 id="world-settings-screen-per-world-tabs">World settings screen (per-world tabs)<a class="headerlink" href="#world-settings-screen-per-world-tabs" title="Permanent link">&para;</a></h2>
+<h2 id="world-settings">World settings screen (per-world tabs)<a class="headerlink" href="#world-settings" title="Permanent link">&para;</a></h2>
 <p>Opening a world (or clicking "世界を開く", Open world, from its card on the home screen) shows five tabs for viewing and editing its settings.</p>
 <table>
 <thead>
@@ -1621,7 +1650,7 @@
 <tbody>
 <tr>
 <td>世界の概要 (World overview)</td>
-<td>Edit the name and overview. Any approved or proposed changes from world self-expansion (below) are shown here</td>
+<td>Edit the name and overview. A world with no genre set (e.g. one created via <a href="../import-world/">Import from ZIP</a>) can pick one here. Any approved or proposed changes from world self-expansion (below) are shown here</td>
 </tr>
 <tr>
 <td>登場人物 (Characters)</td>
@@ -1721,13 +1750,13 @@
         
         
           
-          <a href="../run-settings/" class="md-footer__link md-footer__link--next" aria-label="Next: Run Settings">
+          <a href="../import-world/" class="md-footer__link md-footer__link--next" aria-label="Next: Import a World from ZIP">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Run Settings
+                Import a World from ZIP
               </div>
             </div>
             <div class="md-footer__button md-icon">

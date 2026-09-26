@@ -1,6 +1,6 @@
 
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="ja" class="no-js">
   <head>
     
       <meta charset="utf-8">
@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/en/concepts/foreshadowing/">
+        <link rel="canonical" href="https://ato-labo.github.io/WorldBloom/docs/usage/import-world/">
       
       
-        <link rel="prev" href="../action-types/">
+        <link rel="prev" href="../create-world/">
       
       
-        <link rel="next" href="../qd-map/">
+        <link rel="next" href="../run-settings/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Foreshadowing - WorldBloom Docs</title>
+        <title>世界を ZIP から取り込む - WorldBloom ドキュメント</title>
       
     
     
@@ -70,8 +70,8 @@
     <div data-md-component="skip">
       
         
-        <a href="#foreshadowing-delayed-effects" class="md-skip">
-          Skip to content
+        <a href="#zip" class="md-skip">
+          コンテンツにスキップ
         </a>
       
     </div>
@@ -85,8 +85,8 @@
   
 
 <header class="md-header md-header--shadow" data-md-component="header">
-  <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="WorldBloom Docs" class="md-header__button md-logo" aria-label="WorldBloom Docs" data-md-component="logo">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="WorldBloom ドキュメント" class="md-header__button md-logo" aria-label="WorldBloom ドキュメント" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -100,13 +100,13 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            WorldBloom Docs
+            WorldBloom ドキュメント
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Foreshadowing
+              世界を ZIP から取り込む
             
           </span>
         </div>
@@ -120,7 +120,7 @@
       <div class="md-header__option">
   <div class="md-select">
     
-    <button class="md-header__button md-icon" aria-label="Select language">
+    <button class="md-header__button md-icon" aria-label="言語切り替え">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
     </button>
     <div class="md-select__inner">
@@ -154,16 +154,16 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
         
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
       </label>
-      <nav class="md-search__options" aria-label="Search">
+      <nav class="md-search__options" aria-label="検索">
         
-        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
           
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
@@ -176,7 +176,7 @@
       <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
         <div class="md-search-result" data-md-component="search-result">
           <div class="md-search-result__meta">
-            Initializing search
+            検索を初期化
           </div>
           <ol class="md-search-result__list" role="presentation"></ol>
         </div>
@@ -188,7 +188,7 @@
     
     
       <div class="md-header__source">
-        <a href="https://github.com/ATO-LABO/WorldBloom" title="Go to repository" class="md-source" data-md-component="source">
+        <a href="https://github.com/ATO-LABO/WorldBloom" title="リポジトリへ" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
@@ -222,19 +222,19 @@
 
 
 
-<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+<nav class="md-nav md-nav--primary" aria-label="ナビゲーション" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="WorldBloom Docs" class="md-nav__button md-logo" aria-label="WorldBloom Docs" data-md-component="logo">
+    <a href="../.." title="WorldBloom ドキュメント" class="md-nav__button md-logo" aria-label="WorldBloom ドキュメント" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
-    WorldBloom Docs
+    WorldBloom ドキュメント
   </label>
   
     <div class="md-nav__source">
-      <a href="https://github.com/ATO-LABO/WorldBloom" title="Go to repository" class="md-source" data-md-component="source">
+      <a href="https://github.com/ATO-LABO/WorldBloom" title="リポジトリへ" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
@@ -277,7 +277,7 @@
   <span class="md-ellipsis">
     
   
-    Getting Started
+    はじめに
   
 
     
@@ -293,7 +293,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Getting Started
+    はじめに
   
 
           </label>
@@ -313,7 +313,7 @@
   <span class="md-ellipsis">
     
   
-    Introduction
+    概要
   
 
     
@@ -341,7 +341,7 @@
   <span class="md-ellipsis">
     
   
-    Install
+    インストール
   
 
     
@@ -369,7 +369,346 @@
   <span class="md-ellipsis">
     
   
-    Quickstart
+    クイックスタート
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概念
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    概念
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体の流れ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/fixed-ending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    結末固定
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/seven-layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7層構造
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/genome/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    遺伝子（Genome）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/action-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    行動タイプ I〜VI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/foreshadowing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    伏線（遅延効果）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/qd-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QD 格子
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/sifting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sifting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/determinism/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    決定論
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/route-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    道筋層
   
 
     
@@ -412,17 +751,17 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Concepts
+    使い方
   
 
     
@@ -433,12 +772,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Concepts
+    使い方
   
 
           </label>
@@ -451,126 +790,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../overview/" class="md-nav__link">
+      <a href="../create-world/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../fixed-ending/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Fixed Ending
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../seven-layers/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Seven Layers
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../genome/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Genome
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../action-types/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Action Types I–VI
+    世界を作る
   
 
     
@@ -607,7 +834,7 @@
   <span class="md-ellipsis">
     
   
-    Foreshadowing
+    世界を ZIP から取り込む
   
 
     
@@ -625,7 +852,7 @@
   <span class="md-ellipsis">
     
   
-    Foreshadowing
+    世界を ZIP から取り込む
   
 
     
@@ -637,7 +864,7 @@
       
         
 
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+<nav class="md-nav md-nav--secondary" aria-label="目次">
   
   
   
@@ -646,15 +873,15 @@
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
-      Table of contents
+      目次
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#who-pulls-the-trigger-on-payoff-auto-vs-chosen" class="md-nav__link">
+  <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Who pulls the trigger on payoff — auto vs. chosen
+        入口
       
     </span>
   </a>
@@ -662,10 +889,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#penalty-for-unresolved-foreshadowing" class="md-nav__link">
+  <a href="#zip_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Penalty for unresolved foreshadowing
+        ZIPに入れるもの
       
     </span>
   </a>
@@ -673,10 +900,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-appears-in-the-log-layersjsonl" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How it appears in the log (layers.jsonl)
+        上限
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        名前とジャンル
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        取り込み後
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エラーが出たら
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#viewer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        閲覧専用の Viewer では使えません
       
     </span>
   </a>
@@ -699,14 +970,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../qd-map/" class="md-nav__link">
+      <a href="../run-settings/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    QD Map
+    実行設定
   
 
     
@@ -727,14 +998,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../sifting/" class="md-nav__link">
+      <a href="../read-results/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Sifting
+    結果を読む
   
 
     
@@ -755,14 +1026,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../determinism/" class="md-nav__link">
+      <a href="../generate-text/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Determinism
+    文章を生成する
   
 
     
@@ -783,101 +1054,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../route-layer/" class="md-nav__link">
+      <a href="../settings/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Route Layer
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
-        
-          
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Usage
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Usage
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/create-world/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Create a World
+    設定
   
 
     
@@ -898,14 +1082,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../usage/import-world/" class="md-nav__link">
+      <a href="../llm-backends/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Import a World from ZIP
+    LLM バックエンド
   
 
     
@@ -926,14 +1110,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../usage/run-settings/" class="md-nav__link">
+      <a href="../gpu-guard/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Run Settings
+    GPU ガード
   
 
     
@@ -954,154 +1138,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../usage/read-results/" class="md-nav__link">
+      <a href="../cli-workflow/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Read Results
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/generate-text/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Generate Text
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/settings/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Settings
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/llm-backends/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LLM Backends
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/gpu-guard/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    GPU Guard
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../usage/cli-workflow/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Workflow
+    CLI での作業手順
   
 
     
@@ -1152,7 +1196,7 @@
   <span class="md-ellipsis">
     
   
-    Reference
+    リファレンス
   
 
     
@@ -1168,7 +1212,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Reference
+    リファレンス
   
 
           </label>
@@ -1244,7 +1288,7 @@
   <span class="md-ellipsis">
     
   
-    Templates
+    テンプレート
   
 
     
@@ -1272,7 +1316,7 @@
   <span class="md-ellipsis">
     
   
-    Run Outputs
+    実行結果のファイル
   
 
     
@@ -1328,7 +1372,7 @@
   <span class="md-ellipsis">
     
   
-    Glossary
+    用語集
   
 
     
@@ -1356,7 +1400,7 @@
   <span class="md-ellipsis">
     
   
-    Design Docs
+    設計資料
   
 
     
@@ -1407,7 +1451,7 @@
   <span class="md-ellipsis">
     
   
-    Guides
+    ガイド
   
 
     
@@ -1423,7 +1467,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Guides
+    ガイド
   
 
           </label>
@@ -1443,7 +1487,7 @@
   <span class="md-ellipsis">
     
   
-    Troubleshooting
+    トラブルシューティング
   
 
     
@@ -1499,7 +1543,7 @@
   <span class="md-ellipsis">
     
   
-    Changelog
+    変更履歴
   
 
     
@@ -1533,7 +1577,7 @@
                   <div class="md-sidebar__inner">
                     
 
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+<nav class="md-nav md-nav--secondary" aria-label="目次">
   
   
   
@@ -1542,15 +1586,15 @@
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
-      Table of contents
+      目次
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#who-pulls-the-trigger-on-payoff-auto-vs-chosen" class="md-nav__link">
+  <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Who pulls the trigger on payoff — auto vs. chosen
+        入口
       
     </span>
   </a>
@@ -1558,10 +1602,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#penalty-for-unresolved-foreshadowing" class="md-nav__link">
+  <a href="#zip_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Penalty for unresolved foreshadowing
+        ZIPに入れるもの
       
     </span>
   </a>
@@ -1569,10 +1613,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-appears-in-the-log-layersjsonl" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How it appears in the log (layers.jsonl)
+        上限
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        名前とジャンル
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        取り込み後
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エラーが出たら
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#viewer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        閲覧専用の Viewer では使えません
       
     </span>
   </a>
@@ -1599,43 +1687,79 @@
   
 
 
-<h1 id="foreshadowing-delayed-effects">Foreshadowing (Delayed Effects)<a class="headerlink" href="#foreshadowing-delayed-effects" title="Permanent link">&para;</a></h1>
-<p>The <a href="../seven-layers/">Seven Layers</a>' seventh layer carries <strong>delayed effects</strong>, where an action placed earlier pays off later. It has two moments — "plant" and "payoff" — and the delay between them is what reads as "foreshadowing" in hindsight.</p>
-<h2 id="who-pulls-the-trigger-on-payoff-auto-vs-chosen">Who pulls the trigger on payoff — auto vs. chosen<a class="headerlink" href="#who-pulls-the-trigger-on-payoff-auto-vs-chosen" title="Permanent link">&para;</a></h2>
-<p>The foreshadowing library (<code>templates/&lt;genre&gt;/effects.yaml</code>) declares, for each entry, who pulls the trigger on its payoff.</p>
+<h1 id="zip">世界を ZIP から取り込む<a class="headerlink" href="#zip" title="Permanent link">&para;</a></h1>
+<p>AI（Codex・Claude Code・Gemini など）に作らせた世界設定を、ZIPファイルとして
+WorldBloom に取り込めます。<a href="../create-world/">世界を作る</a>の「新しい世界を作る」画面に
+ある3つ目の作成方法です。</p>
+<h2 id="_1">入口<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>ホーム画面（<strong>世界を選ぶ</strong>）の <strong>＋ 新しい世界を作る</strong> →「<strong>ZIPから取り込む</strong>」を選び、
+<code>world.yaml</code> と <code>subjects/*.yaml</code> をまとめたZIPファイルを選択します。</p>
+<h2 id="zip_1">ZIPに入れるもの<a class="headerlink" href="#zip_1" title="Permanent link">&para;</a></h2>
+<p>ZIPの作り方の仕様書は
+<a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md"><code>docs/world-import-guide.md</code></a>
+（GitHub）です。この文書をAIツールにそのまま渡して依頼すると、互換性のあるZIPを
+作ってもらえます。</p>
+<h2 id="_2">上限<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><code>mode: auto</code></strong>: fires automatically the instant conditions are met, as the natural consequence of an act — not a character's choice. Example: someone who received kibidango automatically shows loyalty later when present at a battle.</li>
-<li><strong><code>mode: chosen</code></strong>: foreshadowing where the timing of revealing or using it matters in itself. Once conditions are met, "pay it off" (action type II-3, <code>payoff</code>) becomes a candidate, and whether it's chosen follows the <a href="../genome/">genome</a>. Example: whether the fact learned through reconnaissance — "the ogre's only weakness is the iron club" — gets used right after landing, held back until allies gather, or played as a last resort when cornered: the GA searches over this difference in timing.</li>
+<li>1ファイルあたり256KB以内</li>
+<li>ZIP本体は47KB以内</li>
+<li>ファイル数は200件以内</li>
+<li>展開後の合計サイズは2MB以内</li>
 </ul>
-<div class="highlight"><pre><span></span><code><span class="c1"># templates/momotaro/effects.yaml</span>
-<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kibidango_loyalty</span>
-<span class="w">  </span><span class="nt">plant</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">verb</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">give_item</span>
-<span class="w">    </span><span class="nt">item</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">きびだんご</span>
-<span class="w">    </span><span class="nt">to_role</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">neutral</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ally</span><span class="p p-Indicator">]</span>
-<span class="w">  </span><span class="nt">payoff</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="s">"stance(target,</span><span class="nv"> </span><span class="s">planter)</span><span class="nv"> </span><span class="s">&gt;=</span><span class="nv"> </span><span class="s">0.5</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">hostile_present(planter)"</span>
-<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">きびだんごの恩に報いる仲間の奮戦</span>
-<span class="w">    </span><span class="nt">effect</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">modifier</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="nv">planter</span><span class="p p-Indicator">,</span><span class="nt"> source</span><span class="p">:</span><span class="w"> </span><span class="s">"$target"</span><span class="p p-Indicator">,</span><span class="nt"> value</span><span class="p">:</span><span class="w"> </span><span class="nv">10</span><span class="p p-Indicator">,</span><span class="nt"> kind</span><span class="p">:</span><span class="w"> </span><span class="nv">loyal</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
-
-<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">oni_gap</span>
-<span class="w">  </span><span class="nt">plant</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">verb</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">observe</span>
-<span class="w">    </span><span class="nt">reveals</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="nv">鬼</span><span class="p p-Indicator">,</span><span class="nt"> source</span><span class="p">:</span><span class="w"> </span><span class="nv">金棒</span><span class="p p-Indicator">}</span>
-<span class="w">  </span><span class="nt">payoff</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="s">"present(鬼)</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">vitality(planter)</span><span class="nv"> </span><span class="s">!=</span><span class="nv"> </span><span class="s">'downed'"</span>
-<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">金棒の隙を見切って仲間に合図を送る</span>
-<span class="w">    </span><span class="nt">effect</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">modifier</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="nv">planter</span><span class="p p-Indicator">,</span><span class="nt"> source</span><span class="p">:</span><span class="w"> </span><span class="nv">見切り</span><span class="p p-Indicator">,</span><span class="nt"> value</span><span class="p">:</span><span class="w"> </span><span class="nv">15</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">chosen</span>
-</code></pre></div>
-<p>In most cases <code>plant</code> piggybacks on an existing verb's execution (<code>give_item</code>, <code>observe</code>, etc.) itself. Some foreshadowing uses a dedicated <code>plant</code> verb instead. Which foreshadowing gets planted is modulated by action type II's (information) category weight and novelty drive.</p>
-<h2 id="penalty-for-unresolved-foreshadowing">Penalty for unresolved foreshadowing<a class="headerlink" href="#penalty-for-unresolved-foreshadowing" title="Permanent link">&para;</a></h2>
-<p>If a <code>chosen</code> piece of foreshadowing is never paid off by the time the story ends, quality q is docked <strong>-0.05 per case</strong> (<code>dangling_effect_count</code> in <code>engine/phase2.py</code>, tallied in <code>gapengine/qd.py</code>). This applies unconditionally to every unresolved case, whether or not its payoff condition ever held. This is the mechanism that lets the GA select against "a gun that's never fired" — foreshadowing that was planted but never used. <code>auto</code> foreshadowing never goes through a character's choice, so it's exempt from this penalty.</p>
-<h2 id="how-it-appears-in-the-log-layersjsonl">How it appears in the log (layers.jsonl)<a class="headerlink" href="#how-it-appears-in-the-log-layersjsonl" title="Permanent link">&para;</a></h2>
-<p>Planting and payoff are each recorded in the execution log <code>layers.jsonl</code> as a decision event or derived event. When a payoff fires, its effect (<code>modifier</code>, <code>enable_verb</code>, etc.) is reflected into the seven layers right there. At the output stage, this plant/payoff pair is extracted as a "notable turn" and passed into the synopsis-generation prompt (see <a href="../../reference/run-outputs/">Run Outputs</a> for details).</p>
+<p>超えるとアップロード時点でエラーになります。</p>
+<h2 id="_3">名前とジャンル<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>表示名</strong>: フォームの「世界の名前」欄が空欄なら、ZIPの <code>world.yaml</code> の <code>name</code> を
+  使います。フォームに入力すれば、その値で上書きされます。</li>
+<li><strong>ジャンル</strong>: ZIPの指定に従います。<code>world.yaml</code> に <code>gapengine</code>（<code>action_graph</code>・
+  <code>effects</code>）を書けばそのジャンルで取り込まれ、書かなければ<strong>未設定</strong>で取り込まれます。</li>
+</ul>
+<h2 id="_4">取り込み後<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>取り込んだ世界は、そのまま<a href="../create-world/#world-settings">世界設定画面</a>に進みます。</p>
+<ul>
+<li><strong>ジャンルが未設定の場合</strong>: 「世界の概要」タブのジャンル行から選べます。<strong>実行前に必ず
+  選んでください</strong>。選ばなくても実行設定でジャンルを指定すればGA実験自体は動きますが、
+  この世界の伏線（<code>gapengine.effects</code>）だけは黙って空のまま実行されます。</li>
+<li>内容の確認は、実行設定の「検証」、または世界設定画面の各タブで行ってください。</li>
+</ul>
+<h2 id="_5">エラーが出たら<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>主なメッセージと原因です（詳しくは
+<a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md"><code>docs/world-import-guide.md</code></a>
+の8章を参照）。</p>
+<table>
+<thead>
+<tr>
+<th>メッセージ</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZIPにworld.yamlがありません</code></td>
+<td><code>world.yaml</code> がZIP直下（または単一の共通フォルダ直下）にない</td>
+</tr>
+<tr>
+<td><code>&lt;path&gt;: 対象外のファイル名です</code></td>
+<td><code>subjects/</code> 配下のファイル名が規則外</td>
+</tr>
+<tr>
+<td><code>ZIPは47KB以内にしてください</code></td>
+<td>ZIP本体が大きすぎる</td>
+</tr>
+<tr>
+<td><code>ZIPのジャンル「&lt;id&gt;」（templates/&lt;id&gt;/）がありません...</code></td>
+<td>指定したジャンルが存在しない</td>
+</tr>
+<tr>
+<td><code>名前を入力してください（ZIPのnameも空です）</code></td>
+<td>フォームの表示名も <code>world.yaml</code> の <code>name</code> も空</td>
+</tr>
+</tbody>
+</table>
+<h2 id="viewer">閲覧専用の Viewer では使えません<a class="headerlink" href="#viewer" title="Permanent link">&para;</a></h2>
+<p>配布版の <strong>Viewer exe</strong>（読み取り専用ビューア）はすべての書き込みを拒否するため、
+この画面自体を開けません。取り込みは <strong>Studio exe</strong> または <code>--control</code> 付きで
+起動したサーバーから行ってください。</p>
 
 
 
@@ -1664,7 +1788,7 @@
           <button type="button" class="md-top md-icon" data-md-component="top" hidden>
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
-  Back to top
+  ページトップへ戻る
 </button>
         
       </main>
@@ -1673,33 +1797,33 @@
   
     
       
-      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+      <nav class="md-footer__inner md-grid" aria-label="フッター" >
         
           
-          <a href="../action-types/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Action Types I–VI">
+          <a href="../create-world/" class="md-footer__link md-footer__link--prev" aria-label="前: 世界を作る">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
             </div>
             <div class="md-footer__title">
               <span class="md-footer__direction">
-                Previous
+                前
               </span>
               <div class="md-ellipsis">
-                Action Types I–VI
+                世界を作る
               </div>
             </div>
           </a>
         
         
           
-          <a href="../qd-map/" class="md-footer__link md-footer__link--next" aria-label="Next: QD Map">
+          <a href="../run-settings/" class="md-footer__link md-footer__link--next" aria-label="次: 実行設定">
             <div class="md-footer__title">
               <span class="md-footer__direction">
-                Next
+                次
               </span>
               <div class="md-ellipsis">
-                QD Map
+                実行設定
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1736,7 +1860,7 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
