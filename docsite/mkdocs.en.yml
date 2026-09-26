@@ -64,6 +64,7 @@ nav:
       - Sifting: concepts/sifting.md
       - Determinism: concepts/determinism.md
       - Route Layer: concepts/route-layer.md
+      - Rationality Layer and Jev: concepts/rationality-layer.md
   - Usage:
       - Create a World: usage/create-world.md
       - Import a World from ZIP: usage/import-world.md

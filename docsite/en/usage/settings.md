@@ -1,5 +1,5 @@
 ---
-ja_rev: "19ff03f4d37c"
+ja_rev: "f1704b83b068"
 ---
 # Settings
 
@@ -30,6 +30,8 @@ Settings for how much this PC parallelizes GA experiments.
 | GA の並列数 (GA process count, processes) | How many individual evaluations run at once in the GA. **Only affects speed, never the results** | `min(8, this PC's CPU core count)` |
 
 On a development machine (20 cores), measurements showed speed plateauing around 8 processes. Applies to GA experiments started after the save.
+
+**合理性の判定器（Jev）(Rationality judge (Jev))**: the same tab has a block for registering a TypeSafe API key. Enter the key and press "キーを保存" (Save key); before saving, it sends one real judgment call with that key to verify it, and only saves if that succeeds (the status then reads "有効（jev-1.13.0、確認した日付）", "Enabled (jev-1.13.0, verified on <date>)"). The key is stored only in `settings.json` — it never appears on screen, in the API, or in any experiment record. Which experiments use Jev is chosen per run in the "合理性" (Rationality) section of [Run Settings](run-settings.md#04). See [Rationality Layer and Jev](../concepts/rationality-layer.md) for the full picture.
 
 ## Saved run-setting versions
 

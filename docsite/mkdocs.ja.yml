@@ -64,6 +64,7 @@ nav:
       - Sifting: concepts/sifting.md
       - 決定論: concepts/determinism.md
       - 道筋層: concepts/route-layer.md
+      - 合理性層と Jev: concepts/rationality-layer.md
   - 使い方:
       - 世界を作る: usage/create-world.md
       - 世界を ZIP から取り込む: usage/import-world.md
