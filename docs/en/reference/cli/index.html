@@ -1765,7 +1765,7 @@
                  [--target-ending TARGET_ENDING [TARGET_ENDING ...]]
                  [--record-explanations | --no-record-explanations]
                  [--world-expansion {off,detect,expand}] [--seed-genomes SEED_GENOMES]
-                 [--kappa KAPPA] [--rationality-backend {ollama,none}]
+                 [--kappa KAPPA] [--rationality-backend {ollama,jev,none}]
                  [--rationality-method {noul,choice}] [--rationality-model RATIONALITY_MODEL]
                  [--rationality-num-ctx RATIONALITY_NUM_CTX]
                  [--rationality-table RATIONALITY_TABLE]
@@ -1801,8 +1801,9 @@ options:
                         か、その実験の実験ディレクトリを指定する。
   --kappa KAPPA         WB-JEV-001 Stage 2: override templates/&lt;genre&gt;/rationality.yaml's kappa (0
                         disables the rationality layer; that is the template default).
-  --rationality-backend {ollama,none}
-                        Override rationality.yaml's judge backend.
+  --rationality-backend {ollama,jev,none}
+                        Override rationality.yaml's judge backend. "jev" (WB-JEV-005) calls
+                        TypeSafe's Jev API and reads its key from TYPESAFE_API_KEY.
   --rationality-method {noul,choice}
                         Override rationality.yaml's judge method (yes/no vs multiple-choice).
   --rationality-model RATIONALITY_MODEL
