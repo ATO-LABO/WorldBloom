@@ -8,13 +8,14 @@ straight through to execution.configs.ConfigStore.preview via LibraryStore.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from http import HTTPStatus
 
 import yaml
 
-from execution.library import LibraryStore
+from execution.library import MAX_ZIP_BYTES, LibraryStore, zip_to_files
 from execution.provenance import ConfigError
 from execution.worker import TERMINAL
 from execution.world_patch_approval import (StalePatch as _StalePatch, approve as _approve_patch,
@@ -685,6 +686,7 @@ def _worlds_detail(handler, world_id):
             experiments=[] if job_store is not None else _world_experiments(handler.repository, label),
             expansion_html=_world_expansion_html(store, world_id, current["world"], job_store,
                                                  repository=handler.repository),
+            genres=store.genres(),
         ))
         return
     from viewer import world_advanced
@@ -754,6 +756,20 @@ def _create_world(handler):
         if set(body) != {"mode", "world_id", "name", "overview"}:
             raise ConfigError("request", "新規作成には名前・概要・世界IDを指定してください", code="bad_request")
         world_id = store.create_original_world(body["world_id"], name=body["name"], overview=body["overview"])
+    elif body.get("mode") == "import":
+        if set(body) != {"mode", "world_id", "name", "zip_base64"}:
+            raise ConfigError("request", "取り込みには名前・世界ID・ZIPを指定してください", code="bad_request")
+        zip_base64 = body["zip_base64"]
+        if not isinstance(zip_base64, str) or not zip_base64:
+            raise ConfigError("zip_base64", "ZIPを指定してください", code="bad_request")
+        try:
+            raw = base64.b64decode(zip_base64, validate=True)
+        except ValueError as error:
+            raise ConfigError("zip_base64", "ZIPとして読めません", code="bad_request") from error
+        if len(raw) > MAX_ZIP_BYTES:
+            raise ConfigError("zip_base64", f"ZIPは{MAX_ZIP_BYTES // 1024}KB以内にしてください", code="bad_request")
+        files = zip_to_files(raw)
+        world_id = store.import_world(body["world_id"], files=files, name=body["name"])
     else:
         expected = {"world_id", "name", "from_world_id", "template_id"}
         if "mode" in body:

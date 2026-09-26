@@ -75,6 +75,7 @@ def save(store, ident, body):
         "route": {"item", "cost"},
         "roles": {"protagonist", "antagonist", "target_ending"},
         "file": {"content"},
+        "genre": {"template_id"},
     }
     if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict) or set(values) != allowed[operation]:
         _bad("values", "編集項目を確認してください")
@@ -193,6 +194,16 @@ def save(store, ident, body):
             else:
                 route.pop("requires_item", None)
             route["cost"] = cost
+        elif operation == "genre":
+            # WB-WORLD-IMPORT-001: lets a world imported without a genre (or
+            # any world) pick/switch its templates/<id>/ afterward. Other
+            # gapengine keys (e.g. a future antagonist graph) are preserved.
+            template_id = values["template_id"]
+            if not isinstance(template_id, str) or not (store.repo / "templates" / template_id).is_dir():
+                _bad("template_id", "ジャンルがありません")
+            updated["gapengine"] = {**(world.get("gapengine") or {}),
+                                    "action_graph": f"templates/{template_id}/action_graph.yaml",
+                                    "effects": f"templates/{template_id}/effects.yaml"}
         _validate_rel("world", rel)
         # One atomic file replacement per operation; the rest of the world is untouched.
         store._write_file("world", ident, rel, yaml.safe_dump(updated, allow_unicode=True, sort_keys=False))

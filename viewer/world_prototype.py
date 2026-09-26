@@ -8,13 +8,15 @@ from urllib.parse import quote
 from viewer import data, pages
 
 
-def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=None, experiments=(), expansion_html=""):
+def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=None, experiments=(), expansion_html="", genres=()):
     """Render saved settings in the shared production shell. Rendering never writes."""
     model = {
         "id": world["id"], "name": world.get("name") or world["id"],
         "world": world_yaml, "people": subjects,
         "overview": world_yaml.get("overview") or "", "intro": world_yaml.get("initial_story") or "",
         "editable": job_store is not None and revision is not None, "revision": revision,
+        "genre": world.get("genre"),
+        "genres": [{"id": g["id"], "name": g.get("name") or g["id"]} for g in genres],
     }
     wid = quote(world["id"], safe="")
     config = f'/configs/new?project={wid}'
@@ -22,6 +24,7 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         config += "&template=" + quote(world["genre"], safe="")
     people_ids = {p.get("id") for p in subjects}
     missing = []
+    if not world.get("genre"): missing.append("ジャンル")
     if not subjects: missing.append("登場人物")
     if not world_yaml.get("zones"): missing.append("場所")
     if not world_yaml.get("protagonist") or world_yaml["protagonist"] not in people_ids: missing.append("主人公")

@@ -153,6 +153,30 @@ class WorldEditorTests(unittest.TestCase):
         self.assertEqual(status,400,error)
         self.assertEqual(before,self.current()['revision'])
 
+    def test_genre_operation_sets_gapengine_and_preserves_other_keys(self):
+        store = LibraryStore(self.repo)
+        world = yaml.safe_load(store.read('world', 'momotaro', 'world.yaml'))
+        world['gapengine']['antagonist_hint'] = 'kept'
+        store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
+        status, result = self.submit('genre', {'template_id': 'basic'})
+        self.assertEqual(status, 200, result)
+        saved = yaml.safe_load((self.repo / 'projects/momotaro/world.yaml').read_text(encoding='utf-8'))
+        self.assertEqual(saved['gapengine']['action_graph'], 'templates/basic/action_graph.yaml')
+        self.assertEqual(saved['gapengine']['effects'], 'templates/basic/effects.yaml')
+        self.assertEqual(saved['gapengine']['antagonist_hint'], 'kept')
+
+    def test_genre_operation_rejects_unknown_genre(self):
+        before = self.current()['revision']
+        status, error = self.submit('genre', {'template_id': 'no-such-genre'})
+        self.assertEqual(status, 400, error)
+        self.assertEqual(before, self.current()['revision'])
+
+    def test_genre_operation_rejects_stale_revision(self):
+        revision = self.current()['revision']
+        self.assertEqual(self.submit('intro', {'text': '他の画面で更新'})[0], 200)
+        status, error = self.submit('genre', {'template_id': 'basic'}, revision=revision)
+        self.assertEqual(status, 409, error)
+
     def test_failed_atomic_save_preserves_original(self):
         store=LibraryStore(self.repo)
         body={'revision':self.current()['revision'],'operation':'intro','target':None,'values':{'text':'test'}}
