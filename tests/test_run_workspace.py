@@ -77,6 +77,41 @@ class RunWorkspaceTests(unittest.TestCase):
         self.assertIn('data-rw-managed="true"', body)
         self.assertEqual(self.fake.submitted, [])
 
+    def test_epoch_chain_strip_appears_only_when_this_config_is_the_chains_current_epoch(self):
+        # WB-WORLDGROW-001 段階5c-2: fabricate a chain.json directly (this
+        # fixture's FakeJobStore can't actually run an epoch chain end to
+        # end) whose last epoch's own config_id is "cfg-replay" -- the same
+        # config job-replay itself was submitted against.
+        import time
+        from execution.provenance import atomic_json, directory_lock
+        # approval="manual" + gate_status="reviewable" makes the live server's
+        # own background tick() (ViewerServer.service_actions polls every
+        # 0.05s in this fixture) a no-op on "approve" -- it just re-confirms
+        # state=="waiting" instead of crashing on a hand-fabricated chain
+        # that skips fields a real EpochChain.start() would have filled in.
+        control = self.fake.configs.control
+        chain = {"schema_version": 1, "chain_id": "chain-test", "created_at": time.time(),
+                 "updated_at": time.time(), "revision": 1, "base_config_id": "cfg-other-base",
+                 "max_epochs": 3, "state": "waiting", "approval": "manual", "auto_retire": False,
+                 "idle_streak": 0, "stop_requested_at": None, "error": None,
+                 "epochs": [{"index": 0, "step": "approve", "config_id": "cfg-replay",
+                             "run_job_id": "job-replay", "run_id": self.run_id, "patch_id": None,
+                             "gate_status": "reviewable", "approved_rev": None, "retired": [],
+                             "notes": ["提案を検査しました"]}]}
+        with directory_lock(control / "epochs"):
+            atomic_json(control / "epochs" / "chain-test" / "chain.json", chain)
+        status, body = self.get("/jobs/job-replay")
+        self.assertEqual(status, 200, body)
+        self.assertIn("data-epoch-chain", body)
+        self.assertIn("承認待ち", body)
+        self.assertIn("epoch-chain.js", body)
+
+    def test_no_chain_leaves_the_page_free_of_epoch_chain_markup(self):
+        status, body = self.get("/jobs/job-replay")
+        self.assertEqual(status, 200)
+        self.assertNotIn("data-epoch-chain", body)
+        self.assertNotIn("epoch-chain.js", body)
+
     def test_fifth_tab_shows_world_demand_panel_and_condition_row(self):
         status, body = self.get("/jobs/job-replay")
         self.assertEqual(status, 200)
@@ -118,6 +153,28 @@ class RunWorkspaceTests(unittest.TestCase):
         self.assertIn('data-patch-job-cancel', body)
         # No stray reason line when the button is actually offered.
         self.assertNotIn("提案できません", body)
+
+    def test_demand_tab_shows_waiting_hint_when_this_epoch_is_awaiting_approval(self):
+        # WB-WORLDGROW-001 段階5c-2: the same fabricated "waiting" chain as
+        # test_epoch_chain_strip_appears_only_when_this_config_is_the_chains_current_epoch,
+        # this time checking _proposals_html()'s own hint (epoch_view.waiting_hint()).
+        import time
+        from execution.provenance import atomic_json, directory_lock
+        control = self.fake.configs.control
+        chain = {"schema_version": 1, "chain_id": "chain-wait", "created_at": time.time(),
+                 "updated_at": time.time(), "revision": 1, "base_config_id": "cfg-other-base",
+                 "max_epochs": 3, "state": "waiting", "approval": "manual", "auto_retire": False,
+                 "idle_streak": 0, "stop_requested_at": None, "error": None,
+                 "epochs": [{"index": 0, "step": "approve", "config_id": "cfg-replay",
+                             "run_job_id": "job-replay", "run_id": self.run_id, "patch_id": None,
+                             "gate_status": "reviewable", "approved_rev": None, "retired": [],
+                             "notes": []}]}
+        with directory_lock(control / "epochs"):
+            atomic_json(control / "epochs" / "chain-wait" / "chain.json", chain)
+        status, body = self.get("/jobs/job-replay")
+        self.assertEqual(status, 200, body)
+        self.assertIn("第 1 エポック: 承認待ち", body)
+        self.assertIn("次のエポックへ", body)
 
     def test_propose_reason_view_only_wins_even_with_a_usable_config(self):
         # Direct-call test (HTTP routing can't reach this combination: a

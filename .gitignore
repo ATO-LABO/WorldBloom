@@ -19,3 +19,8 @@ settings.json
 
 # Local docs site build output
 _site/
+
+# execution/provenance.py's directory_lock() marker file -- created as a
+# side effect of any locked read/write under projects/<world>/patches/
+# (approved patches, epoch chains), never meant to be tracked.
+projects/**/.write.lock

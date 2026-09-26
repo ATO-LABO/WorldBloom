@@ -87,6 +87,19 @@ def _seed_genomes_label(value):
     """WB-WORLDGROW-001 段階5b: config detail views' "前の実験から引き継ぐ" row."""
     return value if value else "しない"
 
+
+GROWTH_MODE_LABELS = {"auto": "自動", "manual": "手動（承認ごとに止まる）"}
+
+
+def _growth_label(growth):
+    """WB-WORLDGROW-001 段階5c-2: config detail views' "世界を育てる" row.
+    growth is config.get("growth") -- None (or missing) means off, same
+    contract as execution/configs.py's own "no key at all" convention."""
+    if not growth or growth.get("mode", "off") == "off":
+        return "しない"
+    mode_label = GROWTH_MODE_LABELS.get(growth["mode"], growth["mode"])
+    return f'{mode_label} {growth.get("epochs")} 周'
+
 # WB-UI-021: /configs's 文章生成 card (execution/output_settings.py's backend choices).
 GENERATION_BACKEND_OPTIONS = (
     ("claude-cli", "Claude Code CLI（claude -p）"),
@@ -295,11 +308,12 @@ def _text_field(label, name, value, *, required=False, placeholder="", hint="", 
     )
 
 
-def _number_field(label, name, value, *, unit="", min_value=None, hint=""):
+def _number_field(label, name, value, *, unit="", min_value=None, max_value=None, hint=""):
     minattr = f' min="{_escape(min_value)}"' if min_value is not None else ""
+    maxattr = f' max="{_escape(max_value)}"' if max_value is not None else ""
     input_html = (
         f'<input id="f-{_escape(name)}" type="number" step="1" name="{_escape(name)}" '
-        f'data-field="{_escape(name)}" value="{_escape(value)}"{minattr}>'
+        f'data-field="{_escape(name)}" value="{_escape(value)}"{minattr}{maxattr}>'
     )
     if unit:
         input_html = f'<div class="unit">{input_html}<span>{_escape(unit)}</span></div>'
@@ -393,7 +407,7 @@ def _as_int(value):
         return 0
 
 
-def _initial_values(*, label, project_id, template_id, evolution, execution_limits):
+def _initial_values(*, label, project_id, template_id, evolution, execution_limits, growth=None):
     values = {"label": label, "project_id": project_id, "template_id": template_id}
     for key in ("generations", "population", "seeds", "seed_base", "ga_seed", "processes"):
         values[f"evolution.{key}"] = evolution[key]
@@ -414,6 +428,13 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
         ", ".join(evolution["target_ending"]) if evolution.get("target_ending") else ""
     )
     values["execution_limits.wall_seconds"] = execution_limits["wall_seconds"]
+    # WB-WORLDGROW-001 段階5c-2: growth is None for a brand-new form and for
+    # any config saved before this stage (execution/configs.py's own "no
+    # key at all means off" convention -- see _growth()).
+    growth = growth or {}
+    values["growth.mode"] = growth.get("mode", "off")
+    values["growth.epochs"] = growth.get("epochs", 3)
+    values["growth.auto_retire"] = growth.get("auto_retire", values["growth.mode"] == "auto")
     return values
 
 
@@ -811,6 +832,7 @@ def render_config_detail(config, control):
         ("保存方針", _escape(ev["keep"])),
         ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("前の実験から引き継ぐ", _escape(_seed_genomes_label(ev.get("seed_genomes")))),
+        ("世界を育てる", _escape(_growth_label(config.get("growth")))),
         ("共進化", _escape(ev["coevolve"])),
         ("メタ進化", _escape(ev["meta_evolution"])),
         ("説明記録", _escape(ev["record_explanations"])),
@@ -1048,6 +1070,7 @@ def _run_plan(config, estimate, control, *, open_detail=False):
         ("保存方針", _escape(ev["keep"])),
         ("世界の拡張", _escape(_world_expansion_label(ev.get("world_expansion", "off")))),
         ("前の実験から引き継ぐ", _escape(_seed_genomes_label(ev.get("seed_genomes")))),
+        ("世界を育てる", _escape(_growth_label(config.get("growth")))),
         ("共進化 / メタ進化", f"{coevolve} / {meta}"),
         ("合理性 κ", _escape(_rationality_summary(_frozen_template_dir(control, config), ev))),
         ("道筋 ρ", _escape(_route_rho_summary(ev))),
@@ -2212,6 +2235,7 @@ def _configs_new(handler):
         values = _initial_values(
             label=parent["label"], project_id=parent["project_id"], template_id=parent["template_id"],
             evolution=parent["evolution"], execution_limits=parent["execution_limits"],
+            growth=parent.get("growth"),
         )
         rationality_ctx = _rationality_form_context(repo, values["template_id"])
         route_ctx = _route_form_context(repo, values["template_id"])
