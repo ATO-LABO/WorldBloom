@@ -1,11 +1,14 @@
 // State-machine checks for viewer/static/world-expansion.js (the propose/check
 // job panel). Hand-rolled DOM, fake fetch and fake timers, like
-// raw_workspace_ui.cjs. Run: node tests/world_expansion_ui.cjs <path-to-js>
+// raw_workspace_ui.cjs. Run: node tests/world_expansion_ui.cjs [path-to-js]
+// (defaults to viewer/static/world-expansion.js next to this repo).
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(process.argv[2], 'utf8');
+const jsPath = process.argv[2] || path.join(__dirname, '..', 'viewer', 'static', 'world-expansion.js');
+const source = fs.readFileSync(jsPath, 'utf8');
 
 class Button {
   constructor(action, {disabled = false, dataset = {}} = {}) {
@@ -25,16 +28,16 @@ class Button {
   get parentElement() { return null; }
 }
 
-function page({jobsList = [], replies = {}} = {}) {
+function page({jobsList = [], replies = {}, buttons: customButtons, allowAlert = false} = {}) {
   const status = {textContent: ''};
   const cancel = new Button('cancel');
   delete cancel.dataset.patchAction;
   const panel = {hidden: true, dataset: {run: 'run-1'},
     querySelector: s => s === '[role="status"]' ? status : s === '[data-patch-job-cancel]' ? cancel : null};
-  const buttons = [new Button('propose', {dataset: {run: 'run-1', trigger: '1'}}),
+  const buttons = customButtons || [new Button('propose', {dataset: {run: 'run-1', trigger: '1'}}),
     new Button('approve', {disabled: true}),                       // not approvable: rendered disabled
     new Button('reject'), new Button('check', {dataset: {run: 'run-1', patch: 'p-abc'}})];
-  const clicks = [], calls = [], timers = [];
+  const clicks = [], calls = [], timers = [], alerts = [];
   let reloads = 0;
   const document = {
     addEventListener: (type, fn) => { if (type === 'click') clicks.push(fn); },
@@ -61,7 +64,8 @@ function page({jobsList = [], replies = {}} = {}) {
     if (key === 'GET /api/jobs') return reply(200, {jobs: jobsList});
     return reply(404, {message: 'not found'});
   };
-  const context = {document, fetch, alert: t => { throw new Error('alert() must not be used: ' + t); },
+  const context = {document, fetch,
+    alert: allowAlert ? (t => { alerts.push(t); }) : (t => { throw new Error('alert() must not be used: ' + t); }),
     confirm: () => true, crypto: require('node:crypto').webcrypto, URL, Date, history: {replaceState() {}},
     location: {href: 'http://localhost/exp/run-1/monitor?tab=demand', reload: () => { reloads += 1; }},
     setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout: () => {}};
@@ -69,7 +73,7 @@ function page({jobsList = [], replies = {}} = {}) {
   const flush = async () => { for (let i = 0; i < 20; i += 1) await new Promise(r => setImmediate(r)); };
   const click = async button => { for (const fn of clicks) await fn({target: button}); await flush(); };
   const tick = async () => { const due = timers.splice(0); for (const fn of due) fn(); await flush(); };
-  return {buttons, panel, status, cancel, calls, timers, click, tick, flush, reloads: () => reloads};
+  return {buttons, panel, status, cancel, calls, timers, alerts, click, tick, flush, reloads: () => reloads};
 }
 
 const running = step => [200, {job_id: 'j1', kind: 'world_patch', run_id: 'run-1', state: 'running', progress: {step}}];
@@ -177,5 +181,44 @@ const running = step => [200, {job_id: 'j1', kind: 'world_patch', run_id: 'run-1
     await p.tick();
     assert.equal(p.reloads(), 1);
   }
-  console.log('world-expansion.js: 9 scenarios ok');
+  // 10. "ジャンルの資産にする" (export): posts {experiment}, tells the operator
+  //     where the asset landed, then reloads (WB-WORLDGROW-001 段階5d).
+  {
+    const exportBtn = new Button('export', {dataset: {world: 'momotaro', patch: 'p-abc', experiment: 'exp-1'}});
+    const p = page({allowAlert: true, buttons: [exportBtn],
+      replies: {'POST /api/worlds/momotaro/patches/p-abc/export': [200, {ok: true, patch_id: 'p-abc', path: 'p-abc.yaml'}]}});
+    await p.flush();
+    await p.click(exportBtn);
+    assert.deepEqual(p.calls.filter(c => c.startsWith('POST')), ['POST /api/worlds/momotaro/patches/p-abc/export']);
+    assert.equal(p.reloads(), 1);
+    assert.equal(p.alerts.length, 1);
+    assert.match(p.alerts[0], /p-abc\.yaml/);
+  }
+  // 11. "この世界に取り込む" (import) on a stale head: the 409 message
+  //     surfaces (this fake DOM has no message slot, so it lands in an
+  //     alert()) and the button re-enables instead of reloading.
+  {
+    const importBtn = new Button('import', {dataset: {world: 'momotaro2', entry: 'p-abc', head: 'stale-head'}});
+    const p = page({allowAlert: true, buttons: [importBtn],
+      replies: {'POST /api/worlds/momotaro2/patches/import':
+        [409, {message: '画面を開いたあとに内容が変わりました。再読み込みしてください'}]}});
+    await p.flush();
+    await p.click(importBtn);
+    assert.deepEqual(p.calls.filter(c => c.startsWith('POST')), ['POST /api/worlds/momotaro2/patches/import']);
+    assert.equal(p.reloads(), 0);
+    assert.equal(importBtn.disabled, false, 'a failure re-enables the button');
+    assert.equal(p.alerts.length, 1);
+    assert.match(p.alerts[0], /再読み込みしてください/);
+  }
+  // 12. Import succeeds: {entry, seen:{head}} payload, plain reload, no alert.
+  {
+    const importBtn = new Button('import', {dataset: {world: 'momotaro2', entry: 'p-abc', head: 'the-head'}});
+    const p = page({allowAlert: true, buttons: [importBtn],
+      replies: {'POST /api/worlds/momotaro2/patches/import': [200, {ok: true, patch_id: 'p-abc'}]}});
+    await p.flush();
+    await p.click(importBtn);
+    assert.equal(p.reloads(), 1);
+    assert.equal(p.alerts.length, 0, 'no alert on a plain success');
+  }
+  console.log('world-expansion.js: 12 scenarios ok');
 })().catch(error => { console.error(error); process.exit(1); });
