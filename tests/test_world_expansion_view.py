@@ -552,5 +552,159 @@ class ApprovedListTests(unittest.TestCase):
         self.assertIn("読めません", html)
 
 
+def _library_entry(entry_id="p-libbbbb", *, title="小屋案", world_name="放課後の約束", reason="良かった",
+                   strong=2, weak=1, violations=(), broken=None):
+    if broken is not None:
+        return {"id": entry_id, "doc": None, "error": broken}
+    doc = {
+        "patch": {"id": entry_id, "title": title, "add": {"zones": [{"name": "小屋", "parent": "海"}]}},
+        "provenance": {"world_name": world_name, "revision": {"approval": {"reason": reason}},
+                      "evidence": {"usage": {"elites_strong": strong, "elites_weak": weak}}},
+    }
+    return {"id": entry_id, "doc": doc, "error": None, "violations": list(violations)}
+
+
+class LibraryAssetSectionTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5d: approved_list()'s「ジャンルの資産」節 (state["library"])."""
+
+    def test_library_only_still_renders_the_section(self):
+        # 承認・提案・淘汰がゼロでも library が非空なら節は出る。
+        state = {"approved": [], "proposed": [], "retired": [], "library": [_library_entry()], "head": "x"}
+        html = wev.approved_list(state, world_id="w", can_write=True, run_link=lambda n: "#")
+        self.assertIn("ジャンルの資産（1件）", html)
+        self.assertIn("小屋案", html)
+
+    def test_library_missing_or_empty_matches_previous_bytes(self):
+        # 3): 資産が空/未設定なら approved_list は従来（library キー無し）と
+        # バイト完全一致 -- 既存の世界画面のテストを壊さない。
+        state_no_key = {"approved": [{"rev": 1, "patch": _base_patch(), "reason": "ok", "experiment": None}],
+                        "proposed": [], "head": "x"}
+        state_empty = dict(state_no_key, library=[])
+        html_no_key = wev.approved_list(state_no_key, world_id="momotaro", can_write=True, run_link=lambda n: "#")
+        html_empty = wev.approved_list(state_empty, world_id="momotaro", can_write=True, run_link=lambda n: "#")
+        self.assertEqual(html_no_key, html_empty)
+        self.assertNotIn("ジャンルの資産", html_no_key)
+        # 承認・提案・淘汰・資産のすべてが無ければ空文字のまま (既存挙動)。
+        self.assertEqual(wev.approved_list({"approved": [], "proposed": [], "retired": [], "library": []},
+                                           world_id="w", can_write=True, run_link=lambda n: "#"), "")
+
+    def test_fit_empty_shows_import_button_with_entry_and_head(self):
+        state = {"approved": [], "proposed": [], "retired": [],
+                 "library": [_library_entry(violations=[])], "head": "deadbeef"}
+        html = wev.approved_list(state, world_id="momotaro2", can_write=True, run_link=lambda n: "#")
+        self.assertIn("取り込めます", html)
+        self.assertIn('data-patch-action="import"', html)
+        self.assertIn('data-entry="p-libbbbb"', html)
+        self.assertIn('data-head="deadbeef"', html)
+        self.assertIn('data-world="momotaro2"', html)
+
+    def test_violation_shows_only_the_first_and_hides_the_button(self):
+        state = {"approved": [], "proposed": [], "retired": [],
+                 "library": [_library_entry(violations=["一つ目の違反", "二つ目の違反"])], "head": "x"}
+        html = wev.approved_list(state, world_id="w", can_write=True, run_link=lambda n: "#")
+        self.assertIn("一つ目の違反", html)
+        self.assertNotIn("二つ目の違反", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_broken_entry_shows_its_error_and_does_not_raise(self):
+        state = {"approved": [], "proposed": [], "retired": [],
+                 "library": [_library_entry(broken="形式が不正です")], "head": "x"}
+        html = wev.approved_list(state, world_id="w", can_write=True, run_link=lambda n: "#")
+        self.assertIn("形式が不正です", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_can_write_false_hides_the_import_button_even_when_fit(self):
+        state = {"approved": [], "proposed": [], "retired": [],
+                 "library": [_library_entry(violations=[])], "head": "x"}
+        html = wev.approved_list(state, world_id="w", can_write=False, run_link=lambda n: "#")
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_xss_in_title_world_name_reason_usage_and_violation_is_escaped(self):
+        evil = '<script>alert(1)</script>"'
+        state = {"approved": [], "proposed": [], "retired": [], "library": [
+            _library_entry(entry_id="p-libaaaa", title=evil, world_name=evil, reason=evil,
+                          strong=evil, weak=evil, violations=[evil]),
+        ], "head": "x"}
+        html = wev.approved_list(state, world_id="w", can_write=True, run_link=lambda n: "#")
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertGreaterEqual(html.count("&lt;script&gt;alert(1)&lt;/script&gt;"), 4)
+
+    def test_applied_id_shows_status_instead_of_fit_or_button(self):
+        # M2 (Opus review): a library entry whose id is already active in
+        # THIS world (e.g. the origin world looking at its own export) must
+        # say so, ahead of fit() -- never "取り込めます" or a stray
+        # duplicate-id violation, and never a button (import_patch() itself
+        # would reject this exact id for the exact same reason).
+        state = {"approved": [{"rev": 1, "patch": {"id": "p-dup0000", "title": "元の拡張"}, "reason": "ok",
+                              "experiment": None}],
+                 "proposed": [], "retired": [],
+                 "library": [_library_entry(entry_id="p-dup0000", violations=[])], "head": "x"}
+        html = wev.approved_list(state, world_id="w", can_write=True, run_link=lambda n: "#")
+        self.assertIn("この世界で適用中です", html)
+        self.assertNotIn("取り込めます", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_proposed_id_shows_status_instead_of_fit_or_button(self):
+        state = {"approved": [], "retired": [],
+                 "proposed": [{"id": "p-dup0001", "patch": _base_patch(id="p-dup0001"), "gate": None}],
+                 "library": [_library_entry(entry_id="p-dup0001", violations=[])], "head": "x"}
+        html = wev.approved_list(state, world_id="w", can_write=True, run_link=lambda n: "#")
+        self.assertIn("この世界で提案中です", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_retired_id_shows_status_instead_of_fit_or_button(self):
+        state = {"approved": [], "proposed": [],
+                 "retired": [{"rev": 1, "patch": {"id": "p-dup0002", "title": "枯れた"}, "reason": "使われず",
+                             "experiment": None}],
+                 "library": [_library_entry(entry_id="p-dup0002", violations=[])], "head": "x"}
+        html = wev.approved_list(state, world_id="w", can_write=True, run_link=lambda n: "#")
+        self.assertIn("この世界で淘汰済みです", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+
+class LibraryProposalCardTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5d: proposal_card()'s author.backend=="library" branch."""
+
+    def test_library_origin_shows_where_it_came_from_instead_of_a_trigger(self):
+        patch = _base_patch(title="輸入された拡張", trigger={"zone": "海", "verb": "investigate"},
+                            author={"backend": "library", "origin": {"world_id": "momotaro", "world_name": "桃太郎"}})
+        html = wev.proposal_card(_proposal(patch, None), {}, world_id="momotaro2", can_write=False)
+        self.assertIn("ジャンルの資産『輸入された拡張』", html)
+        self.assertIn("元: 世界『桃太郎』", html)
+        self.assertIn("検査は未実施", html)
+        # The old trigger-line format (experiment/count/whiffs) must not
+        # leak through for a library-origin proposal that has none of those.
+        self.assertNotIn("実験『None』", html)
+
+    def test_library_origin_escapes_title_and_origin_world_name(self):
+        evil = '<script>alert(1)</script>"'
+        patch = _base_patch(title=evil, author={"backend": "library", "origin": {"world_name": evil}})
+        html = wev.proposal_card(_proposal(patch, None), {}, world_id="w", can_write=False)
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
+
+
+class ApprovedListLibraryProposalHintTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5d R2 (Opus review): approved_list()'s 提案中
+    list points a library-imported proposal at where it can actually be
+    checked, via the optional library_hint experiment name."""
+
+    def _state(self):
+        patch = _base_patch(author={"backend": "library", "origin": {"world_name": "元の世界"}})
+        return {"approved": [], "retired": [], "proposed": [{"id": patch["id"], "patch": patch, "gate": None}],
+               "head": "x"}
+
+    def test_hint_text_without_a_link_when_no_matching_experiment(self):
+        html = wev.approved_list(self._state(), world_id="w", can_write=False, run_link=lambda n: f"/exp/{n}")
+        self.assertIn("検査は最新の実験の結果画面の「世界の需要と拡張」タブで行えます。", html)
+        self.assertNotIn("その実験の結果を見る", html)
+
+    def test_hint_links_to_the_given_experiment_when_present(self):
+        html = wev.approved_list(self._state(), world_id="w", can_write=False,
+                                 run_link=lambda n: f"/exp/{n}/monitor?tab=demand", library_hint="exp-42")
+        self.assertIn('href="/exp/exp-42/monitor?tab=demand"', html)
+        self.assertIn("その実験の結果を見る →", html)
+
+
 if __name__ == "__main__":
     unittest.main()

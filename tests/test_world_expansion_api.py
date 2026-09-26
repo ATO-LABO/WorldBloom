@@ -878,6 +878,122 @@ class WorldExpansionApiTests(unittest.TestCase):
         self.assertEqual(status, 404, payload)
 
 
+def _write_library_asset(template_dir, add, *, title="小屋の資産", world_id="momotaro", world_name="桃太郎",
+                         reason="良い拡張でした", strong=1, weak=0, file_id=None):
+    """A minimal genre-library asset file, hand-written (not via export_patch)
+    -- enough to drive viewer/library_pages._library_assets()/world_expansion_
+    view.approved_list()'s「ジャンルの資産」 rendering without running a real GA."""
+    pid = file_id or patch_id_for(add)
+    folder = template_dir / "expansions"
+    folder.mkdir(parents=True, exist_ok=True)
+    doc = {"schema_version": 1,
+          "patch": {"id": pid, "title": title, "rationale": "r", "trigger": {"zone": "海", "verb": "investigate"},
+                    "add": add},
+          "provenance": {"world_id": world_id, "world_name": world_name,
+                        "revision": {"approval": {"reason": reason}},
+                        "evidence": {"usage": {"elites_strong": strong, "elites_weak": weak}}}}
+    (folder / f"{pid}.yaml").write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+    return pid
+
+
+_FIT_ADD = {"zones": [{"name": "小屋Lib", "parent": "海"}],
+           "items": [{"name": "道具Lib", "sources": [{"type": "investigate", "zone": "小屋Lib", "count": 1, "max": 2}]}]}
+
+
+class WorldLibraryPageTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5d-2 の画面: /worlds/<id> の「ジャンルの資産」節
+    (viewer/library_pages._library_assets, viewer/world_expansion_view.
+    approved_list)。M1/M2 (Opus review) の回帰テストを含む。
+
+    WorldExpansionApiTests のフィクスチャ（高価な frozen_experiment を
+    setUpClass で1回だけ構築）だけを再利用する -- サブクラス化すると
+    WorldExpansionApiTests 自身の全テストがこのクラス名でも再実行されて
+    しまう（tests/test_world_expansion_api.py 冒頭の Review クラスはその
+    重複を許容した調査用スクリプトの流儀で、恒久的なテストファイルである
+    ここでは避ける）。"""
+    setUpClass = classmethod(WorldExpansionApiTests.setUpClass.__func__)
+    tearDownClass = classmethod(WorldExpansionApiTests.tearDownClass.__func__)
+    setUp = WorldExpansionApiTests.setUp
+    http = WorldExpansionApiTests.http
+    get = WorldExpansionApiTests.get
+    _second_world = WorldExpansionApiTests._second_world
+
+    def test_get_world_page_does_not_take_the_patch_lock(self):
+        # M1 (Opus review): a plain GET must never contend with a concurrent
+        # writer (check/prepare/approve/epoch-chain) for patch_lock -- proven
+        # here by checking no .write.lock is left in a target that has no
+        # patches/ dir at all yet (a lock acquisition would create one).
+        target = self._second_world()
+        self.assertFalse((target / "patches").exists())
+        _write_library_asset(self.template_dir, _FIT_ADD)
+        status, _body = self.get("/worlds/momotaro2")
+        self.assertEqual(status, 200)
+        self.assertFalse((target / "patches").exists(),
+                         "a GET must not create patches/ (or a .write.lock inside it)")
+
+    def test_import_button_appears_when_the_asset_fits(self):
+        self._second_world()
+        pid = _write_library_asset(self.template_dir, _FIT_ADD)
+        status, body = self.get("/worlds/momotaro2")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("ジャンルの資産（1件）", html)
+        self.assertIn('data-patch-action="import"', html)
+        self.assertIn(f'data-entry="{pid}"', html)
+
+    def test_violation_is_shown_and_no_button_when_the_asset_does_not_fit(self):
+        self._second_world()
+        # A zone whose parent doesn't exist in the target world -- validate_
+        # patch() rejects this regardless of the target, so fit() is never empty.
+        bad_add = {"zones": [{"name": "変な場所", "parent": "存在しない親"}]}
+        _write_library_asset(self.template_dir, bad_add, title="不適合な資産")
+        status, body = self.get("/worlds/momotaro2")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("不適合な資産", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_broken_asset_file_shows_its_error_and_does_not_break_the_page(self):
+        self._second_world()
+        (self.template_dir / "expansions").mkdir(parents=True, exist_ok=True)
+        (self.template_dir / "expansions" / "p-broken0.yaml").write_text("patch: [", encoding="utf-8")
+        status, body = self.get("/worlds/momotaro2")
+        self.assertEqual(status, 200)
+        html = body.decode("utf-8")
+        self.assertIn("ジャンルの資産（1件）", html)
+        self.assertIn("p-broken0", html)
+
+    def test_own_world_shows_applied_not_a_duplicate_violation(self):
+        # M2 (Opus review): the world that originated an asset must see
+        # "適用中" for its own id, never "取り込めます" or a stray duplicate
+        # violation, and never an import button.
+        patch = write_approved(self.project_dir, {"title": "元の拡張", "add": _FIT_ADD})
+        _write_library_asset(self.template_dir, _FIT_ADD, file_id=patch["id"], title="元の拡張")
+        status, body = self.get("/worlds/momotaro")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("この世界で適用中です", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_xss_in_asset_fields_is_escaped_on_the_world_page(self):
+        self._second_world()
+        evil = '<script>alert(1)</script>"'
+        _write_library_asset(self.template_dir, _FIT_ADD, title=evil, world_name=evil, reason=evil,
+                             strong=evil, weak=evil)
+        status, body = self.get("/worlds/momotaro2")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
+
+    def test_home_genre_card_shows_asset_count(self):
+        _write_library_asset(self.template_dir, _FIT_ADD)
+        status, body = self.get("/")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("資産 1件", html)
+
+
 class WorldExpansionStaticFileTests(unittest.TestCase):
     def setUp(self):
         self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)

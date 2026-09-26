@@ -48,7 +48,7 @@ def render(store, jobs, *, from_id=None, genre_id=None, copy_mode=False):
               <label><input type="radio" name="mode" value="copy"{mode('copy')}{'' if worlds else ' disabled'}><span><strong>既存の世界から作る</strong><small>{'今ある設定をコピーして始める' if worlds else '作成元の世界がまだありません'}</small></span></label>
             </div>
             <p class="wc-error" data-create-error role="alert"></p>
-            <section data-copy-panel{'' if copy_mode else ' hidden'}><h2>作成元の世界</h2><label class="wc-search">世界を探す<input type="search" data-source-search placeholder="名前で検索"></label><div class="wc-sources">{source_rows}</div><p data-no-sources hidden>一致する世界がありません。</p><p class="wc-hint">選んだ世界の設定をコピーします。元の世界は変わりません。</p></section>
+            <section data-copy-panel{'' if copy_mode else ' hidden'}><h2>作成元の世界</h2><label class="wc-search">世界を探す<input type="search" data-source-search placeholder="名前で検索"></label><div class="wc-sources">{source_rows}</div><p data-no-sources hidden>一致する世界がありません。</p><p class="wc-hint">選んだ世界の設定をコピーします。元の世界は変わりません。</p><p class="wc-hint">拡張は複製されません。ジャンルの資産から取り込めます。</p></section>
             <h2>世界の基本情報</h2>
             <label class="wc-field" for="f-name">世界の名前 <small class="wc-required">必須</small><input id="f-name" name="name" data-field="name" maxlength="120" required placeholder="例：星を運ぶ街"></label><p class="wc-hint">世界設定から、あとで変更できます。</p>
             <div data-new-panel{ ' hidden' if copy_mode else ''}><label class="wc-field" for="f-overview">世界の概要 <small>任意</small><textarea id="f-overview" name="overview" data-field="overview" maxlength="8000" rows="3" placeholder="舞台や雰囲気など、思いついたことから書いてください。"></textarea></label>

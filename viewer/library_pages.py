@@ -9,6 +9,7 @@ straight through to execution.configs.ConfigStore.preview via LibraryStore.
 from __future__ import annotations
 
 import hashlib
+import json
 from http import HTTPStatus
 
 import yaml
@@ -20,10 +21,15 @@ from execution.world_patch_approval import (StalePatch as _StalePatch, approve a
                                             reject as _reject_patch, reopen as _reopen_patch,
                                             retire as _retire_patch)
 from execution.world_patch_library import (DuplicateAssetError as _DuplicateAssetError,
-                                           StaleImport as _StaleImport, export_patch as _export_patch,
-                                           import_patch as _import_patch)
+                                           StaleImport as _StaleImport,
+                                           _frozen_world_parent_ids as _frozen_ids_for,
+                                           export_patch as _export_patch,
+                                           fit as _fit_asset, import_patch as _import_patch,
+                                           list_entries as _list_library_entries)
+from execution.world_patches import applicable_snapshot as _applicable_snapshot
 from gapengine.world_patch import (ID_RE as _PATCH_ID_RE, PatchError as _WorldPatchError,
-                                  approved_patches as _approved_patches, stack_head as _patch_stack_head)
+                                  approved_patches as _approved_patches, materialize as _materialize,
+                                  stack_head as _patch_stack_head, template_identifiers as _template_identifiers)
 from gapengine.world_patch_usage import patch_usage as _patch_usage
 from viewer import action_catalog, data, pages, job_api, world_demand_view, world_expansion_view, world_graph
 from viewer.workbench_pages import _guidance_page, _job_store, _query
@@ -559,14 +565,102 @@ def _world_experiments(repository, world_name):
     return [str(m["name"]) for m in dict(groups).get(world_name, []) + [m for m in minor if str(m["world"]) == world_name]]
 
 
-def _world_expansion_html(store, world_id, world_yaml, job_store):
+def _library_assets(project_dir, template_dir, *, repo_root=None):
+    """[{"id","doc"|None,"error"|None,"violations"}] for approved_list()'s
+    「ジャンルの資産」 section (WB-WORLDGROW-001 段階5d) -- fit() against this
+    world's current expanded state (base + already-approved patches), the
+    same inputs import_patch() itself checks against (repo_root is passed
+    through unchanged, so a fit() here agrees with what an actual import
+    would see).
+
+    M1 (Opus review): reads applicable_snapshot()+materialize() directly
+    instead of the expanded_snapshot() convenience wrapper, which takes
+    patch_lock -- a plain GET (including a read-only Viewer's) must never
+    contend with a concurrent check/prepare/approve/epoch-chain job for that
+    lock (measured: 481/900 writer calls failing with "拡張パッチを更新中
+    です" while this ran on every world-page load). A stack.json caught
+    mid-write, or a base that no longer matches the approval record, still
+    just raises PatchError (a ValueError subclass) here -- same "確認でき
+    ない" fallback as any other unreadable state.
+
+    Never raises: an unreadable base/stack just makes every asset report one
+    "確認できない" violation instead of an importable one, same graceful-
+    degrade principle as the rest of this module's world-expansion display
+    helpers."""
+    entries = _list_library_entries(template_dir)
+    if not entries:
+        return []
+    try:
+        verified, _stack, world, people, _refs, _digest = _applicable_snapshot(
+            project_dir, template_dir, repo_root=repo_root)
+        reserved = _template_identifiers(template_dir)
+        expanded_world, expanded_people = _materialize(
+            world, people, [p for p, _raw in verified], reserved=reserved, check_budgets=False)
+    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError):
+        expanded_world = expanded_people = reserved = None
+    result = []
+    for entry in entries:
+        if entry["doc"] is None:
+            result.append({"id": entry["id"], "doc": None, "error": entry["error"], "violations": []})
+            continue
+        if expanded_world is None:
+            violations = ["世界の現在の状態を確認できないため、取り込みの可否を判定できません"]
+        else:
+            violations = _fit_asset(entry["doc"], expanded_world, expanded_people, reserved=reserved)
+        result.append({"id": entry["id"], "doc": entry["doc"], "error": None, "violations": violations})
+    return result
+
+
+def _latest_matching_experiment(repository, world_id, world_yaml, project_dir, state):
+    """R2 (Opus review): the most recent experiment whose own frozen world
+    was built with exactly the currently-approved patches -- the same
+    condition run_workspace._library_proposals_eligible() checks before
+    showing a library-imported proposal's check button on a run's demand
+    tab. Used only to spell out *where* to go check one from; None (no repo,
+    no library-origin proposal, no match in the recent history) just means
+    the hint has no link. Bounded to the 20 most recent experiments for this
+    world (_world_experiments() already lists most-recent-first) so a world
+    with a long history doesn't turn every page load into a directory walk."""
+    if repository is None:
+        return None
+    proposed = state.get("proposed") or []
+    if not any(isinstance(p.get("patch"), dict) and (p["patch"].get("author") or {}).get("backend") == "library"
+              for p in proposed):
+        return None
+    active_ids = {a["patch"].get("id") for a in state.get("approved") or [] if isinstance(a.get("patch"), dict)}
+    label = (world_yaml.get("name") if isinstance(world_yaml, dict) else None) or world_id
+    for name in _world_experiments(repository, label)[:20]:
+        try:
+            root = repository.experiment(name)
+            # Opus re-review R-a: _world_experiments() matches by display
+            # name, which a duplicated world shares -- only trust experiments
+            # whose own config names this world (no config = can't prove it).
+            config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+            if config.get("project_id") != world_id:
+                continue
+            frozen_ids = _frozen_ids_for(root, project_dir.name)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, data.MissingResource, yaml.YAMLError):
+            continue
+        if frozen_ids == active_ids:
+            return name
+    return None
+
+
+def _world_expansion_html(store, world_id, world_yaml, job_store, repository=None):
     """「後から生まれたもの」節。壊れていても世界画面は落とさない
     （WB-WORLDGROW-001 段階3b-1）。"""
     try:
-        state = world_expansion_view.load(store.repo / "projects" / world_id)
+        project_dir = store.repo / "projects" / world_id
+        state = world_expansion_view.load(project_dir)
+        genre_id = store._genre_of(world_id, world_yaml)
+        if genre_id:
+            state["library"] = _library_assets(
+                project_dir, store.repo / "templates" / genre_id, repo_root=store.repo)
+        library_hint = _latest_matching_experiment(repository, world_id, world_yaml, project_dir, state)
         return world_expansion_view.approved_list(
             state, world_id=world_id, can_write=job_store is not None, world=world_yaml,
             run_link=lambda name: f"/exp/{_url(name)}/monitor?tab=demand",
+            library_hint=library_hint,
         )
     except (OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError):
         return ""
@@ -589,7 +683,8 @@ def _worlds_detail(handler, world_id):
             job_store=job_store, pin=data.pinned_target(job_store),
             # Read-only viewers have no run screens; the world page is their way in to saved experiments.
             experiments=[] if job_store is not None else _world_experiments(handler.repository, label),
-            expansion_html=_world_expansion_html(store, world_id, current["world"], job_store),
+            expansion_html=_world_expansion_html(store, world_id, current["world"], job_store,
+                                                 repository=handler.repository),
         ))
         return
     from viewer import world_advanced

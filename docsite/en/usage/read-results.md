@@ -67,3 +67,7 @@ Once you start a run, it's recorded in "履歴" (History) for later reference. I
 ## Epoch chain progress display
 
 Running with "世界を育てる" (Grow the world) turned on in the run settings shows an epoch chain progress strip right below the heading on the run status screen, and on the run conditions screen too — epoch count, current stage, approval/retirement counts, and a stop button. A "次のエポックへ" (Next epoch) button also appears while awaiting approval. The demand tab likewise shows a hint at the top while awaiting approval: "承認または却下 →（必要なら）枯らす → 『次のエポックへ』" (Approve or reject → retire if needed → "Next epoch"). None of this appears on a screen with no chain.
+
+## Genre assets
+
+On the demand tab's "この実験での拡張の使われ方" (How this experiment's expansions got used), an expansion the representative individuals actually relied on can be published with "ジャンルの資産にする" (Make it a genre asset) so other worlds on the same genre can pick it up. Assets live under `templates/<genre>/expansions/` (adding them to git is a manual step) and never affect a world's input digest or the GA's reproducibility. A world can pull one in from its own screen's "ジャンルの資産" (Genre assets) section with "この世界に取り込む" (Import into this world); it still has to be checked and approved again there before it counts for anything (checking it requires a demand tab from an experiment the asset can still be imported into).

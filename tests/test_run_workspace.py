@@ -387,6 +387,166 @@ class RunWorkspaceTests(unittest.TestCase):
         self.assertIn("強い使用1体", html)
 
 
+class _Configs:
+    pass
+
+
+class _FakeJobStore:
+    def __init__(self, repo):
+        self.configs = _Configs()
+        self.configs.repo = repo
+
+
+class _FakeServer:
+    def __init__(self, job_store):
+        self.job_store = job_store
+
+
+class _FakeRepository:
+    def __init__(self, archive):
+        self._archive = archive
+
+    def archive(self, experiment):
+        return self._archive
+
+
+class _FakeHandler:
+    def __init__(self, repository, job_store):
+        self.repository = repository
+        self.server = _FakeServer(job_store)
+
+
+class UsageHtmlExportButtonTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5d: _usage_html()'s「ジャンルの資産にする」ボタン
+    の出し分け -- 強い使用の有無・すでに資産にした済みかどうか・閲覧モード。"""
+
+    def _build(self, *, zone_hit="小屋"):
+        temp = tempfile.TemporaryDirectory(prefix="wb-usage-export-")
+        self.addCleanup(temp.cleanup)
+        base = Path(temp.name)
+        repo = base / "repo"
+        project_dir = repo / "projects" / "testworld"
+        patch = write_approved(project_dir, {"title": "使用表試験",
+                                              "add": {"zones": [{"name": "小屋", "parent": "海"}]}})
+        experiment = base / "runs" / "exp-usage"
+        log_relative = "g0/ind-0/seed-1/layers.jsonl"
+        log_path = experiment / log_relative
+        log_path.parent.mkdir(parents=True)
+        rows = [{"kind": "decision", "subject": "桃太郎", "verb": "move", "result": "moved",
+                 "delta": {"actor": {"zone": zone_hit}}}]
+        log_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+        archive = {"cells": {"c0": {"exemplar": {"layers_path": log_relative}}}}
+        return repo, experiment, patch, archive
+
+    def _render(self, repo, archive, experiment, patch, *, job_store):
+        handler = _FakeHandler(_FakeRepository(archive), job_store)
+        view = {"config": {"project_id": "testworld", "template_id": "testworld",
+                            "preview": {"protagonist": "桃太郎"}}}
+        state = {"state": "expanded", "patches": [{"id": patch["id"]}]}
+        return run_workspace._usage_html(handler, view, state, experiment)
+
+    def test_strong_use_shows_an_enabled_button(self):
+        repo, experiment, patch, archive = self._build()
+        html = self._render(repo, archive, experiment, patch, job_store=_FakeJobStore(repo))
+        self.assertIn("ジャンルの資産にする", html)
+        segment = html[html.find('data-patch-action="export"'):html.find(">", html.find('data-patch-action="export"'))]
+        self.assertNotIn("disabled", segment)
+
+    def test_unused_patch_disables_the_button_with_a_reason(self):
+        repo, experiment, patch, archive = self._build(zone_hit="別の場所")
+        html = self._render(repo, archive, experiment, patch, job_store=_FakeJobStore(repo))
+        segment = html[html.find('data-patch-action="export"'):html.find(">", html.find('data-patch-action="export"'))]
+        self.assertIn("disabled", segment)
+        self.assertIn('title="この実験では使われていません"', segment)
+
+    def test_already_exported_shows_done_text_and_no_button(self):
+        repo, experiment, patch, archive = self._build()
+        expansions = repo / "templates" / "testworld" / "expansions"
+        expansions.mkdir(parents=True)
+        (expansions / f"{patch['id']}.yaml").write_text("schema_version: 1\npatch: {}\n", encoding="utf-8")
+        html = self._render(repo, archive, experiment, patch, job_store=_FakeJobStore(repo))
+        self.assertIn("資産にした済み", html)
+        self.assertNotIn("ジャンルの資産にする</button>", html)
+
+    def test_read_only_viewer_has_no_export_or_retire_ui(self):
+        repo, experiment, patch, archive = self._build()
+        html = self._render(repo, archive, experiment, patch, job_store=None)
+        self.assertNotIn("ジャンルの資産にする", html)
+        self.assertNotIn("data-patch-action", html)
+
+
+class ProposalsHtmlLibraryEligibilityTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5d R1 (Opus review): a library-imported proposal
+    (author.backend=="library") only appears -- under its own heading -- on
+    a run whose own frozen world was built with exactly the currently-
+    approved patches; otherwise its holdout check is bound to fail there."""
+
+    def _build(self):
+        temp = tempfile.TemporaryDirectory(prefix="wb-proposals-library-")
+        self.addCleanup(temp.cleanup)
+        base = Path(temp.name)
+        repo = base / "repo"
+        project_dir = repo / "projects" / "testworld"
+        project_dir.mkdir(parents=True)
+        (project_dir / "world.yaml").write_text("name: test\nzones: []\n", encoding="utf-8")
+        patch = write_approved(project_dir, {"title": "承認済み",
+                                              "add": {"zones": [{"name": "小屋P", "parent": "海"}]}})
+        proposed_dir = project_dir / "patches" / "_proposed"
+        proposed_dir.mkdir(parents=True)
+        import yaml
+        lib_patch = {"id": "p-libimport1", "title": "取り込んだ拡張", "parent_digest": "x",
+                    "trigger": {"zone": "海", "verb": "investigate"},
+                    "author": {"backend": "library", "origin": {"world_name": "元の世界"}},
+                    "add": {"zones": [{"name": "小屋Q", "parent": "海"}]}}
+        (proposed_dir / "p-libimport1.yaml").write_text(
+            yaml.safe_dump(lib_patch, allow_unicode=True), encoding="utf-8")
+        return base, repo, patch
+
+    def _frozen_world(self, base, patch_ids):
+        experiment = base / "runs" / "exp-1"
+        world_path = experiment / "inputs" / "projects" / "testworld" / "world.yaml"
+        world_path.parent.mkdir(parents=True)
+        import yaml
+        world_path.write_text(yaml.safe_dump(
+            {"expansion": {"patches": [{"id": pid} for pid in patch_ids]}}, allow_unicode=True), encoding="utf-8")
+        return experiment
+
+    def _proposals_html(self, repo, experiment, run_name="exp-1"):
+        handler = _FakeHandler(_FakeRepository({}), _FakeJobStore(repo))
+        view = {"config": {"project_id": "testworld", "template_id": "testworld"}}
+        return run_workspace._proposals_html(handler, view, run_name, experiment=experiment)
+
+    def test_eligible_when_frozen_matches_active_approved(self):
+        base, repo, patch = self._build()
+        experiment = self._frozen_world(base, [patch["id"]])
+        html = self._proposals_html(repo, experiment)
+        self.assertIn("取り込んだ拡張（この実験で検査できます）", html)
+        self.assertIn("取り込んだ拡張", html)
+
+    def test_hidden_when_frozen_world_does_not_match_active_approved(self):
+        base, repo, patch = self._build()
+        experiment = self._frozen_world(base, [])  # frozen with no patches applied -- mismatch
+        html = self._proposals_html(repo, experiment)
+        self.assertNotIn("取り込んだ拡張（この実験で検査できます）", html)
+
+    def test_hidden_when_no_experiment_is_given(self):
+        base, repo, patch = self._build()
+        html = self._proposals_html(repo, experiment=None)
+        self.assertNotIn("取り込んだ拡張（この実験で検査できます）", html)
+
+    def test_own_heading_still_appears_on_the_error_branch(self):
+        # R4 (Opus review): state["error"] must not swallow the always-first
+        # heading -- keeps that branch byte-identical to the pre-5d version.
+        base, repo, patch = self._build()
+        (repo / "projects" / "testworld" / "patches" / "stack.json").write_text("not json", encoding="utf-8")
+        html = self._proposals_html(repo, experiment=None)
+        self.assertTrue(html.startswith(
+            '<div class="card" data-patch-job data-run="exp-1" hidden><p role="status"></p>'
+            '<button type="button" data-patch-job-cancel>停止</button></div>'
+            "<h3>この実験から生まれた提案</h3>"))
+        self.assertIn("拡張の記録を読み込めませんでした", html)
+
+
 class SeedGenomesRunWorkspaceTests(unittest.TestCase):
     """WB-WORLDGROW-001 段階5b: run_workspace.river_payload()'s own
     "seedCell" field (run-workspace.js's parentLabel() reads it)."""

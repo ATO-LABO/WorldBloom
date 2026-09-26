@@ -394,8 +394,16 @@ def proposal_card(proposal: dict, world: Any, *, world_id: str, can_write: bool,
     ok, reason = approvable(proposal)
     add_lines = describe_add(patch.get("add") or {}, world)
     trigger = patch.get("trigger") or {}
+    author = patch.get("author") if isinstance(patch.get("author"), dict) else {}
     trigger_html = ""
-    if trigger:
+    if author.get("backend") == "library":
+        # WB-WORLDGROW-001 段階5d: an imported asset has no trigger.experiment/
+        # count/whiffs of its own (execution.world_patch_library.rewrite_for_
+        # world never invents them) -- say where it came from instead.
+        origin = author.get("origin") if isinstance(author.get("origin"), dict) else {}
+        trigger_html = (f"ジャンルの資産『{_escape(patch.get('title'))}』"
+                        f"（元: 世界『{_escape(origin.get('world_name'))}』）から取り込み。検査は未実施")
+    elif trigger:
         trigger_html = (f"実験『{_escape(trigger.get('experiment'))}』の『{_escape(trigger.get('zone'))}』で"
                          f"『{_escape(trigger.get('verb'))}』が {_escape(trigger.get('count'))} 回中 "
                          f"{_escape(trigger.get('whiffs'))} 回空振り")
@@ -481,18 +489,29 @@ def _experiment_link_html(experiment: Any, run_link, label: str) -> str:
     return ""
 
 
-def approved_list(state: dict, *, world_id: str, can_write: bool, run_link, world: Any = None) -> str:
+def approved_list(state: dict, *, world_id: str, can_write: bool, run_link, world: Any = None,
+                  library_hint: str | None = None) -> str:
     """「後から生まれたもの」節全体: 承認済みの適用順一覧 + 提案中の内訳。
     承認済み・提案中がどちらも0件なら空文字（既存の世界画面のテストが期待
     するHTMLを壊さない）。承認・却下の操作はここには置かない（実験の結果
     画面でやる、V1）。
 
     `world`（world.yaml の生データ）は事実の表示名解決に使う任意の追加引数
-    （渡さなければ id をそのまま使う）。"""
+    （渡さなければ id をそのまま使う）。
+
+    `state["library"]`（WB-WORLDGROW-001 段階5d、任意）: このジャンルの資産
+    一覧。呼び出し側（viewer/library_pages.py の _world_expansion_html）が
+    execution.world_patch_library.list_entries()＋fit() で組み立てて state
+    に足す -- ここでは読むだけ。省略すれば従来どおり（資産節は出さない）。
+
+    `library_hint`（同段階5d、任意）: 取り込み済みの提案（author.backend==
+    "library"）を検査できる、最新の適合実験名。呼び出し側が run_workspace.
+    _library_proposals_eligible() と同じ条件で選ぶ -- ここでは表示するだけ。"""
     approved = state.get("approved") or []
     proposed = state.get("proposed") or []
     retired = state.get("retired") or []
-    if not approved and not proposed and not retired:
+    library = state.get("library") or []
+    if not approved and not proposed and not retired and not library:
         return ""
     parts = ['<section class="card we-approved"><h2>後から生まれたもの</h2>']
     if state.get("error"):
@@ -546,6 +565,20 @@ def approved_list(state: dict, *, world_id: str, can_write: bool, run_link, worl
                 continue
             gate = entry.get("gate") or {}
             status_html = _status_badge(gate.get("status", "trial_pending"))
+            author = patch.get("author") if isinstance(patch.get("author"), dict) else {}
+            if author.get("backend") == "library":
+                # R2 (Opus review): a library-imported proposal's trigger has
+                # no experiment of its own (rewrite_for_world() never invents
+                # one) -- say where the check can actually be run instead of
+                # rendering a blank/未設定 trigger line.
+                hint_text = "検査は最新の実験の結果画面の「世界の需要と拡張」タブで行えます。"
+                link_html = (_experiment_link_html(library_hint, run_link, "その実験の結果を見る →")
+                            if library_hint else "")
+                parts.append(
+                    f'<li><strong>{_escape(patch.get("title"))}</strong> {status_html}'
+                    f'<p class="muted">{hint_text}</p>{link_html}</li>'
+                )
+                continue
             trigger = patch.get("trigger") or {}
             trigger_text = ""
             if trigger.get("zone") or trigger.get("verb"):
@@ -569,6 +602,67 @@ def approved_list(state: dict, *, world_id: str, can_write: bool, run_link, worl
             parts.append(
                 f'<li><strong>{_escape(patch.get("title"))}</strong>'
                 f'<p class="muted">枯らした理由: {_escape(entry.get("reason"))}</p>{link_html}</li>'
+            )
+        parts.append("</ul>")
+
+    if library:
+        # WB-WORLDGROW-001 段階5d: 他の世界がこのジャンルに資産として公開した
+        # 拡張。fit（可搬性チェック）が空のときだけ取り込みボタンを出す --
+        # 空でなければ先頭の違反理由を表示するだけ（execution.world_patch_
+        # library.import_patch()自身も最初の違反だけを理由にして拒否する）。
+        #
+        # M2 (Opus review): この世界で適用中／提案中／淘汰済みの id は、fit()
+        # を見るより先にその状態を表示する -- import_patch() 自身がまさに
+        # この順番でこれらを拒否する（適用中・提案中・淘汰済みのいずれかを
+        # fit() より先にチェックする）ので、fit() だけを見ると「取り込め
+        # ます」や無意味な「重複」違反になりかねない（自分の世界が輸出した
+        # 資産を自分の世界で見たとき、など）。
+        applied_ids = {e["patch"].get("id") for e in approved if isinstance(e.get("patch"), dict)}
+        proposed_ids = {e.get("id") for e in proposed}
+        retired_ids = {e["patch"].get("id") for e in retired if isinstance(e.get("patch"), dict)}
+        parts.append(f"<h3>ジャンルの資産（{len(library)}件）</h3><ul>")
+        for entry in library:
+            entry_id = entry.get("id")
+            if entry.get("doc") is None:
+                parts.append(
+                    f'<li><strong>{_escape(entry_id)}</strong>'
+                    f'<p class="muted">{_escape(entry.get("error") or "読み込めない資産です")}</p></li>'
+                )
+                continue
+            doc = entry["doc"]
+            patch = doc.get("patch") or {}
+            provenance = doc.get("provenance") or {}
+            usage = (provenance.get("evidence") or {}).get("usage") or {}
+            reason = ((provenance.get("revision") or {}).get("approval") or {}).get("reason") or ""
+            lines = describe_add(patch.get("add") or {}, world)
+            violations = entry.get("violations") or []
+            if entry_id in applied_ids:
+                fit_html, importable = "この世界で適用中です", False
+            elif entry_id in proposed_ids:
+                fit_html, importable = "この世界で提案中です", False
+            elif entry_id in retired_ids:
+                fit_html, importable = "この世界で淘汰済みです", False
+            elif violations:
+                fit_html, importable = _escape(violations[0]), False
+            else:
+                fit_html, importable = "取り込めます", True
+            action_html = ""
+            if can_write and importable:
+                action_html = (
+                    '<div class="we-actions">'
+                    f'<button type="button" data-patch-action="import" data-world="{_escape(world_id)}" '
+                    f'data-entry="{_escape(entry_id)}" data-head="{_escape(state.get("head"))}">'
+                    "この世界に取り込む</button>"
+                    '<p class="we-message" data-patch-message role="alert"></p></div>'
+                )
+            parts.append(
+                f'<li data-patch-card="{_escape(entry_id)}"><strong>{_escape(patch.get("title"))}</strong>'
+                "<ul>" + "".join(f"<li>{_escape(line)}</li>" for line in lines) + "</ul>"
+                f'<p class="muted">元世界: {_escape(provenance.get("world_name"))}</p>'
+                f'<p class="muted">承認理由: {_escape(reason)}</p>'
+                f'<p class="muted">使用実績: 強い使用{_escape(usage.get("elites_strong", 0))}体・'
+                f'弱い使用{_escape(usage.get("elites_weak", 0))}体</p>'
+                f'<p class="muted">{fit_html}</p>{action_html}</li>'
             )
         parts.append("</ul>")
 
