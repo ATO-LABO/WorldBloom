@@ -312,8 +312,12 @@ class WorldDemandViewTests(unittest.TestCase):
             yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
         rendered = world_demand_view.demand_block(self.repository, self.experiment)
         self.assertIn("森 で手探り 20回", rendered)
-        self.assertIn("「縄」を手に入れる手段が無く 1801回", rendered)
-        self.assertIn("入手手段 縄@森", rendered)
+        # R3（段階4 review 1）: 「…手段が無く 1801回」は無くなったように読める
+        # ため「…が無い状態 1801回」に直した。
+        self.assertIn("「縄」を手に入れる手段が無い状態 1801回", rendered)
+        # R5（段階4 review 1）: 内部の "名前@場所" 表記のままではなく、
+        # 既存の品/事実に手段が増えたことが分かる文にする。
+        self.assertIn("「縄」を森で手に入れられるようにした", rendered)
         self.assertIn("新しい縄", rendered)
 
 

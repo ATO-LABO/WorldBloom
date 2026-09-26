@@ -202,7 +202,10 @@ class EffectHtmlTests(unittest.TestCase):
         # の」--以前は逆のラベルで出ていた。
         self.assertIn("15回（5本のラン、見通しなし全体の90.0%、道筋付き決定の50.0%）", html)  # ベース
         self.assertIn("3回（5本のラン、見通しなし全体の30.0%、道筋付き決定の10.0%）", html)   # 拡張後
-        self.assertIn("has_item:縄", html)
+        # Required 3 (段階4 review 1): 生の "has_item:縄" ではなく読みやすい句
+        # (_requirement_phrase) を出す。
+        self.assertIn("「縄」を手に入れる手段", html)
+        self.assertNotIn("has_item:縄", html)
 
     def test_resolved_trigger_shows_zero_not_a_dash_using_raw_route_counts(self) -> None:
         # R3 (段階3 review 1): a zone/requirement that cleared the trigger

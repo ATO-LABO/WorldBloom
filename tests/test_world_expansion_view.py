@@ -405,8 +405,10 @@ class TriggerRateKindTests(unittest.TestCase):
     のまま(既存のProposalCardTestsで検証済み、ここでは触れない)。"""
 
     def test_ignorance_rate_side_with_share(self):
+        # 必須3の補足（段階4 review 1）: 分母が「その場所の道筋付き決定」で
+        # あることを明示するよう文言を変えた。
         text = wev._ignorance_rate_side({"count": 33, "total": 66, "share": 0.5})
-        self.assertEqual(text, "66 回中 33 回（50.0%）")
+        self.assertEqual(text, "その場所の道筋付き決定 66 回中、手探り 33 回（50.0%）")
 
     def test_ignorance_rate_side_zero_total_skips_percentage(self):
         text = wev._ignorance_rate_side({"count": 0, "total": 0, "share": None})
@@ -418,8 +420,10 @@ class TriggerRateKindTests(unittest.TestCase):
         self.assertEqual(wev._ignorance_rate_side("not-a-dict"), "—")
 
     def test_blocked_rate_side_with_share(self):
+        # 必須3（段階4 review 1）: lost_rate は count/lost_total の割合ではない
+        # ため、分母が何かと%が何に対する割合かを明示する文言に変えた。
         text = wev._blocked_rate_side({"count": 1801, "lost_total": 3668, "lost_rate": 0.4912})
-        self.assertEqual(text, "3668 回中 1801 回（49.1%）")
+        self.assertEqual(text, "見通しなし 3668 回のうちこのきっかけが原因 1801 回（道筋付き決定の49.1%が見通しなし）")
 
     def test_blocked_rate_side_zero_total_skips_percentage(self):
         text = wev._blocked_rate_side({"count": 0, "lost_total": 0, "lost_rate": None})
@@ -430,12 +434,14 @@ class TriggerRateKindTests(unittest.TestCase):
                      "base": {"count": 33, "total": 66, "share": 0.5},
                      "patched": {"count": 10, "total": 66, "share": 0.1515}}
         self.assertEqual(wev._trigger_rate_text(ignorance),
-                         "ベース 66 回中 33 回（50.0%） → 適用後 66 回中 10 回（15.2%）")
+                         "ベース その場所の道筋付き決定 66 回中、手探り 33 回（50.0%） → "
+                         "適用後 その場所の道筋付き決定 66 回中、手探り 10 回（15.2%）")
         blocked = {"kind": "blocked", "requirement": "has_item:縄",
                    "base": {"count": 1801, "lost_total": 1801, "lost_rate": 1.0},
                    "patched": {"count": 0, "lost_total": 0, "lost_rate": None}}
         self.assertEqual(wev._trigger_rate_text(blocked),
-                         "ベース 1801 回中 1801 回（100.0%） → 適用後 0 回中 0 回")
+                         "ベース 見通しなし 1801 回のうちこのきっかけが原因 1801 回（道筋付き決定の100.0%が見通しなし） → "
+                         "適用後 0 回中 0 回")
 
     def test_trigger_rate_label_by_kind(self):
         self.assertEqual(wev._trigger_rate_label({"kind": "whiff"}), "きっかけの空振り率")
@@ -449,8 +455,8 @@ class TriggerRateKindTests(unittest.TestCase):
                               "patched": {"count": 5, "total": 66, "share": 0.0758}}}
         html = wev._trial_html(trial)
         self.assertIn("きっかけの手探り", html)
-        self.assertIn("ベース 66 回中 33 回（50.0%）", html)
-        self.assertIn("適用後 66 回中 5 回（7.6%）", html)
+        self.assertIn("ベース その場所の道筋付き決定 66 回中、手探り 33 回（50.0%）", html)
+        self.assertIn("適用後 その場所の道筋付き決定 66 回中、手探り 5 回（7.6%）", html)
 
     def test_trial_html_shows_blocked_before_after(self):
         trial = {"trigger": {"kind": "blocked", "requirement": "has_item:縄",
@@ -458,7 +464,7 @@ class TriggerRateKindTests(unittest.TestCase):
                               "patched": {"count": 0, "lost_total": 0, "lost_rate": None}}}
         html = wev._trial_html(trial)
         self.assertIn("きっかけの見通しなし決定", html)
-        self.assertIn("ベース 1801 回中 1801 回（100.0%）", html)
+        self.assertIn("ベース 見通しなし 1801 回のうちこのきっかけが原因 1801 回（道筋付き決定の100.0%が見通しなし）", html)
         self.assertIn("適用後 0 回中 0 回", html)
 
 

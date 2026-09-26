@@ -72,7 +72,9 @@ def expansion_line(patches: list) -> str:
         if trigger_kind == "ignorance":
             trigger_text = f"きっかけ: {_escape(zone)} で手探り {_escape(trigger.get('count'))}回"
         elif trigger_kind == "blocked":
-            trigger_text = (f"きっかけ: {_requirement_phrase(trigger.get('requirement'))}が無く "
+            # R3（段階4 review 1）: 「…手段が無く 91回」は手段が「無くなった」
+            # ように読めるため、「…が無い状態 91回」に直す。
+            trigger_text = (f"きっかけ: {_requirement_phrase(trigger.get('requirement'))}が無い状態 "
                              f"{_escape(trigger.get('count'))}回")
         elif zone and verb:
             trigger_text = f"きっかけ: {_escape(zone)} で {_escape(verb)}"
@@ -86,7 +88,19 @@ def expansion_line(patches: list) -> str:
         if isinstance(added, Mapping):
             for key, label in kind_labels:
                 names = [n for n in data._as_list(added.get(key)) if isinstance(n, str)]
-                if names:
+                if not names:
+                    continue
+                if key == "sources":
+                    # R5（段階4 review 1): "入手手段 縄@森" は内部の "名前@場所"
+                    # 表記のまま出ていた。既存の品/事実に手段が増えたことが
+                    # 分かる文にする。
+                    phrases = []
+                    for n in names:
+                        item_name, _, zone = n.rpartition("@")
+                        phrases.append(f"「{_escape(item_name or n)}」を{_escape(zone)}で手に入れられるようにした"
+                                       if item_name and zone else _escape(n))
+                    added_parts.append("、".join(phrases))
+                else:
                     added_parts.append(f"{label} " + "、".join(_escape(n) for n in names))
         added_text = "足したもの: " + "、".join(added_parts) if added_parts else None
 
@@ -180,11 +194,11 @@ _PROPOSE_TIME_NOTE = (
 )
 
 
-def _propose_button(index: int, propose_run: str) -> str:
+def _propose_button(index: int, propose_run: str, label: str = "この場所の拡張を提案させる") -> str:
     return (
         ' <button type="button" data-patch-action="propose" '
         f'data-run="{_escape(propose_run)}" data-trigger="{index}">'
-        "この場所の拡張を提案させる</button>"
+        f"{label}</button>"
     )
 
 
@@ -210,11 +224,12 @@ def _whiff_li(index: int, t: Mapping, propose_run: str | None) -> str:
 
 
 def _zone_names(pairs: Any) -> str:
-    """[[name, count], ...] の名前だけを読点でつなぐ（段階4差し戻し対応と同じ
-    「件数はゾーンの隣に付けない」方針。壊れた要素は無視、全滅なら「不明」）。"""
+    """[[name, count], ...] の名前だけを「・」でつなぐ（段階4差し戻し対応と同じ
+    「件数はゾーンの隣に付けない」方針。壊れた要素は無視、全滅なら「不明」）。
+    R3（段階4 review 1）: 読点だと後続のラン数と混ざって読めるため「・」に変更。"""
     names = [pair[0] for pair in data._as_list(pairs)
              if isinstance(pair, (list, tuple)) and pair and isinstance(pair[0], str)]
-    return "、".join(names) if names else "不明"
+    return "・".join(names) if names else "不明"
 
 
 def _requirement_phrase(requirement: Any) -> str:
@@ -244,12 +259,30 @@ def _ignorance_li(index: int, t: Mapping, propose_run: str | None) -> str:
 def _blocked_li(index: int, t: Mapping, propose_run: str | None) -> str:
     phrase = _requirement_phrase(t.get("requirement"))
     stuck_text = _zone_names(t.get("stuck_zones"))
+    # R3（段階4 review 1）: 場所の並びとラン数を「。」で分け、ラン数が場所と
+    # 混ざって読めないようにする（「道中、森、海、7 本のラン」→「道中・森・
+    # 海で。7 本のランで」）。
     body = (
         f"{phrase}が無く、計画が立たない: {_escape(t.get('count'))} 回"
-        f"（主に {_escape(stuck_text)}、{_escape(t.get('runs'))} 本のラン）"
+        f"（主に {_escape(stuck_text)}で。{_escape(t.get('runs'))} 本のランで）"
     )
+    # R6（段階4 review 1、設計役の決定）: 判断材料として、入手できる場所・
+    # 持っている人物を短く添える（データが無ければ何も出さない）。
+    extras = []
+    source_zones = [p[0] for p in data._as_list(t.get("source_zones"))
+                     if isinstance(p, (list, tuple)) and p and isinstance(p[0], str)]
+    if source_zones:
+        extras.append(f"入手できる場所: {_escape('・'.join(source_zones))}")
+    held_by = [p[0] for p in data._as_list(t.get("held_by"))
+               if isinstance(p, (list, tuple)) and p and isinstance(p[0], str)]
+    if held_by:
+        extras.append(f"持っている人物: {_escape('・'.join(held_by))}")
+    if extras:
+        body += f' <span class="muted">（{"、".join(extras)}）</span>'
     if propose_run:
-        body += _propose_button(index, propose_run)
+        # R2（段階4 review 1): blocked に「この場所」は無い（要件が対象。場所
+        # は複数の場合がある）ため、入手手段の拡張という表現にする。
+        body += _propose_button(index, propose_run, "入手手段の拡張を提案させる")
     return f'<li data-trigger="{index}" data-kind="blocked">{body}</li>'
 
 
@@ -330,11 +363,28 @@ def demand_block(repository: "data.RunRepository", experiment: Any, state: Any =
         f"</tr></thead><tbody>{zone_rows}</tbody></table></details>"
     )
 
+    # R4（段階4 review 1): この一文は空振り（whiff）専用の説明で、route層の
+    # 手探り（ignorance）・計画が立たない（blocked）が混ざる実験ではずれる。
+    # 種類が混ざるときだけ、それぞれの意味を足す。
+    kinds_present = {t.get("kind", "whiff") for _, t in renderable_triggers}
+    intro = ('<p class="muted">主人公がよく滞在するのに、行動が空振りしている場所です。'
+             "世界の解像度が足りていない候補として読みます。</p>")
+    if kinds_present - {"whiff"}:
+        extra = []
+        if "whiff" in kinds_present:
+            extra.append("空振り＝よく滞在するのに行動が空振りしている場所")
+        if "ignorance" in kinds_present:
+            extra.append("手探り＝何をすべきか分からず調べ回っている場所")
+        if "blocked" in kinds_present:
+            extra.append("計画が立たない＝入手手段が無く先の計画が立てられない要件")
+        intro = (
+            '<p class="muted">主人公の行動から、世界の解像度が足りていない候補を'
+            f"種類ごとに拾います（{'／'.join(extra)}）。</p>"
+        )
     return (
         '<section class="card"><h2>世界の需要と拡張</h2>'
         f"{line}"
-        '<p class="muted">主人公がよく滞在するのに、行動が空振りしている場所です。'
-        "世界の解像度が足りていない候補として読みます。</p>"
+        f"{intro}"
         f"{trigger_html}{zone_table}</section>"
     )
 

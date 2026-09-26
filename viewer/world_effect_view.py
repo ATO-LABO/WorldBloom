@@ -267,7 +267,9 @@ def _blocked_table_html(base_report, expand_report):
     if not requirements:
         return ""
     rows = "".join(
-        f"<tr><td>{_escape(requirement)}</td>"
+        # Required 3 (段階4 review 1): 生の "has_item:縄" ではなく
+        # world_demand_view._requirement_phrase の読みやすい句を出す。
+        f"<tr><td>{world_demand_view._requirement_phrase(requirement)}</td>"
         f"<td>{_blocked_side(before_map.get(requirement) or _blocked_from_report(base_report, requirement))}</td>"
         f"<td>{_blocked_side(after_map.get(requirement) or _blocked_from_report(expand_report, requirement))}</td></tr>"
         for requirement in requirements

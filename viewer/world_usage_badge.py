@@ -94,20 +94,46 @@ def usage_counts(repository, experiment, log_relative_path, protagonist, patches
         return None
 
 
-def _detail_text(counts) -> str:
-    return "、".join(f"{label} {counts[key]}回" for key, label in _LABELS if counts.get(key))
+_SOURCES_ONLY_LABELS = {
+    "gathered_new_items": "既存の品を新しい場所で集めた",
+    "learned_new_facts": "既存の事実を新しい場所で知った",
+}
 
 
-def badge_html(counts) -> str:
+def _detail_text(counts, *, items_added_by_name: bool = True, facts_added_by_name: bool = True) -> str:
+    # R5（段階4 review 1): add.items/add.facts を持たない（add.sources だけ
+    # の）パッチでは、gathered_new_items/learned_new_facts は「新しい品/事実」
+    # ではなく「既存の品/事実を新しい場所で」の回数 -- 呼び出し側
+    # (badge_html) が patches から判定して渡すフラグでラベルを切り替える。
+    def label_for(key, label):
+        if key == "gathered_new_items" and not items_added_by_name:
+            return _SOURCES_ONLY_LABELS[key]
+        if key == "learned_new_facts" and not facts_added_by_name:
+            return _SOURCES_ONLY_LABELS[key]
+        return label
+    return "、".join(f"{label_for(key, label)} {counts[key]}回" for key, label in _LABELS if counts.get(key))
+
+
+def badge_html(counts, patches: Any = None) -> str:
     """2値（使った/使っていない）+ 詳細（<details>展開）で表示する。呼び出し側
     は <button> など対話的要素をネストできない親要素の外に置くこと
-    （<details> は phrasing content ではない）。"""
+    （<details> は phrasing content ではない）。
+
+    `patches` を渡すと、gathered_new_items/learned_new_facts のラベルが
+    add.sources だけのパッチかどうかで切り替わる（R5、段階4 review 1）。
+    省略時（既存呼び出しの後方互換）は常に「新しい品/事実」の従来ラベル。"""
     if counts is None:
         return ""
     if not any(counts.get(key) for key, _label in _LABELS):
         return '<span class="we-usage" data-used="false">拡張要素: 使っていない</span>'
+    if patches is None:
+        items_added_by_name = facts_added_by_name = True
+    else:
+        _zones, items, facts, _sources = _added_names(patches)
+        items_added_by_name, facts_added_by_name = bool(items), bool(facts)
+    detail = _detail_text(counts, items_added_by_name=items_added_by_name, facts_added_by_name=facts_added_by_name)
     return (f'<details class="we-usage" data-used="true"><summary>拡張要素: 使った</summary>'
-            f'<p class="muted">{_escape(_detail_text(counts))}</p></details>')
+            f'<p class="muted">{_escape(detail)}</p></details>')
 
 
 def cell_badge_html(repository, experiment, patches, elite, protagonist) -> str:
@@ -116,7 +142,7 @@ def cell_badge_html(repository, experiment, patches, elite, protagonist) -> str:
         return ""
     exemplar = elite.get("exemplar") or {}
     counts = usage_counts(repository, experiment, exemplar.get("layers_path"), protagonist, patches)
-    return badge_html(counts)
+    return badge_html(counts, patches)
 
 
 def badge_for_run_candidate(repository, run_id, candidate_id) -> str:
@@ -141,6 +167,6 @@ def badge_for_run_candidate(repository, run_id, candidate_id) -> str:
         if log.get("availability") != "present":
             return ""
         counts = usage_counts(repository, experiment, log.get("relative_path"), protagonist, state["patches"])
-        return badge_html(counts)
+        return badge_html(counts, state["patches"])
     except _SAFE_ERRORS:
         return ""
