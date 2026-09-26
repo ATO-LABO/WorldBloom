@@ -690,6 +690,28 @@ class ConfigStore:
                 spec[key] = {**spec[key], **value}
             else:
                 spec[key] = value
+        # WB-JEV-005 review (MUST): the run-settings form always sends
+        # evolution.rationality_backend but never touches
+        # evolution.rationality_model (that field has no UI of its own --
+        # normalize() derives it solely from rationality_backend=="jev").
+        # Left alone, switching the backend on a duplicate would carry the
+        # PARENT's model forward unchanged -- e.g. duplicating a Jev config
+        # and switching the select back to "" (template default) would
+        # leave rationality_model="jev-1.13.0" attached to what is now an
+        # Ollama-backed config: Ollama would be asked for a model named
+        # "jev-1.13.0", and the shared judgment table path (named after the
+        # model) would collide with Jev's own table. Reset the model
+        # whenever the backend actually changes and the caller didn't
+        # explicitly set a model of their own -- normalize() then re-derives
+        # the right default (JEV_DEFAULT_MODEL for jev, None otherwise) from
+        # the *new* backend, exactly as a config saved fresh would.
+        evolution_changes = changes.get("evolution")
+        if isinstance(evolution_changes, dict) and "rationality_backend" in evolution_changes:
+            new_backend = evolution_changes["rationality_backend"]
+            new_backend = None if new_backend == "" else new_backend
+            if (new_backend != original["evolution"].get("rationality_backend")
+                    and "rationality_model" not in evolution_changes):
+                spec["evolution"]["rationality_model"] = None
         # Unlike project_id/template_id (hidden, fixed fields on the "duplicate to
         # edit" form), evolution.world_expansion is an editable radio there. Toggling
         # to/from "expand" makes the frozen inputs incompatible with the parent

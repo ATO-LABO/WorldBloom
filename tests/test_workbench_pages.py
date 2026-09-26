@@ -421,6 +421,49 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('<option value="" selected>Ollama qwen3.6:35b（ローカル）</option>', body)
         self.assertNotIn('<option value="jev" selected>', body)
 
+    def test_rationality_select_round_trips_explicit_ollama_and_none(self):
+        """Opus re-review: unlike a config that never set the field (None,
+        rendered as ""), a config with a LITERAL "ollama" or "none" saved
+        (e.g. built via the API/CLI) must render its own exact value
+        selected -- collapsing either into "" here would mean duplicating
+        it silently switches the effective backend (for "none", from
+        "never calls a judge" to "calls Ollama")."""
+        self.configs.save(
+            {"label": "explicit-ollama", "project_id": "momotaro", "template_id": "momotaro",
+             "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all",
+                           "kappa": 0.6, "rationality_backend": "ollama"}},
+            config_id="cfg-explicit-ollama",
+        )
+        self.configs.save(
+            {"label": "explicit-none", "project_id": "momotaro", "template_id": "momotaro",
+             "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all",
+                           "kappa": 0.6, "rationality_backend": "none"}},
+            config_id="cfg-explicit-none",
+        )
+        def rationality_select(body):
+            # Scoped to just this <select> -- the form also has an
+            # unrelated evolution.seed_genomes <select> whose own ""
+            # option is legitimately "selected" (its own "don't inherit"
+            # default), so a whole-body substring check would false-positive.
+            match = re.search(
+                r'<select id="f-evolution\.rationality_backend".*?</select>', body)
+            self.assertIsNotNone(match, "no rationality_backend <select> in body")
+            return match.group(0)
+
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}):
+            status, body, _ = self.get_status("/configs/new?from=cfg-explicit-ollama")
+            self.assertEqual(status, 200, body)
+            select = rationality_select(body)
+            self.assertIn('<option value="ollama" selected>Ollama qwen3.6:35b（明示指定）</option>', select)
+            self.assertNotIn('<option value="" selected>', select)
+
+            status, body, _ = self.get_status("/configs/new?from=cfg-explicit-none")
+            self.assertEqual(status, 200, body)
+            select = rationality_select(body)
+            self.assertIn('<option value="none" selected>判定器を使わない（none、明示指定）</option>', select)
+            self.assertNotIn('<option value="" selected>', select)
+
     def test_normalize_maps_empty_rationality_backend_to_none(self):
         """The <select>'s "follow the template default" option submits ""
         (never "ollama") -- normalize() must fold it back to None so a
