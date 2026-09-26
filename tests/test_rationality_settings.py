@@ -99,6 +99,30 @@ class RationalitySettingsTests(unittest.TestCase):
         self.assertIn("unknown model", str(caught.exception))
         self.assertFalse(self.settings_path.exists())
 
+    def test_non_dict_answers_is_rejected_cleanly(self) -> None:
+        response = _FakeModelsResponse(json.dumps({"answers": ["x"]}).encode("utf-8"))
+        with patch("execution.rationality_settings.urllib.request.urlopen", return_value=response):
+            with self.assertRaises(ConfigError):
+                write_jev_api_key(self.settings_path, "sk-test-key")
+        self.assertFalse(self.settings_path.exists())
+
+    def test_truncated_error_body_still_gives_a_config_error(self) -> None:
+        import http.client
+        import urllib.error
+
+        class _Body:
+            def read(self, *_args):
+                raise http.client.IncompleteRead(b"")
+
+            def close(self):
+                pass
+
+        error = urllib.error.HTTPError("url", 404, "not found", None, _Body())
+        with patch("execution.rationality_settings.urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ConfigError):
+                write_jev_api_key(self.settings_path, "sk-test-key")
+        self.assertFalse(self.settings_path.exists())
+
     def test_unexpected_success_shape_is_rejected(self) -> None:
         response = _FakeModelsResponse(json.dumps({"data": []}).encode("utf-8"))
         with patch("execution.rationality_settings.urllib.request.urlopen", return_value=response):

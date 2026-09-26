@@ -60,7 +60,7 @@ def _error_detail(error):
     the request's Authorization header is not part of the response)."""
     try:
         body = json.loads(error.read().decode("utf-8"))
-    except (OSError, ValueError, AttributeError):
+    except (OSError, ValueError, AttributeError, http.client.HTTPException):
         return ""
     detail = body.get("detail") if isinstance(body, dict) else None
     message = detail.get("message") if isinstance(detail, dict) else detail
@@ -107,13 +107,14 @@ def write_jev_api_key(settings_path, api_key, *, base_url=JEV_BASE_URL, timeout=
             raise ConfigError("api_key", "APIキーが無効です") from error
         if 400 <= error.code < 500 and error.code != 429:
             detail = _error_detail(error)
-            message = f"このキーでは {JEV_DEFAULT_MODEL} を使えません"
+            message = f"このキーで {JEV_DEFAULT_MODEL} の確認に失敗しました"
             raise ConfigError("api_key", f"{message}（{detail}）" if detail else message) from error
         raise ConfigError("api_key", "TypeSafe に接続できません") from error
     except (OSError, urllib.error.URLError, http.client.HTTPException, ValueError) as error:
         raise ConfigError("api_key", "TypeSafe に接続できません") from error
 
-    answer = (data.get("answers") or {}).get("q") if isinstance(data, dict) else None
+    answers = data.get("answers") if isinstance(data, dict) else None
+    answer = answers.get("q") if isinstance(answers, dict) else None
     if not isinstance(answer, dict) or not isinstance(answer.get("probabilities"), dict):
         raise ConfigError("api_key", "TypeSafe の応答形式が想定と違います")
 
