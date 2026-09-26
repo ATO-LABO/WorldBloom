@@ -169,6 +169,92 @@ class WorldPatchCliTests(unittest.TestCase):
         self.assertEqual(trial["reproduction"]["checked"], trial["reproduction"]["identical"])
         self.assertEqual(code, 0)
 
+    def test_propose_from_file_accepts_a_raw_indexed_blocked_trigger_with_reachable_coverage(self):
+        # WB-WORLDGROW-002 S2: `--trigger` is now the raw index into
+        # world_demand.json's triggers (any kind), and check_trigger_coverage
+        # for a "blocked" trigger is checked against real engine reachability
+        # (gapengine.world_patch_contract.reachable_zones_from) -- not just
+        # substring/shape checks. 命綱 is a fictional item name (not momotaro's
+        # own 縄, which already exists in the base world and so can never be
+        # re-added by a patch); this only exercises the mechanism, not the
+        # real momotaro/縄 blocker (out of scope here, see WB-ROUTE-003).
+        original = (self.experiment / "world_demand.json").read_text(encoding="utf-8")
+        blocked_payload = {
+            "schema_version": 2, "files": 1, "skipped_paths": 0, "subject_decisions": 40,
+            "triggers": [{
+                "kind": "blocked", "requirement": "has_item:命綱", "count": 40, "share": 1.0,
+                "lost_share": 0.5, "runs": 5, "reason": "sources_unreachable",
+                "stuck_zones": [["道中", 40]], "source_zones": [["村", 40]], "held_by": [],
+            }],
+            "zones": [], "archive": None,
+            "thresholds": {"whiff_rate_min": 0.5, "wasted_share_min": 0.02, "whiffs_min": 10,
+                            "ignorance_min": 10, "ignorance_share_min": 0.3,
+                            "blocked_min": 10, "blocked_share_min": 0.3, "blocked_runs_min": 3},
+            "verb_counts": {}, "route_counts": {}, "blocked_counts": {},
+        }
+        blocked_add = {
+            "zones": [],
+            "items": [{"name": "命綱", "sources": [{"type": "investigate", "zone": "道中", "count": 1, "max": 2}]}],
+            "facts": [],
+        }
+        try:
+            (self.experiment / "world_demand.json").write_text(
+                json.dumps(blocked_payload, ensure_ascii=False), encoding="utf-8")
+            code = self._propose_from_file(add=blocked_add, extra=["--trigger", "0", "--skip-trial"])
+        finally:
+            (self.experiment / "world_demand.json").write_text(original, encoding="utf-8")
+
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        patch = yaml.safe_load(proposed[0].read_text(encoding="utf-8"))
+        self.assertEqual(patch["trigger"], {"experiment": self.experiment.name, "kind": "blocked",
+                                             "requirement": "has_item:命綱", "count": 40,
+                                             "stuck_zones": [["道中", 40]]})
+        gate = json.loads(proposed[0].with_name(proposed[0].stem + ".gate.json").read_text(encoding="utf-8"))
+        self.assertEqual(gate["static"]["violations"], [])
+        self.assertTrue(gate["static"]["passed"])
+        self.assertEqual(gate["status"], "trial_pending")
+        self.assertEqual(code, 0)
+
+    def test_propose_from_file_rejects_a_blocked_trigger_sourced_only_in_an_unreachable_zone(self):
+        # Same setup, but the item's only source is 村 -- excluded from
+        # 桃太郎's own range until he holds 鬼ヶ島の宝物 (projects/momotaro's
+        # subjects/03_momotaro.yaml) -- must fail check_trigger_coverage even
+        # though the item itself is perfectly valid on its own.
+        original = (self.experiment / "world_demand.json").read_text(encoding="utf-8")
+        blocked_payload = {
+            "schema_version": 2, "files": 1, "skipped_paths": 0, "subject_decisions": 40,
+            "triggers": [{
+                "kind": "blocked", "requirement": "has_item:命綱", "count": 40, "share": 1.0,
+                "lost_share": 0.5, "runs": 5, "reason": "sources_unreachable",
+                "stuck_zones": [["道中", 40]], "source_zones": [["村", 40]], "held_by": [],
+            }],
+            "zones": [], "archive": None,
+            "thresholds": {"whiff_rate_min": 0.5, "wasted_share_min": 0.02, "whiffs_min": 10,
+                            "ignorance_min": 10, "ignorance_share_min": 0.3,
+                            "blocked_min": 10, "blocked_share_min": 0.3, "blocked_runs_min": 3},
+            "verb_counts": {}, "route_counts": {}, "blocked_counts": {},
+        }
+        blocked_add = {
+            "zones": [],
+            "items": [{"name": "命綱", "sources": [{"type": "investigate", "zone": "村", "count": 1, "max": 2}]}],
+            "facts": [],
+        }
+        try:
+            (self.experiment / "world_demand.json").write_text(
+                json.dumps(blocked_payload, ensure_ascii=False), encoding="utf-8")
+            code = self._propose_from_file(add=blocked_add, extra=["--trigger", "0", "--skip-trial"])
+        finally:
+            (self.experiment / "world_demand.json").write_text(original, encoding="utf-8")
+
+        proposed = self._proposed_files()
+        self.assertEqual(len(proposed), 1)
+        gate = json.loads(proposed[0].with_name(proposed[0].stem + ".gate.json").read_text(encoding="utf-8"))
+        self.assertIn("「命綱」を主人公が到達できる場所に足す入手手段がありません", gate["static"]["violations"])
+        self.assertFalse(gate["static"]["passed"])
+        self.assertEqual(gate["status"], "static_failed")
+        self.assertEqual(code, 1)
+
     def test_propose_from_file_with_colliding_zone_fails_static_gate(self):
         self._propose_from_file(add=COLLIDING_ADD)
 

@@ -63,22 +63,47 @@ def _add_from_patch(patch: dict) -> dict:
     if isinstance(add, dict):
         return add
     added = patch.get("added") or {}
+    # R4 (段階3 review 1): added.sources ("縄@森" 形式) doesn't say whether
+    # the target is an item or a fact -- register it as both (same
+    # conservative approach as viewer/world_usage_badge.py's _added_names).
+    # _name_sets below only checks gathered (item) vs learned (fact), which
+    # are mutually exclusive events, so registering both never double-counts.
+    sources = []
+    for label in added.get("sources") or []:
+        if not (isinstance(label, str) and "@" in label):
+            continue
+        name, _, zone = label.rpartition("@")
+        if name and zone:
+            sources.append({"item": name, "source": {"zone": zone}})
+            sources.append({"fact": name, "source": {"zone": zone}})
     return {
         "zones": [{"name": n} for n in added.get("zones") or [] if isinstance(n, str)],
         "items": [{"name": n} for n in added.get("items") or [] if isinstance(n, str)],
         "facts": [{"id": n} for n in added.get("facts") or [] if isinstance(n, str)],
+        "sources": sources,
     }
 
 
-def _name_sets(patch: dict) -> tuple[frozenset, frozenset, frozenset]:
+def _name_sets(patch: dict) -> tuple[frozenset, frozenset, frozenset, frozenset]:
     """The zone/item/fact *names* a patch adds, as hashable sets -- new_usage()
     only ever checks name/id membership (never the full add definition), so
-    this is everything _cached_counts needs to key its cache on."""
+    this is everything _cached_counts needs to key its cache on.
+
+    The 4th set (WB-WORLDGROW-002 stage 2 review 1 fix M1) is add.sources'
+    (kind, target name, zone) triples -- new_usage() needs the zone too (an
+    add.sources target is an *existing* item/fact, only "new" when actually
+    gathered/learned at the zone this patch added a source in)."""
     add = _add_from_patch(patch)
     zones = frozenset(z.get("name") for z in add.get("zones") or [] if isinstance(z, dict))
     items = frozenset(i.get("name") for i in add.get("items") or [] if isinstance(i, dict))
     facts = frozenset(f.get("id") for f in add.get("facts") or [] if isinstance(f, dict))
-    return zones, items, facts
+    sources = frozenset(
+        (("item", s.get("item")) if "item" in s else ("fact", s.get("fact")), (s.get("source") or {}).get("zone"))
+        for s in add.get("sources") or []
+        if isinstance(s, dict) and isinstance(s.get("source"), dict)
+        and isinstance(s["source"].get("zone"), str)
+    )
+    return zones, items, facts, sources
 
 
 # 段階5a Opus review R1: a result screen re-renders this table on every view
@@ -88,10 +113,12 @@ def _name_sets(patch: dict) -> tuple[frozenset, frozenset, frozenset]:
 # (path, mtime_ns, size, name sets, protagonist): a log's content only ever
 # changes by being replaced (a new mtime/size), never edited in place.
 @lru_cache(maxsize=512)
-def _cached_counts(path, mtime_ns, size, zones, items, facts, protagonist):
+def _cached_counts(path, mtime_ns, size, zones, items, facts, sources, protagonist):
     add = {"add": {"zones": [{"name": n} for n in zones],
                    "items": [{"name": n} for n in items],
-                   "facts": [{"id": n} for n in facts]}}
+                   "facts": [{"id": n} for n in facts],
+                   "sources": [{kind_name[0]: kind_name[1], "source": {"zone": zone}}
+                               for kind_name, zone in sources]}}
     return new_usage([path], add, protagonist)
 
 
@@ -130,7 +157,7 @@ def patch_usage(experiment_dir, protagonist: str, patches: list[dict], *,
         patch_id = patch.get("id")
         if not isinstance(patch_id, str):
             continue
-        zones, items, facts = _name_sets(patch)
+        zones, items, facts, sources = _name_sets(patch)
         cell_counts: dict[str, dict] = {}
         strong = weak = total = 0
         for cell_key, path in log_paths.items():
@@ -138,7 +165,8 @@ def patch_usage(experiment_dir, protagonist: str, patches: list[dict], *,
             # dict(...): the cached return value is shared across every call
             # that hits this same key -- copy before handing it to the caller
             # so nothing here (or a caller) can mutate the cached object.
-            counts = dict(_cached_counts(path, stat.st_mtime_ns, stat.st_size, zones, items, facts, protagonist))
+            counts = dict(_cached_counts(path, stat.st_mtime_ns, stat.st_size, zones, items, facts, sources,
+                                        protagonist))
             cell_counts[cell_key] = counts
             total += 1
             if any(counts.get(key) for key in _STRONG_KEYS):

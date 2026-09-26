@@ -88,11 +88,62 @@ def contract_check(world_path, subjects_dir, patch, *, action_graph_path=None):
     return result
 
 
+def reachable_zones_from(world_path, subjects_dir, protagonist, stuck_zones) -> set:
+    """WB-WORLDGROW-002 S2: static reachability for a "blocked" trigger's
+    check_trigger_coverage -- builds one fresh World+Subject (never touches a
+    live run) and unions World.reachable_paths() for `protagonist`, started
+    from each of `stuck_zones` in turn. Reuses the engine's own range/
+    range_exclude logic (e.g. 村's until_item rule) instead of re-deriving a
+    parallel notion of "reachable" -- a zone the protagonist's exclude rule
+    currently blocks (they don't hold the item yet, which is exactly the
+    blocked trigger's own situation) correctly drops out here too."""
+    world = World.from_yaml(world_path)
+    people = [Subject.from_yaml(p) for p in sorted(Path(subjects_dir).glob("*.yaml"))]
+    world.bind_subjects({p.id: p for p in people})
+    subject = next((p for p in people if p.id == protagonist), None)
+    if subject is None:
+        return set()
+    reachable: set = set()
+    for zone in stuck_zones:
+        if not isinstance(zone, str):
+            continue
+        subject.zone, subject.stamina = zone, subject.stamina_max
+        reachable |= set(world.reachable_paths(subject)) | {zone}
+    return reachable
+
+
+def _sourced_targets(add: dict) -> tuple[dict[str, set], dict[str, set]]:
+    """{item_name: {added zones}} / {fact_id: {added zones}} from an
+    add.sources list (WB-WORLDGROW-002 stage 2 review 1 fix M1) -- an
+    existing item/fact given a *new* investigate source somewhere. Never
+    raises on a malformed entry."""
+    items: dict[str, set] = {}
+    facts: dict[str, set] = {}
+    for entry in add.get("sources") or []:
+        if not isinstance(entry, dict):
+            continue
+        source = entry.get("source")
+        zone = source.get("zone") if isinstance(source, dict) else None
+        if not isinstance(zone, str):
+            continue
+        if isinstance(entry.get("item"), str):
+            items.setdefault(entry["item"], set()).add(zone)
+        elif isinstance(entry.get("fact"), str):
+            facts.setdefault(entry["fact"], set()).add(zone)
+    return items, facts
+
+
 def new_usage(paths, patch, protagonist):
     add = patch.get("add", {})
     zones = {z["name"] for z in add.get("zones", [])}
     items = {i["name"] for i in add.get("items", [])}
     facts = {f["id"] for f in add.get("facts", [])}
+    # add.sources doesn't create a new item/fact -- it only gets counted as
+    # "usage" when the gather/learn actually happened at the zone this patch
+    # added a source in (design K: 「その場所でその品/事実を investigate で
+    # 得た回数」), never for a zone the item/fact could already be gathered/
+    # learned at before this patch.
+    sourced_items, sourced_facts = _sourced_targets(add)
     counts = dict.fromkeys(("decisions_in_new_zones", "moves_into_new_zones", "gathered_new_items",
                            "learned_new_facts", "shared_new_facts", "gave_new_items"), 0)
     for path in paths:
@@ -110,9 +161,23 @@ def new_usage(paths, patch, protagonist):
                 continue
             if verb == "move" and tracked in zones and tracked != before:
                 counts["moves_into_new_zones"] += 1
-            counts["gathered_new_items"] += sum(1 for item in details.get("gathered", [])
-                                              if isinstance(item, dict) and item.get("item") in items)
-            counts["learned_new_facts"] += sum(f in facts for f in details.get("learned", []) if isinstance(f, str))
+            row_zone = details.get("zone") if verb == "investigate" else None
+            for gathered in details.get("gathered", []):
+                if not isinstance(gathered, dict):
+                    continue
+                name = gathered.get("item")
+                if name in items:
+                    counts["gathered_new_items"] += 1
+                elif name in sourced_items and (gathered.get("source") in sourced_items[name]
+                                                or row_zone in sourced_items[name]):
+                    counts["gathered_new_items"] += 1
+            for learned in details.get("learned", []) or []:
+                if not isinstance(learned, str):
+                    continue
+                if learned in facts:
+                    counts["learned_new_facts"] += 1
+                elif learned in sourced_facts and row_zone in sourced_facts[learned]:
+                    counts["learned_new_facts"] += 1
             argument = args[1] if isinstance(args, list) and len(args) > 1 else None
             if verb == "share_knowledge" and result == "shared" and argument in facts:
                 counts["shared_new_facts"] += 1

@@ -57,6 +57,31 @@ class UsageCountsTests(unittest.TestCase):
         counts = world_usage_badge.usage_counts(self.repository, self.experiment, rel, "桃太郎", patches)
         self.assertEqual(counts["moves_into_new_zones"], 1)
 
+    def test_add_sources_label_counts_as_usage_at_its_zone(self) -> None:
+        # WB-WORLDGROW-002 段階4: expansion.patches[].added.sources
+        # ("縄@森" 形式) が、その場所での investigate による入手/学習を
+        # 使用回数として数える (gapengine/world_patch_contract.new_usage の
+        # sourced_items/sourced_facts 経路を通す)。
+        rows = [
+            {"kind": "decision", "subject": "桃太郎", "verb": "investigate", "result": "investigated",
+             "details": {"zone": "森", "gathered": [{"item": "縄"}], "learned": ["森の噂"]}},
+        ]
+        rel = self._write_log(rows)
+        patches = [{"added": {"zones": [], "items": [], "facts": [], "sources": ["縄@森", "森の噂@森"]}}]
+        counts = world_usage_badge.usage_counts(self.repository, self.experiment, rel, "桃太郎", patches)
+        self.assertEqual(counts["gathered_new_items"], 1)
+        self.assertEqual(counts["learned_new_facts"], 1)
+
+    def test_add_sources_label_does_not_count_at_a_different_zone(self) -> None:
+        rows = [
+            {"kind": "decision", "subject": "桃太郎", "verb": "investigate", "result": "investigated",
+             "details": {"zone": "海", "gathered": [{"item": "縄"}]}},
+        ]
+        rel = self._write_log(rows)
+        patches = [{"added": {"sources": ["縄@森"]}}]
+        counts = world_usage_badge.usage_counts(self.repository, self.experiment, rel, "桃太郎", patches)
+        self.assertEqual(counts["gathered_new_items"], 0)
+
     def test_no_added_elements_is_not_scored(self) -> None:
         rel = self._write_log([{"kind": "decision", "subject": "桃太郎", "verb": "move", "result": "moved"}])
         self.assertIsNone(world_usage_badge.usage_counts(self.repository, self.experiment, rel, "桃太郎", []))

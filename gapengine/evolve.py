@@ -53,6 +53,7 @@ from gapengine.rationality import (
     OllamaLogprobJudge,
     Rationality,
     RationalityTable,
+    TableOnlyJudge,
 )
 from gapengine.route import Route, load_route_config
 from gapengine.seed_genomes import load as load_seed_genomes, reconcile as reconcile_seed_genome
@@ -80,16 +81,32 @@ class EvolutionCancelled(Exception):
     """Cooperative stop at a seed, individual or generation boundary."""
 
 
-def _build_rationality_judge(rationality_cfg: Mapping[str, Any]) -> Any:
+def _build_rationality_judge(
+    rationality_cfg: Mapping[str, Any], *, table_only: bool = False
+) -> Any:
     """WB-JEV-001 Stage 2: the judge for a run_individual job's Rationality,
     picked by ``rationality_cfg["backend"]`` ("ollama" or "none" -- "fake"
     is a network-free deterministic judge, reachable only by constructing a
     cfg dict directly (not exposed on scripts/evolve.py's CLI), for tests
     that need to exercise this wiring without Ollama/a GPU -- Opus review
-    WB-JEV-001 Stage 2 P3/P4 item 4)."""
+    WB-JEV-001 Stage 2 P3/P4 item 4).
+
+    ``table_only`` (WB-WORLDGROW-002 stage 0): a rerun of an already-finished
+    experiment's history (gapengine.lineage/world_patch_trial, via
+    run_individual's "rationality_table_only" job flag) must never place a
+    live "ollama" call -- it may only replay judgments the experiment's own
+    shared table already has. Only "ollama" is swapped for
+    ``TableOnlyJudge``: "none"/"fake" never touch a network or a GPU in the
+    first place, so a table_only rerun of those runs the same judge as a
+    normal one would."""
 
     backend = str(rationality_cfg.get("backend", "none"))
     if backend == "ollama":
+        if table_only:
+            return TableOnlyJudge(
+                backend_name=backend,
+                model=str(rationality_cfg.get("model", RATIONALITY_DEFAULT_MODEL)),
+            )
         return OllamaLogprobJudge(
             model=str(rationality_cfg.get("model", RATIONALITY_DEFAULT_MODEL)),
             base_url=str(rationality_cfg.get("base_url", RATIONALITY_DEFAULT_BASE_URL)),
@@ -295,6 +312,203 @@ def _route_cfg(
     return base
 
 
+def _rationality_job_cfg(
+    cfg: Mapping[str, Any], template_dir: Path, out_dir: Path
+) -> tuple[dict[str, Any] | None, Path | None]:
+    """A job's rationality_cfg (or ``(None, None)`` when kappa<=0), plus the
+    shared table path it reads/writes -- rationality.yaml's defaults
+    overridden field-by-field by ``cfg["rationality"]``
+    (``_rationality_backend_cfg``), mirroring ``_route_cfg``'s
+    "template default, cfg override" shape.
+
+    Split out of ``_evolve`` (WB-WORLDGROW-002 stage 0) so
+    ``restore_job_cfgs`` can rebuild the *exact* rationality_cfg an
+    already-finished experiment's jobs used, from this one code path,
+    instead of a second hand-written copy that could silently drift from
+    it. ``out_dir`` is only consulted as the table path's default (a CLI
+    run with no explicit ``--rationality-table``, ``cfg["rationality"]``
+    lacking a "table" override) -- ``_evolve`` passes its own out_dir (so a
+    fresh run's default table lives at ``<out>/rationality.json``, as
+    before this split);``restore_job_cfgs`` passes the *original*
+    experiment's directory instead, so that same default resolves to the
+    original run's own table, not the rerun's throwaway output dir."""
+
+    rationality_yaml, rationality_yaml_backend, rationality_override = (
+        _rationality_backend_cfg(cfg, template_dir)
+    )
+
+    def _pick(name: str, default: Any) -> Any:
+        value = rationality_override.get(name)
+        return default if value is None else value
+
+    kappa = float(_pick("kappa", rationality_yaml.get("kappa", 0.0)) or 0.0)
+    if kappa <= 0.0:
+        return None, None
+    rationality_cfg = {
+        "kappa": kappa,
+        "method": str(_pick("method", rationality_yaml.get("method", "noul"))),
+        "backend": str(
+            _pick("backend", rationality_yaml_backend.get("type", "none"))
+        ),
+        "model": str(
+            _pick(
+                "model", rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
+            )
+        ),
+        "base_url": str(
+            _pick(
+                "base_url",
+                rationality_yaml_backend.get("base_url", RATIONALITY_DEFAULT_BASE_URL),
+            )
+        ),
+        "timeout": float(
+            _pick("timeout", rationality_yaml_backend.get("timeout", 300.0))
+        ),
+        "max_judge_calls": _pick(
+            "max_judge_calls_per_run",
+            rationality_yaml.get("max_judge_calls_per_run"),
+        ),
+        # WB-JEV-003: cfg override (--rationality-num-ctx) -> rationality.yaml's
+        # backend.num_ctx -> None (Ollama's own default). Lives under
+        # rationality.yaml's backend, like model/base_url/timeout.
+        "num_ctx": _pick("num_ctx", rationality_yaml_backend.get("num_ctx")),
+        # 2026-09-19 thermal-guard addendum: {"max_temp",
+        # "cooldown_seconds", "check_every"} or None (disabled). Lives
+        # under rationality.yaml's backend: like model/base_url/timeout.
+        "thermal_guard": _pick(
+            "thermal_guard", rationality_yaml_backend.get("thermal_guard")
+        ),
+        "common_knowledge": load_common_knowledge(template_dir),
+        "key_items": load_key_items(template_dir),
+        "describe_trial_grants": load_describe_trial_grants(template_dir),
+        "candidate_labels": load_candidate_labels(template_dir),
+        "describe_negotiate_offer": load_describe_negotiate_offer(template_dir),
+    }
+    rationality_table_path = Path(
+        str(rationality_override.get("table") or (out_dir / "rationality.json"))
+    )
+    return rationality_cfg, rationality_table_path
+
+
+def restore_job_cfgs(
+    experiment: Path, template_dir: Path, *, header: Mapping[str, Any] | None = None
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, Path | None]:
+    """WB-WORLDGROW-002 stage 0: rebuilds the route_cfg/rationality_cfg
+    (plus the rationality table path) that a rerun of one of
+    ``experiment``'s already-finished seeds must attach to its
+    ``run_individual`` job, so the rerun walks the *same* history the
+    original run did.
+
+    Before this existed, gapengine.lineage's ancestor rerun and
+    gapengine.world_patch_trial's base/patched/reproduction runs built
+    their jobs with no route_cfg/rationality_cfg at all -- run_individual()
+    only ever attaches Route/Rationality when a job carries these, so any
+    rho>0/kappa>0 experiment's reruns silently walked a route-free,
+    rationality-free history instead: lineage/transition views showed a
+    different story than the archived one, and world_patch_trial's
+    byte-comparison reproduction check always failed (reference_only).
+
+    Two sources, preferred in this order:
+    - ``experiment/manifest.json`` (present for any run launched through
+      the job queue/ConfigStore, execution/configs.py's ``prepare_run()``):
+      its "evolution" dict is the exact flat settings ``_evolve()`` itself
+      used (copied verbatim from the sealed config.json), and its
+      "rationality_table" is the exact shared table path the run read from
+      -- rebuilt through the very same ``route_cfg_override()``/
+      ``_route_cfg()``/``rationality_cfg_override()``/
+      ``_rationality_job_cfg()`` functions execution/evolution_worker.py
+      and ``_evolve()`` call, so a rerun can never silently diverge from
+      them. This recovers every field, including
+      rationality_max_calls/base_url/timeout/thermal_guard, which the
+      layers.jsonl header (below) never records.
+    - ``header`` (a seed's own layers.jsonl row[0], engine.sim's
+      ``_header()``) when there is no manifest.json (a legacy/CLI-launched
+      run with no ConfigStore-managed snapshot): route.rho and
+      rationality's kappa/method/backend/model/num_ctx are read back from
+      there -- route has no other overridable field, and rationality's
+      remaining fields (max_judge_calls/base_url/timeout/thermal_guard)
+      never change what a run computes (WB-GA-RESUME's cfg fingerprint
+      excludes the operational ones; max_judge_calls only throttles *new*
+      judge calls, which a table_only rerun -- see run_individual's
+      "rationality_table_only" job flag -- never makes), so they fall back
+      to the template's own rationality.yaml defaults, exactly as an
+      experiment that never overrode them would.
+
+    Every caller attaching the returned rationality_cfg to a job MUST also
+    set that job's "rationality_table_only" flag -- this function only
+    rebuilds *what* the original run's Rationality was configured with, not
+    a license to mint new judgments live during a rerun (plan §0 item 3).
+
+    Returns ``(None, None, None)`` for a route/rationality-free experiment
+    (rho<=0 and kappa<=0, or an experiment with neither manifest.json nor a
+    usable header) -- a rerun then behaves exactly as before this function
+    existed (plan §0 item 4)."""
+
+    manifest_path = experiment / "manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        flat = dict(manifest.get("evolution") or {})
+        route_cfg = _route_cfg(
+            {"route": route_cfg_override(flat.get("route_rho"))}, template_dir
+        )
+        rationality_override = rationality_cfg_override(flat)
+        rationality_override["table"] = manifest.get("rationality_table")
+        rationality_cfg, table_path = _rationality_job_cfg(
+            {"rationality": rationality_override}, template_dir, experiment
+        )
+        return route_cfg, rationality_cfg, table_path
+
+    if header is None:
+        return None, None, None
+    route_meta = header.get("route")
+    route_cfg = (
+        _route_cfg({"route": {"rho": route_meta["rho"]}}, template_dir)
+        if isinstance(route_meta, Mapping)
+        else None
+    )
+    if route_cfg is not None and isinstance(route_meta, Mapping):
+        # WB-WORLDGROW-002 stage 0 review recommendation b: route_cfg here
+        # rebuilds multipliers/motives/gene_affinity from template_dir's
+        # *current* route.yaml (there is no manifest.json to read the
+        # original run's own frozen route.yaml back from) -- if that
+        # template has since been edited, a rerun would silently walk a
+        # different route than the one recorded in this header. Comparing
+        # the restored Route's own hashes against the header's recorded
+        # ones (engine.sim's header-writer -- see gapengine/route.py's
+        # multipliers_hash/motives_hash) turns a silent divergence into an
+        # explicit error instead.
+        restored = Route.from_config(route_cfg)
+        recorded = {
+            "multipliers_hash": route_meta.get("multipliers_hash"),
+            "motives_hash": route_meta.get("motives_hash"),
+            "gene_affinity": route_meta.get("gene_affinity"),
+        }
+        current = {
+            "multipliers_hash": restored.multipliers_hash(),
+            "motives_hash": restored.motives_hash(),
+            "gene_affinity": restored.gene_affinity,
+        }
+        if current != recorded:
+            raise ValueError(
+                f"{template_dir} の route.yaml (またはmotives.yaml) が "
+                f"{experiment} の記録時と異なります: recorded={recorded} "
+                f"current={current}"
+            )
+    rationality_meta = header.get("rationality")
+    if not isinstance(rationality_meta, Mapping) or not (
+        float(rationality_meta.get("kappa", 0.0)) > 0.0
+    ):
+        return route_cfg, None, None
+    override = {
+        key: rationality_meta.get(key)
+        for key in ("kappa", "backend", "method", "model", "num_ctx")
+    }
+    rationality_cfg, table_path = _rationality_job_cfg(
+        {"rationality": override}, template_dir, experiment
+    )
+    return route_cfg, rationality_cfg, table_path
+
+
 def _rule_ids(
     rules: Iterable[Mapping[str, Any]],
 ) -> tuple[str, ...]:
@@ -454,7 +668,10 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
         rationality_table = RationalityTable.load(
             Path(str(job["rationality_table_path"]))
         )
-        rationality_judge = _build_rationality_judge(rationality_cfg)
+        rationality_judge = _build_rationality_judge(
+            rationality_cfg,
+            table_only=bool(job.get("rationality_table_only", False)),
+        )
         rationality_new_path = out_dir / "rationality-new.jsonl"
 
     # WB-ROUTE-001 S1 §3: unlike rationality, route carries no per-run
@@ -1328,75 +1545,21 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         p["id"] for p in raw_world_patches if isinstance(p, dict) and "id" in p
     ]
 
-    # WB-JEV-001 Stage 2: rationality.yaml's kappa/method/backend are the
-    # template's defaults; cfg["rationality"] (scripts/evolve.py's
-    # --kappa/--rationality-backend/... CLI flags) overrides individual
-    # fields. kappa<=0 (the momotaro template's default) disables the whole
-    # apparatus -- no table file, no per-job rationality_cfg, no judge calls,
-    # no "rationality" header key, no p_rat/m_rat meta -- so pre-Stage-2 runs
-    # stay byte-identical (plan §0/§1.6).
-    rationality_yaml, rationality_yaml_backend, rationality_override = (
-        _rationality_backend_cfg(cfg, template_dir)
+    # WB-JEV-001 Stage 2 / WB-WORLDGROW-002 stage 0: rationality.yaml's
+    # kappa/method/backend are the template's defaults; cfg["rationality"]
+    # (scripts/evolve.py's --kappa/--rationality-backend/... CLI flags)
+    # overrides individual fields. kappa<=0 (the momotaro template's
+    # default) disables the whole apparatus -- no table file, no per-job
+    # rationality_cfg, no judge calls, no "rationality" header key, no
+    # p_rat/m_rat meta -- so pre-Stage-2 runs stay byte-identical (plan
+    # §0/§1.6). Built by _rationality_job_cfg() (shared with
+    # restore_job_cfgs(), below) so a rerun of one of this experiment's
+    # seeds can reconstruct exactly the same rationality_cfg this call
+    # produces, from the same code path.
+    rationality_cfg, rationality_table_path = _rationality_job_cfg(
+        cfg, template_dir, out_dir
     )
-
-    def _rationality_pick(name: str, default: Any) -> Any:
-        value = rationality_override.get(name)
-        return default if value is None else value
-
-    rationality_kappa = float(
-        _rationality_pick("kappa", rationality_yaml.get("kappa", 0.0)) or 0.0
-    )
-    rationality_enabled = rationality_kappa > 0.0
-    rationality_cfg: dict[str, Any] | None = None
-    rationality_table_path: Path | None = None
-    if rationality_enabled:
-        rationality_cfg = {
-            "kappa": rationality_kappa,
-            "method": str(
-                _rationality_pick("method", rationality_yaml.get("method", "noul"))
-            ),
-            "backend": str(
-                _rationality_pick("backend", rationality_yaml_backend.get("type", "none"))
-            ),
-            "model": str(
-                _rationality_pick(
-                    "model", rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
-                )
-            ),
-            "base_url": str(
-                _rationality_pick(
-                    "base_url",
-                    rationality_yaml_backend.get("base_url", RATIONALITY_DEFAULT_BASE_URL),
-                )
-            ),
-            "timeout": float(
-                _rationality_pick("timeout", rationality_yaml_backend.get("timeout", 300.0))
-            ),
-            "max_judge_calls": _rationality_pick(
-                "max_judge_calls_per_run",
-                rationality_yaml.get("max_judge_calls_per_run"),
-            ),
-            # WB-JEV-003: cfg override (--rationality-num-ctx) -> rationality.yaml's
-            # backend.num_ctx -> None (Ollama's own default). Lives under
-            # rationality.yaml's backend, like model/base_url/timeout.
-            "num_ctx": _rationality_pick(
-                "num_ctx", rationality_yaml_backend.get("num_ctx")
-            ),
-            # 2026-09-19 thermal-guard addendum: {"max_temp",
-            # "cooldown_seconds", "check_every"} or None (disabled). Lives
-            # under rationality.yaml's backend: like model/base_url/timeout.
-            "thermal_guard": _rationality_pick(
-                "thermal_guard", rationality_yaml_backend.get("thermal_guard")
-            ),
-            "common_knowledge": load_common_knowledge(template_dir),
-            "key_items": load_key_items(template_dir),
-            "describe_trial_grants": load_describe_trial_grants(template_dir),
-            "candidate_labels": load_candidate_labels(template_dir),
-            "describe_negotiate_offer": load_describe_negotiate_offer(template_dir),
-        }
-        rationality_table_path = Path(
-            str(rationality_override.get("table") or (out_dir / "rationality.json"))
-        )
+    rationality_enabled = rationality_cfg is not None
 
     # WB-ROUTE-001 S1 §3: rho<=0 (the template default) is None here, so a
     # rho=0 run attaches no route_cfg to any job and stays byte-identical

@@ -308,7 +308,10 @@ def world_demand(repository: "RunRepository", experiment: Path) -> dict[str, Any
         raw = _read_json(path)
     except (OSError, ValueError):
         return None
-    if not isinstance(raw, Mapping) or raw.get("schema_version") != 1:
+    # WB-WORLDGROW-002 S1: schema_version 2 only adds fields (route_counts/
+    # blocked_counts, "kind" on every trigger) -- every reader here already
+    # tolerates unknown keys, so both versions load the same way.
+    if not isinstance(raw, Mapping) or raw.get("schema_version") not in (1, 2):
         return None
     return dict(raw)
 

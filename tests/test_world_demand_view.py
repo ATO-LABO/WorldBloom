@@ -180,6 +180,39 @@ class WorldDemandViewTests(unittest.TestCase):
         rendered = world_demand_view.demand_block(self.repository, self.experiment, propose_run="exp-viewer")
         self.assertIn('data-patch-action="propose" data-run="exp-viewer" data-trigger="2"', rendered)
 
+    def test_ignorance_and_blocked_triggers_render_with_propose_buttons(self) -> None:
+        # WB-WORLDGROW-002 S4: every kind is now rendered (S1 only skipped
+        # ignorance/blocked as a stopgap). The raw index (which the propose
+        # button keys off) still counts every entry in list order, unchanged
+        # from before this stage.
+        _write_json(self.experiment / "world_demand.json", {
+            "schema_version": 2, "zones": [],
+            "triggers": [
+                {"kind": "ignorance", "zone": "森", "count": 20, "share": 0.5},
+                {"kind": "whiff", "zone": "海", "verb": "investigate", "count": 3, "whiffs": 3, "wasted_share": 0.5},
+                {"kind": "blocked", "requirement": "reach:村", "count": 20, "share": 1.0, "runs": 4,
+                 "stuck_zones": [["道中", 20]]},
+            ]})
+        rendered = world_demand_view.demand_block(self.repository, self.experiment, propose_run="exp-viewer")
+        self.assertIn("investigate", rendered)
+        # ignorance: readable zone/count text, not the raw "kind" token.
+        self.assertIn("森", rendered)
+        self.assertIn("手探り", rendered)
+        self.assertIn("20 回", rendered)
+        self.assertNotIn(">ignorance<", rendered)
+        # blocked (reach:): the requirement string itself never leaks; it's
+        # rendered as a readable phrase instead (守ること: has_item:縄 のような
+        # 生の要件文字列を出さない).
+        self.assertNotIn("reach:村", rendered)
+        self.assertIn("「村」に行く手段", rendered)
+        self.assertIn("道中", rendered)
+        self.assertIn("4 本のラン", rendered)
+        # Every trigger (whiff/ignorance/blocked) gets a propose button here.
+        self.assertEqual(rendered.count('data-patch-action="propose"'), 3)
+        self.assertIn('data-patch-action="propose" data-run="exp-viewer" data-trigger="0"', rendered)
+        self.assertIn('data-patch-action="propose" data-run="exp-viewer" data-trigger="1"', rendered)
+        self.assertIn('data-patch-action="propose" data-run="exp-viewer" data-trigger="2"', rendered)
+
     def test_time_estimate_needs_an_investigate_trigger(self) -> None:
         _write_json(self.experiment / "world_demand.json", {
             "schema_version": 1, "zones": [],
@@ -210,6 +243,82 @@ class WorldDemandViewTests(unittest.TestCase):
         link = world_demand_view.sidebar_link(self.repository, "exp-viewer")
         self.assertIn("世界の需要（1件）", link)
         self.assertIn('href="/exp/exp-viewer/monitor?tab=demand"', link)
+
+    def test_sidebar_link_counts_every_kind(self) -> None:
+        # WB-WORLDGROW-002 S4: the sidebar count now matches the body (every
+        # kind is rendered there since this stage).
+        _write_json(self.experiment / "world_demand.json", {
+            "schema_version": 2, "zones": [],
+            "triggers": [
+                {"kind": "whiff", "zone": "海", "verb": "investigate"},
+                {"kind": "ignorance", "zone": "森", "count": 20, "share": 0.5},
+                {"kind": "blocked", "requirement": "has_item:縄", "count": 20, "share": 1.0, "runs": 3,
+                 "stuck_zones": [["道中", 20]]},
+            ]})
+        link = world_demand_view.sidebar_link(self.repository, "exp-viewer")
+        self.assertIn("世界の需要（3件）", link)
+
+    def test_zone_table_shows_route_breakdown_only_on_a_route_wired_run(self) -> None:
+        # WB-WORLDGROW-002 S4: 段階4 の追加 -- ゾーン表の details に道筋付き
+        # 決定の内訳(前進・準備・寄り道〈内訳〉・見通しなし)。route_counts が
+        # 無い（route層を使っていない）実験では列自体が出ない。
+        _write_json(self.experiment / "world_demand.json", {
+            "schema_version": 2,
+            "zones": [{"zone": "森", "dwell_share": 0.5, "repeat_rate": 0.0,
+                       "ineffective_rate": 0.0, "decisions": 10, "verbs": []}],
+            "triggers": [],
+            "route_counts": {"森": {"advance": 5, "prepare": 2, "lost": 1,
+                                    "detour:ignorance": 3, "detour:motive": 1}},
+        })
+        rendered = world_demand_view.demand_block(self.repository, self.experiment)
+        self.assertIn("道筋の内訳", rendered)
+        self.assertIn("前進 5", rendered)
+        self.assertIn("準備 2", rendered)
+        self.assertIn("見通しなし 1", rendered)
+        self.assertIn("寄り道 4（手探り 3、動機 1）", rendered)
+
+    def test_zone_table_has_no_route_column_without_route_counts(self) -> None:
+        _write_json(self.experiment / "world_demand.json", {
+            "schema_version": 1,
+            "zones": [{"zone": "森", "dwell_share": 0.5, "repeat_rate": 0.0,
+                       "ineffective_rate": 0.0, "decisions": 10, "verbs": []}],
+            "triggers": [],
+        })
+        rendered = world_demand_view.demand_block(self.repository, self.experiment)
+        self.assertNotIn("道筋の内訳", rendered)
+
+    def test_expansion_line_shows_ignorance_and_blocked_trigger_and_sources(self) -> None:
+        # WB-WORLDGROW-002 S4: expansion.patches[].trigger は種類ごとに違う
+        # 形(gapengine/world_patch.py の EXPANSION_TRIGGER_KEYS) -- 読みやすい
+        # 文言に、added.sources も表示に反映する。
+        world = {
+            "name": "桃太郎",
+            "expansion": {
+                "base": "桃太郎",
+                "patches": [
+                    {"id": "p-ignorance", "title": "森の手がかり",
+                     "trigger": {"kind": "ignorance", "zone": "森", "count": 20},
+                     "added": {"zones": [], "items": [], "facts": [], "daily_events": [],
+                               "sources": ["縄@森"]}},
+                    {"id": "p-blocked", "title": "縄の入手手段",
+                     "trigger": {"kind": "blocked", "requirement": "has_item:縄", "count": 1801,
+                                 "stuck_zones": [["道中", 900]]},
+                     "added": {"zones": [], "items": ["新しい縄"], "facts": [], "daily_events": []}},
+                ],
+            },
+        }
+        (self.experiment / "expanded-project").mkdir()
+        (self.experiment / "expanded-project" / "world.yaml").write_text(
+            yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+        rendered = world_demand_view.demand_block(self.repository, self.experiment)
+        self.assertIn("森 で手探り 20回", rendered)
+        # R3（段階4 review 1）: 「…手段が無く 1801回」は無くなったように読める
+        # ため「…が無い状態 1801回」に直した。
+        self.assertIn("「縄」を手に入れる手段が無い状態 1801回", rendered)
+        # R5（段階4 review 1）: 内部の "名前@場所" 表記のままではなく、
+        # 既存の品/事実に手段が増えたことが分かる文にする。
+        self.assertIn("「縄」を森で手に入れられるようにした", rendered)
+        self.assertIn("新しい縄", rendered)
 
 
 if __name__ == "__main__":

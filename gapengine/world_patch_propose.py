@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from gapengine.world_patch import _valued_facts, addition_caps, innocent_tokens, lottery_facts, patch_id_for
+from gapengine.world_patch import (_valued_facts, addition_caps, innocent_tokens, lottery_facts,
+                                    patch_id_for, trigger_is_proposable)
 
 MAX_PROMPT_CHARS = 12000
 
@@ -22,7 +23,7 @@ _INTRO = """あなたは物語シミュレーションの世界設定を拡張�
 _RULES_TEMPLATE = """# 拡張のルール
 - 足せるのは add.zones / add.items / add.facts だけです。既存のものは変更も削除もできません。1つの仕組みに絞ってください。
 - zones（最大1）: {{"name","parent","note"}}。parent は既存の場所で、足した場所は parent と同じ入場条件を持つ、その場所の一部になります。note は世界の中の描写だけを書いてください。「枝」「親」「パッチ」などの設計上の言葉や、この世界に無い場所・物の名前を書いてはいけません。facts の label も同じです。
-- items（最大2）: {{"name","sources":[{{"type":"investigate","zone":場所,"count":1,"max":1〜3}}],"give":{{"receiver_affinity":0〜0.5,"giver_affinity":0〜0.5}}}}。sources.max は、1人がその場所で何個まで手に入れられるかです。max:1 は1回取ったら二度と出ず、その後は元どおりの空振りに戻ります。今回の空振りは{whiffs}回なので、1つしか無いことに意味がある品でなければ max は2以上にしてください。{give_rule}
+- items（最大2）: {{"name","sources":[{{"type":"investigate","zone":場所,"count":1,"max":1〜3}}],"give":{{"receiver_affinity":0〜0.5,"giver_affinity":0〜0.5}}}}。sources.max は、1人がその場所で何個まで手に入れられるかです。max:1 は1回取ったら二度と出ず、その後は元どおりの空振りに戻ります。{count_phrase}、1つしか無いことに意味がある品でなければ max は2以上にしてください。{give_rule}
 - items に足せる任意の項目（渡すだけの品にしないための選択肢です。要るものだけ使ってください）:
   "keepsake": true … 手放さない品（渡せず、取引にも差し出さない）。give とは併記できません。
   "lootable": true … 持ち主が倒れたとき、相手に奪われうる品。
@@ -33,8 +34,7 @@ _RULES_TEMPLATE = """# 拡張のルール
 - {budget_rule}
 - 名前とidは30文字以内。新しい名前は、この世界の説明文（上の一覧を含む world.yaml 全体）のどこかに含まれる文字列であってはいけません（既存の語をそのまま名前にしない）。アイテムの name と事実の id にも、互いに違う名前を付けてください。
 - 結末、目的の品、乗り物、道の通行条件には触れられません。
-- 必ず「{zone}」そのものをsourcesのzoneにしたitemsかfactsを1つ以上入れてください。足した場所に置くだけでは、「{zone}」で調べたときの空振りは1回も減りません。
-- 場所を足さずに「{zone}」の中身を増やすのが基本です。zonesを足すのは、その場所でしか成り立たない中身があるときだけにしてください。足した場合は、その場所をsourcesのzoneにしたitemsかfactsを必ず1つ以上そこに置いてください（中身の無い場所は、行っても必ず空振りする場所が増えるだけです）。
+{coverage_rule}{add_sources_rule}
 - rationale はちょうど3文で書いてください。1文目「新たに何を選べるか」、2文目「何を失う可能性があるか」、3文目「既存のどの関係へ作用するか」。2文目と3文目には、上の一覧にある人物名・事実id・アイテム名のいずれかを必ず名指しで入れてください。提案に入れていない効果を書いてはいけません。"""
 
 _OUTPUT = """# 出力
@@ -61,6 +61,14 @@ _OUTPUT = """# 出力
     ]
   }
 }"""
+
+# R6 (段階3 review 1): blocked トリガーだけ、出力形式のJSON雛形にも
+# add.sources を併記する -- 第一の選択肢(_add_sources_rule)を選びやすく
+# するため。whiff/ignorance の _OUTPUT はバイト一致のまま変えない。
+_OUTPUT_BLOCKED = _OUTPUT.replace(
+    '"add": { "zones": [...], "items": [...], "facts": [...] }',
+    '"add": { "zones": [...], "items": [...], "facts": [...], "sources": [...] }',
+)
 
 
 def _ending_labels(world: dict) -> list[str]:
@@ -162,7 +170,7 @@ def world_brief(world: dict, subject_ids: list[str], *, cap: int | None = None,
     return "\n".join(lines)
 
 
-def _demand_section(trigger: dict, zone_verbs: list) -> str:
+def _demand_section_whiff(trigger: dict, zone_verbs: list) -> str:
     zone_verb_text = "、".join(f"{item[0]}×{item[1]}" for item in zone_verbs) if zone_verbs else "記録なし"
     return (
         "# 足りていない場所\n"
@@ -172,10 +180,98 @@ def _demand_section(trigger: dict, zone_verbs: list) -> str:
     )
 
 
-def _budget_rule(world: dict) -> str:
+def _pair_text(pairs) -> str:
+    return "、".join(f"{name}×{count}" for name, count in pairs) if pairs else "不明"
+
+
+def _names_only(pairs) -> str | None:
+    """R1: like _pair_text, but names only -- no count (a count next to a
+    person's name reads as "how many of them", next to a zone as some other
+    unrelated tally). None when there's nothing to show, so a caller can
+    fall back to its own default text."""
+    names = [str(name) for name, _n in pairs] if pairs else []
+    return "、".join(names) if names else None
+
+
+# WB-WORLDGROW-002 S2 review 1 fix R2: world_demand.py's collect() (S2) now
+# tracks, per ignorance zone, which milestone (a route.py "kind:value" open
+# need, e.g. "has_item:縄") the protagonist was actually short on while
+# wandering there -- read here as the "top 3 milestones" the original
+# stage-2 plan text asked for.
+def _demand_section_ignorance(trigger: dict, zone_verbs: list) -> str:
+    zone_verb_text = "、".join(f"{item[0]}×{item[1]}" for item in zone_verbs) if zone_verbs else "記録なし"
+    share_pct = (trigger.get("share") or 0.0) * 100
+    milestones = trigger.get("milestones") or []
+    milestone_text = ""
+    if milestones:
+        milestone_text = "\n次に必要としている節目の例: " + "、".join(f"{m}×{n}" for m, n in milestones)
+    return (
+        "# 足りていない場所\n"
+        f"「{trigger.get('zone')}」で主人公が『手探り』（何をすべきか分からず調べ回る寄り道）を"
+        f"{trigger.get('count')}回（道筋付き決定の{share_pct:.0f}%）繰り返しています。{milestone_text}\n"
+        f"その場所（またはその子ゾーン）で調べると得られる手がかりか入手手段（factとitemのinvestigateのsource）を足してください。\n"
+        f"この場所で主人公がよくしている行動: {zone_verb_text}"
+    )
+
+
+def _blocked_target(requirement: str) -> tuple[str, str]:
+    """(readable target, requirement kind) for a blocked trigger's
+    `requirement` string ("has_item:<品>"/"knows:<事実>"/"reach:<区域>", per
+    gapengine/route.py's `_blocked_on`)."""
+    for prefix, kind in (("has_item:", "item"), ("knows:", "fact"), ("reach:", "reach")):
+        if requirement.startswith(prefix):
+            return requirement[len(prefix):], kind
+    return requirement, "other"
+
+
+def _demand_section_blocked(trigger: dict) -> str:
+    requirement = trigger.get("requirement") or ""
+    target, kind = _blocked_target(requirement)
+    # R1（段階2差し戻し対応の積み残し、段階4で対応）: stuck_zones/source_zones
+    # も held_by と同じく名前だけにする -- 件数は道中・森・海など複数ゾーンの
+    # 合計であり、名前の隣の数字として誤読を招く。総数は count/runs で足りる。
+    stuck_text = _names_only(trigger.get("stuck_zones")) or "不明"
+    count, runs = trigger.get("count"), trigger.get("runs")
+    if kind == "reach":
+        body = (
+            f"「{target}」に行く手段が主人公にありません。"
+            f"主に{stuck_text}で、結末への計画が立たなくなっています（{runs}本のランで{count}回）。\n"
+            f"経路（routes）を新設するのではなく、「{target}」が果たしていた役割を代わりに果たす"
+            "入手手段を、主人公が到達できる場所に足してください。"
+        )
+    else:
+        source_text = _names_only(trigger.get("source_zones")) or "不明"
+        # R1: names only, no count -- "キジ×571" next to a person's name
+        # reads as "how many of them", not "how many decisions saw this".
+        held_text = _names_only(trigger.get("held_by")) or "誰も持っていません"
+        body = (
+            f"「{target}」を手に入れる手段が、主人公が行ける場所にありません"
+            f"（入手できる場所: {source_text}＝今は行けない／持っているのは{held_text}）。"
+            f"主に{stuck_text}で、結末への計画が立たなくなっています（{runs}本のランで{count}回）。\n"
+            "主人公が到達できる場所に、別の入手手段を足してください。"
+        )
+    return "# 足りていない場所\n" + body
+
+
+def _demand_section(trigger: dict, zone_verbs: list) -> str:
+    kind = trigger.get("kind", "whiff")
+    if kind == "ignorance":
+        return _demand_section_ignorance(trigger, zone_verbs)
+    if kind == "blocked":
+        return _demand_section_blocked(trigger)
+    return _demand_section_whiff(trigger, zone_verbs)
+
+
+def _budget_rule(world: dict, kind: str = "whiff") -> str:
     left = {key: max(cap - used, 0) for key, (cap, used) in addition_caps(world).items()}
-    return (f"この世界に今回足せる数は、場所{min(left['zones'], 1)}・アイテム{min(left['items'], 2)}・"
+    text = (f"この世界に今回足せる数は、場所{min(left['zones'], 1)}・アイテム{min(left['items'], 2)}・"
             f"事実{min(left['facts'], 2)}までです（これを超えると不採用になります）。パッチ総数8以下。")
+    if kind == "blocked":
+        # R6 (段階3 review 1, byte-identical only for whiff/ignorance):
+        # add.sources もアイテム/事実の枠を1件使う -- budget_rule の数字は
+        # add.sources を数えた後の残りなので、書いておく。
+        text += " add.sources も、対象がアイテムなら「アイテム」、事実なら「事実」の枠を1件使います。"
+    return text
 
 
 def _give_rule(give_available: bool) -> str:
@@ -221,15 +317,92 @@ def _implies_rule(world: dict) -> str:
     return "".join(sentences)
 
 
-def _assemble(brief: str, trigger: dict, zone_verbs: list, world: dict, *, give_available: bool = True) -> str:
-    rules = _RULES_TEMPLATE.format(zone=trigger["zone"], whiffs=trigger.get("whiffs"),
-                                   budget_rule=_budget_rule(world), implies_rule=_implies_rule(world),
-                                   give_rule=_give_rule(give_available))
-    return "\n\n".join([_INTRO, brief, _demand_section(trigger, zone_verbs), rules, _OUTPUT])
+_WHIFF_COVERAGE_RULE = (
+    "- 必ず「{zone}」そのものをsourcesのzoneにしたitemsかfactsを1つ以上入れてください。足した場所に置くだけでは、"
+    "「{zone}」で調べたときの空振りは1回も減りません。\n"
+    "- 場所を足さずに「{zone}」の中身を増やすのが基本です。zonesを足すのは、その場所でしか成り立たない中身があ"
+    "るときだけにしてください。足した場合は、その場所をsourcesのzoneにしたitemsかfactsを必ず1つ以上そこに置い"
+    "てください（中身の無い場所は、行っても必ず空振りする場所が増えるだけです）。"
+)
+
+_BLOCKED_COVERAGE_RULE = (
+    "- 足してよい場所（主人公が今到達できる場所）: {reachable_zones}。それ以外の場所は今は行けないので不可です。\n"
+    "- 必ず、その中のいずれかの場所をsourcesのzoneにしたitemsかfactsを1つ以上入れ、「{target}」の入手手段にして"
+    "ください（既存の『{target}』に入手手段を足す add.sources も使えます）。\n"
+    "- 場所を足さずに既存の場所の中身を増やすのが基本です。zonesを足すのは、その場所でしか成り立たない中身があ"
+    "るときだけにしてください。足した場合は、その場所をsourcesのzoneにしたitemsかfactsを必ず1つ以上そこに置い"
+    "てください（中身の無い場所は、行っても必ず空振りする場所が増えるだけです）。"
+)
+
+# WB-WORLDGROW-002 stage 2 review 1 fix R2: distinct wording from whiff's own
+# rule (子ゾーンも可、「手がかりか入手手段を足す」) -- whiff's own text stays
+# byte-identical (below), never touched by this.
+_IGNORANCE_COVERAGE_RULE = (
+    "- 必ず「{zone}」そのもの（またはその子ゾーン）をsourcesのzoneにしたitemsかfactsを1つ以上入れ、手がかりか"
+    "入手手段を足してください。足した場所に置くだけでは、「{zone}」での手探りは1回も減りません。\n"
+    "- 場所を足さずに「{zone}」の中身を増やすのが基本です。zonesを足すのは、その場所でしか成り立たない中身があ"
+    "るときだけにしてください。足した場合は、その場所をsourcesのzoneにしたitemsかfactsを必ず1つ以上そこに置い"
+    "てください（中身の無い場所は、行っても必ず空振りする場所が増えるだけです）。"
+)
+
+
+def _add_sources_rule(trigger: dict) -> str:
+    """WB-WORLDGROW-002 stage 2 review 1 fix M1 (design K): explain add.sources
+    only for a "blocked" trigger, as the first-choice option -- an
+    already-existing item/fact is exactly what has_item:X/knows:F names, and
+    add.items/add.facts can never re-add an existing name (validate_patch's
+    check_name rejects that). Whiff/ignorance prompts never mention it, so
+    their own byte-identical output is untouched."""
+    if trigger.get("kind") != "blocked":
+        return ""
+    target, _kind = _blocked_target(trigger.get("requirement") or "")
+    return (
+        f'\n- 第一の選択肢: 既存の「{target}」に、行ける場所での入手手段を足す（add.sources、最大2件）。'
+        '{"item":既存のアイテム名,"source":{"type":"investigate","zone":場所,"count":1,"max":1〜3}} または '
+        '{"fact":既存の事実id,"source":{"type":"investigate","zone":場所,"count":1}} の形で、item/fact はどちらか一方だけ書きます。'
+        '既存の品・事実そのものは変えず、入手手段だけを増やします。'
+        '目的の品・乗り物・keepsakeの品・made_fromで作る品・値が決まる事実（真値がくじで決まる事実を含む）には使えません。'
+        '同じ品・事実に、同じ場所の入手手段を重ねて足すことはできません。'
+    )
+
+
+def _coverage_rule(trigger: dict, reachable_zones: set | None = None) -> str:
+    kind = trigger.get("kind", "whiff")
+    if kind == "blocked":
+        target, _rkind = _blocked_target(trigger.get("requirement") or "")
+        # R1: use the caller's actually-computed reachable zones (names
+        # only) when given -- falls back to the trigger's own stuck_zones
+        # (with counts, the pre-fix wording) only when the caller has none
+        # to hand (e.g. a plain unit test with no engine/world access).
+        zones_text = "・".join(sorted(reachable_zones)) if reachable_zones else _pair_text(trigger.get("stuck_zones"))
+        return _BLOCKED_COVERAGE_RULE.format(reachable_zones=zones_text, target=target)
+    if kind == "ignorance":
+        return _IGNORANCE_COVERAGE_RULE.format(zone=trigger.get("zone"))
+    # whiff -- byte-identical to the original (pre-S2, whiff-only) rule text.
+    return _WHIFF_COVERAGE_RULE.format(zone=trigger.get("zone"))
+
+
+def _count_phrase(trigger: dict) -> str:
+    if trigger.get("kind", "whiff") == "whiff":
+        # Byte-identical to the pre-S2 (whiff-only) wording.
+        return f"今回の空振りは{trigger.get('whiffs')}回なので"
+    return f"今回の件数は{trigger.get('count')}回なので"
+
+
+def _assemble(brief: str, trigger: dict, zone_verbs: list, world: dict, *, give_available: bool = True,
+              reachable_zones: set | None = None) -> str:
+    kind = trigger.get("kind", "whiff")
+    rules = _RULES_TEMPLATE.format(count_phrase=_count_phrase(trigger),
+                                   budget_rule=_budget_rule(world, kind), implies_rule=_implies_rule(world),
+                                   give_rule=_give_rule(give_available),
+                                   coverage_rule=_coverage_rule(trigger, reachable_zones),
+                                   add_sources_rule=_add_sources_rule(trigger))
+    output = _OUTPUT_BLOCKED if kind == "blocked" else _OUTPUT
+    return "\n\n".join([_INTRO, brief, _demand_section(trigger, zone_verbs), rules, output])
 
 
 def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs: list, *,
-                  give_available: bool = True) -> str:
+                  give_available: bool = True, reachable_zones: set | None = None) -> str:
     """The rules/output sections a reader depends on must never be cut off, so
     the fixed parts (intro, demand section, rules, output) get their budget
     first and only the "# 世界" brief shrinks to make room: first each note/
@@ -239,10 +412,13 @@ def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs:
     `give_available` should be scripts/world_patch.py's `_give_available()`
     result for this world's subjects -- give never fires with no give_item
     verb, so the prompt must not ask for it."""
-    if trigger.get("verb") != "investigate":
-        raise ValueError("v1 は investigate の需要だけに対応しています")
+    if not trigger_is_proposable(trigger):
+        # R4: stale since WB-WORLDGROW-002 S2 generalized this beyond v1's
+        # investigate-only whiff triggers to ignorance/blocked as well.
+        raise ValueError("対応できる需要がありません")
 
-    fixed_chars = len(_assemble("", trigger, zone_verbs, world, give_available=give_available))
+    fixed_chars = len(_assemble("", trigger, zone_verbs, world, give_available=give_available,
+                                reachable_zones=reachable_zones))
     budget = max(MAX_PROMPT_CHARS - fixed_chars, 0)
 
     brief = world_brief(world, subject_ids)
@@ -267,13 +443,15 @@ def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs:
         n_zones -= 1
         brief = world_brief(world, subject_ids, cap=40, n_facts=n_facts, n_items=n_items, n_zones=n_zones)
 
-    prompt = _assemble(brief, trigger, zone_verbs, world, give_available=give_available)
+    prompt = _assemble(brief, trigger, zone_verbs, world, give_available=give_available,
+                       reachable_zones=reachable_zones)
     if len(prompt) > MAX_PROMPT_CHARS:
         # Last-resort safety net -- the loops above already fit `brief` to
         # `budget`, so this only bites if the fixed parts themselves (e.g. an
         # enormous zone_verbs list) already overran MAX_PROMPT_CHARS.
         brief = brief[:max(len(brief) - (len(prompt) - MAX_PROMPT_CHARS), 0)]
-        prompt = _assemble(brief, trigger, zone_verbs, world, give_available=give_available)
+        prompt = _assemble(brief, trigger, zone_verbs, world, give_available=give_available,
+                           reachable_zones=reachable_zones)
     return prompt
 
 
@@ -298,9 +476,24 @@ def parse_proposal(text: str) -> dict:
     return value
 
 
+# WB-WORLDGROW-002 S2: patch["trigger"] (kept on the patch itself, so a later
+# `check` can re-run check_trigger_coverage without the original
+# world_demand.json report) -- keyed by kind, same reasoning as
+# gapengine/world_patch.py's EXPANSION_TRIGGER_KEYS but a separate, richer
+# slimming (this one needs enough fields for coverage to be re-checkable,
+# e.g. blocked's stuck_zones). whiff keeps its exact pre-S2 field set.
+PATCH_TRIGGER_KEYS = {
+    "whiff": ("experiment", "zone", "verb", "count", "whiffs"),
+    "ignorance": ("experiment", "kind", "zone", "count"),
+    "blocked": ("experiment", "kind", "requirement", "count", "stuck_zones"),
+}
+
+
 def make_patch(proposal: dict, *, trigger: dict, parent_digest: str, author: dict) -> dict:
     add = proposal["add"]
-    trigger_slim = {k: trigger[k] for k in ("experiment", "zone", "verb", "count", "whiffs") if k in trigger}
+    kind = trigger.get("kind", "whiff") if isinstance(trigger, dict) else "whiff"
+    keys = PATCH_TRIGGER_KEYS.get(kind, PATCH_TRIGGER_KEYS["whiff"])
+    trigger_slim = {k: trigger[k] for k in keys if k in trigger}
     return {
         "id": patch_id_for(add),
         "title": proposal["title"],
@@ -327,27 +520,113 @@ def _sourced_zones(add: dict) -> set:
             for source in sources:
                 if isinstance(source, dict) and isinstance(source.get("zone"), str):
                     found.add(source["zone"])
+    # WB-WORLDGROW-002 stage 2 review 1 fix M1: add.sources (a new source for
+    # an *existing* item/fact) counts as coverage too, same as a brand-new
+    # item/fact's own sources above.
+    for entry in add.get("sources") or []:
+        if not isinstance(entry, dict):
+            continue
+        source = entry.get("source")
+        if isinstance(source, dict) and isinstance(source.get("zone"), str):
+            found.add(source["zone"])
     return found
 
 
-def check_trigger_coverage(add: dict, trigger: dict) -> list[str]:
-    """Extra gate (not part of validate_patch's generic schema check), both
-    conditions required:
-    - A1: the trigger zone itself must have at least one added item/fact
-      sourcing from it -- placing content only in a branch off it leaves the
-      whiff the patch was proposed for exactly as frequent as before.
-    - A2: every zone add.zones adds must itself have at least one added
-      item/fact sourcing from it -- an empty added zone is just a new place
-      to whiff in.
+def _zone_children(world: dict | None, add: dict, zone: str) -> set:
+    """Existing zones (from `world`) plus this patch's own new zones whose
+    `parent` is `zone` -- WB-WORLDGROW-002 S2's "ignorance" coverage allows a
+    source in the trigger zone's immediate children too, not only the zone
+    itself (§2's "そのゾーンの子ゾーン")."""
+    children = set()
+    if isinstance(world, dict):
+        children |= {z.get("name") for z in (world.get("zones") or [])
+                     if isinstance(z, dict) and z.get("parent") == zone and isinstance(z.get("name"), str)}
+    zones_raw = add.get("zones") if isinstance(add, dict) else None
+    if isinstance(zones_raw, list):
+        children |= {z.get("name") for z in zones_raw
+                     if isinstance(z, dict) and z.get("parent") == zone and isinstance(z.get("name"), str)}
+    return children
+
+
+def _check_blocked_coverage(add: dict, trigger: dict, reachable_zones: set | None) -> list[str]:
+    requirement = trigger.get("requirement")
+    if not isinstance(requirement, str) or not requirement:
+        return ["きっかけの要件が不明です"]
+    target, kind = _blocked_target(requirement)
+    if reachable_zones is None:
+        # No engine/world available to compute real reachability (e.g. a
+        # unit test exercising this function directly) -- fall back to just
+        # the trigger's own stuck zones, never treating an unrelated zone as
+        # reachable by default. R3: stuck_zones entries are expected to be
+        # [name, count] pairs, but this must never raise on a malformed one
+        # (e.g. hand-edited) -- a non-conforming entry is simply skipped.
+        reachable_zones = {
+            pair[0] for pair in (trigger.get("stuck_zones") or [])
+            if isinstance(pair, (list, tuple)) and len(pair) == 2 and isinstance(pair[0], str)
+        }
+
+    def _sourced_from_reachable(entries, key, name) -> bool:
+        for entry in entries if isinstance(entries, list) else []:
+            if not isinstance(entry, dict) or entry.get(key) != name:
+                continue
+            for source in entry.get("sources") or []:
+                if isinstance(source, dict) and source.get("zone") in reachable_zones:
+                    return True
+        return False
+
+    def _sourced_via_add_sources(key, name) -> bool:
+        for entry in add.get("sources") or []:
+            if not isinstance(entry, dict) or entry.get(key) != name:
+                continue
+            source = entry.get("source")
+            if isinstance(source, dict) and source.get("zone") in reachable_zones:
+                return True
+        return False
+
+    if kind == "item":
+        ok = _sourced_from_reachable(add.get("items"), "name", target) or _sourced_via_add_sources("item", target)
+    elif kind == "fact":
+        ok = _sourced_from_reachable(add.get("facts"), "id", target) or _sourced_via_add_sources("fact", target)
+    else:
+        # "reach:<区域>"/unrecognized: can't mechanically verify the added
+        # source "fills the same role" as the unreachable zone would have --
+        # judgment call (WB-WORLDGROW-002 S2): require at least one added
+        # source placed somewhere the protagonist can actually reach.
+        ok = bool(_sourced_zones(add) & reachable_zones)
+    return [] if ok else [f"「{target}」を主人公が到達できる場所に足す入手手段がありません"]
+
+
+def check_trigger_coverage(add: dict, trigger: dict, *, world: dict | None = None,
+                            reachable_zones: set | None = None) -> list[str]:
+    """Extra gate (not part of validate_patch's generic schema check).
+    Universal (every kind): A2 -- every zone add.zones adds must itself have
+    at least one added item/fact sourcing from it (an empty added zone is
+    just a new place to whiff/get-lost in).
+    Kind-specific (A1): whiff/ignorance need a source in the trigger zone
+    itself (ignorance also accepts one of its immediate children, via
+    `world`); blocked needs a source for its `requirement` placed somewhere
+    the protagonist can reach (`reachable_zones`, expected to be computed by
+    a caller with engine/world access -- see gapengine/world_patch_contract.
+    reachable_zones_from; falls back to the trigger's own stuck zones when
+    not given, e.g. a plain unit test).
     Never raises: `add`/`trigger` may be whatever shape an LLM (or a caller
     re-running check on a hand-edited proposal) handed us."""
     if not isinstance(add, dict):
         return ["きっかけの場所そのものに調べて得られるものが足されていません"]
+    if not isinstance(trigger, dict):
+        trigger = {}
     covered = _sourced_zones(add)
     violations: list[str] = []
-    zone = trigger.get("zone") if isinstance(trigger, dict) else None
-    if not (isinstance(zone, str) and zone in covered):
-        violations.append("きっかけの場所そのものに調べて得られるものが足されていません")
+    kind = trigger.get("kind", "whiff")
+    if kind == "blocked":
+        violations += _check_blocked_coverage(add, trigger, reachable_zones)
+    else:
+        zone = trigger.get("zone")
+        allowed = {zone} if isinstance(zone, str) else set()
+        if kind == "ignorance" and isinstance(zone, str):
+            allowed |= _zone_children(world, add, zone)
+        if not covered & allowed:
+            violations.append("きっかけの場所そのものに調べて得られるものが足されていません")
     zones_raw = add.get("zones")
     for entry in zones_raw if isinstance(zones_raw, list) else []:
         name = entry.get("name") if isinstance(entry, dict) else None

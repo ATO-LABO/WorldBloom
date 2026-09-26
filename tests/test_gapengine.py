@@ -2189,11 +2189,12 @@ class Phase4GapEngineTests(unittest.TestCase):
             legacy_summary = json.loads(legacy_files[summary_path].decode("utf-8"))
             self.assertNotIn("world_expansion", legacy_summary)
 
-            # (2) detect writes a schema_version=1 report and records the
+            # (2) detect writes a schema_version=2 report (WB-WORLDGROW-002
+            # S1: route_counts/blocked_counts added) and records the
             # setting in summary.json.
             self.assertIn(world_demand_path, detect_files)
             report = json.loads(detect_files[world_demand_path].decode("utf-8"))
-            self.assertEqual(report["schema_version"], 1)
+            self.assertEqual(report["schema_version"], 2)
             detect_summary = json.loads(detect_files[summary_path].decode("utf-8"))
             self.assertEqual(detect_summary["world_expansion"], "detect")
 

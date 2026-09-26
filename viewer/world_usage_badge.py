@@ -29,10 +29,20 @@ _LABELS = (
 )
 
 
-def _added_names(patches: Any) -> tuple[frozenset, frozenset, frozenset]:
+def _added_names(patches: Any) -> tuple[frozenset, frozenset, frozenset, frozenset]:
     """expansion.patches[].added（名前/idだけの一覧）を、パッチ境界を問わず
-    合算した3つの集合にする -- new_usage は所属の有無しか見ないため。"""
-    zones, items, facts = set(), set(), set()
+    合算した4つの集合にする -- new_usage は所属の有無しか見ないため。
+
+    4つ目は added.sources（WB-WORLDGROW-002 段階2の "縄@森" 形式の文字列、
+    gapengine/world_patch.py の apply_patch が作る）を (name, zone) の
+    タプルにしたもの。この文字列だけでは item か fact かが分からない
+    (どちらも同じ "名前@場所" の形) ので、_patch_for 側で両方の扱いに
+    展開する -- new_usage は gathered（item）と learned（fact）を別の
+    verb/details で見分けるので、名前を両方に登録しても数え間違いは
+    起きない（ponytail: world.yaml を読んで種類を確定させる方が厳密だが、
+    このバッジは表示専用の参考値でしかなく、そこまでの読み込みコストは
+    見合わない）。"""
+    zones, items, facts, sources = set(), set(), set(), set()
     for patch in patches or []:
         added = patch.get("added") if isinstance(patch, dict) else None
         if not isinstance(added, dict):
@@ -40,26 +50,36 @@ def _added_names(patches: Any) -> tuple[frozenset, frozenset, frozenset]:
         zones.update(n for n in data._as_list(added.get("zones")) if isinstance(n, str))
         items.update(n for n in data._as_list(added.get("items")) if isinstance(n, str))
         facts.update(n for n in data._as_list(added.get("facts")) if isinstance(n, str))
-    return frozenset(zones), frozenset(items), frozenset(facts)
+        for label in data._as_list(added.get("sources")):
+            if isinstance(label, str) and "@" in label:
+                name, _, zone = label.rpartition("@")
+                if name and zone:
+                    sources.add((name, zone))
+    return frozenset(zones), frozenset(items), frozenset(facts), frozenset(sources)
 
 
-def _patch_for(zones, items, facts) -> dict:
+def _patch_for(zones, items, facts, sources) -> dict:
+    source_entries = []
+    for name, zone in sources:
+        source_entries.append({"item": name, "source": {"zone": zone}})
+        source_entries.append({"fact": name, "source": {"zone": zone}})
     return {"add": {"zones": [{"name": n} for n in zones],
                     "items": [{"name": n} for n in items],
-                    "facts": [{"id": n} for n in facts]}}
+                    "facts": [{"id": n} for n in facts],
+                    "sources": source_entries}}
 
 
 @lru_cache(maxsize=256)
-def _cached_counts(path, mtime_ns, size, zones, items, facts, protagonist):
-    return new_usage([path], _patch_for(zones, items, facts), protagonist)
+def _cached_counts(path, mtime_ns, size, zones, items, facts, sources, protagonist):
+    return new_usage([path], _patch_for(zones, items, facts, sources), protagonist)
 
 
 def usage_counts(repository, experiment, log_relative_path, protagonist, patches):
     """1候補分の使用回数、または対象外（拡張なし・ログ無し等）なら None。"""
     if not protagonist or not log_relative_path:
         return None
-    zones, items, facts = _added_names(patches)
-    if not (zones or items or facts):
+    zones, items, facts, sources = _added_names(patches)
+    if not (zones or items or facts or sources):
         return None
     try:
         path = repository.safe_path(experiment, log_relative_path)
@@ -69,25 +89,51 @@ def usage_counts(repository, experiment, log_relative_path, protagonist, patches
         # dict(...): _cached_counts の戻り値はlru_cache越しに全呼び出しで
         # 共有される同一オブジェクト。呼び出し側が書き換えても他へ波及しない
         # よう、返す前に浅いコピーを渡す（Opus review 推奨4）。
-        return dict(_cached_counts(path, stat.st_mtime_ns, stat.st_size, zones, items, facts, protagonist))
+        return dict(_cached_counts(path, stat.st_mtime_ns, stat.st_size, zones, items, facts, sources, protagonist))
     except _SAFE_ERRORS:
         return None
 
 
-def _detail_text(counts) -> str:
-    return "、".join(f"{label} {counts[key]}回" for key, label in _LABELS if counts.get(key))
+_SOURCES_ONLY_LABELS = {
+    "gathered_new_items": "既存の品を新しい場所で集めた",
+    "learned_new_facts": "既存の事実を新しい場所で知った",
+}
 
 
-def badge_html(counts) -> str:
+def _detail_text(counts, *, items_added_by_name: bool = True, facts_added_by_name: bool = True) -> str:
+    # R5（段階4 review 1): add.items/add.facts を持たない（add.sources だけ
+    # の）パッチでは、gathered_new_items/learned_new_facts は「新しい品/事実」
+    # ではなく「既存の品/事実を新しい場所で」の回数 -- 呼び出し側
+    # (badge_html) が patches から判定して渡すフラグでラベルを切り替える。
+    def label_for(key, label):
+        if key == "gathered_new_items" and not items_added_by_name:
+            return _SOURCES_ONLY_LABELS[key]
+        if key == "learned_new_facts" and not facts_added_by_name:
+            return _SOURCES_ONLY_LABELS[key]
+        return label
+    return "、".join(f"{label_for(key, label)} {counts[key]}回" for key, label in _LABELS if counts.get(key))
+
+
+def badge_html(counts, patches: Any = None) -> str:
     """2値（使った/使っていない）+ 詳細（<details>展開）で表示する。呼び出し側
     は <button> など対話的要素をネストできない親要素の外に置くこと
-    （<details> は phrasing content ではない）。"""
+    （<details> は phrasing content ではない）。
+
+    `patches` を渡すと、gathered_new_items/learned_new_facts のラベルが
+    add.sources だけのパッチかどうかで切り替わる（R5、段階4 review 1）。
+    省略時（既存呼び出しの後方互換）は常に「新しい品/事実」の従来ラベル。"""
     if counts is None:
         return ""
     if not any(counts.get(key) for key, _label in _LABELS):
         return '<span class="we-usage" data-used="false">拡張要素: 使っていない</span>'
+    if patches is None:
+        items_added_by_name = facts_added_by_name = True
+    else:
+        _zones, items, facts, _sources = _added_names(patches)
+        items_added_by_name, facts_added_by_name = bool(items), bool(facts)
+    detail = _detail_text(counts, items_added_by_name=items_added_by_name, facts_added_by_name=facts_added_by_name)
     return (f'<details class="we-usage" data-used="true"><summary>拡張要素: 使った</summary>'
-            f'<p class="muted">{_escape(_detail_text(counts))}</p></details>')
+            f'<p class="muted">{_escape(detail)}</p></details>')
 
 
 def cell_badge_html(repository, experiment, patches, elite, protagonist) -> str:
@@ -96,7 +142,7 @@ def cell_badge_html(repository, experiment, patches, elite, protagonist) -> str:
         return ""
     exemplar = elite.get("exemplar") or {}
     counts = usage_counts(repository, experiment, exemplar.get("layers_path"), protagonist, patches)
-    return badge_html(counts)
+    return badge_html(counts, patches)
 
 
 def badge_for_run_candidate(repository, run_id, candidate_id) -> str:
@@ -121,6 +167,6 @@ def badge_for_run_candidate(repository, run_id, candidate_id) -> str:
         if log.get("availability") != "present":
             return ""
         counts = usage_counts(repository, experiment, log.get("relative_path"), protagonist, state["patches"])
-        return badge_html(counts)
+        return badge_html(counts, state["patches"])
     except _SAFE_ERRORS:
         return ""

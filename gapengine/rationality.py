@@ -370,6 +370,50 @@ class RationalityTable:
 # ---------------------------------------------------------------------------
 
 
+class RationalityTableMissError(RuntimeError):
+    """Raised by ``TableOnlyJudge.score`` -- a kappa>0 rerun of an
+    already-finished experiment's history (gapengine.lineage's ancestor
+    rerun, gapengine.world_patch_trial's base/patched/reproduction runs,
+    WB-WORLDGROW-002 stage 0) hit a decision point the shared rationality
+    table has no recorded judgment for. A rerun must never call a live
+    judge (a different network round-trip could return a different p and
+    silently walk a *different* history than the one being reproduced) or
+    fall back to a multiplier of 1.0 (silently wrong history) -- it must
+    stop instead, so the caller can report "this experiment's kappa>0
+    history/trial cannot be reproduced from the table alone" rather than
+    show a plausible-looking but incorrect one."""
+
+
+class TableOnlyJudge:
+    """Never calls a real backend: ``Rationality.multipliers()`` only ever
+    reaches ``score()`` for a (context, candidate) pair missing from the
+    table, so this judge exists purely to turn that path into
+    ``RationalityTableMissError`` instead of a live Ollama/GPU call
+    (WB-WORLDGROW-002 stage 0 -- see ``RationalityTableMissError``).
+
+    ``backend_name``/``model`` are *not* this judge's own identity -- they
+    mirror the original run's recorded backend/model, so a rerun that finds
+    every table entry it needs (never reaching ``score()`` at all) writes a
+    header byte-identical to the original run's, not one that says
+    "table_only"."""
+
+    def __init__(self, backend_name: str, model: str | None = None) -> None:
+        self.backend_name = backend_name
+        self.model = model
+
+    def score(
+        self,
+        context_text: str,
+        candidates: Sequence[str],
+        *,
+        max_calls: int | None = None,
+    ) -> tuple[list[float | None], int, bool]:
+        raise RationalityTableMissError(
+            f"κ>0 のため判定器が要ります（表に無い判定が{len(list(candidates))}件）。"
+            "この再実行は共有の合理性表だけでは再現できません。"
+        )
+
+
 class NullJudge:
     """Always-None judge (backend "none"). Used when no LLM backend is
     configured -- every candidate falls back to a multiplier of 1.0."""

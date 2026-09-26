@@ -20,7 +20,7 @@ def _write_experiment(runs_root: Path, name: str, *, project_id="momotaro", temp
                        source_sha256=_SHA, patch_ids=(), evolution_extra=None, cells=("I|low",),
                        demand_triggers=None, reach_rate=0.5, occupied_cells=3,
                        protagonist=None, world_yaml=None, cell_exemplars=None,
-                       expansion_added=None) -> Path:
+                       expansion_added=None, demand_extra=None) -> Path:
     experiment = runs_root / name
     cell_entries = {}
     for cell in cells:
@@ -52,9 +52,10 @@ def _write_experiment(runs_root: Path, name: str, *, project_id="momotaro", temp
         world_entry["world_patches"] = [{"id": pid, "sha256": "x"} for pid in patch_ids]
     _write_json(experiment / "input-manifest.json", {"schema_version": 1, "files": [world_entry]})
     if demand_triggers is not None:
-        _write_json(experiment / "world_demand.json", {
-            "schema_version": 1, "triggers": demand_triggers, "zones": [],
-        })
+        demand = {"schema_version": 1, "triggers": demand_triggers, "zones": []}
+        if demand_extra:
+            demand.update(demand_extra)
+        _write_json(experiment / "world_demand.json", demand)
     if expansion_added is not None:
         # data.world_expansion_state() の summary.json フォールバック経路
         # （段階4b: この一覧を使って usage_counts の対象集合を作る）。
@@ -171,6 +172,72 @@ class EffectHtmlTests(unittest.TestCase):
         self.assertIn("/exp/expand-run/cell/II%7Cmid", html)
         # 段階4設計メモ G7: 品質は比較しない（占有の有無だけ）。
         self.assertNotIn("quality", html)
+        # WB-WORLDGROW-002 stage 3: route の無い実験では ignorance/blocked の
+        # 見出し自体が出ない（きっかけの表の出力を変えない）。
+        self.assertNotIn("手探りは減ったか", html)
+        self.assertNotIn("計画が立たない状態は減ったか", html)
+
+    def test_pair_renders_ignorance_and_blocked_tables_by_kind(self) -> None:
+        # WB-WORLDGROW-002 stage 3: ignorance/blocked triggers (only ever
+        # populated on a route-wired run) get their own kind-specific table,
+        # separate from the whiff table above and each other.
+        _write_experiment(self.runs_root, "base-run", demand_triggers=[
+            {"kind": "ignorance", "zone": "海", "count": 20, "share": 0.7},
+            {"kind": "blocked", "requirement": "has_item:縄", "count": 15,
+             "runs": 5, "share": 0.9, "lost_share": 0.5},
+        ])
+        _write_experiment(self.runs_root, "expand-run", patch_ids=("p-1",), demand_triggers=[
+            {"kind": "ignorance", "zone": "海", "count": 4, "share": 0.2},
+            {"kind": "blocked", "requirement": "has_item:縄", "count": 3,
+             "runs": 5, "share": 0.3, "lost_share": 0.1},
+        ])
+
+        html = world_effect_view.effect_html(self._handler(), {"run_name": "expand-run"}, {})
+        self.assertIn("手探りは減ったか", html)
+        self.assertIn("20回（道筋付き決定の70.0%）", html)  # ベース
+        self.assertIn("4回（道筋付き決定の20.0%）", html)   # 拡張後
+        self.assertIn("計画が立たない状態は減ったか", html)
+        # Required 4 (段階3 review 1): share(count/lost_total)は「見通しなし
+        # 全体の」、lost_share(count/道筋付き決定の総数, M4)は「道筋付き決定
+        # の」--以前は逆のラベルで出ていた。
+        self.assertIn("15回（5本のラン、見通しなし全体の90.0%、道筋付き決定の50.0%）", html)  # ベース
+        self.assertIn("3回（5本のラン、見通しなし全体の30.0%、道筋付き決定の10.0%）", html)   # 拡張後
+        # Required 3 (段階4 review 1): 生の "has_item:縄" ではなく読みやすい句
+        # (_requirement_phrase) を出す。
+        self.assertIn("「縄」を手に入れる手段", html)
+        self.assertNotIn("has_item:縄", html)
+
+    def test_resolved_trigger_shows_zero_not_a_dash_using_raw_route_counts(self) -> None:
+        # R3 (段階3 review 1): a zone/requirement that cleared the trigger
+        # threshold in the base run but fell under it in the expand run (the
+        # whole point of a good patch) used to render "—" for the "拡張後"
+        # side -- indistinguishable from "0回". Reading the raw route_counts/
+        # blocked_counts (always present, unfiltered by threshold) fixes
+        # that.
+        _write_experiment(self.runs_root, "base-run", demand_triggers=[
+            {"kind": "ignorance", "zone": "海", "count": 20, "share": 0.7},
+            {"kind": "blocked", "requirement": "has_item:縄", "count": 15, "runs": 5},
+        ], demand_extra={
+            "route_counts": {"海": {"advance": 5, "detour:ignorance": 20}, "村": {"lost": 15, "advance": 5}},
+            "blocked_counts": {"has_item:縄": {"count": 15, "runs": 5}},
+        })
+        # expand-run: both fell to 0 (below threshold), so neither is a
+        # "trigger" any more -- only route_counts/blocked_counts say so.
+        _write_experiment(self.runs_root, "expand-run", patch_ids=("p-1",), demand_triggers=[],
+                           demand_extra={
+                               "route_counts": {"海": {"advance": 25}, "村": {"advance": 20}},
+                               "blocked_counts": {},
+                           })
+
+        html = world_effect_view.effect_html(self._handler(), {"run_name": "expand-run"}, {})
+        self.assertIn("手探りは減ったか", html)
+        self.assertIn("20回（道筋付き決定の70.0%）", html)  # ベース
+        self.assertIn("計画が立たない状態は減ったか", html)
+        self.assertIn("15回（5本のラン", html)  # ベース
+        # 拡張後は "0回"（"—" ではない）で出る。
+        tables_start = html.index("手探りは減ったか")
+        self.assertIn("0回", html[tables_start:])
+        self.assertNotIn("—", html[tables_start:])
 
     def test_with_query_selects_a_specific_partner(self) -> None:
         _write_experiment(self.runs_root, "base-a")
