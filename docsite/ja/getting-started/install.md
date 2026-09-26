@@ -65,4 +65,4 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 
 ## 実際のダウンロード先
 
-配布版は [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases) から入手できます。現時点の最新版はタグ `v1.0.0-viewer` で、`WorldBloom-portable.zip`（Viewer）と `WorldBloom-Studio-portable.zip`（Studio）の2つが添付されています。
+配布版は [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases) から入手できます。現時点の最新版はタグ `v1.1.0` で、`WorldBloom-portable.zip`（Viewer）と `WorldBloom-Studio-portable.zip`（Studio）の2つが添付されています。
