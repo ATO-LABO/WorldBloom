@@ -154,12 +154,10 @@ def _trigger_li(index: int, t: Mapping, propose_run: str | None) -> str:
         else:
             body += ' <span class="muted">（「investigate」＝調べる、の空振りにだけ拡張を提案できます）</span>'
     # data-trigger is the raw index into world_demand.json's triggers (every
-    # verb) -- NOT the same number `scripts/world_patch.py propose --trigger
-    # N` takes, which counts investigate-only triggers (its own
-    # _investigate_triggers()). The world-patch job route
-    # (viewer/run_catalog.py's POST .../world-patch ->
-    # execution/world_patch_job.py's prepare()) converts this raw index into
-    # that investigate-only one before building the argv.
+    # kind/verb) -- since WB-WORLDGROW-002 S2 this is also exactly the
+    # number `scripts/world_patch.py propose --trigger N` takes (no more
+    # investigate-only re-numbering in between): execution/world_patch_job.
+    # py's prepare() forwards this raw index unchanged into the argv.
     return f'<li data-trigger="{index}" data-zone="{_escape(zone)}" data-verb="{_escape(verb)}">{body}</li>'
 
 

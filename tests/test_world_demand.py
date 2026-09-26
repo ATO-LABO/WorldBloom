@@ -263,10 +263,10 @@ class WorldDemandTest(unittest.TestCase):
             self.assertEqual([t["kind"] for t in report["triggers"] if t["kind"] != "whiff"], [])
 
 
-def _route(kind, cause=None, blocked_on=None, blocked_detail=None):
+def _route(kind, cause=None, blocked_on=None, blocked_detail=None, milestone=None):
     return {"policy": {"route": {"kind": kind, "cause": cause, "blocked_on": blocked_on,
                                   "blocked_detail": blocked_detail,
-                                  "h": [None, None], "plan": None, "milestone": None,
+                                  "h": [None, None], "plan": None, "milestone": milestone,
                                   "text": "使われない"}}}
 
 
@@ -339,6 +339,43 @@ class RouteTriggerTests(unittest.TestCase):
         self.assertEqual(forest["count"], n)
         self.assertEqual(forest["share"], 1.0)
         self.assertEqual(report["route_counts"]["森"], {"detour:ignorance": n})
+
+    def test_ignorance_trigger_carries_top_3_milestones_by_count_then_name(self) -> None:
+        # WB-WORLDGROW-002 stage 2 review 1 fix R2: the milestone breakdown
+        # is per zone, from the structured policy.route.milestone field only
+        # (never from `text`) -- top 3, ties broken by name.
+        n = world_demand.IGNORANCE_MIN
+        decisions = (
+            [("investigate", {"explanation": {"zone": "森"},
+                               **_route("detour", "ignorance", milestone="has_item:縄")})
+             for _ in range(n + 5)]
+            + [("investigate", {"explanation": {"zone": "森"},
+                                 **_route("detour", "ignorance", milestone="knows:弟の消息")})
+               for _ in range(3)]
+            + [("investigate", {"explanation": {"zone": "森"},
+                                 **_route("detour", "ignorance", milestone="has_item:木材")})
+               for _ in range(3)]
+            + [("investigate", {"explanation": {"zone": "森"},
+                                 **_route("detour", "ignorance", milestone="has_item:小判")})
+               for _ in range(2)]
+            # No milestone recorded (e.g. no real leaf open at all) -- must
+            # not crash and must not show up as a milestone.
+            + [("investigate", {"explanation": {"zone": "森"}, **_route("detour", "ignorance")})]
+        )
+        report = self._collect(decisions)
+        forest = next(t for t in report["triggers"] if t["kind"] == "ignorance" and t["zone"] == "森")
+        self.assertEqual(forest["milestones"],
+                          [("has_item:縄", n + 5), ("has_item:木材", 3), ("knows:弟の消息", 3)])
+
+    def test_ignorance_trigger_with_no_milestones_gets_an_empty_list(self) -> None:
+        n = world_demand.IGNORANCE_MIN
+        decisions = [
+            ("investigate", {"explanation": {"zone": "森"}, **_route("detour", "ignorance")})
+            for _ in range(n)
+        ]
+        report = self._collect(decisions)
+        forest = next(t for t in report["triggers"] if t["kind"] == "ignorance")
+        self.assertEqual(forest["milestones"], [])
 
     def test_blocked_trigger_requires_both_thresholds(self) -> None:
         n = world_demand.BLOCKED_MIN

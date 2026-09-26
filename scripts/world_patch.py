@@ -101,7 +101,10 @@ def _reachable_zones_for(ctx, base_world: dict, trigger: dict) -> set | None:
     actually needs engine/world reachability."""
     if trigger.get("kind") != "blocked":
         return None
-    stuck_zones = [z for z, _n in (trigger.get("stuck_zones") or []) if isinstance(z, str)]
+    # R3: never raise on a malformed stuck_zones entry (expected shape is a
+    # [name, count] pair) -- a non-conforming one is simply skipped.
+    stuck_zones = [pair[0] for pair in (trigger.get("stuck_zones") or [])
+                   if isinstance(pair, (list, tuple)) and len(pair) == 2 and isinstance(pair[0], str)]
     if not stuck_zones:
         return set()
     return reachable_zones_from(ctx["world_path"], ctx["subjects_dir"], base_world.get("protagonist"), stuck_zones)
@@ -277,7 +280,8 @@ def cmd_propose(args: argparse.Namespace) -> int:
     reachable_zones = _reachable_zones_for(ctx, base_world, trigger)
     reserved = template_identifiers(ctx['template_dir'])
     try:
-        prompt = build_prompt(base_world, subject_ids, trigger, zone_verbs, give_available=give_available)
+        prompt = build_prompt(base_world, subject_ids, trigger, zone_verbs, give_available=give_available,
+                              reachable_zones=reachable_zones)
     except ValueError as error:
         print(str(error))
         progress(step="failed", message=str(error))
@@ -534,7 +538,8 @@ def build_parser() -> argparse.ArgumentParser:
     propose = sub.add_parser("propose")
     propose.add_argument("--experiment", type=Path, required=True)
     propose.add_argument("--project", type=Path, required=True)
-    propose.add_argument("--trigger", type=int, default=0)
+    propose.add_argument("--trigger", type=int, default=0,
+                         help="world_demand.json の triggers の生の番号（画面の提案ボタンのdata-triggerと同じ）。既定0")
     propose.add_argument("--backend", choices=BACKENDS)
     propose.add_argument("--settings", type=Path, default=ROOT / "settings.json")
     propose.add_argument("--from-file", type=Path)

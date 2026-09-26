@@ -339,6 +339,24 @@ class BuildPromptKindDispatchTests(unittest.TestCase):
         self.assertIn("役割を代わりに果たす", prompt)
         self.assertNotIn("を手に入れる手段が", prompt)  # not the has_item/knows phrasing
 
+    def test_blocked_coverage_rule_uses_reachable_zones_by_name_when_given(self):
+        # R1: the caller's actually-computed reachable zones (森・道中 --
+        # not 海, and never with a count attached) replace the raw
+        # stuck_zones-based wording when given. The demand section above it
+        # still reports raw stuck_zones counts (unaffected by this fix), so
+        # this only asserts on the coverage-rule bullet itself.
+        prompt = build_prompt(WORLD, SUBJECT_IDS, BLOCKED_TRIGGER, [], reachable_zones={"森", "道中"})
+        self.assertIn("足してよい場所（主人公が今到達できる場所）: 森・道中。それ以外の場所は今は行けないので不可です。", prompt)
+
+    def test_blocked_prompt_explains_add_sources_as_the_first_choice(self):
+        prompt = build_prompt(WORLD, SUBJECT_IDS, BLOCKED_TRIGGER, [], reachable_zones={"森"})
+        self.assertIn("第一の選択肢", prompt)
+        self.assertIn("add.sources", prompt)
+
+    def test_whiff_and_ignorance_prompts_never_mention_add_sources(self):
+        self.assertNotIn("add.sources", build_prompt(WORLD, SUBJECT_IDS, TRIGGER, []))
+        self.assertNotIn("add.sources", build_prompt(WORLD, SUBJECT_IDS, IGNORANCE_TRIGGER, []))
+
 
 class MakePatchTriggerKindTests(unittest.TestCase):
     def test_whiff_trigger_slim_unchanged(self):
@@ -426,6 +444,31 @@ class CheckTriggerCoverageBlockedTests(unittest.TestCase):
         violations = check_trigger_coverage(add, {**BLOCKED_TRIGGER, "requirement": "has_item:命綱"},
                                              reachable_zones={"道中"})
         self.assertIn("足した場所に調べて得られるものがありません: '隠れ道'", violations)
+
+    def test_add_sources_item_in_a_reachable_zone_satisfies_coverage(self):
+        # M1: an existing item's requirement (has_item:縄) can only ever be
+        # met via add.sources -- add.items can't re-add an existing name.
+        add = {"sources": [{"item": "縄", "source": {"type": "investigate", "zone": "道中", "count": 1, "max": 2}}]}
+        self.assertEqual(check_trigger_coverage(add, BLOCKED_TRIGGER, reachable_zones={"道中"}), [])
+
+    def test_add_sources_fact_in_a_reachable_zone_satisfies_coverage(self):
+        add = {"sources": [{"fact": "造船術", "source": {"type": "investigate", "zone": "森", "count": 1}}]}
+        trigger = {"kind": "blocked", "requirement": "knows:造船術", "stuck_zones": [["道中", 5]]}
+        self.assertEqual(check_trigger_coverage(add, trigger, reachable_zones={"森"}), [])
+
+    def test_add_sources_in_an_unreachable_zone_is_still_a_violation(self):
+        add = {"sources": [{"item": "縄", "source": {"type": "investigate", "zone": "村", "count": 1, "max": 2}}]}
+        violations = check_trigger_coverage(add, BLOCKED_TRIGGER, reachable_zones={"道中", "森", "海"})
+        self.assertIn("「縄」を主人公が到達できる場所に足す入手手段がありません", violations)
+
+    def test_malformed_stuck_zones_never_raises_and_yields_no_reachable_zone(self):
+        # R3: check_trigger_coverage never raises, even on a hand-edited
+        # trigger whose stuck_zones entries aren't [name, count] pairs.
+        add = {"items": [{"name": "命綱", "sources": [{"type": "investigate", "zone": "道中", "count": 1, "max": 2}]}]}
+        for stuck_zones in (["道中"], [None], [["道中"]], [["道中", 5, "extra"]], "道中"):
+            with self.subTest(stuck_zones=stuck_zones):
+                trigger = {"kind": "blocked", "requirement": "has_item:命綱", "stuck_zones": stuck_zones}
+                self.assertTrue(check_trigger_coverage(add, trigger))
 
 
 class KnownGoodRegressionTests(unittest.TestCase):
