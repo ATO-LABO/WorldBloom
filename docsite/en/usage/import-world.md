@@ -41,10 +41,13 @@ Exceeding any of these fails at upload time.
 ## After importing
 
 The imported world takes you straight to its
-[world settings screen](create-world.md#世界設定画面世界ごとのタブ).
+[world settings screen](create-world.md#world-settings).
 
 - **If the genre is unset**: pick one from the genre row on the "世界の概要"
-  (overview) tab. You can't run a GA experiment until you do.
+  (overview) tab. **Do this before running anything.** A GA experiment will
+  still run even if you don't -- picking a genre in the run settings is
+  enough for that -- but this world's own foreshadowing
+  (`gapengine.effects`) then stays silently empty for the whole run.
 - Check the content via the run settings' "validate" step, or through each
   tab of the world settings screen.
 

@@ -38,8 +38,11 @@ ID `<id>` の世界をZIPで作って」と依頼すれば、互換性のあるZ
     指定してください。指定したジャンルがこのリポジトリに実在しないとインポートに
     失敗します（先にジャンルを作るか、次の「書かない」を選んでください）。
   - **書かない**（`gapengine` キーごと省略する）: **未設定の世界**として取り込まれます。
-    取り込み後、世界設定画面の「ジャンル」から選べます。ジャンルを選ぶまでは
-    GA実験を実行できません（伏線などジャンル依存の情報が空になります）。
+    取り込み後、世界設定画面の「ジャンル」から選べます。**実行前に必ず選んでください。**
+    選ばなくても、実行設定でジャンルを指定すればGA実験自体は動きますが、この世界の
+    `gapengine.effects`（伏線）だけは黙って空のまま実行されます
+    （`engine/phase2.py` は `world.yaml` 自身の `gapengine.effects` しか読まず、
+    実行設定側で選んだジャンルの `effects.yaml` にはフォールバックしません）。
 
 ## 2. ZIPレイアウト仕様
 
@@ -143,7 +146,7 @@ ID `<id>` の世界をZIPで作って」と依頼すれば、互換性のあるZ
 | キー | 型 | 説明 |
 |---|---|---|
 | `id` | str | 全ファイルで一意。`world.yaml` の `protagonist`/`antagonist` や `relations` の相手キーはこの値を指す |
-| `traits` | dict | 5キーちょうど: `social, stubbornness, curiosity, diligence, temper` |
+| `traits` | dict | 次の5キーが必須（超過分のキーがあっても無視されます）: `social, stubbornness, curiosity, diligence, temper` |
 | `range.entry` | str | 開始する zone 名（`world.yaml` の `zones` に存在すること） |
 
 ファイル名は `[A-Za-z0-9_-]{1,64}.yaml`。表示順はファイル名順なので `01_`〜の接頭辞を推奨。
@@ -170,7 +173,7 @@ ID `<id>` の世界をZIPで作って」と依頼すれば、互換性のあるZ
 | `ally_value` | 0 | 味方評価 |
 | `objective_claimant` | true | 目的品の主張者になれるか |
 | `relations` | `{}` | `{相手id: {affinity:0, awareness:0}}` |
-| `stress` | 0〜10 | ストレス |
+| `stress` | 0 | ストレス（0〜10に丸められます） |
 | `vitality` | `alive` | 生死状態 |
 
 **`verbs` について**: エンジンは `action_graph.yaml` と自動で突き合わせません。書いた
@@ -328,8 +331,12 @@ stamina: {max: 10, current: 10, recover_per_slot: 1}
 | `ファイル数が多すぎます（200件以内）` | 人物ファイルなどの件数が多すぎる |
 | `展開後の合計サイズが大きすぎます（2MB以内）` | ZIP全体の展開後サイズが大きすぎる |
 | `ZIPは47KB以内にしてください` | アップロードしたZIP本体が大きすぎる |
-| `gapengineはaction_graphとeffectsの2項目で指定してください` | `gapengine` のキーが2つちょうどでない、または値が文字列でない |
-| `gapengine.action_graphはtemplates/<ジャンル>/action_graph.yamlの形で指定してください（effectsも同じジャンル）` | パス形式が不正、または `action_graph`/`effects` が別ジャンルを指している |
+| `YAMLとして読めません` | `world.yaml` または `subjects/*.yaml` のいずれかがYAML構文エラー |
+| `空にできないファイルです` | `world.yaml` または `subjects/*.yaml` の中身が空 |
+| `YAMLの形式が不正です` | `world.yaml`・`subjects/*.yaml` のいずれかが、項目と値の形式（マッピング）でも一覧（リスト）でもない値にパースされる |
+| `world.yamlの形式が不正です` | `world.yaml` が一覧（リスト）や単一の値など、項目と値の形式（マッピング）以外にパースされる |
+| `gapengineはaction_graphとeffectsの2項目で指定してください` | `gapengine` が dict でない、またはキーが `action_graph`・`effects` のちょうど2つでない |
+| `gapengine.action_graphはtemplates/<ジャンル>/action_graph.yamlの形で指定してください（effectsも同じジャンル）` | `action_graph`/`effects` の値が文字列でない、パス形式が不正、または両者が別ジャンルを指している |
 | `ZIPのジャンル「<id>」（templates/<id>/）がありません。先にジャンルを作るか、world.yamlのgapengineを削除して未設定で取り込んでください` | 指定したジャンルがこのリポジトリに存在しない |
 | `名前を入力してください（ZIPのnameも空です）` | フォームの表示名欄も `world.yaml` の `name` も空 |
 

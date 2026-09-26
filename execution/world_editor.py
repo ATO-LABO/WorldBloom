@@ -6,7 +6,7 @@ import uuid
 import yaml
 
 from execution.library import LibraryStore, _validate_rel
-from execution.provenance import ConfigError, canonical, contained, directory_lock, sha256
+from execution.provenance import ConfigError, canonical, contained, directory_lock, identifier, sha256
 
 
 def _bad(field, message):
@@ -198,10 +198,23 @@ def save(store, ident, body):
             # WB-WORLD-IMPORT-001: lets a world imported without a genre (or
             # any world) pick/switch its templates/<id>/ afterward. Other
             # gapengine keys (e.g. a future antagonist graph) are preserved.
-            template_id = values["template_id"]
-            if not isinstance(template_id, str) or not (store.repo / "templates" / template_id).is_dir():
+            # identifier() rejects "..", "", and anything with a "/" up
+            # front -- without it, "templates" / ".." resolves to store.repo
+            # itself (is_dir() is true), letting a crafted template_id write
+            # a path-traversing gapengine value. Its own ConfigError defaults
+            # to code="invalid_config" (HTTP 422); every other bad input in
+            # this function is a 400 via _bad(), so the failure is folded
+            # into that same "ジャンルがありません" 400 instead.
+            try:
+                template_id = identifier(values["template_id"], "template_id")
+            except ConfigError:
+                template_id = None
+            if template_id is None or not (store.repo / "templates" / template_id).is_dir():
                 _bad("template_id", "ジャンルがありません")
-            updated["gapengine"] = {**(world.get("gapengine") or {}),
+            base_gapengine = world.get("gapengine")
+            if not isinstance(base_gapengine, dict):
+                base_gapengine = {}
+            updated["gapengine"] = {**base_gapengine,
                                     "action_graph": f"templates/{template_id}/action_graph.yaml",
                                     "effects": f"templates/{template_id}/effects.yaml"}
         _validate_rel("world", rel)

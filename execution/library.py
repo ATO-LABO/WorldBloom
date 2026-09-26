@@ -14,6 +14,7 @@ import shutil
 import uuid
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path
 
 import yaml
@@ -51,7 +52,15 @@ def zip_to_files(raw: bytes) -> dict[str, str]:
     try:
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
             return _zip_entries_to_files(archive)
-    except zipfile.BadZipFile as error:
+    except (zipfile.BadZipFile, zlib.error, RuntimeError, NotImplementedError, EOFError) as error:
+        # A corrupt deflate stream raises zlib.error, an encrypted entry
+        # raises RuntimeError, an unsupported compression method raises
+        # NotImplementedError, and a truncated archive can raise EOFError --
+        # none of these are zipfile.BadZipFile, so uncaught they'd propagate
+        # out of the HTTP handler as a bare 500 (server.py's do_POST only
+        # maps ConfigError/ForbiddenPath/MissingResource/BadRequest to a
+        # clean status; anything else becomes a dropped connection, which
+        # the create-world screen shows as "作成結果を確認できませんでした").
         raise ConfigError("zip_base64", "ZIPとして読めません", code="bad_request") from error
 
 
@@ -131,6 +140,7 @@ def _import_genre(repo, world):
     ジャンルが実在することまで確認し、正規化した文字列を world に書き戻す。"""
     gapengine = world.get("gapengine")
     if gapengine is None:
+        world.pop("gapengine", None)  # "gapengine: null" must not persist as a literal null
         return None
     bad_shape = ConfigError("zip_base64", "gapengineはaction_graphとeffectsの2項目で指定してください", code="bad_request")
     if not isinstance(gapengine, dict) or set(gapengine) != {"action_graph", "effects"}:
@@ -359,7 +369,11 @@ class LibraryStore:
                     # trip -- unlike world.yaml below, which is always
                     # re-serialized and therefore never keeps its comments.
                     for rel, text in sorted((subjects or {}).items()):
-                        (staged / rel).write_text(text, encoding="utf-8")
+                        # write_bytes, not write_text: on Windows, write_text
+                        # re-translates "\n" to os.linesep, turning a CRLF
+                        # source ("\r\n") into "\r\r\n" and inserting a blank
+                        # line into every folded/literal YAML block scalar.
+                        (staged / rel).write_bytes(text.encode("utf-8"))
                 (staged / "world.yaml").write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
                 staged.rename(dest)
         return new_id
