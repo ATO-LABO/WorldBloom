@@ -1,9 +1,15 @@
 ---
-ja_rev: "3c98fc1352cb"
+ja_rev: "4991e96b42e4"
 ---
 # Changelog
 
 The main changes that matter from a user's point of view, in date order. This isn't a list of individual commits. Get the latest release artifacts from [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases).
+
+## 2026-09-26
+
+- Published Windows distributed build [v1.1.0](https://github.com/ATO-LABO/WorldBloom/releases/tag/v1.1.0), collecting the changes since v1.0.0-viewer
+- World self-expansion now also takes demand from route-layer signals: it detects where the protagonist keeps "groping" (investigating without knowing what to do) in the same place, or can't form any plan to the ending (e.g. no reachable way to get 「縄」 (rope)), and feeds these through the existing propose → trial → effect → screen flow. Expansion patches can now add an acquisition source to an existing item or fact (`add.sources`)
+- Growing worlds: carry the previous run's individuals into generation 0, chain runs to grow a world, and bring surviving expansions into other worlds as genre assets
 
 ## 2026-09-25
 
