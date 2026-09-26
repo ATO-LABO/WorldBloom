@@ -6,7 +6,7 @@
  const statuses={pending:'未開始',running:'生成中',ok:'生成済み',prompt_only:'プロンプト保存済み',unknown:'結果不明',error:'失敗',skipped_limit:'上限により未実行',skipped_cancelled:'停止により未実行',skipped_interrupted:'中断により未実行',cancelled:'停止',interrupted:'中断'};
  const completions={generated:'全件生成',prompt_only:'プロンプト保存のみ（文章は未生成）',mixed:'文章とプロンプトの混在',partial:'一部成功',partial_unknown:'一部成功（結果不明あり）',unknown:'結果不明',limit_before_start:'呼出し前に上限到達',error:'失敗',cancelled:'停止済み',interrupted:'中断'};
  const states={queued:'受付済み',running:'生成中',starting:'準備中',stopping:'停止処理中',succeeded:'完了',partial:'一部完了',failed:'失敗',cancelled:'停止済み',interrupted:'中断'};
- function formatDuration(sec){sec=Math.max(0,Math.round(sec));if(sec<60)return `${sec}秒`;const m=Math.floor(sec/60),s=sec%60;return s?`${m}分${s}秒`:`${m}分`;}
+ function formatDuration(sec){let s=Math.max(0,Math.round(sec)),out="";for(const [n,u] of [[86400,"日"],[3600,"時間"],[60,"分"],[1,"秒"]]){const v=Math.floor(s/n);s%=n;if(v)out+=v+u;}return out||"0秒";}
  let plan=null,job=null,output=null,request=null,source=null,opener=null,busy=false,uncertain=false,stopConfirm=false,pollTimer=null,version=0,connectionLost=false;
  const applied=new Set(), texts=new Map();
  const reopen=document.createElement('button');reopen.type='button';reopen.className='gen-reopen';reopen.hidden=true;document.body.append(reopen);

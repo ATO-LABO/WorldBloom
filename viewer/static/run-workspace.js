@@ -12,7 +12,8 @@
   const number = value => typeof value === "number" && Number.isFinite(value);
   const fmt = value => number(value) ? value.toLocaleString("ja-JP", {maximumFractionDigits: 2}) : "—";
   const percent = value => number(value) ? `${Math.round(value * 100)}%` : "—";
-  const duration = seconds => number(seconds) ? `${Math.floor(seconds / 60)}分${String(Math.floor(seconds % 60)).padStart(2,"0")}秒` : "計測中";
+  const dhms = sec => { let s = Math.max(0, Math.round(sec)), out = ""; for (const [n, u] of [[86400, "日"], [3600, "時間"], [60, "分"], [1, "秒"]]) { const v = Math.floor(s / n); s %= n; if (v) out += v + u; } return out || "0秒"; };
+  const duration = seconds => number(seconds) ? dhms(seconds) : "計測中";
   const key = `worldbloom:run-observer:${job.run_id || observed.run_name || location.pathname}`;
   let params = new URL(location.href).searchParams;
   const readSaved = () => {try {return JSON.parse(sessionStorage.getItem(key) || "{}");} catch (_) {return {};}};
@@ -104,7 +105,7 @@
     let eta = "計測中";
     if (ended) eta = "終了";
     else if (number(elapsed) && p.completed_seeds > 0 && p.total_seeds >= p.completed_seeds)
-      eta = `約${Math.max(1,Math.ceil(elapsed / p.completed_seeds * (p.total_seeds-p.completed_seeds) / 60))}分`;
+      eta = `約${dhms(elapsed / p.completed_seeds * (p.total_seeds-p.completed_seeds))}`;
     $("[data-overview-progress]").innerHTML = `<div class="rw-stats"><div><span>評価済み（seed別）</span><strong>${fmt(p.completed_seeds)} / ${fmt(p.total_seeds)} 回</strong></div><div><span>残り時間の目安</span><strong>${eta}</strong></div></div>`;
     const errorCode = typeof job.error === "object" ? job.error?.code : job.error;
     const message = payload.error_messages[errorCode] || [errorCode ? `エラー: ${errorCode}` : "実行が中断しました。", "実行ログを確認してください。"];

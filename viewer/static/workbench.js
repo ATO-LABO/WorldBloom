@@ -678,11 +678,12 @@
     if (remainingSeconds < 60) {
       return "残り1分未満";
     }
-    const minutes = Math.round(remainingSeconds / 60);
+    const dhms = sec => { let s = Math.max(0, Math.round(sec)), out = ""; for (const [n, u] of [[86400, "日"], [3600, "時間"], [60, "分"], [1, "秒"]]) { const v = Math.floor(s / n); s %= n; if (v) out += v + u; } return out || "0秒"; };
     const eta = new Date(Date.now() + remainingSeconds * 1000);
     const hh = String(eta.getHours()).padStart(2, "0");
     const mm = String(eta.getMinutes()).padStart(2, "0");
-    return `残り約${minutes}分（${hh}:${mm}頃）`;
+    const day = eta.toDateString() === new Date().toDateString() ? "" : `${eta.getMonth() + 1}/${eta.getDate()} `;
+    return `残り約${dhms(remainingSeconds)}（${day}${hh}:${mm}頃）`;
   };
 
   // WB-UI-015: per-root previous progress/counts snapshot, so applyJob can
