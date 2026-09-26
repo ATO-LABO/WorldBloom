@@ -62,6 +62,14 @@ _OUTPUT = """# 出力
   }
 }"""
 
+# R6 (段階3 review 1): blocked トリガーだけ、出力形式のJSON雛形にも
+# add.sources を併記する -- 第一の選択肢(_add_sources_rule)を選びやすく
+# するため。whiff/ignorance の _OUTPUT はバイト一致のまま変えない。
+_OUTPUT_BLOCKED = _OUTPUT.replace(
+    '"add": { "zones": [...], "items": [...], "facts": [...] }',
+    '"add": { "zones": [...], "items": [...], "facts": [...], "sources": [...] }',
+)
+
 
 def _ending_labels(world: dict) -> list[str]:
     target = world.get("target_ending")
@@ -254,10 +262,16 @@ def _demand_section(trigger: dict, zone_verbs: list) -> str:
     return _demand_section_whiff(trigger, zone_verbs)
 
 
-def _budget_rule(world: dict) -> str:
+def _budget_rule(world: dict, kind: str = "whiff") -> str:
     left = {key: max(cap - used, 0) for key, (cap, used) in addition_caps(world).items()}
-    return (f"この世界に今回足せる数は、場所{min(left['zones'], 1)}・アイテム{min(left['items'], 2)}・"
+    text = (f"この世界に今回足せる数は、場所{min(left['zones'], 1)}・アイテム{min(left['items'], 2)}・"
             f"事実{min(left['facts'], 2)}までです（これを超えると不採用になります）。パッチ総数8以下。")
+    if kind == "blocked":
+        # R6 (段階3 review 1, byte-identical only for whiff/ignorance):
+        # add.sources もアイテム/事実の枠を1件使う -- budget_rule の数字は
+        # add.sources を数えた後の残りなので、書いておく。
+        text += " add.sources も、対象がアイテムなら「アイテム」、事実なら「事実」の枠を1件使います。"
+    return text
 
 
 def _give_rule(give_available: bool) -> str:
@@ -347,7 +361,7 @@ def _add_sources_rule(trigger: dict) -> str:
         '{"item":既存のアイテム名,"source":{"type":"investigate","zone":場所,"count":1,"max":1〜3}} または '
         '{"fact":既存の事実id,"source":{"type":"investigate","zone":場所,"count":1}} の形で、item/fact はどちらか一方だけ書きます。'
         '既存の品・事実そのものは変えず、入手手段だけを増やします。'
-        '目的の品・乗り物・keepsakeの品・made_fromで作る品・真値がくじで決まる事実には使えません。'
+        '目的の品・乗り物・keepsakeの品・made_fromで作る品・値が決まる事実（真値がくじで決まる事実を含む）には使えません。'
         '同じ品・事実に、同じ場所の入手手段を重ねて足すことはできません。'
     )
 
@@ -377,12 +391,14 @@ def _count_phrase(trigger: dict) -> str:
 
 def _assemble(brief: str, trigger: dict, zone_verbs: list, world: dict, *, give_available: bool = True,
               reachable_zones: set | None = None) -> str:
+    kind = trigger.get("kind", "whiff")
     rules = _RULES_TEMPLATE.format(count_phrase=_count_phrase(trigger),
-                                   budget_rule=_budget_rule(world), implies_rule=_implies_rule(world),
+                                   budget_rule=_budget_rule(world, kind), implies_rule=_implies_rule(world),
                                    give_rule=_give_rule(give_available),
                                    coverage_rule=_coverage_rule(trigger, reachable_zones),
                                    add_sources_rule=_add_sources_rule(trigger))
-    return "\n\n".join([_INTRO, brief, _demand_section(trigger, zone_verbs), rules, _OUTPUT])
+    output = _OUTPUT_BLOCKED if kind == "blocked" else _OUTPUT
+    return "\n\n".join([_INTRO, brief, _demand_section(trigger, zone_verbs), rules, output])
 
 
 def build_prompt(world: dict, subject_ids: list[str], trigger: dict, zone_verbs: list, *,

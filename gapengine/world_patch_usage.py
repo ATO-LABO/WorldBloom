@@ -63,10 +63,24 @@ def _add_from_patch(patch: dict) -> dict:
     if isinstance(add, dict):
         return add
     added = patch.get("added") or {}
+    # R4 (段階3 review 1): added.sources ("縄@森" 形式) doesn't say whether
+    # the target is an item or a fact -- register it as both (same
+    # conservative approach as viewer/world_usage_badge.py's _added_names).
+    # _name_sets below only checks gathered (item) vs learned (fact), which
+    # are mutually exclusive events, so registering both never double-counts.
+    sources = []
+    for label in added.get("sources") or []:
+        if not (isinstance(label, str) and "@" in label):
+            continue
+        name, _, zone = label.rpartition("@")
+        if name and zone:
+            sources.append({"item": name, "source": {"zone": zone}})
+            sources.append({"fact": name, "source": {"zone": zone}})
     return {
         "zones": [{"name": n} for n in added.get("zones") or [] if isinstance(n, str)],
         "items": [{"name": n} for n in added.get("items") or [] if isinstance(n, str)],
         "facts": [{"id": n} for n in added.get("facts") or [] if isinstance(n, str)],
+        "sources": sources,
     }
 
 

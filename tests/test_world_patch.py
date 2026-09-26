@@ -14,6 +14,7 @@ from engine.world import World
 from gapengine.world_patch import (
     PatchError,
     absolutize_references,
+    addition_caps,
     apply_patch,
     apply_patches,
     approved_patches,
@@ -1077,6 +1078,19 @@ class AddSourcesTests(unittest.TestCase):
         violations = validate_patch(world, patch)
         self.assertTrue(any("この事実には入手手段を足せません" in v for v in violations), violations)
 
+    def test_valued_non_lottery_fact_is_rejected(self):
+        # R1 (段階3 review 1): a valued fact whose truth is fixed (not drawn
+        # per-seed, i.e. not in world["truth"]) used to pass validate_patch
+        # and only fail later, at contract_check ("Valued fact cannot have
+        # direct sources"). oni_weakness/treasure_thief are lottery facts in
+        # momotaro's own world.yaml -- drop the lottery draw to get a valued,
+        # non-lottery fact for this test without inventing a new fixture.
+        world = load_world()
+        world = {**world, "truth": {k: v for k, v in world.get("truth", {}).items() if k != "oni_weakness"}}
+        patch = sources_patch([{"fact": "oni_weakness", "source": {"type": "investigate", "zone": "森", "count": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("この事実には入手手段を足せません" in v for v in violations), violations)
+
     def test_duplicate_zone_on_the_same_item_is_rejected(self):
         world = load_world()
         # 縄 already has a source at 村.
@@ -1130,11 +1144,65 @@ class AddSourcesTests(unittest.TestCase):
         violations = validate_patch(world, patch)
         self.assertTrue(any("渡したときの効果の総量が上限を超えています" in v for v in violations), violations)
 
-    def test_no_give_field_on_the_target_spends_no_give_budget(self):
+    def test_no_give_field_on_the_target_spends_the_default_give_budget(self):
+        # Required 3 (段階3 review 1): give を書いていない既存の品も、
+        # エンジン(engine/verbs.py)の既定値(受け手0.2・渡し手0.05)で
+        # give予算を使う -- 書いていない＝0円という以前のバグを直した。
         world = load_world()
+        modest = sources_patch([{"item": "金棒",
+                                 "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        self.assertEqual(validate_patch(world, modest), [])
+        # max=3 * 既定0.25 = 0.75 > MAX_GIVE_PER_PATCH(0.6) -- now rejected.
+        over_budget = sources_patch([{"item": "金棒",
+                                      "source": {"type": "investigate", "zone": "森", "count": 1, "max": 3}}])
+        violations = validate_patch(world, over_budget)
+        self.assertTrue(any("上限を超えています" in v for v in violations))
+
+    def test_prior_add_sources_give_counts_toward_the_cumulative_budget(self):
+        # Required 2 (段階3 review 1): apply_patch records added.sources_give
+        # so a later patch's prior_given includes an earlier patch's
+        # add.sources give contribution (previously always 0, letting the
+        # cumulative 1.2 cap be bypassed entirely via repeated add.sources).
+        world = load_world()
+        first = sources_patch([{"item": "金棒",
+                                "source": {"type": "investigate", "zone": "森", "count": 1, "max": 2}}],
+                               id="p-add-src-first")
+        self.assertEqual(validate_patch(world, first), [])
+        applied = apply_patch(world, first)
+        self.assertEqual(applied["expansion"]["patches"][-1]["added"]["sources_give"], 0.5)
+        second = sources_patch([{"item": "金棒",
+                                 "source": {"type": "investigate", "zone": "道中", "count": 1, "max": 2}}],
+                                id="p-add-src-second")
+        # 0.5 (first, already applied) + 0.5 (second, its own) = 1.0 <= 1.2: passes.
+        self.assertEqual(validate_patch(applied, second), [])
+        third = sources_patch([{"item": "金棒",
+                                "source": {"type": "investigate", "zone": "海", "count": 1, "max": 2}}],
+                               id="p-add-src-third")
+        applied2 = apply_patch(applied, second)
+        # 1.0 (prior) + 0.5 (third) = 1.5 > 1.2: now correctly rejected.
+        violations = validate_patch(applied2, third)
+        self.assertTrue(any("上限を超えています" in v for v in violations))
+
+    def test_prior_add_sources_count_toward_the_cumulative_items_and_facts_cap(self):
+        # Required 1 (段階3 review 1): an add.sources-only patch used to
+        # never count toward addition_caps()'s cumulative items/facts count
+        # at all (only add.items/add.facts did), letting later patches add
+        # far more than the intended budget once summed.
+        world = load_world()
+        before = addition_caps(world)["items"][1]
         patch = sources_patch([{"item": "金棒",
-                                 "source": {"type": "investigate", "zone": "森", "count": 1, "max": 3}}])
-        self.assertEqual(validate_patch(world, patch), [])
+                                "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        applied = apply_patch(world, patch)
+        after = addition_caps(applied)["items"]
+        self.assertEqual(before, 0)
+        self.assertEqual(after[1], 1)
+
+    def test_prior_add_sources_fact_counts_toward_the_facts_cap(self):
+        world = load_world()
+        patch = sources_patch([{"fact": "造船術",
+                                "source": {"type": "investigate", "zone": "森", "count": 1}}])
+        applied = apply_patch(world, patch)
+        self.assertEqual(addition_caps(applied)["facts"][1], 1)
 
     def test_retiring_the_patch_removes_the_added_source(self):
         # Design K: a world is always rebuilt from only its *currently

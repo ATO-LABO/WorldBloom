@@ -166,6 +166,48 @@ def _whiff_table_html(base_report, expand_report):
             f"<th>ベース</th><th>拡張後</th></tr></thead><tbody>{rows}</tbody></table>")
 
 
+def _route_totals(report):
+    """(lost_total, route_total_all) from report["route_counts"] -- raw and
+    unfiltered by world_demand.py's own trigger thresholds (R3, 段階3 review
+    1)."""
+    counts = (report or {}).get("route_counts") or {}
+    lost_total = sum(z.get("lost", 0) for z in counts.values() if isinstance(z, dict))
+    route_total_all = sum(
+        sum(v for v in z.values() if isinstance(v, (int, float)))
+        for z in counts.values() if isinstance(z, dict)
+    )
+    return lost_total, route_total_all
+
+
+def _ignorance_from_report(report, zone):
+    """R3 (段階3 review 1): a zone whose ignorance count is under
+    world_demand.py's own threshold (never became -- or stopped being -- a
+    trigger) still has real numbers in report["route_counts"]. Read them
+    directly so "0回" and "しきい値未満で表に出ない" don't both render as
+    the same "—"."""
+    counts = ((report or {}).get("route_counts") or {}).get(zone)
+    if not isinstance(counts, dict):
+        return {"count": 0, "total": 0, "share": None}
+    total = sum(v for v in counts.values() if isinstance(v, (int, float)))
+    count = counts.get("detour:ignorance", 0)
+    return {"count": count, "total": total, "share": round(count / total, 4) if total else None}
+
+
+def _blocked_from_report(report, requirement):
+    """R3 の blocked 版。blocked_counts は runs/count のみ持つので、
+    share/lost_share は route_counts から world_demand.py と同じ式で
+    再計算する(collect() 自体は変えない、表示側の純関数)。"""
+    entry = ((report or {}).get("blocked_counts") or {}).get(requirement)
+    count = entry.get("count", 0) if isinstance(entry, dict) else 0
+    runs = entry.get("runs") if isinstance(entry, dict) else None
+    lost_total, route_total_all = _route_totals(report)
+    return {
+        "count": count, "runs": runs,
+        "share": round(count / lost_total, 4) if lost_total else None,
+        "lost_share": round(count / route_total_all, 4) if route_total_all else None,
+    }
+
+
 def _ignorance_side(trigger):
     if not isinstance(trigger, dict):
         return "—"
@@ -187,8 +229,8 @@ def _ignorance_table_html(base_report, expand_report):
         return ""
     rows = "".join(
         f"<tr><td>{_escape(zone)}</td>"
-        f"<td>{_ignorance_side(before_map.get(zone))}</td>"
-        f"<td>{_ignorance_side(after_map.get(zone))}</td></tr>"
+        f"<td>{_ignorance_side(before_map.get(zone) or _ignorance_from_report(base_report, zone))}</td>"
+        f"<td>{_ignorance_side(after_map.get(zone) or _ignorance_from_report(expand_report, zone))}</td></tr>"
         for zone in zones
     )
     return ('<h3>手探りは減ったか</h3><table class="wb-table"><thead><tr><th>場所</th>'
@@ -201,12 +243,20 @@ def _blocked_side(trigger):
     count = data._number(trigger.get("count"))
     if count <= 0:
         return "0回"
-    runs, lost_share = trigger.get("runs"), trigger.get("lost_share")
+    # Required 4 (段階3 review 1): world_demand.py の需要トリガーの
+    # share=count/lost_total（「見通しなし全体」の中でのこの要件の割合）と
+    # lost_share=count/道筋付き決定の総数（M4）は意味が違う -- 前のコードは
+    # lost_share の値を「見通しなし全体の」というラベルで出していて、実データ
+    # (share≈1.0・lost_share≈0.11)では実態の逆に読めた。両方を正しい
+    # ラベルで出す。
+    runs, share, lost_share = trigger.get("runs"), trigger.get("share"), trigger.get("lost_share")
     extra = []
     if isinstance(runs, (int, float)):
         extra.append(f"{runs:.0f}本のラン")
+    if isinstance(share, (int, float)):
+        extra.append(f"見通しなし全体の{share * 100:.1f}%")
     if isinstance(lost_share, (int, float)):
-        extra.append(f"見通しなし全体の{lost_share * 100:.1f}%")
+        extra.append(f"道筋付き決定の{lost_share * 100:.1f}%")
     detail = "、".join(extra)
     return f"{count:.0f}回（{detail}）" if detail else f"{count:.0f}回"
 
@@ -218,8 +268,8 @@ def _blocked_table_html(base_report, expand_report):
         return ""
     rows = "".join(
         f"<tr><td>{_escape(requirement)}</td>"
-        f"<td>{_blocked_side(before_map.get(requirement))}</td>"
-        f"<td>{_blocked_side(after_map.get(requirement))}</td></tr>"
+        f"<td>{_blocked_side(before_map.get(requirement) or _blocked_from_report(base_report, requirement))}</td>"
+        f"<td>{_blocked_side(after_map.get(requirement) or _blocked_from_report(expand_report, requirement))}</td></tr>"
         for requirement in requirements
     )
     return ('<h3>計画が立たない状態は減ったか</h3><table class="wb-table"><thead><tr><th>要件</th>'

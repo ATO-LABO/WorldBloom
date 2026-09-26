@@ -98,6 +98,22 @@ class PatchUsageTests(unittest.TestCase):
         usage = patch_usage(self.root, "桃太郎", [patch])
         self.assertEqual(usage["p-addedfmt"]["elites_strong"], 1)
 
+    def test_added_name_only_shape_counts_sources_gathered_at_their_zone(self) -> None:
+        # R4 (段階3 review 1): frozen/approved 表現の added.sources
+        # ("縄@森" 形式) は _add_from_patch で変換されないと、new_usage の
+        # gathered_new_items が数えられなかった (world_usage_badge.py と
+        # 同じ積み残し)。
+        rows = [
+            {"kind": "decision", "subject": "桃太郎", "verb": "investigate", "result": "investigated",
+             "details": {"zone": "森", "gathered": [{"item": "縄"}]}},
+        ]
+        _write_jsonl(self.root / "g0/ind-0/seed-1/layers.jsonl", rows)
+        _write_archive(self.root, {"c0": {"exemplar": {"layers_path": "g0/ind-0/seed-1/layers.jsonl"}}})
+        patch = {"id": "p-sourcedit", "added": {"sources": ["縄@森"]}}
+        usage = patch_usage(self.root, "桃太郎", [patch])
+        self.assertEqual(usage["p-sourcedit"]["elites_strong"], 1)
+        self.assertEqual(usage["p-sourcedit"]["cells"]["c0"]["gathered_new_items"], 1)
+
     def test_archive_argument_overrides_reading_archive_json(self) -> None:
         # WB-WORLDGROW-001: a catalog-managed experiment may have no
         # top-level archive.json -- the caller passes one directly.

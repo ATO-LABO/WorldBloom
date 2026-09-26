@@ -133,8 +133,8 @@ class RunTrialTests(unittest.TestCase):
                 result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
         self.assertEqual(result["trigger"], {
             "kind": "blocked", "requirement": "has_item:縄",
-            "base": {"count": 15, "lost_total": 15, "lost_share": 0.5},
-            "patched": {"count": 3, "lost_total": 3, "lost_share": 0.1},
+            "base": {"count": 15, "lost_total": 15, "lost_rate": 0.5},
+            "patched": {"count": 3, "lost_total": 3, "lost_rate": 0.1},
         })
 
 
