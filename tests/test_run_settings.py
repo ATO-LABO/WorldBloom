@@ -73,7 +73,7 @@ class RunSettingsTests(unittest.TestCase):
         self.assertEqual(self.fake.submitted, [])
         _, conditions, _ = self.get_status('/configs/' + saved['config_id'])
         self.assertIn('今回の探索', conditions)
-        self.assertNotIn('data-wb="start"', conditions)
+        self.assertIn('data-wb="start"', conditions)
 
     def test_settings_and_conditions_share_coevolution_totals(self):
         status, saved = self.http('POST', '/api/configs/cfg-test/duplicate', {

@@ -96,9 +96,15 @@ def conditions(handler, view=None, *, config=None):
             + wb.render_config_detail(config, store.configs.control).rsplit('<p class="actions">', 1)[0] + '</details>')
     back = f'<a href="/worlds/{U(world["id"])}">世界設定へ戻る</a>'
     if preparing:
-        action = wb._blocking_notice(view["blocking_job"]) if view.get("blocking_job") else wb._start_cta(config, view["request_id"])
+        action = wb._start_cta(config, view["request_id"], view.get("blocking_job"))
     else:
-        action = f'<a class="rw-primary" href="/configs/{cid}/start">この条件で実行へ →</a>'
+        # Start straight from here; the /start prep screen showed the same
+        # conditions a second time.
+        run = wb._run_view(handler, world_id=config["project_id"], config_id=config["config_id"]) or {}
+        blocking = run.get("blocking_job")
+        if run.get("job") is not None:
+            blocking = dict(run["job"], _blocking_world_name=world["name"])
+        action = wb._start_cta(config, run.get("request_id"), blocking)
     estimate = view["estimate"] if preparing else wb._estimate(
         store.list(), {c["config_id"]: c for c in store.configs.list()}, world["id"], config)
     chain_strip = epoch_view.strip_html(epoch_view.relevant_chain(handler, config["config_id"]))

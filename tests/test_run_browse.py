@@ -79,8 +79,9 @@ class RunBrowseTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn('詳細な設定・固定値・来歴を確認', text)
         self.assertIn('input_manifest_sha256', text)
-        self.assertIn('/configs/cfg-test/start', text)
-        self.assertNotIn('data-wb="start"', text)
+        # One-step start: the conditions page carries the start form itself.
+        self.assertNotIn('/configs/cfg-test/start', text)
+        self.assertIn('data-wb="start"', text)
         self.assertEqual(self.fake.submitted, [])
 
 

@@ -819,7 +819,8 @@ class WorkbenchTests(unittest.TestCase):
 
         status, body, _ = self.get_status("/jobs?world=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertNotIn('data-wb="start"', body)
+        # Blocked: the button stays but is greyed out next to the reason.
+        self.assertIn('class="button primary" disabled>', body)
         self.assertIn("実行中です", body)
         self.assertIn("/jobs/job-run", body)
 
