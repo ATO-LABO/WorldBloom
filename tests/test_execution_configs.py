@@ -619,6 +619,47 @@ class ConfigTests(unittest.TestCase):
         table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1])
         self.assertEqual(table_path.name, "momotaro.qwen3.5_9b.choice.json")
 
+    # ------------------------------------------------------- WB-JEV-005
+
+    def test_jev_backend_is_accepted_and_defaults_its_model(self):
+        from gapengine.rationality import JEV_DEFAULT_MODEL
+        saved = self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_backend="jev"),
+            config_id="cfg-momo-jev",
+        )
+        self.assertEqual(saved["evolution"]["rationality_backend"], "jev")
+        self.assertEqual(saved["evolution"]["rationality_model"], JEV_DEFAULT_MODEL)
+
+    def test_jev_backend_ollama_model_stays_none(self):
+        """An ollama-backed config must not pick up JEV_DEFAULT_MODEL --
+        model stays None (falls back to rationality.yaml at run time) so its
+        config.json/argv/table path bytes are unaffected by WB-JEV-005."""
+        saved = self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_backend="ollama"),
+            config_id="cfg-momo-ollama-explicit",
+        )
+        self.assertIsNone(saved["evolution"]["rationality_model"])
+
+    def test_prepare_run_jev_backend_table_path_and_no_key_in_argv(self):
+        self.runtime()
+        self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_backend="jev"),
+            config_id="cfg-momo-jev-run",
+        )
+        manifest = self.store.prepare_run(
+            "cfg-momo-jev-run", run_id="run-jev", job_id="job-jev"
+        )
+        self.assertIn("--rationality-backend", manifest["argv"])
+        self.assertIn("jev", manifest["argv"])
+        table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1])
+        self.assertEqual(table_path.name, "momotaro.jev-1.13.0.choice.json")
+        # The API key never enters config.json, manifest.json or argv -- it
+        # only ever reaches the worker via settings.json/TYPESAFE_API_KEY.
+        joined_argv = " ".join(manifest["argv"])
+        self.assertNotIn("api_key", joined_argv)
+        self.assertNotIn("TYPESAFE_API_KEY", joined_argv)
+        self.assertNotIn("api_key", json.dumps(manifest))
+
     def test_prepare_run_rationality_num_ctx_argv_and_no_table_path_effect(self):
         """--rationality-num-ctx is an operational knob (WB-GA-RESUME plan
         §2.1 treats it like table path/thermal_guard): it reaches argv but

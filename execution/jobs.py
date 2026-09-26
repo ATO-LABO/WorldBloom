@@ -240,6 +240,10 @@ class JobStore:
             if kind == "evolve" and settings_path is not None:
                 from execution.evolution_settings import read_evolution_settings
                 job["processes"] = read_evolution_settings(settings_path)["processes"]
+                # WB-JEV-005: execution/evolution_worker.py reads a Jev api_key
+                # out of this settings.json (never out of config.json/argv) to
+                # set TYPESAFE_API_KEY before evolve() runs.
+                job["settings_path"] = str(Path(settings_path).absolute())
             if generating:
                 job.update(output_id="out-" + secrets.token_hex(16),
                     output_plan_sha256=sha256(canonical(plan)),

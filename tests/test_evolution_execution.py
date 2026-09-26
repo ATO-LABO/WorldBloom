@@ -631,6 +631,36 @@ class EvolutionJobRationalityAndConsistencyTests(unittest.TestCase):
         self.assertEqual(header["rationality"]["kappa"], 1.0)
         self.assertEqual(header["rationality"]["backend"], "none")
 
+    def test_jev_api_key_never_leaks_into_any_run_file(self):
+        """WB-JEV-005: TYPESAFE_API_KEY reaches the worker via settings.json
+        (job["settings_path"]) before evolve() runs, and must never appear in
+        config.json, manifest.json, layers.jsonl, or anywhere else under the
+        run's own directory. backend stays "none" (no real Jev call) -- this
+        only checks the key never leaks to disk."""
+        configs, jobs = self._make_store("jev-key", remove_adapter=False)
+        settings_path = self.base / "jev-key" / "settings.json"
+        secret = "sk-test-super-secret-jev-key"
+        atomic_json(settings_path, {"rationality": {"jev": {
+            "api_key": secret, "model": "jev-1.13.0", "verified_at": "2026-01-01T00:00:00+00:00",
+        }}})
+        configs.save({"label": "jev-key", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+            "evolution": {"generations": 1, "population": 1, "seeds": 1, "processes": 1,
+                          "kappa": 1.0, "rationality_backend": "none"}}, config_id="cfg-jev-key")
+        job, _ = jobs.submit(
+            {"request_id": "jev-key-req", "kind": "evolve", "config_id": "cfg-jev-key"},
+            settings_path=settings_path,
+        )
+        # job.json (internal, never the public API view) carries settings_path
+        # so the worker can read the key back at launch time.
+        stored_job = read_json(jobs._folder(job["job_id"]) / "job.json")
+        self.assertEqual(stored_job["settings_path"], str(settings_path.absolute()))
+        job = self._run_to_terminal(jobs, job["job_id"])
+        self.assertEqual(job["state"], "succeeded", job)
+        run_root = configs.runs / job["run_id"]
+        for path in run_root.rglob("*"):
+            if path.is_file():
+                self.assertNotIn(secret.encode("utf-8"), path.read_bytes())
+
     def test_seed_genomes_from_job_reaches_the_ga(self):
         # WB-WORLDGROW-001 段階5b: mirrors test_kappa_from_job_reaches_the_ga
         # -- drives two real jobs through the adapter path (execution/

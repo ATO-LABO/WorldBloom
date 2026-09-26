@@ -42,6 +42,16 @@ from gapengine.knowledge_text import (
 from gapengine.llama_server import build_request as _llama_server_build_request
 from gapengine.ollama import DEFAULT_BASE_URL, DEFAULT_MODEL, build_request
 
+JEV_BASE_URL = "https://api.typesafe.ai"
+JEV_DEFAULT_MODEL = "jev-1.13.0"  # version-pinned: "jev-latest" would mix table entries.
+JEV_MAX_OPTIONS = 255
+JEV_CHOICE_INSTRUCTIONS = (
+    "本人の知る限りで、目的に近づく手段として最も筋が通っているのはどれか。"
+)
+JEV_NOUL_INSTRUCTIONS = (
+    "本人の知る限りで、この行動は目的に近づく手段として筋が通っているか。"
+)
+
 QUESTION = (
     "質問: 本人の知る限りで、この行動は目的に近づく手段として筋が通っているか。"
     "yes か no の1語だけで答えよ。"
@@ -654,6 +664,191 @@ class OllamaLogprobJudge:
                 scale = len(chunk) / total
                 for offset, label in enumerate(labels):
                     results[index + offset] = probs[label] * scale
+            index += len(chunk)
+        return results, calls_made, truncated
+
+
+def _jev_call(
+    payload: dict[str, Any], *, api_key: str, base_url: str, timeout: float
+) -> dict[str, Any]:
+    """One POST to TypeSafe's Jev "systemone" judge API. Raises on any
+    non-2xx/network failure -- callers (JevJudge._call) handle retries/
+    never-raise; this stays a thin, testable transport (same split as
+    _ollama_call/_llama_server_call above)."""
+
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/v1/systemone",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+class JevJudge:
+    """Scores candidates against TypeSafe's Jev "systemone" judge API
+    (WB-JEV-005) instead of a local Ollama/llama-server model. Never raises:
+    every request failure yields ``None`` for the affected candidate(s),
+    same never-raise contract as ``OllamaLogprobJudge`` above.
+
+    401/403 (bad key) are never retried -- a bad credential can't recover
+    mid-retry. 429 honors ``Retry-After`` (default 2s, capped at 30s); other
+    transient failures (5xx/URLError/timeout/malformed body) back off 1s
+    then 2s. Up to 3 attempts total. Sleeps consume no randomness, so retry
+    timing never affects determinism, only wall-clock time.
+
+    Has no ``thermal_wait_seconds``/``num_ctx`` attributes -- a remote API
+    call has no local GPU to guard and no context-window knob, so
+    ``Rationality.meta`` (which reads both via ``getattr(..., default)``)
+    never reports them for this backend."""
+
+    backend_name = "jev"
+
+    def __init__(
+        self,
+        *,
+        model: str = JEV_DEFAULT_MODEL,
+        api_key: str | None = None,
+        base_url: str = JEV_BASE_URL,
+        timeout: float = 30.0,
+        method: str = "noul",
+    ) -> None:
+        if method not in ("noul", "choice"):
+            raise ValueError(f"Unknown rationality judge method: {method}")
+        self.model = model
+        # The key is read from TYPESAFE_API_KEY only when not passed
+        # explicitly -- execution/evolution_worker.py sets that env var
+        # (from settings.json, never from cfg/argv) before evolve() runs,
+        # so the key never enters config.json/manifest.json/argv.
+        self.api_key = api_key if api_key is not None else os.environ.get("TYPESAFE_API_KEY", "")
+        self.base_url = base_url
+        self.timeout = timeout
+        self.method = method
+        # Jev may answer with a different model than requested (e.g. an
+        # alias) -- recorded here for callers that care, never surfaced in
+        # Rationality.meta/the layers.jsonl header (that stays self.model,
+        # what was actually asked for).
+        self.served_model: str | None = None
+
+    @staticmethod
+    def _answer_probabilities(data: dict[str, Any] | None, qid: str) -> Mapping[str, Any] | None:
+        if not isinstance(data, dict):
+            return None
+        answers = data.get("answers")
+        if not isinstance(answers, Mapping):
+            return None
+        answer = answers.get(qid)
+        if not isinstance(answer, Mapping):
+            return None
+        probabilities = answer.get("probabilities")
+        return probabilities if isinstance(probabilities, Mapping) else None
+
+    def _call(self, context_text: str, questions: dict[str, Any]) -> dict[str, Any] | None:
+        payload = {"state": context_text, "model": self.model, "questions": questions}
+        wait = 1.0
+        for attempt in range(3):
+            try:
+                data = _jev_call(
+                    payload, api_key=self.api_key, base_url=self.base_url, timeout=self.timeout,
+                )
+            except urllib.error.HTTPError as error:
+                if error.code in (401, 403):
+                    return None
+                if attempt == 2:
+                    return None
+                if error.code == 429:
+                    retry_after = error.headers.get("Retry-After") if error.headers is not None else None
+                    try:
+                        sleep_for = min(30.0, max(0.0, float(retry_after)))
+                    except (TypeError, ValueError):
+                        sleep_for = 2.0
+                else:
+                    sleep_for = wait
+                time.sleep(sleep_for)
+                wait = min(30.0, wait * 2.0)
+                continue
+            except (OSError, urllib.error.URLError, ValueError, KeyError, TypeError):
+                if attempt == 2:
+                    return None
+                time.sleep(wait)
+                wait = min(30.0, wait * 2.0)
+                continue
+            served = data.get("model") if isinstance(data, dict) else None
+            if isinstance(served, str):
+                self.served_model = served
+            return data
+        return None
+
+    def score(
+        self,
+        context_text: str,
+        candidates: Sequence[str],
+        *,
+        max_calls: int | None = None,
+    ) -> tuple[list[float | None], int, bool]:
+        candidates = list(candidates)
+        if not candidates:
+            return [], 0, False
+        if self.method == "choice":
+            return self._score_choice(context_text, candidates, max_calls=max_calls)
+        return self._score_noul(context_text, candidates, max_calls=max_calls)
+
+    def _score_noul(
+        self, context_text: str, candidates: list[str], *, max_calls: int | None,
+    ) -> tuple[list[float | None], int, bool]:
+        if max_calls is not None and max_calls < 1:
+            return [None] * len(candidates), 0, True
+        questions = {
+            str(index + 1): {
+                "type": "choice",
+                "instructions": JEV_NOUL_INSTRUCTIONS + "\n候補: " + desc,
+                "criteria": {"yes": "筋が通っている", "no": "筋が通っていない"},
+            }
+            for index, desc in enumerate(candidates)
+        }
+        data = self._call(context_text, questions)
+        results: list[float | None] = []
+        for index in range(len(candidates)):
+            probabilities = self._answer_probabilities(data, str(index + 1))
+            p_yes = probabilities.get("yes") if probabilities is not None else None
+            results.append(float(p_yes) if isinstance(p_yes, (int, float)) else None)
+        return results, 1, False
+
+    def _score_choice(
+        self, context_text: str, candidates: list[str], *, max_calls: int | None,
+    ) -> tuple[list[float | None], int, bool]:
+        if len(candidates) == 1:
+            return [1.0], 0, False
+        total = len(candidates)
+        chunks = _even_chunks(candidates, JEV_MAX_OPTIONS)
+        results: list[float | None] = [None] * total
+        calls_made = 0
+        truncated = False
+        index = 0
+        for chunk in chunks:
+            if max_calls is not None and calls_made >= max_calls:
+                truncated = True
+                break
+            criteria = {str(offset + 1): desc for offset, desc in enumerate(chunk)}
+            questions = {"q": {"type": "choice", "instructions": JEV_CHOICE_INSTRUCTIONS, "criteria": criteria}}
+            data = self._call(context_text, questions)
+            calls_made += 1
+            probabilities = self._answer_probabilities(data, "q")
+            if probabilities is not None:
+                values = [probabilities.get(str(offset + 1)) for offset in range(len(chunk))]
+                values = [value if isinstance(value, (int, float)) else 0.0 for value in values]
+                # Every option key absent from the response is treated as
+                # "no signal for this chunk at all" (None), not as "every
+                # candidate scored 0.0" -- ponytail: this can't distinguish
+                # a genuine all-zero answer from a fully missing one; upgrade
+                # if Jev's API ever needs that distinction.
+                if any(value > 0.0 for value in values):
+                    scale = len(chunk) / total
+                    for offset, value in enumerate(values):
+                        results[index + offset] = value * scale
             index += len(chunk)
         return results, calls_made, truncated
 

@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import sys
 import time
@@ -77,6 +78,8 @@ from gapengine.ollama import DEFAULT_BASE_URL, build_request
 from gapengine.policy import Policy
 from gapengine.rationality import (
     CHOICE_QUESTION,
+    JEV_DEFAULT_MODEL,
+    JevJudge,
     LABELS,
     QUESTION,
     _label_masses,
@@ -585,6 +588,69 @@ def _score_points_choice(
                 _append_jsonl(probe_path, row)
                 existing[("choice", pair_of[desc])] = row
                 scores[(point["point_id"], desc)] = p_choice
+    return scores
+
+
+def _score_points_jev(
+    points: list[dict[str, Any]],
+    *,
+    judge: Any,
+    method: str,
+    probe_path: Path,
+    stats: dict[str, Any],
+) -> dict[tuple[str, str], float | None]:
+    """WB-JEV-005: scores Mode A/B decision points via a ``JevJudge``
+    instance (TypeSafe's Jev API) instead of a local Ollama/llama-server
+    call. Writes the same row schema ``_score_points``/``_score_points_choice``
+    do (method, turn, pair_key, candidate, p_yes/p_choice, chosen) minus the
+    Ollama-only "raw_top_logprobs" field. One ``judge.score()`` call scores
+    an entire decision point's whole candidate list at once (unlike Ollama
+    noul's one-call-per-candidate) -- ``elapsed_seconds`` is attached to
+    only the first row of each point, the same convention
+    ``_score_points_choice`` already uses per chunk. No GPU lease: Jev is a
+    remote API call, not a local model."""
+
+    existing = _read_existing(probe_path)
+    value_key = "p_yes" if method == "noul" else "p_choice"
+    scores: dict[tuple[str, str], float | None] = {}
+    for point in points:
+        descs = [desc for desc, _chosen in point["candidates"]]
+        chosen_by_desc = dict(point["candidates"])
+        pair_of = {desc: _pair_key(point["state_text"], desc) for desc in descs}
+        if not descs:
+            continue
+        keys = [(method, pair_of[desc]) for desc in descs]
+        if all(key in existing for key in keys):
+            for desc, key in zip(descs, keys):
+                scores[(point["point_id"], desc)] = existing[key][value_key]
+            continue
+
+        started = time.monotonic()
+        values, calls_made, _truncated = judge.score(point["state_text"], descs)
+        elapsed = time.monotonic() - started
+        stats["calls"] += calls_made
+        stats["elapsed"] += elapsed
+        if calls_made == 0 or all(value is None for value in values):
+            stats["errors"] += 1
+
+        for offset, desc in enumerate(descs):
+            value = values[offset] if offset < len(values) else None
+            if value is None:
+                stats["missing"] += 1
+            row = {
+                "mode": point["mode"],
+                "method": method,
+                "turn": point["point_id"],
+                "pair_key": pair_of[desc],
+                "candidate": desc,
+                value_key: value,
+                "chosen": bool(chosen_by_desc.get(desc)),
+            }
+            if offset == 0:
+                row["elapsed_seconds"] = elapsed
+            _append_jsonl(probe_path, row)
+            existing[(method, pair_of[desc])] = row
+            scores[(point["point_id"], desc)] = value
     return scores
 
 
@@ -1346,7 +1412,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--turns", type=int, default=12)
     parser.add_argument("--out", type=Path, required=False)
-    parser.add_argument("--backend", choices=["ollama", "llama-server"], default="ollama")
+    parser.add_argument("--backend", choices=["ollama", "llama-server", "jev"], default="ollama")
     parser.add_argument(
         "--base-url", default=None,
         help="default: Ollama's or llama-server's own default, per --backend",
@@ -1374,6 +1440,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.backend == "jev" and args.model is None:
+        args.model = JEV_DEFAULT_MODEL
     if args.base_url is None:
         args.base_url = (
             LLAMA_SERVER_DEFAULT_BASE_URL if args.backend == "llama-server" else DEFAULT_BASE_URL
@@ -1390,6 +1458,8 @@ def main(argv: list[str] | None = None) -> int:
             build_parser().error("--out is required for --stats")
         return _run_stats(args)
     if args.bench:
+        if args.backend == "jev":
+            build_parser().error("--bench does not support --backend jev")
         if not args.model or not args.out:
             build_parser().error("--model and --out are required for --bench")
         return _run_bench(args)
@@ -1397,6 +1467,43 @@ def main(argv: list[str] | None = None) -> int:
         build_parser().error(
             "--model and --out are required unless --selftest/--stats/--bench/--compare"
         )
+
+    if args.backend == "jev":
+        api_key = os.environ.get("TYPESAFE_API_KEY", "")
+        if not api_key:
+            build_parser().error("--backend jev requires the TYPESAFE_API_KEY environment variable")
+        out_dir = args.out.resolve() / _out_dir_name(args.backend, args.model)
+        probe_path = out_dir / "probe.jsonl"
+        stats = {"calls": 0, "missing": 0, "errors": 0, "elapsed": 0.0}
+        mode_a_points = _run_mode_a(
+            project=args.project.resolve(), template=args.template.resolve(),
+            seed=args.seed, turns=args.turns, run_out=out_dir / "run",
+        )
+        judge = JevJudge(model=args.model, api_key=api_key, method=args.method, timeout=args.timeout)
+        if args.method == "noul":
+            report_path = out_dir / "report.md"
+            mode_b_points = _mode_b_points()
+            scores = _score_points_jev(
+                mode_b_points, judge=judge, method="noul", probe_path=probe_path, stats=stats,
+            )
+            scores.update(_score_points_jev(
+                mode_a_points, judge=judge, method="noul", probe_path=probe_path, stats=stats,
+            ))
+            _write_report(
+                report_path, model=args.model, seed=args.seed, turns=args.turns,
+                mode_b_points=mode_b_points, mode_a_points=mode_a_points, scores=scores, stats=stats,
+            )
+        else:
+            report_path = out_dir / "report-choice.md"
+            scores = _score_points_jev(
+                mode_a_points, judge=judge, method="choice", probe_path=probe_path, stats=stats,
+            )
+            _write_choice_report(
+                report_path, model=args.model, seed=args.seed, turns=args.turns,
+                mode_a_points=mode_a_points, scores=scores, stats=stats, probe_path=probe_path,
+            )
+        print(f"report={report_path} calls={stats['calls']} errors={stats['errors']}")
+        return 0
 
     call = _call_fn(args.backend)
     # WB-JEV-003: num_ctx is an Ollama-only option; llama-server has no
