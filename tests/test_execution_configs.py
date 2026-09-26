@@ -640,6 +640,72 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertIsNone(saved["evolution"]["rationality_model"])
 
+    def test_rationality_backend_empty_string_normalizes_to_none(self):
+        """The run-settings form's <select> submits "" for its "follow the
+        template default" option (never "ollama") -- normalize() must fold
+        it to None so config.json/argv stay byte-identical to a config that
+        never touched the field (Opus review SHOULD 4)."""
+        saved = self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_backend=""),
+            config_id="cfg-momo-empty-backend",
+        )
+        self.assertIsNone(saved["evolution"]["rationality_backend"])
+        self.assertIsNone(saved["evolution"]["rationality_model"])
+
+    def test_admission_refuses_jev_backend_with_kappa_positive_and_no_verified_key(self):
+        """SHOULD 3 (Opus review): a kappa>0/backend=jev config must be
+        refused at admission -- execution.jobs._require_jev_key_if_needed()
+        is called from the single shared point (JobStore.submit()) every
+        evolve job (direct or via EpochChain) is admitted through, before
+        ever spawning a subprocess, rather than left to fail mid-run with
+        every candidate silently falling back to None."""
+        from execution.jobs import _require_jev_key_if_needed
+        settings_path = self.base / "settings.json"  # never created -- no key at all
+        with self.assertRaises(ConfigError) as caught:
+            _require_jev_key_if_needed(
+                {"kappa": 0.6, "rationality_backend": "jev"}, settings_path)
+        self.assertEqual(
+            caught.exception.field_errors.get("rationality_backend"),
+            "Jev の APIキーが未設定です。⚙設定→計算で登録してください",
+        )
+
+    def test_admission_allows_jev_backend_with_a_verified_key(self):
+        from execution.jobs import _require_jev_key_if_needed
+        from execution.rationality_settings import write_jev_api_key
+        from gapengine.rationality import JEV_DEFAULT_MODEL
+        settings_path = self.base / "settings.json"
+
+        class _FakeResponse:
+            def __enter__(self_inner):
+                return self_inner
+            def __exit__(self_inner, *exc_info):
+                return False
+            def read(self_inner):
+                return json.dumps({"data": [{"id": JEV_DEFAULT_MODEL}]}).encode("utf-8")
+
+        with patch("execution.rationality_settings.urllib.request.urlopen", return_value=_FakeResponse()):
+            write_jev_api_key(settings_path, "sk-test-key")
+        # No exception -- the key is verified.
+        _require_jev_key_if_needed({"kappa": 0.6, "rationality_backend": "jev"}, settings_path)
+
+    def test_admission_ignores_jev_backend_when_kappa_is_zero_or_none(self):
+        """kappa<=0/None never calls Jev regardless of the chosen backend --
+        the admission check must not block those, key or no key."""
+        from execution.jobs import _require_jev_key_if_needed
+        settings_path = self.base / "settings.json"  # never created -- no key at all
+        for kappa in (None, 0, 0.0):
+            with self.subTest(kappa=kappa):
+                _require_jev_key_if_needed(
+                    {"kappa": kappa, "rationality_backend": "jev"}, settings_path)
+
+    def test_admission_ignores_non_jev_backends(self):
+        from execution.jobs import _require_jev_key_if_needed
+        settings_path = self.base / "settings.json"  # never created -- no key at all
+        for backend in (None, "ollama", "none"):
+            with self.subTest(backend=backend):
+                _require_jev_key_if_needed(
+                    {"kappa": 0.6, "rationality_backend": backend}, settings_path)
+
     def test_prepare_run_jev_backend_table_path_and_no_key_in_argv(self):
         self.runtime()
         self.store.save(

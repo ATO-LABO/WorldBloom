@@ -396,7 +396,56 @@ class WorkbenchTests(unittest.TestCase):
             status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
         self.assertEqual(status, 200, body)
         self.assertIn('<option value="jev" disabled>Jev（TypeSafe、高速・外部送信）</option>', body)
-        self.assertIn('<option value="ollama" selected>Ollama qwen3.6:35b（ローカル）</option>', body)
+        self.assertIn('<option value="" selected>Ollama qwen3.6:35b（ローカル）</option>', body)
+
+    def test_rationality_duplicate_of_none_backend_config_keeps_template_default_selected(self):
+        """MUST (Opus review): a saved config with rationality_backend=None
+        (the vast majority of pre-WB-JEV-005 configs) must render the ""
+        (template default) option selected in a duplicate/edit form, never
+        "jev" -- even when a verified Jev key happens to be on file right
+        now. The old fallback ("current or (jev if available else ollama)")
+        treated a duplicated config's own None the same as an unset new
+        form and silently switched it to Jev, which would start sending the
+        situation text to TypeSafe for a config nobody chose that for."""
+        self.configs.save(
+            {"label": "既存設定", "project_id": "momotaro", "template_id": "momotaro",
+             "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all"}},
+            config_id="cfg-none-backend",
+        )
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}), \
+             patch("viewer.workbench_pages._jev_form_context",
+                   return_value={"available": True, "model": "jev-1.13.0"}):
+            status, body, _ = self.get_status("/configs/new?from=cfg-none-backend")
+        self.assertEqual(status, 200, body)
+        self.assertIn('<option value="" selected>Ollama qwen3.6:35b（ローカル）</option>', body)
+        self.assertNotIn('<option value="jev" selected>', body)
+
+    def test_normalize_maps_empty_rationality_backend_to_none(self):
+        """The <select>'s "follow the template default" option submits ""
+        (never "ollama") -- normalize() must fold it back to None so a
+        config saved with that option selected stays byte-identical to one
+        that never touched the field at all (SHOULD 4)."""
+        from execution.configs import normalize
+        saved = normalize({
+            "label": "既定のまま", "project_id": "momotaro", "template_id": "momotaro",
+            "evolution": {"rationality_backend": ""},
+        })
+        self.assertIsNone(saved["evolution"]["rationality_backend"])
+
+    def test_new_form_without_jev_key_saves_none_backend_not_ollama(self):
+        """SHOULD 4: a brand-new form with no verified Jev key must default
+        rationality_backend to None, not the string "ollama" -- byte-
+        identical to a pre-WB-JEV-005 form (no --rationality-backend ollama
+        ever appears in prepare_run()'s argv)."""
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}), \
+             patch("viewer.workbench_pages._jev_form_context",
+                   return_value={"available": False, "model": "jev-1.13.0"}):
+            status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertIn('<option value="" selected>Ollama qwen3.6:35b（ローカル）</option>', body)
+        self.assertNotIn('<option value="jev" selected>', body)
 
     def test_rationality_summary_honors_jev_backend_and_model_override(self):
         summary = workbench_pages._rationality_summary(
@@ -679,6 +728,53 @@ class WorkbenchTests(unittest.TestCase):
 
         status, payload = self.http("POST", "/api/settings/output", {"backend": "bogus"})
         self.assertEqual(status, 422, payload)
+
+    def test_rationality_settings_api_round_trip(self):
+        """SHOULD 5 (Opus review): GET /api/settings/rationality never
+        contains the key string; POST .../jev-key stores/verifies it and
+        also preserves an already-present "output" section in settings.json
+        (SHOULD 5d -- the two live under different top-level keys of the
+        same settings.json, so a naive read-modify-write of one must never
+        clobber the other)."""
+        from gapengine.rationality import JEV_DEFAULT_MODEL
+        self.settings_path.write_text(json.dumps({
+            "output": {"default_backend": "openai", "openai": {"api_key": "PRE-EXISTING"}},
+        }), encoding="utf-8")
+
+        status, before = self.http("GET", "/api/settings/rationality")
+        self.assertEqual(status, 200, before)
+        self.assertEqual(before, {
+            "has_api_key": False, "model": JEV_DEFAULT_MODEL,
+            "verified_at": None, "available": False,
+        })
+
+        class _FakeModelsResponse:
+            def __enter__(self_inner):
+                return self_inner
+            def __exit__(self_inner, *exc_info):
+                return False
+            def read(self_inner):
+                return json.dumps({"data": [{"id": JEV_DEFAULT_MODEL}]}).encode("utf-8")
+
+        with patch("execution.rationality_settings.urllib.request.urlopen",
+                   return_value=_FakeModelsResponse()):
+            status, after = self.http(
+                "POST", "/api/settings/rationality/jev-key", {"api_key": "sk-test-secret"})
+        self.assertEqual(status, 200, after)
+        self.assertTrue(after["has_api_key"])
+        self.assertTrue(after["available"])
+        self.assertNotIn("sk-test-secret", json.dumps(after))
+
+        status, refetched = self.http("GET", "/api/settings/rationality")
+        self.assertEqual(status, 200, refetched)
+        self.assertNotIn("sk-test-secret", json.dumps(refetched))
+        self.assertTrue(refetched["available"])
+
+        raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        self.assertEqual(raw["rationality"]["jev"]["api_key"], "sk-test-secret")
+        # The pre-existing "output" section must survive untouched.
+        self.assertEqual(raw["output"]["default_backend"], "openai")
+        self.assertEqual(raw["output"]["openai"]["api_key"], "PRE-EXISTING")
 
     def test_configs_page_survives_unreadable_settings_json(self):
         # WB-UI-021 review item 2: a broken settings.json must not 500 /configs.

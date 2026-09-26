@@ -25,6 +25,24 @@ PUBLIC_FIELDS = frozenset({"schema_version", "job_id", "request_id", "kind", "co
 _ENTRY_DIGESTS: dict[tuple[str, int, int], str] = {}
 
 
+def _require_jev_key_if_needed(evolution, settings_path):
+    """WB-JEV-005 review: refuse admission when an evolve config would call
+    Jev with kappa>0 but no verified TypeSafe key is on file -- checked once
+    here, in JobStore.submit(), the single place every evolve job (direct
+    or via EpochChain, which calls this same submit()) is admitted, rather
+    than left to fail mid-run with every candidate silently falling back to
+    None. A config with kappa<=0/None or any other backend is unaffected."""
+    kappa = evolution.get("kappa")
+    if evolution.get("rationality_backend") != "jev" or kappa is None or kappa <= 0:
+        return
+    from execution.rationality_settings import read_jev_settings
+    if not read_jev_settings(settings_path)["available"]:
+        raise ConfigError(
+            "rationality_backend",
+            "Jev の APIキーが未設定です。⚙設定→計算で登録してください",
+        )
+
+
 def _file_digest(path: Path) -> str:
     stat = path.stat()
     key = (str(path), stat.st_size, stat.st_mtime_ns)
@@ -202,6 +220,8 @@ class JobStore:
                     raise ConfigError("request_id", "同じ要求IDに異なる内容が指定されました", code="conflict")
                 return self.public(self._reconcile(prior)), False
             config = self.configs.get(cid)
+            if kind == "evolve":
+                _require_jev_key_if_needed(config["evolution"], settings_path)
             for other in self._all():
                 if self._reconcile(other)["state"] not in worker.TERMINAL:
                     raise ConfigError("jobs", "他の処理が実行中または状態確認中です", code="conflict")

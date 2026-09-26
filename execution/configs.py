@@ -195,6 +195,12 @@ def normalize(spec):
                 or not (0 <= route_rho <= 1)):
             raise ConfigError("evolution.route_rho", "0〜1の数値を指定してください")
         values["route_rho"] = None if route_rho == 0 else float(route_rho)
+    # WB-JEV-005 review: the run-settings form's <select> uses "" for its
+    # "follow the template default" option (never "ollama") -- treat it the
+    # same as never having set the field at all, so a config saved with
+    # that option selected stays byte-identical to a pre-WB-JEV-005 one.
+    if values["rationality_backend"] == "":
+        values["rationality_backend"] = None
     if values["rationality_backend"] not in (None, "ollama", "none", "jev"):
         raise ConfigError("evolution.rationality_backend", "backendの指定が不正です")
     if values["rationality_method"] not in (None, "noul", "choice"):

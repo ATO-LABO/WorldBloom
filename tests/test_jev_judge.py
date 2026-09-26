@@ -5,11 +5,12 @@ the real TypeSafe API."""
 
 from __future__ import annotations
 
+import http.client
 import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from gapengine.evolve import _build_rationality_judge, _rationality_lease_params
 from gapengine.rationality import (
@@ -82,6 +83,20 @@ class JevJudgeChoiceTests(unittest.TestCase):
             scores, _calls, _truncated = judge.score("ctx", ["a", "b"])
         self.assertEqual(scores, [None, None])
 
+    def test_malformed_probability_values_are_treated_as_missing(self) -> None:
+        """NICE 7 (Opus review): a bool, NaN/inf, a string, or an
+        out-of-range number must never be accepted as a probability -- each
+        is treated the same as "key absent" (0.0 for the other candidates
+        in the chunk, since "1" here is genuinely a valid 0.4)."""
+        judge = JevJudge(api_key="k", method="choice")
+        data = {"answers": {"q": {"probabilities": {
+            "1": 0.4, "2": True, "3": float("nan"), "4": float("inf"), "5": "0.9", "6": 1.5,
+        }}}}
+        with patch("gapengine.rationality._jev_call", return_value=data):
+            scores, _calls, _truncated = judge.score("ctx", ["a", "b", "c", "d", "e", "f"])
+        self.assertEqual(scores[0], 0.4 * (6 / 6))
+        self.assertEqual(scores[1:], [0.0, 0.0, 0.0, 0.0, 0.0])
+
 
 class JevJudgeNoulTests(unittest.TestCase):
     def test_noul_bundles_every_candidate_into_one_call(self) -> None:
@@ -139,6 +154,49 @@ class JevJudgeRetryTests(unittest.TestCase):
             scores, _calls, _truncated = judge.score("ctx", ["a"])
         self.assertEqual(scores, [None])
         self.assertEqual(mock_call.call_count, 3)
+
+    def test_429_with_non_numeric_retry_after_falls_back_to_2_seconds(self) -> None:
+        """SHOULD 5b (Opus review): a malformed/non-numeric Retry-After must
+        never crash the retry loop -- fall back to the same 2s default used
+        when the header is absent."""
+        judge = JevJudge(api_key="k", method="noul")
+        error = urllib.error.HTTPError("url", 429, "too many", {"Retry-After": "soon"}, None)
+        success = {"answers": {"1": {"probabilities": {"yes": 1.0, "no": 0.0}}}}
+        with patch("gapengine.rationality._jev_call", side_effect=[error, success]), \
+                patch("gapengine.rationality.time.sleep") as mock_sleep:
+            scores, _calls, _truncated = judge.score("ctx", ["a"])
+        self.assertEqual(scores, [1.0])
+        mock_sleep.assert_called_once_with(2.0)
+
+    def test_5xx_backs_off_1s_then_2s(self) -> None:
+        """SHOULD 5c (Opus review): a non-429 HTTPError (e.g. 500/503) backs
+        off 1s, then 2s, then gives up on the third attempt without a
+        further sleep."""
+        judge = JevJudge(api_key="k", method="noul")
+        error = urllib.error.HTTPError("url", 503, "service unavailable", None, None)
+        with patch("gapengine.rationality._jev_call", side_effect=error) as mock_call, \
+                patch("gapengine.rationality.time.sleep") as mock_sleep:
+            scores, _calls, _truncated = judge.score("ctx", ["a"])
+        self.assertEqual(scores, [None])
+        self.assertEqual(mock_call.call_count, 3)
+        mock_sleep.assert_has_calls([call(1.0), call(2.0)])
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    def test_http_client_exception_is_retried_like_urlerror(self) -> None:
+        """SHOULD 2 (Opus review): http.client.HTTPException (e.g.
+        IncompleteRead) is not an OSError/URLError subclass -- it needs its
+        own explicit catch, or a truncated/garbled response would propagate
+        as an unhandled exception instead of yielding None for the
+        candidate like every other transient failure does."""
+        judge = JevJudge(api_key="k", method="noul")
+        success = {"answers": {"1": {"probabilities": {"yes": 1.0, "no": 0.0}}}}
+        with patch(
+            "gapengine.rationality._jev_call",
+            side_effect=[http.client.IncompleteRead(b""), success],
+        ), patch("gapengine.rationality.time.sleep") as mock_sleep:
+            scores, _calls, _truncated = judge.score("ctx", ["a"])
+        self.assertEqual(scores, [1.0])
+        mock_sleep.assert_called_once_with(1.0)
 
 
 class RationalityMetaTests(unittest.TestCase):
