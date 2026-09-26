@@ -295,6 +295,14 @@ def _existing_names(world: dict) -> dict[str, set[str]]:
 
 
 def _applied_names(world: dict) -> dict[str, set]:
+    """Names added by name (add.items/add.facts/...) -- validate_patch's
+    give-budget check (prior_given) relies on this meaning exactly "an item
+    this world didn't have before any patch", since it sums that item's
+    *entire* current sources list (item_give_count): folding a sourced-only
+    existing item in here would double-count its pre-existing (base) source
+    max as if a patch had added it. addition_caps() below adds the sourced
+    names back in for the cumulative items/facts *count*, which has no such
+    double-counting risk (段階3 review 1 必須1/2)."""
     applied = {key: set() for key in ADD_KEYS}
     for entry in (world.get("expansion") or {}).get("patches", []):
         for key in ADD_KEYS:
@@ -302,16 +310,45 @@ def _applied_names(world: dict) -> dict[str, set]:
     return applied
 
 
+def _sourced_item_and_fact_names(world: dict, source_labels) -> tuple[set, set]:
+    """Required 1 (段階3 review 1): a "品@場所" add.sources label doesn't say
+    whether the target is an item or a fact. Resolve it by looking the name
+    up in the *current* (already-patched) world's items/facts -- if a name
+    matches both, count it in both (設計役の決定: 保守的に両方数える)."""
+    items, facts = set(), set()
+    if not source_labels:
+        return items, facts
+    item_names = {i.get("name") for i in (world.get("items") or []) if isinstance(i, dict)}
+    fact_ids = {f.get("id") for f in (world.get("facts") or []) if isinstance(f, dict)}
+    for label in source_labels:
+        if not (isinstance(label, str) and "@" in label):
+            continue
+        name = label.rsplit("@", 1)[0]
+        if name in item_names:
+            items.add(name)
+        if name in fact_ids:
+            facts.add(name)
+    return items, facts
+
+
 def addition_caps(world: dict) -> dict[str, tuple[int, int]]:
     """{key: (cumulative cap, already added)} -- shared by the static gate and
-    the proposal prompt, so the model is told the same numbers it is held to."""
+    the proposal prompt, so the model is told the same numbers it is held to.
+
+    Required 1 (段階3 review 1): a prior patch's add.sources now counts
+    toward the items/facts cap too -- it already used the items/facts
+    budget when it was proposed (validate_patch's own per-patch check counts
+    it that way via sources_item_count/sources_fact_count)."""
     existing, applied = _existing_names(world), _applied_names(world)
+    sourced_items, sourced_facts = _sourced_item_and_fact_names(world, applied["sources"])
+    cap_applied = {"zones": applied["zones"], "items": applied["items"] | sourced_items,
+                   "facts": applied["facts"] | sourced_facts}
     caps = {}
     for key in ("zones", "items", "facts"):
-        base_count = len(existing[key] - applied[key])
+        base_count = len(existing[key] - cap_applied[key])
         cap = min(4 if key == "zones" else 8,
                   max(1, math.ceil(base_count * (0.4 if key == "zones" else 0.5))))
-        caps[key] = (cap, len(applied[key]))
+        caps[key] = (cap, len(cap_applied[key]))
     return caps
 
 
@@ -764,8 +801,13 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
             if not isinstance(name, str) or name not in existing["facts"]:
                 violations.append(f"add.sources.fact が既存の事実ではありません: {name!r}")
                 continue
-            if name in lottery:
-                violations.append(f"この事実には入手手段を足せません: {name}")
+            # R1 (段階3 review 1): a valued (non-lottery) fact -- e.g.
+            # oni_weakness/treasure_thief -- also fails contract_check's
+            # "Valued fact cannot have direct sources" once applied; reject
+            # it here too, with a clear reason, instead of letting it pass
+            # the static gate and only fail later at the trial.
+            if name in lottery or name in valued_facts:
+                violations.append(f"この事実には入手手段を足せません（値が決まる事実です）: {name}")
                 continue
             fact_def = facts_by_id.get(name) or {}
             check_fact_source(source, name)
@@ -835,10 +877,19 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
             return total
         given = give_total(raw_items)
         prior_given = give_total([i for i in world.get("items", []) if i.get("name") in applied["items"]])
+        # Required 2 (段階3 review 1): fold in every prior patch's own
+        # add.sources give contribution (added.sources_give, recorded by
+        # apply_patch at application time -- see its own comment for why
+        # this can't just be re-derived from the item's current sources).
+        prior_given += sum(
+            (entry.get("added") or {}).get("sources_give") or 0.0
+            for entry in (world.get("expansion") or {}).get("patches", [])
+        )
         # add.sources doesn't touch an existing item's own give -- but a
         # bigger max means more pickups of the same give, so it still has to
-        # spend budget when the item already gives something (design K:
-        # 品に give があるなら、その give ×足した max を累積予算に加える).
+        # spend budget (design K, 段階3 review 1 必須3で修正: give を書いてい
+        # ない既存の品も、エンジン/give_totalの既定値=受け手0.2・渡し手0.05
+        # で数える -- 書いていない＝0円ではない).
         for entry in raw_sources:
             if not isinstance(entry, dict) or "item" not in entry:
                 continue
@@ -846,7 +897,7 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
             source = entry.get("source")
             if not isinstance(item_def, dict) or not isinstance(source, dict):
                 continue
-            give = item_def.get("give")
+            give = item_def.get("give") or {}
             mx = source.get("max")
             if not isinstance(give, dict) or type(mx) is not int:
                 continue
@@ -950,6 +1001,12 @@ def apply_patch(world: dict, patch: dict) -> dict:
         daily["events"].extend(copy.deepcopy(event) for event in events)
 
     added_source_labels: list[str] = []
+    # Required 2 (段階3 review 1): the give budget an add.sources entry uses,
+    # summed for *this* patch -- recorded below as added.sources_give so a
+    # later patch's validate_patch can add it to prior_given without having
+    # to re-derive it from the item's *current* (base+patches) sources list,
+    # which would double-count a pre-existing base source's own max.
+    sources_give_total = 0.0
     if sources:
         items_by_name = {i.get("name"): i for i in (result.get("items") or []) if isinstance(i, dict)}
         facts_by_id = {f.get("id"): f for f in (result.get("facts") or []) if isinstance(f, dict)}
@@ -968,6 +1025,20 @@ def apply_patch(world: dict, patch: dict) -> dict:
                 existing_sources = []
             target["sources"] = existing_sources + [copy.deepcopy(source)]
             added_source_labels.append(f"{entry.get('item') or entry.get('fact')}@{source.get('zone')}")
+            if "item" in entry and not target.get("keepsake") and not (
+                    isinstance(target.get("made_from"), dict) and target.get("made_from")):
+                # 必須3で修正した既定値の扱いと揃える: give を書いていない品も
+                # 受け手0.2・渡し手0.05で数える(engine/verbs.pyの既定と同じ)。
+                give = target.get("give") or {}
+                mx = source.get("max")
+                if isinstance(give, dict) and type(mx) is int:
+                    per_item = 0.0
+                    for key, default in (("receiver_affinity", DEFAULT_RECEIVER_AFFINITY),
+                                         ("giver_affinity", DEFAULT_GIVER_AFFINITY)):
+                        value = give.get(key, default)
+                        if _is_number(value):
+                            per_item += value
+                    sources_give_total += per_item * mx
 
     if zones or items or facts or events or sources:
         existing_expansion = result.get("expansion")
@@ -994,6 +1065,10 @@ def apply_patch(world: dict, patch: dict) -> dict:
         # emitting byte-identical expansion output -- no "sources" key at all.
         if added_source_labels:
             added["sources"] = added_source_labels
+        # Required 2 (段階3 review 1): only present when non-zero, same
+        # byte-identical-when-unused convention as "sources" above.
+        if sources_give_total:
+            added["sources_give"] = sources_give_total
         entry["added"] = added
         expansion["patches"].append(entry)
         result["expansion"] = expansion

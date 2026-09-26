@@ -20,7 +20,10 @@ import yaml
 from world_patch_fixtures import write_approved
 
 from execution.world_patch_approval import StalePatch, reopen, retire
-from gapengine.world_patch import PatchError, approved_patches, read_stack, retired_patches, verify_stack
+from execution.world_patches import project_inputs
+from gapengine.world_patch import (
+    PatchError, approved_patches, materialize, read_stack, retired_patches, template_identifiers, verify_stack,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 MOMOTARO_PROJECT = ROOT / "projects" / "momotaro"
@@ -45,6 +48,17 @@ ADD_C_DEPENDS_ON_A = {
     "items": [{"name": "小屋の道具", "sources": [
         {"type": "investigate", "zone": "海", "count": 1, "max": 1}], "craft_zone": "船大工の小屋"}],
     "facts": [],
+}
+# R5 (段階3 review 1): an add.sources patch, standalone (targets an existing
+# item at an existing zone -- no dependency on any other patch).
+ADD_E_SOURCES_STANDALONE = {
+    "sources": [{"item": "縄", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}],
+}
+# Depends on ADD_A having already added 船大工の小屋 -- add.sources targets
+# an existing item, but at a zone only ADD_A's patch introduces.
+ADD_F_SOURCES_DEPENDS_ON_A = {
+    "sources": [{"item": "縄", "source": {"type": "investigate", "zone": "船大工の小屋",
+                                          "count": 1, "max": 1}}],
 }
 
 
@@ -131,6 +145,45 @@ class VerifyStackAndRetiredPatchesTests(RetireTestBase):
         stack_after = json.loads((self.project / "patches" / "stack.json").read_text(encoding="utf-8"))
         self.assertEqual(stack_before, stack_after)
         self.assertEqual({p["id"] for p, _ in verify_stack(self.project)}, {a_id, c_id})
+
+    def test_add_sources_dependent_on_an_earlier_patch_blocks_retire(self) -> None:
+        # R5 (段階3 review 1): same shape as
+        # test_dependent_patch_blocks_retire_and_writes_nothing, but for an
+        # add.sources patch (targets an existing item, at a zone only the
+        # retire target's own patch introduced) instead of add.items'
+        # craft_zone -- validate_patch's "add.sources.item が既存のアイテム
+        # ではありません"/zone-not-existing checks re-fire the same way
+        # once the retired patch's zone is gone from the rebuilt world.
+        a_id = self.approve(ADD_A, "小屋を足す")
+        f_id = self.approve(ADD_F_SOURCES_DEPENDS_ON_A, "小屋で縄を手に入れられるようにする")
+        stack_before = json.loads((self.project / "patches" / "stack.json").read_text(encoding="utf-8"))
+        with self.assertRaisesRegex(PatchError, f_id):
+            retire(self.project, self.template, a_id, "依存されているのに枯らそうとする試験(add.sources)",
+                  experiment=self.missing_experiment)
+        self.assertFalse((self.project / "patches" / f"{a_id}.retire.json").exists())
+        stack_after = json.loads((self.project / "patches" / "stack.json").read_text(encoding="utf-8"))
+        self.assertEqual(stack_before, stack_after)
+        self.assertEqual({p["id"] for p, _ in verify_stack(self.project)}, {a_id, f_id})
+
+    def test_retiring_a_standalone_add_sources_patch_removes_the_source(self) -> None:
+        # R5 (段階3 review 1): 「退場すればsourceも消える」を、probe(ad-hoc
+        # スクリプト)ではなく retire()/verify_stack 経由の回帰テストにする。
+        e_id = self.approve(ADD_E_SOURCES_STANDALONE, "森で縄を手に入れられるようにする")
+        world, subjects, _refs, _digest = project_inputs(self.project, self.template)
+        active = [p for p, _ in verify_stack(self.project)]
+        reserved = template_identifiers(self.template)
+        with_patch, _ = materialize(world, subjects, active, reserved=reserved, check_budgets=False)
+        rope_with = next(i for i in with_patch["items"] if i["name"] == "縄")
+        self.assertIn({"type": "investigate", "zone": "森", "count": 1, "max": 1}, rope_with.get("sources") or [])
+
+        retire(self.project, self.template, e_id, "使われていないので枯らす試験(add.sources)",
+              experiment=self.missing_experiment)
+
+        without_patch, _ = materialize(world, subjects, [], reserved=reserved, check_budgets=False)
+        rope_without = next(i for i in without_patch["items"] if i["name"] == "縄")
+        self.assertNotIn({"type": "investigate", "zone": "森", "count": 1, "max": 1},
+                        rope_without.get("sources") or [])
+        self.assertEqual([entry["patch"]["id"] for entry in retired_patches(self.project)], [e_id])
 
     def test_independent_patch_does_not_block_retire(self) -> None:
         a_id = self.approve(ADD_A, "小屋を足す")

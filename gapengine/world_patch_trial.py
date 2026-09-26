@@ -181,8 +181,12 @@ def _blocked_counts(report: dict, requirement: str) -> dict:
     count = report.get("blocked_counts", {}).get(requirement, {}).get("count", 0)
     lost_total = sum(counts.get("lost", 0) for counts in report.get("route_counts", {}).values())
     route_total = sum(sum(counts.values()) for counts in report.get("route_counts", {}).values())
+    # R2 (段階3 review 1): "lost_rate" -- lost_total / 道筋付き決定の総数（見
+    # 通しなし決定そのものの率）。gapengine/world_demand.py の需要トリガーの
+    # "lost_share"（要件の件数 / 道筋付き決定の総数, M4）とは意味が違うため、
+    # 同名のまま両方が画面に出ると取り違えやすい -- 別名にして区別する。
     return {"count": count, "lost_total": lost_total,
-            "lost_share": round(lost_total / route_total, 4) if route_total else None}
+            "lost_rate": round(lost_total / route_total, 4) if route_total else None}
 
 
 def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=None, max_runs=5,

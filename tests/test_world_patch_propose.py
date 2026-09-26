@@ -357,6 +357,21 @@ class BuildPromptKindDispatchTests(unittest.TestCase):
         self.assertNotIn("add.sources", build_prompt(WORLD, SUBJECT_IDS, TRIGGER, []))
         self.assertNotIn("add.sources", build_prompt(WORLD, SUBJECT_IDS, IGNORANCE_TRIGGER, []))
 
+    def test_blocked_output_skeleton_and_budget_mention_add_sources(self):
+        # R6 (段階3 review 1): blocked だけ、出力形式のJSON雛形と予算の節に
+        # add.sources を併記する (LLMが第一の選択肢を選びやすくする)。
+        prompt = build_prompt(WORLD, SUBJECT_IDS, BLOCKED_TRIGGER, [])
+        self.assertIn('"add": { "zones": [...], "items": [...], "facts": [...], "sources": [...] }', prompt)
+        self.assertIn("add.sources も、対象がアイテムなら「アイテム」、事実なら「事実」の枠を1件使います。", prompt)
+
+    def test_whiff_and_ignorance_output_skeleton_is_byte_identical(self):
+        whiff_prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [("craft", 40, 0.1), ("move", 20, 0.0)])
+        ignorance_prompt = build_prompt(WORLD, SUBJECT_IDS, IGNORANCE_TRIGGER, [])
+        for prompt in (whiff_prompt, ignorance_prompt):
+            self.assertIn('"add": { "zones": [...], "items": [...], "facts": [...] }', prompt)
+            self.assertNotIn('"sources": [...]', prompt)
+            self.assertNotIn("add.sources も、対象が", prompt)
+
 
 class MakePatchTriggerKindTests(unittest.TestCase):
     def test_whiff_trigger_slim_unchanged(self):

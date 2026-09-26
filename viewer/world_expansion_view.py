@@ -356,8 +356,11 @@ def _blocked_rate_side(side: Any) -> str:
         return "—"
     if lost_total <= 0:
         return f"{lost_total} 回中 {count} 回"
-    lost_share = side.get("lost_share")
-    pct = f"（{float(lost_share) * 100:.1f}%）" if _is_number(lost_share) else ""
+    # R2 (段階3 review 1): trial側は "lost_rate"（gapengine/world_patch_trial.
+    # py's _blocked_counts）。需要トリガーの "lost_share"（意味が違う）とは
+    # 別名にして取り違えを防ぐ。
+    lost_rate = side.get("lost_rate")
+    pct = f"（{float(lost_rate) * 100:.1f}%）" if _is_number(lost_rate) else ""
     return f"{lost_total} 回中 {count} 回{pct}"
 
 

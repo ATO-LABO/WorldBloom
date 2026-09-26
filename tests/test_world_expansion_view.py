@@ -418,11 +418,11 @@ class TriggerRateKindTests(unittest.TestCase):
         self.assertEqual(wev._ignorance_rate_side("not-a-dict"), "—")
 
     def test_blocked_rate_side_with_share(self):
-        text = wev._blocked_rate_side({"count": 1801, "lost_total": 3668, "lost_share": 0.4912})
+        text = wev._blocked_rate_side({"count": 1801, "lost_total": 3668, "lost_rate": 0.4912})
         self.assertEqual(text, "3668 回中 1801 回（49.1%）")
 
     def test_blocked_rate_side_zero_total_skips_percentage(self):
-        text = wev._blocked_rate_side({"count": 0, "lost_total": 0, "lost_share": None})
+        text = wev._blocked_rate_side({"count": 0, "lost_total": 0, "lost_rate": None})
         self.assertEqual(text, "0 回中 0 回")
 
     def test_trigger_rate_text_dispatches_by_kind(self):
@@ -432,8 +432,8 @@ class TriggerRateKindTests(unittest.TestCase):
         self.assertEqual(wev._trigger_rate_text(ignorance),
                          "ベース 66 回中 33 回（50.0%） → 適用後 66 回中 10 回（15.2%）")
         blocked = {"kind": "blocked", "requirement": "has_item:縄",
-                   "base": {"count": 1801, "lost_total": 1801, "lost_share": 1.0},
-                   "patched": {"count": 0, "lost_total": 0, "lost_share": None}}
+                   "base": {"count": 1801, "lost_total": 1801, "lost_rate": 1.0},
+                   "patched": {"count": 0, "lost_total": 0, "lost_rate": None}}
         self.assertEqual(wev._trigger_rate_text(blocked),
                          "ベース 1801 回中 1801 回（100.0%） → 適用後 0 回中 0 回")
 
@@ -454,8 +454,8 @@ class TriggerRateKindTests(unittest.TestCase):
 
     def test_trial_html_shows_blocked_before_after(self):
         trial = {"trigger": {"kind": "blocked", "requirement": "has_item:縄",
-                              "base": {"count": 1801, "lost_total": 1801, "lost_share": 1.0},
-                              "patched": {"count": 0, "lost_total": 0, "lost_share": None}}}
+                              "base": {"count": 1801, "lost_total": 1801, "lost_rate": 1.0},
+                              "patched": {"count": 0, "lost_total": 0, "lost_rate": None}}}
         html = wev._trial_html(trial)
         self.assertIn("きっかけの見通しなし決定", html)
         self.assertIn("ベース 1801 回中 1801 回（100.0%）", html)
