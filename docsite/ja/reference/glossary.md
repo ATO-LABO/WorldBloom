@@ -2,7 +2,8 @@
 sources:
   - "viewer/pages.py"
   - "gapengine/route.py"
-reviewed: "9765a5cbd9e8fab7a136d509381a7f59bf3899cb"
+  - "gapengine/rationality.py"
+reviewed: "d87be6e73233700b5cade1a97a01a01fb9990341"
 ---
 # 用語集
 
@@ -36,7 +37,9 @@ WorldBloom の画面と、このドキュメントに出てくる用語をまと
 | メタ進化 | 9つの数値遺伝子に加えて、ルールごとの有効・無効も探索するモード。既定はオフ |
 | 無作為基準 | 方針を持たない完全無作為な個体だけで結末に届く割合と多様性を測る対照実験（`scripts/random_baseline.py`） |
 | 決定論 | 同じ世界・遺伝子・種・前例表・エンジンなら、ログがバイト単位で一致すること。詳しくは[決定論](../concepts/determinism.md) |
-| κ（カッパ、合理性） | ジャンルが持つ合理性判定（Jev）の強さ。実行設定で 0〜1 の値を指定する。詳しくは[実行設定](../usage/run-settings.md) |
+| κ（カッパ、合理性） | 合理性層が候補をどれだけ選り好みするかの強さ。実行設定で 0〜1 の値を指定する。新規作成時の既定は Jev で 0.45・Ollama で 0.6。詳しくは[合理性層と Jev](../concepts/rationality-layer.md) |
+| 合理性層 | 各候補に「本人にとって筋が通っているか」の判定モデルの点数を、遺伝子由来の乗数にもう1つ掛け合わせる仕組み。κ=0 でオフ。詳しくは[合理性層と Jev](../concepts/rationality-layer.md) |
+| Jev | TypeSafe が提供する合理性層の判定器（API、モデル名 `jev-1.13.0`）。ローカルの Ollama より高速（1回約0.2秒）だが、判定のたびに主人公の状況が外部へ送信される。詳しくは[合理性層と Jev](../concepts/rationality-layer.md) |
 | 道筋層 | 主人公の決定を「結末までの最短の計画」に照らして前進・準備・寄り道・見通しなしに分類し、理由のない寄り道を重み ρ で抑える仕組み。`route.yaml` を持つジャンル（現在は桃太郎＋2のみ）だけが対象。詳しくは[道筋層](../concepts/route-layer.md) |
 | ρ（ロー、道筋の重み） | 道筋層が理由のない寄り道をどれだけ抑えるかを 0〜1 で指定する値。0（既定）で無変調、1 でほぼ選ばれなくなる。実行設定で指定する。詳しくは[道筋層](../concepts/route-layer.md) |
 | 動機表（motives.yaml） | 「理由なし」になるはずの寄り道に、遺伝子の強さに応じて理由を与える規則の並び。ジャンルごとに `templates/<ジャンル>/motives.yaml` に置く。詳しくは[道筋層](../concepts/route-layer.md) |

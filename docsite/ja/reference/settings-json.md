@@ -9,7 +9,8 @@ sources:
   - "viewer/app_desktop.py"
   - "viewer/server.py"
   - ".gitignore"
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+  - "execution/rationality_settings.py"
+reviewed: "d87be6e73233700b5cade1a97a01a01fb9990341"
 ---
 # settings.json
 
@@ -81,6 +82,16 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 | `thermal.max_wait_seconds` | 数値（秒） | 600 | それでも下がらない場合に待つのを諦めるまでの秒数（諦めても生成自体は失敗にしない） |
 | `ollama_base_url` | 文字列 | `http://localhost:11434`（`gapengine/ollama.py` の既定と同じ） | Ollama の使用中判定に使うURL |
 | `observe_seconds` | 数値（秒） | 15 | Ollama が実際に使用中かを判定するための観測時間 |
+
+## `rationality`（合理性層の判定器）
+
+| キー | 型 | 既定値 | 意味 |
+|---|---|---|---|
+| `rationality.jev.api_key` | 文字列 | なし | TypeSafe の APIキー。⚙設定「計算」タブから保存すると、保存後は画面・APIのどちらにも値そのものが返らない（`has_api_key` の真偽値のみ） |
+| `rationality.jev.model` | 文字列 | `jev-1.13.0` | 検証済みのモデル名 |
+| `rationality.jev.verified_at` | 文字列（ISO日時） | なし | キーを保存した時刻。この値と `api_key` の両方がある状態だけが「有効」 |
+
+どの実験がどの判定器（Jev / Ollama）を使うかは `evolution.rationality_backend`（実行設定ごとの config に保存）で決まり、`settings.json` の `rationality` はキーの保管場所でしかありません。詳しくは[合理性層と Jev](../concepts/rationality-layer.md)を参照してください。
 
 ## `evolution`（GA の計算資源）
 
