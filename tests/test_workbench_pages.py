@@ -374,6 +374,37 @@ class WorkbenchTests(unittest.TestCase):
         # The judge being unreachable must never raise the wall-clock default.
         self.assertIn('value="3600"', self._input_tag(body, "execution_limits.wall_seconds"))
 
+    # ------------------------------------------------------- WB-JEV-005
+
+    def test_rationality_select_defaults_to_jev_when_key_verified(self):
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}), \
+             patch("viewer.workbench_pages._jev_form_context",
+                   return_value={"available": True, "model": "jev-1.13.0"}):
+            status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertIn('<option value="jev" selected>Jev（TypeSafe、高速・外部送信）</option>', body)
+        self.assertIn("判定器: Jev jev-1.13.0 — 利用可", body)
+        self.assertIn('value="0.6"', self._input_tag(body, "evolution.kappa"))
+        self.assertIn('value="3600"', self._input_tag(body, "execution_limits.wall_seconds"))
+
+    def test_rationality_select_jev_disabled_without_a_verified_key(self):
+        with patch("viewer.workbench_pages._ollama_availability",
+                   return_value={"available": True, "reason": None}), \
+             patch("viewer.workbench_pages._jev_form_context",
+                   return_value={"available": False, "model": "jev-1.13.0"}):
+            status, body, _ = self.get_status("/configs/new?project=momotaro&template=momotaro")
+        self.assertEqual(status, 200, body)
+        self.assertIn('<option value="jev" disabled>Jev（TypeSafe、高速・外部送信）</option>', body)
+        self.assertIn('<option value="ollama" selected>Ollama qwen3.6:35b（ローカル）</option>', body)
+
+    def test_rationality_summary_honors_jev_backend_and_model_override(self):
+        summary = workbench_pages._rationality_summary(
+            ROOT / "templates" / "momotaro",
+            {"kappa": 0.6, "rationality_backend": "jev", "rationality_model": "jev-1.13.0"},
+        )
+        self.assertEqual(summary, "0.6（choice / jev-1.13.0）")
+
     def _rationality_context_with_backend(self, backend_overrides):
         """A temp-copied repo (never ROOT) whose templates/momotaro/
         rationality.yaml's backend: block is overridden, for unit-testing

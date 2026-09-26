@@ -101,6 +101,32 @@
     });
     cdrawSaved(); cupdate();
   })();
+  (function setupJev() {
+    const saveButton = $("[data-gs-jev-key-save]");
+    const input = $("[data-gs-jev-key-input]");
+    const status = $("[data-gs-jev-key-status]");
+    if (!saveButton || !input || !status) return;
+    let busy = false;
+    input.addEventListener("input", () => { saveButton.disabled = !input.value.trim(); });
+    saveButton.disabled = true;
+    saveButton.addEventListener("click", async () => {
+      if (busy || !input.value.trim()) return;
+      busy = true; saveButton.disabled = true; status.textContent = "保存中…";
+      try {
+        const response = await fetch("/api/settings/rationality/jev-key", {
+          method: "POST", headers: {"Content-Type": "application/json", "X-WorldBloom-Client": "1"},
+          body: JSON.stringify({api_key: input.value.trim()}),
+        });
+        const result = await response.json();
+        if (!response.ok) throw result;
+        input.value = "";
+        status.textContent = `有効（${result.model}、${new Date(result.verified_at).toLocaleString()} 確認）`;
+      } catch (e) {
+        status.textContent = (e && e.message) || "保存できませんでした";
+      }
+      busy = false; saveButton.disabled = !input.value.trim();
+    });
+  })();
   if (!form) { syncURL(); return; }
 
   let saved = initial.view;

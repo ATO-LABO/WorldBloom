@@ -6,6 +6,7 @@ from execution.evolution_settings import read_evolution_settings
 from execution.library import LibraryStore
 from execution.output_settings import read_output_settings
 from execution.provenance import ConfigError
+from execution.rationality_settings import read_jev_settings
 from viewer import pages, workbench_pages as wb
 E, U = pages._escape, pages._url_segment
 BACKENDS = {"claude-cli":"Claude Code CLI", "codex-cli":"Codex CLI", "anthropic":"Anthropic API", "openai":"OpenAI API", "ollama":"ローカル Ollama", "llama-server":"ローカルLLM（llama-server）", "none":"生成しない（プロンプト保存のみ）"}
@@ -39,7 +40,23 @@ def output_panel(view, error):
         '<footer class="gs-footer"><p data-gs-save-status role="status">保存済みの設定を表示しています</p><button type="button" data-gs-reset>変更を戻す</button><button type="submit" class="gs-primary is-confirm" data-gs-save>設定を保存</button></footer></form></section>')
 
 
-def compute_panel(evolution, error):
+def jev_panel(jev):
+    """WB-JEV-005: the 計算 tab's "合理性の判定器（Jev）" block -- a
+    standalone key-save form (same look as output_panel()'s .gs-key), not
+    woven into gs-compute's own dirty-tracking: this key has no "saved vs.
+    draft" numeric fields, just an opaque credential."""
+    status = (f"有効（{E(jev['model'])}、{E(display_date(jev['verified_at']))} 確認）"
+              if jev['available'] else "未設定")
+    return ('<section class="gs-jev"><h2>合理性の判定器（Jev）</h2>'
+        '<p>κ&gt;0 の実験がどの判定器を使うかは、実行設定の画面で選びます。ここでは TypeSafe（api.typesafe.ai）の APIキーを登録します。</p>'
+        '<label class="gs-field" for="gs-jev-key">APIキー<input id="gs-jev-key" type="password" autocomplete="off" data-gs-jev-key-input placeholder="変更する場合のみ入力"></label>'
+        '<div class="gs-test"><button type="button" data-gs-jev-key-save>キーを保存</button>'
+        f'<span data-gs-jev-key-status role="status">{status}</span></div>'
+        '<p class="gs-hint">κ&gt;0 の実験で Jev を選ぶと、主人公の状況テキストが TypeSafe (api.typesafe.ai) に送られます。保存済みのキーは表示しません。</p>'
+        '</section>')
+
+
+def compute_panel(evolution, error, jev=None):
     if error:
         return '<section class="gs-panel" id="compute" data-gs-panel="compute"><header class="gs-heading"><h1>計算の設定</h1></header><div class="gs-empty" role="alert">settings.json を読めません。設定ファイルを確認してから再読み込みしてください。</div></section>'
     input_field = field('processes', 'GA の並列数', evolution['processes'], number=True, minimum=1, maximum=evolution['cpu_count']).replace('<input ', '<input required ', 1)
@@ -51,7 +68,7 @@ def compute_panel(evolution, error):
         '<label class="gs-check" for="gs-thermal-enabled"><input id="gs-thermal-enabled" type="checkbox" data-field="thermal_enabled"'+(' checked' if evolution['thermal_enabled'] else '')+'>GPU ガードを使う</label>'
         + field('pause_at', '一時停止する温度', evolution['pause_at'], number=True, unit='℃', minimum=evolution['pause_min'], maximum=evolution['pause_max']).replace('<input ', '<input required ', 1) +
         f'<p class="gs-hint">ローカルLLMで文章を生成する前に GPU 温度を確かめ、この温度以上なら 8℃ 下がるまで待ちます（最長10分）。既定はオン・{evolution["pause_default"]}℃です。</p>'
-        '</fieldset></div>'
+        '</fieldset>' + (jev_panel(jev) if jev is not None else '') + '</div>'
         '<aside class="gs-summary" aria-label="現在使っている設定"><h2>現在使っている設定</h2><span class="gs-saved">● 保存済み</span><dl data-gs-compute-saved></dl><div class="gs-scope"><h2>この変更が適用される範囲</h2><p>GA 実験の実行（並列数）</p><p>ローカルLLMの文章生成（GPU ガード）</p><p class="gs-hint">保存後に開始する実験・生成から適用されます。</p></div></aside></div>'
         '<footer class="gs-footer"><p data-gs-compute-status role="status">保存済みの設定を表示しています</p><button type="button" data-gs-compute-reset>変更を戻す</button><button type="submit" class="gs-primary is-confirm" data-gs-compute-save>設定を保存</button></footer></form></section>')
 
@@ -110,9 +127,12 @@ def render(handler):
     evolution=None;compute_error=False
     try: evolution=read_evolution_settings(getattr(handler.server,'settings_path',None))
     except ConfigError: compute_error=True
-    initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution},ensure_ascii=False))
+    jev=None
+    try: jev=read_jev_settings(getattr(handler.server,'settings_path',None))
+    except ConfigError: jev=None
+    initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution,'jev':jev},ensure_ascii=False))
     nav='<nav class="gs-nav" aria-label="全体設定"><h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','文章生成'),('compute','計算'),('configs','実行設定の保存版'),('genres','ジャンル')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small></nav>'
-    panels=[output_panel(view,error),compute_panel(evolution,compute_error),collection_panel('configs',configs,worlds,selected_config),collection_panel('genres',genres,worlds,selected_genre)]
+    panels=[output_panel(view,error),compute_panel(evolution,compute_error,jev),collection_panel('configs',configs,worlds,selected_config),collection_panel('genres',genres,worlds,selected_genre)]
     for i,key in enumerate(('output','compute','configs','genres')):
         if key != active: panels[i]=panels[i].replace('data-gs-panel="'+key+'"','data-gs-panel="'+key+'" hidden',1)
     content=f'<div class="gs-shell" data-global-settings data-initial="{initial}">{nav}<div class="gs-main">'+''.join(panels)+'</div></div>'

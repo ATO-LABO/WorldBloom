@@ -21,6 +21,7 @@ from gapengine.evolve import _load_yaml, _rationality_backend_cfg
 from gapengine.ollama import DEFAULT_BASE_URL as RATIONALITY_DEFAULT_BASE_URL
 from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
 from gapengine.ollama import availability as _ollama_availability
+from gapengine.rationality import JEV_DEFAULT_MODEL
 from viewer import data, explanation_ui, job_api, pages, world_graph
 
 
@@ -127,7 +128,7 @@ RATIONALITY_DESCRIPTION = (
     "κ はその判定にどれだけ従うかの強さです。0 で無効（従来と同じ動き）、大きいほど筋の通った手を"
     "選びやすくなります。性格（遺伝子）の違いはこの範囲の中で効きます。"
 )
-RATIONALITY_NOTE = "κ を 0 より大きくすると判定器（ローカル LLM）を呼ぶため、実行に時間がかかります。"
+RATIONALITY_NOTE = "κ を 0 より大きくすると判定器（ローカル LLM または TypeSafe Jev）を呼ぶため、実行に時間がかかります。"
 # Opus review: reasons specific to the rationality judge probe (not
 # generation_availability()'s vocabulary, which GENERATION_REASON_LABELS
 # above covers) -- kept separate so the two reason namespaces never collide.
@@ -397,6 +398,11 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
     # .get(), not [...]: a config saved before WB-JEV-002 added "kappa" to
     # evolution_defaults() has no such key at all.
     values["evolution.kappa"] = evolution.get("kappa")
+    # .get(): a config saved before WB-JEV-005 added "rationality_backend"
+    # to evolution_defaults() has no such key either -- None here falls
+    # through to _rationality_backend_select()'s own
+    # "jev if available else ollama" default, same as a brand-new form.
+    values["evolution.rationality_backend"] = evolution.get("rationality_backend")
     # .get(): a config saved before WB-ROUTE-001 S4 added "route_rho" to
     # evolution_defaults() has no such key either.
     values["evolution.route_rho"] = evolution.get("route_rho")
@@ -414,13 +420,28 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
     return values
 
 
-def _rationality_form_context(repo, template_id):
+def _jev_form_context(settings_path):
+    """{"available", "model"} for the κ section's Jev option (WB-JEV-005).
+    Never raises -- an unreadable settings.json (ConfigError) reads the
+    same as "no key configured"."""
+    from execution.rationality_settings import read_jev_settings
+    from execution.provenance import ConfigError as _ConfigError
+    try:
+        jev = read_jev_settings(settings_path)
+    except _ConfigError:
+        return {"available": False, "model": JEV_DEFAULT_MODEL}
+    return {"available": bool(jev["available"]), "model": jev["model"]}
+
+
+def _rationality_form_context(repo, template_id, settings_path=None):
     """Whether templates/<template_id>/rationality.yaml exists, and the local
-    judge's live reachability (WB-JEV-002). None when the template has no
-    rationality.yaml at all -- render_config_form then leaves the κ slider
-    out of the form entirely and kappa stays None. Only ever reads Ollama's
-    /api/tags (gapengine.ollama.availability); never calls /api/chat or
-    /api/generate."""
+    judge's live reachability (WB-JEV-002), plus Jev's key-configured
+    availability (WB-JEV-005, under the "jev" key). None when the template
+    has no rationality.yaml at all -- render_config_form then leaves the κ
+    slider out of the form entirely and kappa stays None. Only ever reads
+    Ollama's /api/tags (gapengine.ollama.availability); never calls
+    /api/chat or /api/generate, and never makes a Jev network call (the key
+    verification already happened when the key was saved)."""
     if not template_id:
         return None
     path = repo / "templates" / template_id / "rationality.yaml"
@@ -432,19 +453,20 @@ def _rationality_form_context(repo, template_id):
     backend = dict(doc.get("backend") or {})
     method = str(doc.get("method", "noul"))
     model = str(backend.get("model", RATIONALITY_DEFAULT_MODEL))
+    jev = _jev_form_context(settings_path)
     if str(backend.get("type", "none")) != "ollama":
         return {"model": model, "method": method, "available": False,
-                "reason": "non_ollama_backend"}
+                "reason": "non_ollama_backend", "jev": jev}
     base_url = str(backend.get("base_url", RATIONALITY_DEFAULT_BASE_URL))
     if not base_url.startswith(("http://", "https://")):
         # Opus review: rationality.yaml is editable from the genre/template
         # editor, so a malformed base_url must be caught here -- never
         # attempt a connection just from opening this form.
         return {"model": model, "method": method, "available": False,
-                "reason": "invalid_base_url"}
+                "reason": "invalid_base_url", "jev": jev}
     probe = _ollama_availability({"model": model, "base_url": base_url}, timeout=2.0)
     return {"model": model, "method": method,
-            "available": bool(probe["available"]), "reason": probe["reason"]}
+            "available": bool(probe["available"]), "reason": probe["reason"], "jev": jev}
 
 
 def _route_form_context(repo, template_id):
@@ -480,10 +502,19 @@ def _rationality_summary(template_dir, evolution):
     if kappa is None:
         return "無効"
     rationality_yaml, rationality_yaml_backend, override = _rationality_backend_cfg(
-        {"rationality": {"method": evolution.get("rationality_method")}}, template_dir,
+        {"rationality": {
+            "method": evolution.get("rationality_method"),
+            "model": evolution.get("rationality_model"),
+        }}, template_dir,
     )
     method = override.get("method") or rationality_yaml.get("method", "noul")
-    model = rationality_yaml_backend.get("model", RATIONALITY_DEFAULT_MODEL)
+    # WB-JEV-005 bugfix: this used to always read rationality.yaml's own
+    # model, ignoring both rationality_model and rationality_backend
+    # overrides -- a Jev-backed config (whose model always differs from the
+    # template's ollama default) showed the wrong model here.
+    backend = evolution.get("rationality_backend") or rationality_yaml_backend.get("type", "none")
+    default_model = JEV_DEFAULT_MODEL if backend == "jev" else RATIONALITY_DEFAULT_MODEL
+    model = override.get("model") or rationality_yaml_backend.get("model", default_model)
     return f"{kappa}（{method} / {model}）"
 
 
@@ -511,17 +542,59 @@ def _kappa_field(value):
     )
 
 
+def _rationality_backend_select(values, jev, ollama_model):
+    """WB-JEV-005: the κ section's "判定器" <select> -- "jev" (disabled when
+    no verified key is on file) and "ollama". A brand-new form's own default
+    (jev if a key is available, else ollama) is set by _configs_new()
+    directly on ``values["evolution.rationality_backend"]`` before this
+    renders; a duplicate/edit keeps whatever backend that config saved."""
+    current = values.get("evolution.rationality_backend") or (
+        "jev" if jev["available"] else "ollama"
+    )
+    jev_disabled = "" if jev["available"] else " disabled"
+    options = (
+        f'<option value="jev"{" selected" if current == "jev" else ""}{jev_disabled}>'
+        "Jev（TypeSafe、高速・外部送信）</option>"
+        f'<option value="ollama"{" selected" if current == "ollama" else ""}>'
+        f"Ollama {_escape(ollama_model)}（ローカル）</option>"
+    )
+    return (
+        '<div class="field"><label for="f-evolution.rationality_backend">判定器</label>'
+        '<select id="f-evolution.rationality_backend" name="evolution.rationality_backend" '
+        f'data-field="evolution.rationality_backend">{options}</select>'
+        '<span class="field-error" data-error-for="evolution.rationality_backend" role="alert"></span></div>'
+    )
+
+
 def _rationality_section(values, ctx, *, total_runs, heading_prefix=""):
     kappa_value = values.get("evolution.kappa") or 0
+    jev = ctx.get("jev") or {"available": False, "model": JEV_DEFAULT_MODEL}
     if ctx["available"]:
-        status = f'判定器: Ollama {ctx["model"]} — 利用可'
+        ollama_status = f'判定器: Ollama {ctx["model"]} — 利用可'
     elif ctx["reason"] == "non_ollama_backend":
         # Not actually Ollama -- "判定器: Ollama <model>" would be misleading.
-        status = f'判定器: 利用不可（{RATIONALITY_REASON_LABELS["non_ollama_backend"]}）。既定は 0 です'
+        ollama_status = f'判定器: 利用不可（{RATIONALITY_REASON_LABELS["non_ollama_backend"]}）。既定は 0 です'
     else:
         reason = {**GENERATION_REASON_LABELS, **RATIONALITY_REASON_LABELS}.get(
             ctx["reason"], ctx["reason"] or "不明")
-        status = f'判定器: Ollama {ctx["model"]} — 利用不可（{reason}）。既定は 0 です'
+        ollama_status = f'判定器: Ollama {ctx["model"]} — 利用不可（{reason}）。既定は 0 です'
+    jev_status = (
+        f'判定器: Jev {jev["model"]} — 利用可' if jev["available"]
+        else '判定器: Jev — 利用不可（⚙ 設定の「計算」でAPIキーを登録してください）'
+    )
+    current_backend = values.get("evolution.rationality_backend") or (
+        "jev" if jev["available"] else "ollama"
+    )
+    # Both rows always render -- workbench.js's rationality_backend change
+    # handler toggles which one is hidden, same pattern as data-kappa-runs
+    # below. kappa-status keeps its id (Ollama's row) for _kappa_field()'s
+    # aria-describedby; the Jev row needs no separate id.
+    status_rows = (
+        f'<p class="hint" id="kappa-status" data-judge-status-ollama'
+        f'{"" if current_backend == "ollama" else " hidden"}>{_escape(ollama_status)}</p>'
+        f'<p class="hint" data-judge-status-jev'
+        f'{"" if current_backend == "jev" else " hidden"}>{_escape(jev_status)}</p>'
+    )
     # Judge speed depends on the machine/GPU/model, so no pre-run time
     # estimate: show only the machine-independent run count. The run
     # screen's live ETA (run-workspace.js) covers time from real progress.
@@ -539,9 +612,10 @@ def _rationality_section(values, ctx, *, total_runs, heading_prefix=""):
         f"<h2>{_escape(heading_prefix)}合理性（主人公がどれだけ筋の通った手を選ぶか）</h2>"
         f'<p class="desc" id="kappa-desc">{_escape(RATIONALITY_DESCRIPTION)}</p>'
         '</div><div class="cfg-sec-body">'
+        + _rationality_backend_select(values, jev, ctx["model"])
         + _kappa_field(kappa_value)
         + '<p class="hint">0 無効 / 0.3 穏やか / 0.6 推奨 / 1.0 ほぼ判定器どおり</p>'
-        + f'<p class="hint" id="kappa-status">{_escape(status)}</p>'
+        + status_rows
         + f'<p class="hint">{_escape(RATIONALITY_NOTE)}</p>'
         + runs_html
         + "</div></section>"
@@ -2205,7 +2279,8 @@ def _configs_new(handler):
             evolution=parent["evolution"], execution_limits=parent["execution_limits"],
             growth=parent.get("growth"),
         )
-        rationality_ctx = _rationality_form_context(repo, values["template_id"])
+        settings_path = getattr(handler.server, "settings_path", None)
+        rationality_ctx = _rationality_form_context(repo, values["template_id"], settings_path)
         route_ctx = _route_form_context(repo, values["template_id"])
     else:
         values = _new_config_values()
@@ -2221,17 +2296,27 @@ def _configs_new(handler):
             genre = world_genres.get(project_preset)
             if genre in templates:
                 values["template_id"] = genre
-        # WB-JEV-002: a brand new form defaults kappa to 0.6 when the genre's
-        # judge is actually reachable right now, else 0 -- never touching a
-        # duplicate/edit's own saved value (handled above). A judge-enabled
-        # default also needs headroom in the wall-clock limit (~90s/run vs.
-        # the usual few seconds), so its default rises with it.
-        rationality_ctx = _rationality_form_context(repo, values["template_id"])
+        # WB-JEV-002: a brand new form defaults kappa to 0.6 when a judge is
+        # actually reachable right now (Jev with a verified key, else
+        # Ollama), else 0 -- never touching a duplicate/edit's own saved
+        # value (handled above). A judge-enabled default also needs headroom
+        # in the wall-clock limit (~90s/run vs. the usual few seconds), so
+        # its default rises with it. WB-JEV-005: Jev wins the default
+        # backend when its key is verified (faster, no local GPU needed).
+        settings_path = getattr(handler.server, "settings_path", None)
+        rationality_ctx = _rationality_form_context(repo, values["template_id"], settings_path)
         if rationality_ctx is not None:
-            if rationality_ctx["available"]:
+            jev_available = bool((rationality_ctx.get("jev") or {}).get("available"))
+            if jev_available:
+                values["evolution.rationality_backend"] = "jev"
+                values["evolution.kappa"] = 0.6
+                values["execution_limits.wall_seconds"] = 3600
+            elif rationality_ctx["available"]:
+                values["evolution.rationality_backend"] = "ollama"
                 values["evolution.kappa"] = 0.6
                 values["execution_limits.wall_seconds"] = 21600
             else:
+                values["evolution.rationality_backend"] = "ollama"
                 values["evolution.kappa"] = 0
         # WB-ROUTE-001 S4 §2 (design judgment): a brand new form defaults ρ
         # to 1.0 when the genre actually has a route.yaml -- ρ carries no
