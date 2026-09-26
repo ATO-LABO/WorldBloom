@@ -1736,9 +1736,9 @@
                  [--coevolve] [--meta-evolution]
                  [--target-ending TARGET_ENDING [TARGET_ENDING ...]]
                  [--record-explanations | --no-record-explanations]
-                 [--world-expansion {off,detect,expand}] [--kappa KAPPA]
-                 [--rationality-backend {ollama,none}] [--rationality-method {noul,choice}]
-                 [--rationality-model RATIONALITY_MODEL]
+                 [--world-expansion {off,detect,expand}] [--seed-genomes SEED_GENOMES]
+                 [--kappa KAPPA] [--rationality-backend {ollama,none}]
+                 [--rationality-method {noul,choice}] [--rationality-model RATIONALITY_MODEL]
                  [--rationality-num-ctx RATIONALITY_NUM_CTX]
                  [--rationality-table RATIONALITY_TABLE]
                  [--rationality-max-calls RATIONALITY_MAX_CALLS] [--route-rho ROUTE_RHO]
@@ -1768,6 +1768,9 @@ options:
                         Off leaves the world unchanged; detect aggregates zone/verb whiff triggers
                         after evolution ends; expand applies this project's approved patches
                         (projects/&lt;name&gt;/patches/*.yaml) before the run, then detects.
+  --seed-genomes SEED_GENOMES
+                        WB-WORLDGROW-001 段階5b: 前の実験の最終アーカイブの genome を第0世代に使う。seed_genomes.json
+                        か、その実験の実験ディレクトリを指定する。
   --kappa KAPPA         WB-JEV-001 Stage 2: override templates/&lt;genre&gt;/rationality.yaml's kappa (0
                         disables the rationality layer; that is the template default).
   --rationality-backend {ollama,none}
@@ -1881,12 +1884,13 @@ options:
 </code></pre></div>
 <h2 id="scriptsworld_patchpy-world-self-expansion-patches">scripts/world_patch.py — world self-expansion patches<a class="headerlink" href="#scriptsworld_patchpy-world-self-expansion-patches" title="Permanent link">&para;</a></h2>
 <p>Has subcommands for <code>propose</code>, <code>check</code> (trial run), <code>approve</code>/<code>reject</code>, and <code>list</code>/<code>reopen</code>/<code>repair</code>. See <a href="../../usage/create-world/#world-expansion">Create a World</a> for details.</p>
-<div class="highlight"><pre><span></span><code>usage: world_patch.py [-h] {propose,check,approve,reject,retire,usage,list,reopen,repair} ...
+<div class="highlight"><pre><span></span><code>usage: world_patch.py [-h]
+                      {propose,check,approve,reject,retire,usage,export,import,list,reopen,repair} ...
 
 World-expansion patch proposals, gates, and approval.
 
 positional arguments:
-  {propose,check,approve,reject,retire,usage,list,reopen,repair}
+  {propose,check,approve,reject,retire,usage,export,import,list,reopen,repair}
 
 options:
   -h, --help            show this help message and exit

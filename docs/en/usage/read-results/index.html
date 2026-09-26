@@ -971,6 +971,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#epoch-chain-progress-display" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epoch chain progress display
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#genre-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Genre assets
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1617,6 +1639,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#epoch-chain-progress-display" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epoch chain progress display
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#genre-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Genre assets
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1725,6 +1769,10 @@
 <p>If an ancestor couldn't be reproduced, the reason (a reproduction error) is shown.</p>
 <h2 id="run-history-and-deletion">Run history and deletion<a class="headerlink" href="#run-history-and-deletion" title="Permanent link">&para;</a></h2>
 <p>Once you start a run, it's recorded in "履歴" (History) for later reference. If an experiment is no longer needed, delete it from "削除" (Delete) in the experiment list. Deleting one cascades to remove its candidates, selection status, generated text, and world self-expansion proposals tied to that experiment (this cannot be undone).</p>
+<h2 id="epoch-chain-progress-display">Epoch chain progress display<a class="headerlink" href="#epoch-chain-progress-display" title="Permanent link">&para;</a></h2>
+<p>Running with "世界を育てる" (Grow the world) turned on in the run settings shows an epoch chain progress strip right below the heading on the run status screen, and on the run conditions screen too — epoch count, current stage, approval/retirement counts, and a stop button. A "次のエポックへ" (Next epoch) button also appears while awaiting approval. The demand tab likewise shows a hint at the top while awaiting approval: "承認または却下 →（必要なら）枯らす → 『次のエポックへ』" (Approve or reject → retire if needed → "Next epoch"). None of this appears on a screen with no chain.</p>
+<h2 id="genre-assets">Genre assets<a class="headerlink" href="#genre-assets" title="Permanent link">&para;</a></h2>
+<p>On the demand tab's "この実験での拡張の使われ方" (How this experiment's expansions got used), an expansion the representative individuals actually relied on can be published with "ジャンルの資産にする" (Make it a genre asset) so other worlds on the same genre can pick it up. Assets live under <code>templates/&lt;genre&gt;/expansions/</code> (adding them to git is a manual step) and never affect a world's input digest or the GA's reproducibility. A world can pull one in from its own screen's "ジャンルの資産" (Genre assets) section with "この世界に取り込む" (Import into this world); it still has to be checked and approved again there before it counts for anything (checking it requires a demand tab from an experiment the asset can still be imported into).</p>
 
 
 
