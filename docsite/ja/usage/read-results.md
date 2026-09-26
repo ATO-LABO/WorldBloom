@@ -10,7 +10,7 @@ sources:
   - "viewer/epoch_view.py"
   - "viewer/run_workspace.py"
   - "viewer/run_browse.py"
-reviewed: "5602c763163205da831fed4346fa482668ca3789"
+reviewed: "8a7217dff20ffb423b169b96f3b6758c7dba7d6f"
 ---
 # 結果を読む
 
