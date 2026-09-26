@@ -7,23 +7,34 @@ from __future__ import annotations
 
 from pathlib import Path
 import http.client
+import io
 import json
 import shutil
 import tempfile
 import threading
 import unittest
+import zipfile
 
 import yaml
 
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
-from execution.library import LibraryStore
+from execution.library import MAX_ZIP_ENTRIES, MAX_ZIP_TOTAL, LibraryStore, zip_to_files
 from execution.output_store import OutputStore
 from execution.provenance import ConfigError, sha256
 from viewer.data import RunRepository
 from viewer.server import ViewerHandler, ViewerServer
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _make_zip(entries: dict) -> bytes:
+    """entries: {path_in_zip: str_or_bytes}."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, content in entries.items():
+            archive.writestr(name, content.encode("utf-8") if isinstance(content, str) else content)
+    return buffer.getvalue()
 
 
 class LibraryStoreTests(unittest.TestCase):
@@ -152,6 +163,219 @@ class LibraryStoreTests(unittest.TestCase):
         self.assertEqual(result["world_name"], "桃太郎")
         self.assertEqual(result["protagonist"], "桃太郎")
         self.assertEqual(result["antagonist"], "鬼")
+        self.assertEqual(result["subjects"], 7)
+
+
+class ZipImportTests(unittest.TestCase):
+    """execution.library.zip_to_files and LibraryStore.import_world (WB-WORLD-IMPORT-001)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-zip-import-")
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name) / "repo"
+        self.repo.mkdir()
+        for name in ("projects", "templates"):
+            shutil.copytree(ROOT / name, self.repo / name)
+        self.store = LibraryStore(self.repo)
+        self.configs = ConfigStore(self.repo, Path(self.temp.name) / "control", Path(self.temp.name) / "runs")
+
+    # ------------------------------------------------------------ zip_to_files
+
+    def test_zip_to_files_reads_flat_layout(self):
+        raw = _make_zip({"world.yaml": "name: x", "subjects/01_a.yaml": "id: a"})
+        self.assertEqual(zip_to_files(raw), {"world.yaml": "name: x", "subjects/01_a.yaml": "id: a"})
+
+    def test_zip_to_files_strips_a_wrapping_folder(self):
+        raw = _make_zip({"myworld/world.yaml": "name: x", "myworld/subjects/01_a.yaml": "id: a"})
+        self.assertEqual(zip_to_files(raw), {"world.yaml": "name: x", "subjects/01_a.yaml": "id: a"})
+
+    def test_zip_to_files_ignores_noise_entries(self):
+        raw = _make_zip({
+            "myworld/world.yaml": "name: x",
+            "myworld/README.md": "hello",
+            "__MACOSX/myworld/world.yaml": "junk",
+            "myworld/.DS_Store": "junk",
+        })
+        self.assertEqual(zip_to_files(raw), {"world.yaml": "name: x"})
+
+    def test_zip_to_files_accepts_backslash_separators(self):
+        info = zipfile.ZipInfo("myworld\\world.yaml")
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(info, "name: x".encode("utf-8"))
+            archive.writestr("myworld\\subjects\\01_a.yaml", "id: a".encode("utf-8"))
+        self.assertEqual(zip_to_files(buffer.getvalue()), {"world.yaml": "name: x", "subjects/01_a.yaml": "id: a"})
+
+    def test_zip_to_files_strips_leading_bom(self):
+        raw = _make_zip({"world.yaml": "﻿name: x"})
+        self.assertEqual(zip_to_files(raw)["world.yaml"], "name: x")
+
+    def test_zip_to_files_rejects_missing_world_yaml(self):
+        raw = _make_zip({"subjects/01_a.yaml": "id: a"})
+        with self.assertRaises(ConfigError) as ctx:
+            zip_to_files(raw)
+        self.assertIn("zip_base64", ctx.exception.field_errors)
+
+    def test_zip_to_files_rejects_unruly_subject_name(self):
+        raw = _make_zip({"world.yaml": "name: x", "subjects/not a valid name.yaml": "id: a"})
+        with self.assertRaises(ConfigError):
+            zip_to_files(raw)
+
+    def test_zip_to_files_rejects_oversized_entry(self):
+        raw = _make_zip({"world.yaml": "name: x", "subjects/01_a.yaml": "x: " + "a" * (260 * 1024)})
+        with self.assertRaises(ConfigError):
+            zip_to_files(raw)
+
+    def test_zip_to_files_rejects_exact_duplicate(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("world.yaml", b"name: x")
+            archive.writestr("world.yaml", b"name: y")
+        with self.assertRaises(ConfigError):
+            zip_to_files(buffer.getvalue())
+
+    def test_zip_to_files_rejects_casefold_duplicate(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("world.yaml", b"name: x")
+            archive.writestr("subjects/01_a.yaml", b"id: a")
+            archive.writestr("subjects/01_A.yaml", b"id: a")
+        with self.assertRaises(ConfigError):
+            zip_to_files(buffer.getvalue())
+
+    def test_zip_to_files_rejects_non_utf8(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("world.yaml", "name: x".encode("utf-8"))
+            archive.writestr("subjects/01_a.yaml", "id: あ".encode("shift_jis"))
+        with self.assertRaises(ConfigError):
+            zip_to_files(buffer.getvalue())
+
+    def test_zip_to_files_rejects_corrupt_archive(self):
+        with self.assertRaises(ConfigError):
+            zip_to_files(b"not a zip file")
+
+    def test_zip_to_files_rejects_ambiguous_root(self):
+        raw = _make_zip({"a/world.yaml": "name: x", "b/world.yaml": "name: y"})
+        with self.assertRaises(ConfigError):
+            zip_to_files(raw)
+
+    def test_zip_to_files_rejects_subject_path_escape(self):
+        raw = _make_zip({"world.yaml": "name: x", "subjects/../../evil.yaml": "x: 1"})
+        with self.assertRaises(ConfigError):
+            zip_to_files(raw)
+
+    def test_zip_to_files_rejects_too_many_entries(self):
+        entries = {"world.yaml": "name: x"}
+        for i in range(MAX_ZIP_ENTRIES):
+            entries[f"subjects/s{i:04d}.yaml"] = "id: a"
+        with self.assertRaises(ConfigError):
+            zip_to_files(_make_zip(entries))
+
+    def test_zip_to_files_rejects_oversized_total(self):
+        entries = {"world.yaml": "name: x"}
+        chunk = "x: " + ("a" * (200 * 1024))  # under the 256KB per-entry cap
+        needed = MAX_ZIP_TOTAL // len(chunk.encode("utf-8")) + 2
+        for i in range(min(needed, MAX_ZIP_ENTRIES - 1)):
+            entries[f"subjects/s{i:04d}.yaml"] = chunk
+        with self.assertRaises(ConfigError):
+            zip_to_files(_make_zip(entries))
+
+    # ------------------------------------------------------------ import_world
+
+    def _momotaro_files(self):
+        base = ROOT / "projects/momotaro"
+        files = {"world.yaml": (base / "world.yaml").read_text(encoding="utf-8")}
+        for path in sorted((base / "subjects").glob("*.yaml")):
+            files[f"subjects/{path.name}"] = path.read_text(encoding="utf-8")
+        return files
+
+    def test_import_world_uses_zip_name_when_form_name_is_blank(self):
+        files = {"world.yaml": "name: ZIPの名前\noverview: x"}
+        self.store.import_world("imported1", files=files, name="")
+        world = yaml.safe_load((self.repo / "projects/imported1/world.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(world["name"], "ZIPの名前")
+
+    def test_import_world_form_name_overrides_zip_name(self):
+        files = {"world.yaml": "name: ZIPの名前"}
+        self.store.import_world("imported2", files=files, name="フォームの名前")
+        world = yaml.safe_load((self.repo / "projects/imported2/world.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(world["name"], "フォームの名前")
+
+    def test_import_world_rejects_when_both_names_are_blank(self):
+        files = {"world.yaml": "overview: x"}
+        with self.assertRaises(ConfigError) as ctx:
+            self.store.import_world("imported3", files=files, name="")
+        self.assertIn("name", ctx.exception.field_errors)
+        self.assertFalse((self.repo / "projects/imported3").exists())
+
+    def test_import_world_without_gapengine_leaves_genre_unset(self):
+        files = {"world.yaml": "name: x"}
+        self.store.import_world("imported4", files=files, name="")
+        world = yaml.safe_load((self.repo / "projects/imported4/world.yaml").read_text(encoding="utf-8"))
+        self.assertNotIn("gapengine", world)
+        genres = {w["id"]: w["genre"] for w in self.store.worlds()}
+        self.assertIsNone(genres["imported4"])
+
+    def test_import_world_with_valid_gapengine_is_kept(self):
+        files = {"world.yaml": "name: x\ngapengine:\n  action_graph: templates/momotaro/action_graph.yaml\n  effects: templates/momotaro/effects.yaml\n"}
+        self.store.import_world("imported5", files=files, name="")
+        world = yaml.safe_load((self.repo / "projects/imported5/world.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(world["gapengine"], {"action_graph": "templates/momotaro/action_graph.yaml",
+                                              "effects": "templates/momotaro/effects.yaml"})
+        genres = {w["id"]: w["genre"] for w in self.store.worlds()}
+        self.assertEqual(genres["imported5"], "momotaro")
+
+    def test_import_world_rejects_gapengine_path_escape(self):
+        files = {"world.yaml": "name: x\ngapengine:\n  action_graph: ../../templates/momotaro/action_graph.yaml\n  effects: templates/momotaro/effects.yaml\n"}
+        with self.assertRaises(ConfigError):
+            self.store.import_world("imported6", files=files, name="")
+        self.assertFalse((self.repo / "projects/imported6").exists())
+
+    def test_import_world_rejects_mismatched_genre_ids(self):
+        files = {"world.yaml": "name: x\ngapengine:\n  action_graph: templates/momotaro/action_graph.yaml\n  effects: templates/basic/effects.yaml\n"}
+        with self.assertRaises(ConfigError):
+            self.store.import_world("imported7", files=files, name="")
+
+    def test_import_world_rejects_extra_gapengine_keys(self):
+        files = {"world.yaml": "name: x\ngapengine:\n  action_graph: templates/momotaro/action_graph.yaml\n  effects: templates/momotaro/effects.yaml\n  extra: 1\n"}
+        with self.assertRaises(ConfigError):
+            self.store.import_world("imported8", files=files, name="")
+
+    def test_import_world_rejects_missing_genre_directory(self):
+        files = {"world.yaml": "name: x\ngapengine:\n  action_graph: templates/no-such-genre/action_graph.yaml\n  effects: templates/no-such-genre/effects.yaml\n"}
+        with self.assertRaises(ConfigError):
+            self.store.import_world("imported9", files=files, name="")
+        self.assertFalse((self.repo / "projects/imported9").exists())
+
+    def test_import_world_rejects_existing_id(self):
+        with self.assertRaises(ConfigError) as ctx:
+            self.store.import_world("momotaro", files={"world.yaml": "name: x"}, name="")
+        self.assertEqual(ctx.exception.code, "conflict")
+
+    def test_import_world_leaves_no_debris_on_failure(self):
+        before = {p.name for p in (self.repo / "projects").iterdir()}
+        with self.assertRaises(ConfigError):
+            self.store.import_world("imported-fail", files={"world.yaml": "not: [closed"}, name="x")
+        after = {p.name for p in (self.repo / "projects").iterdir()}
+        self.assertEqual(before, after)
+        self.assertEqual(list(self.repo.glob(".world-create-*")), [])
+
+    def test_import_world_writes_subjects_byte_for_byte(self):
+        files = self._momotaro_files()
+        self.store.import_world("imported-clone", files=files, name="複製太郎")
+        for rel, text in files.items():
+            if rel == "world.yaml":
+                continue
+            self.assertEqual((self.repo / "projects/imported-clone" / rel).read_text(encoding="utf-8"), text)
+
+    def test_import_world_then_preview_succeeds(self):
+        # WB-WORLD-IMPORT-001 §5(a): a ZIP of a real world round-trips through
+        # ConfigStore.preview exactly like any other world/genre pair.
+        files = self._momotaro_files()
+        self.store.import_world("imported-preview", files=files, name="")
+        result = self.store.validate(self.configs, world_id="imported-preview", genre_id="momotaro")
+        self.assertEqual(result["world_name"], "桃太郎")
         self.assertEqual(result["subjects"], 7)
 
 
