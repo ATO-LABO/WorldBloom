@@ -342,7 +342,7 @@ def _ignorance_rate_side(side: Any) -> str:
     if not _is_number(count) or not _is_number(total):
         return "—"
     if total <= 0:
-        return f"{total} 回中 {count} 回"
+        return f"その場所の道筋付き決定 {total} 回"
     share = side.get("share")
     # 必須3の補足（段階4 review 1）: 分母（total）が「その場所の道筋付き決定」
     # であることを明示する。
@@ -357,7 +357,7 @@ def _blocked_rate_side(side: Any) -> str:
     if not _is_number(count) or not _is_number(lost_total):
         return "—"
     if lost_total <= 0:
-        return f"{lost_total} 回中 {count} 回"
+        return f"見通しなし {lost_total} 回"
     # R2 (段階3 review 1): trial側は "lost_rate"（gapengine/world_patch_trial.
     # py's _blocked_counts）。需要トリガーの "lost_share"（意味が違う）とは
     # 別名にして取り違えを防ぐ。
