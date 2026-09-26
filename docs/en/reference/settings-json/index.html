@@ -722,6 +722,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/rationality-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rationality Layer and Jev
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1250,6 +1278,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rationality-the-rationality-layers-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rationality (the rationality layer's judge)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#evolution-ga-compute-resources" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1669,6 +1708,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rationality-the-rationality-layers-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rationality (the rationality layer's judge)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#evolution-ga-compute-resources" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1991,6 +2041,38 @@
 </tr>
 </tbody>
 </table>
+<h2 id="rationality-the-rationality-layers-judge"><code>rationality</code> (the rationality layer's judge)<a class="headerlink" href="#rationality-the-rationality-layers-judge" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rationality.jev.api_key</code></td>
+<td>string</td>
+<td>none</td>
+<td>The TypeSafe API key. Once saved from the "計算" (Compute) tab of Settings, the value itself is never returned again on screen or via the API (only the <code>has_api_key</code> boolean)</td>
+</tr>
+<tr>
+<td><code>rationality.jev.model</code></td>
+<td>string</td>
+<td><code>jev-1.13.0</code></td>
+<td>The verified model name</td>
+</tr>
+<tr>
+<td><code>rationality.jev.verified_at</code></td>
+<td>string (ISO datetime)</td>
+<td>none</td>
+<td>When the key was saved. Only "available" when both this and <code>api_key</code> are set</td>
+</tr>
+</tbody>
+</table>
+<p>Which judge (Jev / Ollama) a given experiment uses is decided by <code>evolution.rationality_backend</code> (saved per run config) — <code>settings.json</code>'s <code>rationality</code> section is just where the key itself lives. See <a href="../../concepts/rationality-layer/">Rationality Layer and Jev</a>.</p>
 <h2 id="evolution-ga-compute-resources"><code>evolution</code> (GA compute resources)<a class="headerlink" href="#evolution-ga-compute-resources" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

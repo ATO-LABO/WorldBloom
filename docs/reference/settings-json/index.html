@@ -722,6 +722,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/rationality-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    合理性層と Jev
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1250,6 +1278,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rationality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rationality（合理性層の判定器）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#evolutionga" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1669,6 +1708,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rationality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rationality（合理性層の判定器）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#evolutionga" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1991,6 +2041,38 @@
 </tr>
 </tbody>
 </table>
+<h2 id="rationality"><code>rationality</code>（合理性層の判定器）<a class="headerlink" href="#rationality" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>型</th>
+<th>既定値</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rationality.jev.api_key</code></td>
+<td>文字列</td>
+<td>なし</td>
+<td>TypeSafe の APIキー。⚙設定「計算」タブから保存すると、保存後は画面・APIのどちらにも値そのものが返らない（<code>has_api_key</code> の真偽値のみ）</td>
+</tr>
+<tr>
+<td><code>rationality.jev.model</code></td>
+<td>文字列</td>
+<td><code>jev-1.13.0</code></td>
+<td>検証済みのモデル名</td>
+</tr>
+<tr>
+<td><code>rationality.jev.verified_at</code></td>
+<td>文字列（ISO日時）</td>
+<td>なし</td>
+<td>キーを保存した時刻。この値と <code>api_key</code> の両方がある状態だけが「有効」</td>
+</tr>
+</tbody>
+</table>
+<p>どの実験がどの判定器（Jev / Ollama）を使うかは <code>evolution.rationality_backend</code>（実行設定ごとの config に保存）で決まり、<code>settings.json</code> の <code>rationality</code> はキーの保管場所でしかありません。詳しくは<a href="../../concepts/rationality-layer/">合理性層と Jev</a>を参照してください。</p>
 <h2 id="evolutionga"><code>evolution</code>（GA の計算資源）<a class="headerlink" href="#evolutionga" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
