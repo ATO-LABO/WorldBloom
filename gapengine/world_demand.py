@@ -170,6 +170,12 @@ def collect(
     route_counts: dict[str, Counter] = {}
     route_zone_total: Counter = Counter()
     ignorance_by_zone: Counter = Counter()
+    # WB-WORLDGROW-002 stage 2 review 1 fix R2: which milestone (route.py
+    # annotate()'s own "kind:value" open need, e.g. "has_item:縄") the
+    # protagonist was actually short on during each ignorance detour, per
+    # zone -- gives the ignorance trigger's prompt something concrete to
+    # point at ("top 3 milestones") instead of only a raw count.
+    ignorance_milestones_by_zone: dict[str, Counter] = {}
     blocked_by_requirement: dict[str, dict] = {}
     lost_total = 0
 
@@ -245,6 +251,9 @@ def collect(
                     route_zone_total[zone] += 1
                     if route_kind == "detour" and route_cause == "ignorance":
                         ignorance_by_zone[zone] += 1
+                        milestone = route.get("milestone")
+                        if isinstance(milestone, str):
+                            ignorance_milestones_by_zone.setdefault(zone, Counter())[milestone] += 1
                     elif route_kind == "lost":
                         lost_total += 1
                         requirement = route.get("blocked_on")
@@ -346,6 +355,7 @@ def collect(
                 "kind": "ignorance",
                 "zone": zone, "count": count, "share": share,
                 "zone_dwell_share": _round(zone_dwell / total_dwell) if total_dwell else 0.0,
+                "milestones": _top(ignorance_milestones_by_zone.get(zone, Counter()), 3),
             })
     ignorance_triggers.sort(key=lambda t: (-t["share"], t["zone"]))
     triggers.extend(ignorance_triggers)

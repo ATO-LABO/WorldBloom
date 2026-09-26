@@ -54,7 +54,16 @@ DEFAULT_GIVER_AFFINITY = 0.05
 EMPTY_STACK_DIGEST = hashlib.sha256(b"worldbloom-patch-stack-v1").hexdigest()
 
 TOP_LEVEL_KEYS = frozenset({"id", "title", "rationale", "parent_digest", "trigger", "author", "add"})
-ADD_KEYS = frozenset({"zones", "items", "facts"})
+ADD_KEYS = frozenset({"zones", "items", "facts", "sources"})
+# WB-WORLDGROW-002 stage 2 review 1 fix M1 (design K): add.sources lets a
+# patch give an *existing* item/fact a new investigate source, without
+# touching any of its other fields -- the only way a "blocked" trigger's
+# has_item:X/knows:F requirement (always an already-existing item/fact, per
+# gapengine.route._blocked_on) can ever be satisfied at all, since
+# validate_patch's check_name rejects re-adding an existing name via
+# add.items/add.facts.
+ADD_SOURCE_KEYS = frozenset({"item", "fact", "source"})
+MAX_ADD_SOURCES = 2
 ZONE_KEYS = frozenset({"name", "parent", "note"})
 ITEM_KEYS = frozenset({"name", "sources", "lootable", "keepsake", "give", "modifier", "made_from", "craft_zone", "requires"})
 ITEM_SOURCE_KEYS = frozenset({"type", "zone", "count", "max"})
@@ -382,10 +391,11 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
         if unknown_add:
             violations.append("add に未対応の項目があります: " + "、".join(sorted(str(k) for k in unknown_add)))
 
-    raw_zones, raw_items, raw_facts, raw_events = [], [], [], []
+    raw_zones, raw_items, raw_facts, raw_events, raw_sources = [], [], [], [], []
     for key, bucket_name, target in (
         ("zones", "add.zones", "raw_zones"), ("items", "add.items", "raw_items"),
         ("facts", "add.facts", "raw_facts"), ("daily_events", "add.daily_events", "raw_events"),
+        ("sources", "add.sources", "raw_sources"),
     ):
         value = add.get(key, [])
         if not isinstance(value, list):
@@ -397,20 +407,31 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
             raw_items = value
         elif target == "raw_facts":
             raw_facts = value
-        else:
+        elif target == "raw_events":
             raw_events = value
+        else:
+            raw_sources = value
 
-    if not (raw_zones or raw_items or raw_facts or raw_events):
+    if not (raw_zones or raw_items or raw_facts or raw_events or raw_sources):
         violations.append("何も足していません")
+
+    # add.sources entries each count toward the items/facts cap of the kind
+    # of thing they target (an "item" source is one more use of the items
+    # budget, a "fact" source one more use of the facts budget) -- design K:
+    # 品への source は「アイテム」、事実への source は「事実」の枠に1件として数える。
+    sources_item_count = sum(1 for s in raw_sources if isinstance(s, dict) and "item" in s)
+    sources_fact_count = sum(1 for s in raw_sources if isinstance(s, dict) and "fact" in s)
 
     if check_budgets and len(raw_zones) > MAX_ZONES:
         violations.append(f"ゾーンの追加数が上限（{MAX_ZONES}）を超えています")
-    if check_budgets and len(raw_items) > MAX_ITEMS:
+    if check_budgets and len(raw_items) + sources_item_count > MAX_ITEMS:
         violations.append(f"アイテムの追加数が上限（{MAX_ITEMS}）を超えています")
-    if check_budgets and len(raw_facts) > MAX_FACTS:
+    if check_budgets and len(raw_facts) + sources_fact_count > MAX_FACTS:
         violations.append(f"事実の追加数が上限（{MAX_FACTS}）を超えています")
     if len(raw_events) > MAX_DAILY_EVENTS:
         violations.append(f"日々の出来事の追加数が上限（{MAX_DAILY_EVENTS}）を超えています")
+    if check_budgets and len(raw_sources) > MAX_ADD_SOURCES:
+        violations.append(f"既存への入手手段の追加数が上限（{MAX_ADD_SOURCES}）を超えています")
 
     existing_expansion = world.get("expansion")
     existing_patch_count = (len(existing_expansion.get("patches", []))
@@ -705,6 +726,56 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
             elif check_budgets and confidence > MAX_IMPLIES_CONFIDENCE:
                 violations.append(f"{relation}.confidence は{MAX_IMPLIES_CONFIDENCE}以下で指定してください: {fact_id!r}")
 
+    # WB-WORLDGROW-002 stage 2 review 1 fix M1 (design K): add.sources gives
+    # an *existing* item/fact a new investigate source (add.items/add.facts
+    # can only ever create brand-new names -- check_name above rejects
+    # reusing an existing one). Never the goal item, a vehicle, a keepsake,
+    # a crafted (made_from) item, or a lottery fact ($truth/$innocent's own
+    # target) -- those either can't be gathered this way in the engine, or
+    # their true value/role must not be quietly made easier to get.
+    facts_by_id = {f.get("id"): f for f in (world.get("facts") or []) if isinstance(f, dict)}
+    seen_source_targets: set[tuple[str, str]] = set()
+    for entry in raw_sources:
+        if not isinstance(entry, dict):
+            violations.append("add.sources の要素はオブジェクトで指定してください")
+            continue
+        has_item, has_fact = "item" in entry, "fact" in entry
+        if has_item == has_fact:
+            violations.append("add.sources は item か fact のどちらか一方だけを指定してください")
+            continue
+        unknown = set(entry) - ADD_SOURCE_KEYS
+        if unknown:
+            violations.append("add.sources に未対応の項目があります: " + "、".join(sorted(str(k) for k in unknown)))
+        source = entry.get("source")
+        if has_item:
+            name = entry.get("item")
+            if not isinstance(name, str) or name not in existing["items"]:
+                violations.append(f"add.sources.item が既存のアイテムではありません: {name!r}")
+                continue
+            item_def = items_by_name.get(name) or {}
+            if (item_def.get("objective") or item_def.get("vehicle") or item_def.get("keepsake")
+                    or (isinstance(item_def.get("made_from"), dict) and item_def.get("made_from"))):
+                violations.append(f"この品には入手手段を足せません: {name}")
+                continue
+            check_item_source(source, name)
+            existing_zones = {s.get("zone") for s in (item_def.get("sources") or []) if isinstance(s, dict)}
+        else:
+            name = entry.get("fact")
+            if not isinstance(name, str) or name not in existing["facts"]:
+                violations.append(f"add.sources.fact が既存の事実ではありません: {name!r}")
+                continue
+            if name in lottery:
+                violations.append(f"この事実には入手手段を足せません: {name}")
+                continue
+            fact_def = facts_by_id.get(name) or {}
+            check_fact_source(source, name)
+            existing_zones = {s.get("zone") for s in (fact_def.get("sources") or []) if isinstance(s, dict)}
+        zone = source.get("zone") if isinstance(source, dict) else None
+        if isinstance(zone, str):
+            if zone in existing_zones or (name, zone) in seen_source_targets:
+                violations.append(f"同じ場所への入手手段が既にあります: {name}@{zone}")
+            seen_source_targets.add((name, zone))
+
     if raw_events and not has_daily_slot:
         violations.append("この世界には日々の出来事の枠がありません")
     for event in raw_events:
@@ -729,9 +800,10 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
     if check_budgets:
         applied = _applied_names(world)
         caps = addition_caps(world)
+        extra_by_key = {"zones": 0, "items": sources_item_count, "facts": sources_fact_count}
         for key, new in (("zones", raw_zones), ("items", raw_items), ("facts", raw_facts)):
             cap, applied_count = caps[key]
-            if applied_count + len(new) > cap:
+            if applied_count + len(new) + extra_by_key[key] > cap:
                 violations.append(f"{key} の累積追加数が上限（{cap}）を超えています")
         def item_give_count(item):
             sources = item.get("sources")
@@ -763,6 +835,28 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
             return total
         given = give_total(raw_items)
         prior_given = give_total([i for i in world.get("items", []) if i.get("name") in applied["items"]])
+        # add.sources doesn't touch an existing item's own give -- but a
+        # bigger max means more pickups of the same give, so it still has to
+        # spend budget when the item already gives something (design K:
+        # 品に give があるなら、その give ×足した max を累積予算に加える).
+        for entry in raw_sources:
+            if not isinstance(entry, dict) or "item" not in entry:
+                continue
+            item_def = items_by_name.get(entry.get("item"))
+            source = entry.get("source")
+            if not isinstance(item_def, dict) or not isinstance(source, dict):
+                continue
+            give = item_def.get("give")
+            mx = source.get("max")
+            if not isinstance(give, dict) or type(mx) is not int:
+                continue
+            per_item = 0.0
+            for key, default in (("receiver_affinity", DEFAULT_RECEIVER_AFFINITY),
+                                 ("giver_affinity", DEFAULT_GIVER_AFFINITY)):
+                value = give.get(key, default)
+                if _is_number(value):
+                    per_item += value
+            given += per_item * mx
         # No subject has give_item -> give never fires, so it costs no budget
         # (check_proposal_rules separately rejects writing give there at all).
         if give_available and (given > MAX_GIVE_PER_PATCH + 1e-12
@@ -821,6 +915,7 @@ def apply_patch(world: dict, patch: dict) -> dict:
     items = [i for i in (add.get("items") or []) if isinstance(i, dict)]
     facts = [f for f in (add.get("facts") or []) if isinstance(f, dict)]
     events = [e for e in (add.get("daily_events") or []) if isinstance(e, dict)]
+    sources = [s for s in (add.get("sources") or []) if isinstance(s, dict)]
 
     result.setdefault("zones", [])
     result.setdefault("routes", {})
@@ -854,7 +949,27 @@ def apply_patch(world: dict, patch: dict) -> dict:
         daily.setdefault("events", [])
         daily["events"].extend(copy.deepcopy(event) for event in events)
 
-    if zones or items or facts or events:
+    added_source_labels: list[str] = []
+    if sources:
+        items_by_name = {i.get("name"): i for i in (result.get("items") or []) if isinstance(i, dict)}
+        facts_by_id = {f.get("id"): f for f in (result.get("facts") or []) if isinstance(f, dict)}
+        for entry in sources:
+            source = entry.get("source")
+            if not isinstance(source, dict):
+                continue
+            if "item" in entry:
+                target = items_by_name.get(entry.get("item"))
+            else:
+                target = facts_by_id.get(entry.get("fact"))
+            if not isinstance(target, dict):
+                continue
+            existing_sources = target.get("sources")
+            if not isinstance(existing_sources, list):
+                existing_sources = []
+            target["sources"] = existing_sources + [copy.deepcopy(source)]
+            added_source_labels.append(f"{entry.get('item') or entry.get('fact')}@{source.get('zone')}")
+
+    if zones or items or facts or events or sources:
         existing_expansion = result.get("expansion")
         expansion = (copy.deepcopy(existing_expansion) if isinstance(existing_expansion, dict)
                      else {"patches": []})
@@ -868,12 +983,18 @@ def apply_patch(world: dict, patch: dict) -> dict:
             slim = {k: trigger[k] for k in keys if k in trigger}
             if slim:
                 entry["trigger"] = slim
-        entry["added"] = {
+        added: dict[str, Any] = {
             "zones": [z["name"] for z in zones],
             "items": [i["name"] for i in items],
             "facts": [f["id"] for f in facts],
             "daily_events": [e["id"] for e in events],
         }
+        # A patch with no add.sources (every patch before WB-WORLDGROW-002
+        # stage 2, and every stage-2+ patch that doesn't use it) must keep
+        # emitting byte-identical expansion output -- no "sources" key at all.
+        if added_source_labels:
+            added["sources"] = added_source_labels
+        entry["added"] = added
         expansion["patches"].append(entry)
         result["expansion"] = expansion
 
