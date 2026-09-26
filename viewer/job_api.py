@@ -9,6 +9,7 @@ from execution.output_settings import (
     current_generation, list_models, read_output_settings, test_generation,
     write_api_key, write_output_settings,
 )
+from execution.rationality_settings import read_jev_settings, write_jev_api_key
 from execution.provenance import ConfigError, identifier
 from gapengine.gpu_guard import GpuBusy
 
@@ -196,6 +197,10 @@ def dispatch(handler, parts, method):
                 "availability": {**availability, "label": _label(availability)},
                 "backends": view["backends"],
             })
+        elif method == "GET" and parts == ["api", "settings", "rationality"]:
+            handler._send_json(HTTPStatus.OK, read_jev_settings(settings))
+        elif method == "POST" and parts == ["api", "settings", "rationality", "jev-key"]:
+            handler._send_json(HTTPStatus.OK, write_jev_api_key(settings, body.get("api_key")))
         elif method == "GET" and parts == ["api", "settings", "evolution"]:
             handler._send_json(HTTPStatus.OK, read_evolution_settings(settings))
         elif method == "POST" and parts == ["api", "settings", "evolution"]:

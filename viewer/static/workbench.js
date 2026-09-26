@@ -254,11 +254,19 @@
         * (coevolve ? 2 : 1);
       runsLine.hidden = !(num("evolution.kappa") > 0 && totalRuns > 0);
       runsText.textContent = totalRuns.toLocaleString("en-US");
+      // WB-JEV-005: only one of these two status rows is ever shown --
+      // whichever backend the select currently names.
+      const backendEl = form.querySelector('[data-field="evolution.rationality_backend"]');
+      const backend = backendEl ? backendEl.value : "ollama";
+      const jevRow = rationalitySection.querySelector("[data-judge-status-jev]");
+      const ollamaRow = rationalitySection.querySelector("[data-judge-status-ollama]");
+      if (jevRow) jevRow.hidden = backend !== "jev";
+      if (ollamaRow) ollamaRow.hidden = backend !== "ollama";
     };
     if (rationalitySection) {
       [
         "evolution.generations", "evolution.population", "evolution.seeds",
-        "evolution.coevolve", "evolution.kappa",
+        "evolution.coevolve", "evolution.kappa", "evolution.rationality_backend",
       ].forEach((name) => {
         const el = form.querySelector(`[data-field="${name}"]`);
         if (el) {
