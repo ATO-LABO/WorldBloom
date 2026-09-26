@@ -486,6 +486,51 @@ class IdleCompletionAndStopTests(EpochChainTestBase):
         self.assertEqual(current["error"]["code"], "tick_error")
 
 
+class BrokenChainDirectoryTests(EpochChainTestBase):
+    """M2 (Opus review, WB-WORLDGROW-001 段階5c-2 follow-up): a broken chain
+    directory (never written, or corrupt chain.json -- e.g. a crash mid-
+    write) must not take down every OTHER chain's tick()/current()/start(),
+    and must never surface as a 404/500 on an unrelated page's own GET
+    (viewer/epoch_view.py's relevant_chain(), tested directly in
+    test_epoch_view.py). Reproduces the scenario the review's own broken.py
+    script exercised over HTTP."""
+
+    def _make_broken(self, name, *, contents=None):
+        folder = self.chain.root / name
+        folder.mkdir(parents=True)
+        if contents is not None:
+            (folder / "chain.json").write_text(contents, encoding="utf-8")
+        return folder
+
+    def test_all_skips_an_empty_chain_directory(self):
+        self.chain.root.mkdir(parents=True, exist_ok=True)
+        self._make_broken("chain-empty")
+        self.assertEqual(self.chain._all(), [])  # must not raise
+
+    def test_all_skips_a_corrupt_chain_json(self):
+        self.chain.root.mkdir(parents=True, exist_ok=True)
+        self._make_broken("chain-corrupt", contents="{bad")
+        self.assertEqual(self.chain._all(), [])  # must not raise
+
+    def test_all_still_returns_healthy_chains_alongside_a_broken_one(self):
+        self.start()
+        healthy = self.chain.current()
+        self._make_broken("chain-corrupt", contents="{bad")
+        all_chains = self.chain._all()
+        self.assertEqual([c["chain_id"] for c in all_chains], [healthy["chain_id"]])
+
+    def test_tick_and_current_survive_a_broken_directory_with_no_active_chain(self):
+        self._make_broken("chain-empty")
+        self._make_broken("chain-corrupt", contents="{bad")
+        self.chain.tick()  # must not raise
+        self.assertIsNone(self.chain.current())  # neither broken dir "counts"
+
+    def test_start_still_works_alongside_a_broken_directory(self):
+        self._make_broken("chain-corrupt", contents="{bad")
+        job = self.start()
+        self.assertIsNotNone(job["job_id"])
+
+
 class AutoRetirePublishedOnlyArchiveTests(EpochChainTestBase):
     def test_auto_retire_uses_published_only_archive_fixture(self):
         add = {"zones": [{"name": "船大工の小屋", "parent": "海"}]}

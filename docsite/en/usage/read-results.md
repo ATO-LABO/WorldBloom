@@ -1,5 +1,5 @@
 ---
-ja_rev: "6202a453275b"
+ja_rev: "cd6f1570ad8b"
 ---
 # Read Results
 
@@ -63,3 +63,7 @@ If an ancestor couldn't be reproduced, the reason (a reproduction error) is show
 ## Run history and deletion
 
 Once you start a run, it's recorded in "履歴" (History) for later reference. If an experiment is no longer needed, delete it from "削除" (Delete) in the experiment list. Deleting one cascades to remove its candidates, selection status, generated text, and world self-expansion proposals tied to that experiment (this cannot be undone).
+
+## Epoch chain progress display
+
+Running with "世界を育てる" (Grow the world) turned on in the run settings shows an epoch chain progress strip right below the heading on the run status screen, and on the run conditions screen too — epoch count, current stage, approval/retirement counts, and a stop button. A "次のエポックへ" (Next epoch) button also appears while awaiting approval. The demand tab likewise shows a hint at the top while awaiting approval: "承認または却下 →（必要なら）枯らす → 『次のエポックへ』" (Approve or reject → retire if needed → "Next epoch"). None of this appears on a screen with no chain.

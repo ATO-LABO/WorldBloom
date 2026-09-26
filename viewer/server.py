@@ -67,6 +67,7 @@ STATIC_FILES = {
     "world-prototype.css": "text/css; charset=utf-8",
     "world-prototype.js": "text/javascript; charset=utf-8",
     "world-expansion.js": "text/javascript; charset=utf-8",
+    "epoch-chain.js": "text/javascript; charset=utf-8",
 }
 
 

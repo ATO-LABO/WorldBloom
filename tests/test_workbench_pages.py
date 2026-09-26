@@ -587,6 +587,46 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(workbench_pages._world_expansion_label("expand"), "承認済みの拡張を適用")
         self.assertEqual(workbench_pages._world_expansion_label("bogus"), "bogus")
 
+    def test_growth_label_helper_covers_off_auto_manual_and_missing(self):
+        # WB-WORLDGROW-001 段階5c-2: shared by render_config_detail's detail
+        # dl and _run_plan's job-screen summary, same contract as
+        # _world_expansion_label above.
+        self.assertEqual(workbench_pages._growth_label(None), "しない")
+        self.assertEqual(workbench_pages._growth_label({"mode": "off"}), "しない")
+        self.assertEqual(workbench_pages._growth_label({"mode": "auto", "epochs": 3}), "自動 3 周")
+        self.assertEqual(
+            workbench_pages._growth_label({"mode": "manual", "epochs": 5}), "手動（承認ごとに止まる） 5 周")
+
+    def test_config_detail_and_run_plan_show_growth_row(self):
+        # M3 (Opus review): growth.mode != off forces evolution.world_expansion
+        # to "expand" (execution/configs.py normalize), which reads the
+        # approved-patches stack under directory_lock(project/"patches") --
+        # self.configs here is ConfigStore(ROOT, ...) (real repo), so doing
+        # this against project_id="romance" without redirecting .repo would
+        # create projects/romance/patches/.write.lock in the actual working
+        # tree. Same isolated-temp-copy pattern as
+        # test_rationality_summary_uses_frozen_snapshot_not_live_repo, but
+        # patched onto the shared self.configs (used by the live HTTP
+        # server too) instead of a standalone ConfigStore.
+        temp = Path(tempfile.mkdtemp(prefix="wb-growth-repo-"))
+        self.addCleanup(shutil.rmtree, temp, ignore_errors=True)
+        temp_repo = temp / "repo"
+        for name in ("projects", "templates"):
+            shutil.copytree(ROOT / name, temp_repo / name)
+        real_patches = ROOT / "projects" / "romance" / "patches"
+        self.addCleanup(lambda: self.assertFalse(real_patches.exists(),
+                                                  "growth save must never touch the real repo's patches/"))
+        with patch.object(self.configs, "repo", temp_repo):
+            status, saved = self.http("POST", "/api/configs", {
+                "label": "育成詳細", "project_id": "romance", "template_id": "romance",
+                "evolution": {"generations": 1, "population": 1, "seeds": 1},
+                "growth": {"mode": "auto", "epochs": 4, "auto_retire": True}})
+            self.assertEqual(status, 201, saved)
+            status, body, _ = self.get_status("/configs/" + saved["config_id"])
+        self.assertEqual(status, 200, body)
+        self.assertIn("世界を育てる", body)
+        self.assertIn("自動 4 周", body)
+
     def test_output_settings_api_round_trip(self):
         status, before = self.http("GET", "/api/settings/output")
         self.assertEqual(status, 200, before)
