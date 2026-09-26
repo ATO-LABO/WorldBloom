@@ -103,11 +103,38 @@ def quick_label(world_name, genre):
     return f"{stamp} {genre} - {world_name}"
 
 
+def _growth(spec_growth):
+    """None (mode="off"/absent) means "no growth key at all" -- the caller
+    must not add "growth" to the saved document in that case, so an
+    unspecified/off config stays byte-identical to one saved before
+    WB-WORLDGROW-001 段階5c ever existed. growth never enters `evolution`
+    (its keys must match scripts/evolve.py's parser dests one-to-one --
+    see evolution_defaults()) and is never handed to prepare_run()'s argv
+    loop, which only ever iterates config["evolution"]."""
+    if spec_growth is None:
+        return None
+    _keys(spec_growth, {"mode", "epochs", "auto_retire"}, "growth")
+    mode = spec_growth.get("mode", "off")
+    if mode not in ("off", "auto", "manual"):
+        raise ConfigError("growth.mode", "育成モードの指定が不正です")
+    if mode == "off":
+        return None
+    epochs = spec_growth.get("epochs", 3)
+    _integer(epochs, "growth.epochs", 1)
+    if epochs > 10:
+        raise ConfigError("growth.epochs", "エポック数は1〜10で指定してください")
+    auto_retire = spec_growth.get("auto_retire", mode == "auto")
+    if type(auto_retire) is not bool:
+        raise ConfigError("growth.auto_retire", "真偽値を指定してください")
+    return {"mode": mode, "epochs": epochs, "auto_retire": auto_retire}
+
+
 def normalize(spec):
     _keys(spec, {"label", "project_id", "template_id", "evolution",
-                 "execution_limits", "generation"}, "config")
+                 "execution_limits", "generation", "growth"}, "config")
     if "generation" in spec:
         raise ConfigError("generation", "文章生成の設定は ⚙ 設定で行います（実行設定には含めません）")
+    growth = _growth(spec.get("growth"))
     result = {"label": spec.get("label", "")}
     if not isinstance(result["label"], str) or not result["label"].strip() or len(result["label"]) > 200:
         raise ConfigError("label", "設定名を1〜200文字で入力してください")
@@ -128,6 +155,11 @@ def normalize(spec):
         raise ConfigError("evolution.keep", "保存方針が不正です")
     if values["world_expansion"] not in ("off", "detect", "expand"):
         raise ConfigError("evolution.world_expansion", "世界の拡張の指定が不正です")
+    if growth is not None:
+        # WB-WORLDGROW-001 段階5c §9: growth!=off always runs the chain's
+        # own expand-run experiments, regardless of what the form's "世界の
+        # 拡張" radio was set to.
+        values["world_expansion"] = "expand"
     # WB-WORLDGROW-001 段階5b: "" (フォームの未選択) は off と同じ None に。
     seed_genomes = values["seed_genomes"]
     if seed_genomes == "":
@@ -186,6 +218,8 @@ def normalize(spec):
     _keys(limits, {"wall_seconds"}, "execution_limits")
     result["execution_limits"] = {"wall_seconds": _integer(
         limits.get("wall_seconds", 3600), "execution_limits.wall_seconds", 1)}
+    if growth is not None:
+        result["growth"] = growth
     return result
 
 
@@ -403,7 +437,7 @@ def _capture_inputs(repo, spec, runs=None):
         except ValueError as error:
             raise ConfigError("evolution.seed_genomes", "引き継ぎ元のアーカイブが不正です") from error
         if not seed_entries:
-            raise ConfigError("evolution.seed_genomes", "引き継ぎ元のアーカイブにデータがありません")
+            raise ConfigError("evolution.seed_genomes", "引き継ぎ元のアーカイブにデータがありません", code="empty_seed_archive")
         for seed_entry in seed_entries:
             try:
                 Genome.from_dict(seed_entry["genome"])
@@ -628,9 +662,19 @@ class ConfigStore:
         original = self.get(config_id)
         spec = {k: original[k] for k in ("label", "project_id", "template_id",
                 "evolution", "execution_limits")}
+        # R5 (Opus review, WB-WORLDGROW-001 段階5c): a growth-enabled config
+        # used to lose its growth on duplicate (spec never carried it over)
+        # -- carry it forward like every other field; `changes` may still
+        # replace or clear it below.
+        if "growth" in original:
+            spec["growth"] = original["growth"]
         changes = changes or {}
         for key, value in changes.items():
-            spec[key] = {**spec[key], **value} if key in ("evolution", "execution_limits") and isinstance(value, dict) else value
+            if (key in ("evolution", "execution_limits", "growth")
+                    and isinstance(value, dict) and isinstance(spec.get(key), dict)):
+                spec[key] = {**spec[key], **value}
+            else:
+                spec[key] = value
         # Unlike project_id/template_id (hidden, fixed fields on the "duplicate to
         # edit" form), evolution.world_expansion is an editable radio there. Toggling
         # to/from "expand" makes the frozen inputs incompatible with the parent
@@ -638,7 +682,15 @@ class ConfigStore:
         # instead of dead-ending the save, the same way changing project_id would
         # require a fresh (non-duplicate) config if it were reachable from the UI.
         prior_expand = original["evolution"].get("world_expansion") == "expand"
-        spec_expand = (spec.get("evolution") or {}).get("world_expansion") == "expand"
+        # R5: growth.mode != off forces world_expansion to "expand" at
+        # normalize() time regardless of what spec["evolution"] itself says
+        # -- judge the parent-compatibility check by that *effective* value,
+        # not the pre-normalize one, or turning growth on (or leaving it on
+        # while flipping world_expansion off in the same call) would wrongly
+        # keep a parent whose frozen inputs are about to change out from
+        # under it (normalize() would then dead-end the save instead).
+        spec_growth_mode = (spec.get("growth") or {}).get("mode", "off")
+        spec_expand = (spec.get("evolution") or {}).get("world_expansion") == "expand" or spec_growth_mode != "off"
         # WB-WORLDGROW-001 段階5b: same treatment for seed_genomes -- changing
         # which run's archive seeds generation 0 makes the frozen inputs
         # incompatible with the parent config's own frozen seed_genomes.json.
