@@ -134,7 +134,6 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
             # _describe() planned_seed_evaluations -- a coevolve run judges a
             # protagonist pass and a separate antagonist pass.
             total_runs=total * (2 if values["evolution.coevolve"] else 1),
-            wall_seconds=wb._as_int(values["execution_limits.wall_seconds"]),
             heading_prefix="04. ",
         )
     else:

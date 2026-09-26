@@ -233,57 +233,32 @@
       });
     }
 
-    // WB-JEV-002 (coordinator review): the judge-time estimate and
-    // wall-limit warning, recomputed live -- mirrors
+    // WB-JEV-002: the judged-run count, recomputed live -- mirrors
     // execution/configs.py's planned_seed_evaluations math (coevolve
     // doubles the run count) and viewer/workbench_pages.py's
-    // _format_eta_seconds() wording exactly, so JS-on and the server's own
-    // initial render (JS-off) never disagree. JUDGE_SECONDS_PER_RUN comes
-    // from the section's own data attribute -- never hardcoded here.
+    // _rationality_section() initial render. No time estimate: judge speed
+    // depends on the machine.
     const rationalitySection = form.querySelector('[data-wb="rationality"]');
-    const formatEta = (seconds) => {
-      if (seconds < 60) {
-        return `約${Math.round(seconds)}秒`;
-      }
-      const minutes = Math.ceil(seconds / 60);
-      if (minutes < 60) {
-        return `約${minutes}分`;
-      }
-      const hours = Math.floor(minutes / 60);
-      const remainingMinutes = minutes % 60;
-      return remainingMinutes ? `約${hours}時間${remainingMinutes}分` : `約${hours}時間`;
-    };
     const updateRationality = () => {
       if (!rationalitySection) {
         return;
       }
-      const etaLine = rationalitySection.querySelector("[data-kappa-eta]");
-      const etaText = rationalitySection.querySelector("[data-kappa-eta-text]");
-      const warningLine = rationalitySection.querySelector("[data-kappa-warning]");
-      if (!etaLine || !etaText || !warningLine) {
+      const runsLine = rationalitySection.querySelector("[data-kappa-runs]");
+      const runsText = rationalitySection.querySelector("[data-kappa-runs-text]");
+      if (!runsLine || !runsText) {
         return;
       }
-      const judgeSecondsPerRun = Number(rationalitySection.dataset.judgeSecondsPerRun) || 0;
-      const kappa = num("evolution.kappa");
       const coevolveEl = form.querySelector('[data-field="evolution.coevolve"]');
       const coevolve = coevolveEl ? coevolveEl.checked : false;
       const totalRuns = num("evolution.generations") * num("evolution.population") * num("evolution.seeds")
         * (coevolve ? 2 : 1);
-      const show = kappa > 0 && totalRuns > 0;
-      etaLine.hidden = !show;
-      if (!show) {
-        warningLine.hidden = true;
-        return;
-      }
-      const seconds = totalRuns * judgeSecondsPerRun;
-      etaText.textContent = formatEta(seconds);
-      const wallSeconds = num("execution_limits.wall_seconds");
-      warningLine.hidden = !(wallSeconds > 0 && seconds > wallSeconds);
+      runsLine.hidden = !(num("evolution.kappa") > 0 && totalRuns > 0);
+      runsText.textContent = totalRuns.toLocaleString("en-US");
     };
     if (rationalitySection) {
       [
         "evolution.generations", "evolution.population", "evolution.seeds",
-        "evolution.coevolve", "evolution.kappa", "execution_limits.wall_seconds",
+        "evolution.coevolve", "evolution.kappa",
       ].forEach((name) => {
         const el = form.querySelector(`[data-field="${name}"]`);
         if (el) {
