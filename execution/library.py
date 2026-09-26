@@ -105,8 +105,10 @@ class LibraryStore:
             files = [name for name in GENRE_FILES if (entry / name).is_file()]
             used_by = sorted(w["id"] for w in worlds if w["genre"] == entry.name)
             from execution.genre_editor import metadata
+            from execution.world_patch_library import list_entries
             info = metadata(entry)
-            result.append({"id": entry.name, "name": info.get("name") or entry.name, "description": info.get("description") or "", "files": files, "used_by": used_by})
+            result.append({"id": entry.name, "name": info.get("name") or entry.name, "description": info.get("description") or "",
+                           "files": files, "used_by": used_by, "expansions": len(list_entries(entry))})
         return result
 
     def world_files(self, world_id):
@@ -216,7 +218,14 @@ class LibraryStore:
             with tempfile.TemporaryDirectory(prefix=".world-create-", dir=self.repo) as temporary:
                 staged = Path(temporary) / "world"
                 if source is not None:
-                    shutil.copytree(source, staged)
+                    # WB-WORLDGROW-001 段階5d D10: a copied world's patches/
+                    # (stack.json + approved patch yaml/gate) recorded a
+                    # base_inputs_digest against the *source* world.yaml --
+                    # digest mismatch as soon as the copy's own name differs,
+                    # so expand_snapshot()/applicable_snapshot() dies asking
+                    # for a reopen the new world never had a chance to need.
+                    # Genre assets are taken from the genre library instead.
+                    shutil.copytree(source, staged, ignore=shutil.ignore_patterns("patches"))
                     try:
                         world = yaml.safe_load((staged / "world.yaml").read_text(encoding="utf-8"))
                     except (OSError, yaml.YAMLError) as error:

@@ -19,6 +19,9 @@ from execution.worker import TERMINAL
 from execution.world_patch_approval import (StalePatch as _StalePatch, approve as _approve_patch,
                                             reject as _reject_patch, reopen as _reopen_patch,
                                             retire as _retire_patch)
+from execution.world_patch_library import (DuplicateAssetError as _DuplicateAssetError,
+                                           StaleImport as _StaleImport, export_patch as _export_patch,
+                                           import_patch as _import_patch)
 from gapengine.world_patch import (ID_RE as _PATCH_ID_RE, PatchError as _WorldPatchError,
                                   approved_patches as _approved_patches, stack_head as _patch_stack_head)
 from gapengine.world_patch_usage import patch_usage as _patch_usage
@@ -973,6 +976,93 @@ def _retire_patch_action(handler, world_id, patch_id):
     handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": patch_id, "rev": revision["rev"]})
 
 
+def _export_body(body):
+    if not isinstance(body, dict) or set(body) != {"experiment"}:
+        raise ConfigError("request", "experiment を指定してください", code="bad_request")
+    experiment = body["experiment"]
+    if not isinstance(experiment, str) or not experiment:
+        raise ConfigError("experiment", "実験名を指定してください", code="bad_request")
+    return experiment
+
+
+def _export_patch_action(handler, world_id, patch_id):
+    """WB-WORLDGROW-001 段階5d: publish an applied, strongly-used patch as a
+    genre asset. Same measurement steps as _retire_patch_action -- usage is
+    computed here, server-side, never taken from the browser."""
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
+    body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
+    experiment_name = _export_body(body)
+    _patch_id_arg(patch_id)
+    project, template = _resolve_world_patch_dirs(job_store, world_id)
+    _reject_running_job(job_store)
+    experiment = world_demand_view.resolve_root(handler.repository, experiment_name)
+    if experiment is None:
+        raise ConfigError("experiment", "実験が見つかりません", code="bad_request")
+    protagonist = _protagonist_for(handler, experiment)
+    try:
+        active = _approved_patches(project)
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    try:
+        experiment_archive = handler.repository.archive(experiment)
+    except ConfigError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError, data.MissingResource) as error:
+        raise ConfigError("experiment", "実験の記録を読み込めません", code="bad_request") from error
+    try:
+        usage = _patch_usage(experiment, protagonist, active, archive=experiment_archive).get(patch_id)
+    except (OSError, ValueError, KeyError, TypeError, data.MissingResource) as error:
+        raise ConfigError("experiment", "使用状況を計算できませんでした", code="bad_request") from error
+    try:
+        path = _export_patch(project, template, patch_id, experiment=experiment,
+                              protagonist=protagonist, usage=usage)
+    except _DuplicateAssetError as error:
+        raise ConfigError("patch", str(error), code="conflict") from error
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": patch_id, "path": path.name})
+
+
+def _import_body(body):
+    if not isinstance(body, dict) or set(body) != {"entry", "seen"}:
+        raise ConfigError("request", "entry と seen を指定してください", code="bad_request")
+    entry = body["entry"]
+    if not isinstance(entry, str) or not entry:
+        raise ConfigError("entry", "資産IDを指定してください", code="bad_request")
+    seen = body["seen"]
+    if not isinstance(seen, dict) or set(seen) != {"head"} or not isinstance(seen["head"], str):
+        raise ConfigError("seen", "seen の形式が不正です", code="bad_request")
+    return entry, seen["head"]
+
+
+def _import_patch_action(handler, world_id):
+    """WB-WORLDGROW-001 段階5d: stage a genre asset as a new proposal in this
+    world (trial_pending -- check/approve must still run here, same as any
+    other proposal)."""
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
+    body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
+    entry_id, seen_head = _import_body(body)
+    _patch_id_arg(entry_id)
+    project, template = _resolve_world_patch_dirs(job_store, world_id)
+    _reject_running_job(job_store)
+    try:
+        # R4 (Opus review): the freshness check itself moved inside
+        # import_patch()'s own patch_lock (expect_head) -- a pre-lock read
+        # here would leave the same narrow race approve()/retire() avoid by
+        # re-checking their own expect_*/expect_head inside the lock.
+        rewritten = _import_patch(project, template, entry_id, repo_root=job_store.configs.repo,
+                                  expect_head=seen_head)
+    except _StaleImport as error:
+        raise ConfigError("seen", _STALE_MESSAGE, code="conflict") from error
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": entry_id, "trigger": rewritten.get("trigger")})
+
+
 # --------------------------------------------------------------------------
 # Dispatch
 # --------------------------------------------------------------------------
@@ -998,13 +1088,16 @@ def _resolve(parts, method):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "genres" and parts[3] == "validate":
             return _validate_genre, (parts[2],)
         if (len(parts) == 6 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
-                and parts[5] in ("approve", "reject", "retire")):
+                and parts[5] in ("approve", "reject", "retire", "export")):
             action_by_verb = {"approve": _approve_patch_action, "reject": _reject_patch_action,
-                              "retire": _retire_patch_action}
+                              "retire": _retire_patch_action, "export": _export_patch_action}
             return action_by_verb[parts[5]], (parts[2], parts[4])
         if (len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
                 and parts[4] == "reopen"):
             return _reopen_patch_action, (parts[2],)
+        if (len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
+                and parts[4] == "import"):
+            return _import_patch_action, (parts[2],)
         return None
     if method != "GET" or not parts:
         return None

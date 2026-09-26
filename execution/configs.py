@@ -28,7 +28,7 @@ from gapengine.policy import _compile_rules
 from gapengine.precedent import load_canon
 from gapengine.seed_genomes import from_archive as seed_genomes_from_archive
 from gapengine.synopsis import _backend_config
-from gapengine.world_patch import PatchError, apply_patches, approved_patches, template_identifiers
+from gapengine.world_patch import LIBRARY_DIR, PatchError, apply_patches, approved_patches, template_identifiers
 from gapengine.world_patch_usage import load_archive as load_seed_archive
 from scripts.evolve import build_parser
 from execution.provenance import (
@@ -326,6 +326,8 @@ def _capture_inputs(repo, spec, runs=None):
         add(p)
     for p in sorted(template.rglob("*")):
         contained(repo, p.relative_to(repo).as_posix())
+        if LIBRARY_DIR in p.relative_to(template).parts:
+            continue
         if p.is_file() and p.suffix in (".yaml", ".yml"):
             add(p)
     try:

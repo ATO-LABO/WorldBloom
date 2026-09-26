@@ -56,6 +56,7 @@ from gapengine.rationality import (
 )
 from gapengine.route import Route, load_route_config
 from gapengine.seed_genomes import load as load_seed_genomes, reconcile as reconcile_seed_genome
+from gapengine.world_patch import LIBRARY_DIR
 
 
 _ENGINE_DIR = Path(__file__).resolve().parents[1] / "engine"
@@ -1091,7 +1092,8 @@ def _content_fingerprint(project_dir: Path, template_dir: Path) -> str:
             entries.append((f"project/subjects/{path.name}", path.read_bytes()))
     if template_dir.is_dir():
         for path in sorted(
-            (candidate for candidate in template_dir.rglob("*") if candidate.is_file()),
+            (candidate for candidate in template_dir.rglob("*")
+             if candidate.is_file() and LIBRARY_DIR not in candidate.relative_to(template_dir).parts),
             key=lambda value: value.relative_to(template_dir).as_posix(),
         ):
             label = f"template/{path.relative_to(template_dir).as_posix()}"

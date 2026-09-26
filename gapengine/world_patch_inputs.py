@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 from execution.provenance import code_snapshot, contained, verify_files
-from gapengine.world_patch import PatchError
+from gapengine.world_patch import LIBRARY_DIR, PatchError
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,7 +31,8 @@ def read_subjects(folder) -> dict:
 def template_data(folder) -> dict:
     folder = Path(folder)
     return {p.relative_to(folder).as_posix(): yaml.safe_load(p.read_text(encoding="utf-8"))
-            for p in sorted(folder.rglob("*")) if p.is_file() and p.suffix in (".yaml", ".yml")}
+            for p in sorted(folder.rglob("*")) if p.is_file() and p.suffix in (".yaml", ".yml")
+            and LIBRARY_DIR not in p.relative_to(folder).parts}
 
 
 def resolve_references(world, project, repo_root=ROOT) -> dict:
