@@ -245,7 +245,14 @@ def sidebar_link(repository: "data.RunRepository", run_name: str | None) -> str:
         return ""
     if report is None:
         return ""
-    count = len(data._as_list(report.get("triggers")))
+    # S1 review 1 recommended fix: only whiff triggers are actually shown
+    # above (ignorance/blocked wait for stage 4's own display) -- counting
+    # every kind here made the sidebar say "1件" while the body said "拡張
+    # トリガーなし". Revert to counting every kind once stage 4 shows them.
+    all_triggers = data._as_list(report.get("triggers"))
+    count = sum(
+        1 for t in all_triggers if isinstance(t, Mapping) and t.get("kind", "whiff") == "whiff"
+    )
     label = f"世界の需要（{count}件）" if count else "世界の需要"
     href = f"/exp/{pages._url_segment(run_name)}/monitor?tab=demand"
     return f'<a href="{_escape(href)}">{_escape(label)}</a>'

@@ -53,6 +53,14 @@ IGNORANCE_MIN = 10
 IGNORANCE_SHARE_MIN = 0.3
 BLOCKED_MIN = 10
 BLOCKED_SHARE_MIN = 0.3
+# M4 required fix: BLOCKED_MIN alone let one single run's ~60 identical
+# "lost" decisions (one genome/seed stuck in a loop for the rest of the run)
+# read as a world-wide blocker. Recalibrated on the same wg1/sweep rho=1.0
+# re-run cited above: 47/47 runs saw the dominant has_item:縄 requirement
+# (every run, not a fluke of one) -- BLOCKED_RUNS_MIN=3 asks for it to
+# recur in at least a handful of independent runs, comfortably below that
+# 47 but well above the single-run false positive this fix targets.
+BLOCKED_RUNS_MIN = 3
 
 
 def _round(value):
@@ -76,22 +84,37 @@ def _mean(values):
 _RUN_LAYERS_RE = re.compile(r"^g\d+/ind-\d+/seed-\d+/layers\.jsonl$")
 
 
-def _load_paths(experiment_dir: Path, use_all: bool) -> tuple[list[Path], dict | None, str]:
-    """Return (layers paths to read, parsed archive.json or None, population mode)."""
+def _load_paths(
+    experiment_dir: Path, use_all: bool
+) -> tuple[list[Path], list[Path], dict | None, str]:
+    """Return (whiff-population paths, full-population paths, parsed
+    archive.json or None, population mode).
+
+    S1 review 1 required fix M3 (design judgment J): the second list is
+    always the *full* g*/ind-*/seed-*/layers.jsonl population, regardless
+    of report mode -- ``collect()``'s route_counts/ignorance/blocked
+    aggregation reads it unconditionally, since an exemplars-only report
+    that only ever ran a handful of individuals to term would otherwise
+    read as "no blocker anywhere" even when most of the population is
+    stuck on one (rho1-big-p1: exemplars saw 0 lost decisions, the full
+    population 30). Whiff's own population still follows ``use_all`` --
+    the first list is unchanged from before this fix."""
 
     archive_path = experiment_dir / "archive.json"
     archive = json.loads(archive_path.read_text(encoding="utf-8")) if archive_path.is_file() else None
+    found = sorted(
+        p for p in experiment_dir.rglob("layers.jsonl")
+        if _RUN_LAYERS_RE.match(p.relative_to(experiment_dir).as_posix())
+    )
     if use_all or archive is None:
-        found = [p for p in experiment_dir.rglob("layers.jsonl")
-                 if _RUN_LAYERS_RE.match(p.relative_to(experiment_dir).as_posix())]
-        return sorted(found), archive, "all"
+        return found, found, archive, "all"
     seen = []
     for key in sorted(archive.get("cells", {})):
         exemplar = archive["cells"][key].get("exemplar", {})
         layers_path = exemplar.get("layers_path")
         if layers_path and layers_path not in seen:
             seen.append(layers_path)
-    return [experiment_dir / p for p in seen], archive, "exemplars"
+    return [experiment_dir / p for p in seen], found, archive, "exemplars"
 
 
 def _zone_after(row: dict, subject: str, current: str | None) -> str | None:
@@ -113,12 +136,23 @@ def _zone_after(row: dict, subject: str, current: str | None) -> str | None:
     return moved or current
 
 
-def collect(paths: list[Path], subject: str | None = None) -> dict:
+def collect(
+    paths: list[Path], subject: str | None = None, *, route_paths: list[Path] | None = None
+) -> dict:
     """Pure aggregation over already-resolved layers.jsonl paths.
 
     `subject` fixes the subject name for every file; when None, each file's
     own header.protagonist is used instead.
-    """
+
+    ``route_paths`` (S1 review 1 required fix M3, design judgment J):
+    defaults to ``paths`` (unchanged behavior) -- pass the full population
+    when ``paths`` is only the exemplars subset, so route_counts/ignorance/
+    blocked (below) always scan every g*/ind-*/seed-*/layers.jsonl run,
+    while zones/triggers/verb_counts keep following ``paths`` (whiff's own
+    population, unaffected by report mode). ``route_paths`` is always a
+    superset of ``paths`` in practice (an exemplar's layers_path is itself
+    one of the full population's runs), so every file in it is opened
+    exactly once below."""
 
     files_read = 0
     skipped_paths = 0
@@ -135,11 +169,17 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
     blocked_by_requirement: dict[str, dict] = {}
     lost_total = 0
 
-    for path in paths:
+    whiff_paths = set(paths)
+    scan_paths = route_paths if route_paths is not None else paths
+
+    for path in scan_paths:
+        is_whiff_file = path in whiff_paths
         if not path.is_file():
-            skipped_paths += 1
+            if is_whiff_file:
+                skipped_paths += 1
             continue
-        files_read += 1
+        if is_whiff_file:
+            files_read += 1
         file_subject = subject
         seen_actions: set[tuple[str, str, str]] = set()
         tracked_zone = None
@@ -157,7 +197,8 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
                 tracked_zone = _zone_after(row, file_subject, tracked_zone)
                 if kind != "decision" or row.get("subject") != file_subject:
                     continue
-                subject_decisions += 1
+                if is_whiff_file:
+                    subject_decisions += 1
                 explanation = row.get("explanation") or {}
                 zone = explanation.get("zone") or zone_before or UNKNOWN_ZONE
 
@@ -166,8 +207,10 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
                 # for every decision, including move/rest/withdraw, unlike the
                 # whiff aggregation below (a "lost" decision is very often a
                 # move or a rest). Text is never read, only the structured
-                # kind/cause/blocked_on fields (S1 §3.5 review note: text
-                # changes across code versions, structure doesn't).
+                # kind/cause/blocked_on/blocked_detail fields (S1 §3.5 review
+                # note: text changes across code versions, structure
+                # doesn't). Always aggregated from the full population
+                # (M3, design judgment J), regardless of whiff's own mode.
                 route = row.get("policy", {}).get("route") if isinstance(row.get("policy"), dict) else None
                 if isinstance(route, dict):
                     route_kind = route.get("kind")
@@ -185,11 +228,26 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
                         lost_total += 1
                         requirement = route.get("blocked_on")
                         if requirement:
+                            detail = route.get("blocked_detail") or {}
                             entry = blocked_by_requirement.setdefault(
-                                requirement, {"count": 0, "zones": Counter()}
+                                requirement,
+                                {"count": 0, "runs": set(), "zones": Counter(),
+                                 "source_zones": Counter(), "held_by": Counter(),
+                                 "reasons": Counter()},
                             )
                             entry["count"] += 1
+                            entry["runs"].add(path)
                             entry["zones"][zone] += 1
+                            for source_zone in detail.get("zones") or ():
+                                entry["source_zones"][source_zone] += 1
+                            for holder in detail.get("held_by") or ():
+                                entry["held_by"][holder] += 1
+                            reason = detail.get("reason")
+                            if reason:
+                                entry["reasons"][reason] += 1
+
+                if not is_whiff_file:
+                    continue
 
                 bucket = zones.setdefault(zone, {
                     "decisions": 0, "dwell": 0, "verbs": Counter(), "verb_whiffs": Counter(),
@@ -232,6 +290,7 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
                     bucket["candidates"].append(selection["total_candidates"])
 
     total_dwell = sum(b["dwell"] for b in zones.values())
+    route_total_all = sum(route_zone_total.values())
 
     triggers = []
     for zone, b in zones.items():
@@ -273,12 +332,35 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
     blocked_triggers = []
     for requirement, entry in blocked_by_requirement.items():
         count = entry["count"]
+        runs = len(entry["runs"])
         share = _round(count / lost_total) if lost_total else 0.0
-        if count >= BLOCKED_MIN and share >= BLOCKED_SHARE_MIN:
+        # M4: share of *all* routed decisions (not just the lost ones) --
+        # "share" above can trivially sit near 1.0 when one requirement
+        # dominates every lost decision (real data: 1,801/1,801); lost_share
+        # says how much of the whole population that actually is.
+        lost_share = _round(count / route_total_all) if route_total_all else 0.0
+        # M4 required fix: a single run producing dozens of the same lost
+        # decision is one anecdote, not a world-wide blocker -- gate on the
+        # number of distinct runs it showed up in too, not only the raw
+        # decision count (BLOCKED_MIN alone let a single 60-decision run
+        # trip the trigger).
+        if (
+            count >= BLOCKED_MIN
+            and share >= BLOCKED_SHARE_MIN
+            and runs >= BLOCKED_RUNS_MIN
+        ):
             blocked_triggers.append({
                 "kind": "blocked",
                 "requirement": requirement, "count": count, "share": share,
-                "zones": _top(entry["zones"], 3),
+                "runs": runs, "lost_share": lost_share,
+                # "stuck_zones": where the lost decision itself happened;
+                # "source_zones"/"held_by": from blocked_detail -- where the
+                # *requirement* (has_item:.../knows:...) would come from and
+                # who currently holds it, when known.
+                "stuck_zones": _top(entry["zones"], 3),
+                "source_zones": _top(entry["source_zones"], 3),
+                "held_by": _top(entry["held_by"], 5),
+                "reason": entry["reasons"].most_common(1)[0][0] if entry["reasons"] else None,
             })
     blocked_triggers.sort(key=lambda t: (-t["share"], t["requirement"]))
     triggers.extend(blocked_triggers)
@@ -323,7 +405,14 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
         zone: dict(sorted(counts.items())) for zone, counts in sorted(route_counts.items())
     }
     report_blocked_counts = {
-        requirement: {"count": entry["count"], "zones": dict(sorted(entry["zones"].items()))}
+        requirement: {
+            "count": entry["count"],
+            "runs": len(entry["runs"]),
+            "zones": dict(sorted(entry["zones"].items())),
+            "source_zones": dict(sorted(entry["source_zones"].items())),
+            "held_by": dict(sorted(entry["held_by"].items())),
+            "reasons": dict(sorted(entry["reasons"].items())),
+        }
         for requirement, entry in sorted(blocked_by_requirement.items())
     }
 
@@ -366,8 +455,8 @@ def build_report(experiment_dir: Path, *, use_all: bool = False, subject: str | 
     """Load an experiment's layers.jsonl files and build the full report
     (aggregates + archive summary + schema/thresholds metadata)."""
 
-    paths, archive, mode = _load_paths(experiment_dir, use_all)
-    report = collect(paths, subject=subject)
+    paths, route_paths, archive, mode = _load_paths(experiment_dir, use_all)
+    report = collect(paths, subject=subject, route_paths=route_paths)
     report["archive"] = _archive_summary(experiment_dir, archive)
     report["schema_version"] = 2
     report["thresholds"] = {
@@ -375,6 +464,7 @@ def build_report(experiment_dir: Path, *, use_all: bool = False, subject: str | 
         "whiffs_min": WHIFFS_MIN,
         "ignorance_min": IGNORANCE_MIN, "ignorance_share_min": IGNORANCE_SHARE_MIN,
         "blocked_min": BLOCKED_MIN, "blocked_share_min": BLOCKED_SHARE_MIN,
+        "blocked_runs_min": BLOCKED_RUNS_MIN,
     }
     report["population"] = {"mode": mode, "files": report["files"], "skipped": report["skipped_paths"]}
     return report

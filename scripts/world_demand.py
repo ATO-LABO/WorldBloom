@@ -58,8 +58,10 @@ def _print_table(report: dict) -> None:
             print(f"    [ignorance] {t['zone']}: 手探り {t['count']} 回"
                   f"（その場所の道筋付き決定の {t['share']:.1%}）")
         elif kind == "blocked":
-            print(f"    [blocked] {t['requirement']}: 見通しなし {t['count']} 回"
-                  f"（全見通しなし決定の {t['share']:.1%}、主な場所 {t['zones']}）")
+            print(f"    [blocked] {t['requirement']}: 見通しなし {t['count']} 回 / {t['runs']} ラン"
+                  f"（全見通しなし決定の {t['share']:.1%}、全道筋付き決定の {t['lost_share']:.1%}、"
+                  f"詰まった場所 {t['stuck_zones']}、入手元 {t['source_zones']}、"
+                  f"持ち主 {t['held_by']}、理由 {t['reason']}）")
         else:
             print(f"    [{kind}] {t}")
 

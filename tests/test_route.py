@@ -26,6 +26,7 @@ from gapengine.route import (
     Route,
     _acquire,
     _acquire_from_subject,
+    _blocked_on,
     annotate,
     gene_strength,
     load_motives,
@@ -395,9 +396,12 @@ class BlockedOnTests(unittest.TestCase):
     def test_reach_requirement_when_the_only_source_zone_is_excluded(self) -> None:
         # Same fixture as S1CarryoverTests.test_unreachable_plan_is_kind_
         # lost_not_detour: at 道中 without 縄, 鬼ヶ島 needs 船, 船 needs 縄,
-        # and 縄's only source (村) is excluded until the treasure is held
-        # -- the true root cause is 村 itself, not 縄 (has_item:縄 would
-        # still be correct but less specific than what actually blocks it).
+        # and 縄's only source (村) is excluded until the treasure is held.
+        # M1 required fix: 村 being unreachable is folded into 縄's own
+        # ``zones``/``reason`` detail instead of surfacing as a bare
+        # "reach:村" -- has_item:縄 is the named blocker (the requirement
+        # actually missing from inventory), with 村 recorded as the one
+        # source zone that's unreachable right now.
         self.momotaro.zone = "道中"
         action = Action("fight", ("キジ",), {"target": "キジ"})
         result = annotate(
@@ -405,7 +409,68 @@ class BlockedOnTests(unittest.TestCase):
             [action], holder_belief_fact="treasure_thief",
         )[0]
         self.assertEqual(result["kind"], "lost")
+        self.assertEqual(result["blocked_on"], "has_item:縄")
+        self.assertEqual(
+            result["blocked_detail"],
+            {"reason": "sources_unreachable", "zones": ["村"], "held_by": []},
+        )
+
+    def test_held_by_when_the_only_holder_is_an_ally_who_wont_hand_it_over(self) -> None:
+        # M1 required fix: 縄 held by 犬 (an ally momotaro can neither fight
+        # nor -- as a nested material, not the objective itself -- negotiate
+        # with) names 犬 in held_by. 村 (縄's investigate source) is also
+        # still excluded, so it shows up in zones/reason at the same time --
+        # this is exactly the shape the real sweep data has (S1 review 1).
+        self.momotaro.zone = "道中"
+        self.subjects["犬"].inventory["縄"] = 1
+        action = Action("fight", ("キジ",), {"target": "キジ"})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects("道中"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "lost")
+        self.assertEqual(result["blocked_on"], "has_item:縄")
+        self.assertEqual(result["blocked_detail"]["held_by"], ["犬"])
+        self.assertEqual(result["blocked_detail"]["zones"], ["村"])
+        self.assertEqual(result["blocked_detail"]["reason"], "sources_unreachable")
+
+    def test_reach_only_when_treasure_already_held_and_destination_has_no_path_at_all(self) -> None:
+        # M1: "reach:" only ever names the delivery destination or the
+        # believed holder's own zone, and only when there is genuinely no
+        # path at all (ignoring items) -- severing 海<->道中 leaves 鬼ヶ島
+        # topologically cut off from 村 even though momotaro already holds
+        # the treasure (subject.has_item(target) branch, no nested item can
+        # be named -- there is nothing further to acquire).
+        self.momotaro.zone = "鬼ヶ島"
+        self.momotaro.inventory["鬼ヶ島の宝物"] = 1
+        self.world.routes["海"] = tuple(
+            route for route in self.world.routes["海"] if route.destination != "道中"
+        )
+        action = Action("rest", meta={"under_threat": False})
+        result = annotate(
+            self.momotaro, self.world, self.world.present_subjects("鬼ヶ島"),
+            [action], holder_belief_fact="treasure_thief",
+        )[0]
+        self.assertEqual(result["kind"], "lost")
         self.assertEqual(result["blocked_on"], "reach:村")
+        self.assertEqual(result["blocked_detail"], {"reason": "destination_unreachable"})
+
+    def test_m2_delivery_leg_ignores_current_exclusion_like_plan_does(self) -> None:
+        # M2 regression: holding 縄 (not yet the treasure) at 道中, the real
+        # plan() finds a finite h (船 is craftable, 鬼ヶ島 reachable, and the
+        # delivery leg back to 村 happens *after* the treasure lifts 村's
+        # exclusion) -- but the pre-fix _blocked_zone searched that future
+        # delivery leg with the subject's *current* excluded zones (村 still
+        # excluded for real, since the treasure isn't in hand yet), wrongly
+        # naming "reach:村". Calling the internal helper directly (this
+        # state is never actually "lost", so annotate() would never compute
+        # blocked_on for it) confirms the fix: None, not "reach:村".
+        self.momotaro.zone = "道中"
+        self.momotaro.inventory["縄"] = 1
+        state = plan(self.momotaro, self.world, holder_belief_fact="treasure_thief")
+        self.assertNotIn(state["h"], (None, float("inf")))
+        blocked = _blocked_on(self.momotaro, self.world, "treasure_thief", {})
+        self.assertIsNone(blocked)
 
     def test_knows_requirement_when_a_craft_fact_has_no_source(self) -> None:
         # 船 needs 造船術, which momotaro starts already knowing (world.yaml)
