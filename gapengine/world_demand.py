@@ -36,10 +36,11 @@ WHIFFS_MIN = 10
 
 # WB-WORLDGROW-002 S1: route-layer (rho>0) triggers. Only ever populated on
 # a route-wired run -- see route_counts/blocked_counts docstrings below.
-# ponytail: eyeballed on a fresh momotaro_plus2 rho=1.0 sweep (11 genomes x
-# 40 seeds, scripts/route_eval.py's --skip-ga fixed-gene sweep re-run under
-# this stage's code, runs/wg1/sweep) -- 31,860 decisions, 1,801 "lost", all
-# 1,801 converging on the single requirement "reach:村" (share 1.0, this
+# ponytail: 仮置き（S1 review 2 R2/R3）-- eyeballed on a fresh momotaro_plus2
+# rho=1.0 sweep (11 genomes x 40 seeds, scripts/route_eval.py's --skip-ga
+# fixed-gene sweep re-run under this stage's code, runs/wg1/sweep) -- 31,860
+# decisions, 1,801 "lost", all 1,801 converging on the single requirement
+# "has_item:縄" (reason=sources_unreachable, source zone 村; share 1.0, this
 # world's only real blocker right now: 村, 縄's only source, gets excluded
 # the moment the protagonist leaves without the treasure). "ignorance" saw
 # only 33 decisions total (鬼ヶ島, 0.5% of that zone's route-tagged
@@ -47,19 +48,22 @@ WHIFFS_MIN = 10
 # SHARE_MIN than whiff's own (whiff's 2% is a share of the *whole world's*
 # dwell; ignorance/blocked's share is already scoped to a zone or to all
 # "lost" decisions, a far smaller population, so a real signal should be a
-# much bigger fraction of it). Recalibrate once more worlds/genomes are
-# measured, same as WHIFF_* above.
+# much bigger fraction of it). This is one run's worth of evidence (route-s2/
+# eval3 does have route-layer "lost" decisions -- 949 of them, 22 runs -- but
+# it predates blocked_on/blocked_detail and so can't be re-used as-is;
+# re-running it under the current code was out of scope here). Recalibrate
+# once more worlds/genomes/re-runs are measured, same as WHIFF_* above.
 IGNORANCE_MIN = 10
 IGNORANCE_SHARE_MIN = 0.3
 BLOCKED_MIN = 10
 BLOCKED_SHARE_MIN = 0.3
 # M4 required fix: BLOCKED_MIN alone let one single run's ~60 identical
 # "lost" decisions (one genome/seed stuck in a loop for the rest of the run)
-# read as a world-wide blocker. Recalibrated on the same wg1/sweep rho=1.0
-# re-run cited above: 47/47 runs saw the dominant has_item:縄 requirement
-# (every run, not a fluke of one) -- BLOCKED_RUNS_MIN=3 asks for it to
-# recur in at least a handful of independent runs, comfortably below that
-# 47 but well above the single-run false positive this fix targets.
+# read as a world-wide blocker. 仮置き（S1 review 2 R2）-- same single wg1/
+# sweep rho=1.0 re-run cited above: 47/47 runs saw the dominant has_item:縄
+# requirement (every run, not a fluke of one) -- BLOCKED_RUNS_MIN=3 asks for
+# it to recur in at least a handful of independent runs, comfortably below
+# that 47 but well above the single-run false positive this fix targets.
 BLOCKED_RUNS_MIN = 3
 
 
@@ -170,10 +174,26 @@ def collect(
     lost_total = 0
 
     whiff_paths = set(paths)
-    scan_paths = route_paths if route_paths is not None else paths
+    # S1 review 2 required fix C2: `paths` always goes first (whiff's own
+    # population, its own order preserved), then whatever of `route_paths`
+    # isn't already in it -- deterministic, no duplicates. The pre-fix code
+    # scanned only `route_paths` whenever it was given, so an exemplar whose
+    # own layers_path doesn't match _RUN_LAYERS_RE (present in `paths` but
+    # not in `route_paths`) silently dropped out of the scan entirely: not
+    # counted in skipped_paths when its file was missing, and never read for
+    # whiff when it was present.
+    route_path_set = set(route_paths) if route_paths is not None else whiff_paths
+    if route_paths is not None:
+        scan_paths = list(paths) + [p for p in route_paths if p not in whiff_paths]
+    else:
+        scan_paths = list(paths)
 
     for path in scan_paths:
         is_whiff_file = path in whiff_paths
+        # C2: route/ignorance/blocked aggregation stays scoped to exactly
+        # `route_paths` (the regex-matched population M3 always scans) --
+        # never widened by a whiff-only path this fix now also visits.
+        is_route_file = path in route_path_set
         if not path.is_file():
             if is_whiff_file:
                 skipped_paths += 1
@@ -211,7 +231,8 @@ def collect(
                 # note: text changes across code versions, structure
                 # doesn't). Always aggregated from the full population
                 # (M3, design judgment J), regardless of whiff's own mode.
-                route = row.get("policy", {}).get("route") if isinstance(row.get("policy"), dict) else None
+                route = (row.get("policy", {}).get("route")
+                         if is_route_file and isinstance(row.get("policy"), dict) else None)
                 if isinstance(route, dict):
                     route_kind = route.get("kind")
                     route_cause = route.get("cause")
@@ -360,7 +381,9 @@ def collect(
                 "stuck_zones": _top(entry["zones"], 3),
                 "source_zones": _top(entry["source_zones"], 3),
                 "held_by": _top(entry["held_by"], 5),
-                "reason": entry["reasons"].most_common(1)[0][0] if entry["reasons"] else None,
+                # R4 (S1 review 2): tie-break by name, not Counter insertion
+                # (file) order, same as every other _top() use in this module.
+                "reason": _top(entry["reasons"], 1)[0][0] if entry["reasons"] else None,
             })
     blocked_triggers.sort(key=lambda t: (-t["share"], t["requirement"]))
     triggers.extend(blocked_triggers)
