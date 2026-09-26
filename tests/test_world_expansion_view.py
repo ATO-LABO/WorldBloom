@@ -398,6 +398,70 @@ class ProposalCardTests(unittest.TestCase):
         self.assertIn("holdout の検査: 2 回", html)
 
 
+class TriggerRateKindTests(unittest.TestCase):
+    """WB-WORLDGROW-002 段階4への追加: ignorance/blocked の trial["trigger"]
+    (gapengine/world_patch_trial.py の _ignorance_counts/_blocked_counts の
+    形) を種類ごとの文言で表示する。whiff は _whiff_rate_side/_whiff_rate_text
+    のまま(既存のProposalCardTestsで検証済み、ここでは触れない)。"""
+
+    def test_ignorance_rate_side_with_share(self):
+        text = wev._ignorance_rate_side({"count": 33, "total": 66, "share": 0.5})
+        self.assertEqual(text, "66 回中 33 回（50.0%）")
+
+    def test_ignorance_rate_side_zero_total_skips_percentage(self):
+        text = wev._ignorance_rate_side({"count": 0, "total": 0, "share": None})
+        self.assertEqual(text, "0 回中 0 回")
+        self.assertNotIn("%", text)
+
+    def test_ignorance_rate_side_non_numeric_is_an_em_dash(self):
+        self.assertEqual(wev._ignorance_rate_side({"count": None, "total": 5}), "—")
+        self.assertEqual(wev._ignorance_rate_side("not-a-dict"), "—")
+
+    def test_blocked_rate_side_with_share(self):
+        text = wev._blocked_rate_side({"count": 1801, "lost_total": 3668, "lost_share": 0.4912})
+        self.assertEqual(text, "3668 回中 1801 回（49.1%）")
+
+    def test_blocked_rate_side_zero_total_skips_percentage(self):
+        text = wev._blocked_rate_side({"count": 0, "lost_total": 0, "lost_share": None})
+        self.assertEqual(text, "0 回中 0 回")
+
+    def test_trigger_rate_text_dispatches_by_kind(self):
+        ignorance = {"kind": "ignorance", "zone": "森",
+                     "base": {"count": 33, "total": 66, "share": 0.5},
+                     "patched": {"count": 10, "total": 66, "share": 0.1515}}
+        self.assertEqual(wev._trigger_rate_text(ignorance),
+                         "ベース 66 回中 33 回（50.0%） → 適用後 66 回中 10 回（15.2%）")
+        blocked = {"kind": "blocked", "requirement": "has_item:縄",
+                   "base": {"count": 1801, "lost_total": 1801, "lost_share": 1.0},
+                   "patched": {"count": 0, "lost_total": 0, "lost_share": None}}
+        self.assertEqual(wev._trigger_rate_text(blocked),
+                         "ベース 1801 回中 1801 回（100.0%） → 適用後 0 回中 0 回")
+
+    def test_trigger_rate_label_by_kind(self):
+        self.assertEqual(wev._trigger_rate_label({"kind": "whiff"}), "きっかけの空振り率")
+        self.assertEqual(wev._trigger_rate_label({"zone": "海", "verb": "investigate"}), "きっかけの空振り率")
+        self.assertEqual(wev._trigger_rate_label({"kind": "ignorance"}), "きっかけの手探り")
+        self.assertEqual(wev._trigger_rate_label({"kind": "blocked"}), "きっかけの見通しなし決定")
+
+    def test_trial_html_shows_ignorance_before_after(self):
+        trial = {"trigger": {"kind": "ignorance", "zone": "森",
+                              "base": {"count": 33, "total": 66, "share": 0.5},
+                              "patched": {"count": 5, "total": 66, "share": 0.0758}}}
+        html = wev._trial_html(trial)
+        self.assertIn("きっかけの手探り", html)
+        self.assertIn("ベース 66 回中 33 回（50.0%）", html)
+        self.assertIn("適用後 66 回中 5 回（7.6%）", html)
+
+    def test_trial_html_shows_blocked_before_after(self):
+        trial = {"trigger": {"kind": "blocked", "requirement": "has_item:縄",
+                              "base": {"count": 1801, "lost_total": 1801, "lost_share": 1.0},
+                              "patched": {"count": 0, "lost_total": 0, "lost_share": None}}}
+        html = wev._trial_html(trial)
+        self.assertIn("きっかけの見通しなし決定", html)
+        self.assertIn("ベース 1801 回中 1801 回（100.0%）", html)
+        self.assertIn("適用後 0 回中 0 回", html)
+
+
 class LoadTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wb-world-expansion-view-")

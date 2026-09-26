@@ -219,7 +219,10 @@ def _blocked_target(requirement: str) -> tuple[str, str]:
 def _demand_section_blocked(trigger: dict) -> str:
     requirement = trigger.get("requirement") or ""
     target, kind = _blocked_target(requirement)
-    stuck_text = _pair_text(trigger.get("stuck_zones"))
+    # R1（段階2差し戻し対応の積み残し、段階4で対応）: stuck_zones/source_zones
+    # も held_by と同じく名前だけにする -- 件数は道中・森・海など複数ゾーンの
+    # 合計であり、名前の隣の数字として誤読を招く。総数は count/runs で足りる。
+    stuck_text = _names_only(trigger.get("stuck_zones")) or "不明"
     count, runs = trigger.get("count"), trigger.get("runs")
     if kind == "reach":
         body = (
@@ -229,7 +232,7 @@ def _demand_section_blocked(trigger: dict) -> str:
             "入手手段を、主人公が到達できる場所に足してください。"
         )
     else:
-        source_text = _pair_text(trigger.get("source_zones"))
+        source_text = _names_only(trigger.get("source_zones")) or "不明"
         # R1: names only, no count -- "キジ×571" next to a person's name
         # reads as "how many of them", not "how many decisions saw this".
         held_text = _names_only(trigger.get("held_by")) or "誰も持っていません"

@@ -343,8 +343,8 @@ class BuildPromptKindDispatchTests(unittest.TestCase):
         # R1: the caller's actually-computed reachable zones (森・道中 --
         # not 海, and never with a count attached) replace the raw
         # stuck_zones-based wording when given. The demand section above it
-        # still reports raw stuck_zones counts (unaffected by this fix), so
-        # this only asserts on the coverage-rule bullet itself.
+        # now also reports stuck_zones by name only (段階4 の積み残し対応),
+        # so this only asserts on the coverage-rule bullet itself.
         prompt = build_prompt(WORLD, SUBJECT_IDS, BLOCKED_TRIGGER, [], reachable_zones={"森", "道中"})
         self.assertIn("足してよい場所（主人公が今到達できる場所）: 森・道中。それ以外の場所は今は行けないので不可です。", prompt)
 
