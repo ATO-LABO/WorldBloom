@@ -22,7 +22,7 @@ from gapengine.world_patch import (
     patch_id_for,
     validate_patch,
 )
-from gapengine.world_patch_contract import contract_check
+from gapengine.world_patch_contract import contract_check, reachable_zones_from
 from gapengine.world_patch_inputs import read_subjects
 from test_detective import PROJECT as DETECTIVE_PROJECT
 from test_detective import SUSPECTS
@@ -145,6 +145,37 @@ class WorldPatchTests(unittest.TestCase):
         with self.assertRaises(PatchError) as caught:
             apply_patches(world, [bad])
         self.assertTrue(str(caught.exception).startswith("p-1a2b3c4d:"))
+
+    def test_ignorance_trigger_expansion_entry_keeps_kind_zone_count(self):
+        # WB-WORLDGROW-002 S2: unlike whiff (zone/verb only, no "kind" key --
+        # byte-identical to pre-S2), a route-layer trigger's expansion record
+        # names its own kind.
+        world = load_world()
+        patch = sample_patch(trigger={"experiment": "run-xxxx", "kind": "ignorance", "zone": "鬼ヶ島", "count": 33})
+        patched = apply_patch(world, patch)
+        entry = patched["expansion"]["patches"][0]
+        self.assertEqual(entry["trigger"], {"kind": "ignorance", "zone": "鬼ヶ島", "count": 33})
+
+    def test_blocked_trigger_expansion_entry_keeps_kind_requirement_count_stuck_zones(self):
+        world = load_world()
+        patch = sample_patch(trigger={
+            "experiment": "run-xxxx", "kind": "blocked", "requirement": "has_item:縄",
+            "count": 1801, "stuck_zones": [["道中", 900]], "runs": 47,
+        })
+        patched = apply_patch(world, patch)
+        entry = patched["expansion"]["patches"][0]
+        self.assertEqual(entry["trigger"], {"kind": "blocked", "requirement": "has_item:縄",
+                                             "count": 1801, "stuck_zones": [["道中", 900]]})
+
+    def test_missing_kind_on_an_old_patch_still_reads_as_whiff(self):
+        # A pre-S1 patch on disk never had "kind" at all -- must still slim
+        # down to just zone/verb, not crash or keep every field.
+        world = load_world()
+        patch = sample_patch(trigger={"experiment": "run-xxxx", "zone": "海", "verb": "investigate",
+                                      "count": 228, "whiffs": 228})
+        patched = apply_patch(world, patch)
+        entry = patched["expansion"]["patches"][0]
+        self.assertEqual(entry["trigger"], {"zone": "海", "verb": "investigate"})
 
     def assert_invalid(self, mutate):
         world = load_world()
@@ -842,6 +873,51 @@ def _minimal_contract_world(temp: Path, *, subject_range_zones: list[str]) -> tu
     subjects_dir.mkdir()
     (subjects_dir / "sub.yaml").write_text(yaml.safe_dump(person, allow_unicode=True), encoding="utf-8")
     return world_path, subjects_dir
+
+
+class ReachableZonesFromTests(unittest.TestCase):
+    """WB-WORLDGROW-002 S2: gapengine.world_patch_contract.reachable_zones_from
+    -- reused by scripts/world_patch.py's check_trigger_coverage("blocked")
+    gate. Same fixture as ContractCheckNegativeStartTests below (拠点's own
+    range.exclude rule, until 鍵 is held)."""
+
+    def test_excludes_a_zone_currently_blocked_by_range_exclude(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "ZZZ_valid"])
+            # サブ never holds 鍵 here, so 拠点's own exclude rule stays
+            # active -- reachable_paths' own bypass-avoiding BFS (not a
+            # parallel reimplementation) keeps it out of the result, and the
+            # stuck zone itself is added even though reachable_paths never
+            # returns the subject's own starting zone.
+            reachable = reachable_zones_from(world_path, subjects_dir, "サブ", ["小屋"])
+        self.assertEqual(reachable, {"小屋", "ZZZ_valid"})
+
+    def test_holding_the_until_item_lifts_the_exclusion(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "ZZZ_valid"])
+            person = yaml.safe_load((subjects_dir / "sub.yaml").read_text(encoding="utf-8"))
+            person["inventory"] = {"鍵": 1}
+            (subjects_dir / "sub.yaml").write_text(yaml.safe_dump(person, allow_unicode=True), encoding="utf-8")
+            reachable = reachable_zones_from(world_path, subjects_dir, "サブ", ["小屋"])
+        self.assertEqual(reachable, {"小屋", "拠点", "ZZZ_valid"})
+
+    def test_unions_reachability_from_every_stuck_zone(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "AAA_isolated", "ZZZ_valid"])
+            reachable = reachable_zones_from(world_path, subjects_dir, "サブ", ["小屋", "AAA_isolated"])
+        # AAA_isolated only connects back to 拠点 (excluded) -- reached only
+        # because it's itself one of the stuck zones passed in.
+        self.assertEqual(reachable, {"小屋", "ZZZ_valid", "AAA_isolated"})
+
+    def test_unknown_protagonist_returns_empty_set(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋"])
+            reachable = reachable_zones_from(world_path, subjects_dir, "誰か", ["小屋"])
+        self.assertEqual(reachable, set())
 
 
 class ContractCheckNegativeStartTests(unittest.TestCase):

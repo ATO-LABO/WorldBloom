@@ -88,6 +88,30 @@ def contract_check(world_path, subjects_dir, patch, *, action_graph_path=None):
     return result
 
 
+def reachable_zones_from(world_path, subjects_dir, protagonist, stuck_zones) -> set:
+    """WB-WORLDGROW-002 S2: static reachability for a "blocked" trigger's
+    check_trigger_coverage -- builds one fresh World+Subject (never touches a
+    live run) and unions World.reachable_paths() for `protagonist`, started
+    from each of `stuck_zones` in turn. Reuses the engine's own range/
+    range_exclude logic (e.g. 村's until_item rule) instead of re-deriving a
+    parallel notion of "reachable" -- a zone the protagonist's exclude rule
+    currently blocks (they don't hold the item yet, which is exactly the
+    blocked trigger's own situation) correctly drops out here too."""
+    world = World.from_yaml(world_path)
+    people = [Subject.from_yaml(p) for p in sorted(Path(subjects_dir).glob("*.yaml"))]
+    world.bind_subjects({p.id: p for p in people})
+    subject = next((p for p in people if p.id == protagonist), None)
+    if subject is None:
+        return set()
+    reachable: set = set()
+    for zone in stuck_zones:
+        if not isinstance(zone, str):
+            continue
+        subject.zone, subject.stamina = zone, subject.stamina_max
+        reachable |= set(world.reachable_paths(subject)) | {zone}
+    return reachable
+
+
 def new_usage(paths, patch, protagonist):
     add = patch.get("add", {})
     zones = {z["name"] for z in add.get("zones", [])}
