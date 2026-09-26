@@ -2,7 +2,7 @@
 from datetime import datetime
 from urllib.parse import parse_qs, urlsplit
 
-from viewer import data, pages, run_summary
+from viewer import data, epoch_view, pages, run_summary
 
 E, U = pages._escape, pages._url_segment
 
@@ -41,18 +41,23 @@ def navigation(active, *, world=None, config=None, store=None, status_href=None)
         + (' data-history-back' if key == "history" else '') + f'>{label}</a>' for key, label, href in items) + '</nav>'
 
 
-def _document(handler, title, active, body, *, world=None, config=None, footer="", summary=""):
+def _document(handler, title, active, body, *, world=None, config=None, footer="", summary="", chain_strip=""):
     from viewer import workbench_pages as wb
     store = wb._job_store(handler)
     main_class = "rb-main rb-has-summary" if summary else "rb-main"
     content = ('<div class="rw-shell rb-shell">' + navigation(active, world=world, config=config, store=store)
                + f'<div class="{main_class}"><header class="rw-heading"><h1>' + E(title) + '</h1>'
                '<p>' + ("条件を確認して、物語の探索を始めます。" if active == "conditions" else "実行した探索を振り返り、続きの作業へ進めます。") + '</p></header>'
-               '<div class="rb-content">' + body + '</div>' + summary
+               + chain_strip + '<div class="rb-content">' + body + '</div>' + summary
                + ('<footer class="rw-footer rb-footer">' + footer + '</footer>' if footer else '') + '</div></div>')
     doc = pages.document(title, content, phase="run", world=world, job_store=store,
                          pin=data.pinned_target(store), page_class="run-observer")
-    handler._send_html(doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css"></head>'))
+    # WB-WORLDGROW-001 段階5c-2: the script is only ever needed when the
+    # strip is actually present -- keeps every page with no active chain
+    # byte-identical to before this stage.
+    epoch_script = '<script src="/static/epoch-chain.js" defer></script>' if chain_strip else ""
+    doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">' + epoch_script + '</head>')
+    handler._send_html(doc)
 
 
 def conditions(handler, view=None, *, config=None):
@@ -96,8 +101,9 @@ def conditions(handler, view=None, *, config=None):
         action = f'<a class="rw-primary" href="/configs/{cid}/start">この条件で実行へ →</a>'
     estimate = view["estimate"] if preparing else wb._estimate(
         store.list(), {c["config_id"]: c for c in store.configs.list()}, world["id"], config)
+    chain_strip = epoch_view.strip_html(epoch_view.relevant_chain(handler, config["config_id"]))
     _document(handler, "実行条件", "conditions", body, world=world, config=config, footer=back + action,
-              summary=run_summary.render(ev, preview=preview, estimate_html=estimate))
+              summary=run_summary.render(ev, preview=preview, estimate_html=estimate), chain_strip=chain_strip)
 
 
 def history(handler, records, generation_jobs):

@@ -63,6 +63,8 @@ class EpochChain:
             return read_json(self._folder(chain_id) / "chain.json")
         except FileNotFoundError as error:
             raise ConfigError("chain_id", "連鎖がありません", code="not_found") from error
+        except ValueError as error:  # R-2: corrupt chain.json -> 422, not 500
+            raise ConfigError("chain_id", "連鎖の記録を読めません") from error
 
     def _save(self, chain, **updates):
         chain.update(updates)
@@ -72,10 +74,25 @@ class EpochChain:
         return chain
 
     def _all(self):
+        """Every chain.json under root, skipping any chain directory that
+        can't be read (M2, Opus review WB-WORLDGROW-001 段階5c-2 follow-up):
+        an empty directory (chain.json never written -- a crash mid-start())
+        or a corrupt chain.json must not take down tick()/current()/start()
+        for every OTHER chain -- and since tick() runs unconditionally on
+        every accept loop (viewer/server.py's service_actions), a single
+        broken directory would otherwise fail every future request that
+        reads epochs, forever, not just once."""
         if not self.root.exists():
             return []
-        return [self._read(p.name) for p in sorted(self.root.iterdir())
-                if p.is_dir() and p.name.startswith("chain-")]
+        chains = []
+        for p in sorted(self.root.iterdir()):
+            if not p.is_dir() or not p.name.startswith("chain-"):
+                continue
+            try:
+                chains.append(self._read(p.name))
+            except (ConfigError, ValueError, OSError):
+                continue
+        return chains
 
     @staticmethod
     def _public(chain):

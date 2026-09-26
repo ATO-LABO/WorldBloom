@@ -40,6 +40,40 @@ class RunBrowseTests(unittest.TestCase):
         self.assertIn('&lt;script&gt;', text)
         self.assertIn('条件に一致する実行履歴はありません', text)
 
+    def test_conditions_shows_epoch_chain_strip_for_the_chains_base_config(self):
+        # WB-WORLDGROW-001 段階5c-2: run_browse.conditions() (here reached
+        # via GET /configs/<id>, the bare "実行条件" screen) shows the
+        # user-selected (base) config -- matches epoch_view.relevant_chain()'s
+        # base_config_id arm, not an epoch's own derived config_id
+        # (test_run_workspace.py's own test covers that arm instead).
+        # state="completed" (not in EpochChain._ACTIVE_STATES) keeps the live
+        # server's own background tick() (ViewerServer.service_actions polls
+        # every 0.05s in this fixture) fully inert against this
+        # hand-fabricated chain, which skips fields a real
+        # EpochChain.start()/tick() would have filled in for an active one.
+        import time
+        from execution.provenance import atomic_json, directory_lock
+        chain = {"schema_version": 1, "chain_id": "chain-cond", "created_at": time.time(),
+                 "updated_at": time.time(), "revision": 1, "base_config_id": "cfg-test",
+                 "max_epochs": 3, "state": "completed", "approval": "auto", "auto_retire": True,
+                 "idle_streak": 0, "stop_requested_at": None, "error": None,
+                 "epochs": [{"index": 0, "step": "done", "config_id": "chain-cond-e0",
+                             "run_job_id": None, "run_id": None, "patch_id": None,
+                             "gate_status": None, "approved_rev": None, "retired": [], "notes": []}]}
+        with directory_lock(self.control / "epochs"):
+            atomic_json(self.control / "epochs" / "chain-cond" / "chain.json", chain)
+        status, text, _ = self.get_status('/configs/cfg-test')
+        self.assertEqual(status, 200)
+        self.assertIn("data-epoch-chain", text)
+        self.assertIn("完了", text)
+        self.assertIn("epoch-chain.js", text)
+
+    def test_no_chain_leaves_conditions_free_of_epoch_chain_markup(self):
+        status, text, _ = self.get_status('/configs/cfg-test')
+        self.assertEqual(status, 200)
+        self.assertNotIn("data-epoch-chain", text)
+        self.assertNotIn("epoch-chain.js", text)
+
     def test_config_detail_is_read_only_and_keeps_provenance(self):
         status, text, _ = self.get_status('/configs/cfg-test')
         self.assertEqual(status, 200)

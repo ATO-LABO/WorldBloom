@@ -1,5 +1,5 @@
 ---
-ja_rev: "f95ba98f0ac6"
+ja_rev: "122a2f0a5f52"
 ---
 # Run Settings
 
@@ -49,6 +49,8 @@ Other toggles:
 - **説明記録 (record_explanations, default on)**: records candidates' choice/rationale/cost/turning point so they can be reviewed later
 - **共進化 (coevolve, default off)**: evolves the antagonist's population in parallel too. Turning this on doubles the evaluation count (protagonist path + antagonist path)
 - **メタ進化 (meta_evolution, default off)**: in addition to the 9 numeric genes, also searches over enabling/disabling each rule
+
+**世界を育てる (Grow the world, growth.mode, default "off")**: repeats the run automatically as an "epoch chain" to grow the world itself little by little. An epoch is one cycle of growth — one experiment run, followed by proposing/checking/approving an expansion for a place the world came up short, then retiring any expansion that went unused — and the chain carries the previous epoch's personalities (the genomes of the individuals occupying its map) into the next epoch's generation 0. Choosing anything other than "off" reveals "何周回すか" (How many epochs, growth.epochs, 1-10, default 3) and "使われなかった拡張を自動で枯らす" (Automatically retire unused expansions, growth.auto_retire, default on for auto mode / off for manual mode), and forces 世界の拡張 (world_expansion) to "承認済みの拡張を適用" (Apply approved expansions). "自動で育てる" (Auto) also auto-approves and auto-retires whenever the proposal's holdout check looks good; "手動で育てる" (Manual) instead pauses on screen at every approval/rejection (a "次のエポックへ" (Next epoch) button on the run screen advances it).
 
 ## 04. Rationality (how consistently the protagonist picks sound moves)
 

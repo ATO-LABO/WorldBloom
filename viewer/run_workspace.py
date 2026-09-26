@@ -13,7 +13,7 @@ import yaml
 
 from execution.provenance import ConfigError
 from execution.worker import TERMINAL
-from viewer import data, pages, ga_replay, lineage_river, world_demand_view, world_effect_view, world_expansion_view
+from viewer import data, epoch_view, pages, ga_replay, lineage_river, world_demand_view, world_effect_view, world_expansion_view
 
 
 TABS = (("overview", "概要"), ("replay", "進化のリプレイ"),
@@ -185,17 +185,24 @@ def _expansion_project(handler, view):
     return project_dir
 
 
-def _proposals_html(handler, view, run_name):
+def _proposals_html(handler, view, run_name, chain=None):
     """「この実験から生まれた提案」節: この実験がトリガーとなった提案だけを
     proposal_card で並べ、他の提案・承認済みは件数だけ世界の画面へ逃がす。
 
     節の先頭に world-patch ジョブの進行表示の器（data-patch-job）を置く --
     中身は viewer/static/world-expansion.js が GET /api/jobs で埋める
-    （段階3b-3）。project_dir が解決できない実験には出さない。"""
+    （段階3b-3）。project_dir が解決できない実験には出さない。
+
+    chain: render() が一度だけ引いた epoch_view.relevant_chain() の結果
+    （R4, Opus review）-- ここで再度引き直さない。"""
     project_dir = _expansion_project(handler, view)
     if project_dir is None:
         return ""
     world_id = (view.get("config") or {}).get("project_id")
+    # WB-WORLDGROW-001 段階5c-2: "" whenever this isn't the epoch chain's
+    # currently-waiting epoch (relevant_chain already narrows to the last
+    # epoch; waiting_hint further narrows to state=="waiting").
+    hint = epoch_view.waiting_hint(chain)
     job_panel = (
         f'<div class="card" data-patch-job data-run="{E(run_name)}" hidden>'
         '<p role="status"></p>'
@@ -214,7 +221,7 @@ def _proposals_html(handler, view, run_name):
     approved_mine = [a for a in state["approved"] if a.get("experiment") == run_name]
     other_count = len(state["proposed"]) - len(mine) + (len(state["approved"]) - len(approved_mine))
 
-    parts = [job_panel, "<h3>この実験から生まれた提案</h3>"]
+    parts = [hint, job_panel, "<h3>この実験から生まれた提案</h3>"]
     if state.get("error"):
         parts.append(f'<p class="rw-empty">拡張の記録を読み込めませんでした: {E(state["error"])}</p>')
         return "".join(parts)
@@ -324,7 +331,7 @@ def _propose_run_and_reason(handler, view):
     return view.get("run_name"), None
 
 
-def _demand_html(handler, experiment, state, view=None):
+def _demand_html(handler, experiment, state, view=None, chain=None):
     if experiment is None:
         return '<p class="rw-empty">実験がまだ保存されていません。</p>'
     propose_run, reason = _propose_run_and_reason(handler, view)
@@ -336,7 +343,7 @@ def _demand_html(handler, experiment, state, view=None):
         block += f'<p class="muted">{E(reason)}</p>'
     if view is None:
         return block
-    return block + _usage_html(handler, view, state, experiment) + _proposals_html(handler, view, view.get("run_name"))
+    return block + _usage_html(handler, view, state, experiment) + _proposals_html(handler, view, view.get("run_name"), chain)
 
 
 def _effect_html(handler, view, query):
@@ -420,6 +427,10 @@ def render(handler, view):
     initial_replay = observed.get("replay_html", empty).replace('class="ga-replay"', 'class="ga-replay" data-rw-managed="true" data-active="false"')
     terminal_message = wb._run_terminal_message(job) if job.get("state") in TERMINAL else ""
     experiment, world_state = _world_state(handler, view)
+    # WB-WORLDGROW-001 段階5c-2 (R4, Opus review): read the active epoch
+    # chain once and reuse it for both the strip (below) and the demand
+    # tab's waiting hint, instead of two independent EpochChain.current() reads.
+    chain = epoch_view.relevant_chain(handler, config.get("config_id"))
     panels = (
         '<section id="rw-overview" role="tabpanel" aria-labelledby="rw-tab-overview">'
         '<div class="rw-overview"><div><h2>探索の進み具合</h2><div data-overview-progress></div>'
@@ -447,18 +458,22 @@ def render(handler, view):
         '<p data-metric-description></p><div data-trend-graph></div><div data-trend-detail></div>'
         '<details class="rw-trend-table"><summary>表で見る</summary><div data-trend-table></div></details></section>'
         '<section id="rw-demand" role="tabpanel" aria-labelledby="rw-tab-demand" hidden>'
-        + _demand_html(handler, experiment, world_state, view) + '</section>'
+        + _demand_html(handler, experiment, world_state, view, chain) + '</section>'
         '<section id="rw-effect" role="tabpanel" aria-labelledby="rw-tab-effect" hidden>'
         + _effect_html(handler, view, query) + '</section>'
     )
     from viewer.run_browse import navigation
+    # WB-WORLDGROW-001 段階5c-2: "" whenever this run's own config_id isn't
+    # the active epoch chain's current epoch -- a page with no active chain
+    # (the overwhelming majority) stays byte-identical to before this stage.
+    chain_strip = epoch_view.strip_html(chain)
     body = (
         f'<div class="rw-shell" data-run-workspace data-initial="{E(initial)}">'
         + navigation("status", world=world, config=config, status_href=urlsplit(handler.path).path)
         +
         '<div class="rw-main"><header class="rw-heading"><div><h1 data-run-title>' + title + '</h1>'
         '<span class="state-badge" data-status>' + E(wb.STATE_LABELS.get(job.get("state"), "記録")) + '</span></div>'
-        f'<p>{E(config.get("label") or world["name"])}</p></header>'
+        f'<p>{E(config.get("label") or world["name"])}</p></header>' + chain_strip +
         '<div class="rw-live"><span data-phase></span><strong data-progress></strong>'
         '<progress aria-label="完了世代"></progress><span data-elapsed></span><small data-last-update></small></div>'
         '<p class="rw-connection" data-connection role="status" hidden></p>'
@@ -474,10 +489,11 @@ def render(handler, view):
     doc = pages.document(title, body, phase="run", world=world, run=view.get("run_name"),
                          output_run=job.get("run_id"), job_store=getattr(handler.server, "job_store", None),
                          page_class="run-observer")
+    epoch_script = '<script src="/static/epoch-chain.js" defer></script>' if chain_strip else ""
     doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">'
                       '<script src="/static/ga_replay.js" defer></script>'
                       '<script src="/static/run-workspace.js" defer></script>'
-                      '<script src="/static/world-expansion.js" defer></script></head>')
+                      '<script src="/static/world-expansion.js" defer></script>' + epoch_script + '</head>')
     handler._send_html(doc)
 
 
