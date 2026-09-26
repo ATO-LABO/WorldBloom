@@ -797,7 +797,7 @@ class WorkbenchTests(unittest.TestCase):
             def __exit__(self_inner, *exc_info):
                 return False
             def read(self_inner):
-                return json.dumps({"data": [{"id": JEV_DEFAULT_MODEL}]}).encode("utf-8")
+                return json.dumps({"model": JEV_DEFAULT_MODEL, "answers": {"q": {"type": "choice", "choice": "a", "confidence": 1.0, "probabilities": {"a": 1.0, "b": 0.0}}}}).encode("utf-8")
 
         with patch("execution.rationality_settings.urllib.request.urlopen",
                    return_value=_FakeModelsResponse()):

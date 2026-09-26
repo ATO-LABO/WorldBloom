@@ -23,8 +23,9 @@ class _FakeModelsResponse:
         self._body = body
 
     @classmethod
-    def for_ids(cls, model_ids):
-        return cls(json.dumps({"data": [{"id": m} for m in model_ids]}).encode("utf-8"))
+    def ok(cls):
+        """A /v1/systemone choice answer (the key check's own probe)."""
+        return cls(json.dumps({"model": JEV_DEFAULT_MODEL, "answers": {"q": {"type": "choice", "choice": "a", "confidence": 1.0, "probabilities": {"a": 1.0, "b": 0.0}}}}).encode("utf-8"))
 
     def __enter__(self):
         return self
@@ -51,7 +52,7 @@ class RationalitySettingsTests(unittest.TestCase):
         self.assertEqual(read_jev_api_key(self.settings_path), "")
 
     def test_write_succeeds_and_never_exposes_the_key(self) -> None:
-        response = _FakeModelsResponse.for_ids([JEV_DEFAULT_MODEL, "jev-other"])
+        response = _FakeModelsResponse.ok()
         with patch("execution.rationality_settings.urllib.request.urlopen", return_value=response):
             view = write_jev_api_key(self.settings_path, "sk-test-key")
         self.assertTrue(view["has_api_key"])
@@ -76,8 +77,30 @@ class RationalitySettingsTests(unittest.TestCase):
                 write_jev_api_key(self.settings_path, "bad-key")
         self.assertFalse(self.settings_path.exists())
 
-    def test_model_not_in_key_list_is_rejected(self) -> None:
-        response = _FakeModelsResponse.for_ids(["some-other-model"])
+    def test_probe_posts_a_choice_question_to_the_pinned_model(self) -> None:
+        with patch("execution.rationality_settings.urllib.request.urlopen",
+                   return_value=_FakeModelsResponse.ok()) as urlopen:
+            write_jev_api_key(self.settings_path, "sk-test-key")
+        request = urlopen.call_args.args[0]
+        self.assertTrue(request.full_url.endswith("/v1/systemone"))
+        self.assertEqual(request.get_method(), "POST")
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["model"], JEV_DEFAULT_MODEL)
+        self.assertEqual(body["questions"]["q"]["type"], "choice")
+
+    def test_model_rejected_by_typesafe_is_rejected_with_its_message(self) -> None:
+        import io
+        import urllib.error
+        body = io.BytesIO(json.dumps({"detail": {"message": "unknown model"}}).encode("utf-8"))
+        error = urllib.error.HTTPError("url", 404, "not found", None, body)
+        with patch("execution.rationality_settings.urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ConfigError) as caught:
+                write_jev_api_key(self.settings_path, "sk-test-key")
+        self.assertIn("unknown model", str(caught.exception))
+        self.assertFalse(self.settings_path.exists())
+
+    def test_unexpected_success_shape_is_rejected(self) -> None:
+        response = _FakeModelsResponse(json.dumps({"data": []}).encode("utf-8"))
         with patch("execution.rationality_settings.urllib.request.urlopen", return_value=response):
             with self.assertRaises(ConfigError):
                 write_jev_api_key(self.settings_path, "sk-test-key")
