@@ -9,6 +9,10 @@ reviewed: "9765a5cbd9e8fab7a136d509381a7f59bf3899cb"
 
 利用者から見て意味のある主な変更を日付順にまとめます。個々のコミットの一覧ではありません。最新のリリース物は [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases) から取得できます。
 
+## 2026-09-27
+
+- 世界の新規作成に「ZIPから取り込む」を追加。AI（Codex・Claude Code・Gemini など）に作らせた `world.yaml`・`subjects/*.yaml` をZIPで取り込める（詳しくは[世界を ZIP から取り込む](../usage/import-world.md)）。ジャンルは省略でき、その場合は世界設定画面から後で選べる
+
 ## 2026-09-26
 
 - Windows 配布版 [v1.1.0](https://github.com/ATO-LABO/WorldBloom/releases/tag/v1.1.0) を公開（v1.0.0-viewer 以降の変更をまとめた版）

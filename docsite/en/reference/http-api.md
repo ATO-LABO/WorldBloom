@@ -1,5 +1,5 @@
 ---
-ja_rev: "759098047e20"
+ja_rev: "050df1a44e67"
 ---
 # HTTP API
 
@@ -50,8 +50,8 @@ Editing a world/genre is functionally independent of GA experiments, but every h
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/worlds` | Create a new world |
-| POST | `/api/worlds/<id>/edit` | Edit a world (the screen's "世界を編集", Edit world) |
+| POST | `/api/worlds` | Create a new world (`mode`: `new`\|`copy`\|`import`; `import` is ZIP import) |
+| POST | `/api/worlds/<id>/edit` | Edit a world (the screen's "世界を編集", Edit world; `operation: genre` also picks/changes the genre) |
 | POST | `/api/worlds/<id>/basics` | Save only a world's basic info |
 | POST | `/api/worlds/<id>/files` | Save a YAML file under a world |
 | POST | `/api/worlds/<id>/validate` | Validate a world's YAML (doesn't save) |
