@@ -135,30 +135,6 @@ RATIONALITY_REASON_LABELS = {
     "invalid_base_url": "設定の base_url が不正です",
     "non_ollama_backend": "ollama 以外の判定器は画面から使えません",
 }
-# Stage 3 measured ~90s/run at kappa>0 (one Ollama /api/chat call per
-# candidate action, roughly 4.2s x ~20 calls) -- used only for the config
-# form's ETA hint below, never for anything that gates or blocks a save.
-# ponytail: fixed constant estimate; could instead be derived from recent
-# generation_summary judge-call timings if this proves too rough in practice.
-JUDGE_SECONDS_PER_RUN = 90
-
-
-def _format_eta_seconds(seconds):
-    """"約90秒" / "約9分" / "約2時間30分" (no "0分" when the hour count is
-    exact) -- shared by the config form's initial server render and
-    workbench.js's live recompute (coordinator review), so the two can never
-    disagree on wording."""
-    if seconds < 60:
-        return f"約{round(seconds)}秒"
-    minutes = math.ceil(seconds / 60)
-    if minutes < 60:
-        return f"約{minutes}分"
-    hours, remaining_minutes = divmod(minutes, 60)
-    if remaining_minutes:
-        return f"約{hours}時間{remaining_minutes}分"
-    return f"約{hours}時間"
-
-
 def availability_label(availability):
     """Japanese text for a generation_availability()-shaped result.
 
@@ -535,7 +511,7 @@ def _kappa_field(value):
     )
 
 
-def _rationality_section(values, ctx, *, total_runs, wall_seconds, heading_prefix=""):
+def _rationality_section(values, ctx, *, total_runs, heading_prefix=""):
     kappa_value = values.get("evolution.kappa") or 0
     if ctx["available"]:
         status = f'判定器: Ollama {ctx["model"]} — 利用可'
@@ -546,28 +522,20 @@ def _rationality_section(values, ctx, *, total_runs, wall_seconds, heading_prefi
         reason = {**GENERATION_REASON_LABELS, **RATIONALITY_REASON_LABELS}.get(
             ctx["reason"], ctx["reason"] or "不明")
         status = f'判定器: Ollama {ctx["model"]} — 利用不可（{reason}）。既定は 0 です'
-    # WB-JEV-002 coordinator review: kappa/generations/population/seeds/
-    # coevolve/wall_seconds can all change client-side without a reload, so
-    # this eta/warning pair is always rendered (never omitted), toggled via
-    # the "hidden" attribute -- workbench.js's updateRationality() flips the
-    # same attribute and rewrites [data-kappa-eta-text] on every input event,
-    # using this section's own data-judge-seconds-per-run so the 90s/run
-    # constant is never hardcoded twice. JS-off: this initial render (computed
-    # the same way, see _format_eta_seconds) is exactly what stays visible.
-    show_eta = bool(kappa_value and total_runs)
-    seconds = total_runs * JUDGE_SECONDS_PER_RUN if show_eta else 0
-    show_warning = show_eta and wall_seconds is not None and seconds > wall_seconds
-    eta_html = (
-        f'<p class="hint" data-kappa-eta{"" if show_eta else " hidden"}>判定器の見込み: '
-        f'<span data-kappa-eta-text>{_escape(_format_eta_seconds(seconds) if show_eta else "")}</span>'
-        "（1 ラン約90秒で概算。表が育つほど短くなります）</p>"
-        f'<p class="warning" data-kappa-warning{"" if show_warning else " hidden"}>'
-        "判定器の見込みが実行時間の上限を超えています。"
-        "上限を見直すか、規模を小さくしてください。</p>"
+    # Judge speed depends on the machine/GPU/model, so no pre-run time
+    # estimate: show only the machine-independent run count. The run
+    # screen's live ETA (run-workspace.js) covers time from real progress.
+    # Always rendered and toggled via "hidden" -- workbench.js's
+    # updateRationality() recomputes the count on every input event.
+    show_runs = bool(kappa_value and total_runs)
+    runs_html = (
+        f'<p class="hint" data-kappa-runs{"" if show_runs else " hidden"}>判定器を使うラン: '
+        f'<span data-kappa-runs-text>{total_runs:,}</span> 回。'
+        "所要時間はマシン性能で大きく変わるため、実行開始後の「残り時間の目安」で確認してください。"
+        "実行時間の上限に達すると、その時点までの結果で打ち切ります。</p>"
     )
     return (
-        '<section class="cfg-sec" data-wb="rationality" '
-        f'data-judge-seconds-per-run="{JUDGE_SECONDS_PER_RUN}"><div class="cfg-sec-head">'
+        '<section class="cfg-sec" data-wb="rationality"><div class="cfg-sec-head">'
         f"<h2>{_escape(heading_prefix)}合理性（主人公がどれだけ筋の通った手を選ぶか）</h2>"
         f'<p class="desc" id="kappa-desc">{_escape(RATIONALITY_DESCRIPTION)}</p>'
         '</div><div class="cfg-sec-body">'
@@ -575,7 +543,7 @@ def _rationality_section(values, ctx, *, total_runs, wall_seconds, heading_prefi
         + '<p class="hint">0 無効 / 0.3 穏やか / 0.6 推奨 / 1.0 ほぼ判定器どおり</p>'
         + f'<p class="hint" id="kappa-status">{_escape(status)}</p>'
         + f'<p class="hint">{_escape(RATIONALITY_NOTE)}</p>'
-        + eta_html
+        + runs_html
         + "</div></section>"
     )
 
@@ -723,7 +691,6 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
             # planned_seed_evaluations, which is what a coevolve run actually
             # judges (protagonist pass + a separate antagonist pass).
             total_runs=total * (2 if values["evolution.coevolve"] else 1),
-            wall_seconds=_as_int(values["execution_limits.wall_seconds"]),
         )
         if rationality is not None else ""
     )

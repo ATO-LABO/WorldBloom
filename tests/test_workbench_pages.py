@@ -166,8 +166,8 @@ class WorkbenchTests(unittest.TestCase):
 
     def _tag(self, body, bare_attr):
         """The single element's own opening tag carrying a bare attribute
-        (e.g. "data-kappa-eta"), for hidden-attribute assertions -- the eta/
-        warning lines are always in the markup now (coordinator review: JS
+        (e.g. "data-kappa-runs"), for hidden-attribute assertions -- the run-count
+        line is always in the markup now (coordinator review: JS
         toggles "hidden" live), so a plain text-presence check no longer
         tells "shown" from "hidden"."""
         match = re.search(rf'<[a-z]+[^>]*\b{re.escape(bare_attr)}\b[^>]*>', body)
@@ -351,21 +351,14 @@ class WorkbenchTests(unittest.TestCase):
         kappa_tag = self._input_tag(body, "evolution.kappa")
         self.assertIn('type="range"', kappa_tag)
         self.assertIn('value="0.6"', kappa_tag)
-        # 6h default when the judge is reachable, so the default estimate
-        # (20*100*3 runs * ~90s/run = 150h) is compared against 21600, not
-        # the plain 3600 default -- and still trips the warning either way.
+        # 6h default when the judge is reachable.
         wall_tag = self._input_tag(body, "execution_limits.wall_seconds")
         self.assertIn('value="21600"', wall_tag)
         self.assertIn("判定器: Ollama qwen3.6:35b — 利用可", body)
-        # Coordinator review: the eta/warning <p>s are always in the markup
-        # now (JS toggles "hidden" live) -- both must be shown (not hidden)
-        # here, and the hour-scale wording (150h, not "9000分") must match.
-        self.assertNotIn("hidden", self._tag(body, "data-kappa-eta"))
-        self.assertNotIn("hidden", self._tag(body, "data-kappa-warning"))
-        self.assertIn("約150時間", body)
-        # JUDGE_SECONDS_PER_RUN reaches the page as data, not a JS literal.
-        self.assertIn(
-            'data-wb="rationality" data-judge-seconds-per-run="90"', body)
+        # Run count only (20*100*3), never a machine-dependent time estimate.
+        self.assertNotIn("hidden", self._tag(body, "data-kappa-runs"))
+        self.assertIn("<span data-kappa-runs-text>6,000</span> 回", body)
+        self.assertNotIn("約150時間", body)
 
     def test_kappa_slider_defaults_to_0_and_shows_reason_when_judge_unavailable(self):
         with patch("viewer.workbench_pages._ollama_availability",
@@ -376,10 +369,8 @@ class WorkbenchTests(unittest.TestCase):
         # slider itself (Opus review), not the whole page.
         self.assertIn('value="0"', self._input_tag(body, "evolution.kappa"))
         self.assertIn("利用不可（サーバーに接続できません）。既定は 0 です", body)
-        # kappa=0 -> both the eta and warning lines are hidden (no judge
-        # calls expected either way).
-        self.assertIn("hidden", self._tag(body, "data-kappa-eta"))
-        self.assertIn("hidden", self._tag(body, "data-kappa-warning"))
+        # kappa=0 -> the run-count line is hidden (no judge calls).
+        self.assertIn("hidden", self._tag(body, "data-kappa-runs"))
         # The judge being unreachable must never raise the wall-clock default.
         self.assertIn('value="3600"', self._input_tag(body, "execution_limits.wall_seconds"))
 
@@ -416,7 +407,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertFalse(ctx["available"])
         self.assertEqual(ctx["reason"], "non_ollama_backend")
 
-    def test_kappa_eta_doubles_for_coevolve(self):
+    def test_kappa_runs_doubles_for_coevolve(self):
         """Opus review item 2: the judge-call estimate must match
         execution/configs.py's planned_seed_evaluations, which doubles for
         coevolve (a separate antagonist-side judged pass)."""
@@ -433,14 +424,12 @@ class WorkbenchTests(unittest.TestCase):
         coevolved = workbench_pages.render_config_form(
             {**base_values, "evolution.coevolve": True},
             projects=["momotaro"], templates=["momotaro"], rationality=ctx)
-        # 1 run * 90s = 90s -> "約2分"; coevolve doubles to 2 runs * 90s = 180s -> "約3分".
-        self.assertIn("約2分", solo)
-        self.assertNotIn("約3分", solo)
-        self.assertIn("約3分", coevolved)
+        self.assertIn("<span data-kappa-runs-text>1</span>", solo)
+        self.assertIn("<span data-kappa-runs-text>2</span>", coevolved)
 
-    def test_kappa_eta_doubles_for_coevolve_via_configs_new_http(self):
+    def test_kappa_runs_doubles_for_coevolve_via_configs_new_http(self):
         """S5 (Opus review, WB-JEV-002 merge follow-up): the coevolve
-        ETA-doubling above was only ever checked by calling
+        run-count doubling above was only ever checked by calling
         render_config_form() directly -- never over the actual /configs/new
         HTTP path, which WB-JEV-002's merge into main moved onto
         run_settings.py's own rendering. Confirm the doubling still holds
@@ -456,10 +445,8 @@ class WorkbenchTests(unittest.TestCase):
             )
             status, body, _ = self.get_status("/configs/new?from=cfg-momo-coevolve")
         self.assertEqual(status, 200, body)
-        # 1 run * 90s solo would read "約2分"; coevolve doubles to 2 runs *
-        # 90s = 180s -> "約3分" (see test_kappa_eta_doubles_for_coevolve).
-        self.assertIn("約3分", body)
-        self.assertNotIn("約2分", body)
+        # coevolve doubles 1 run to 2 (see test_kappa_runs_doubles_for_coevolve).
+        self.assertIn("<span data-kappa-runs-text>2</span>", body)
 
     def test_rationality_section_between_section_03_and_advanced_details(self):
         """S2 (Opus review): _rationality_section used to be double-wrapped
@@ -476,15 +463,6 @@ class WorkbenchTests(unittest.TestCase):
         advanced_at = body.index('class="cfg-adv"')
         self.assertLess(section03_at, rationality_at)
         self.assertLess(rationality_at, advanced_at)
-
-    def test_format_eta_seconds_all_three_scales(self):
-        """Coordinator review: 1 hour and over reads "約N時間M分" (or just
-        "約N時間" on an exact hour) -- both workbench.js's live formatEta()
-        and this Python helper must render the same wording."""
-        self.assertEqual(workbench_pages._format_eta_seconds(45), "約45秒")
-        self.assertEqual(workbench_pages._format_eta_seconds(90), "約2分")
-        self.assertEqual(workbench_pages._format_eta_seconds(3600), "約1時間")
-        self.assertEqual(workbench_pages._format_eta_seconds(5400), "約1時間30分")
 
     def test_kappa_duplicate_form_shows_saved_value_not_a_fresh_default(self):
         with patch("viewer.workbench_pages._ollama_availability",
