@@ -546,19 +546,28 @@ def _rationality_backend_select(values, jev, ctx):
     """WB-JEV-005: the κ section's "判定器" <select> -- "jev" (disabled when
     no verified key is on file) and "" (follow the template's own
     rationality.yaml -- Ollama when its backend.type is "ollama", which
-    every existing template's is). "" is the ONLY value that round-trips
-    through normalize() to rationality_backend=None, so a config that never
-    chose Jev stays byte-identical to a pre-WB-JEV-005 one (no "ollama"
-    ever appears in argv). A brand-new form's own default (jev when a key
-    is verified) is set explicitly by _configs_new() on
-    ``values["evolution.rationality_backend"]`` before this renders; a
-    duplicate/edit's None/"ollama"/"none" all render as "" selected here --
-    reading an existing config's saved backend must never silently flip to
-    "jev" just because a key happens to be on file now (Opus review: this
-    used to fall back to "jev if available" for every falsy value,
-    including a duplicated config's own None, which silently switched an
-    unrelated saved config to sending data to TypeSafe)."""
-    current = "jev" if values.get("evolution.rationality_backend") == "jev" else ""
+    every existing template's is). "" is the value normalize() folds back
+    to rationality_backend=None, so a config that never touched this field
+    stays byte-identical to a pre-WB-JEV-005 one (no "ollama" ever appears
+    in argv). A brand-new form's own default (jev when a key is verified,
+    else None/"") is set explicitly by _configs_new() on
+    ``values["evolution.rationality_backend"]`` before this renders.
+
+    A duplicate/edit whose saved backend is literally "ollama" or "none"
+    (e.g. a control config created via the API/CLI, explicitly disabling
+    the judge) gets its OWN extra <option>, selected, carrying that exact
+    value -- collapsing it into "" here would silently re-enable the
+    template's default judge on duplicate (Opus re-review: for "none" that
+    means duplicating a config that intentionally never calls a judge would
+    start calling Ollama/the GPU). Every other falsy/unrecognized value
+    (None, or a config that never set the field) renders as "" -- reading
+    an existing config's saved backend must never silently flip to "jev"
+    just because a key happens to be on file now (Opus review: this used to
+    fall back to "jev if available" for every falsy value, including a
+    duplicated config's own None, which silently switched an unrelated
+    saved config to sending data to TypeSafe)."""
+    raw = values.get("evolution.rationality_backend")
+    current = raw if raw in ("jev", "ollama", "none") else ""
     jev_disabled = "" if jev["available"] else " disabled"
     default_label = (
         "テンプレートの既定" if ctx["reason"] == "non_ollama_backend"
@@ -569,6 +578,10 @@ def _rationality_backend_select(values, jev, ctx):
         "Jev（TypeSafe、高速・外部送信）</option>"
         f'<option value=""{" selected" if current == "" else ""}>{default_label}</option>'
     )
+    if current == "ollama":
+        options += f'<option value="ollama" selected>Ollama {_escape(ctx["model"])}（明示指定）</option>'
+    elif current == "none":
+        options += '<option value="none" selected>判定器を使わない（none、明示指定）</option>'
     return (
         '<div class="field"><label for="f-evolution.rationality_backend">判定器</label>'
         '<select id="f-evolution.rationality_backend" name="evolution.rationality_backend" '

@@ -640,6 +640,71 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertIsNone(saved["evolution"]["rationality_model"])
 
+    def test_duplicate_jev_config_switching_to_template_default_resets_model(self):
+        """MUST (Opus re-review): duplicate() merges parent evolution with
+        changes -- the form always sends rationality_backend but never
+        rationality_model (that field has no UI of its own). Switching a
+        Jev-backed config's select back to "" (template default) must not
+        leave rationality_model="jev-1.13.0" attached to what is now an
+        Ollama-backed config -- that would ask Ollama for a nonexistent
+        model and point at Jev's own shared judgment table."""
+        self.runtime()
+        self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_backend="jev"),
+            config_id="cfg-momo-jev-dup-src",
+        )
+        duplicated = self.store.duplicate(
+            "cfg-momo-jev-dup-src",
+            {"evolution": {"rationality_backend": ""}},
+            new_id="cfg-momo-jev-dup-dst",
+        )
+        self.assertIsNone(duplicated["evolution"]["rationality_backend"])
+        self.assertIsNone(duplicated["evolution"]["rationality_model"])
+        manifest = self.store.prepare_run(
+            "cfg-momo-jev-dup-dst", run_id="run-jev-dup-dst", job_id="job-jev-dup-dst")
+        self.assertNotIn("--rationality-backend", manifest["argv"])
+        table_path = Path(manifest["argv"][manifest["argv"].index("--rationality-table") + 1])
+        # Back to momotaro's own rationality.yaml model (qwen3.6:35b) -- not
+        # left pointing at "jev-1.13.0" (Jev's own table).
+        self.assertEqual(table_path.name, "momotaro.qwen3.6_35b.choice.json")
+
+    def test_duplicate_none_backend_config_via_form_stays_none(self):
+        """Regression guard (Opus re-review): a config with an explicit
+        "none" backend (e.g. created via the API/CLI to intentionally
+        disable the judge) must not be silently switched to the template's
+        Ollama default just by opening/resubmitting its duplicate form --
+        that would start calling Ollama/the GPU for a config that
+        deliberately never did."""
+        self.runtime()
+        self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_backend="none"),
+            config_id="cfg-momo-none-src",
+        )
+        duplicated = self.store.duplicate(
+            "cfg-momo-none-src",
+            # What the fixed <select> now submits when "none" is the
+            # already-selected, unchanged option (Opus re-review: the
+            # select gained its own round-tripping <option value="none">).
+            {"evolution": {"rationality_backend": "none"}},
+            new_id="cfg-momo-none-dst",
+        )
+        self.assertEqual(duplicated["evolution"]["rationality_backend"], "none")
+        self.assertIsNone(duplicated["evolution"]["rationality_model"])
+
+    def test_duplicate_explicit_ollama_backend_config_via_form_stays_ollama(self):
+        self.runtime()
+        self.store.save(
+            self._momotaro_spec(kappa=0.6, rationality_backend="ollama"),
+            config_id="cfg-momo-ollama-src",
+        )
+        duplicated = self.store.duplicate(
+            "cfg-momo-ollama-src",
+            {"evolution": {"rationality_backend": "ollama"}},
+            new_id="cfg-momo-ollama-dst",
+        )
+        self.assertEqual(duplicated["evolution"]["rationality_backend"], "ollama")
+        self.assertIsNone(duplicated["evolution"]["rationality_model"])
+
     def test_rationality_backend_empty_string_normalizes_to_none(self):
         """The run-settings form's <select> submits "" for its "follow the
         template default" option (never "ollama") -- normalize() must fold
