@@ -11,7 +11,7 @@ rem decided by its own filename (see _studio_mode() in app_desktop.py), so
 rem WorldBloom-Studio.exe must keep "studio" in its --name.
 
 "%PY%" -m PyInstaller --noconfirm --onefile --windowed --name WorldBloom ^
-  --collect-all webview --collect-all yaml ^
+  --collect-all webview --collect-all yaml --icon "%ROOT%\viewer\worldbloom.ico" ^
   --add-data "%OUT%\build\default_root.txt;." ^
   --distpath "%OUT%\dist" --workpath "%OUT%\build" --specpath "%OUT%\build" ^
   "%ROOT%\viewer\app_desktop.py"
@@ -21,7 +21,7 @@ if errorlevel 1 (
 )
 
 "%PY%" -m PyInstaller --noconfirm --onefile --windowed --name WorldBloom-Studio ^
-  --collect-all webview --collect-all yaml ^
+  --collect-all webview --collect-all yaml --icon "%ROOT%\viewer\worldbloom.ico" ^
   --add-data "%OUT%\build\default_root.txt;." ^
   --distpath "%OUT%\dist" --workpath "%OUT%\build" --specpath "%OUT%\build" ^
   "%ROOT%\viewer\app_desktop.py"
