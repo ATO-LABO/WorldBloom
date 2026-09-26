@@ -88,7 +88,7 @@ def load(handler, run_id, *, query=None, grid=False):
                 repo, root, c["log"].get("relative_path"), usage_protagonist, usage_patches)
             # sifting_pages.candidate_row が <button> の外（<article> 直下）に
             # 置くので、<details>展開版がそのまま使える（Opus review 推奨3）。
-            c["usage_html"] = world_usage_badge.badge_html(counts)
+            c["usage_html"] = world_usage_badge.badge_html(counts, usage_patches)
         c["status"] = statuses.get(cid, {})
         c["output_href"] = output_links.get(cid, "")
         c["synopsis_state"] = "あらすじあり" if c["synopsis"] else {"error":"あらすじ生成に失敗", "unknown":"あらすじ生成の結果不明", "running":"あらすじ生成中", "unreadable":"あらすじを読み込めません"}.get(c["status"].get("synopsize"), "あらすじ未生成")

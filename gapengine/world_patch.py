@@ -310,14 +310,17 @@ def _applied_names(world: dict) -> dict[str, set]:
     return applied
 
 
-def _sourced_item_and_fact_names(world: dict, source_labels) -> tuple[set, set]:
-    """Required 1 (段階3 review 1): a "品@場所" add.sources label doesn't say
-    whether the target is an item or a fact. Resolve it by looking the name
-    up in the *current* (already-patched) world's items/facts -- if a name
-    matches both, count it in both (設計役の決定: 保守的に両方数える)."""
-    items, facts = set(), set()
+def _sourced_item_and_fact_label_counts(world: dict, source_labels) -> tuple[int, int]:
+    """Required 2 (段階4 review 1, 設計役の決定): count each "品@場所"
+    add.sources label once, not deduped by name -- a second source label for
+    the same item/fact (縄@森 then 縄@海) still uses another slot of the
+    cumulative items/facts budget, matching how a single patch's own sources
+    are counted (validate_patch's sources_item_count/sources_fact_count sum
+    entries, not distinct names). A label whose name matches both an item and
+    a fact counts in both (設計役の決定: 保守的に両方数える)."""
+    item_count = fact_count = 0
     if not source_labels:
-        return items, facts
+        return item_count, fact_count
     item_names = {i.get("name") for i in (world.get("items") or []) if isinstance(i, dict)}
     fact_ids = {f.get("id") for f in (world.get("facts") or []) if isinstance(f, dict)}
     for label in source_labels:
@@ -325,30 +328,35 @@ def _sourced_item_and_fact_names(world: dict, source_labels) -> tuple[set, set]:
             continue
         name = label.rsplit("@", 1)[0]
         if name in item_names:
-            items.add(name)
+            item_count += 1
         if name in fact_ids:
-            facts.add(name)
-    return items, facts
+            fact_count += 1
+    return item_count, fact_count
 
 
 def addition_caps(world: dict) -> dict[str, tuple[int, int]]:
     """{key: (cumulative cap, already added)} -- shared by the static gate and
     the proposal prompt, so the model is told the same numbers it is held to.
 
-    Required 1 (段階3 review 1): a prior patch's add.sources now counts
-    toward the items/facts cap too -- it already used the items/facts
-    budget when it was proposed (validate_patch's own per-patch check counts
-    it that way via sources_item_count/sources_fact_count)."""
+    Required 1 (段階3 review 1, fixed 段階4 review 1): a prior patch's
+    add.sources counts toward the items/facts *added* count (it already used
+    the items/facts budget when it was proposed -- validate_patch's own
+    per-patch check counts it that way via sources_item_count/
+    sources_fact_count) but must NOT shrink the *base* count: add.sources
+    never creates a new zone/item/fact, so `existing - applied` (add.sources
+    labels excluded) is the base the cap percentage is taken from. Folding
+    sourced-only existing items into that subtraction (as a previous version
+    did) wrongly shrank the cap itself."""
     existing, applied = _existing_names(world), _applied_names(world)
-    sourced_items, sourced_facts = _sourced_item_and_fact_names(world, applied["sources"])
-    cap_applied = {"zones": applied["zones"], "items": applied["items"] | sourced_items,
-                   "facts": applied["facts"] | sourced_facts}
+    sourced_item_count, sourced_fact_count = _sourced_item_and_fact_label_counts(
+        world, applied["sources"])
+    extra_by_key = {"zones": 0, "items": sourced_item_count, "facts": sourced_fact_count}
     caps = {}
     for key in ("zones", "items", "facts"):
-        base_count = len(existing[key] - cap_applied[key])
+        base_count = len(existing[key] - applied[key])
         cap = min(4 if key == "zones" else 8,
                   max(1, math.ceil(base_count * (0.4 if key == "zones" else 0.5))))
-        caps[key] = (cap, len(cap_applied[key]))
+        caps[key] = (cap, len(applied[key]) + extra_by_key[key])
     return caps
 
 
@@ -1006,10 +1014,20 @@ def apply_patch(world: dict, patch: dict) -> dict:
     # later patch's validate_patch can add it to prior_given without having
     # to re-derive it from the item's *current* (base+patches) sources list,
     # which would double-count a pre-existing base source's own max.
+    #
+    # R1 (段階4 review 1): but an item that was added *by name* (add.items,
+    # this patch or an earlier one) must NOT get a sources_give tally at all
+    # -- validate_patch's prior_given already recomputes such an item's full
+    # give from its *current* sources list from scratch every time
+    # (give_total(applied["items"])), so a source on it is already fully
+    # counted there; adding it again here would double it. Only a *base*
+    # item (never added by name) needs this separate tally, since
+    # give_total(applied["items"]) never looks at base items at all.
     sources_give_total = 0.0
     if sources:
         items_by_name = {i.get("name"): i for i in (result.get("items") or []) if isinstance(i, dict)}
         facts_by_id = {f.get("id"): f for f in (result.get("facts") or []) if isinstance(f, dict)}
+        named_items = _applied_names(world)["items"] | {i["name"] for i in items}
         for entry in sources:
             source = entry.get("source")
             if not isinstance(source, dict):
@@ -1025,8 +1043,9 @@ def apply_patch(world: dict, patch: dict) -> dict:
                 existing_sources = []
             target["sources"] = existing_sources + [copy.deepcopy(source)]
             added_source_labels.append(f"{entry.get('item') or entry.get('fact')}@{source.get('zone')}")
-            if "item" in entry and not target.get("keepsake") and not (
-                    isinstance(target.get("made_from"), dict) and target.get("made_from")):
+            if ("item" in entry and entry.get("item") not in named_items
+                    and not target.get("keepsake") and not (
+                    isinstance(target.get("made_from"), dict) and target.get("made_from"))):
                 # 必須3で修正した既定値の扱いと揃える: give を書いていない品も
                 # 受け手0.2・渡し手0.05で数える(engine/verbs.pyの既定と同じ)。
                 give = target.get("give") or {}
