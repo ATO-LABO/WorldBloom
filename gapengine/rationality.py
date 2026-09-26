@@ -46,6 +46,13 @@ from gapengine.ollama import DEFAULT_BASE_URL, DEFAULT_MODEL, build_request
 JEV_BASE_URL = "https://api.typesafe.ai"
 JEV_DEFAULT_MODEL = "jev-1.13.0"  # version-pinned: "jev-latest" would mix table entries.
 JEV_MAX_OPTIONS = 255
+# Jev reports probabilities on a 0.01 grid, so a 0.00 means "below 0.005",
+# not "impossible". Left at 0.0 it would make (p/mean)**kappa == 0 -- a hard
+# ban no Ollama judgment ever produced (_floor_unobserved keeps those > 0),
+# which would erase the low-but-possible preparatory moves the genome's
+# preferences are meant to pick among (WB-JEV-004). Half the grid step, same
+# idea as _floor_unobserved's "half the smallest observed mass".
+JEV_ZERO_FLOOR = 0.005
 JEV_CHOICE_INSTRUCTIONS = (
     "本人の知る限りで、目的に近づく手段として最も筋が通っているのはどれか。"
 )
@@ -830,7 +837,7 @@ class JevJudge:
         for index in range(len(candidates)):
             probabilities = self._answer_probabilities(data, str(index + 1))
             p_yes = probabilities.get("yes") if probabilities is not None else None
-            results.append(float(p_yes) if self._valid_probability(p_yes) else None)
+            results.append(max(float(p_yes), JEV_ZERO_FLOOR) if self._valid_probability(p_yes) else None)
         return results, 1, False
 
     def _score_choice(
@@ -862,9 +869,11 @@ class JevJudge:
                 # a genuine all-zero answer from a fully missing one; upgrade
                 # if Jev's API ever needs that distinction.
                 if any(value > 0.0 for value in values):
+                    values = [max(value, JEV_ZERO_FLOOR) for value in values]
+                    norm = sum(values)
                     scale = len(chunk) / total
                     for offset, value in enumerate(values):
-                        results[index + offset] = value * scale
+                        results[index + offset] = value / norm * scale
             index += len(chunk)
         return results, calls_made, truncated
 

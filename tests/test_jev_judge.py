@@ -15,6 +15,7 @@ from unittest.mock import call, patch
 from gapengine.evolve import _build_rationality_judge, _rationality_lease_params
 from gapengine.rationality import (
     JEV_DEFAULT_MODEL,
+    JEV_ZERO_FLOOR,
     JevJudge,
     Rationality,
     RationalityTable,
@@ -69,12 +70,24 @@ class JevJudgeChoiceTests(unittest.TestCase):
         total = sum(value for value in scores if value is not None)
         self.assertLessEqual(total, 1.0 + 1e-9)
 
-    def test_missing_option_key_defaults_to_zero(self) -> None:
+    def test_missing_option_key_gets_the_zero_floor(self) -> None:
+        """A missing/0.00 option is floored to JEV_ZERO_FLOOR (never a hard
+        ban), then the chunk is renormalized."""
         judge = JevJudge(api_key="k", method="choice")
         data = {"answers": {"q": {"probabilities": {"1": 0.9}}}}  # "2" absent
         with patch("gapengine.rationality._jev_call", return_value=data):
             scores, _calls, _truncated = judge.score("ctx", ["a", "b"])
-        self.assertEqual(scores, [0.9, 0.0])
+        norm = 0.9 + JEV_ZERO_FLOOR
+        self.assertAlmostEqual(scores[0], 0.9 / norm)
+        self.assertAlmostEqual(scores[1], JEV_ZERO_FLOOR / norm)
+        self.assertGreater(scores[1], 0.0)
+
+    def test_noul_zero_yes_gets_the_zero_floor(self) -> None:
+        judge = JevJudge(api_key="k", method="noul")
+        data = {"answers": {"1": {"probabilities": {"yes": 0.0, "no": 1.0}}}}
+        with patch("gapengine.rationality._jev_call", return_value=data):
+            scores, _calls, _truncated = judge.score("ctx", ["a"])
+        self.assertEqual(scores, [JEV_ZERO_FLOOR])
 
     def test_all_options_missing_yields_none_for_whole_chunk(self) -> None:
         judge = JevJudge(api_key="k", method="choice")
@@ -94,8 +107,10 @@ class JevJudgeChoiceTests(unittest.TestCase):
         }}}}
         with patch("gapengine.rationality._jev_call", return_value=data):
             scores, _calls, _truncated = judge.score("ctx", ["a", "b", "c", "d", "e", "f"])
-        self.assertEqual(scores[0], 0.4 * (6 / 6))
-        self.assertEqual(scores[1:], [0.0, 0.0, 0.0, 0.0, 0.0])
+        norm = 0.4 + 5 * JEV_ZERO_FLOOR
+        self.assertAlmostEqual(scores[0], 0.4 / norm)
+        for score in scores[1:]:
+            self.assertAlmostEqual(score, JEV_ZERO_FLOOR / norm)
 
 
 class JevJudgeNoulTests(unittest.TestCase):
