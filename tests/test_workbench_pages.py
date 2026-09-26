@@ -385,7 +385,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertIn('<option value="jev" selected>Jev（TypeSafe、高速・外部送信）</option>', body)
         self.assertIn("判定器: Jev jev-1.13.0 — 利用可", body)
-        self.assertIn('value="0.6"', self._input_tag(body, "evolution.kappa"))
+        self.assertIn('value="0.45"', self._input_tag(body, "evolution.kappa"))
         self.assertIn('value="3600"', self._input_tag(body, "execution_limits.wall_seconds"))
 
     def test_rationality_select_jev_disabled_without_a_verified_key(self):
