@@ -34,6 +34,26 @@ WASTED_SHARE_MIN = 0.02
 # A one-in-one whiff in a tiny run is noise, not a thin world.
 WHIFFS_MIN = 10
 
+# WB-WORLDGROW-002 S1: route-layer (rho>0) triggers. Only ever populated on
+# a route-wired run -- see route_counts/blocked_counts docstrings below.
+# ponytail: eyeballed on a fresh momotaro_plus2 rho=1.0 sweep (11 genomes x
+# 40 seeds, scripts/route_eval.py's --skip-ga fixed-gene sweep re-run under
+# this stage's code, runs/wg1/sweep) -- 31,860 decisions, 1,801 "lost", all
+# 1,801 converging on the single requirement "reach:村" (share 1.0, this
+# world's only real blocker right now: 村, 縄's only source, gets excluded
+# the moment the protagonist leaves without the treasure). "ignorance" saw
+# only 33 decisions total (鬼ヶ島, 0.5% of that zone's route-tagged
+# decisions) in this sweep -- WHIFFS_MIN-sized MIN plus a much higher
+# SHARE_MIN than whiff's own (whiff's 2% is a share of the *whole world's*
+# dwell; ignorance/blocked's share is already scoped to a zone or to all
+# "lost" decisions, a far smaller population, so a real signal should be a
+# much bigger fraction of it). Recalibrate once more worlds/genomes are
+# measured, same as WHIFF_* above.
+IGNORANCE_MIN = 10
+IGNORANCE_SHARE_MIN = 0.3
+BLOCKED_MIN = 10
+BLOCKED_SHARE_MIN = 0.3
+
 
 def _round(value):
     return None if value is None else round(value, 4)
@@ -105,6 +125,16 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
     subject_decisions = 0
     zones: dict[str, dict] = {}
 
+    # WB-WORLDGROW-002 S1: route/demand aggregation (empty on a route-free,
+    # rho=0 run -- no row ever has a policy.route dict, so every ignorance/
+    # blocked trigger below is naturally skipped and route_counts/
+    # blocked_counts come back empty, matching a pre-S1 report exactly).
+    route_counts: dict[str, Counter] = {}
+    route_zone_total: Counter = Counter()
+    ignorance_by_zone: Counter = Counter()
+    blocked_by_requirement: dict[str, dict] = {}
+    lost_total = 0
+
     for path in paths:
         if not path.is_file():
             skipped_paths += 1
@@ -130,6 +160,37 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
                 subject_decisions += 1
                 explanation = row.get("explanation") or {}
                 zone = explanation.get("zone") or zone_before or UNKNOWN_ZONE
+
+                # WB-WORLDGROW-002 S1: policy.route (only present on a route-
+                # wired, rho>0 run) classifies the decision itself -- counted
+                # for every decision, including move/rest/withdraw, unlike the
+                # whiff aggregation below (a "lost" decision is very often a
+                # move or a rest). Text is never read, only the structured
+                # kind/cause/blocked_on fields (S1 §3.5 review note: text
+                # changes across code versions, structure doesn't).
+                route = row.get("policy", {}).get("route") if isinstance(row.get("policy"), dict) else None
+                if isinstance(route, dict):
+                    route_kind = route.get("kind")
+                    route_cause = route.get("cause")
+                    route_key = (
+                        route_kind
+                        if route_kind in ("advance", "prepare", "lost")
+                        else f"detour:{route_cause or 'none'}"
+                    )
+                    route_counts.setdefault(zone, Counter())[route_key] += 1
+                    route_zone_total[zone] += 1
+                    if route_kind == "detour" and route_cause == "ignorance":
+                        ignorance_by_zone[zone] += 1
+                    elif route_kind == "lost":
+                        lost_total += 1
+                        requirement = route.get("blocked_on")
+                        if requirement:
+                            entry = blocked_by_requirement.setdefault(
+                                requirement, {"count": 0, "zones": Counter()}
+                            )
+                            entry["count"] += 1
+                            entry["zones"][zone] += 1
+
                 bucket = zones.setdefault(zone, {
                     "decisions": 0, "dwell": 0, "verbs": Counter(), "verb_whiffs": Counter(),
                     "repeats": 0, "ineffective": 0, "ineffective_reasons": Counter(),
@@ -183,11 +244,44 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
             wasted_share = whiffs / total_dwell if total_dwell else 0.0
             if whiffs >= WHIFFS_MIN and whiff_rate >= WHIFF_RATE_MIN and wasted_share >= WASTED_SHARE_MIN:
                 triggers.append({
+                    "kind": "whiff",
                     "zone": zone, "verb": verb, "count": count, "whiffs": whiffs,
                     "whiff_rate": _round(whiff_rate), "wasted_share": _round(wasted_share),
                     "zone_dwell_share": zone_dwell_share,
                 })
+    # whiff's own order/index must never move (viewer/world_demand_view.py's
+    # proposal buttons key off the raw position) -- ignorance/blocked are
+    # appended after, each sorted only within their own kind.
     triggers.sort(key=lambda t: (-t["wasted_share"], t["zone"], t["verb"]))
+
+    ignorance_triggers = []
+    for zone, count in ignorance_by_zone.items():
+        if zone == UNKNOWN_ZONE:
+            continue
+        route_total = route_zone_total.get(zone, 0)
+        share = _round(count / route_total) if route_total else 0.0
+        if count >= IGNORANCE_MIN and share >= IGNORANCE_SHARE_MIN:
+            zone_dwell = zones.get(zone, {}).get("dwell", 0)
+            ignorance_triggers.append({
+                "kind": "ignorance",
+                "zone": zone, "count": count, "share": share,
+                "zone_dwell_share": _round(zone_dwell / total_dwell) if total_dwell else 0.0,
+            })
+    ignorance_triggers.sort(key=lambda t: (-t["share"], t["zone"]))
+    triggers.extend(ignorance_triggers)
+
+    blocked_triggers = []
+    for requirement, entry in blocked_by_requirement.items():
+        count = entry["count"]
+        share = _round(count / lost_total) if lost_total else 0.0
+        if count >= BLOCKED_MIN and share >= BLOCKED_SHARE_MIN:
+            blocked_triggers.append({
+                "kind": "blocked",
+                "requirement": requirement, "count": count, "share": share,
+                "zones": _top(entry["zones"], 3),
+            })
+    blocked_triggers.sort(key=lambda t: (-t["share"], t["requirement"]))
+    triggers.extend(blocked_triggers)
 
     report_zones = []
     for zone, b in zones.items():
@@ -223,6 +317,16 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
         for zone, b in zones.items()
     }
 
+    # WB-WORLDGROW-002 S1: raw route counts (empty {} on a route-free run --
+    # no zone/requirement is ever added above without a policy.route dict).
+    report_route_counts = {
+        zone: dict(sorted(counts.items())) for zone, counts in sorted(route_counts.items())
+    }
+    report_blocked_counts = {
+        requirement: {"count": entry["count"], "zones": dict(sorted(entry["zones"].items()))}
+        for requirement, entry in sorted(blocked_by_requirement.items())
+    }
+
     return {
         "files": files_read,
         "skipped_paths": skipped_paths,
@@ -230,6 +334,8 @@ def collect(paths: list[Path], subject: str | None = None) -> dict:
         "zones": report_zones,
         "triggers": triggers,
         "verb_counts": verb_counts,
+        "route_counts": report_route_counts,
+        "blocked_counts": report_blocked_counts,
     }
 
 
@@ -263,8 +369,12 @@ def build_report(experiment_dir: Path, *, use_all: bool = False, subject: str | 
     paths, archive, mode = _load_paths(experiment_dir, use_all)
     report = collect(paths, subject=subject)
     report["archive"] = _archive_summary(experiment_dir, archive)
-    report["schema_version"] = 1
-    report["thresholds"] = {"whiff_rate_min": WHIFF_RATE_MIN, "wasted_share_min": WASTED_SHARE_MIN,
-                            "whiffs_min": WHIFFS_MIN}
+    report["schema_version"] = 2
+    report["thresholds"] = {
+        "whiff_rate_min": WHIFF_RATE_MIN, "wasted_share_min": WASTED_SHARE_MIN,
+        "whiffs_min": WHIFFS_MIN,
+        "ignorance_min": IGNORANCE_MIN, "ignorance_share_min": IGNORANCE_SHARE_MIN,
+        "blocked_min": BLOCKED_MIN, "blocked_share_min": BLOCKED_SHARE_MIN,
+    }
     report["population"] = {"mode": mode, "files": report["files"], "skipped": report["skipped_paths"]}
     return report
