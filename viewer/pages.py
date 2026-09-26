@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
-from viewer import data
+from viewer import data, version
 
 
 def _escape(value: Any) -> str:
@@ -154,6 +154,7 @@ def _header_pickers(
         + leftmost
         + "".join(pickers)
         + '<span class="header-links">'
+        f'<a href="/version" class="header-version" title="バージョン情報・最新版の確認">{_escape(version.label())}</a>'
         '<a href="#" data-sheet="local-status-dialog" title="GPUとローカルAIの動作状況" aria-label="GPUとローカルAIの動作状況">'
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9 7V4M12 7V4M15 7V4M9 20v-3M12 20v-3M15 20v-3M7 9H4M7 12H4M7 15H4M20 9h-3M20 12h-3M20 15h-3" stroke-linecap="round"/></svg><span>動作状況</span></a>'
         '<a href="/history" title="実行履歴" aria-label="実行履歴">'
