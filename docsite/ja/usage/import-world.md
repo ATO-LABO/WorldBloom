@@ -5,7 +5,7 @@ sources:
   - "execution/library.py"
   - "execution/world_editor.py"
   - "docs/world-import-guide.md"
-reviewed: "281fe6aede8ab22d63e61f07b5a7a6bd8280b5e0"
+reviewed: "a4021b60884dc847462009917349102299e7a4ed"
 ---
 # 世界を ZIP から取り込む
 

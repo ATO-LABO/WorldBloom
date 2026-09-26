@@ -1,5 +1,5 @@
 ---
-ja_rev: "10befec762cc"
+ja_rev: "2ee7ce2ecbdb"
 ---
 # Import a World from ZIP
 
