@@ -330,6 +330,58 @@ def _whiff_rate_text(trigger: Any) -> str:
     return f"ベース {_whiff_rate_side(trigger.get('base'))} → 適用後 {_whiff_rate_side(trigger.get('patched'))}"
 
 
+# WB-WORLDGROW-002 stage 4 (段階4への追加、段階3 294ddbcの申し送り):
+# ignorance/blocked の trial["trigger"] は base/patched の形が whiff と違う
+# (gapengine/world_patch_trial.py の _ignorance_counts/_blocked_counts) --
+# 種類ごとの文言で表示する。whiff は _whiff_rate_side/_whiff_rate_text の
+# ままバイト一致（この2関数は変更していない）。
+def _ignorance_rate_side(side: Any) -> str:
+    if not isinstance(side, dict):
+        return "—"
+    count, total = side.get("count"), side.get("total")
+    if not _is_number(count) or not _is_number(total):
+        return "—"
+    if total <= 0:
+        return f"{total} 回中 {count} 回"
+    share = side.get("share")
+    pct = f"（{float(share) * 100:.1f}%）" if _is_number(share) else ""
+    return f"{total} 回中 {count} 回{pct}"
+
+
+def _blocked_rate_side(side: Any) -> str:
+    if not isinstance(side, dict):
+        return "—"
+    count, lost_total = side.get("count"), side.get("lost_total")
+    if not _is_number(count) or not _is_number(lost_total):
+        return "—"
+    if lost_total <= 0:
+        return f"{lost_total} 回中 {count} 回"
+    lost_share = side.get("lost_share")
+    pct = f"（{float(lost_share) * 100:.1f}%）" if _is_number(lost_share) else ""
+    return f"{lost_total} 回中 {count} 回{pct}"
+
+
+_TRIGGER_RATE_LABELS = {"ignorance": "きっかけの手探り", "blocked": "きっかけの見通しなし決定"}
+
+
+def _trigger_rate_label(trigger: Any) -> str:
+    kind = trigger.get("kind", "whiff") if isinstance(trigger, dict) else "whiff"
+    return _TRIGGER_RATE_LABELS.get(kind, "きっかけの空振り率")
+
+
+def _trigger_rate_text(trigger: Any) -> str:
+    if not isinstance(trigger, dict):
+        return ""
+    kind = trigger.get("kind", "whiff")
+    if kind == "ignorance":
+        return (f"ベース {_ignorance_rate_side(trigger.get('base'))} → "
+                f"適用後 {_ignorance_rate_side(trigger.get('patched'))}")
+    if kind == "blocked":
+        return (f"ベース {_blocked_rate_side(trigger.get('base'))} → "
+                f"適用後 {_blocked_rate_side(trigger.get('patched'))}")
+    return _whiff_rate_text(trigger)
+
+
 _USAGE_LABELS = (
     ("decisions_in_new_zones", "新しい場所での決定"),
     ("moves_into_new_zones", "新しい場所への移動"),
@@ -344,7 +396,7 @@ def _trial_html(trial: dict) -> str:
     parts = []
     trigger_result = trial.get("trigger")
     if trigger_result:
-        parts.append(f"<p>きっかけの空振り率: {_escape(_whiff_rate_text(trigger_result))}</p>")
+        parts.append(f"<p>{_escape(_trigger_rate_label(trigger_result))}: {_escape(_trigger_rate_text(trigger_result))}</p>")
     pairs = trial.get("pairs") or []
     if pairs:
         table = _reach_table(pairs)

@@ -29,10 +29,20 @@ _LABELS = (
 )
 
 
-def _added_names(patches: Any) -> tuple[frozenset, frozenset, frozenset]:
+def _added_names(patches: Any) -> tuple[frozenset, frozenset, frozenset, frozenset]:
     """expansion.patches[].added（名前/idだけの一覧）を、パッチ境界を問わず
-    合算した3つの集合にする -- new_usage は所属の有無しか見ないため。"""
-    zones, items, facts = set(), set(), set()
+    合算した4つの集合にする -- new_usage は所属の有無しか見ないため。
+
+    4つ目は added.sources（WB-WORLDGROW-002 段階2の "縄@森" 形式の文字列、
+    gapengine/world_patch.py の apply_patch が作る）を (name, zone) の
+    タプルにしたもの。この文字列だけでは item か fact かが分からない
+    (どちらも同じ "名前@場所" の形) ので、_patch_for 側で両方の扱いに
+    展開する -- new_usage は gathered（item）と learned（fact）を別の
+    verb/details で見分けるので、名前を両方に登録しても数え間違いは
+    起きない（ponytail: world.yaml を読んで種類を確定させる方が厳密だが、
+    このバッジは表示専用の参考値でしかなく、そこまでの読み込みコストは
+    見合わない）。"""
+    zones, items, facts, sources = set(), set(), set(), set()
     for patch in patches or []:
         added = patch.get("added") if isinstance(patch, dict) else None
         if not isinstance(added, dict):
@@ -40,26 +50,36 @@ def _added_names(patches: Any) -> tuple[frozenset, frozenset, frozenset]:
         zones.update(n for n in data._as_list(added.get("zones")) if isinstance(n, str))
         items.update(n for n in data._as_list(added.get("items")) if isinstance(n, str))
         facts.update(n for n in data._as_list(added.get("facts")) if isinstance(n, str))
-    return frozenset(zones), frozenset(items), frozenset(facts)
+        for label in data._as_list(added.get("sources")):
+            if isinstance(label, str) and "@" in label:
+                name, _, zone = label.rpartition("@")
+                if name and zone:
+                    sources.add((name, zone))
+    return frozenset(zones), frozenset(items), frozenset(facts), frozenset(sources)
 
 
-def _patch_for(zones, items, facts) -> dict:
+def _patch_for(zones, items, facts, sources) -> dict:
+    source_entries = []
+    for name, zone in sources:
+        source_entries.append({"item": name, "source": {"zone": zone}})
+        source_entries.append({"fact": name, "source": {"zone": zone}})
     return {"add": {"zones": [{"name": n} for n in zones],
                     "items": [{"name": n} for n in items],
-                    "facts": [{"id": n} for n in facts]}}
+                    "facts": [{"id": n} for n in facts],
+                    "sources": source_entries}}
 
 
 @lru_cache(maxsize=256)
-def _cached_counts(path, mtime_ns, size, zones, items, facts, protagonist):
-    return new_usage([path], _patch_for(zones, items, facts), protagonist)
+def _cached_counts(path, mtime_ns, size, zones, items, facts, sources, protagonist):
+    return new_usage([path], _patch_for(zones, items, facts, sources), protagonist)
 
 
 def usage_counts(repository, experiment, log_relative_path, protagonist, patches):
     """1候補分の使用回数、または対象外（拡張なし・ログ無し等）なら None。"""
     if not protagonist or not log_relative_path:
         return None
-    zones, items, facts = _added_names(patches)
-    if not (zones or items or facts):
+    zones, items, facts, sources = _added_names(patches)
+    if not (zones or items or facts or sources):
         return None
     try:
         path = repository.safe_path(experiment, log_relative_path)
@@ -69,7 +89,7 @@ def usage_counts(repository, experiment, log_relative_path, protagonist, patches
         # dict(...): _cached_counts の戻り値はlru_cache越しに全呼び出しで
         # 共有される同一オブジェクト。呼び出し側が書き換えても他へ波及しない
         # よう、返す前に浅いコピーを渡す（Opus review 推奨4）。
-        return dict(_cached_counts(path, stat.st_mtime_ns, stat.st_size, zones, items, facts, protagonist))
+        return dict(_cached_counts(path, stat.st_mtime_ns, stat.st_size, zones, items, facts, sources, protagonist))
     except _SAFE_ERRORS:
         return None
 
