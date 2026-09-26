@@ -82,6 +82,61 @@ class RunTrialTests(unittest.TestCase):
         self.assertEqual(result["base_source"], "repository")  # no manifest.json for this fixture
         self.assertIsNone(result["trigger"])
 
+    def test_whiff_trigger_shape_is_unchanged_by_stage3(self) -> None:
+        # WB-WORLDGROW-002 stage 3: kind=="whiff" (or, as here, no "kind" key
+        # at all -- pre-S1 patches never had one) must still produce exactly
+        # the pre-S3 {"zone", "verb", "base", "patched"} shape, no "kind" key
+        # added, base/patched each exactly {"count", "whiffs"}.
+        patch = {"id": "p-whiff1", "title": "空振りパッチ", "add": VALID_ADD,
+                 "trigger": {"zone": "海", "verb": "investigate", "count": 10, "whiffs": 10}}
+        with tempfile.TemporaryDirectory() as work:
+            result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+        self.assertEqual(set(result["trigger"]), {"zone", "verb", "base", "patched"})
+        self.assertEqual(result["trigger"]["zone"], "海")
+        self.assertEqual(result["trigger"]["verb"], "investigate")
+        self.assertEqual(set(result["trigger"]["base"]), {"count", "whiffs"})
+        self.assertEqual(set(result["trigger"]["patched"]), {"count", "whiffs"})
+
+    def test_ignorance_trigger_records_zone_scoped_before_after(self) -> None:
+        patch = {"id": "p-ignorance1", "title": "手探りパッチ", "add": VALID_ADD,
+                 "trigger": {"kind": "ignorance", "zone": "海", "count": 20}}
+        # collect() is a pure aggregation over layers.jsonl this fixture's
+        # rho=0 run never populates with policy.route -- stubbing its
+        # (route_counts-shaped) return keeps this test fast/deterministic
+        # while still exercising run_trial's real dispatch-by-kind and the
+        # zone-scoped totals math in _ignorance_counts.
+        reports = [
+            {"route_counts": {"海": {"advance": 3, "detour:ignorance": 7}}},
+            {"route_counts": {"海": {"advance": 8, "detour:ignorance": 2}}},
+        ]
+        with unittest.mock.patch.object(world_patch_trial, "collect", side_effect=reports):
+            with tempfile.TemporaryDirectory() as work:
+                result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+        self.assertEqual(result["trigger"], {
+            "kind": "ignorance", "zone": "海",
+            "base": {"count": 7, "total": 10, "share": 0.7},
+            "patched": {"count": 2, "total": 10, "share": 0.2},
+        })
+
+    def test_blocked_trigger_records_requirement_scoped_before_after(self) -> None:
+        patch = {"id": "p-blocked1", "title": "詰み解消パッチ", "add": VALID_ADD,
+                 "trigger": {"kind": "blocked", "requirement": "has_item:縄", "count": 20,
+                             "stuck_zones": [["村", 20]]}}
+        reports = [
+            {"blocked_counts": {"has_item:縄": {"count": 15}},
+             "route_counts": {"村": {"lost": 15, "advance": 5}, "森": {"advance": 10}}},
+            {"blocked_counts": {"has_item:縄": {"count": 3}},
+             "route_counts": {"村": {"lost": 3, "advance": 17}, "森": {"advance": 10}}},
+        ]
+        with unittest.mock.patch.object(world_patch_trial, "collect", side_effect=reports):
+            with tempfile.TemporaryDirectory() as work:
+                result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+        self.assertEqual(result["trigger"], {
+            "kind": "blocked", "requirement": "has_item:縄",
+            "base": {"count": 15, "lost_total": 15, "lost_share": 0.5},
+            "patched": {"count": 3, "lost_total": 3, "lost_share": 0.1},
+        })
+
 
 class RationalityTableMissTrialTests(unittest.TestCase):
     """WB-WORLDGROW-002 stage 0 review, required item 1: a kappa>0 trial's
