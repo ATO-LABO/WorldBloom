@@ -252,6 +252,7 @@ class WorldDemandTest(unittest.TestCase):
                 "ignorance_share_min": world_demand.IGNORANCE_SHARE_MIN,
                 "blocked_min": world_demand.BLOCKED_MIN,
                 "blocked_share_min": world_demand.BLOCKED_SHARE_MIN,
+                "blocked_runs_min": world_demand.BLOCKED_RUNS_MIN,
             })
             self.assertIsNone(report["archive"])  # no archive.json in this fixture
             # WB-WORLDGROW-002 S1: no row here carries a policy.route dict
@@ -262,8 +263,9 @@ class WorldDemandTest(unittest.TestCase):
             self.assertEqual([t["kind"] for t in report["triggers"] if t["kind"] != "whiff"], [])
 
 
-def _route(kind, cause=None, blocked_on=None):
+def _route(kind, cause=None, blocked_on=None, blocked_detail=None):
     return {"policy": {"route": {"kind": kind, "cause": cause, "blocked_on": blocked_on,
+                                  "blocked_detail": blocked_detail,
                                   "h": [None, None], "plan": None, "milestone": None,
                                   "text": "使われない"}}}
 
@@ -290,6 +292,23 @@ class RouteTriggerTests(unittest.TestCase):
                 encoding="utf-8",
             )
             return world_demand.collect([path])
+
+    def _collect_runs(self, decisions_per_run):
+        # M4: unlike _collect (always a single file/run), spreads each
+        # inner decisions list across its own file -- needed to clear the
+        # new BLOCKED_RUNS_MIN gate, which counts distinct runs, not raw
+        # decisions.
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = []
+            for i, decisions in enumerate(decisions_per_run):
+                path = Path(tmp) / f"run-{i}" / "layers.jsonl"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in self._rows(decisions)),
+                    encoding="utf-8",
+                )
+                paths.append(path)
+            return world_demand.collect(paths)
 
     def test_ignorance_trigger_requires_both_thresholds(self) -> None:
         n = world_demand.IGNORANCE_MIN
@@ -323,32 +342,73 @@ class RouteTriggerTests(unittest.TestCase):
 
     def test_blocked_trigger_requires_both_thresholds(self) -> None:
         n = world_demand.BLOCKED_MIN
-        # 縄 is blocked n times out of exactly n lost decisions (share=1.0).
-        decisions = [
-            ("fight", {"explanation": {"zone": "道中"}, **_route("lost", blocked_on="has_item:縄")})
-            for _ in range(n)
+        runs = world_demand.BLOCKED_RUNS_MIN
+        detail = {"reason": "sources_unreachable", "zones": ["村"], "held_by": ["キジ"]}
+        # 縄 is blocked n times total, spread across exactly BLOCKED_RUNS_MIN
+        # runs, out of exactly n lost decisions (share=1.0, and -- being the
+        # only route-tagged decisions at all -- lost_share=1.0 too).
+        per_run = -(-n // runs)  # ceil
+        decisions_per_run = [
+            [
+                ("fight", {"explanation": {"zone": "道中"},
+                           **_route("lost", blocked_on="has_item:縄", blocked_detail=detail)})
+                for _ in range(per_run)
+            ]
+            for _ in range(runs)
         ]
-        report = self._collect(decisions)
+        report = self._collect_runs(decisions_per_run)
+        total = per_run * runs
         triggers = [t for t in report["triggers"] if t["kind"] == "blocked"]
         self.assertEqual(len(triggers), 1)
-        self.assertEqual(triggers[0]["requirement"], "has_item:縄")
-        self.assertEqual(triggers[0]["count"], n)
-        self.assertEqual(triggers[0]["share"], 1.0)
-        self.assertEqual(triggers[0]["zones"], [("道中", n)])
-        self.assertEqual(report["blocked_counts"]["has_item:縄"], {"count": n, "zones": {"道中": n}})
+        trigger = triggers[0]
+        self.assertEqual(trigger["requirement"], "has_item:縄")
+        self.assertEqual(trigger["count"], total)
+        self.assertEqual(trigger["share"], 1.0)
+        self.assertEqual(trigger["lost_share"], 1.0)
+        self.assertEqual(trigger["runs"], runs)
+        self.assertEqual(trigger["stuck_zones"], [("道中", total)])
+        self.assertEqual(trigger["source_zones"], [("村", total)])
+        self.assertEqual(trigger["held_by"], [("キジ", total)])
+        self.assertEqual(trigger["reason"], "sources_unreachable")
+        self.assertEqual(report["blocked_counts"]["has_item:縄"], {
+            "count": total, "runs": runs,
+            "zones": {"道中": total},
+            "source_zones": {"村": total},
+            "held_by": {"キジ": total},
+            "reasons": {"sources_unreachable": total},
+        })
 
     def test_blocked_below_share_min_does_not_trigger(self) -> None:
         n = world_demand.BLOCKED_MIN
-        # has_item:縄 blocked n times, but padded with other lost decisions
-        # (a different, never-repeating requirement each time) so its own
-        # share of all lost decisions drops below BLOCKED_SHARE_MIN.
+        runs = world_demand.BLOCKED_RUNS_MIN
+        # has_item:縄 blocked n times across enough runs to clear the runs
+        # gate on its own, but padded with other lost decisions (a
+        # different, never-repeating requirement each time) so its own
+        # share of all lost decisions drops below BLOCKED_SHARE_MIN --
+        # isolates the share gate from the new runs gate above.
+        per_run = -(-n // runs)
+        decisions_per_run = [
+            [
+                ("fight", {"explanation": {"zone": "道中"}, **_route("lost", blocked_on="has_item:縄")})
+                for _ in range(per_run)
+            ]
+            for _ in range(runs)
+        ]
+        decisions_per_run.append([
+            ("fight", {"explanation": {"zone": "道中"}, **_route("lost", blocked_on=f"knows:x{i}")})
+            for i in range(3 * n)
+        ])
+        report = self._collect_runs(decisions_per_run)
+        self.assertEqual([t for t in report["triggers"] if t["kind"] == "blocked"], [])
+
+    def test_blocked_below_runs_min_does_not_trigger(self) -> None:
+        # M4 required fix: a single run producing far more than BLOCKED_MIN
+        # identical lost decisions (one genome/seed stuck in a loop) must
+        # not read as a world-wide blocker on its own.
+        n = world_demand.BLOCKED_MIN * 5
         decisions = [
             ("fight", {"explanation": {"zone": "道中"}, **_route("lost", blocked_on="has_item:縄")})
             for _ in range(n)
-        ]
-        decisions += [
-            ("fight", {"explanation": {"zone": "道中"}, **_route("lost", blocked_on=f"knows:x{i}")})
-            for i in range(3 * n)
         ]
         report = self._collect(decisions)
         self.assertEqual([t for t in report["triggers"] if t["kind"] == "blocked"], [])
@@ -383,6 +443,51 @@ class RouteTriggerTests(unittest.TestCase):
         self.assertEqual(report["triggers"][0]["zone"], "海")
         self.assertEqual(report["triggers"][0]["verb"], "investigate")
         self.assertEqual(report["triggers"][1]["kind"], "ignorance")
+
+    def test_blocked_trigger_reads_full_population_even_in_exemplars_mode(self) -> None:
+        # M3 required fix (design judgment J): build_report()'s default is
+        # exemplars-only (evolve.py's own post-run call), but route_counts/
+        # ignorance/blocked must still scan the *full* g*/ind-*/seed-*
+        # population -- otherwise a blocker real across the population but
+        # absent from the handful of archive-chosen exemplars would read as
+        # "nothing blocked" (rho1-big-p1: exemplars saw 0 lost, all 30).
+        with tempfile.TemporaryDirectory() as tmp:
+            experiment_dir = Path(tmp)
+            n = world_demand.BLOCKED_MIN
+            runs = world_demand.BLOCKED_RUNS_MIN
+
+            def _write_run(rel_path, decisions):
+                path = experiment_dir / rel_path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in self._rows(decisions)),
+                    encoding="utf-8",
+                )
+
+            exemplar_rel = "g0/ind-0/seed-1/layers.jsonl"
+            _write_run(exemplar_rel, [("rest", {})])  # the exemplar itself hits nothing
+
+            per_run = -(-n // runs)
+            for i in range(runs):
+                _write_run(f"g0/ind-{i + 1}/seed-1/layers.jsonl", [
+                    ("fight", {"explanation": {"zone": "道中"},
+                               **_route("lost", blocked_on="has_item:縄")})
+                    for _ in range(per_run)
+                ])
+
+            archive = {"cells": {"0": {"exemplar": {"layers_path": exemplar_rel}}}}
+            (experiment_dir / "archive.json").write_text(json.dumps(archive), encoding="utf-8")
+
+            report = world_demand.build_report(experiment_dir)  # exemplars mode (default)
+
+            self.assertEqual(report["population"]["mode"], "exemplars")
+            # whiff's own population is still exemplars-only.
+            self.assertEqual(report["files"], 1)
+            triggers = [t for t in report["triggers"] if t["kind"] == "blocked"]
+            self.assertEqual(len(triggers), 1)
+            self.assertEqual(triggers[0]["requirement"], "has_item:縄")
+            self.assertEqual(triggers[0]["runs"], runs)
+            self.assertGreaterEqual(triggers[0]["count"], n)
 
 
 if __name__ == "__main__":
