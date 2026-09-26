@@ -1,5 +1,5 @@
 ---
-ja_rev: "a9248910bcef"
+ja_rev: "b8203f9d75d0"
 ---
 # Rationality layer and Jev
 
@@ -15,13 +15,13 @@ m_rat = (p / mean p) ** kappa
 
 Judgment happens using only what the protagonist actually knows or believes. The world's hidden truth (`world.truth`) is never passed to the judge model, so a judgment never sees through what's really going on behind the scenes. The roles stay separate — **rationality is the judge (a constraint), preference is the genome, detours are the [route layer](route-layer.md)/novelty, and misperception is the seven layers' perception**. The rationality layer never decides *what* the protagonist wants; it only judges whether a given means makes sense for that.
 
-Judgments are cached in a shared table (e.g. `rationality.json`) written to the experiment's output directory. The same situation (same candidates, same context) is simply reused from that table when it's already there, so determinism — the same world, genome, seed, precedent table, and judgment table producing byte-identical output — still holds.
+Judgments are cached in a judgment table. For experiments started from the UI, there is one table per genre × judge model, shared across experiments (Ollama and Jev judgments never mix). The same situation (same candidates, same context) is simply reused from that table when it's already there, so determinism — the same world, genome, seed, precedent table, and judgment table producing byte-identical output — still holds.
 
 ## Two kinds of judge
 
 | Judge | What it does | Speed | What it needs |
 |---|---|---|---|
-| Ollama (local) | Sends one question at a time to a local `qwen3.6:35b` in choice mode, and reads the probability off its logprobs | A few to several dozen seconds per call (uses the GPU; can be delayed by GPU Guard's thermal wait) | Ollama itself, with the model pulled |
+| Ollama (local) | Sends one question at a time to a local `qwen3.6:35b` in choice mode, and reads the probability off its logprobs | Roughly 2–4 seconds per call (uses the GPU; waits for it to cool down when it runs hot) | Ollama itself, with the model pulled |
 | Jev (TypeSafe) | Calls TypeSafe's API (`jev-1.13.0`) | About 0.2 seconds per call (no GPU needed) | A TypeSafe API key. Every judgment call sends the protagonist's situation text to an external service (api.typesafe.ai) |
 
 Jev only reports probabilities on a coarse 0.01 grid. Its 0.00 doesn't mean "truly zero" — it means "below 0.005" — so using it as-is would make `(p/mean p)**kappa` equal zero and ban that candidate outright (an Ollama judgment never drops that low). To prevent this, Jev's 0.00 is floored to 0.005 before use, so no candidate is ever fully excluded.
