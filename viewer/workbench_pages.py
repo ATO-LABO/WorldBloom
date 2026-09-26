@@ -1057,12 +1057,16 @@ def _run_plan(config, estimate, control, *, open_detail=False):
     )
 
 
-def _start_cta(config, request_id):
+def _start_cta(config, request_id, blocking_job=None):
+    # A running job elsewhere greys the button out and says why, instead of
+    # replacing it.
+    notice = _blocking_notice(blocking_job) if blocking_job else ""
+    disabled = " disabled" if blocking_job else ""
     return (
         f'<div data-wb="start" data-config-id="{_escape(config["config_id"])}" '
-        f'data-request-id="{_escape(request_id)}">'
-        '<p class="form-error" data-form-error role="alert"></p>'
-        '<form><button type="submit" class="button primary">この設定で GA を回す</button></form>'
+        f'data-request-id="{_escape(request_id or "")}">'
+        '<p class="form-error" data-form-error role="alert"></p>' + notice
+        + f'<form><button type="submit" class="button primary"{disabled}>この設定で GA を回す</button></form>'
         "</div>"
     )
 
@@ -1128,10 +1132,7 @@ def _run_prep(view):
         parts.append(_run_config_picker(world, configs, config))
         parts.append(_config_aux_links(config, world))
         parts.append(_run_plan(config, view["estimate"], view["control"]))
-        if view["blocking_job"] is not None:
-            parts.append(_blocking_notice(view["blocking_job"]))
-        else:
-            parts.append(_start_cta(config, view["request_id"]))
+        parts.append(_start_cta(config, view["request_id"], view["blocking_job"]))
         parts.append('<p class="muted">GA は LLM を呼び出しません。</p>')
     else:
         parts.append(f'<p>設定: <a href="/configs/{_url(config["config_id"])}">{_escape(config["label"])}</a></p>')
