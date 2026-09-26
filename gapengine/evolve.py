@@ -125,7 +125,12 @@ def _build_rationality_judge(
             )
         return JevJudge(
             model=str(rationality_cfg.get("model", _JEV_DEFAULT_MODEL)),
-            method=str(rationality_cfg.get("method", "noul")),
+            # WB-JEV-005 review (NICE 6): jev's own default is "choice"
+            # (unlike ollama's "noul" above) -- rationality_cfg["method"]
+            # is normally already resolved from rationality.yaml/override
+            # before this runs, so this default only matters when a caller
+            # builds a jev cfg with no "method" key at all.
+            method=str(rationality_cfg.get("method", "choice")),
             timeout=30.0,
         )
     if backend == "fake":

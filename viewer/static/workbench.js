@@ -257,7 +257,11 @@
       // WB-JEV-005: only one of these two status rows is ever shown --
       // whichever backend the select currently names.
       const backendEl = form.querySelector('[data-field="evolution.rationality_backend"]');
-      const backend = backendEl ? backendEl.value : "ollama";
+      // "" (the <select>'s "follow the template default" option) shows the
+      // same row as an explicit "ollama"/"none" would -- only "jev" is
+      // distinct (mirrors workbench_pages._rationality_section's own
+      // current_backend contract).
+      const backend = backendEl && backendEl.value === "jev" ? "jev" : "ollama";
       const jevRow = rationalitySection.querySelector("[data-judge-status-jev]");
       const ollamaRow = rationalitySection.querySelector("[data-judge-status-ollama]");
       if (jevRow) jevRow.hidden = backend !== "jev";

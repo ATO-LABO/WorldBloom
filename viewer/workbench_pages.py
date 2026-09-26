@@ -542,21 +542,32 @@ def _kappa_field(value):
     )
 
 
-def _rationality_backend_select(values, jev, ollama_model):
+def _rationality_backend_select(values, jev, ctx):
     """WB-JEV-005: the κ section's "判定器" <select> -- "jev" (disabled when
-    no verified key is on file) and "ollama". A brand-new form's own default
-    (jev if a key is available, else ollama) is set by _configs_new()
-    directly on ``values["evolution.rationality_backend"]`` before this
-    renders; a duplicate/edit keeps whatever backend that config saved."""
-    current = values.get("evolution.rationality_backend") or (
-        "jev" if jev["available"] else "ollama"
-    )
+    no verified key is on file) and "" (follow the template's own
+    rationality.yaml -- Ollama when its backend.type is "ollama", which
+    every existing template's is). "" is the ONLY value that round-trips
+    through normalize() to rationality_backend=None, so a config that never
+    chose Jev stays byte-identical to a pre-WB-JEV-005 one (no "ollama"
+    ever appears in argv). A brand-new form's own default (jev when a key
+    is verified) is set explicitly by _configs_new() on
+    ``values["evolution.rationality_backend"]`` before this renders; a
+    duplicate/edit's None/"ollama"/"none" all render as "" selected here --
+    reading an existing config's saved backend must never silently flip to
+    "jev" just because a key happens to be on file now (Opus review: this
+    used to fall back to "jev if available" for every falsy value,
+    including a duplicated config's own None, which silently switched an
+    unrelated saved config to sending data to TypeSafe)."""
+    current = "jev" if values.get("evolution.rationality_backend") == "jev" else ""
     jev_disabled = "" if jev["available"] else " disabled"
+    default_label = (
+        "テンプレートの既定" if ctx["reason"] == "non_ollama_backend"
+        else f"Ollama {_escape(ctx['model'])}（ローカル）"
+    )
     options = (
         f'<option value="jev"{" selected" if current == "jev" else ""}{jev_disabled}>'
         "Jev（TypeSafe、高速・外部送信）</option>"
-        f'<option value="ollama"{" selected" if current == "ollama" else ""}>'
-        f"Ollama {_escape(ollama_model)}（ローカル）</option>"
+        f'<option value=""{" selected" if current == "" else ""}>{default_label}</option>'
     )
     return (
         '<div class="field"><label for="f-evolution.rationality_backend">判定器</label>'
@@ -582,9 +593,10 @@ def _rationality_section(values, ctx, *, total_runs, heading_prefix=""):
         f'判定器: Jev {jev["model"]} — 利用可' if jev["available"]
         else '判定器: Jev — 利用不可（⚙ 設定の「計算」でAPIキーを登録してください）'
     )
-    current_backend = values.get("evolution.rationality_backend") or (
-        "jev" if jev["available"] else "ollama"
-    )
+    # Mirrors _rationality_backend_select()'s own current-value contract:
+    # only an explicit "jev" shows the Jev status row -- everything else
+    # (None/""/"ollama"/"none") shows the template-default (Ollama) row.
+    current_backend = "jev" if values.get("evolution.rationality_backend") == "jev" else "ollama"
     # Both rows always render -- workbench.js's rationality_backend change
     # handler toggles which one is hidden, same pattern as data-kappa-runs
     # below. kappa-status keeps its id (Ollama's row) for _kappa_field()'s
@@ -612,7 +624,7 @@ def _rationality_section(values, ctx, *, total_runs, heading_prefix=""):
         f"<h2>{_escape(heading_prefix)}合理性（主人公がどれだけ筋の通った手を選ぶか）</h2>"
         f'<p class="desc" id="kappa-desc">{_escape(RATIONALITY_DESCRIPTION)}</p>'
         '</div><div class="cfg-sec-body">'
-        + _rationality_backend_select(values, jev, ctx["model"])
+        + _rationality_backend_select(values, jev, ctx)
         + _kappa_field(kappa_value)
         + '<p class="hint">0 無効 / 0.3 穏やか / 0.6 推奨 / 1.0 ほぼ判定器どおり</p>'
         + status_rows
@@ -2312,11 +2324,16 @@ def _configs_new(handler):
                 values["evolution.kappa"] = 0.6
                 values["execution_limits.wall_seconds"] = 3600
             elif rationality_ctx["available"]:
-                values["evolution.rationality_backend"] = "ollama"
+                # WB-JEV-005 review (SHOULD 4): None, not "ollama" -- a new
+                # form with no Jev key must stay byte-identical to a
+                # pre-WB-JEV-005 one (no --rationality-backend ollama in
+                # argv). "" in the <select> already means "follow the
+                # template default", which is Ollama here.
+                values["evolution.rationality_backend"] = None
                 values["evolution.kappa"] = 0.6
                 values["execution_limits.wall_seconds"] = 21600
             else:
-                values["evolution.rationality_backend"] = "ollama"
+                values["evolution.rationality_backend"] = None
                 values["evolution.kappa"] = 0
         # WB-ROUTE-001 S4 §2 (design judgment): a brand new form defaults ρ
         # to 1.0 when the genre actually has a route.yaml -- ρ carries no

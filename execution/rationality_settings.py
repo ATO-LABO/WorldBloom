@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -77,7 +78,7 @@ def write_jev_api_key(settings_path, api_key, *, base_url=JEV_BASE_URL, timeout=
         if error.code in (401, 403):
             raise ConfigError("api_key", "APIキーが無効です") from error
         raise ConfigError("api_key", "TypeSafe に接続できません") from error
-    except (OSError, urllib.error.URLError, ValueError) as error:
+    except (OSError, urllib.error.URLError, http.client.HTTPException, ValueError) as error:
         raise ConfigError("api_key", "TypeSafe に接続できません") from error
 
     # docs.typesafe.ai's /v1/models response shape wasn't confirmed at

@@ -19,6 +19,7 @@ keys and the header's "rationality" key when enabled).
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import re
 import math
@@ -714,7 +715,7 @@ class JevJudge:
         api_key: str | None = None,
         base_url: str = JEV_BASE_URL,
         timeout: float = 30.0,
-        method: str = "noul",
+        method: str = "choice",
     ) -> None:
         if method not in ("noul", "choice"):
             raise ValueError(f"Unknown rationality judge method: {method}")
@@ -732,6 +733,20 @@ class JevJudge:
         # Rationality.meta/the layers.jsonl header (that stays self.model,
         # what was actually asked for).
         self.served_model: str | None = None
+
+    @staticmethod
+    def _valid_probability(value: Any) -> bool:
+        """A genuine probability: a real number (bool is technically an
+        ``int`` subclass in Python but is never a probability here),
+        finite, and in [0, 1]. Anything else (NaN/inf, a string, a bool,
+        out-of-range) is treated the same as "key absent" -- never raises,
+        never silently clamps a malformed value into range."""
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+            and 0.0 <= value <= 1.0
+        )
 
     @staticmethod
     def _answer_probabilities(data: dict[str, Any] | None, qid: str) -> Mapping[str, Any] | None:
@@ -770,7 +785,8 @@ class JevJudge:
                 time.sleep(sleep_for)
                 wait = min(30.0, wait * 2.0)
                 continue
-            except (OSError, urllib.error.URLError, ValueError, KeyError, TypeError):
+            except (OSError, urllib.error.URLError, http.client.HTTPException,
+                    ValueError, KeyError, TypeError):
                 if attempt == 2:
                     return None
                 time.sleep(wait)
@@ -814,7 +830,7 @@ class JevJudge:
         for index in range(len(candidates)):
             probabilities = self._answer_probabilities(data, str(index + 1))
             p_yes = probabilities.get("yes") if probabilities is not None else None
-            results.append(float(p_yes) if isinstance(p_yes, (int, float)) else None)
+            results.append(float(p_yes) if self._valid_probability(p_yes) else None)
         return results, 1, False
 
     def _score_choice(
@@ -839,7 +855,7 @@ class JevJudge:
             probabilities = self._answer_probabilities(data, "q")
             if probabilities is not None:
                 values = [probabilities.get(str(offset + 1)) for offset in range(len(chunk))]
-                values = [value if isinstance(value, (int, float)) else 0.0 for value in values]
+                values = [value if self._valid_probability(value) else 0.0 for value in values]
                 # Every option key absent from the response is treated as
                 # "no signal for this chunk at all" (None), not as "every
                 # candidate scored 0.0" -- ponytail: this can't distinguish
