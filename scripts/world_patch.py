@@ -9,6 +9,7 @@ import contextlib
 import datetime
 import hashlib
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -43,9 +44,10 @@ from gapengine.world_patch_propose import (MAX_PROMPT_CHARS, build_prompt, check
 from gapengine.world_patch_trial import run_trial, gate_status
 from gapengine.world_patch import stack_head, verify_stack, read_stack
 from gapengine.world_patch_usage import patch_usage, wither_candidates
-from execution.provenance import atomic_json
+from execution.provenance import ConfigError, atomic_json
 from execution.world_patches import _check_parent_rev, patch_lock
 from execution.world_patch_approval import approve, reject, reopen, repair, retire
+from execution.world_patch_library import export_patch, import_patch
 
 # Exceptions an LLM's malformed JSON/shape can realistically trigger while a
 # proposal is parsed and gated (WB-WORLDGROW-001 R6): parse_proposal/make_patch/
@@ -452,6 +454,69 @@ def cmd_retire(args):
     return 0
 
 
+_GENRE_PATH = re.compile(r"^templates/([A-Za-z0-9][A-Za-z0-9_-]{0,95})/")
+
+
+def _verify_template_matches_world(project: Path, template: Path) -> None:
+    """R7 (Opus review): --template must actually be this world's own genre
+    -- library assets are genre-scoped (execution.world_patch_library.
+    library_dir lives under the template, not the world), so exporting to or
+    importing from the wrong --template would silently mix genres. Mirrors
+    execution.library.LibraryStore._genre_of's own reading of world.yaml's
+    gapengine.action_graph path."""
+    world_path = project / "world.yaml"
+    if not world_path.is_file():
+        raise PatchError(f"世界の設定を読み込めません: {world_path}")
+    world = yaml.safe_load(world_path.read_text(encoding="utf-8"))
+    graph = (world.get("gapengine") or {}).get("action_graph") if isinstance(world, dict) else None
+    genre = None
+    if isinstance(graph, str):
+        match = _GENRE_PATH.match(graph.replace("\\", "/"))
+        if match:
+            genre = match.group(1)
+    if genre is not None and genre != template.name:
+        raise PatchError(f"--template（{template.name}）がこの世界のジャンル（{genre}）と一致しません")
+
+
+def cmd_export(args):
+    """WB-WORLDGROW-001 段階5d: publish an applied, strongly-used patch as a
+    genre asset. Usage is measured here (server/CLI side), never taken from
+    the caller -- same principle as cmd_retire's own usage table."""
+    project, template, experiment = args.project.resolve(), args.template.resolve(), args.experiment.resolve()
+    try:
+        _verify_template_matches_world(project, template)
+        protagonist = _protagonist(project)
+        with patch_lock(project):
+            active = approved_patches(project)
+        usage = patch_usage(experiment, protagonist, active)
+        counts = usage.get(args.patch)
+        for line in _usage_summary(usage, wither_candidates(usage)):
+            print(line)
+        path = export_patch(project, template, args.patch, experiment=experiment,
+                            protagonist=protagonist, usage=counts)
+    except (PatchError, ConfigError) as error:
+        print(str(error))
+        return 1
+    print(f"ジャンルの資産にしました: {args.patch} -> {path}")
+    print("git への追加は手動で行ってください。")
+    return 0
+
+
+def cmd_import(args):
+    """WB-WORLDGROW-001 段階5d: stage a genre asset as a new proposal in
+    this world (trial_pending -- check/approve must still run here)."""
+    project, template = args.project.resolve(), args.template.resolve()
+    try:
+        _verify_template_matches_world(project, template)
+        rewritten = import_patch(project, template, args.entry, repo_root=args.repo)
+    except (PatchError, ConfigError) as error:
+        print(str(error))
+        return 1
+    print(f"取り込みました: {args.entry} -> patches/_proposed/{args.entry}.yaml")
+    print(f"きっかけの場所: {rewritten['trigger']['zone']}")
+    return 0
+
+
 def cmd_usage(args):
     """WB-WORLDGROW-001 段階5a, 読み取り専用: 適用中パッチごとの使用表と枯れ候補。"""
     project, experiment = args.project.resolve(), args.experiment.resolve()
@@ -579,6 +644,20 @@ def build_parser() -> argparse.ArgumentParser:
     usage_cmd.add_argument("--project", type=Path, required=True)
     usage_cmd.add_argument("--experiment", type=Path, required=True)
     usage_cmd.set_defaults(func=cmd_usage)
+
+    export_cmd = sub.add_parser("export")
+    export_cmd.add_argument("--project", type=Path, required=True)
+    export_cmd.add_argument("--template", type=Path, required=True)
+    export_cmd.add_argument("--patch", required=True)
+    export_cmd.add_argument("--experiment", type=Path, required=True)
+    export_cmd.set_defaults(func=cmd_export)
+
+    import_cmd = sub.add_parser("import")
+    import_cmd.add_argument("--project", type=Path, required=True)
+    import_cmd.add_argument("--template", type=Path, required=True)
+    import_cmd.add_argument("--entry", required=True)
+    import_cmd.add_argument("--repo", type=Path)
+    import_cmd.set_defaults(func=cmd_import)
 
     list_cmd = sub.add_parser("list")
     list_cmd.add_argument("--project", type=Path, required=True)

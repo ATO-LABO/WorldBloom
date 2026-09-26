@@ -1,9 +1,10 @@
-usage: world_patch.py [-h] {propose,check,approve,reject,retire,usage,list,reopen,repair} ...
+usage: world_patch.py [-h]
+                      {propose,check,approve,reject,retire,usage,export,import,list,reopen,repair} ...
 
 World-expansion patch proposals, gates, and approval.
 
 positional arguments:
-  {propose,check,approve,reject,retire,usage,list,reopen,repair}
+  {propose,check,approve,reject,retire,usage,export,import,list,reopen,repair}
 
 options:
   -h, --help            show this help message and exit

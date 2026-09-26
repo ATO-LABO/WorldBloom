@@ -20,6 +20,14 @@ from typing import Any, Iterable
 import yaml
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}$")
+# WB-WORLDGROW-001 段階5d: subfolder of a template dir holding genre-library
+# assets (exported patches other worlds can import). Excluded wherever a
+# template dir is walked for behavior-affecting content -- execution/
+# configs.py's freeze loop, world_patch_inputs.template_data, and
+# evolve._content_fingerprint -- so adding/removing a library asset never
+# changes an input digest, a frozen input manifest, or a GA content
+# fingerprint.
+LIBRARY_DIR = "expansions"
 _NAME_FORBIDDEN_CHARS = frozenset("'\"\n{}")
 # engine/world.py only knows $innocent:1 and $innocent:2 (its truth_tokens
 # set), whatever the number of candidates -- a larger N would pass here and

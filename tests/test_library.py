@@ -78,6 +78,33 @@ class LibraryStoreTests(unittest.TestCase):
             self.store.create_world("clone-fail", from_id="momotaro", genre_id="no-such-genre", name="x")
         self.assertFalse((self.repo / "projects/clone-fail").exists())
 
+    def test_create_world_does_not_copy_patches(self):
+        # WB-WORLDGROW-001 段階5d D10: a copied world's patches/ (stack.json +
+        # approved patch yaml/gate) recorded a base_inputs_digest against the
+        # *source* world.yaml -- carrying it over verbatim would make the
+        # copy's own expand/applicable_snapshot refuse immediately (digest
+        # mismatch, since the copy's name/content already differ). Genre
+        # assets are what the copy should pick expansions up from instead.
+        patches_dir = self.repo / "projects/momotaro/patches"
+        patches_dir.mkdir()
+        (patches_dir / "stack.json").write_text("{}", encoding="utf-8")
+        self.store.create_world("clone-nopatches", from_id="momotaro", genre_id="momotaro", name="複製先")
+        self.assertFalse((self.repo / "projects/clone-nopatches/patches").exists())
+
+    # ------------------------------------------------------------- genres()
+
+    def test_genres_reports_expansion_asset_count(self):
+        from execution.world_patch_library import library_dir
+        genres = {g["id"]: g for g in self.store.genres()}
+        self.assertEqual(genres["momotaro"]["expansions"], 0)
+        folder = library_dir(self.repo / "templates/momotaro")
+        folder.mkdir(parents=True)
+        (folder / "p-00000001.yaml").write_text(
+            yaml.safe_dump({"schema_version": 1, "patch": {"id": "p-00000001"}, "provenance": {}},
+                          allow_unicode=True), encoding="utf-8")
+        genres = {g["id"]: g for g in self.store.genres()}
+        self.assertEqual(genres["momotaro"]["expansions"], 1)
+
     # -------------------------------------------------------------- write()
 
     def test_write_rejects_path_traversal(self):
