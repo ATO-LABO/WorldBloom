@@ -658,6 +658,341 @@ class WorldExpansionApiTests(unittest.TestCase):
         self.assertEqual(record["usage"]["elites_total"], 1)
         self.assertEqual(record["usage"]["elites_strong"], 1)
 
+    # -- export / import (WB-WORLDGROW-001 段階5d "ジャンルの資産") ---------
+
+    def _freeze_world_with_patches(self, root, patch_ids, *, project_id="momotaro"):
+        """WB-WORLDGROW-001 段階5d M1: export_patch() now requires that
+        `experiment`'s own *frozen* world (inputs/projects/<id>/world.yaml)
+        was actually built with the exported patch applied -- mirrors
+        execution.epoch_chain.EpochChain._auto_retire's own frozen-world
+        read. The base world content itself does not matter for this check
+        (only expansion.patches[].id does), so a minimal stand-in is enough."""
+        world_path = root / "inputs" / "projects" / project_id / "world.yaml"
+        world_path.parent.mkdir(parents=True, exist_ok=True)
+        world = {"expansion": {"patches": [{"id": pid} for pid in patch_ids]}}
+        world_path.write_text(yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+
+    def _strong_use_experiment(self, name, *, zone, patch_id=None):
+        """A catalog-verified experiment (no top-level archive.json, same
+        shape as _write_catalog_experiment) whose sole exemplar log shows the
+        protagonist actually moving into `zone` -- enough for patch_usage()
+        to report elites_strong=1 for a patch that added it. When `patch_id`
+        is given, also freezes a world that actually includes it (M1)."""
+        log_relative = "g0/ind-0/seed-1/layers.jsonl"
+        cells = {"c0": {"exemplar": {"layers_path": log_relative}}}
+        root = self._write_catalog_experiment(name, cells=cells)
+        (root / log_relative).parent.mkdir(parents=True, exist_ok=True)
+        rows = [{"kind": "decision", "subject": "桃太郎", "verb": "move", "result": "moved",
+                 "delta": {"actor": {"zone": zone}}}]
+        (root / log_relative).write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+        if patch_id is not None:
+            self._freeze_world_with_patches(root, [patch_id])
+        self.server.repository = RunRepository(self.server.repository.runs_root,
+                                                control_root=Path(self.case_temp.name) / f"control-{name}")
+        return root
+
+    def _second_world(self, name="momotaro2"):
+        target = self.repo / "projects" / name
+        shutil.copytree(self.project, target, ignore=shutil.ignore_patterns("patches"))
+        return target
+
+    def test_export_without_job_store_is_503(self):
+        self.server.job_store = None
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/p-00000000/export", {"experiment": "exp1"})
+        self.assertEqual(status, 503, payload)
+
+    def test_export_extra_body_key_is_rejected(self):
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/p-00000000/export",
+            {"experiment": "exp1", "extra": 1})
+        self.assertEqual(status, 400, payload)
+
+    def test_export_unknown_experiment_is_400(self):
+        add = {"zones": [{"name": "小屋輸出1", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "輸出試験1", "add": add})
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export",
+            {"experiment": "no-such-experiment"})
+        self.assertEqual(status, 400, payload)
+
+    def test_export_unapproved_patch_is_422(self):
+        self._write_experiment("exp-export-2")
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/p-00000000/export",
+            {"experiment": "exp-export-2"})
+        self.assertEqual(status, 422, payload)
+
+    def test_running_job_blocks_export(self):
+        add = {"zones": [{"name": "小屋輸出3", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "輸出試験3", "add": add})
+        self._write_experiment("exp-export-3")
+        self.job_store._jobs = [{"job_id": "job-1", "state": "running"}]
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export", {"experiment": "exp-export-3"})
+        self.assertEqual(status, 409, payload)
+
+    def test_export_without_strong_use_is_422(self):
+        # Frozen world DOES include the patch (M1 satisfied) -- this test is
+        # specifically about the strong-use rejection, not M1's.
+        add = {"zones": [{"name": "小屋輸出4", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "輸出試験4", "add": add})
+        root = self._write_experiment("exp-export-4")
+        self._freeze_world_with_patches(root, [patch["id"]])
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export", {"experiment": "exp-export-4"})
+        self.assertEqual(status, 422, payload)
+        self.assertFalse((self.template_dir / "expansions").exists())
+
+    def test_export_without_frozen_world_is_422(self):
+        # WB-WORLDGROW-001 段階5d M1: an experiment with no frozen world at
+        # all (this test's _write_experiment writes only archive.json/
+        # config.json, no inputs/) can never prove which patches it ran
+        # under -- rejected even though usage would otherwise be strong.
+        add = {"zones": [{"name": "小屋輸出M1a", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "輸出試験M1a", "add": add})
+        self._strong_use_experiment("exp-export-m1a", zone="小屋輸出M1a")  # no patch_id -> no frozen world
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export", {"experiment": "exp-export-m1a"})
+        self.assertEqual(status, 422, payload)
+        self.assertFalse((self.template_dir / "expansions").exists())
+
+    def test_export_when_frozen_world_lacks_this_patch_is_422(self):
+        # WB-WORLDGROW-001 段階5d M1: the frozen world exists but never
+        # actually had this patch applied -- a same-named patch approved on
+        # some other world (or any unrelated frozen world) must not be
+        # accepted as evidence.
+        add = {"zones": [{"name": "小屋輸出M1b", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "輸出試験M1b", "add": add})
+        root = self._strong_use_experiment("exp-export-m1b", zone="小屋輸出M1b")
+        self._freeze_world_with_patches(root, ["p-notthisone"])
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export", {"experiment": "exp-export-m1b"})
+        self.assertEqual(status, 422, payload)
+        self.assertFalse((self.template_dir / "expansions").exists())
+
+    def test_export_succeeds_and_writes_asset(self):
+        add = {"zones": [{"name": "小屋輸出5", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "輸出試験5", "add": add})
+        self._strong_use_experiment("exp-export-5", zone="小屋輸出5", patch_id=patch["id"])
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export", {"experiment": "exp-export-5"})
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["patch_id"], patch["id"])
+        asset_path = self.template_dir / "expansions" / f"{patch['id']}.yaml"
+        self.assertTrue(asset_path.is_file())
+        entry = yaml.safe_load(asset_path.read_text(encoding="utf-8"))
+        self.assertEqual(entry["provenance"]["evidence"]["usage"]["elites_strong"], 1)
+        self.assertEqual(entry["provenance"]["world_id"], "momotaro")
+
+    def test_export_duplicate_is_409(self):
+        # R3 (Opus review): exporting the same id twice is a conflict, not a
+        # generic validation error.
+        add = {"zones": [{"name": "小屋輸出6", "parent": "海"}]}
+        patch = write_approved(self.project_dir, {"title": "輸出試験6", "add": add})
+        self._strong_use_experiment("exp-export-6", zone="小屋輸出6", patch_id=patch["id"])
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export", {"experiment": "exp-export-6"})
+        self.assertEqual(status, 200, payload)
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export", {"experiment": "exp-export-6"})
+        self.assertEqual(status, 409, payload)
+
+    def test_import_without_job_store_is_503(self):
+        self.server.job_store = None
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/import",
+            {"entry": "p-00000000", "seen": {"head": EMPTY_STACK_DIGEST}})
+        self.assertEqual(status, 503, payload)
+
+    def test_import_unknown_entry_is_422(self):
+        head = read_stack(self.project_dir)["head"]
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/import",
+            {"entry": "p-00000000", "seen": {"head": head}})
+        self.assertEqual(status, 422, payload)
+
+    def test_import_head_mismatch_is_409(self):
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/import",
+            {"entry": "p-00000000", "seen": {"head": "not-the-real-head"}})
+        self.assertEqual(status, 409, payload)
+
+    def test_running_job_blocks_import(self):
+        head = read_stack(self.project_dir)["head"]
+        self.job_store._jobs = [{"job_id": "job-1", "state": "running"}]
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/import",
+            {"entry": "p-00000000", "seen": {"head": head}})
+        self.assertEqual(status, 409, payload)
+
+    def test_import_succeeds_and_stages_proposal(self):
+        # An item sourcing from the new zone (not just the zone itself) --
+        # fit()'s check_trigger_coverage needs at least one add.items/facts
+        # entry sourcing from *some* zone to have anything to resolve
+        # trigger.zone to at all (tests/test_world_patch_library.py's
+        # ADD_HUT does the same).
+        add = {"zones": [{"name": "小屋輸入1", "parent": "海"}], "items": [{"name": "輸入試験の道具", "sources": [
+            {"type": "investigate", "zone": "小屋輸入1", "count": 1, "max": 2}]}]}
+        patch = write_approved(self.project_dir, {"title": "輸入試験1", "add": add})
+        self._strong_use_experiment("exp-import-1", zone="小屋輸入1", patch_id=patch["id"])
+        status, payload = self.http(
+            "POST", f"/api/worlds/momotaro/patches/{patch['id']}/export", {"experiment": "exp-import-1"})
+        self.assertEqual(status, 200, payload)
+
+        target = self._second_world()
+        head = EMPTY_STACK_DIGEST
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro2/patches/import",
+            {"entry": patch["id"], "seen": {"head": head}})
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["patch_id"], patch["id"])
+        proposed = target / "patches" / "_proposed" / f"{patch['id']}.yaml"
+        self.assertTrue(proposed.is_file())
+        self.assertFalse(proposed.with_suffix(".gate.json").exists())
+
+    # -- R9 (Opus review): boundary/404 coverage for the two new routes ----
+
+    def test_export_requires_client_header(self):
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/p-00000001/export",
+            {"experiment": "exp1"}, client_header=False)
+        self.assertEqual(status, 403, payload)
+
+    def test_export_unknown_world_is_404(self):
+        status, payload = self.http(
+            "POST", "/api/worlds/no-such-world/patches/p-00000001/export", {"experiment": "exp1"})
+        self.assertEqual(status, 404, payload)
+
+    def test_import_requires_client_header(self):
+        status, payload = self.http(
+            "POST", "/api/worlds/momotaro/patches/import",
+            {"entry": "p-00000001", "seen": {"head": EMPTY_STACK_DIGEST}}, client_header=False)
+        self.assertEqual(status, 403, payload)
+
+    def test_import_unknown_world_is_404(self):
+        status, payload = self.http(
+            "POST", "/api/worlds/no-such-world/patches/import",
+            {"entry": "p-00000001", "seen": {"head": EMPTY_STACK_DIGEST}})
+        self.assertEqual(status, 404, payload)
+
+
+def _write_library_asset(template_dir, add, *, title="小屋の資産", world_id="momotaro", world_name="桃太郎",
+                         reason="良い拡張でした", strong=1, weak=0, file_id=None):
+    """A minimal genre-library asset file, hand-written (not via export_patch)
+    -- enough to drive viewer/library_pages._library_assets()/world_expansion_
+    view.approved_list()'s「ジャンルの資産」 rendering without running a real GA."""
+    pid = file_id or patch_id_for(add)
+    folder = template_dir / "expansions"
+    folder.mkdir(parents=True, exist_ok=True)
+    doc = {"schema_version": 1,
+          "patch": {"id": pid, "title": title, "rationale": "r", "trigger": {"zone": "海", "verb": "investigate"},
+                    "add": add},
+          "provenance": {"world_id": world_id, "world_name": world_name,
+                        "revision": {"approval": {"reason": reason}},
+                        "evidence": {"usage": {"elites_strong": strong, "elites_weak": weak}}}}
+    (folder / f"{pid}.yaml").write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+    return pid
+
+
+_FIT_ADD = {"zones": [{"name": "小屋Lib", "parent": "海"}],
+           "items": [{"name": "道具Lib", "sources": [{"type": "investigate", "zone": "小屋Lib", "count": 1, "max": 2}]}]}
+
+
+class WorldLibraryPageTests(unittest.TestCase):
+    """WB-WORLDGROW-001 段階5d-2 の画面: /worlds/<id> の「ジャンルの資産」節
+    (viewer/library_pages._library_assets, viewer/world_expansion_view.
+    approved_list)。M1/M2 (Opus review) の回帰テストを含む。
+
+    WorldExpansionApiTests のフィクスチャ（高価な frozen_experiment を
+    setUpClass で1回だけ構築）だけを再利用する -- サブクラス化すると
+    WorldExpansionApiTests 自身の全テストがこのクラス名でも再実行されて
+    しまう（tests/test_world_expansion_api.py 冒頭の Review クラスはその
+    重複を許容した調査用スクリプトの流儀で、恒久的なテストファイルである
+    ここでは避ける）。"""
+    setUpClass = classmethod(WorldExpansionApiTests.setUpClass.__func__)
+    tearDownClass = classmethod(WorldExpansionApiTests.tearDownClass.__func__)
+    setUp = WorldExpansionApiTests.setUp
+    http = WorldExpansionApiTests.http
+    get = WorldExpansionApiTests.get
+    _second_world = WorldExpansionApiTests._second_world
+
+    def test_get_world_page_does_not_take_the_patch_lock(self):
+        # M1 (Opus review): a plain GET must never contend with a concurrent
+        # writer (check/prepare/approve/epoch-chain) for patch_lock -- proven
+        # here by checking no .write.lock is left in a target that has no
+        # patches/ dir at all yet (a lock acquisition would create one).
+        target = self._second_world()
+        self.assertFalse((target / "patches").exists())
+        _write_library_asset(self.template_dir, _FIT_ADD)
+        status, _body = self.get("/worlds/momotaro2")
+        self.assertEqual(status, 200)
+        self.assertFalse((target / "patches").exists(),
+                         "a GET must not create patches/ (or a .write.lock inside it)")
+
+    def test_import_button_appears_when_the_asset_fits(self):
+        self._second_world()
+        pid = _write_library_asset(self.template_dir, _FIT_ADD)
+        status, body = self.get("/worlds/momotaro2")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("ジャンルの資産（1件）", html)
+        self.assertIn('data-patch-action="import"', html)
+        self.assertIn(f'data-entry="{pid}"', html)
+
+    def test_violation_is_shown_and_no_button_when_the_asset_does_not_fit(self):
+        self._second_world()
+        # A zone whose parent doesn't exist in the target world -- validate_
+        # patch() rejects this regardless of the target, so fit() is never empty.
+        bad_add = {"zones": [{"name": "変な場所", "parent": "存在しない親"}]}
+        _write_library_asset(self.template_dir, bad_add, title="不適合な資産")
+        status, body = self.get("/worlds/momotaro2")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("不適合な資産", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_broken_asset_file_shows_its_error_and_does_not_break_the_page(self):
+        self._second_world()
+        (self.template_dir / "expansions").mkdir(parents=True, exist_ok=True)
+        (self.template_dir / "expansions" / "p-broken0.yaml").write_text("patch: [", encoding="utf-8")
+        status, body = self.get("/worlds/momotaro2")
+        self.assertEqual(status, 200)
+        html = body.decode("utf-8")
+        self.assertIn("ジャンルの資産（1件）", html)
+        self.assertIn("p-broken0", html)
+
+    def test_own_world_shows_applied_not_a_duplicate_violation(self):
+        # M2 (Opus review): the world that originated an asset must see
+        # "適用中" for its own id, never "取り込めます" or a stray duplicate
+        # violation, and never an import button.
+        patch = write_approved(self.project_dir, {"title": "元の拡張", "add": _FIT_ADD})
+        _write_library_asset(self.template_dir, _FIT_ADD, file_id=patch["id"], title="元の拡張")
+        status, body = self.get("/worlds/momotaro")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("この世界で適用中です", html)
+        self.assertNotIn('data-patch-action="import"', html)
+
+    def test_xss_in_asset_fields_is_escaped_on_the_world_page(self):
+        self._second_world()
+        evil = '<script>alert(1)</script>"'
+        _write_library_asset(self.template_dir, _FIT_ADD, title=evil, world_name=evil, reason=evil,
+                             strong=evil, weak=evil)
+        status, body = self.get("/worlds/momotaro2")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
+
+    def test_home_genre_card_shows_asset_count(self):
+        _write_library_asset(self.template_dir, _FIT_ADD)
+        status, body = self.get("/")
+        html = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("資産 1件", html)
+
 
 class WorldExpansionStaticFileTests(unittest.TestCase):
     def setUp(self):

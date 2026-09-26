@@ -77,6 +77,16 @@
       if (!confirm("このパッチを枯らします（元に戻すには reopen が必要です）。よろしいですか？")) return;
       url = `/api/worlds/${encodeURIComponent(world)}/patches/${encodeURIComponent(button.dataset.patch)}/retire`;
       payload = {reason, experiment: button.dataset.experiment, seen: {head: button.dataset.head}};
+    } else if (action === "export") {
+      // WB-WORLDGROW-001 段階5d: publish an applied, strongly-used patch as
+      // a genre asset -- usage/evidence is measured server-side, this just
+      // names which experiment to measure against.
+      url = `/api/worlds/${encodeURIComponent(world)}/patches/${encodeURIComponent(button.dataset.patch)}/export`;
+      payload = {experiment: button.dataset.experiment};
+    } else if (action === "import") {
+      if (!confirm("この資産をこの世界に取り込みますか？（まだ検査していません。承認前に検査が必要です）")) return;
+      url = `/api/worlds/${encodeURIComponent(world)}/patches/import`;
+      payload = {entry: button.dataset.entry, seen: {head: button.dataset.head}};
     } else {
       return;
     }
@@ -91,6 +101,9 @@
         setMessage(text);
         button.disabled = false;
         return;
+      }
+      if (action === "export") {
+        alert(`ジャンルの資産として templates/.../expansions/${result.body.path} に写しました（git への追加は手動です）。`);
       }
       reload();
     } catch (_) {

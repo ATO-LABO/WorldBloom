@@ -9,6 +9,7 @@ straight through to execution.configs.ConfigStore.preview via LibraryStore.
 from __future__ import annotations
 
 import hashlib
+import json
 from http import HTTPStatus
 
 import yaml
@@ -19,8 +20,16 @@ from execution.worker import TERMINAL
 from execution.world_patch_approval import (StalePatch as _StalePatch, approve as _approve_patch,
                                             reject as _reject_patch, reopen as _reopen_patch,
                                             retire as _retire_patch)
+from execution.world_patch_library import (DuplicateAssetError as _DuplicateAssetError,
+                                           StaleImport as _StaleImport,
+                                           _frozen_world_parent_ids as _frozen_ids_for,
+                                           export_patch as _export_patch,
+                                           fit as _fit_asset, import_patch as _import_patch,
+                                           list_entries as _list_library_entries)
+from execution.world_patches import applicable_snapshot as _applicable_snapshot
 from gapengine.world_patch import (ID_RE as _PATCH_ID_RE, PatchError as _WorldPatchError,
-                                  approved_patches as _approved_patches, stack_head as _patch_stack_head)
+                                  approved_patches as _approved_patches, materialize as _materialize,
+                                  stack_head as _patch_stack_head, template_identifiers as _template_identifiers)
 from gapengine.world_patch_usage import patch_usage as _patch_usage
 from viewer import action_catalog, data, pages, job_api, world_demand_view, world_expansion_view, world_graph
 from viewer.workbench_pages import _guidance_page, _job_store, _query
@@ -556,14 +565,102 @@ def _world_experiments(repository, world_name):
     return [str(m["name"]) for m in dict(groups).get(world_name, []) + [m for m in minor if str(m["world"]) == world_name]]
 
 
-def _world_expansion_html(store, world_id, world_yaml, job_store):
+def _library_assets(project_dir, template_dir, *, repo_root=None):
+    """[{"id","doc"|None,"error"|None,"violations"}] for approved_list()'s
+    「ジャンルの資産」 section (WB-WORLDGROW-001 段階5d) -- fit() against this
+    world's current expanded state (base + already-approved patches), the
+    same inputs import_patch() itself checks against (repo_root is passed
+    through unchanged, so a fit() here agrees with what an actual import
+    would see).
+
+    M1 (Opus review): reads applicable_snapshot()+materialize() directly
+    instead of the expanded_snapshot() convenience wrapper, which takes
+    patch_lock -- a plain GET (including a read-only Viewer's) must never
+    contend with a concurrent check/prepare/approve/epoch-chain job for that
+    lock (measured: 481/900 writer calls failing with "拡張パッチを更新中
+    です" while this ran on every world-page load). A stack.json caught
+    mid-write, or a base that no longer matches the approval record, still
+    just raises PatchError (a ValueError subclass) here -- same "確認でき
+    ない" fallback as any other unreadable state.
+
+    Never raises: an unreadable base/stack just makes every asset report one
+    "確認できない" violation instead of an importable one, same graceful-
+    degrade principle as the rest of this module's world-expansion display
+    helpers."""
+    entries = _list_library_entries(template_dir)
+    if not entries:
+        return []
+    try:
+        verified, _stack, world, people, _refs, _digest = _applicable_snapshot(
+            project_dir, template_dir, repo_root=repo_root)
+        reserved = _template_identifiers(template_dir)
+        expanded_world, expanded_people = _materialize(
+            world, people, [p for p, _raw in verified], reserved=reserved, check_budgets=False)
+    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError):
+        expanded_world = expanded_people = reserved = None
+    result = []
+    for entry in entries:
+        if entry["doc"] is None:
+            result.append({"id": entry["id"], "doc": None, "error": entry["error"], "violations": []})
+            continue
+        if expanded_world is None:
+            violations = ["世界の現在の状態を確認できないため、取り込みの可否を判定できません"]
+        else:
+            violations = _fit_asset(entry["doc"], expanded_world, expanded_people, reserved=reserved)
+        result.append({"id": entry["id"], "doc": entry["doc"], "error": None, "violations": violations})
+    return result
+
+
+def _latest_matching_experiment(repository, world_id, world_yaml, project_dir, state):
+    """R2 (Opus review): the most recent experiment whose own frozen world
+    was built with exactly the currently-approved patches -- the same
+    condition run_workspace._library_proposals_eligible() checks before
+    showing a library-imported proposal's check button on a run's demand
+    tab. Used only to spell out *where* to go check one from; None (no repo,
+    no library-origin proposal, no match in the recent history) just means
+    the hint has no link. Bounded to the 20 most recent experiments for this
+    world (_world_experiments() already lists most-recent-first) so a world
+    with a long history doesn't turn every page load into a directory walk."""
+    if repository is None:
+        return None
+    proposed = state.get("proposed") or []
+    if not any(isinstance(p.get("patch"), dict) and (p["patch"].get("author") or {}).get("backend") == "library"
+              for p in proposed):
+        return None
+    active_ids = {a["patch"].get("id") for a in state.get("approved") or [] if isinstance(a.get("patch"), dict)}
+    label = (world_yaml.get("name") if isinstance(world_yaml, dict) else None) or world_id
+    for name in _world_experiments(repository, label)[:20]:
+        try:
+            root = repository.experiment(name)
+            # Opus re-review R-a: _world_experiments() matches by display
+            # name, which a duplicated world shares -- only trust experiments
+            # whose own config names this world (no config = can't prove it).
+            config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+            if config.get("project_id") != world_id:
+                continue
+            frozen_ids = _frozen_ids_for(root, project_dir.name)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, data.MissingResource, yaml.YAMLError):
+            continue
+        if frozen_ids == active_ids:
+            return name
+    return None
+
+
+def _world_expansion_html(store, world_id, world_yaml, job_store, repository=None):
     """「後から生まれたもの」節。壊れていても世界画面は落とさない
     （WB-WORLDGROW-001 段階3b-1）。"""
     try:
-        state = world_expansion_view.load(store.repo / "projects" / world_id)
+        project_dir = store.repo / "projects" / world_id
+        state = world_expansion_view.load(project_dir)
+        genre_id = store._genre_of(world_id, world_yaml)
+        if genre_id:
+            state["library"] = _library_assets(
+                project_dir, store.repo / "templates" / genre_id, repo_root=store.repo)
+        library_hint = _latest_matching_experiment(repository, world_id, world_yaml, project_dir, state)
         return world_expansion_view.approved_list(
             state, world_id=world_id, can_write=job_store is not None, world=world_yaml,
             run_link=lambda name: f"/exp/{_url(name)}/monitor?tab=demand",
+            library_hint=library_hint,
         )
     except (OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError):
         return ""
@@ -586,7 +683,8 @@ def _worlds_detail(handler, world_id):
             job_store=job_store, pin=data.pinned_target(job_store),
             # Read-only viewers have no run screens; the world page is their way in to saved experiments.
             experiments=[] if job_store is not None else _world_experiments(handler.repository, label),
-            expansion_html=_world_expansion_html(store, world_id, current["world"], job_store),
+            expansion_html=_world_expansion_html(store, world_id, current["world"], job_store,
+                                                 repository=handler.repository),
         ))
         return
     from viewer import world_advanced
@@ -973,6 +1071,93 @@ def _retire_patch_action(handler, world_id, patch_id):
     handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": patch_id, "rev": revision["rev"]})
 
 
+def _export_body(body):
+    if not isinstance(body, dict) or set(body) != {"experiment"}:
+        raise ConfigError("request", "experiment を指定してください", code="bad_request")
+    experiment = body["experiment"]
+    if not isinstance(experiment, str) or not experiment:
+        raise ConfigError("experiment", "実験名を指定してください", code="bad_request")
+    return experiment
+
+
+def _export_patch_action(handler, world_id, patch_id):
+    """WB-WORLDGROW-001 段階5d: publish an applied, strongly-used patch as a
+    genre asset. Same measurement steps as _retire_patch_action -- usage is
+    computed here, server-side, never taken from the browser."""
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
+    body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
+    experiment_name = _export_body(body)
+    _patch_id_arg(patch_id)
+    project, template = _resolve_world_patch_dirs(job_store, world_id)
+    _reject_running_job(job_store)
+    experiment = world_demand_view.resolve_root(handler.repository, experiment_name)
+    if experiment is None:
+        raise ConfigError("experiment", "実験が見つかりません", code="bad_request")
+    protagonist = _protagonist_for(handler, experiment)
+    try:
+        active = _approved_patches(project)
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    try:
+        experiment_archive = handler.repository.archive(experiment)
+    except ConfigError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError, data.MissingResource) as error:
+        raise ConfigError("experiment", "実験の記録を読み込めません", code="bad_request") from error
+    try:
+        usage = _patch_usage(experiment, protagonist, active, archive=experiment_archive).get(patch_id)
+    except (OSError, ValueError, KeyError, TypeError, data.MissingResource) as error:
+        raise ConfigError("experiment", "使用状況を計算できませんでした", code="bad_request") from error
+    try:
+        path = _export_patch(project, template, patch_id, experiment=experiment,
+                              protagonist=protagonist, usage=usage)
+    except _DuplicateAssetError as error:
+        raise ConfigError("patch", str(error), code="conflict") from error
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": patch_id, "path": path.name})
+
+
+def _import_body(body):
+    if not isinstance(body, dict) or set(body) != {"entry", "seen"}:
+        raise ConfigError("request", "entry と seen を指定してください", code="bad_request")
+    entry = body["entry"]
+    if not isinstance(entry, str) or not entry:
+        raise ConfigError("entry", "資産IDを指定してください", code="bad_request")
+    seen = body["seen"]
+    if not isinstance(seen, dict) or set(seen) != {"head"} or not isinstance(seen["head"], str):
+        raise ConfigError("seen", "seen の形式が不正です", code="bad_request")
+    return entry, seen["head"]
+
+
+def _import_patch_action(handler, world_id):
+    """WB-WORLDGROW-001 段階5d: stage a genre asset as a new proposal in this
+    world (trial_pending -- check/approve must still run here, same as any
+    other proposal)."""
+    # Body first: answering 503 with the POST body still unread makes Windows
+    # reset the connection now and then, so the client never sees the 503.
+    body = _boundary_body(handler)
+    job_store = _require_job_store(handler)
+    entry_id, seen_head = _import_body(body)
+    _patch_id_arg(entry_id)
+    project, template = _resolve_world_patch_dirs(job_store, world_id)
+    _reject_running_job(job_store)
+    try:
+        # R4 (Opus review): the freshness check itself moved inside
+        # import_patch()'s own patch_lock (expect_head) -- a pre-lock read
+        # here would leave the same narrow race approve()/retire() avoid by
+        # re-checking their own expect_*/expect_head inside the lock.
+        rewritten = _import_patch(project, template, entry_id, repo_root=job_store.configs.repo,
+                                  expect_head=seen_head)
+    except _StaleImport as error:
+        raise ConfigError("seen", _STALE_MESSAGE, code="conflict") from error
+    except _WorldPatchError as error:
+        raise ConfigError("patch", str(error)) from error
+    handler._send_json(HTTPStatus.OK, {"ok": True, "patch_id": entry_id, "trigger": rewritten.get("trigger")})
+
+
 # --------------------------------------------------------------------------
 # Dispatch
 # --------------------------------------------------------------------------
@@ -998,13 +1183,16 @@ def _resolve(parts, method):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "genres" and parts[3] == "validate":
             return _validate_genre, (parts[2],)
         if (len(parts) == 6 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
-                and parts[5] in ("approve", "reject", "retire")):
+                and parts[5] in ("approve", "reject", "retire", "export")):
             action_by_verb = {"approve": _approve_patch_action, "reject": _reject_patch_action,
-                              "retire": _retire_patch_action}
+                              "retire": _retire_patch_action, "export": _export_patch_action}
             return action_by_verb[parts[5]], (parts[2], parts[4])
         if (len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
                 and parts[4] == "reopen"):
             return _reopen_patch_action, (parts[2],)
+        if (len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "patches"
+                and parts[4] == "import"):
+            return _import_patch_action, (parts[2],)
         return None
     if method != "GET" or not parts:
         return None

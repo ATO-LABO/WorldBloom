@@ -67,6 +67,7 @@ STATIC_FILES = {
     "world-prototype.css": "text/css; charset=utf-8",
     "world-prototype.js": "text/javascript; charset=utf-8",
     "world-expansion.js": "text/javascript; charset=utf-8",
+    "epoch-chain.js": "text/javascript; charset=utf-8",
 }
 
 
@@ -103,6 +104,16 @@ class ViewerServer(ThreadingHTTPServer):
         try:
             jobs.list()
         except (ConfigError, OSError, ValueError):
+            pass
+        try:
+            # ponytail: tick は accept ループで同期実行（configs.save・approve
+            # 再検証・patch_usage で数秒止まりうる）。気になればスレッドに逃がす
+            from execution.epoch_chain import EpochChain
+            EpochChain(jobs, getattr(self, "settings_path", None)).tick()
+        except Exception:
+            # WB-WORLDGROW-001 段階5c: a chain step must never take the
+            # accept loop down with it -- EpochChain.tick() already guards
+            # its own step logic; this is only a last-resort net.
             pass
 
 
@@ -197,6 +208,12 @@ class ViewerHandler(BaseHTTPRequestHandler):
         job_store = getattr(self.server, "job_store", None)
         if not parts:
             self._send_html(pages.index_page(self.repository, job_store=job_store))
+            return
+        if parts == ["version"]:
+            from viewer import version
+            check = parse_qs(urlsplit(self.path).query).get("check") == ["1"]
+            self._send_html(pages.document("バージョン情報", version.render_body(check),
+                                           job_store=job_store, show_phase_band=False))
             return
         if len(parts) == 2 and parts[0] == "static":
             name = parts[1]

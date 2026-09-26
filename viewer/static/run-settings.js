@@ -7,6 +7,40 @@
   const $=selector=>form.querySelector(selector);
   const mode=$("[data-ending-mode]"), ending=field("evolution.target_ending");
   let customEnding=ending.value;
+  // WB-WORLDGROW-001 段階5c-2 (M1/R2/R5, Opus review): growth.mode!=off の
+  // 間は「世界の拡張」を expand に固定（disabled）。auto_retire はユーザーが
+  // 一度でも触ったら mode 切替に追従させない -- 既定値を当てるのは「mode が
+  // 実際に切り替わった瞬間」だけに限る（lastGrowthMode 比較）。summary() は
+  // フォーム全体の input/change どちらでも呼ばれるので、ここを「呼ばれる
+  // たびに」判定してしまうと、チェックボックス自身のクリックで発生する
+  // input イベント（change より先に発火する）が、まだ touched フラグが
+  // 立っていない間に既定値で上書きしてしまう（1回目のクリックが戻る）。
+  const growthMode=field("growth.mode"), growthExtra=$("[data-growth-extra]");
+  const growthAutoRetire=field("growth.auto_retire"), growthEpochs=field("growth.epochs");
+  const expansion=field("evolution.world_expansion");
+  // R5: 複製元がすでに growth 有効なら、保存されていた auto_retire は
+  // ユーザーの意思決定として扱う（起動直後の mode 切替で上書きしない）。
+  // expansionBeforeGrowth はフォームの初期値（growth off 時点、または
+  // 複製元がすでに growth 有効ならその初期値）を覚えておく。
+  let autoRetireTouched=growthMode.value!=="off", expansionBeforeGrowth=expansion.value;
+  let lastGrowthMode=growthMode.value;
+  growthAutoRetire.addEventListener("change",()=>{autoRetireTouched=true;});
+  growthAutoRetire.addEventListener("input",()=>{autoRetireTouched=true;});
+  function growthSummary(){
+    const on=growthMode.value!=="off";
+    growthExtra.hidden=!on;
+    growthEpochs.disabled=!on;
+    if(on){
+      if(lastGrowthMode==="off")expansionBeforeGrowth=expansion.value;
+      expansion.value="expand";
+      expansion.disabled=true;
+      if(growthMode.value!==lastGrowthMode&&!autoRetireTouched)growthAutoRetire.checked=growthMode.value==="auto";
+    }else if(expansion.disabled){
+      expansion.value=expansionBeforeGrowth;
+      expansion.disabled=false;
+    }
+    lastGrowthMode=growthMode.value;
+  }
   function worldSummary(){
     const id=field("project_id").value, w=worlds[id];
     const custom=mode.value==="custom";
@@ -31,6 +65,7 @@
     const seconds=num("execution_limits.wall_seconds");
     $("[data-limit-summary]").textContent=`乱数・並列数・時間上限 ${seconds?Number((seconds/60).toFixed(1))+"分":"未設定"}`;
     worldSummary();
+    growthSummary();
   }
   mode.addEventListener("change",()=>{
     if(mode.value==="default"){customEnding=ending.value;ending.value="";}

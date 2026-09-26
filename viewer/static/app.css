@@ -5906,7 +5906,9 @@ main:has(.cfg-form) .form-actions {
 .header-links svg{width:21px;height:21px;flex:none}
 .header-links a:hover{color:white;background:rgba(255,255,255,.08);text-decoration:none}
 .header-links a:focus-visible{outline:2px solid #f1ce74;outline-offset:3px}
+.header-links a.header-version{font-family:ui-monospace,Consolas,monospace;font-size:12px;font-weight:400;opacity:.75}
 @media(max-width:760px){
+ .header-links a.header-version{display:none}
  .header-pickers{flex-wrap:wrap;gap:6px 12px;padding:7px 12px}
  .header-pickers>.brand,.header-pickers>.home-cell{order:0}
  .header-links{order:1;margin-left:auto}

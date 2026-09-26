@@ -13,7 +13,9 @@ import yaml
 
 from execution.provenance import ConfigError
 from execution.worker import TERMINAL
-from viewer import data, pages, ga_replay, lineage_river, world_demand_view, world_effect_view, world_expansion_view
+from execution.world_patch_library import (_frozen_world_parent_ids,
+                                           list_entries as _library_entries)
+from viewer import data, epoch_view, pages, ga_replay, lineage_river, world_demand_view, world_effect_view, world_expansion_view
 
 
 TABS = (("overview", "概要"), ("replay", "進化のリプレイ"),
@@ -39,13 +41,20 @@ def river_payload(model):
     nodes = []
     for pair, node in model["index"].items():
         position = diagram["positions"].get(pair)
-        nodes.append({
+        entry = {
             "id": key(pair), "generation": pair[0], "index": pair[1],
             "cell": node.get("cell_key"), "quality": node.get("quality"),
             "parents": node.get("parent_refs", []), "position": position,
             "survives": sorted(model["survivor_map"].get(pair, [])),
             "elite": elite_ids.get(key(pair)),
-        })
+        }
+        # Opus review R4: only when set -- a seed-less experiment's embedded
+        # JSON must stay byte-identical to before WB-WORLDGROW-001 段階5b
+        # (run-workspace.js's parentLabel() already treats a missing/undefined
+        # seedCell the same as an explicit null).
+        if node.get("seed_cell"):
+            entry["seedCell"] = node["seed_cell"]
+        nodes.append(entry)
     return {
         "nodes": nodes,
         "edges": [{"parent": key(edge["parent"]), "child": key(edge["child"]),
@@ -178,17 +187,44 @@ def _expansion_project(handler, view):
     return project_dir
 
 
-def _proposals_html(handler, view, run_name):
+def _library_proposals_eligible(experiment, project_dir, state):
+    """WB-WORLDGROW-001 段階5d R1 (Opus review): a library-imported proposal's
+    parent_digest points at this world's stack head *at import time* -- its
+    holdout check re-plays `experiment`'s own frozen world with the proposal
+    applied on top, which only makes sense when that frozen world was itself
+    built with exactly the set of patches currently approved (no more, no
+    fewer). An older/newer experiment's frozen world would apply the patch
+    against a world the check never actually ran, so the check is bound to
+    fail there -- hide the whole "取り込んだ拡張" section for that run
+    instead of offering a check button that can't succeed."""
+    if experiment is None:
+        return False
+    try:
+        frozen_ids = _frozen_world_parent_ids(experiment, project_dir.name)
+    except READ_ERRORS:
+        return False
+    active_ids = {a["patch"].get("id") for a in state.get("approved") or [] if isinstance(a.get("patch"), dict)}
+    return frozen_ids == active_ids
+
+
+def _proposals_html(handler, view, run_name, chain=None, experiment=None):
     """「この実験から生まれた提案」節: この実験がトリガーとなった提案だけを
     proposal_card で並べ、他の提案・承認済みは件数だけ世界の画面へ逃がす。
 
     節の先頭に world-patch ジョブの進行表示の器（data-patch-job）を置く --
     中身は viewer/static/world-expansion.js が GET /api/jobs で埋める
-    （段階3b-3）。project_dir が解決できない実験には出さない。"""
+    （段階3b-3）。project_dir が解決できない実験には出さない。
+
+    chain: render() が一度だけ引いた epoch_view.relevant_chain() の結果
+    （R4, Opus review）-- ここで再度引き直さない。"""
     project_dir = _expansion_project(handler, view)
     if project_dir is None:
         return ""
     world_id = (view.get("config") or {}).get("project_id")
+    # WB-WORLDGROW-001 段階5c-2: "" whenever this isn't the epoch chain's
+    # currently-waiting epoch (relevant_chain already narrows to the last
+    # epoch; waiting_hint further narrows to state=="waiting").
+    hint = epoch_view.waiting_hint(chain)
     job_panel = (
         f'<div class="card" data-patch-job data-run="{E(run_name)}" hidden>'
         '<p role="status"></p>'
@@ -202,21 +238,42 @@ def _proposals_html(handler, view, run_name):
     if not isinstance(world_yaml, dict):
         world_yaml = {}
     can_write = getattr(handler.server, "job_store", None) is not None
-    mine = [p for p in state["proposed"]
-            if isinstance(p.get("patch"), dict) and (p["patch"].get("trigger") or {}).get("experiment") == run_name]
+    # WB-WORLDGROW-001 段階5d: a library-imported proposal (author.backend
+    # == "library") has no trigger.experiment of its own -- it must show up
+    # on *some* run's demand tab so its "検査をやり直す" button (run_id=
+    # run_name) has somewhere to run, so it's included in "mine" on every
+    # run for this world, under its own heading.
+    mine_run = [p for p in state["proposed"]
+               if isinstance(p.get("patch"), dict) and (p["patch"].get("trigger") or {}).get("experiment") == run_name]
+    mine_library = [p for p in state["proposed"]
+                    if isinstance(p.get("patch"), dict)
+                    and (p["patch"].get("author") or {}).get("backend") == "library" and p not in mine_run]
+    # R1 (Opus review): only when this run's own frozen world was built with
+    # exactly the currently-approved patches -- see _library_proposals_eligible.
+    if mine_library and not _library_proposals_eligible(experiment, project_dir, state):
+        mine_library = []
+    mine = mine_run + mine_library
     approved_mine = [a for a in state["approved"] if a.get("experiment") == run_name]
     other_count = len(state["proposed"]) - len(mine) + (len(state["approved"]) - len(approved_mine))
 
-    parts = [job_panel, "<h3>この実験から生まれた提案</h3>"]
+    # R4 (Opus review): the heading is emitted before the state["error"]
+    # check, same position as before this section grew a second heading --
+    # keeps that branch's HTML byte-identical to the pre-5d version.
+    parts = [hint, job_panel, "<h3>この実験から生まれた提案</h3>"]
     if state.get("error"):
         parts.append(f'<p class="rw-empty">拡張の記録を読み込めませんでした: {E(state["error"])}</p>')
         return "".join(parts)
-    if not mine:
+    if not mine_run:
         parts.append("<p>この実験から生まれた提案はまだありません。</p>")
     else:
         parts.extend(world_expansion_view.proposal_card(p, world_yaml, world_id=world_id, can_write=can_write,
                                                          run_id=run_name)
-                     for p in mine)
+                     for p in mine_run)
+    if mine_library:
+        parts.append("<h3>取り込んだ拡張（この実験で検査できます）</h3>")
+        parts.extend(world_expansion_view.proposal_card(p, world_yaml, world_id=world_id, can_write=can_write,
+                                                         run_id=run_name)
+                     for p in mine_library)
     if approved_mine:
         titles = "、".join(f'『{E(a["patch"].get("title"))}』' for a in approved_mine)
         parts.append(f"<p>承認済み: {titles}</p>"
@@ -275,6 +332,18 @@ def _usage_html(handler, view, state, experiment):
     candidates = set(wither_candidates(usage))
     world_id = config.get("project_id")
     can_write = getattr(handler.server, "job_store", None) is not None
+    # WB-WORLDGROW-001 段階5d: ids already published as genre assets, so an
+    # already-exported patch shows "資産にした済み" instead of a button that
+    # would just 409. Only worth resolving when there's a template to check
+    # and a write screen to show the button on at all.
+    asset_ids = set()
+    template_id = config.get("template_id")
+    if can_write and template_id:
+        try:
+            asset_ids = {e["id"] for e in _library_entries(
+                handler.server.job_store.configs.repo / "templates" / template_id)}
+        except OSError:
+            asset_ids = set()
     parts = ['<section class="card we-usage-panel"><h3>この実験での拡張の使われ方</h3><ul>']
     for patch in active:
         pid = patch.get("id")
@@ -286,12 +355,22 @@ def _usage_html(handler, view, state, experiment):
             f'強い使用{E(counts["elites_strong"])}体・弱い使用{E(counts["elites_weak"])}体</p>'
         )
         if can_write:
+            if pid in asset_ids:
+                export_html = '<span class="muted">資産にした済み</span>'
+            else:
+                export_disabled = '' if counts["elites_strong"] >= 1 else ' disabled title="この実験では使われていません"'
+                export_html = (
+                    f'<button type="button" data-patch-action="export" data-world="{E(world_id)}" '
+                    f'data-patch="{E(pid)}" data-experiment="{E(experiment.name)}"{export_disabled}>'
+                    'ジャンルの資産にする</button>'
+                )
             parts.append(
                 '<div class="we-actions">'
                 '<textarea data-retire-reason placeholder="枯らす理由（10文字以上）" minlength="10"></textarea>'
                 f'<button type="button" data-patch-action="retire" data-world="{E(world_id)}" '
                 f'data-patch="{E(pid)}" data-experiment="{E(experiment.name)}" '
                 f'data-head="{E(expansion_state.get("head"))}">枯らす</button>'
+                f'{export_html}'
                 '<p class="we-message" data-patch-message role="alert"></p></div>'
             )
         parts.append("</li>")
@@ -317,7 +396,7 @@ def _propose_run_and_reason(handler, view):
     return view.get("run_name"), None
 
 
-def _demand_html(handler, experiment, state, view=None):
+def _demand_html(handler, experiment, state, view=None, chain=None):
     if experiment is None:
         return '<p class="rw-empty">実験がまだ保存されていません。</p>'
     propose_run, reason = _propose_run_and_reason(handler, view)
@@ -329,7 +408,8 @@ def _demand_html(handler, experiment, state, view=None):
         block += f'<p class="muted">{E(reason)}</p>'
     if view is None:
         return block
-    return block + _usage_html(handler, view, state, experiment) + _proposals_html(handler, view, view.get("run_name"))
+    return (block + _usage_html(handler, view, state, experiment)
+            + _proposals_html(handler, view, view.get("run_name"), chain, experiment=experiment))
 
 
 def _effect_html(handler, view, query):
@@ -413,6 +493,10 @@ def render(handler, view):
     initial_replay = observed.get("replay_html", empty).replace('class="ga-replay"', 'class="ga-replay" data-rw-managed="true" data-active="false"')
     terminal_message = wb._run_terminal_message(job) if job.get("state") in TERMINAL else ""
     experiment, world_state = _world_state(handler, view)
+    # WB-WORLDGROW-001 段階5c-2 (R4, Opus review): read the active epoch
+    # chain once and reuse it for both the strip (below) and the demand
+    # tab's waiting hint, instead of two independent EpochChain.current() reads.
+    chain = epoch_view.relevant_chain(handler, config.get("config_id"))
     panels = (
         '<section id="rw-overview" role="tabpanel" aria-labelledby="rw-tab-overview">'
         '<div class="rw-overview"><div><h2>探索の進み具合</h2><div data-overview-progress></div>'
@@ -440,18 +524,22 @@ def render(handler, view):
         '<p data-metric-description></p><div data-trend-graph></div><div data-trend-detail></div>'
         '<details class="rw-trend-table"><summary>表で見る</summary><div data-trend-table></div></details></section>'
         '<section id="rw-demand" role="tabpanel" aria-labelledby="rw-tab-demand" hidden>'
-        + _demand_html(handler, experiment, world_state, view) + '</section>'
+        + _demand_html(handler, experiment, world_state, view, chain) + '</section>'
         '<section id="rw-effect" role="tabpanel" aria-labelledby="rw-tab-effect" hidden>'
         + _effect_html(handler, view, query) + '</section>'
     )
     from viewer.run_browse import navigation
+    # WB-WORLDGROW-001 段階5c-2: "" whenever this run's own config_id isn't
+    # the active epoch chain's current epoch -- a page with no active chain
+    # (the overwhelming majority) stays byte-identical to before this stage.
+    chain_strip = epoch_view.strip_html(chain)
     body = (
         f'<div class="rw-shell" data-run-workspace data-initial="{E(initial)}">'
         + navigation("status", world=world, config=config, status_href=urlsplit(handler.path).path)
         +
         '<div class="rw-main"><header class="rw-heading"><div><h1 data-run-title>' + title + '</h1>'
         '<span class="state-badge" data-status>' + E(wb.STATE_LABELS.get(job.get("state"), "記録")) + '</span></div>'
-        f'<p>{E(config.get("label") or world["name"])}</p></header>'
+        f'<p>{E(config.get("label") or world["name"])}</p></header>' + chain_strip +
         '<div class="rw-live"><span data-phase></span><strong data-progress></strong>'
         '<progress aria-label="完了世代"></progress><span data-elapsed></span><small data-last-update></small></div>'
         '<p class="rw-connection" data-connection role="status" hidden></p>'
@@ -467,10 +555,11 @@ def render(handler, view):
     doc = pages.document(title, body, phase="run", world=world, run=view.get("run_name"),
                          output_run=job.get("run_id"), job_store=getattr(handler.server, "job_store", None),
                          page_class="run-observer")
+    epoch_script = '<script src="/static/epoch-chain.js" defer></script>' if chain_strip else ""
     doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">'
                       '<script src="/static/ga_replay.js" defer></script>'
                       '<script src="/static/run-workspace.js" defer></script>'
-                      '<script src="/static/world-expansion.js" defer></script></head>')
+                      '<script src="/static/world-expansion.js" defer></script>' + epoch_script + '</head>')
     handler._send_html(doc)
 
 

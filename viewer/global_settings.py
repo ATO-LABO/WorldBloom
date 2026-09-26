@@ -111,7 +111,7 @@ def render(handler):
     try: evolution=read_evolution_settings(getattr(handler.server,'settings_path',None))
     except ConfigError: compute_error=True
     initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution},ensure_ascii=False))
-    nav='<nav class="gs-nav" aria-label="全体設定"><h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','文章生成'),('compute','計算'),('configs','実行設定の保存版'),('genres','ジャンル')))+'<div class="gs-nav-back">'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small></nav>'
+    nav='<nav class="gs-nav" aria-label="全体設定"><h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','文章生成'),('compute','計算'),('configs','実行設定の保存版'),('genres','ジャンル')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small></nav>'
     panels=[output_panel(view,error),compute_panel(evolution,compute_error),collection_panel('configs',configs,worlds,selected_config),collection_panel('genres',genres,worlds,selected_genre)]
     for i,key in enumerate(('output','compute','configs','genres')):
         if key != active: panels[i]=panels[i].replace('data-gs-panel="'+key+'"','data-gs-panel="'+key+'" hidden',1)

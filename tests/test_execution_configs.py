@@ -16,7 +16,7 @@ from world_patch_fixtures import write_approved
 from gapengine.world_patch import patch_id_for
 
 from execution.configs import ConfigStore, evolution_defaults, normalize
-from execution.provenance import ConfigError, atomic_json, canonical, directory_lock, read_json, sha256
+from execution.provenance import ConfigError, atomic_json, canonical, directory_lock, read_json, sha256, write_bytes
 from scripts.evolve import build_parser
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -751,6 +751,73 @@ class ConfigTests(unittest.TestCase):
         result = normalize({**self.spec, "evolution": {"world_expansion": "expand"}})
         self.assertEqual(result["evolution"]["world_expansion"], "expand")
 
+    # -- WB-WORLDGROW-001 段階5c: growth ------------------------------------
+
+    def test_growth_absent_and_explicit_off_are_byte_identical_and_carry_no_key(self):
+        absent = normalize(self.spec)
+        explicit_off = normalize({**self.spec, "growth": {"mode": "off"}})
+        self.assertNotIn("growth", absent)
+        self.assertEqual(canonical(absent), canonical(explicit_off))
+
+    def test_growth_off_config_save_is_byte_identical_to_no_growth_key(self):
+        without = self.store.save(self.spec, config_id="cfg-nogrowth")
+        withoff = self.store.save({**self.spec, "growth": {"mode": "off"}}, config_id="cfg-offgrowth")
+        without_comparable = {k: v for k, v in without.items() if k not in ("config_id", "created_at")}
+        withoff_comparable = {k: v for k, v in withoff.items() if k not in ("config_id", "created_at")}
+        self.assertEqual(canonical(without_comparable), canonical(withoff_comparable))
+        self.assertNotIn("growth", without)
+        self.assertNotIn("growth", withoff)
+
+    def test_growth_auto_defaults_epochs_and_auto_retire_and_forces_expand(self):
+        result = normalize({**self.spec, "evolution": {"world_expansion": "off"}, "growth": {"mode": "auto"}})
+        self.assertEqual(result["growth"], {"mode": "auto", "epochs": 3, "auto_retire": True})
+        self.assertEqual(result["evolution"]["world_expansion"], "expand")
+
+    def test_growth_manual_defaults_auto_retire_false(self):
+        result = normalize({**self.spec, "growth": {"mode": "manual", "epochs": 5}})
+        self.assertEqual(result["growth"], {"mode": "manual", "epochs": 5, "auto_retire": False})
+
+    def test_growth_epochs_out_of_range_is_rejected(self):
+        for epochs in (0, 11):
+            with self.assertRaises(ConfigError):
+                normalize({**self.spec, "growth": {"mode": "auto", "epochs": epochs}})
+
+    def test_growth_unknown_mode_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            normalize({**self.spec, "growth": {"mode": "sometimes"}})
+
+    def test_growth_unknown_field_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            normalize({**self.spec, "growth": {"mode": "auto", "unknown": 1}})
+
+    def test_duplicate_carries_growth_forward(self):
+        # WB-WORLDGROW-001 段階5c review R5: duplicate() used to drop growth
+        # entirely -- a growth-enabled config's clone silently went back to off.
+        self.store.save({**self.spec, "growth": {"mode": "auto", "epochs": 4, "auto_retire": True}},
+                         config_id="cfg-growth-src")
+        clone = self.store.duplicate("cfg-growth-src", {"label": "複製"}, new_id="cfg-growth-clone")
+        self.assertEqual(clone["growth"], {"mode": "auto", "epochs": 4, "auto_retire": True})
+        self.assertEqual(clone["parent_config_id"], "cfg-growth-src")
+
+    def test_duplicate_turning_growth_on_saves_as_new_config_not_dead_end(self):
+        # R5: growth.mode != off forces world_expansion to "expand" at
+        # normalize() time even if the duplicate's own evolution.world_expansion
+        # still says "off" -- judged by that effective value, this must save
+        # as a fresh (non-parented) config instead of _prepare() dead-ending
+        # on "複製元と異なる入力は新規設定として保存してください".
+        self.store.save(self._momotaro_spec(world_expansion="off"), config_id="cfg-off-src")
+        clone = self.store.duplicate("cfg-off-src", {"growth": {"mode": "auto", "epochs": 2}},
+                                      new_id="cfg-off-to-growth")
+        self.assertIsNone(clone["parent_config_id"])
+        self.assertEqual(clone["evolution"]["world_expansion"], "expand")
+        self.assertEqual(clone["growth"]["mode"], "auto")
+
+    def test_duplicate_clearing_growth_is_respected(self):
+        self.store.save({**self.spec, "growth": {"mode": "manual", "epochs": 2, "auto_retire": False}},
+                         config_id="cfg-growth-src2")
+        clone = self.store.duplicate("cfg-growth-src2", {"growth": None}, new_id="cfg-growth-cleared")
+        self.assertNotIn("growth", clone)
+
     # -- R5: duplicating a config saved before world_expansion existed -----
 
     def _strip_world_expansion_key(self, config_id):
@@ -788,6 +855,189 @@ class ConfigTests(unittest.TestCase):
             "cfg-legacy3", {"evolution": {"world_expansion": "expand"}}, new_id="cfg-legacy3-expand")
         self.assertIsNone(clone["parent_config_id"])
         self.assertEqual(clone["evolution"]["world_expansion"], "expand")
+
+    # ------------------------------------------------- WB-WORLDGROW-001 段階5b
+
+    _GENOME_LOW = {"category_weight": {c: 0.5 for c in ("I", "II", "III", "IV", "V", "VI")},
+                   "risk_tolerance": 0.2, "stance_shift_bias": 0.1, "novelty_drive": 0.3}
+    _GENOME_HIGH = {"category_weight": {c: 0.8 for c in ("I", "II", "III", "IV", "V", "VI")},
+                    "risk_tolerance": 0.9, "stance_shift_bias": -0.4, "novelty_drive": 0.6}
+
+    def _prepare_source_run(self, run_id, *, config_id="cfg-source", project_id="romance", template_id="romance"):
+        """A genuine prepared run (real save()+prepare_run() pipeline, so
+        verify_run() -- which _prepare() now calls before capturing a
+        seed_genomes reference -- actually passes) with no archive written
+        yet; the caller publishes one with _publish_archive()."""
+        self.runtime()
+        spec = {**self.spec, "project_id": project_id, "template_id": template_id}
+        self.store.save(spec, config_id=config_id)
+        self.store.prepare_run(config_id, run_id=run_id, job_id="job-" + run_id)
+        return self.store.runs / run_id
+
+    def _publish_archive(self, run_dir, cells, revision=1):
+        """WB-WORLDGROW-001 段階5a で見逃した前例: catalog-managed experiments
+        only ever have published/<rev>/archive.json, never a top-level
+        archive.json -- this must be the only shape these tests exercise."""
+        payload = {"cells": cells}
+        raw = canonical(payload)
+        folder = run_dir / "published" / str(revision)
+        write_bytes(folder / "archive.json", raw)
+        manifest = {"schema_version": 1,
+                    "files": {"archive": {"path": f"published/{revision}/archive.json", "sha256": sha256(raw)}}}
+        write_bytes(folder / "manifest.json", canonical(manifest))
+        atomic_json(run_dir / "published" / "current.json", {"schema_version": 1, "revision": revision})
+        return raw
+
+    def test_seed_genomes_freezes_from_published_archive(self):
+        source_run = self._prepare_source_run("run-seed-source")
+        self._publish_archive(source_run, {
+            "I|low": {"quality": 0.4, "generation": 2, "genome": self._GENOME_LOW},
+            "II|mid": {"quality": 0.9, "generation": 5, "genome": self._GENOME_HIGH},
+        })
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-source"}}
+        saved = self.store.save(spec, config_id="cfg-seeded")
+        self.assertEqual(saved["evolution"]["seed_genomes"], "run-seed-source")
+        doc = json.loads(
+            (self.store.control / "configs/cfg-seeded/inputs/seed_genomes.json").read_bytes())
+        self.assertEqual(doc["schema_version"], 1)
+        self.assertEqual([g["cell"] for g in doc["genomes"]], ["II|mid", "I|low"])  # quality desc
+        self.assertEqual(doc["source"]["run_id"], "run-seed-source")
+        self.assertEqual(doc["source"]["project_id"], "romance")
+        self.assertEqual(doc["source"]["template_id"], "romance")
+        self.assertEqual(doc["source"]["revision"], 1)
+        manifest = json.loads(
+            (self.store.control / "configs/cfg-seeded/input-manifest.json").read_text(encoding="utf-8"))
+        record = next(r for r in manifest["files"] if r["path"] == "seed_genomes.json")
+        self.assertEqual(record["transformation"], "seed_genomes_from_archive")
+        self.assertIn("source_sha256", record)
+
+        run_manifest = self.store.prepare_run("cfg-seeded", run_id="run-seeded", job_id="job-seeded")
+        self.assertIn("--seed-genomes", run_manifest["argv"])
+        flag_value = run_manifest["argv"][run_manifest["argv"].index("--seed-genomes") + 1]
+        self.assertEqual(flag_value, str(self.store.runs / "run-seeded/inputs/seed_genomes.json"))
+        self.assertNotIn("run-seed-source", run_manifest["argv"])  # the source run_id, never passed directly
+        self.assertEqual(run_manifest["evolution"]["seed_genomes"], "run-seed-source")
+
+    def test_seed_genomes_off_matches_legacy_argv_and_manifest_byte_for_byte(self):
+        self.runtime()
+        legacy = self.store.save(self.spec, config_id="cfg-legacy-noseed")
+        explicit = self.store.save(
+            {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": None}},
+            config_id="cfg-explicit-noseed")
+        self.assertEqual(legacy["input_manifest_sha256"], explicit["input_manifest_sha256"])
+        legacy_manifest = self.store.prepare_run("cfg-legacy-noseed", run_id="run-legacy-noseed", job_id="job-a")
+        explicit_manifest = self.store.prepare_run("cfg-explicit-noseed", run_id="run-explicit-noseed", job_id="job-b")
+        strip = lambda argv: [a.replace("run-legacy-noseed", "X").replace("run-explicit-noseed", "X") for a in argv]
+        self.assertEqual(strip(legacy_manifest["argv"]), strip(explicit_manifest["argv"]))
+        self.assertNotIn("--seed-genomes", legacy_manifest["argv"])
+        self.assertNotIn("--seed-genomes", explicit_manifest["argv"])
+
+    def test_seed_genomes_empty_string_normalizes_to_none(self):
+        result = normalize({**self.spec, "evolution": {"seed_genomes": ""}})
+        self.assertIsNone(result["evolution"]["seed_genomes"])
+
+    def test_seed_genomes_rejects_mismatched_project_or_template(self):
+        source_run = self._prepare_source_run("run-seed-wrong-world", project_id="romance", template_id="romance")
+        self._publish_archive(source_run, {"I|low": {"quality": 0.4, "generation": 0, "genome": self._GENOME_LOW}})
+        spec = {**self.spec, "project_id": "detective", "template_id": "detective",
+                "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-wrong-world"}}
+        with self.assertRaises(ConfigError) as caught:
+            self.store.save(spec, config_id="cfg-mismatch")
+        self.assertIn("evolution.seed_genomes", caught.exception.field_errors)
+
+    def test_seed_genomes_rejects_unknown_run_id(self):
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-does-not-exist"}}
+        with self.assertRaises(ConfigError) as caught:
+            self.store.save(spec, config_id="cfg-missing-run")
+        self.assertEqual(caught.exception.code, "not_found")
+
+    def test_seed_genomes_rejects_tampered_published_archive(self):
+        source_run = self._prepare_source_run("run-seed-tampered")
+        self._publish_archive(source_run, {"I|low": {"quality": 0.4, "generation": 0, "genome": self._GENOME_LOW}})
+        # Mutate the archive after publication without updating manifest.json's
+        # recorded sha256 -- the same tamper-detection published/ already relies
+        # on elsewhere (RunCatalog.snapshot's manifest_sha256 chain).
+        archive_path = source_run / "published/1/archive.json"
+        archive_path.write_bytes(archive_path.read_bytes() + b" ")
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-tampered"}}
+        with self.assertRaises(ConfigError) as caught:
+            self.store.save(spec, config_id="cfg-tampered")
+        self.assertEqual(caught.exception.code, "snapshot_changed")
+
+    def test_seed_genomes_rejects_empty_archive(self):
+        source_run = self._prepare_source_run("run-seed-empty")
+        self._publish_archive(source_run, {})
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-empty"}}
+        with self.assertRaises(ConfigError):
+            self.store.save(spec, config_id="cfg-empty-archive")
+
+    # -------- Opus review R1: malformed archive/run data must ConfigError, not 500
+
+    def test_seed_genomes_rejects_archive_genome_missing_scalar_key(self):
+        source_run = self._prepare_source_run("run-seed-missing-key")
+        broken_genome = {"category_weight": {c: 0.5 for c in ("I", "II", "III", "IV", "V", "VI")},
+                          "stance_shift_bias": 0.1, "novelty_drive": 0.3}  # no risk_tolerance
+        self._publish_archive(source_run, {"I|low": {"quality": 0.4, "generation": 0, "genome": broken_genome}})
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-missing-key"}}
+        with self.assertRaises(ConfigError) as caught:
+            self.store.save(spec, config_id="cfg-missing-key")
+        self.assertIn("evolution.seed_genomes", caught.exception.field_errors)
+
+    def test_seed_genomes_rejects_archive_with_null_quality(self):
+        source_run = self._prepare_source_run("run-seed-null-quality")
+        self._publish_archive(source_run,
+            {"I|low": {"quality": None, "generation": 0, "genome": self._GENOME_LOW}})
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-null-quality"}}
+        with self.assertRaises(ConfigError) as caught:
+            self.store.save(spec, config_id="cfg-null-quality")
+        self.assertIn("evolution.seed_genomes", caught.exception.field_errors)
+
+    def test_seed_genomes_rejects_source_run_with_corrupt_complete_json(self):
+        source_run = self._prepare_source_run("run-seed-corrupt-seal")
+        self._publish_archive(source_run, {"I|low": {"quality": 0.4, "generation": 0, "genome": self._GENOME_LOW}})
+        (source_run / "complete.json").write_text("{not json", encoding="utf-8")
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-corrupt-seal"}}
+        with self.assertRaises(ConfigError) as caught:
+            self.store.save(spec, config_id="cfg-corrupt-seal")
+        self.assertIn("evolution.seed_genomes", caught.exception.field_errors)
+
+    def test_seed_genomes_rejects_source_run_with_empty_complete_json(self):
+        source_run = self._prepare_source_run("run-seed-empty-seal")
+        self._publish_archive(source_run, {"I|low": {"quality": 0.4, "generation": 0, "genome": self._GENOME_LOW}})
+        atomic_json(source_run / "complete.json", {})
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-empty-seal"}}
+        with self.assertRaises(ConfigError) as caught:
+            self.store.save(spec, config_id="cfg-empty-seal")
+        self.assertIn("evolution.seed_genomes", caught.exception.field_errors)
+
+    # -------- Opus review R2: prefer the sha-verified published archive
+    # over the mutable top-level archive.json a ConfigStore-managed run
+    # also carries.
+
+    def test_seed_genomes_prefers_published_archive_over_tampered_top_level(self):
+        source_run = self._prepare_source_run("run-seed-both-archives")
+        self._publish_archive(source_run,
+            {"I|low": {"quality": 0.4, "generation": 0, "genome": self._GENOME_LOW}})
+        # A top-level archive.json with a *different* cell -- if this were
+        # ever read instead of the published one, the frozen seed_genomes.json
+        # would carry "II|mid" instead of "I|low".
+        write_bytes(source_run / "archive.json",
+            canonical({"cells": {"II|mid": {"quality": 0.9, "generation": 0, "genome": self._GENOME_HIGH}}}))
+        spec = {**self.spec, "evolution": {**self.spec["evolution"], "seed_genomes": "run-seed-both-archives"}}
+        saved = self.store.save(spec, config_id="cfg-prefers-published")
+        doc = json.loads(
+            (self.store.control / "configs/cfg-prefers-published/inputs/seed_genomes.json").read_bytes())
+        self.assertEqual([g["cell"] for g in doc["genomes"]], ["I|low"])
+        self.assertEqual(doc["source"]["revision"], 1)
+
+    def test_duplicate_toggling_seed_genomes_saves_as_new_config(self):
+        source_run = self._prepare_source_run("run-seed-dup")
+        self._publish_archive(source_run, {"I|low": {"quality": 0.4, "generation": 0, "genome": self._GENOME_LOW}})
+        base = self.store.save(self.spec, config_id="cfg-base-noseed")
+        clone = self.store.duplicate("cfg-base-noseed",
+            {"evolution": {"seed_genomes": "run-seed-dup"}}, new_id="cfg-clone-seeded")
+        self.assertIsNone(clone["parent_config_id"])
+        self.assertEqual(clone["evolution"]["seed_genomes"], "run-seed-dup")
 
 
 if __name__ == "__main__":

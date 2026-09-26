@@ -299,7 +299,13 @@ def main(argv=None):
            "project": contained(run, "inputs/projects/" + config["project_id"]),
            "template": contained(run, "inputs/templates/" + config["template_id"]),
            "rationality": rationality,
-           "route": route_cfg_override(manifest["evolution"].get("route_rho"))}
+           "route": route_cfg_override(manifest["evolution"].get("route_rho")),
+           # WB-WORLDGROW-001 段階5b: manifest["evolution"]["seed_genomes"] is
+           # the source run's run_id (execution.configs.normalize()'s
+           # identifier check), not a path -- this run's own frozen snapshot
+           # is what evolve() actually reads.
+           "seed_genomes": (contained(run, "inputs/seed_genomes.json")
+                             if manifest["evolution"].get("seed_genomes") is not None else None)}
 
     def cancelled():
         current = worker.read_job(jobs, folder)
