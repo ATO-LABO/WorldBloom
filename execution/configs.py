@@ -24,6 +24,7 @@ from engine.world import World
 from gapengine.evolve import _load_yaml, _rationality_backend_cfg, _rule_ids
 from gapengine.genome import Genome
 from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
+from gapengine.rationality import JEV_DEFAULT_MODEL
 from gapengine.policy import _compile_rules
 from gapengine.precedent import load_canon
 from gapengine.seed_genomes import from_archive as seed_genomes_from_archive
@@ -194,7 +195,7 @@ def normalize(spec):
                 or not (0 <= route_rho <= 1)):
             raise ConfigError("evolution.route_rho", "0〜1の数値を指定してください")
         values["route_rho"] = None if route_rho == 0 else float(route_rho)
-    if values["rationality_backend"] not in (None, "ollama", "none"):
+    if values["rationality_backend"] not in (None, "ollama", "none", "jev"):
         raise ConfigError("evolution.rationality_backend", "backendの指定が不正です")
     if values["rationality_method"] not in (None, "noul", "choice"):
         raise ConfigError("evolution.rationality_method", "methodの指定が不正です")
@@ -209,6 +210,12 @@ def normalize(spec):
         or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}", values["rationality_model"])
     ):
         raise ConfigError("evolution.rationality_model", "モデル名を明示してください")
+    # WB-JEV-005: a Jev-backed config always freezes an explicit model name
+    # into config.json (so prepare_run()'s shared-table path and argv never
+    # depend on a live default that could change later) -- ollama stays None
+    # so its config/argv/table path bytes are unaffected by this change.
+    if values["rationality_backend"] == "jev" and values["rationality_model"] is None:
+        values["rationality_model"] = JEV_DEFAULT_MODEL
     if values["rationality_num_ctx"] is not None:
         if (type(values["rationality_num_ctx"]) is not int
                 or not (256 <= values["rationality_num_ctx"] <= 131072)):

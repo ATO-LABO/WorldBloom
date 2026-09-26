@@ -103,9 +103,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--rationality-backend",
-        choices=("ollama", "none"),
+        choices=("ollama", "jev", "none"),
         default=None,
-        help="Override rationality.yaml's judge backend.",
+        help="Override rationality.yaml's judge backend. \"jev\" (WB-JEV-005) "
+        "calls TypeSafe's Jev API and reads its key from TYPESAFE_API_KEY.",
     )
     parser.add_argument(
         "--rationality-method",

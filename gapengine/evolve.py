@@ -49,12 +49,14 @@ from gapengine.qd import (
 )
 from gapengine.rationality import (
     FakeJudge,
+    JevJudge,
     NullJudge,
     OllamaLogprobJudge,
     Rationality,
     RationalityTable,
     TableOnlyJudge,
 )
+from gapengine.rationality import JEV_DEFAULT_MODEL as _JEV_DEFAULT_MODEL
 from gapengine.route import Route, load_route_config
 from gapengine.seed_genomes import load as load_seed_genomes, reconcile as reconcile_seed_genome
 from gapengine.world_patch import LIBRARY_DIR
@@ -85,20 +87,20 @@ def _build_rationality_judge(
     rationality_cfg: Mapping[str, Any], *, table_only: bool = False
 ) -> Any:
     """WB-JEV-001 Stage 2: the judge for a run_individual job's Rationality,
-    picked by ``rationality_cfg["backend"]`` ("ollama" or "none" -- "fake"
-    is a network-free deterministic judge, reachable only by constructing a
-    cfg dict directly (not exposed on scripts/evolve.py's CLI), for tests
-    that need to exercise this wiring without Ollama/a GPU -- Opus review
-    WB-JEV-001 Stage 2 P3/P4 item 4).
+    picked by ``rationality_cfg["backend"]`` ("ollama", "jev" (WB-JEV-005),
+    or "none" -- "fake" is a network-free deterministic judge, reachable
+    only by constructing a cfg dict directly (not exposed on
+    scripts/evolve.py's CLI), for tests that need to exercise this wiring
+    without Ollama/a GPU -- Opus review WB-JEV-001 Stage 2 P3/P4 item 4).
 
     ``table_only`` (WB-WORLDGROW-002 stage 0): a rerun of an already-finished
     experiment's history (gapengine.lineage/world_patch_trial, via
     run_individual's "rationality_table_only" job flag) must never place a
-    live "ollama" call -- it may only replay judgments the experiment's own
-    shared table already has. Only "ollama" is swapped for
-    ``TableOnlyJudge``: "none"/"fake" never touch a network or a GPU in the
-    first place, so a table_only rerun of those runs the same judge as a
-    normal one would."""
+    live "ollama"/"jev" call -- it may only replay judgments the
+    experiment's own shared table already has. Only those two are swapped
+    for ``TableOnlyJudge``: "none"/"fake" never touch a network or a GPU in
+    the first place, so a table_only rerun of those runs the same judge as
+    a normal one would."""
 
     backend = str(rationality_cfg.get("backend", "none"))
     if backend == "ollama":
@@ -114,6 +116,17 @@ def _build_rationality_judge(
             method=str(rationality_cfg.get("method", "noul")),
             thermal_guard=rationality_cfg.get("thermal_guard"),
             num_ctx=rationality_cfg.get("num_ctx"),
+        )
+    if backend == "jev":
+        if table_only:
+            return TableOnlyJudge(
+                backend_name=backend,
+                model=str(rationality_cfg.get("model", _JEV_DEFAULT_MODEL)),
+            )
+        return JevJudge(
+            model=str(rationality_cfg.get("model", _JEV_DEFAULT_MODEL)),
+            method=str(rationality_cfg.get("method", "noul")),
+            timeout=30.0,
         )
     if backend == "fake":
         return FakeJudge()

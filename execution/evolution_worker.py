@@ -20,6 +20,7 @@ if __package__ in (None, ""):
 
 from execution.provenance import (ConfigError, atomic_json, canonical, contained,
     directory_lock, identifier, publish_directory, read_json, sha256, write_bytes)
+from execution.rationality_settings import read_jev_api_key
 from gapengine.evolve import (EvolutionCancelled, _cell_for_run, evolve,
     rationality_cfg_override, route_cfg_override)
 
@@ -306,6 +307,15 @@ def main(argv=None):
            # is what evolve() actually reads.
            "seed_genomes": (contained(run, "inputs/seed_genomes.json")
                              if manifest["evolution"].get("seed_genomes") is not None else None)}
+
+    # WB-JEV-005: a Jev-backed run's api_key comes from settings.json (via
+    # job["settings_path"], set by execution/jobs.py's submit()), never from
+    # config.json/manifest.json/argv. Set unconditionally (before checking
+    # this run's own rationality backend) -- cheap, and matters nothing for
+    # an ollama/none run, which never reads TYPESAFE_API_KEY.
+    api_key = read_jev_api_key(job.get("settings_path"))
+    if api_key:
+        os.environ["TYPESAFE_API_KEY"] = api_key
 
     def cancelled():
         current = worker.read_job(jobs, folder)
