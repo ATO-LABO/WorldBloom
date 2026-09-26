@@ -348,6 +348,34 @@ class Boundaries(unittest.TestCase):
         self.assertEqual(counts, {"decisions_in_new_zones": 3, "moves_into_new_zones": 1,
             "gathered_new_items": 1, "learned_new_facts": 1, "shared_new_facts": 0, "gave_new_items": 1})
 
+    def test_add_sources_usage_is_zone_scoped(self):
+        # WB-WORLDGROW-002 stage 2 review 1 fix M1: an add.sources target is
+        # an *existing* item/fact -- only counted as "new usage" when
+        # actually gathered/learned at the zone this patch added a source
+        # in, never at some other, pre-existing zone the item/fact could
+        # already be gathered/learned at before this patch.
+        rows = [
+            # Gathered at 森 (the zone this patch's add.sources targets) -- counts.
+            {"kind": "decision", "subject": "桃太郎", "verb": "investigate", "result": "investigated",
+             "details": {"zone": "森", "gathered": [{"item": "縄", "source": "森"}], "learned": []}},
+            # Gathered at 村 (縄's own pre-existing source zone) -- must not count.
+            {"kind": "decision", "subject": "桃太郎", "verb": "investigate", "result": "investigated",
+             "details": {"zone": "村", "gathered": [{"item": "縄", "source": "村"}], "learned": []}},
+            # Learned at the added zone -- counts.
+            {"kind": "decision", "subject": "桃太郎", "verb": "investigate", "result": "investigated",
+             "details": {"zone": "森", "gathered": [], "learned": ["造船術"]}},
+        ]
+        path = self.root / "layers.jsonl"
+        path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+        p = {"id": "p-src-usage", "title": "既存への入手手段", "add": {
+            "sources": [
+                {"item": "縄", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 2}},
+                {"fact": "造船術", "source": {"type": "investigate", "zone": "森", "count": 1}},
+            ]}}
+        counts = new_usage([path], p, "桃太郎")
+        self.assertEqual(counts["gathered_new_items"], 1)
+        self.assertEqual(counts["learned_new_facts"], 1)
+
     def test_summary_only_expansion_and_missing_details(self):
         from viewer.data import RunRepository, world_expansion_state
         from viewer.world_demand_view import expansion_line

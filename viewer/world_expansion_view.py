@@ -330,6 +330,67 @@ def _whiff_rate_text(trigger: Any) -> str:
     return f"ベース {_whiff_rate_side(trigger.get('base'))} → 適用後 {_whiff_rate_side(trigger.get('patched'))}"
 
 
+# WB-WORLDGROW-002 stage 4 (段階4への追加、段階3 294ddbcの申し送り):
+# ignorance/blocked の trial["trigger"] は base/patched の形が whiff と違う
+# (gapengine/world_patch_trial.py の _ignorance_counts/_blocked_counts) --
+# 種類ごとの文言で表示する。whiff は _whiff_rate_side/_whiff_rate_text の
+# ままバイト一致（この2関数は変更していない）。
+def _ignorance_rate_side(side: Any) -> str:
+    if not isinstance(side, dict):
+        return "—"
+    count, total = side.get("count"), side.get("total")
+    if not _is_number(count) or not _is_number(total):
+        return "—"
+    if total <= 0:
+        return f"その場所の道筋付き決定 {total} 回"
+    share = side.get("share")
+    # 必須3の補足（段階4 review 1）: 分母（total）が「その場所の道筋付き決定」
+    # であることを明示する。
+    pct = f"（{float(share) * 100:.1f}%）" if _is_number(share) else ""
+    return f"その場所の道筋付き決定 {total} 回中、手探り {count} 回{pct}"
+
+
+def _blocked_rate_side(side: Any) -> str:
+    if not isinstance(side, dict):
+        return "—"
+    count, lost_total = side.get("count"), side.get("lost_total")
+    if not _is_number(count) or not _is_number(lost_total):
+        return "—"
+    if lost_total <= 0:
+        return f"見通しなし {lost_total} 回"
+    # R2 (段階3 review 1): trial側は "lost_rate"（gapengine/world_patch_trial.
+    # py's _blocked_counts）。需要トリガーの "lost_share"（意味が違う）とは
+    # 別名にして取り違えを防ぐ。
+    # 必須3（段階4 review 1）: lost_rate は「count 回中 lost_total 回」の割合
+    # ではなく、道筋付き決定の全体に対する見通しなしの割合 -- count と
+    # lost_total が同じ値でも 100% にならない。分母が何かを明示し、%も
+    # 「count 回中の割合」ではなく「道筋付き決定全体に対する割合」と分けて書く。
+    lost_rate = side.get("lost_rate")
+    pct = f"（道筋付き決定の{float(lost_rate) * 100:.1f}%が見通しなし）" if _is_number(lost_rate) else ""
+    return f"見通しなし {lost_total} 回のうちこのきっかけが原因 {count} 回{pct}"
+
+
+_TRIGGER_RATE_LABELS = {"ignorance": "きっかけの手探り", "blocked": "きっかけの見通しなし決定"}
+
+
+def _trigger_rate_label(trigger: Any) -> str:
+    kind = trigger.get("kind", "whiff") if isinstance(trigger, dict) else "whiff"
+    return _TRIGGER_RATE_LABELS.get(kind, "きっかけの空振り率")
+
+
+def _trigger_rate_text(trigger: Any) -> str:
+    if not isinstance(trigger, dict):
+        return ""
+    kind = trigger.get("kind", "whiff")
+    if kind == "ignorance":
+        return (f"ベース {_ignorance_rate_side(trigger.get('base'))} → "
+                f"適用後 {_ignorance_rate_side(trigger.get('patched'))}")
+    if kind == "blocked":
+        return (f"ベース {_blocked_rate_side(trigger.get('base'))} → "
+                f"適用後 {_blocked_rate_side(trigger.get('patched'))}")
+    return _whiff_rate_text(trigger)
+
+
 _USAGE_LABELS = (
     ("decisions_in_new_zones", "新しい場所での決定"),
     ("moves_into_new_zones", "新しい場所への移動"),
@@ -340,11 +401,31 @@ _USAGE_LABELS = (
 )
 
 
-def _trial_html(trial: dict) -> str:
+_USAGE_SOURCES_ONLY_LABELS = {
+    "gathered_new_items": "既存の品を新しい場所で集めた",
+    "learned_new_facts": "既存の事実を新しい場所で知った",
+}
+
+
+def _trial_html(trial: dict, add: dict | None = None) -> str:
+    # R5（段階4 review 1）: add.items/add.facts を持たない（add.sources だけ
+    # の）パッチでは、gathered_new_items/learned_new_facts は「新しい品/事実」
+    # ではなく「既存の品/事実を新しい場所で」の回数（viewer/world_usage_badge.
+    # py の同じ切り替えと揃える）。
+    items_added_by_name = bool((add or {}).get("items"))
+    facts_added_by_name = bool((add or {}).get("facts"))
+
+    def usage_label(key, label):
+        if key == "gathered_new_items" and not items_added_by_name:
+            return _USAGE_SOURCES_ONLY_LABELS[key]
+        if key == "learned_new_facts" and not facts_added_by_name:
+            return _USAGE_SOURCES_ONLY_LABELS[key]
+        return label
+
     parts = []
     trigger_result = trial.get("trigger")
     if trigger_result:
-        parts.append(f"<p>きっかけの空振り率: {_escape(_whiff_rate_text(trigger_result))}</p>")
+        parts.append(f"<p>{_escape(_trigger_rate_label(trigger_result))}: {_escape(_trigger_rate_text(trigger_result))}</p>")
     pairs = trial.get("pairs") or []
     if pairs:
         table = _reach_table(pairs)
@@ -352,7 +433,7 @@ def _trial_html(trial: dict) -> str:
     usage = trial.get("new_usage") or {}
     if usage:
         parts.append("<p>足したものの使用回数: " + "、".join(
-            f"{label} {_escape(usage.get(key, 0))}回" for key, label in _USAGE_LABELS) + "</p>")
+            f"{usage_label(key, label)} {_escape(usage.get(key, 0))}回" for key, label in _USAGE_LABELS) + "</p>")
     contract_violations = (trial.get("contract") or {}).get("violations") or []
     if contract_violations:
         parts.append("<p>契約検査の違反:</p><ul>" + "".join(f"<li>{_escape(v)}</li>" for v in contract_violations) + "</ul>")
@@ -415,7 +496,7 @@ def proposal_card(proposal: dict, world: Any, *, world_id: str, can_write: bool,
         result_parts.append("<p>静的ゲートの違反:</p><ul>" + "".join(f"<li>{_escape(v)}</li>" for v in violations) + "</ul>")
     trial = gate.get("trial")
     if isinstance(trial, dict):
-        result_parts.append(_trial_html(trial))
+        result_parts.append(_trial_html(trial, patch.get("add")))
     elif not violations:
         result_parts.append("<p>試走がまだです。</p>")
     holdout_checks = gate.get("holdout_checks")

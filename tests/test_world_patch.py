@@ -14,6 +14,7 @@ from engine.world import World
 from gapengine.world_patch import (
     PatchError,
     absolutize_references,
+    addition_caps,
     apply_patch,
     apply_patches,
     approved_patches,
@@ -22,7 +23,7 @@ from gapengine.world_patch import (
     patch_id_for,
     validate_patch,
 )
-from gapengine.world_patch_contract import contract_check
+from gapengine.world_patch_contract import contract_check, reachable_zones_from
 from gapengine.world_patch_inputs import read_subjects
 from test_detective import PROJECT as DETECTIVE_PROJECT
 from test_detective import SUSPECTS
@@ -145,6 +146,37 @@ class WorldPatchTests(unittest.TestCase):
         with self.assertRaises(PatchError) as caught:
             apply_patches(world, [bad])
         self.assertTrue(str(caught.exception).startswith("p-1a2b3c4d:"))
+
+    def test_ignorance_trigger_expansion_entry_keeps_kind_zone_count(self):
+        # WB-WORLDGROW-002 S2: unlike whiff (zone/verb only, no "kind" key --
+        # byte-identical to pre-S2), a route-layer trigger's expansion record
+        # names its own kind.
+        world = load_world()
+        patch = sample_patch(trigger={"experiment": "run-xxxx", "kind": "ignorance", "zone": "鬼ヶ島", "count": 33})
+        patched = apply_patch(world, patch)
+        entry = patched["expansion"]["patches"][0]
+        self.assertEqual(entry["trigger"], {"kind": "ignorance", "zone": "鬼ヶ島", "count": 33})
+
+    def test_blocked_trigger_expansion_entry_keeps_kind_requirement_count_stuck_zones(self):
+        world = load_world()
+        patch = sample_patch(trigger={
+            "experiment": "run-xxxx", "kind": "blocked", "requirement": "has_item:縄",
+            "count": 1801, "stuck_zones": [["道中", 900]], "runs": 47,
+        })
+        patched = apply_patch(world, patch)
+        entry = patched["expansion"]["patches"][0]
+        self.assertEqual(entry["trigger"], {"kind": "blocked", "requirement": "has_item:縄",
+                                             "count": 1801, "stuck_zones": [["道中", 900]]})
+
+    def test_missing_kind_on_an_old_patch_still_reads_as_whiff(self):
+        # A pre-S1 patch on disk never had "kind" at all -- must still slim
+        # down to just zone/verb, not crash or keep every field.
+        world = load_world()
+        patch = sample_patch(trigger={"experiment": "run-xxxx", "zone": "海", "verb": "investigate",
+                                      "count": 228, "whiffs": 228})
+        patched = apply_patch(world, patch)
+        entry = patched["expansion"]["patches"][0]
+        self.assertEqual(entry["trigger"], {"zone": "海", "verb": "investigate"})
 
     def assert_invalid(self, mutate):
         world = load_world()
@@ -844,6 +876,51 @@ def _minimal_contract_world(temp: Path, *, subject_range_zones: list[str]) -> tu
     return world_path, subjects_dir
 
 
+class ReachableZonesFromTests(unittest.TestCase):
+    """WB-WORLDGROW-002 S2: gapengine.world_patch_contract.reachable_zones_from
+    -- reused by scripts/world_patch.py's check_trigger_coverage("blocked")
+    gate. Same fixture as ContractCheckNegativeStartTests below (拠点's own
+    range.exclude rule, until 鍵 is held)."""
+
+    def test_excludes_a_zone_currently_blocked_by_range_exclude(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "ZZZ_valid"])
+            # サブ never holds 鍵 here, so 拠点's own exclude rule stays
+            # active -- reachable_paths' own bypass-avoiding BFS (not a
+            # parallel reimplementation) keeps it out of the result, and the
+            # stuck zone itself is added even though reachable_paths never
+            # returns the subject's own starting zone.
+            reachable = reachable_zones_from(world_path, subjects_dir, "サブ", ["小屋"])
+        self.assertEqual(reachable, {"小屋", "ZZZ_valid"})
+
+    def test_holding_the_until_item_lifts_the_exclusion(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "ZZZ_valid"])
+            person = yaml.safe_load((subjects_dir / "sub.yaml").read_text(encoding="utf-8"))
+            person["inventory"] = {"鍵": 1}
+            (subjects_dir / "sub.yaml").write_text(yaml.safe_dump(person, allow_unicode=True), encoding="utf-8")
+            reachable = reachable_zones_from(world_path, subjects_dir, "サブ", ["小屋"])
+        self.assertEqual(reachable, {"小屋", "拠点", "ZZZ_valid"})
+
+    def test_unions_reachability_from_every_stuck_zone(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋", "AAA_isolated", "ZZZ_valid"])
+            reachable = reachable_zones_from(world_path, subjects_dir, "サブ", ["小屋", "AAA_isolated"])
+        # AAA_isolated only connects back to 拠点 (excluded) -- reached only
+        # because it's itself one of the stuck zones passed in.
+        self.assertEqual(reachable, {"小屋", "ZZZ_valid", "AAA_isolated"})
+
+    def test_unknown_protagonist_returns_empty_set(self):
+        with tempfile.TemporaryDirectory() as temp:
+            world_path, subjects_dir = _minimal_contract_world(
+                Path(temp), subject_range_zones=["拠点", "小屋"])
+            reachable = reachable_zones_from(world_path, subjects_dir, "誰か", ["小屋"])
+        self.assertEqual(reachable, set())
+
+
 class ContractCheckNegativeStartTests(unittest.TestCase):
     """WB-WORLDGROW-001 R6: the negative admission check must start from a
     neighbor the excluded subject is themselves allowed into, not just
@@ -928,6 +1005,218 @@ class ContractCheckNegativeStartTests(unittest.TestCase):
         self.assertEqual(result["violations"], ["入場条件を回避できます: サブ/小屋"])
         rule0 = next(n for n in result["negative"] if n["rule_index"] == 0)
         self.assertEqual(rule0, {"subject": "サブ", "rule_index": 0, "status": "checked", "start": "ZZZ_valid"})
+
+
+def sources_patch(sources: list[dict], **overrides) -> dict:
+    patch = {"id": "p-add-src1", "title": "既存への入手手段", "rationale": "既存の品に入手手段を足す",
+              "add": {"sources": sources}}
+    patch.update(overrides)
+    return patch
+
+
+class AddSourcesTests(unittest.TestCase):
+    """WB-WORLDGROW-002 stage 2 review 1 fix M1 (design K): add.sources gives
+    an *existing* item/fact a new investigate source -- the only way a
+    blocked trigger's has_item:X/knows:F requirement (always an
+    already-existing item/fact) can ever be satisfied at all."""
+
+    def test_item_source_applies_and_is_recorded_in_expansion(self):
+        world = load_world()
+        patch = sources_patch([{"item": "金棒", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        self.assertEqual(validate_patch(world, patch), [])
+        patched = apply_patch(world, patch)
+        bar = next(i for i in patched["items"] if i["name"] == "金棒")
+        self.assertIn({"type": "investigate", "zone": "森", "count": 1, "max": 1}, bar["sources"])
+        # The original item definition (elsewhere in the list) is untouched.
+        self.assertEqual(next(i for i in world["items"] if i["name"] == "金棒").get("sources"), None)
+        self.assertEqual(patched["expansion"]["patches"][-1]["added"]["sources"], ["金棒@森"])
+
+    def test_fact_source_applies_to_a_fact_with_no_source_yet(self):
+        world = load_world()
+        patch = sources_patch([{"fact": "造船術", "source": {"type": "investigate", "zone": "道中", "count": 1}}])
+        self.assertEqual(validate_patch(world, patch), [])
+        patched = apply_patch(world, patch)
+        fact = next(f for f in patched["facts"] if f["id"] == "造船術")
+        self.assertEqual(fact["sources"], [{"type": "investigate", "zone": "道中", "count": 1}])
+
+    def test_patch_with_no_add_sources_has_byte_identical_expansion(self):
+        # No "sources" key at all in the recorded expansion when a patch
+        # never used add.sources -- every pre-M1 patch must keep looking the
+        # same.
+        world = load_world()
+        patched = apply_patch(world, sample_patch())
+        self.assertNotIn("sources", patched["expansion"]["patches"][-1]["added"])
+
+    def test_unknown_item_name_is_rejected(self):
+        world = load_world()
+        patch = sources_patch([{"item": "存在しない品", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("既存のアイテムではありません" in v for v in violations), violations)
+
+    def test_objective_item_is_rejected(self):
+        world = load_world()
+        patch = sources_patch([{"item": "鬼ヶ島の宝物",
+                                 "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("この品には入手手段を足せません" in v for v in violations), violations)
+
+    def test_vehicle_made_from_item_is_rejected(self):
+        world = load_world()
+        patch = sources_patch([{"item": "船", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("この品には入手手段を足せません" in v for v in violations), violations)
+
+    def test_keepsake_item_is_rejected(self):
+        world = load_world()
+        patch = sources_patch([{"item": "勾玉", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("この品には入手手段を足せません" in v for v in violations), violations)
+
+    def test_lottery_fact_is_rejected(self):
+        world = load_detective_world()
+        patch = sources_patch([{"fact": "culprit", "source": {"type": "investigate", "zone": "食堂", "count": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("この事実には入手手段を足せません" in v for v in violations), violations)
+
+    def test_valued_non_lottery_fact_is_rejected(self):
+        # R1 (段階3 review 1): a valued fact whose truth is fixed (not drawn
+        # per-seed, i.e. not in world["truth"]) used to pass validate_patch
+        # and only fail later, at contract_check ("Valued fact cannot have
+        # direct sources"). oni_weakness/treasure_thief are lottery facts in
+        # momotaro's own world.yaml -- drop the lottery draw to get a valued,
+        # non-lottery fact for this test without inventing a new fixture.
+        world = load_world()
+        world = {**world, "truth": {k: v for k, v in world.get("truth", {}).items() if k != "oni_weakness"}}
+        patch = sources_patch([{"fact": "oni_weakness", "source": {"type": "investigate", "zone": "森", "count": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("この事実には入手手段を足せません" in v for v in violations), violations)
+
+    def test_duplicate_zone_on_the_same_item_is_rejected(self):
+        world = load_world()
+        # 縄 already has a source at 村.
+        patch = sources_patch([{"item": "縄", "source": {"type": "investigate", "zone": "村", "count": 1, "max": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("同じ場所への入手手段が既にあります" in v for v in violations), violations)
+
+    def test_two_sources_for_the_same_item_at_different_zones_is_not_a_duplicate(self):
+        world = load_world()
+        patch = sources_patch([
+            {"item": "金棒", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}},
+            {"item": "金棒", "source": {"type": "investigate", "zone": "道中", "count": 1, "max": 1}},
+        ])
+        self.assertEqual(validate_patch(world, patch), [])
+
+    def test_more_than_max_add_sources_is_rejected(self):
+        world = load_world()
+        patch = sources_patch([
+            {"item": "金棒", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}},
+            {"item": "縄", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}},
+            {"item": "木材", "source": {"type": "investigate", "zone": "海", "count": 1, "max": 1}},
+        ])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("既存への入手手段の追加数が上限" in v for v in violations), violations)
+
+    def test_add_sources_counts_against_the_items_budget(self):
+        # MAX_ITEMS is 2 -- one brand-new item plus one add.sources item
+        # already exhausts it.
+        world = load_world()
+        patch = {"id": "p-add-src2", "title": "既存への入手手段", "rationale": "既存の品に入手手段を足す",
+                 "add": {"sources": [{"item": "金棒", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}],
+                         "items": [{"name": "新アイテム1", "sources": [{"type": "investigate", "zone": "森", "count": 1, "max": 1}]},
+                                   {"name": "新アイテム2", "sources": [{"type": "investigate", "zone": "森", "count": 1, "max": 1}]}]}}
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("アイテムの追加数が上限" in v for v in violations), violations)
+
+    def test_item_and_fact_both_given_is_rejected(self):
+        world = load_world()
+        patch = sources_patch([{"item": "金棒", "fact": "造船術",
+                                 "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("item か fact のどちらか一方だけ" in v for v in violations), violations)
+
+    def test_increasing_max_on_a_give_item_spends_the_give_budget(self):
+        # きびだんご already has give -- a bigger max means more pickups of
+        # the same give, so add.sources must still spend budget for it even
+        # though the give definition itself is untouched.
+        world = load_world()
+        patch = sources_patch([{"item": "きびだんご",
+                                 "source": {"type": "investigate", "zone": "森", "count": 1, "max": 3}}])
+        violations = validate_patch(world, patch)
+        self.assertTrue(any("渡したときの効果の総量が上限を超えています" in v for v in violations), violations)
+
+    def test_no_give_field_on_the_target_spends_the_default_give_budget(self):
+        # Required 3 (段階3 review 1): give を書いていない既存の品も、
+        # エンジン(engine/verbs.py)の既定値(受け手0.2・渡し手0.05)で
+        # give予算を使う -- 書いていない＝0円という以前のバグを直した。
+        world = load_world()
+        modest = sources_patch([{"item": "金棒",
+                                 "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        self.assertEqual(validate_patch(world, modest), [])
+        # max=3 * 既定0.25 = 0.75 > MAX_GIVE_PER_PATCH(0.6) -- now rejected.
+        over_budget = sources_patch([{"item": "金棒",
+                                      "source": {"type": "investigate", "zone": "森", "count": 1, "max": 3}}])
+        violations = validate_patch(world, over_budget)
+        self.assertTrue(any("上限を超えています" in v for v in violations))
+
+    def test_prior_add_sources_give_counts_toward_the_cumulative_budget(self):
+        # Required 2 (段階3 review 1): apply_patch records added.sources_give
+        # so a later patch's prior_given includes an earlier patch's
+        # add.sources give contribution (previously always 0, letting the
+        # cumulative 1.2 cap be bypassed entirely via repeated add.sources).
+        world = load_world()
+        first = sources_patch([{"item": "金棒",
+                                "source": {"type": "investigate", "zone": "森", "count": 1, "max": 2}}],
+                               id="p-add-src-first")
+        self.assertEqual(validate_patch(world, first), [])
+        applied = apply_patch(world, first)
+        self.assertEqual(applied["expansion"]["patches"][-1]["added"]["sources_give"], 0.5)
+        second = sources_patch([{"item": "金棒",
+                                 "source": {"type": "investigate", "zone": "道中", "count": 1, "max": 2}}],
+                                id="p-add-src-second")
+        # 0.5 (first, already applied) + 0.5 (second, its own) = 1.0 <= 1.2: passes.
+        self.assertEqual(validate_patch(applied, second), [])
+        third = sources_patch([{"item": "金棒",
+                                "source": {"type": "investigate", "zone": "海", "count": 1, "max": 2}}],
+                               id="p-add-src-third")
+        applied2 = apply_patch(applied, second)
+        # 1.0 (prior) + 0.5 (third) = 1.5 > 1.2: now correctly rejected.
+        violations = validate_patch(applied2, third)
+        self.assertTrue(any("上限を超えています" in v for v in violations))
+
+    def test_prior_add_sources_count_toward_the_cumulative_items_and_facts_cap(self):
+        # Required 1 (段階3 review 1): an add.sources-only patch used to
+        # never count toward addition_caps()'s cumulative items/facts count
+        # at all (only add.items/add.facts did), letting later patches add
+        # far more than the intended budget once summed.
+        world = load_world()
+        before = addition_caps(world)["items"][1]
+        patch = sources_patch([{"item": "金棒",
+                                "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        applied = apply_patch(world, patch)
+        after = addition_caps(applied)["items"]
+        self.assertEqual(before, 0)
+        self.assertEqual(after[1], 1)
+
+    def test_prior_add_sources_fact_counts_toward_the_facts_cap(self):
+        world = load_world()
+        patch = sources_patch([{"fact": "造船術",
+                                "source": {"type": "investigate", "zone": "森", "count": 1}}])
+        applied = apply_patch(world, patch)
+        self.assertEqual(addition_caps(applied)["facts"][1], 1)
+
+    def test_retiring_the_patch_removes_the_added_source(self):
+        # Design K: a world is always rebuilt from only its *currently
+        # applied* patches (verify_stack/materialize), so retiring the
+        # add.sources patch removes the source the same way it removes any
+        # other addition -- no separate bookkeeping needed.
+        world = load_world()
+        patch = sources_patch([{"item": "金棒", "source": {"type": "investigate", "zone": "森", "count": 1, "max": 1}}])
+        with_patch = apply_patches(world, [patch])
+        bar_with = next(i for i in with_patch["items"] if i["name"] == "金棒")
+        self.assertEqual(bar_with.get("sources"), [{"type": "investigate", "zone": "森", "count": 1, "max": 1}])
+        without_patch = apply_patches(world, [])  # the retired state: patch no longer active
+        bar_without = next(i for i in without_patch["items"] if i["name"] == "金棒")
+        self.assertIsNone(bar_without.get("sources"))
 
 
 if __name__ == "__main__":

@@ -336,6 +336,69 @@ class RationalityMultiplierTests(unittest.TestCase):
         self.assertEqual(rest_action.meta["policy"]["m_rat"], 1.0)
 
 
+class TableOnlyJudgeTests(unittest.TestCase):
+    """WB-WORLDGROW-002 stage 0: a rerun of an already-finished kappa>0
+    experiment (gapengine.lineage's ancestor rerun, gapengine.world_patch_trial's
+    base/patched/reproduction runs) must replay judgments from the shared
+    table alone -- never place a live "ollama" call, and never silently fall
+    back to a multiplier of 1.0 -- so ``run_individual``'s
+    "rationality_table_only" job flag swaps a table_only rerun's judge for
+    ``TableOnlyJudge`` (see gapengine.evolve._build_rationality_judge)."""
+
+    def test_backend_name_and_model_mirror_the_configured_values_not_its_own(self) -> None:
+        from gapengine.rationality import TableOnlyJudge
+
+        judge = TableOnlyJudge(backend_name="ollama", model="some-model")
+        self.assertEqual(judge.backend_name, "ollama")
+        self.assertEqual(judge.model, "some-model")
+
+    def test_table_hit_never_reaches_the_judge_and_matches_the_original_judgment(self) -> None:
+        from gapengine.rationality import TableOnlyJudge
+
+        actor, world, present, weighted = _three_candidates()
+        actions = [action for action, _ in weighted]
+
+        # First pass: a real (fake, network-free) judge fills the table --
+        # standing in for the original experiment's run.
+        priming_table = RationalityTable()
+        priming = Rationality(
+            kappa=1.0, table=priming_table, judge=FakeJudge(), method="noul"
+        )
+        m_original, p_original = priming.multipliers(actor, world, present, actions)
+        self.assertTrue(priming.new_entries)
+        learned_table = RationalityTable(priming.new_entries)
+
+        # Second pass: TableOnlyJudge stands in for the rerun -- every key
+        # this decision point needs is already in the table, so
+        # TableOnlyJudge.score() (which always raises) must never be called,
+        # and the replayed multipliers must match the original exactly.
+        replay = Rationality(
+            kappa=1.0,
+            table=learned_table,
+            judge=TableOnlyJudge(backend_name="ollama", model="fake-v1"),
+            method="noul",
+        )
+        m_replay, p_replay = replay.multipliers(actor, world, present, actions)
+        self.assertEqual(m_replay, m_original)
+        self.assertEqual(p_replay, p_original)
+        self.assertEqual(replay.new_entries, {})
+
+    def test_table_miss_stops_instead_of_calling_the_judge_or_defaulting_to_1_0(self) -> None:
+        from gapengine.rationality import RationalityTableMissError, TableOnlyJudge
+
+        actor, world, present, weighted = _three_candidates()
+        actions = [action for action, _ in weighted]
+
+        rerun = Rationality(
+            kappa=1.0,
+            table=RationalityTable(),  # empty -- nothing has been learned yet
+            judge=TableOnlyJudge(backend_name="ollama", model="fake-v1"),
+            method="noul",
+        )
+        with self.assertRaises(RationalityTableMissError):
+            rerun.multipliers(actor, world, present, actions)
+
+
 class CandidateLabelsAndNegotiateOfferWiringTests(unittest.TestCase):
     """WB-JEV-004 Stage 4b addendum: Rationality threads candidate_labels
     and describe_negotiate_offer through to describe_candidate_coarse

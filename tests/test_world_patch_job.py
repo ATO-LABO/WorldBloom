@@ -35,10 +35,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _write_world_demand(experiment):
     """Two triggers: a non-investigate one at raw index 0 (must never be
-    proposable) and the investigate one at raw index 1 -- so a request's raw
-    `trigger` (the UI's data-trigger numbering) only resolves correctly if
-    execution/world_patch_job.py's own conversion to scripts/world_patch.py's
-    investigate-only numbering (prepare()'s _investigate_index) is exercised."""
+    proposable) and the investigate one at raw index 1 -- exercises that a
+    request's raw `trigger` (the UI's data-trigger numbering) is the exact
+    same index scripts/world_patch.py's `propose --trigger` now takes
+    (WB-WORLDGROW-002 S2: no more investigate-only re-numbering in between)."""
     payload = {
         "schema_version": 1, "files": 1, "skipped_paths": 0, "subject_decisions": 50,
         "triggers": [
@@ -288,12 +288,21 @@ class WorldPatchJobTests(unittest.TestCase):
                 with self.assertRaises(ConfigError):
                     world_patch_job.normalize({**base, "schema_version": value})
 
-    # -- A3: raw-to-investigate index conversion -----------------------------
+    # -- A3: raw trigger numbering, no re-indexing (WB-WORLDGROW-002 S2) -----
 
-    def test_investigate_index_skips_intervening_non_investigate_triggers(self):
-        triggers = [{"verb": "observe"}, {"verb": "investigate"}, {"verb": "move"}, {"verb": "investigate"}]
-        self.assertEqual(world_patch_job._investigate_index(triggers, 1), 0)
-        self.assertEqual(world_patch_job._investigate_index(triggers, 3), 1)
+    def test_trigger_is_proposable_accepts_investigate_whiff_and_route_kinds_only(self):
+        cases = (
+            ({"verb": "investigate"}, True),          # pre-S1: no "kind" at all -> whiff
+            ({"kind": "whiff", "verb": "investigate"}, True),
+            ({"kind": "whiff", "verb": "observe"}, False),
+            ({"verb": "observe"}, False),
+            ({"kind": "ignorance", "zone": "海"}, True),
+            ({"kind": "blocked", "requirement": "has_item:縄"}, True),
+            ("not-a-dict", False),
+        )
+        for trigger, expected in cases:
+            with self.subTest(trigger=trigger):
+                self.assertEqual(world_patch_job.trigger_is_proposable(trigger), expected)
 
     # -- 3: admit() rejections ---------------------------------------------
 

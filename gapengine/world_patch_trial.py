@@ -14,6 +14,7 @@ from engine.sim import _engine_source_hash
 from gapengine import lineage
 from gapengine.evolve import run_individual
 from gapengine.qd import read_rows
+from gapengine.rationality import RationalityTableMissError
 from gapengine.world_demand import collect
 from gapengine.world_patch import (PATCH_RULES_VERSION, PatchError, absolutize_references, materialize,
                                    template_identifiers)
@@ -44,6 +45,14 @@ def individual_count(individuals):
 
 
 def trial_state(trial):
+    # WB-WORLDGROW-002 stage 0 review, required item 1: a kappa>0 experiment's
+    # patched world almost always needs a judgment the shared table has no
+    # entry for (a patch adds candidates/zones the original run never saw),
+    # raising RationalityTableMissError -- that is expected and not a patch
+    # defect, so it must read as "reference_only" (judge required, cannot
+    # measure), never as "contract_failed" the way any other job error does.
+    if trial.get("rationality_table_miss"):
+        return "reference_only"
     if trial.get("errors") or trial.get("contract", {}).get("violations"):
         return "contract_failed"
     evidence, reproduction = trial.get("evidence") or {}, trial.get("reproduction") or {}
@@ -90,7 +99,7 @@ def _select_cells(archive: dict, max_runs: int) -> list[tuple[str, dict]]:
 def _job(*, ctx: dict, world_path: Path, out_dir: Path, elite: dict,
          index: int, seeds: list[int], precedent_json: str, antagonist_precedent_json,
          antagonist_genome) -> dict[str, Any]:
-    return {
+    job = {
         "action_cfg": ctx["action_cfg"],
         "action_graph_path": (str(ctx["action_graph_path"]) if ctx["action_graph_path"] is not None else None),
         "antagonist": ctx["antagonist"],
@@ -112,6 +121,31 @@ def _job(*, ctx: dict, world_path: Path, out_dir: Path, elite: dict,
         "target_ending": ctx["target_ending"],
         "world_path": str(world_path),
     }
+    # WB-WORLDGROW-002 stage 0: without these, a base/patched/reproduction
+    # trial run of an rho>0/kappa>0 experiment silently walked a
+    # route-free/rationality-free history -- reproduction's byte comparison
+    # against the original layers.jsonl then always mismatched
+    # (state -> reference_only). ctx["route_cfg"]/["rationality_cfg"] are
+    # gapengine.lineage._resolve_world_context's restore_job_cfgs() result
+    # (this module's `ctx` is built by that same function).
+    if ctx.get("route_cfg") is not None:
+        job["route_cfg"] = ctx["route_cfg"]
+    if ctx.get("rationality_cfg") is not None:
+        job["rationality_cfg"] = ctx["rationality_cfg"]
+        job["rationality_table_path"] = str(ctx["rationality_table_path"])
+        # Never places a live judge call during a trial run -- only replays
+        # judgments the experiment's own shared table already has (plan §0
+        # item 3: "試走で判定器を呼ぶかは今回は決めない。呼ばない").
+        job["rationality_table_only"] = True
+    return job
+
+
+# _reproduction_matches lives on gapengine.lineage (used by both that
+# module's own ancestor-rerun comparison, recommendation "a" of the
+# WB-WORLDGROW-002 stage 0 review, and this module's reproduction check
+# below) -- one place to define "byte-identical except the known-harmless
+# rationality.table_hash_at_start drift" so the two never disagree about it.
+_reproduction_matches = lineage._reproduction_matches
 
 
 def _trigger_counts(report: dict, zones: set[str], verb: str) -> dict[str, int]:
@@ -122,6 +156,37 @@ def _trigger_counts(report: dict, zones: set[str], verb: str) -> dict[str, int]:
         count += pair[0]
         whiffs += pair[1]
     return {"count": count, "whiffs": whiffs}
+
+
+# WB-WORLDGROW-002 stage 3: ignorance/blocked before/after, reusing
+# gapengine.world_demand.collect()'s route_counts/blocked_counts (structured
+# policy.route fields only -- never text, same constraint S1/S2 already
+# hold). Not used for pass/fail, same as _trigger_counts above.
+def _route_scope_totals(report: dict, zones: set[str]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for zone in zones:
+        for key, count in report.get("route_counts", {}).get(zone, {}).items():
+            totals[key] = totals.get(key, 0) + count
+    return totals
+
+
+def _ignorance_counts(report: dict, zones: set[str]) -> dict:
+    totals = _route_scope_totals(report, zones)
+    total = sum(totals.values())
+    count = totals.get("detour:ignorance", 0)
+    return {"count": count, "total": total, "share": round(count / total, 4) if total else None}
+
+
+def _blocked_counts(report: dict, requirement: str) -> dict:
+    count = report.get("blocked_counts", {}).get(requirement, {}).get("count", 0)
+    lost_total = sum(counts.get("lost", 0) for counts in report.get("route_counts", {}).values())
+    route_total = sum(sum(counts.values()) for counts in report.get("route_counts", {}).values())
+    # R2 (段階3 review 1): "lost_rate" -- lost_total / 道筋付き決定の総数（見
+    # 通しなし決定そのものの率）。gapengine/world_demand.py の需要トリガーの
+    # "lost_share"（要件の件数 / 道筋付き決定の総数, M4）とは意味が違うため、
+    # 同名のまま両方が画面に出ると取り違えやすい -- 別名にして区別する。
+    return {"count": count, "lost_total": lost_total,
+            "lost_rate": round(lost_total / route_total, 4) if route_total else None}
 
 
 def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=None, max_runs=5,
@@ -183,7 +248,14 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
              "contract": contract_check(paths["patched"], paths["patched"].parent / "subjects", patch,
                                          action_graph_path=ctx["action_graph_path"]),
              "pairs": [], "passed": False, "statistics": {"defined": False,
-                "note": "v1 は統計的な合否を出さない。規約は複数世界で較正してから導入する"}}
+                "note": "v1 は統計的な合否を出さない。規約は複数世界で較正してから導入する"},
+             # WB-WORLDGROW-002 stage 0 review, required item 1: cells where a
+             # job hit RationalityTableMissError (kappa>0, a decision the
+             # shared table has no judgment for) -- kept apart from
+             # trial["errors"] so trial_state() reports "reference_only"
+             # ("judge required, cannot measure") instead of "contract_failed"
+             # ("patch rejected") for something the patch itself didn't cause.
+             "rationality_table_miss": []}
     layers = {"base": [], "patched": []}
     engine_hashes, seen = set(), set()
     for cell, elite in _select_cells(archive, len(archive.get("cells", {}))):
@@ -232,10 +304,15 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
                 job = _job(**common, world_path=paths["base"], out_dir=out, seeds=[original_seed])
                 job["record_explanations"] = recorded
                 rerun = run_individual(job)
-                if (out / rerun["runs"][0]["layers_path"]).read_bytes() == original.read_bytes():
+                if _reproduction_matches(out / rerun["runs"][0]["layers_path"], original):
                     trial["reproduction"]["identical"] += 1
                 else:
                     trial["reproduction"]["mismatched"].append(cell)
+            except RationalityTableMissError as error:
+                trial["reproduction"]["mismatched"].append(cell)
+                trial["rationality_table_miss"].append(
+                    {"cell": cell, "world": "reproduction", "error": str(error)}
+                )
             except Exception as error:
                 trial["reproduction"]["mismatched"].append(cell)
                 trial["errors"].append({"cell": cell, "world": "reproduction", "error": repr(error)})
@@ -247,6 +324,10 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
                 job["subjects_dir"] = str(paths[label].parent / "subjects")
                 result = run_individual(job)
                 sides[label] = (result["runs"], out)
+            except RationalityTableMissError as error:
+                trial["rationality_table_miss"].append(
+                    {"cell": cell, "world": label, "error": str(error)}
+                )
             except Exception as error:
                 trial["errors"].append({"cell": cell, "world": label, "error": repr(error)})
         if len(sides) != 2:
@@ -277,10 +358,21 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
     trial["new_usage"] = new_usage(layers["patched"], patch, ctx["protagonist"])
     trial["trigger"] = None
     trigger = patch.get("trigger") or {}
-    if trigger.get("zone") and trigger.get("verb"):
+    kind = trigger.get("kind", "whiff") if isinstance(trigger, dict) else "whiff"
+    # whiff: byte-identical to pre-S3 (no "kind" key, same two fields).
+    if kind == "whiff" and trigger.get("zone") and trigger.get("verb"):
         zones = {trigger["zone"]} | {z["name"] for z in patch.get("add", {}).get("zones", []) if z["parent"] == trigger["zone"]}
         trial["trigger"] = {"zone": trigger["zone"], "verb": trigger["verb"], **{
             label: _trigger_counts(collect(paths_, subject=ctx["protagonist"]), zones, trigger["verb"])
+            for label, paths_ in layers.items()}}
+    elif kind == "ignorance" and trigger.get("zone"):
+        zones = {trigger["zone"]} | {z["name"] for z in patch.get("add", {}).get("zones", []) if z["parent"] == trigger["zone"]}
+        trial["trigger"] = {"kind": "ignorance", "zone": trigger["zone"], **{
+            label: _ignorance_counts(collect(paths_, subject=ctx["protagonist"]), zones)
+            for label, paths_ in layers.items()}}
+    elif kind == "blocked" and trigger.get("requirement"):
+        trial["trigger"] = {"kind": "blocked", "requirement": trigger["requirement"], **{
+            label: _blocked_counts(collect(paths_, subject=ctx["protagonist"]), trigger["requirement"])
             for label, paths_ in layers.items()}}
     trial["milestones"] = {label: milestones(logs) for label, logs in layers.items()}
     if ctx["source"] == "frozen_inputs":
@@ -298,4 +390,9 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
     if skipped:
         trial["reasons"].append("陰性検査省略: " + "、".join(
             f"{n['subject']}(規則{n['rule_index']})" for n in skipped))
+    if trial["rationality_table_miss"]:
+        trial["reasons"].append(
+            f"κ>0 のため判定器が要ります（表に無い判定 {len(trial['rationality_table_miss'])} 件）。"
+            "この試走は共有の合理性表だけでは再現できません"
+        )
     return trial

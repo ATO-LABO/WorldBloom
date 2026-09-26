@@ -14,11 +14,18 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from engine.world import World
-from gapengine.evolve import _best_reached, _lineage_stats, _load_yaml, run_individual
+from gapengine.evolve import (
+    _best_reached,
+    _lineage_stats,
+    _load_yaml,
+    restore_job_cfgs,
+    run_individual,
+)
 from gapengine.genome import CATEGORIES
 from gapengine.qd import read_rows, reached as qd_reached
 
@@ -349,6 +356,139 @@ def _has_recorded_explanations(rows: Sequence[Mapping[str, Any]]) -> bool:
     )
 
 
+def _reproduction_matches(rerun_path: Path, original_path: Path) -> bool:
+    """True when `rerun_path` reproduces `original_path` -- byte-identical,
+    or identical everywhere except the header's
+    ``rationality.table_hash_at_start`` (WB-WORLDGROW-002 stage 0: a
+    kappa>0 experiment's shared rationality table keeps accumulating for
+    the rest of the GA run after any one individual's own seed finishes --
+    gapengine.evolve._merge_rationality_table overwrites it in place every
+    generation, keeping no per-generation snapshot -- so a reproduction
+    run reading the table's *current*, bigger content legitimately starts
+    from a hash the original individual never saw, even though every
+    decision it actually made, replayed from that same table, still
+    matches exactly. This field is deliberately excluded from
+    gapengine.evolve._cfg_fingerprint for the same reason: it is
+    bookkeeping about *how* a value was computed, not part of *what* a run
+    computes, so treating it as a mismatch here would report a perfectly
+    faithful kappa>0 reproduction as "reference_only").
+
+    Shared by this module's own ancestor-rerun comparison
+    (WB-WORLDGROW-002 stage 0 review recommendation "a", see
+    ``_mark_reproduction_mismatch`` below) and
+    gapengine.world_patch_trial's base/patched/reproduction trial check --
+    one definition of "matches" so the two paths never disagree."""
+
+    rerun_bytes, original_bytes = rerun_path.read_bytes(), original_path.read_bytes()
+    if rerun_bytes == original_bytes:
+        return True
+    rerun_rows, original_rows = read_rows(rerun_path), read_rows(original_path)
+    if len(rerun_rows) != len(original_rows):
+        return False
+    for index, (rerun_row, original_row) in enumerate(zip(rerun_rows, original_rows)):
+        if rerun_row == original_row:
+            continue
+        if index != 0:
+            return False
+        rerun_header, original_header = dict(rerun_row), dict(original_row)
+        for header in (rerun_header, original_header):
+            rationality = dict(header.get("rationality") or {})
+            rationality.pop("table_hash_at_start", None)
+            if rationality:
+                header["rationality"] = rationality
+            else:
+                header.pop("rationality", None)
+        if rerun_header != original_header:
+            return False
+    return True
+
+
+def _cfg_matches_header(
+    header: Mapping[str, Any] | None, ctx: Mapping[str, Any]
+) -> bool:
+    """WB-WORLDGROW-002 stage 0 review recommendation c: a lineage rerun's
+    cached layers.jsonl -- from before this stage 0 fix existed, or from an
+    earlier call whose ctx had no route_cfg/rationality_cfg for some other
+    reason -- has no "route"/"rationality" header key at all even though
+    ctx now resolves one (or the reverse). Serving that cache forever after
+    would silently keep showing a route/rationality-free history for a
+    rho>0/kappa>0 experiment. Presence alone is the check (not every
+    field): engine.sim's header-writer only ever records "route"/
+    "rationality" when a job actually carried route_cfg/rationality_cfg, so
+    a presence mismatch alone already proves the cache predates, or was
+    built under different settings than, ctx."""
+
+    if not header:
+        return False
+    has_route = isinstance(header.get("route"), Mapping)
+    if has_route != (ctx.get("route_cfg") is not None):
+        return False
+    has_rationality = isinstance(header.get("rationality"), Mapping)
+    return has_rationality == (ctx.get("rationality_cfg") is not None)
+
+
+def _mark_reproduction_mismatch(
+    node: dict[str, Any], layers_path: Path, original_path: Path
+) -> None:
+    """WB-WORLDGROW-002 stage 0 review recommendation a: compares a rerun's
+    layers.jsonl against the experiment's own archived original (when one
+    exists for this exact generation/index/seed), so an ancestor rerun that
+    silently walks a *different* history than the archived one -- a
+    kappa>0 experiment's shared rationality table can have moved on by the
+    time of a later rerun -- or one that differs only because the
+    engine/gapengine code changed since the original run (the 115c36f
+    commit's own run-378f correction: policy.route.text's wording changed
+    under 57fdab0, not a non-determinism) surfaces as an explicit,
+    reviewable flag on that ancestor instead of a confidently-wrong lineage.
+
+    Never raises: a legacy run's world/template can legitimately have moved
+    on since it ran, and the lineage page must still render that ancestor
+    (degraded, like ``rerun_error`` already does) rather than 500."""
+
+    if not original_path.is_file():
+        return
+    if not _reproduction_matches(layers_path, original_path):
+        node["reproduction_mismatch"] = True
+
+
+def _representative_header(
+    repository: Any, experiment: Path
+) -> Mapping[str, Any] | None:
+    """One already-recorded seed's layers.jsonl header (any one -- route_cfg
+    and rationality_cfg are experiment-wide settings, identical for every
+    individual/seed a single ``_evolve()`` call produced), for
+    ``restore_job_cfgs``'s legacy fallback (WB-WORLDGROW-002 stage 0: a
+    run launched before manifest.json/ConfigStore existed has no other
+    record of its route.rho/rationality.kappa settings). Cheap best-effort
+    only: any read failure or empty archive just means no header is
+    available, same as an experiment with nothing recorded yet."""
+
+    archive_path = repository.safe_path(experiment, "archive.json")
+    if not archive_path.is_file():
+        return None
+    try:
+        archive = json.loads(archive_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    cells = archive.get("cells") if isinstance(archive, Mapping) else None
+    if not isinstance(cells, Mapping):
+        return None
+    for cell_key in sorted(cells):
+        elite = cells.get(cell_key)
+        if not isinstance(elite, Mapping):
+            continue
+        layers_path = (elite.get("exemplar") or {}).get("layers_path")
+        if not isinstance(layers_path, str):
+            continue
+        path = repository.safe_path(experiment, layers_path)
+        if not path.is_file():
+            continue
+        rows = read_rows(path)
+        if rows:
+            return rows[0]
+    return None
+
+
 def _resolve_world_context(
     repository: Any,
     experiment: Path,
@@ -428,6 +568,23 @@ def _resolve_world_context(
     if target_ending is not None:
         world.set_target_ending(target_ending)
 
+    # WB-WORLDGROW-002 stage 0: the same route_cfg/rationality_cfg
+    # _evolve() attached to every one of this experiment's own jobs, so a
+    # rerun (`_rerun_node` below, and world_patch_trial's base/patched/
+    # reproduction runs, which share this same ctx) walks the same history
+    # instead of a route-free/rationality-free one whenever rho>0/kappa>0.
+    # A representative header is only read when there is no manifest.json
+    # (restore_job_cfgs's preferred source) -- cheap best-effort, unused
+    # otherwise.
+    header = (
+        None
+        if (experiment / "manifest.json").is_file()
+        else _representative_header(repository, experiment)
+    )
+    route_cfg, rationality_cfg, rationality_table_path = restore_job_cfgs(
+        experiment, template_dir, header=header
+    )
+
     return {
         "source": resolved["source"],
         "template_dir": template_dir,
@@ -438,6 +595,9 @@ def _resolve_world_context(
         "antagonist_action_cfg": antagonist_action_cfg,
         "protagonist": world.protagonist,
         "qd_cfg": qd_cfg,
+        "rationality_cfg": rationality_cfg,
+        "rationality_table_path": rationality_table_path,
+        "route_cfg": route_cfg,
         "rules": rules,
         "subjects_dir": subjects_dir,
         "target_ending": target_ending,
@@ -454,15 +614,39 @@ def _rerun_node(
 ) -> list[dict[str, Any]]:
     """Rows for `node` at the fixed lineage `seed`, from cache or a rerun."""
 
-    from execution.provenance import directory_lock
+    from execution.provenance import directory_lock, publish_directory
 
     out_dir = repository.safe_path(
         experiment,
         f"lineage/{_safe_ref_name(str(node['ref']))}",
     )
-    layers_path = out_dir / f"seed-{seed}" / "layers.jsonl"
+    seed_name = f"seed-{seed}"
+    layers_path = out_dir / seed_name / "layers.jsonl"
+    original_path = repository.safe_path(
+        experiment,
+        f"g{node['generation']}/ind-{node['index']}/seed-{seed}/layers.jsonl",
+    )
     if layers_path.is_file():
-        return read_rows(layers_path)
+        rows = read_rows(layers_path)
+        if rows and _cfg_matches_header(rows[0], ctx):
+            _mark_reproduction_mismatch(node, layers_path, original_path)
+            return rows
+        if rows:
+            # WB-WORLDGROW-002 stage 0 review recommendation c: this cache
+            # was built under a different route_cfg/rationality_cfg than
+            # ctx now resolves (most likely: written before this stage 0
+            # fix existed at all, so it has no "route"/"rationality" header
+            # key even though ctx now has one). publish_directory() below
+            # refuses to ever replace an already-published seed dir (by
+            # design -- lineage/<ref>/seed-N/ is meant to be immutable once
+            # written), so silently rerunning here would just crash on that
+            # conflict instead of explaining the real problem. Failing loud
+            # and specific here beats both silently serving the stale,
+            # route/rationality-free history and that opaque conflict.
+            raise LineageError(
+                f"{layers_path} は古いキャッシュです（route/rationality の設定が"
+                "今回の復元結果と一致しません）。手動で削除してから再生成してください。"
+            )
 
     # execution.provenance.directory_lock (same pattern as
     # viewer/data.py::toggle_selection): a second same-process thread racing
@@ -473,7 +657,15 @@ def _rerun_node(
     # layers.jsonl.
     with directory_lock(out_dir):
         if layers_path.is_file():
-            return read_rows(layers_path)
+            rows = read_rows(layers_path)
+            if rows and _cfg_matches_header(rows[0], ctx):
+                _mark_reproduction_mismatch(node, layers_path, original_path)
+                return rows
+            if rows:
+                raise LineageError(
+                    f"{layers_path} は古いキャッシュです（route/rationality の設定が"
+                    "今回の復元結果と一致しません）。手動で削除してから再生成してください。"
+                )
 
         precedent_path = repository.safe_path(
             experiment,
@@ -493,16 +685,24 @@ def _rerun_node(
                 encoding="utf-8",
             )
 
-        original_path = repository.safe_path(
-            experiment,
-            f"g{node['generation']}/ind-{node['index']}/seed-{seed}/layers.jsonl",
-        )
         record_explanations = True
         if original_path.is_file():
             record_explanations = _has_recorded_explanations(
                 read_rows(original_path)
             )
 
+        # WB-WORLDGROW-002 stage 0: run_individual() streams layers.jsonl
+        # directly to its final path with no atomicity of its own (engine/
+        # log.py's LayersWriter) -- a job that raises partway through
+        # (e.g. RationalityTableMissError, below) would otherwise leave a
+        # truncated layers.jsonl sitting exactly where the cache check above
+        # looks, so a *later* call would wrongly treat it as a complete,
+        # successful rerun forever after. Writing into a throwaway staging
+        # dir first and only publish_directory()-ing it into `out_dir` on
+        # success (same pattern execution/configs.py's prepare_run() uses)
+        # means a failed attempt just leaves an orphaned, never-looked-at
+        # staging dir instead of a corrupt cache entry.
+        staging = out_dir / f".pending-{seed}-{uuid.uuid4().hex}"
         job = {
             "action_cfg": ctx["action_cfg"],
             "action_graph_path": (
@@ -516,8 +716,8 @@ def _rerun_node(
             "antagonist_precedent_json": antagonist_precedent_json,
             "genome": node["genome"],
             "index": node["index"],
-            "logical_root": str(out_dir),
-            "out_dir": str(out_dir),
+            "logical_root": str(staging),
+            "out_dir": str(staging),
             "parents": node["parents"],
             "precedent_json": precedent_path.read_text(encoding="utf-8"),
             "protagonist": ctx["protagonist"],
@@ -529,8 +729,24 @@ def _rerun_node(
             "target_ending": ctx["target_ending"],
             "world_path": str(ctx["world_path"]),
         }
+        # WB-WORLDGROW-002 stage 0: without these, run_individual() attaches
+        # no Route/Rationality at all, so a rho>0/kappa>0 experiment's
+        # ancestor rerun would silently walk a different history than the
+        # archived one (see restore_job_cfgs).
+        if ctx.get("route_cfg") is not None:
+            job["route_cfg"] = ctx["route_cfg"]
+        if ctx.get("rationality_cfg") is not None:
+            job["rationality_cfg"] = ctx["rationality_cfg"]
+            job["rationality_table_path"] = str(ctx["rationality_table_path"])
+            # Never places a live judge call during a rerun -- only replays
+            # judgments the experiment's own shared table already has
+            # (plan §0 item 3).
+            job["rationality_table_only"] = True
         run_individual(job)
-        return read_rows(layers_path)
+        publish_directory(staging / seed_name, out_dir / seed_name)
+        rows = read_rows(layers_path)
+        _mark_reproduction_mismatch(node, layers_path, original_path)
+        return rows
 
 
 def _protagonist_decisions(
@@ -728,19 +944,35 @@ def build_lineage_report(
     chain = primary_lineage(repository, experiment, cell_key)
     seed = chain[0]["seed"]
     elite_ref = chain[0]["ref"]
+    # WB-WORLDGROW-002 stage 0 review recommendation c: ctx (and so its
+    # route_cfg/rationality_cfg) is resolved before the cache check below,
+    # not after -- a report cached before this fix existed has no
+    # "route_rho"/"rationality_kappa" key at all, so a mismatch against
+    # ctx's freshly-resolved fingerprint (None != None only when they
+    # genuinely agree) forces a rebuild instead of returning ancestry that
+    # was rerun with no Route/Rationality at all.
+    ctx = _resolve_world_context(repository, experiment)
+    route_rho = ctx["route_cfg"].get("rho") if ctx.get("route_cfg") else None
+    rationality_kappa = (
+        ctx["rationality_cfg"].get("kappa") if ctx.get("rationality_cfg") else None
+    )
     if cache_path.is_file():
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
         if (
             cached.get("seed") == seed
             and cached.get("cell") == cell_key
             and cached.get("elite_ref") == elite_ref
+            and cached.get("route_rho") == route_rho
+            and cached.get("rationality_kappa") == rationality_kappa
             and all("scalars" in entry for entry in cached.get("ancestry", []))
+            and all(
+                "reproduction_mismatch" in entry for entry in cached.get("ancestry", [])
+            )
             and all("trait_series" in turning for turning in cached.get("turnings", []))
         ):
             return cached
 
     ancestry = list(reversed(chain))  # oldest -> newest for display
-    ctx = _resolve_world_context(repository, experiment)
 
     rows_by_ref: dict[str, list[dict[str, Any]] | None] = {}
     for node in ancestry:
@@ -789,6 +1021,7 @@ def build_lineage_report(
                 "quality": node["quality"],
                 "reached": node["reached"],
                 "rerun_error": node.get("rerun_error"),
+                "reproduction_mismatch": node.get("reproduction_mismatch", False),
                 "scalars": genome_scalars(node["genome"]),
                 "gene_shift": gene_shift,
                 "outcome": (
@@ -848,6 +1081,8 @@ def build_lineage_report(
         "cell": cell_key,
         "seed": seed,
         "elite_ref": elite_ref,
+        "route_rho": route_rho,
+        "rationality_kappa": rationality_kappa,
         "ancestry": ancestry_entries,
         "first_reach_index": first_reach_index,
         "turnings": turnings,

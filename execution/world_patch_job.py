@@ -15,7 +15,7 @@ from execution.output_settings import resolve_generation
 from execution.provenance import (
     ConfigError, canonical, code_snapshot, contained, identifier, python_executable, sha256)
 from execution.world_patches import _check_parent_rev
-from gapengine.world_patch import ID_RE
+from gapengine.world_patch import ID_RE, trigger_is_proposable
 
 PROPOSE_FIELDS = {"schema_version", "request_id", "kind", "config_id", "run_id", "action", "trigger"}
 CHECK_FIELDS = {"schema_version", "request_id", "kind", "config_id", "run_id", "action", "patch_id"}
@@ -110,8 +110,7 @@ def admit(jobs, request, *, settings_path=None):
             raise ConfigError("trigger", "世界の需要が集計されていません")
         triggers = _triggers(report_path)
         trigger = request["trigger"]
-        if (not (0 <= trigger < len(triggers)) or not isinstance(triggers[trigger], dict)
-                or triggers[trigger].get("verb") != "investigate"):
+        if not (0 <= trigger < len(triggers)) or not trigger_is_proposable(triggers[trigger]):
             raise ConfigError("trigger", "対応できる需要がありません")
     else:
         patch_path = contained(project, f"patches/_proposed/{request['patch_id']}.yaml")
@@ -125,15 +124,6 @@ def admit(jobs, request, *, settings_path=None):
         raise ConfigError("run_id", mismatch, code="conflict")
 
     return {"wall_seconds": max(current["limits"]["wall_seconds"], MIN_WALL_SECONDS)}
-
-
-def _investigate_index(triggers, raw_index):
-    """scripts/world_patch.py's `propose --trigger N` takes an index into
-    investigate-only triggers (its own _investigate_triggers()), not the raw
-    index into world_demand.json's triggers (every verb) that the UI's
-    data-trigger and this job's request use -- convert here, once, so the
-    two numbering schemes never have to agree anywhere else."""
-    return sum(1 for t in triggers[:raw_index] if isinstance(t, dict) and t.get("verb") == "investigate")
 
 
 def prepare(configs, job, request):
@@ -154,13 +144,15 @@ def prepare(configs, job, request):
     if request["action"] == "propose":
         triggers = _triggers(contained(root, "world_demand.json"))
         raw = request["trigger"]
-        if (not (0 <= raw < len(triggers)) or not isinstance(triggers[raw], dict)
-                or triggers[raw].get("verb") != "investigate"):
+        if not (0 <= raw < len(triggers)) or not trigger_is_proposable(triggers[raw]):
             raise ConfigError("trigger", "対応できる需要がありません")
-        n = _investigate_index(triggers, raw)
+        # WB-WORLDGROW-002 S2: `raw` is forwarded as-is -- scripts/world_patch.py's
+        # `propose --trigger` now takes the same raw index into
+        # world_demand.json's triggers that this request and the UI's
+        # data-trigger already use (no more investigate-only re-numbering).
         argv = [python_executable(), "-I", "-B", str(script),
                 "propose", "--experiment", str(root), "--project", str(project),
-                "--trigger", str(n), "--settings", job["settings_path"],
+                "--trigger", str(raw), "--settings", job["settings_path"],
                 "--then-holdout", *common]
         phase = "proposing"
     else:
