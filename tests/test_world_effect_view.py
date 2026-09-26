@@ -171,6 +171,34 @@ class EffectHtmlTests(unittest.TestCase):
         self.assertIn("/exp/expand-run/cell/II%7Cmid", html)
         # 段階4設計メモ G7: 品質は比較しない（占有の有無だけ）。
         self.assertNotIn("quality", html)
+        # WB-WORLDGROW-002 stage 3: route の無い実験では ignorance/blocked の
+        # 見出し自体が出ない（きっかけの表の出力を変えない）。
+        self.assertNotIn("手探りは減ったか", html)
+        self.assertNotIn("計画が立たない状態は減ったか", html)
+
+    def test_pair_renders_ignorance_and_blocked_tables_by_kind(self) -> None:
+        # WB-WORLDGROW-002 stage 3: ignorance/blocked triggers (only ever
+        # populated on a route-wired run) get their own kind-specific table,
+        # separate from the whiff table above and each other.
+        _write_experiment(self.runs_root, "base-run", demand_triggers=[
+            {"kind": "ignorance", "zone": "海", "count": 20, "share": 0.7},
+            {"kind": "blocked", "requirement": "has_item:縄", "count": 15,
+             "runs": 5, "lost_share": 0.5},
+        ])
+        _write_experiment(self.runs_root, "expand-run", patch_ids=("p-1",), demand_triggers=[
+            {"kind": "ignorance", "zone": "海", "count": 4, "share": 0.2},
+            {"kind": "blocked", "requirement": "has_item:縄", "count": 3,
+             "runs": 5, "lost_share": 0.1},
+        ])
+
+        html = world_effect_view.effect_html(self._handler(), {"run_name": "expand-run"}, {})
+        self.assertIn("手探りは減ったか", html)
+        self.assertIn("20回（道筋付き決定の70.0%）", html)  # ベース
+        self.assertIn("4回（道筋付き決定の20.0%）", html)   # 拡張後
+        self.assertIn("計画が立たない状態は減ったか", html)
+        self.assertIn("15回（5本のラン、見通しなし全体の50.0%）", html)  # ベース
+        self.assertIn("3回（5本のラン、見通しなし全体の10.0%）", html)   # 拡張後
+        self.assertIn("has_item:縄", html)
 
     def test_with_query_selects_a_specific_partner(self) -> None:
         _write_experiment(self.runs_root, "base-a")

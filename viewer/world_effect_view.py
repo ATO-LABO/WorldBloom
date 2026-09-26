@@ -123,12 +123,23 @@ def find_partners(repository, run_name):
     return role, config, partners
 
 
-def _trigger_map(report):
-    result = {}
+def _trigger_maps(report):
+    """(whiff, ignorance, blocked) キー付き辞書。キーは whiff=(zone, verb)、
+    ignorance=zone、blocked=requirement。route の無い実験では ignorance/
+    blocked は常に空（world_demand.collect() が route_counts/blocked_counts
+    を空で返すのと同じ理由）。"""
+    whiff, ignorance, blocked = {}, {}, {}
     for t in data._as_list((report or {}).get("triggers")):
-        if isinstance(t, dict) and t.get("zone") and t.get("verb"):
-            result[(t["zone"], t["verb"])] = t
-    return result
+        if not isinstance(t, dict):
+            continue
+        kind = t.get("kind", "whiff")
+        if kind == "whiff" and t.get("zone") and t.get("verb"):
+            whiff[(t["zone"], t["verb"])] = t
+        elif kind == "ignorance" and t.get("zone"):
+            ignorance[t["zone"]] = t
+        elif kind == "blocked" and t.get("requirement"):
+            blocked[t["requirement"]] = t
+    return whiff, ignorance, blocked
 
 
 def _whiff_side(trigger):
@@ -141,7 +152,7 @@ def _whiff_side(trigger):
 
 
 def _whiff_table_html(base_report, expand_report):
-    before_map, after_map = _trigger_map(base_report), _trigger_map(expand_report)
+    before_map, after_map = _trigger_maps(base_report)[0], _trigger_maps(expand_report)[0]
     keys = sorted(set(before_map) | set(after_map))
     if not keys:
         return "<p>比較できるきっかけの記録がありません。</p>"
@@ -152,6 +163,66 @@ def _whiff_table_html(base_report, expand_report):
         for zone, verb in keys
     )
     return ('<table class="wb-table"><thead><tr><th>場所</th><th>行動</th>'
+            f"<th>ベース</th><th>拡張後</th></tr></thead><tbody>{rows}</tbody></table>")
+
+
+def _ignorance_side(trigger):
+    if not isinstance(trigger, dict):
+        return "—"
+    count = data._number(trigger.get("count"))
+    if count <= 0:
+        return "0回"
+    share = trigger.get("share")
+    if isinstance(share, (int, float)):
+        return f"{count:.0f}回（道筋付き決定の{share * 100:.1f}%）"
+    return f"{count:.0f}回"
+
+
+def _ignorance_table_html(base_report, expand_report):
+    # WB-WORLDGROW-002 stage 3: route の無い実験では常に空 map 同士なので
+    # 何も出力しない（きっかけの表の出力を変えない）。
+    before_map, after_map = _trigger_maps(base_report)[1], _trigger_maps(expand_report)[1]
+    zones = sorted(set(before_map) | set(after_map))
+    if not zones:
+        return ""
+    rows = "".join(
+        f"<tr><td>{_escape(zone)}</td>"
+        f"<td>{_ignorance_side(before_map.get(zone))}</td>"
+        f"<td>{_ignorance_side(after_map.get(zone))}</td></tr>"
+        for zone in zones
+    )
+    return ('<h3>手探りは減ったか</h3><table class="wb-table"><thead><tr><th>場所</th>'
+            f"<th>ベース</th><th>拡張後</th></tr></thead><tbody>{rows}</tbody></table>")
+
+
+def _blocked_side(trigger):
+    if not isinstance(trigger, dict):
+        return "—"
+    count = data._number(trigger.get("count"))
+    if count <= 0:
+        return "0回"
+    runs, lost_share = trigger.get("runs"), trigger.get("lost_share")
+    extra = []
+    if isinstance(runs, (int, float)):
+        extra.append(f"{runs:.0f}本のラン")
+    if isinstance(lost_share, (int, float)):
+        extra.append(f"見通しなし全体の{lost_share * 100:.1f}%")
+    detail = "、".join(extra)
+    return f"{count:.0f}回（{detail}）" if detail else f"{count:.0f}回"
+
+
+def _blocked_table_html(base_report, expand_report):
+    before_map, after_map = _trigger_maps(base_report)[2], _trigger_maps(expand_report)[2]
+    requirements = sorted(set(before_map) | set(after_map))
+    if not requirements:
+        return ""
+    rows = "".join(
+        f"<tr><td>{_escape(requirement)}</td>"
+        f"<td>{_blocked_side(before_map.get(requirement))}</td>"
+        f"<td>{_blocked_side(after_map.get(requirement))}</td></tr>"
+        for requirement in requirements
+    )
+    return ('<h3>計画が立たない状態は減ったか</h3><table class="wb-table"><thead><tr><th>要件</th>'
             f"<th>ベース</th><th>拡張後</th></tr></thead><tbody>{rows}</tbody></table>")
 
 
@@ -273,6 +344,8 @@ def effect_html(handler, view, query):
         '<p class="muted">同じseedでも候補集合が変わるため物語は一致しません。分布としての比較です。</p>'
         + header
         + "<h3>きっかけは解消したか</h3>" + _whiff_table_html(base_report, expand_report)
+        + _ignorance_table_html(base_report, expand_report)
+        + _blocked_table_html(base_report, expand_report)
         + "<h3>物語はどう変わったか（最終世代）</h3>" + _trend_html(base_summary, expand_summary)
         + "<h3>地図の差分</h3>" + _map_diff_html(repository, base_root, expand_root, expand_name, expand_state, protagonist)
         + f"<h3>{added_heading}</h3>" + world_demand_view.expansion_line(expand_state)

@@ -158,6 +158,33 @@ def _trigger_counts(report: dict, zones: set[str], verb: str) -> dict[str, int]:
     return {"count": count, "whiffs": whiffs}
 
 
+# WB-WORLDGROW-002 stage 3: ignorance/blocked before/after, reusing
+# gapengine.world_demand.collect()'s route_counts/blocked_counts (structured
+# policy.route fields only -- never text, same constraint S1/S2 already
+# hold). Not used for pass/fail, same as _trigger_counts above.
+def _route_scope_totals(report: dict, zones: set[str]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for zone in zones:
+        for key, count in report.get("route_counts", {}).get(zone, {}).items():
+            totals[key] = totals.get(key, 0) + count
+    return totals
+
+
+def _ignorance_counts(report: dict, zones: set[str]) -> dict:
+    totals = _route_scope_totals(report, zones)
+    total = sum(totals.values())
+    count = totals.get("detour:ignorance", 0)
+    return {"count": count, "total": total, "share": round(count / total, 4) if total else None}
+
+
+def _blocked_counts(report: dict, requirement: str) -> dict:
+    count = report.get("blocked_counts", {}).get(requirement, {}).get("count", 0)
+    lost_total = sum(counts.get("lost", 0) for counts in report.get("route_counts", {}).values())
+    route_total = sum(sum(counts.values()) for counts in report.get("route_counts", {}).values())
+    return {"count": count, "lost_total": lost_total,
+            "lost_share": round(lost_total / route_total, 4) if route_total else None}
+
+
 def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=None, max_runs=5,
               seeds_per_run=8, seed_set="exploration"):
     # R7: intentional layer inversion, function-local -- a legacy/non-frozen
@@ -327,10 +354,21 @@ def run_trial(experiment_dir, patch, *, work_dir, template_dir=None, repo_root=N
     trial["new_usage"] = new_usage(layers["patched"], patch, ctx["protagonist"])
     trial["trigger"] = None
     trigger = patch.get("trigger") or {}
-    if trigger.get("zone") and trigger.get("verb"):
+    kind = trigger.get("kind", "whiff") if isinstance(trigger, dict) else "whiff"
+    # whiff: byte-identical to pre-S3 (no "kind" key, same two fields).
+    if kind == "whiff" and trigger.get("zone") and trigger.get("verb"):
         zones = {trigger["zone"]} | {z["name"] for z in patch.get("add", {}).get("zones", []) if z["parent"] == trigger["zone"]}
         trial["trigger"] = {"zone": trigger["zone"], "verb": trigger["verb"], **{
             label: _trigger_counts(collect(paths_, subject=ctx["protagonist"]), zones, trigger["verb"])
+            for label, paths_ in layers.items()}}
+    elif kind == "ignorance" and trigger.get("zone"):
+        zones = {trigger["zone"]} | {z["name"] for z in patch.get("add", {}).get("zones", []) if z["parent"] == trigger["zone"]}
+        trial["trigger"] = {"kind": "ignorance", "zone": trigger["zone"], **{
+            label: _ignorance_counts(collect(paths_, subject=ctx["protagonist"]), zones)
+            for label, paths_ in layers.items()}}
+    elif kind == "blocked" and trigger.get("requirement"):
+        trial["trigger"] = {"kind": "blocked", "requirement": trigger["requirement"], **{
+            label: _blocked_counts(collect(paths_, subject=ctx["protagonist"]), trigger["requirement"])
             for label, paths_ in layers.items()}}
     trial["milestones"] = {label: milestones(logs) for label, logs in layers.items()}
     if ctx["source"] == "frozen_inputs":
