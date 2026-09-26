@@ -66,6 +66,7 @@ nav:
       - Route Layer: concepts/route-layer.md
   - Usage:
       - Create a World: usage/create-world.md
+      - Import a World from ZIP: usage/import-world.md
       - Run Settings: usage/run-settings.md
       - Read Results: usage/read-results.md
       - Generate Text: usage/generate-text.md
