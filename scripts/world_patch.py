@@ -36,8 +36,10 @@ from gapengine.world_patch import (
     patch_id_for,
     retired_patches,
     template_identifiers,
+    trigger_is_proposable,
     validate_patch,
 )
+from gapengine.world_patch_contract import reachable_zones_from
 from gapengine.world_patch_propose import (MAX_PROMPT_CHARS, build_prompt, check_proposal_rules,
                                            check_trigger_coverage, make_patch, parse_proposal)
 from gapengine.world_patch_trial import run_trial, gate_status
@@ -92,8 +94,17 @@ def _load_report(experiment: Path) -> dict:
     return build_report(experiment)
 
 
-def _investigate_triggers(report: dict) -> list[dict]:
-    return [t for t in report.get("triggers", []) if t.get("verb") == "investigate"]
+def _reachable_zones_for(ctx, base_world: dict, trigger: dict) -> set | None:
+    """None for anything but a "blocked" trigger -- check_trigger_coverage
+    treats None as "compute a conservative fallback from the trigger itself"
+    (see its own docstring), so callers only need this for the one kind that
+    actually needs engine/world reachability."""
+    if trigger.get("kind") != "blocked":
+        return None
+    stuck_zones = [z for z, _n in (trigger.get("stuck_zones") or []) if isinstance(z, str)]
+    if not stuck_zones:
+        return set()
+    return reachable_zones_from(ctx["world_path"], ctx["subjects_dir"], base_world.get("protagonist"), stuck_zones)
 
 
 def _zone_verbs(report: dict, zone: str) -> list:
@@ -135,7 +146,9 @@ def _gate(experiment, project, patch, ctx, subject_ids, *, skip_trial, max_runs,
     base_world = yaml.safe_load(Path(ctx["world_path"]).read_text(encoding="utf-8"))
     violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved,
                                         give_available=give_available)
-    violations += check_trigger_coverage(patch.get("add", {}), patch.get("trigger", {}))
+    patch_trigger = patch.get("trigger", {}) if isinstance(patch.get("trigger"), dict) else {}
+    violations += check_trigger_coverage(patch.get("add", {}), patch_trigger, world=base_world,
+                                         reachable_zones=_reachable_zones_for(ctx, base_world, patch_trigger))
     violations += check_proposal_rules(patch.get("add", {}), give_available=give_available)
     gate = {"schema_version": 2, "patch_id": patch["id"],
             "static": {"passed": not violations, "violations": violations}, "trial": None,
@@ -234,9 +247,14 @@ def cmd_propose(args: argparse.Namespace) -> int:
     experiment = args.experiment.resolve()
     project = args.project.resolve()
     report = _load_report(experiment)
-    triggers = _investigate_triggers(report)
+    # WB-WORLDGROW-002 S2: `--trigger` is now the raw index into
+    # world_demand.json's triggers (every kind, every verb) -- the same
+    # numbering the UI's data-trigger already used (viewer/world_demand_view.py).
+    # execution/world_patch_job.py's prepare() forwards the UI's raw index
+    # here unchanged; no more investigate-only re-numbering in between.
+    triggers = report.get("triggers", [])
     progress = lambda **p: _progress(args, **p)
-    if args.trigger >= len(triggers):
+    if not (0 <= args.trigger < len(triggers)) or not trigger_is_proposable(triggers[args.trigger]):
         print("対応できる需要がありません")
         progress(step="failed", message="対応できる需要がありません")
         return 1
@@ -255,7 +273,8 @@ def cmd_propose(args: argparse.Namespace) -> int:
 
     subject_ids = _subject_ids(Path(ctx["subjects_dir"]))
     give_available = _give_available(Path(ctx["subjects_dir"]))
-    zone_verbs = _zone_verbs(report, trigger["zone"])
+    zone_verbs = _zone_verbs(report, trigger["zone"]) if "zone" in trigger else []
+    reachable_zones = _reachable_zones_for(ctx, base_world, trigger)
     reserved = template_identifiers(ctx['template_dir'])
     try:
         prompt = build_prompt(base_world, subject_ids, trigger, zone_verbs, give_available=give_available)
@@ -326,7 +345,8 @@ def cmd_propose(args: argparse.Namespace) -> int:
                 patch = make_patch(proposal, trigger=trigger, parent_digest=parent_digest, author=author)
                 violations = validate_patch(base_world, patch, subject_ids=subject_ids, reserved=reserved,
                                             give_available=give_available)
-                violations += check_trigger_coverage(patch["add"], trigger)
+                violations += check_trigger_coverage(patch["add"], trigger, world=base_world,
+                                                     reachable_zones=reachable_zones)
                 violations += check_proposal_rules(patch["add"], give_available=give_available)
             except _PROPOSAL_ERRORS as error:
                 violations = [f"提案の形式を検査できませんでした: {error}"]

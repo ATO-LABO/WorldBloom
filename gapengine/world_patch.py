@@ -783,6 +783,36 @@ def validate_patch(world: dict, patch: dict, *, subject_ids: Iterable[str] = (),
     return violations
 
 
+def trigger_is_proposable(trigger: Any) -> bool:
+    """Whether a world_demand.json trigger (raw entry, any kind) is one
+    scripts/world_patch.py's `propose` can build a prompt for (WB-WORLDGROW-002
+    S2): a `kind: "whiff"` trigger (or one with no `kind` at all -- pre-S1
+    reports) needs `verb == "investigate"` specifically (build_prompt only
+    ever handled that verb, v1); a route-layer "ignorance"/"blocked" trigger
+    is always proposable once world_demand.py decided it clears its own
+    thresholds -- there's no second verb-like gate for those kinds."""
+    if not isinstance(trigger, dict):
+        return False
+    kind = trigger.get("kind", "whiff")
+    if kind == "whiff":
+        return trigger.get("verb") == "investigate"
+    return kind in ("ignorance", "blocked")
+
+
+# WB-WORLDGROW-002 S2: which of a trigger's own fields survive into a world's
+# permanent expansion history (apply_patch's expansion.patches entry, below)
+# -- keyed by kind so a pre-S1/whiff trigger's record is byte-identical to
+# what it always was (just zone/verb; no "kind" key ever gets added to it).
+# gapengine/world_patch_propose.py's make_patch has its own, separate keying
+# for the *patch's own* trigger record (patch["trigger"]) -- a different,
+# richer slimming for a different purpose (re-checking coverage later).
+EXPANSION_TRIGGER_KEYS = {
+    "whiff": ("zone", "verb"),
+    "ignorance": ("kind", "zone", "count"),
+    "blocked": ("kind", "requirement", "count", "stuck_zones"),
+}
+
+
 def apply_patch(world: dict, patch: dict) -> dict:
     """Apply one already-validated patch, returning a new world dict."""
     result = copy.deepcopy(world)
@@ -833,7 +863,9 @@ def apply_patch(world: dict, patch: dict) -> dict:
         entry = {"id": patch.get("id"), "title": patch.get("title")}
         trigger = patch.get("trigger")
         if isinstance(trigger, dict):
-            slim = {k: trigger[k] for k in ("zone", "verb") if k in trigger}
+            kind = trigger.get("kind", "whiff")
+            keys = EXPANSION_TRIGGER_KEYS.get(kind, EXPANSION_TRIGGER_KEYS["whiff"])
+            slim = {k: trigger[k] for k in keys if k in trigger}
             if slim:
                 entry["trigger"] = slim
         entry["added"] = {

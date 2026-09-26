@@ -291,6 +291,143 @@ class CheckProposalRulesTests(unittest.TestCase):
                 self.assertEqual(check_proposal_rules(add, give_available=False), [])
 
 
+IGNORANCE_TRIGGER = {"kind": "ignorance", "zone": "鬼ヶ島", "count": 33, "share": 0.5, "zone_dwell_share": 0.02}
+BLOCKED_TRIGGER = {
+    "kind": "blocked", "requirement": "has_item:縄", "count": 1801, "share": 1.0, "lost_share": 0.491,
+    "runs": 47, "reason": "sources_unreachable",
+    "stuck_zones": [["道中", 900], ["森", 500], ["海", 401]],
+    "source_zones": [["村", 1801]], "held_by": [],
+}
+BLOCKED_REACH_TRIGGER = {
+    "kind": "blocked", "requirement": "reach:村", "count": 60, "share": 1.0, "lost_share": 0.3,
+    "runs": 4, "reason": "destination_unreachable",
+    "stuck_zones": [["道中", 60]], "source_zones": [], "held_by": [],
+}
+
+
+class BuildPromptKindDispatchTests(unittest.TestCase):
+    """WB-WORLDGROW-002 S2: build_prompt/check_trigger_coverage/make_patch
+    generalized beyond whiff (v1's only kind) to ignorance/blocked -- a
+    route-layer (rho>0) trigger world_demand.py's collect() only ever
+    produces alongside `policy.route`."""
+
+    def test_whiff_prompt_is_byte_identical_to_pre_s2_text(self):
+        # No regression from generalizing _demand_section/_RULES_TEMPLATE --
+        # a whiff trigger's prompt (kind omitted, like every pre-S1 report)
+        # must render exactly as before.
+        prompt = build_prompt(WORLD, SUBJECT_IDS, TRIGGER, [("craft", 40, 0.1), ("move", 20, 0.0)])
+        self.assertIn("必ず「海」そのものをsourcesのzoneにしたitemsかfactsを1つ以上入れてください", prompt)
+        self.assertIn("今回の空振りは228回なので", prompt)
+
+    def test_ignorance_prompt_mentions_zone_and_count(self):
+        prompt = build_prompt(WORLD, SUBJECT_IDS, IGNORANCE_TRIGGER, [])
+        self.assertIn("鬼ヶ島", prompt)
+        self.assertIn("手探り", prompt)
+        self.assertIn("33回", prompt)
+        self.assertLessEqual(len(prompt), 12000)
+
+    def test_blocked_prompt_names_target_source_zones_and_stuck_zones(self):
+        prompt = build_prompt(WORLD, SUBJECT_IDS, BLOCKED_TRIGGER, [])
+        for expected in ("縄", "村", "道中", "森", "海", "1801回", "47本のラン"):
+            self.assertIn(expected, prompt)
+        self.assertIn("誰も持っていません", prompt)  # held_by empty here -> the "no one holds it" fallback
+        self.assertLessEqual(len(prompt), 12000)
+
+    def test_blocked_reach_prompt_talks_about_the_zones_role_not_an_item(self):
+        prompt = build_prompt(WORLD, SUBJECT_IDS, BLOCKED_REACH_TRIGGER, [])
+        self.assertIn("村」に行く手段が主人公にありません", prompt)
+        self.assertIn("役割を代わりに果たす", prompt)
+        self.assertNotIn("を手に入れる手段が", prompt)  # not the has_item/knows phrasing
+
+
+class MakePatchTriggerKindTests(unittest.TestCase):
+    def test_whiff_trigger_slim_unchanged(self):
+        proposal = {"title": "t", "rationale": "r", "add": sample_add()}
+        patch = make_patch(proposal, trigger={**TRIGGER, "experiment": "run-x"},
+                            parent_digest="a" * 64, author={"backend": "none"})
+        self.assertEqual(patch["trigger"], {"experiment": "run-x", "zone": "海", "verb": "investigate",
+                                             "count": 228, "whiffs": 228})
+        self.assertNotIn("kind", patch["trigger"])
+
+    def test_ignorance_trigger_slim_keeps_kind_zone_count(self):
+        proposal = {"title": "t", "rationale": "r", "add": sample_add()}
+        trigger = {**IGNORANCE_TRIGGER, "experiment": "run-x"}
+        patch = make_patch(proposal, trigger=trigger, parent_digest="a" * 64, author={"backend": "none"})
+        self.assertEqual(patch["trigger"], {"experiment": "run-x", "kind": "ignorance", "zone": "鬼ヶ島", "count": 33})
+
+    def test_blocked_trigger_slim_keeps_kind_requirement_count_stuck_zones(self):
+        proposal = {"title": "t", "rationale": "r", "add": sample_add()}
+        trigger = {**BLOCKED_TRIGGER, "experiment": "run-x"}
+        patch = make_patch(proposal, trigger=trigger, parent_digest="a" * 64, author={"backend": "none"})
+        self.assertEqual(patch["trigger"], {
+            "experiment": "run-x", "kind": "blocked", "requirement": "has_item:縄", "count": 1801,
+            "stuck_zones": [["道中", 900], ["森", 500], ["海", 401]],
+        })
+
+
+class CheckTriggerCoverageIgnoranceTests(unittest.TestCase):
+    def test_source_in_trigger_zone_has_no_violation(self):
+        add = {"items": [{"name": "何かの手がかり", "sources": [
+            {"type": "investigate", "zone": "鬼ヶ島", "count": 1, "max": 1}]}]}
+        self.assertEqual(check_trigger_coverage(add, IGNORANCE_TRIGGER), [])
+
+    def test_source_in_a_child_zone_has_no_violation(self):
+        add = {
+            "zones": [{"name": "洞穴", "parent": "鬼ヶ島"}],
+            "facts": [{"id": "洞穴の噂", "sources": [{"type": "investigate", "zone": "洞穴", "count": 1}]}],
+        }
+        self.assertEqual(check_trigger_coverage(add, IGNORANCE_TRIGGER, world=WORLD), [])
+
+    def test_source_only_in_an_unrelated_zone_is_a_violation(self):
+        add = {"items": [{"name": "何かの手がかり", "sources": [
+            {"type": "investigate", "zone": "村", "count": 1, "max": 1}]}]}
+        self.assertIn("きっかけの場所そのものに調べて得られるものが足されていません",
+                       check_trigger_coverage(add, IGNORANCE_TRIGGER, world=WORLD))
+
+
+class CheckTriggerCoverageBlockedTests(unittest.TestCase):
+    def test_item_requirement_sourced_in_a_reachable_zone_has_no_violation(self):
+        add = {"items": [{"name": "命綱", "sources": [{"type": "investigate", "zone": "道中", "count": 1, "max": 2}]}]}
+        violations = check_trigger_coverage(add, {**BLOCKED_TRIGGER, "requirement": "has_item:命綱"},
+                                             reachable_zones={"道中", "森", "海"})
+        self.assertEqual(violations, [])
+
+    def test_item_requirement_sourced_only_in_an_unreachable_zone_is_a_violation(self):
+        add = {"items": [{"name": "命綱", "sources": [{"type": "investigate", "zone": "村", "count": 1, "max": 2}]}]}
+        violations = check_trigger_coverage(add, {**BLOCKED_TRIGGER, "requirement": "has_item:命綱"},
+                                             reachable_zones={"道中", "森", "海"})
+        self.assertIn("「命綱」を主人公が到達できる場所に足す入手手段がありません", violations)
+
+    def test_no_reachable_zones_given_falls_back_to_the_triggers_own_stuck_zones(self):
+        # Unit-level call with no engine access at all: falls back to the
+        # trigger's own stuck_zones instead of treating everything (or
+        # nothing) as reachable.
+        add = {"items": [{"name": "命綱", "sources": [{"type": "investigate", "zone": "道中", "count": 1, "max": 2}]}]}
+        trigger = {"kind": "blocked", "requirement": "has_item:命綱", "stuck_zones": [["道中", 5]]}
+        self.assertEqual(check_trigger_coverage(add, trigger), [])
+        other = {"items": [{"name": "命綱", "sources": [{"type": "investigate", "zone": "森", "count": 1, "max": 2}]}]}
+        self.assertTrue(check_trigger_coverage(other, trigger))
+
+    def test_fact_requirement_uses_the_facts_bucket(self):
+        add = {"facts": [{"id": "縄の隠し場所", "sources": [{"type": "investigate", "zone": "森", "count": 1}]}]}
+        trigger = {"kind": "blocked", "requirement": "knows:縄の隠し場所", "stuck_zones": [["道中", 5]]}
+        self.assertEqual(check_trigger_coverage(add, trigger, reachable_zones={"道中", "森"}), [])
+
+    def test_reach_requirement_accepts_any_reachable_source(self):
+        add = {"items": [{"name": "見張り台の梯子", "sources": [
+            {"type": "investigate", "zone": "道中", "count": 1, "max": 2}]}]}
+        self.assertEqual(check_trigger_coverage(add, BLOCKED_REACH_TRIGGER, reachable_zones={"道中"}), [])
+
+    def test_added_zone_without_its_own_source_is_still_an_a2_violation_for_blocked(self):
+        add = {
+            "zones": [{"name": "隠れ道", "parent": "道中"}],
+            "items": [{"name": "命綱", "sources": [{"type": "investigate", "zone": "道中", "count": 1, "max": 2}]}],
+        }
+        violations = check_trigger_coverage(add, {**BLOCKED_TRIGGER, "requirement": "has_item:命綱"},
+                                             reachable_zones={"道中"})
+        self.assertIn("足した場所に調べて得られるものがありません: '隠れ道'", violations)
+
+
 class KnownGoodRegressionTests(unittest.TestCase):
     def test_sea_proposal_human_add_passes_all_three_gates(self):
         # Mirrors the add from
