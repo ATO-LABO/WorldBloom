@@ -722,6 +722,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/rationality-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rationality Layer and Jev
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1721,7 +1749,15 @@
 </tr>
 <tr>
 <td>κ (kappa, rationality)</td>
-<td>The strength of a genre's rationality judgment (Jev). Set as a value from 0–1 in run settings. See <a href="../../usage/run-settings/">Run Settings</a></td>
+<td>How strongly the rationality layer discounts candidates it judges unreasonable. Set as a value from 0–1 in run settings. Defaults to 0.45 for Jev and 0.6 for Ollama when creating a new config. See <a href="../../concepts/rationality-layer/">Rationality Layer and Jev</a></td>
+</tr>
+<tr>
+<td>Rationality layer</td>
+<td>A mechanism that has a judge model score how much sense each candidate makes from the protagonist's own point of view, and multiplies that in on top of the genome-driven multipliers. Off when κ=0. See <a href="../../concepts/rationality-layer/">Rationality Layer and Jev</a></td>
+</tr>
+<tr>
+<td>Jev</td>
+<td>TypeSafe's rationality-layer judge (an API, model name <code>jev-1.13.0</code>). Faster than the local Ollama judge (about 0.2 seconds per call), but sends the protagonist's situation externally on every judgment call. See <a href="../../concepts/rationality-layer/">Rationality Layer and Jev</a></td>
 </tr>
 <tr>
 <td>Route layer</td>

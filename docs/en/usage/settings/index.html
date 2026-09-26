@@ -722,6 +722,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/rationality-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rationality Layer and Jev
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1691,6 +1719,7 @@
 </tbody>
 </table>
 <p>On a development machine (20 cores), measurements showed speed plateauing around 8 processes. Applies to GA experiments started after the save.</p>
+<p><strong>合理性の判定器（Jev）(Rationality judge (Jev))</strong>: the same tab has a block for registering a TypeSafe API key. Enter the key and press "キーを保存" (Save key); before saving, it sends one real judgment call with that key to verify it, and only saves if that succeeds (the status then reads "有効（jev-1.13.0、確認した日付）", "Enabled (jev-1.13.0, verified on <date>)"). The key is stored only in <code>settings.json</code> — it never appears on screen, in the API, or in any experiment record. Which experiments use Jev is chosen per run in the "合理性" (Rationality) section of <a href="../run-settings/#04">Run Settings</a>. See <a href="../../concepts/rationality-layer/">Rationality Layer and Jev</a> for the full picture.</p>
 <h2 id="saved-run-setting-versions">Saved run-setting versions<a class="headerlink" href="#saved-run-setting-versions" title="Permanent link">&para;</a></h2>
 <p>A list of previously saved <a href="../run-settings/">run settings</a>. Saved versions can't be edited (use "複製して調整", Duplicate and adjust, to duplicate one if you want different contents). Each entry shows its world, genre, run size (generations × population × seeds), creation time, and duplication source.</p>
 <h2 id="genres">Genres<a class="headerlink" href="#genres" title="Permanent link">&para;</a></h2>

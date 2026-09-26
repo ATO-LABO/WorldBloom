@@ -720,6 +720,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/rationality-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rationality Layer and Jev
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1689,6 +1717,7 @@
 <p>The main changes that matter from a user's point of view, in date order. This isn't a list of individual commits. Get the latest release artifacts from <a href="https://github.com/ATO-LABO/WorldBloom/releases">GitHub Releases</a>.</p>
 <h2 id="2026-09-27">2026-09-27<a class="headerlink" href="#2026-09-27" title="Permanent link">&para;</a></h2>
 <ul>
+<li>Added TypeSafe's Jev as a rationality-layer judge. Faster than the local LLM (Ollama) judge (about 0.2 seconds per call, no GPU needed) and available once you register an API key on the "計算" (Compute) tab of Settings. Pick the judge in the run settings' "合理性" (Rationality) section; the default is Jev with κ=0.45 whenever a key is verified (see <a href="../../concepts/rationality-layer/">Rationality Layer and Jev</a>)</li>
 <li>Added "Import from ZIP" to world creation: bring in a <code>world.yaml</code>/<code>subjects/*.yaml</code> set built by an AI (Codex, Claude Code, Gemini, etc.) as a ZIP (see <a href="../../usage/import-world/">Import a World from ZIP</a>). The genre can be omitted and picked later from the world settings screen</li>
 </ul>
 <h2 id="2026-09-26">2026-09-26<a class="headerlink" href="#2026-09-26" title="Permanent link">&para;</a></h2>
