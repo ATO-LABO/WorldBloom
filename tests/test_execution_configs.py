@@ -751,6 +751,73 @@ class ConfigTests(unittest.TestCase):
         result = normalize({**self.spec, "evolution": {"world_expansion": "expand"}})
         self.assertEqual(result["evolution"]["world_expansion"], "expand")
 
+    # -- WB-WORLDGROW-001 段階5c: growth ------------------------------------
+
+    def test_growth_absent_and_explicit_off_are_byte_identical_and_carry_no_key(self):
+        absent = normalize(self.spec)
+        explicit_off = normalize({**self.spec, "growth": {"mode": "off"}})
+        self.assertNotIn("growth", absent)
+        self.assertEqual(canonical(absent), canonical(explicit_off))
+
+    def test_growth_off_config_save_is_byte_identical_to_no_growth_key(self):
+        without = self.store.save(self.spec, config_id="cfg-nogrowth")
+        withoff = self.store.save({**self.spec, "growth": {"mode": "off"}}, config_id="cfg-offgrowth")
+        without_comparable = {k: v for k, v in without.items() if k not in ("config_id", "created_at")}
+        withoff_comparable = {k: v for k, v in withoff.items() if k not in ("config_id", "created_at")}
+        self.assertEqual(canonical(without_comparable), canonical(withoff_comparable))
+        self.assertNotIn("growth", without)
+        self.assertNotIn("growth", withoff)
+
+    def test_growth_auto_defaults_epochs_and_auto_retire_and_forces_expand(self):
+        result = normalize({**self.spec, "evolution": {"world_expansion": "off"}, "growth": {"mode": "auto"}})
+        self.assertEqual(result["growth"], {"mode": "auto", "epochs": 3, "auto_retire": True})
+        self.assertEqual(result["evolution"]["world_expansion"], "expand")
+
+    def test_growth_manual_defaults_auto_retire_false(self):
+        result = normalize({**self.spec, "growth": {"mode": "manual", "epochs": 5}})
+        self.assertEqual(result["growth"], {"mode": "manual", "epochs": 5, "auto_retire": False})
+
+    def test_growth_epochs_out_of_range_is_rejected(self):
+        for epochs in (0, 11):
+            with self.assertRaises(ConfigError):
+                normalize({**self.spec, "growth": {"mode": "auto", "epochs": epochs}})
+
+    def test_growth_unknown_mode_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            normalize({**self.spec, "growth": {"mode": "sometimes"}})
+
+    def test_growth_unknown_field_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            normalize({**self.spec, "growth": {"mode": "auto", "unknown": 1}})
+
+    def test_duplicate_carries_growth_forward(self):
+        # WB-WORLDGROW-001 段階5c review R5: duplicate() used to drop growth
+        # entirely -- a growth-enabled config's clone silently went back to off.
+        self.store.save({**self.spec, "growth": {"mode": "auto", "epochs": 4, "auto_retire": True}},
+                         config_id="cfg-growth-src")
+        clone = self.store.duplicate("cfg-growth-src", {"label": "複製"}, new_id="cfg-growth-clone")
+        self.assertEqual(clone["growth"], {"mode": "auto", "epochs": 4, "auto_retire": True})
+        self.assertEqual(clone["parent_config_id"], "cfg-growth-src")
+
+    def test_duplicate_turning_growth_on_saves_as_new_config_not_dead_end(self):
+        # R5: growth.mode != off forces world_expansion to "expand" at
+        # normalize() time even if the duplicate's own evolution.world_expansion
+        # still says "off" -- judged by that effective value, this must save
+        # as a fresh (non-parented) config instead of _prepare() dead-ending
+        # on "複製元と異なる入力は新規設定として保存してください".
+        self.store.save(self._momotaro_spec(world_expansion="off"), config_id="cfg-off-src")
+        clone = self.store.duplicate("cfg-off-src", {"growth": {"mode": "auto", "epochs": 2}},
+                                      new_id="cfg-off-to-growth")
+        self.assertIsNone(clone["parent_config_id"])
+        self.assertEqual(clone["evolution"]["world_expansion"], "expand")
+        self.assertEqual(clone["growth"]["mode"], "auto")
+
+    def test_duplicate_clearing_growth_is_respected(self):
+        self.store.save({**self.spec, "growth": {"mode": "manual", "epochs": 2, "auto_retire": False}},
+                         config_id="cfg-growth-src2")
+        clone = self.store.duplicate("cfg-growth-src2", {"growth": None}, new_id="cfg-growth-cleared")
+        self.assertNotIn("growth", clone)
+
     # -- R5: duplicating a config saved before world_expansion existed -----
 
     def _strip_world_expansion_key(self, config_id):

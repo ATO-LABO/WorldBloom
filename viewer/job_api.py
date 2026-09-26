@@ -1,4 +1,5 @@
 """JSON routes and request boundaries for configuration and job services."""
+import hashlib
 from http import HTTPStatus
 import ipaddress
 from urllib.parse import parse_qs, urlsplit
@@ -8,7 +9,7 @@ from execution.output_settings import (
     current_generation, list_models, read_output_settings, test_generation,
     write_api_key, write_output_settings,
 )
-from execution.provenance import ConfigError
+from execution.provenance import ConfigError, identifier
 from gapengine.gpu_guard import GpuBusy
 
 
@@ -158,6 +159,20 @@ def dispatch(handler, parts, method):
             handler._send_json(HTTPStatus.OK, configs.preview(body))
         elif method == "POST" and parts == ["api", "configs"]:
             handler._send_json(HTTPStatus.CREATED, configs.save(body))
+        elif method == "POST" and parts == ["api", "epochs"]:
+            from execution.epoch_chain import EpochChain
+            handler._send_json(HTTPStatus.ACCEPTED, EpochChain(jobs, settings).start(body))
+        elif method == "GET" and parts == ["api", "epochs", "current"]:
+            from execution.epoch_chain import EpochChain
+            current = EpochChain(jobs, settings).current()
+            handler._send_json(HTTPStatus.OK, {"chain": current})
+        elif method == "POST" and len(parts) == 4 and parts[1] == "epochs" and parts[3] in ("stop", "continue"):
+            if body:
+                raise ConfigError("request", "本文は空オブジェクトにしてください", code="bad_request")
+            from execution.epoch_chain import EpochChain
+            chain_ops = EpochChain(jobs, settings)
+            result = chain_ops.stop(parts[2]) if parts[3] == "stop" else chain_ops.resume(parts[2])
+            handler._send_json(HTTPStatus.OK, result)
         elif method == "GET" and parts == ["api", "settings", "output"]:
             view = read_output_settings(settings)
             handler._send_json(HTTPStatus.OK, {**view, "availability": _labeled_availability(settings)})
@@ -198,8 +213,35 @@ def dispatch(handler, parts, method):
         elif method == "GET" and len(parts) == 3 and parts[1] == "jobs":
             handler._send_json(HTTPStatus.OK, jobs.get(parts[2]))
         elif method == "POST" and parts == ["api", "jobs"]:
-            job, created = jobs.submit(body, settings_path=settings)
-            handler._send_json(HTTPStatus.ACCEPTED if created else HTTPStatus.OK, job)
+            # WB-WORLDGROW-001 段階5c §9: a plain evolve submission against a
+            # config with growth.mode != off starts (or continues) an epoch
+            # chain instead of a single job -- the config, not the request
+            # body, decides this, so an ordinary evolve submission against an
+            # off config is completely unaffected (still exactly jobs.submit()).
+            growth = None
+            if isinstance(body, dict) and body.get("kind") == "evolve" and isinstance(body.get("config_id"), str):
+                try:
+                    growth = configs.get(body["config_id"]).get("growth")
+                except ConfigError:
+                    growth = None
+            if growth and growth.get("mode") not in (None, "off"):
+                # R3 (Opus review): same request shape and same request_id
+                # idempotency contract as the plain evolve path below
+                # (execution/jobs.py's own kind=="evolve" branch) -- growth
+                # is a config-side switch, not a different request contract.
+                if set(body) - {"request_id", "kind", "config_id"}:
+                    raise ConfigError("request", "未対応の要求項目があります")
+                client_request_id = identifier(body.get("request_id"), "request_id")
+                from execution.epoch_chain import EpochChain
+                chain_id = "chain-" + hashlib.sha256(client_request_id.encode()).hexdigest()[:16]
+                job = EpochChain(jobs, settings).start({
+                    "base_config_id": body["config_id"], "max_epochs": growth["epochs"],
+                    "approval": growth["mode"], "auto_retire": growth["auto_retire"],
+                    "seed_run_id": None}, chain_id=chain_id)
+                handler._send_json(HTTPStatus.ACCEPTED, job)
+            else:
+                job, created = jobs.submit(body, settings_path=settings)
+                handler._send_json(HTTPStatus.ACCEPTED if created else HTTPStatus.OK, job)
         elif method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "cancel":
             if body:
                 raise ConfigError("request", "停止要求の本文は空オブジェクトにしてください")
