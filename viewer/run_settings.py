@@ -71,6 +71,23 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         '<select id="f-evolution.world_expansion" name="evolution.world_expansion" data-field="evolution.world_expansion">'
         + ''.join(f'<option value="{k}"' + (' selected' if values["evolution.world_expansion"] == k else '') + f'>{label}</option>' for k, label in expansions)
         + '</select><span class="field-error" data-error-for="evolution.world_expansion" role="alert"></span></div>')
+    # WB-WORLDGROW-001 段階5c-2: 世界を育てる（エポック連鎖）。既定は off
+    # （従来どおり1回きりの実行）。off 以外だと「世界の拡張」は expand に固定
+    # （JS で disabled -- run-settings.js、サーバー側も execution/configs.py
+    # の normalize が強制する）。
+    growth_modes = (("off", "しない（既定）"), ("auto", "自動で育てる"),
+                    ("manual", "手動で育てる（承認ごとに止まる）"))
+    growth_mode = values["growth.mode"]
+    growth_extra_hidden = ' hidden' if growth_mode == "off" else ''
+    growth = ('<div class="field rs-growth"><label for="f-growth.mode">世界を育てる</label>'
+        '<select id="f-growth.mode" name="growth.mode" data-field="growth.mode">'
+        + ''.join(f'<option value="{k}"' + (' selected' if growth_mode == k else '') + f'>{label}</option>' for k, label in growth_modes)
+        + '</select><span class="field-error" data-error-for="growth.mode" role="alert"></span></div>'
+        + f'<div class="rs-growth-extra" data-growth-extra{growth_extra_hidden}>'
+        + number("何周回すか", "growth.epochs", min_value=1, max_value=10, unit="周")
+        + wb._checkbox_field("使われなかった拡張を自動で枯らす", "growth.auto_retire", values["growth.auto_retire"])
+        + '</div><p class="rs-muted">エポック＝世界が1周育つ単位（実験1本を回し、足りない場所の拡張を提案・検査・'
+          '承認し、使われなかった拡張を枯らす）。連鎖では前のエポックの性格を次に引き継ぎます。</p>')
     # WB-WORLDGROW-001 段階5b: 前の実験（同じ世界・同じジャンルで完了済みの実行）の
     # 最終アーカイブの genome だけを、この実験の第0世代に引き継ぐ。候補は
     # 選択中の世界・ジャンルに属する設定から生まれた、run_id を持つ完了済み
@@ -141,7 +158,7 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         + f'<a data-world-link href="{E(back)}">世界設定を見る ↗</a></div>' + ending + '<p data-world-facts class="rs-muted"></p></section>'
         '<section><h2>02. 探索の規模</h2><div class="rs-scale">' + scale
         + '</div><p class="rs-muted">同じ個体を、異なる初期条件で評価します。1世代あたり <span data-per-gen></span> 回。</p></section>'
-        '<section><h2>03. 保存と進化</h2>' + keep + expansion + seed_genomes + '<div class="rs-toggles">' + toggles + '</div></section>'
+        '<section><h2>03. 保存と進化</h2>' + keep + expansion + growth + seed_genomes + '<div class="rs-toggles">' + toggles + '</div></section>'
         + rationality_section + route_section + advanced + '</div>'
         + run_summary.render({k.removeprefix("evolution."): v for k, v in values.items() if k.startswith("evolution.")}, editable=True)
         +
