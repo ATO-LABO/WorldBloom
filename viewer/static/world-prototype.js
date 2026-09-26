@@ -41,6 +41,7 @@
     const expansionHtml = expansionTemplate ? expansionTemplate.innerHTML : '';
     return title(model.name,'この世界の前提を確認する') +
       `<section class="wp-section">${head('どんな世界？',edit('overview'))}<p>${absent(model.overview)}</p></section>`+
+      `<section class="wp-section">${head('ジャンル',edit('genre'))}<p>${model.genre ? esc(model.genre) : '未設定（実行前に選んでください）'}</p></section>`+
       `<div class="wp-columns"><section><h2>物語の出発点</h2><p>${hero?`${esc(hero.id)}は${esc(entry(hero))}にいる。`:'主人公は未指定です。'}</p></section><section><h2>目指す結末</h2><p>${esc(goal(hero))}</p></section></div>`+
       `<section class="wp-section">${head('この世界を構成するもの')}<button class="wp-jump" data-screen="people"><strong>登場人物</strong><span>${esc(people.map(p=>p.id).join('、')) || 'まだいません'}</span><span>→</span></button><button class="wp-jump" data-screen="places"><strong>場所</strong><span>${esc(zones.map(z=>z.name).join('、')) || 'まだありません'}</span><span>→</span></button><button class="wp-jump" data-screen="story"><strong>初期物語</strong><span>シミュレーション開始時点の導入・状況</span><span>→</span></button><button class="wp-jump" data-screen="time"><strong>時間</strong><span>${esc(time())}</span><span>→</span></button></section>`+
       `<details class="wp-section"><summary>詳しい世界設定</summary><p>状況別の定石・行動図鑑・設定ファイルは、<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced">詳細設定</a>で確認できます。</p></details>`+
@@ -123,6 +124,7 @@
     content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen}[screen])();
     root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===screen)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     const missing=[];
+    if(!model.genre)missing.push('ジャンル');
     if(!people.length)missing.push('登場人物');
     if(!zones.length)missing.push('場所');
     if(!people.some(p=>p.id===w.protagonist))missing.push('主人公');
@@ -144,6 +146,10 @@
     if(key==='overview'||key==='intro'){
       name=key==='overview'?'世界の説明を編集':'導入文を編集';fields=[...(key==='overview'?[field('name','世界の名前',model.name,'text')]:[]),field('text','文章',model[key])];
       applyEdit=values=>({operation:key,target:null,values});
+    }else if(key==='genre'){
+      name='ジャンルを選ぶ';
+      fields=[field('template_id','ジャンル',model.genre||'','select',model.genres.map(g=>[g.id,g.name]))];
+      applyEdit=values=>({operation:'genre',target:null,values});
     }else if(key==='time'){
       name='時間の範囲を編集';fields=[field('days','日数',w.time?.days||16,'number'),field('slots','時間帯（読点で区切る）',(w.time?.slots||[]).join('、'),'text')];
       applyEdit=v=>({operation:'time',target:null,values:{days:Number(v.days),slots:split(v.slots)}});
@@ -230,6 +236,10 @@
     const personId=request.operation==='add-person'?request.values.name.trim():people[person]?.id;
     const placeName=request.operation==='add-place'?request.values.name.trim():zones[place]?.name;
     Object.assign(model,saved);w=model.world;
+    // genre isn't part of snapshot()'s model (execution/world_editor.py);
+    // rederive it from gapengine.action_graph the same way LibraryStore._genre_of() does.
+    const genreMatch=/^templates\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})\//.exec(w.gapengine?.action_graph||'');
+    model.genre=genreMatch?genreMatch[1]:null;
     people=model.people.filter(p=>p.id).sort((a,b)=>Number(b.id===w.protagonist)-Number(a.id===w.protagonist));
     zones=(w.zones||[]).map(z=>typeof z==='string'?{name:z,note:''}:{...z});
     person=Math.max(0,people.findIndex(p=>p.id===personId));place=Math.max(0,zones.findIndex(z=>z.name===placeName));
