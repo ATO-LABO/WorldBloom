@@ -55,21 +55,49 @@ def read_jev_api_key(settings_path):
     return str(section.get("api_key", "")).strip()
 
 
-def write_jev_api_key(settings_path, api_key, *, base_url=JEV_BASE_URL, timeout=6.0):
-    """Verify `api_key` against a read-only GET /v1/models before storing it.
+def _error_detail(error):
+    """TypeSafe's own error message from an HTTPError body (never the key --
+    the request's Authorization header is not part of the response)."""
+    try:
+        body = json.loads(error.read().decode("utf-8"))
+    except (OSError, ValueError, AttributeError):
+        return ""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    message = detail.get("message") if isinstance(detail, dict) else detail
+    return str(message)[:200] if message else ""
 
-    200 with JEV_DEFAULT_MODEL listed (by "id" or "alias") -> stored,
-    verified_at set to now. 200 without it, 401/403, or any other failure ->
-    ConfigError, settings.json left untouched.
+
+def write_jev_api_key(settings_path, api_key, *, base_url=JEV_BASE_URL, timeout=15.0):
+    """Verify `api_key` with one minimal POST /v1/systemone against
+    JEV_DEFAULT_MODEL -- the exact endpoint and model JevJudge uses -- before
+    storing it. (GET /v1/models' response shape is undocumented, so a listing
+    check could reject a working key.) The probe costs a few dozen input
+    tokens.
+
+    200 with a choice answer -> stored, verified_at set to now. 401/403 ->
+    "invalid key"; other 4xx -> "can't use this model" (with TypeSafe's own
+    message); anything else -> "can't connect". settings.json is untouched on
+    every failure.
     """
     if settings_path is None:
         raise ConfigError("settings", "設定ファイルの場所が未設定です")
     if not isinstance(api_key, str) or not api_key.strip():
         raise ConfigError("api_key", "APIキーを入力してください")
     key = api_key.strip()
+    payload = {
+        "state": "WorldBloom key check",
+        "model": JEV_DEFAULT_MODEL,
+        "questions": {"q": {
+            "type": "choice",
+            "instructions": "Pick one.",
+            "criteria": {"a": "option a", "b": "option b"},
+        }},
+    }
     request = urllib.request.Request(
-        base_url.rstrip("/") + "/v1/models",
-        headers={"Authorization": f"Bearer {key}"},
+        base_url.rstrip("/") + "/v1/systemone",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        method="POST",
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -77,27 +105,17 @@ def write_jev_api_key(settings_path, api_key, *, base_url=JEV_BASE_URL, timeout=
     except urllib.error.HTTPError as error:
         if error.code in (401, 403):
             raise ConfigError("api_key", "APIキーが無効です") from error
+        if 400 <= error.code < 500 and error.code != 429:
+            detail = _error_detail(error)
+            message = f"このキーでは {JEV_DEFAULT_MODEL} を使えません"
+            raise ConfigError("api_key", f"{message}（{detail}）" if detail else message) from error
         raise ConfigError("api_key", "TypeSafe に接続できません") from error
     except (OSError, urllib.error.URLError, http.client.HTTPException, ValueError) as error:
         raise ConfigError("api_key", "TypeSafe に接続できません") from error
 
-    # docs.typesafe.ai's /v1/models response shape wasn't confirmed at
-    # implementation time -- accept both {"data":[{"id":...}]} (OpenAI
-    # convention) and a bare list of strings/objects, matching by either
-    # "id" or "alias" (plan §"Jev API").
-    entries = data.get("data") if isinstance(data, dict) else data
-    ids = set()
-    if isinstance(entries, list):
-        for entry in entries:
-            if isinstance(entry, str):
-                ids.add(entry)
-            elif isinstance(entry, dict):
-                for field in ("id", "alias"):
-                    value = entry.get(field)
-                    if isinstance(value, str):
-                        ids.add(value)
-    if JEV_DEFAULT_MODEL not in ids:
-        raise ConfigError("api_key", f"このキーでは {JEV_DEFAULT_MODEL} を使えません")
+    answer = (data.get("answers") or {}).get("q") if isinstance(data, dict) else None
+    if not isinstance(answer, dict) or not isinstance(answer.get("probabilities"), dict):
+        raise ConfigError("api_key", "TypeSafe の応答形式が想定と違います")
 
     settings = _read_settings(settings_path)
     rationality = settings.get("rationality")
