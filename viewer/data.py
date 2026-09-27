@@ -1467,6 +1467,38 @@ def cell_view(
         cell_key,
     )
 
+    # WB-GROWTH-001 S2: the protagonist's own "growth" rows (see
+    # gapengine.policy.Policy.observe) and the last acquired shift any of
+    # its decision rows carried -- absent entirely (both stay empty) for a
+    # run with no outcome rules or plasticity=0, so the "性格の変化" panel
+    # simply does not render (viewer/pages.py's _growth_panel).
+    growth_events: list[dict[str, Any]] = []
+    last_acquired: dict[str, float] = {}
+    for row in rows:
+        if row.get("subject") != protagonist:
+            continue
+        if row.get("verb") == "growth":
+            details = _as_mapping(row.get("details"))
+            growth_events.append(
+                {
+                    "turn": int(_number(row.get("turn"))),
+                    "rule": details.get("rule"),
+                    "description": details.get("description"),
+                    "shift": dict(_as_mapping(details.get("shift"))),
+                }
+            )
+        elif row.get("kind") == "decision":
+            acquired = _as_mapping(row.get("policy")).get("acquired")
+            if isinstance(acquired, Mapping):
+                last_acquired = dict(acquired)
+    genome_now = None
+    if growth_events:
+        from gapengine import lineage as lineage_engine
+
+        genome_now = lineage_engine.current_genome_dict(
+            header.get("genome") or {}, last_acquired
+        )
+
     layers_stat = resolved_layers.stat()
     return {
         "explanation": _with_reader(repository, experiment, dict(_cached_explanation(
@@ -1512,6 +1544,8 @@ def cell_view(
         "synopsis_backend": synopsis_backend,
         "story": story,
         "story_text": story_text,
+        "growth_events": growth_events,
+        "genome_now": genome_now,
     }
 
 

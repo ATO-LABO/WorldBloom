@@ -13,6 +13,10 @@ SPECIAL_PRIORITY = {
     "revived": 84,
     "exposure": 80,
     "payoff": 75,
+    # WB-GROWTH-001 S2: same weight as "payoff" -- a personality shift is a
+    # payoff of sorts (an accumulated consequence of prior turns), and both
+    # are secondary to hard plot beats (betrayal/downed/exposure).
+    "growth": 75,
     "planted": 70,
     "ally_gained": 65,
     "concede": 60,
@@ -324,6 +328,34 @@ def _effect_description(
     return str(description) if description else None
 
 
+def growth_event_text(growth: Mapping[str, Any]) -> str:
+    """WB-GROWTH-001 S2: "{description}（{ラベル} {符号付き変化量}、…）" for
+    one growth event ({"description", "shift", ...} -- a "growth" row's
+    details, or one of ``extract_scenes``'s per-scene "growth" entries;
+    both share the same "description"/"shift" shape). ``shift`` may carry
+    more than one gene (e.g. a rule that adjusts both risk_tolerance and a
+    category_weight together), each rendered with its lineage scalar label
+    and joined with "、". Shared by ``describe_row`` (the growth verb) and
+    gapengine.synopsis's scene-line rendering, so the two never disagree
+    about phrasing."""
+
+    # Deferred: gapengine.lineage pulls in gapengine.evolve ->
+    # gapengine.knowledge_text -> gapengine.scenes (VERB_LABELS/
+    # _argument_text) at module load time -- importing lineage at the top
+    # of this module would be circular. By call time every module involved
+    # has already finished initializing.
+    from gapengine.lineage import _SCALAR_LABELS
+
+    description = str(growth.get("description") or "")
+    shift = _as_mapping(growth.get("shift"))
+    parts = [
+        f"{_SCALAR_LABELS.get(key, key)} {float(value):+.3f}"
+        for key, value in sorted(shift.items())
+    ]
+    joined = "、".join(parts)
+    return f"{description}（{joined}）" if joined else description
+
+
 def describe_row(
     row: Mapping[str, Any],
     world_meta: Mapping[str, Any],
@@ -364,6 +396,9 @@ def describe_row(
         text = f"{subject}について{action}"
         if description:
             text += f"。「{description}」"
+    elif verb == "growth":
+        # WB-GROWTH-001 S2: "{description}（{ラベル} {符号付き変化量}、…）".
+        text = growth_event_text(details)
     else:
         action = VERB_LABELS.get(verb, f"{verb}という行動を取った")
         text = (
@@ -445,6 +480,33 @@ def _scene_motives(
             }
         )
     return motives
+
+
+def _scene_growth(
+    narrative_rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """WB-GROWTH-001 S2: one entry per "growth" event row in this scene
+    (each row is one matched outcome rule -- see gapengine.policy.Policy.
+    observe). Absent entirely when there are none (a run with no outcome
+    rules, or plasticity=0, never writes a "growth" row at all), so
+    extract_scenes's output stays byte-identical to before this existed --
+    same "no key when nothing to report" convention as ``_scene_motives``."""
+
+    growth: list[dict[str, Any]] = []
+    for row in narrative_rows:
+        if str(row.get("verb", "")) != "growth":
+            continue
+        details = _as_mapping(row.get("details"))
+        growth.append(
+            {
+                "rule": details.get("rule"),
+                "description": details.get("description"),
+                "shift": dict(
+                    sorted(_as_mapping(details.get("shift")).items())
+                ),
+            }
+        )
+    return growth
 
 
 def _scene_rows(
@@ -561,6 +623,9 @@ def extract_scenes(
         motives = _scene_motives(narrative_rows, world_meta, protagonist)
         if motives:
             scene["motives"] = motives
+        growth = _scene_growth(narrative_rows)
+        if growth:
+            scene["growth"] = growth
         candidates.append(scene)
 
     kept = sorted(

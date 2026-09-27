@@ -956,6 +956,37 @@ td {
   margin: 0;
 }
 
+/* WB-GROWTH-001 S2: the "性格の変化" panel's before/after genome bars. */
+.genome-compare {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.genome-compare .genome {
+  border: 1px solid var(--ws-line);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.growth-events {
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  width: 100%;
+}
+
+.growth-events th,
+.growth-events td {
+  border-bottom: 1px solid var(--ws-line);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.tag.growth-tag {
+  color: var(--ws-confirm);
+  border-color: var(--ws-confirm);
+}
+
 .chart-card {
   overflow: hidden;
 }

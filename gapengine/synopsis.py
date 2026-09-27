@@ -18,6 +18,7 @@ import yaml
 
 from gapengine import gpu_guard, llama_server, ollama
 from gapengine.qd import Elite
+from gapengine.scenes import growth_event_text
 
 
 BACKENDS = (
@@ -252,6 +253,15 @@ def _scene_lines(
                 lines.append(
                     f"  行動の理由: {motive.get('event')} — {reason}"
                 )
+        growth = scene.get("growth")
+        if isinstance(growth, list) and growth:
+            lines.append(
+                "  性格の変化: "
+                + "／".join(
+                    growth_event_text(_as_mapping(entry))
+                    for entry in growth
+                )
+            )
         lines.append(
             f"  その時点の状態: "
             f"{_state_text(_as_mapping(scene.get('state')))}"
@@ -281,6 +291,18 @@ def _has_motives(scenes: Sequence[Mapping[str, Any]]) -> bool:
 
     return any(
         isinstance(scene.get("motives"), list) and scene.get("motives")
+        for scene in scenes
+    )
+
+
+def _has_growth(scenes: Sequence[Mapping[str, Any]]) -> bool:
+    """WB-GROWTH-001 S2: whether any scene carries at least one "growth"
+    entry -- gates the extra prompt instruction below so a run with no
+    outcome rules (or plasticity=0) keeps a byte-identical prompt, same
+    convention as ``_has_motives`` above."""
+
+    return any(
+        isinstance(scene.get("growth"), list) and scene.get("growth")
         for scene in scenes
     )
 
@@ -315,6 +337,12 @@ def build_synopsis_prompt(
         if _has_motives(scenes)
         else ""
     )
+    growth_instruction = (
+        "- 性格の変化は出来事の結果として書き、変化の前と後の行動の違いが"
+        "伝わるようにする。\n"
+        if _has_growth(scenes)
+        else ""
+    )
 
     return (
         "あなたは物語のあらすじ作家です。質問や確認を返さず、"
@@ -338,7 +366,8 @@ def build_synopsis_prompt(
         "- 固定された結末を明かす。\n"
         "- 導入の説明より、道中の転機、選択、逆転を中心にする。\n"
         "- ログにない人物、勝敗、所持品、因果を追加しない。\n"
-        f"{motive_instruction}\n"
+        f"{motive_instruction}"
+        f"{growth_instruction}\n"
         "## 出力形式\n"
         "あらすじ本文のみを出力する。見出し、箇条書き、前置き、"
         "質問、確認は出力しない。\n"
@@ -367,6 +396,12 @@ def build_narration_prompt(
         "- 理由は心理描写や会話に翻訳してよいが、理由そのものを別の動機に"
         "置き換えない。\n"
         if _has_motives(scenes)
+        else ""
+    )
+    growth_instruction = (
+        "- 性格の変化は出来事の結果として書き、変化の前と後の行動の違いが"
+        "伝わるようにする。\n"
+        if _has_growth(scenes)
         else ""
     )
     synopsis_block = (
@@ -399,7 +434,8 @@ def build_narration_prompt(
         "- 裏切りでは、先行する関係や誓いを踏まえて心理を描く。\n"
         "- 状態値を数値のまま本文に書かず、行動や情景へ翻訳する。\n"
         "- ログにない主要事件、勝敗、所持者交代、結末を追加しない。\n"
-        f"{motive_instruction}\n"
+        f"{motive_instruction}"
+        f"{growth_instruction}\n"
         "## 出力形式\n"
         "物語本文のみを出力する。タイトル、見出し、制作上の説明、"
         "前置き、質問、確認は出力しない。\n"
