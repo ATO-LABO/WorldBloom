@@ -391,14 +391,21 @@ class RealRunLineageTests(unittest.TestCase):
     zero turning points, and a damaged ancestor (missing precedent.json)
     degrading instead of raising.
 
-    ga_seed=1/generations=5/population=8/seeds=2 is pinned exactly because
+    ga_seed=5/generations=5/population=8/seeds=2 is pinned exactly because
     GA determinism makes its archive contents (which cells exist, their
     parents, the chosen lineage seed) reproducible -- verified once by hand
-    before writing these assertions. WB-JEV-004 part 2 (settled pairs skip
-    fight) changed the momotaro fixture's own trajectory enough that
-    "II|high" (chain g2/ind-5 <- g1/ind-0) no longer survives to the final
-    archive; "III|mid" (chain g3/ind-4 <- g0/archive/I-low) is this pin's
-    replacement, re-verified by hand the same way.
+    before writing these assertions.
+
+    WB-TIMEEVENT-001 review: with departure_day now using force_action (a
+    real, policy-bypassing move) instead of move_to (a free instant
+    teleport), the previously pinned ga_seed=1 no longer produced a
+    single-node immigrant cell at all (both "I|high" and "V|high" had
+    become 2-node chains). ga_seed=5 was hand-verified as a replacement
+    that restores both fixture shapes this class needs: "III|high" (chain
+    g3/ind-3 <- g2/ind-6 <- g1/ind-2 <- g0/ind-6, seed 12, 3 turning
+    points) for the multi-generation-chain tests, and "III|mid" (a single
+    g0/ind-7 node, seed 12, no parents, no turning points) for the
+    immigrant-cell test below.
     """
 
     @classmethod
@@ -411,7 +418,7 @@ class RealRunLineageTests(unittest.TestCase):
         cls.runs_root = root / "runs"
         cls.archive = evolve(
             {
-                "ga_seed": 1,
+                "ga_seed": 5,
                 "generations": 5,
                 "keep": "all",  # nothing pruned: every original stays comparable
                 "population": 8,
@@ -437,17 +444,22 @@ class RealRunLineageTests(unittest.TestCase):
         cls.temporary.cleanup()
 
     def test_multi_generation_chain_byte_matches_and_finds_a_turning_point(self) -> None:
-        chain = lineage.primary_lineage(self.repository, self.experiment, "III|mid")
+        chain = lineage.primary_lineage(self.repository, self.experiment, "III|high")
         self.assertEqual(
             [(node["ref"], node["generation"]) for node in chain],
-            [("g3/ind-4", 3), ("g0/archive/I-low", 0)],
+            [
+                ("g3/ind-3", 3),
+                ("g2/ind-6", 2),
+                ("g1/ind-2", 1),
+                ("g0/ind-6", 0),
+            ],
         )
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, "III|mid")
+        report = lineage.build_lineage_report(self.repository, self.experiment, "III|high")
         self.assertEqual(report["seed"], 12)
         for entry in report["ancestry"]:
             self.assertIsNone(entry["rerun_error"])
-        self.assertEqual(len(report["turnings"]), 1)
+        self.assertEqual(len(report["turnings"]), 3)
         self.assertIsNotNone(report["first_reach_index"])
         self.assertNotIn("personality_series", report)
 
@@ -505,10 +517,10 @@ class RealRunLineageTests(unittest.TestCase):
             )
 
     def test_immigrant_cell_has_single_node_chain_and_no_turning_points(self) -> None:
-        chain = lineage.primary_lineage(self.repository, self.experiment, "V|high")
-        self.assertEqual([node["ref"] for node in chain], ["g0/ind-6"])
+        chain = lineage.primary_lineage(self.repository, self.experiment, "III|mid")
+        self.assertEqual([node["ref"] for node in chain], ["g0/ind-7"])
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, "V|high")
+        report = lineage.build_lineage_report(self.repository, self.experiment, "III|mid")
         self.assertEqual(report["turnings"], [])
         self.assertEqual(len(report["ancestry"]), 1)
         self.assertIsNone(report["ancestry"][0]["rerun_error"])
@@ -523,31 +535,31 @@ class RealRunLineageTests(unittest.TestCase):
         self.addCleanup(shutil.copyfile, backup, precedent_path)
         precedent_path.unlink()
 
-        cache_path = self.experiment / "lineage" / "III-mid-cache.json"
+        cache_path = self.experiment / "lineage" / "III-high-cache.json"
         cache_path.unlink(missing_ok=True)
         # This test's own (damaged) report must not poison the cache for
         # whichever test runs next (unittest does not guarantee method order
         # stays test-file order, and both tests share one class fixture).
         self.addCleanup(cache_path.unlink, missing_ok=True)
-        rerun_dir = self.experiment / "lineage" / "g0-archive-I-low"
+        rerun_dir = self.experiment / "lineage" / "g0-ind-6"
         if rerun_dir.is_dir():
             shutil.rmtree(rerun_dir)
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, "III|mid")
+        report = lineage.build_lineage_report(self.repository, self.experiment, "III|high")
         by_ref = {entry["ref"]: entry for entry in report["ancestry"]}
-        self.assertIsNotNone(by_ref["g0/archive/I-low"]["rerun_error"])
-        self.assertIsNone(by_ref["g3/ind-4"]["rerun_error"])
-        # The one turning point spans exactly the damaged ancestor, so it can
-        # no longer be computed -- reported as "none found", not a crash.
-        self.assertEqual(report["turnings"], [])
+        self.assertIsNotNone(by_ref["g0/ind-6"]["rerun_error"])
+        self.assertIsNone(by_ref["g1/ind-2"]["rerun_error"])
+        # Only the turning point spanning the damaged g0 ancestor drops out;
+        # the other two (g1<-g2, g2<-g3) don't depend on g0's rerun.
+        self.assertEqual(len(report["turnings"]), 2)
 
     def test_stale_cache_missing_trait_series_is_recomputed(self) -> None:
         # A cache written before the Fable fix has ancestry entries with no
         # "scalars" and turnings with no "trait_series" -- it must be treated
         # as stale and recomputed, not returned as-is (gapengine/lineage.py::
         # build_lineage_report's cache-validity check).
-        cache_path = self.experiment / "lineage" / "III-mid-cache.json"
-        good_report = lineage.build_lineage_report(self.repository, self.experiment, "III|mid")
+        cache_path = self.experiment / "lineage" / "III-high-cache.json"
+        good_report = lineage.build_lineage_report(self.repository, self.experiment, "III|high")
         self.addCleanup(
             cache_path.write_text,
             json.dumps(good_report, ensure_ascii=False),
@@ -561,7 +573,7 @@ class RealRunLineageTests(unittest.TestCase):
             turning.pop("trait_series", None)
         cache_path.write_text(json.dumps(stale, ensure_ascii=False), encoding="utf-8")
 
-        recomputed = lineage.build_lineage_report(self.repository, self.experiment, "III|mid")
+        recomputed = lineage.build_lineage_report(self.repository, self.experiment, "III|high")
         for entry in recomputed["ancestry"]:
             self.assertIn("scalars", entry)
         for turning in recomputed["turnings"]:

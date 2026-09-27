@@ -5,6 +5,7 @@ import html
 import json
 from urllib.parse import quote
 
+from engine.actions import FORCE_ARG_KINDS
 from viewer import data, pages
 
 
@@ -17,6 +18,10 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         "editable": job_store is not None and revision is not None, "revision": revision,
         "genre": world.get("genre"),
         "genres": [{"id": g["id"], "name": g.get("name") or g["id"]} for g in genres],
+        # WB-TIMEEVENT-001: verb -> argument kinds for the time screen's
+        # force_action form (same shape execution/world_editor.py._model()
+        # returns after a save, so world-prototype.js reads one shape).
+        "force_action_specs": {verb: list(kinds) for verb, kinds in FORCE_ARG_KINDS.items()},
     }
     wid = quote(world["id"], safe="")
     config = f'/configs/new?project={wid}'
@@ -74,7 +79,7 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
       <div class="wp-content" id="wp-content"></div>
       {expansion_template}
       <footer class="wp-footer"><span id="wp-message" role="status">{html.escape(status)}</span><a class="wp-primary" data-next href="{html.escape(next_href, quote=True)}" {"hidden" if not model["editable"] else ""}>{next_label}</a>{rationality_hint}{saved}</footer>
-      <dialog class="wp-dialog" aria-labelledby="wp-dialog-title"><form id="wp-form"><div class="wp-section-head"><h2 id="wp-dialog-title">編集</h2><button type="button" data-close aria-label="閉じる">×</button></div><p class="wp-muted">保存すると世界設定を更新します。過去の実行結果は変わりません。</p><div id="wp-fields"></div><div class="wp-dialog-actions"><button type="button" data-close>キャンセル</button><button class="wp-primary is-confirm" type="submit">保存する</button></div></form></dialog>
+      <dialog class="wp-dialog" aria-labelledby="wp-dialog-title"><form id="wp-form"><div class="wp-section-head"><h2 id="wp-dialog-title">編集</h2><button type="button" data-close aria-label="閉じる">×</button></div><p class="wp-muted" id="wp-dialog-desc">保存すると世界設定を更新します。過去の実行結果は変わりません。</p><div id="wp-fields"></div><div class="wp-dialog-actions"><button type="button" data-close>キャンセル</button><button class="wp-primary is-confirm" type="submit" id="wp-dialog-submit">保存する</button></div></form></dialog>
       <script type="application/json" id="wp-data">{payload}</script>
       <noscript>この表示にはJavaScriptが必要です。<a href="/worlds/{wid}?view=advanced">詳細設定を開く</a></noscript>
     </div>'''
