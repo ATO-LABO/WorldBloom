@@ -64,6 +64,8 @@ def selection(row):
     probability = row.get("choice_prob")
     if model.number(probability) and 0 <= probability <= 1:
         body += f'<p>実際の選択の確率：{probability:.2%}</p>'
+    if saved.get("fallback") == "forced_by_scheduled_event":
+        body += '<p class="rv-note">予定イベントで固定（抽選なし）</p>'
     if not candidates:
         body += '<p class="rv-note">選択肢の記録はありません。確率0を意味しません。</p>'
     else:

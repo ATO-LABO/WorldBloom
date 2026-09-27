@@ -315,6 +315,18 @@ class WorldEditorTests(unittest.TestCase):
         self.assertEqual(status, 400, error)
         self.assertEqual(before, self.current()['revision'])
 
+        # Renaming an existing event (via the "event" operation) to another
+        # event's id must also be rejected as a duplicate, not just add-event.
+        status, result = self.submit('add-event', {**valid, 'id': 'second_event'})
+        self.assertEqual(status, 200, result)
+        events = self.current()['world']['scheduled_events']
+        index = next(i for i, e in enumerate(events) if e['id'] == 'second_event')
+        before = self.current()['revision']
+        status, error = self.submit('event', {**valid, 'id': 'departure_day'}, index)
+        self.assertEqual(status, 400, error)
+        self.assertEqual(before, self.current()['revision'])
+        self.assertEqual(self.current()['world']['scheduled_events'][index]['id'], 'second_event')
+
     def test_snapshot_and_render_include_force_action_specs(self):
         # U-4
         snap = self.current()
