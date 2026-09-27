@@ -123,26 +123,48 @@
   function loadRoutes(){
     if(routesLoading||routesData)return;
     routesLoading=true;
-    fetch(`/api/worlds/${encodeURIComponent(model.id)}/routes`).then(r=>r.json()).then(data=>{
+    fetch(`/api/worlds/${encodeURIComponent(model.id)}/routes`).then(r=>{
+      if(!r.ok)return r.json().catch(()=>null).then(body=>{throw new Error(body&&body.message||`HTTP ${r.status}`);});
+      return r.json();
+    }).then(data=>{
+      // S3 (Opus review): an error response's shape ({code,message}, from
+      // job_api.send_error) has no `timepoints` array at all -- rendering
+      // it as a successful survey threw a TypeError deep in routesScreen
+      // (d.timepoints.length on undefined). Validate the shape here, not
+      // just the HTTP status, before ever caching it as `routesData`.
+      if(!data||!Array.isArray(data.timepoints))throw new Error((data&&data.message)||'想定外の応答でした。');
       routesData=data; routesLoading=false; if(screen==='routes')render();
-    }).catch(()=>{routesLoading=false; routesData={status:'error',message:'取得に失敗しました。',timepoints:[]}; if(screen==='routes')render();});
+    }).catch(error=>{
+      // Deliberately NOT cached into routesData -- a transient failure
+      // (server restart, network blip) must be retryable by revisiting the
+      // tab, not stuck showing the same error forever.
+      routesLoading=false;
+      if(screen==='routes'){
+        content.innerHTML=title('最短経路を調査')+`<p class="wp-muted">取得に失敗しました：${esc(error.message||String(error))}</p>`;
+      }
+    });
   }
   function routesScreen(){
     if(!routesData){loadRoutes();return title('最短経路を調査','主人公が結末へ至る段取りを計算しています…')+'<p class="wp-muted">計算中…</p>';}
     const d=routesData;
-    if(d.status==='no_route_config'||d.status==='no_goal'||d.status==='error')
+    if(d.status==='no_route_config'||d.status==='no_goal')
       return title('最短経路を調査')+`<p class="wp-muted">${esc(d.message)}</p>`;
     if(!d.timepoints.length)
       return title('最短経路を調査')+`<p class="wp-muted">${esc(d.message||'結末に到達する段取りが見つかりません')}</p>`;
     const tps=d.timepoints;
     const tp=tps[Math.min(routesTimepoint,tps.length-1)];
     const tabsHtml=tps.length>1?`<div class="wp-tabs" aria-label="時点の切り替え">${tps.map((t,i)=>`<button type="button" data-routes-tp="${i}" aria-pressed="${i===routesTimepoint}">${esc(t.label)}</button>`).join('')}</div>`:'';
-    const note='<p class="wp-muted">合理的に動いた場合の段取りです。予定イベントは対象が死亡している／物語が先に終わっている場合は発火しません。日替わりイベントと乱数は含みません。所要は目安で、鍛錬などは1手として数えています。</p>';
+    // S4 (Opus review): clarify what "#1" means (the engine's own cheapest
+    // plan right now, not necessarily the shortest of the shown patterns
+    // once a knockout route happens to finish faster) and that this is a
+    // pre-play forecast (only scheduled events have been applied so far,
+    // no actual decisions).
+    const note='<p class="wp-muted">合理的に動いた場合の段取りです。#1はエンジンが今もっとも自然と判断した段取りで、必ずしも他より所要が短いとは限りません。主人公はまだ実際には動いていない前提（この時点までの予定イベントのみ適用）での見込みです。予定イベントは対象が死亡している／物語が先に終わっている場合は発火しません。日替わりイベントと乱数は含みません。所要は目安で、鍛錬などは1手として数えています。</p>';
     if(tp.blocked.length||!tp.routes.length){
-      const reasons=(tp.blocked||[]).map(b=>`<li>${esc(JSON.stringify(b))}</li>`).join('');
+      const reasons=(tp.blocked||[]).map(b=>`<li>${esc(b.text||JSON.stringify(b))}</li>`).join('');
       return title('最短経路を調査')+tabsHtml+`<p class="wp-muted">結末に到達する段取りが見つかりません</p>${reasons?`<ul>${reasons}</ul>`:''}`+note;
     }
-    const routeSections=tp.routes.map(route=>`<section class="wp-section">${head(esc(route.label))}${route.conditions.length?`<p class="wp-muted">この段取りになる条件：${route.conditions.map(esc).join('・')}</p>`:''}<ol class="wp-steps">${route.steps.map(s=>`<li>${esc(s.text)}<small>累計 ${s.cumulative}</small></li>`).join('')}</ol>${route.truncated?'<p class="wp-muted">※途中で打ち切られました（手順が複雑すぎる可能性があります）。</p>':''}</section>`).join('');
+    const routeSections=tp.routes.map(route=>`<section class="wp-section">${head(esc(route.label))}${route.conditions.length?`<p class="wp-muted">この段取りになる条件：${route.conditions.map(esc).join('・')}</p>`:''}<ol class="wp-steps">${route.steps.map(s=>`<li>${esc(s.text)}<small>累計 ${s.cumulative}</small></li>`).join('')}</ol>${route.truncated?'<p class="wp-muted">※途中で打ち切られました（手順が複雑すぎる可能性があります）。目安の所要：'+esc(route.h)+'</p>':''}</section>`).join('');
     const single=tp.routes.length<2?'<p class="wp-muted">別パターンは見つかりませんでした</p>':'';
     return title('最短経路を調査','主人公が結末へ至る、パターンの違う段取りです。')+tabsHtml+routeSections+single+note;
   }

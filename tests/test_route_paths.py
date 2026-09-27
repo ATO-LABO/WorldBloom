@@ -20,9 +20,12 @@ from pathlib import Path
 
 import yaml
 
+from unittest import mock
+
 from execution.configs import ConfigStore
 from gapengine.route import load_route_config, plan
-from gapengine.route_paths import state_at, survey, timepoints
+from gapengine.route_paths import state_at, survey, timepoints, walk
+from viewer import data as viewer_data
 from viewer.data import RunRepository
 from viewer.server import ViewerHandler, ViewerServer
 
@@ -115,14 +118,50 @@ class SurveyMomotaroPlus2Tests(unittest.TestCase):
         if route["steps"] and not route["truncated"]:
             self.assertAlmostEqual(route["steps"][-1]["cumulative"], expected["h"], places=4)
 
-    def test_steps_cumulative_is_monotonic_and_matches_h(self) -> None:
+    def test_steps_cumulative_is_non_decreasing_for_every_route(self) -> None:
+        # S2 (Opus review): route["h"] is route.py's own upfront estimate,
+        # computed once before any knockout-specific detour is actually
+        # walked step by step -- it can legitimately differ from the walked
+        # total once a route resolves a danger gate earlier or later than
+        # the flat fallback cost assumed, so this only checks internal
+        # consistency (cumulative never decreases, reaches the labeled
+        # "cost" when completed) rather than route["h"] equality.
+        for route in self.result["timepoints"][0]["routes"]:
+            with self.subTest(route=route["label"]):
+                cumulative = 0.0
+                for step in route["steps"]:
+                    self.assertGreaterEqual(step["cost"], 0.0)
+                    cumulative += step["cost"]
+                    self.assertAlmostEqual(step["cumulative"], cumulative, places=4)
+                if not route["truncated"]:
+                    self.assertTrue(route["steps"])
+                    self.assertEqual(route["steps"][-1]["zone"], "村")
+                    self.assertAlmostEqual(route["cost"], cumulative, places=4)
+
+    def test_first_route_offers_the_free_magatama_not_the_gun(self) -> None:
+        # M1 (Opus review): momotaro starts holding 勾玉, a free (h=0)
+        # negotiate offer per route.py's own _best_offer -- 鉄砲 is only
+        # ever fetched as a pure strength item (_first_strength_item), never
+        # offered. walk() used to hand over whatever lootable+modifier item
+        # it had most recently picked up for *any* reason, which could name
+        # 鉄砲 instead.
         route = self.result["timepoints"][0]["routes"][0]
-        cumulative = 0.0
-        for step in route["steps"]:
-            cumulative += step["cost"]
-            self.assertAlmostEqual(step["cumulative"], cumulative, places=4)
-        if not route["truncated"]:
-            self.assertAlmostEqual(cumulative, route["h"], places=4)
+        negotiate_steps = [s for s in route["steps"] if s["kind"] == "negotiate"]
+        self.assertTrue(negotiate_steps)
+        text = negotiate_steps[0]["text"]
+        self.assertIn("勾玉", text)
+        self.assertNotIn("鉄砲", text)
+
+    def test_a_fight_route_is_found(self) -> None:
+        # S1 (Opus review): under momotaro_plus2's danger gate, a
+        # danger-gated plan's `best` never carries a ("route", ...) tag, so
+        # _knockouts_for used to never even try knocking out negotiate, and
+        # _signature (keyed only on best tags) couldn't tell a fight-
+        # resolving plan apart from a negotiate-resolving one with the same
+        # tags anyway. Both are fixed now (route_cfg["route"] itself drives
+        # both the knockout and the signature).
+        routes = self.result["timepoints"][0]["routes"]
+        self.assertTrue(any(route["route"] == "fight" for route in routes))
 
     def test_first_step_is_investigating_koban_at_michinaka(self) -> None:
         route = self.result["timepoints"][0]["routes"][0]
@@ -136,6 +175,40 @@ class SurveyMomotaroPlus2Tests(unittest.TestCase):
         self.assertFalse(route["truncated"])
         last = route["steps"][-1]
         self.assertEqual(last["zone"], "村")
+
+
+class StallDetectionTests(unittest.TestCase):
+    """M2 (Opus review): a fixture with no fight verb, no way to craft the
+    danger-gate boost item, and no trials at all used to make
+    ``_apply_stance_leaf`` re-raise the exact same relation by the exact
+    same delta forever -- observed as "○○と親しくなる" repeated ~53 times
+    before the 60-step budget cut it off. Both the stance-threshold fix
+    (M2a) and the state-fingerprint stall detector (M2b) are exercised
+    here; either alone would have been enough to stop the loop, but not
+    necessarily quickly -- this asserts it stops *fast*."""
+
+    @staticmethod
+    def _strip_to_dead_end(world, subjects) -> None:
+        protagonist = world.protagonist
+        subjects[protagonist].verbs.discard("fight")
+        subjects[protagonist].inventory.pop("勾玉", None)
+        world.recipes.pop("鉄砲", None)
+        if "鉄砲" in world.items:
+            world.items["鉄砲"]["sources"] = []
+        world.trials.clear()
+
+    def test_walk_does_not_loop_the_same_stance_raise_dozens_of_times(self) -> None:
+        cfg = load_route_config(TEMPLATE)
+        assert cfg is not None
+        result = walk(PROJECT, TEMPLATE, (1, "朝"), cfg, mutate=self._strip_to_dead_end)
+        # With the stance-threshold fix (M2a), this fixture actually
+        # completes cleanly now (train -> negotiate with no offer item, a
+        # single stance raise) rather than merely stalling faster -- but
+        # what actually regressed was the *loop*, so assert on that
+        # directly rather than on truncated/completed either way.
+        stance_steps = [s for s in result["steps"] if s["kind"] == "stance"]
+        self.assertLess(len(stance_steps), 5, stance_steps)
+        self.assertLess(len(result["steps"]), 20, result["steps"])
 
 
 class TimepointsTests(unittest.TestCase):
@@ -213,6 +286,39 @@ class RoutesApiTests(unittest.TestCase):
         status, payload = self.get("/api/worlds/does-not-exist/routes")
         self.assertEqual(status, 404, payload)
         self.assertEqual(payload["code"], "not_found")
+
+
+class RoutesApiReadOnlyViewerTests(unittest.TestCase):
+    """nice (Opus review): the endpoint's own docstring claims it works for
+    a read-only Viewer (no job_store) too -- this exercises that path
+    directly instead of only ever testing the job_store-present branch."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-route-paths-viewer-")
+        self.addCleanup(self.temp.cleanup)
+        self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
+        self.server.repository = RunRepository(Path(self.temp.name))
+        self.server.job_store = None
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+        thread.start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def get(self, path: str):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=15)
+        try:
+            conn.request("GET", path)
+            response = conn.getresponse()
+            raw = response.read()
+            return response.status, json.loads(raw)
+        finally:
+            conn.close()
+
+    def test_momotaro_plus2_routes_ok_without_job_store(self) -> None:
+        with mock.patch.object(viewer_data, "ROOT", ROOT):
+            status, payload = self.get("/api/worlds/momotaro_plus2/routes")
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["status"], "ok")
 
 
 if __name__ == "__main__":
