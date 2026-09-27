@@ -1,5 +1,5 @@
 ---
-ja_rev: "ed4e8e6660c1"
+ja_rev: "a7e665b94723"
 ---
 # Glossary
 
@@ -16,6 +16,8 @@ A summary of terms used on WorldBloom's screens and throughout this documentatio
 | Target ending | A condition expressed over state. Only runs that satisfy it enter the [QD Map](../concepts/qd-map.md)'s archive |
 | Canon | The "commonly seen" tendencies of actions in that genre. What a novelty-seeking genome avoids, and the initial value of the precedent table |
 | Foreshadowing (delayed effect) | A mechanism where an earlier action pays off later. Has a setup and a resolution condition; ending unresolved costs a penalty to quality q |
+| Scheduled event (scheduled_events) | An event that fires automatically on a given day/time-slot of the world. One carrying a **force action** (force_action) replaces the target's own action for that slot with the given verb/args. See [Templates](../reference/templates.md#scheduled-events) |
+| Relationship graph | The directed-graph view of characters' relationships, opened from the world's "Characters" tab. Also where you edit relationship labels and a character's affiliation. See [Create a World](../usage/create-world.md#relationship-workspace) |
 
 ## Evolution
 
@@ -31,6 +33,7 @@ A summary of terms used on WorldBloom's screens and throughout this documentatio
 | Precedent table | A table of "storylines already seen," built from canon, the previous generation's archive, and self-history. What a novelty-seeking genome avoids |
 | Coevolution | A mode where the antagonist also carries a genome and evolves alongside the protagonist. Off by default |
 | Meta-evolution | A mode that, in addition to the 9 numeric genes, also searches over enabling/disabling each rule. Off by default |
+| Personality growth (plasticity) | An opt-in mechanism where the protagonist's personality (genome) shifts slightly, within a single run only, in response to events that happen in the story. Off by default; the change never inherits into the next generation. See [Personality Growth](../concepts/personality-growth.md) |
 | Random baseline | A control experiment (`scripts/random_baseline.py`) measuring the reach rate and diversity of purely policy-free, fully random individuals |
 | Determinism | The property that the log matches byte for byte given the same world, genome, seed, precedent table, and engine. See [Determinism](../concepts/determinism.md) |
 | κ (kappa, rationality) | How strongly the rationality layer discounts candidates it judges unreasonable. Set as a value from 0–1 in run settings. Defaults to 0.45 for Jev and 0.6 for Ollama when creating a new config. See [Rationality Layer and Jev](../concepts/rationality-layer.md) |
@@ -40,6 +43,7 @@ A summary of terms used on WorldBloom's screens and throughout this documentatio
 | ρ (rho, route weight) | A 0–1 value controlling how hard the route layer reins in unreasoned detours. 0 (default) means unmodulated, 1 means they're almost never chosen. Set in run settings. See [Route Layer](../concepts/route-layer.md) |
 | Motive table (motives.yaml) | A prioritized list of rules that gives a would-be "unreasoned" detour a reason, scaled by genome strength. Lives at `templates/<genre>/motives.yaml`, one per genre. See [Route Layer](../concepts/route-layer.md) |
 | No reason | One of the route layer's classifications: a detour that matches none of advance / prepare / body / ignorance / belief / the motive table. Raising ρ makes these almost never chosen |
+| Survey shortest routes | A read-only feature on the world screen, for a world with a route layer, showing up to 3 walkthroughs to the ending. See [Route Layer](../concepts/route-layer.md#route-paths-survey) |
 
 ## Grid (Sifting)
 
@@ -52,6 +56,7 @@ A summary of terms used on WorldBloom's screens and throughout this documentatio
 | Quality q | The quality of a run that reached the ending. An absolute scale (0–1) that counts objective movement, swings in relationships, recoveries, reversals of power, gaining new facts, belief reversals, and chains of premise-aligned actions, and penalizes actions that came up empty. q̄ is the average across the whole archive |
 | Occupied cells | The number of filled cells in the archive. More means more different kinds of stories found |
 | Diversity | The average of how different the paths of runs left in the archive are from each other. Closer to 1 means more diverse |
+| Personality change (arc) | An opt-in third axis of the QD map (none/small/large), available only for a genre with [personality growth](../concepts/personality-growth.md) enabled. See [QD Map](../concepts/qd-map.md#arc-axis) |
 | Tendency | The action category that individual's genome weights most heavily. Can differ from the leading category |
 | Parent | The two individuals that produced this individual |
 | Lineage (main line) | The single line traced back through parents from an elite. Of the two parents, only the one with the closer genome is followed |

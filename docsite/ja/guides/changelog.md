@@ -3,17 +3,27 @@ sources:
   - "README.md"
   - "gapengine/route.py"
   - "gapengine/rationality.py"
-reviewed: "d87be6e73233700b5cade1a97a01a01fb9990341"
+  - "gapengine/genome.py"
+  - "gapengine/route_paths.py"
+  - "engine/world.py"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 
 # 変更履歴
 
 利用者から見て意味のある主な変更を日付順にまとめます。個々のコミットの一覧ではありません。最新のリリース物は [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases) から取得できます。
 
+## 2026-09-28
+
+- [性格の成長](../concepts/personality-growth.md)を追加。物語の中で起きた出来事（勝敗・仲間・裏切りなど）に応じて、主人公の性格がそのランの中でだけわずかに変わる任意の機能（既定オフ、実行設定「03. 保存と進化」または CLI の `--personality-growth`）。有効時は QD 格子に3つ目の軸「性格の変化」（なし／小／大）も追加できる
+- 世界の「登場人物」タブに、人物関係を有向グラフで確認・編集できる**人物関係図**を追加。関係のラベル編集、人物の所属（affiliation）の設定も可能に
+
 ## 2026-09-27
 
 - 合理性層の判定器に TypeSafe の Jev を追加。ローカル LLM（Ollama）より高速（1回約0.2秒、GPU不要）で、⚙設定「計算」タブでAPIキーを登録すると使える。実行設定の「合理性」区画で判定器を選べ、キー有効時の既定は Jev・κ=0.45（詳しくは[合理性層と Jev](../concepts/rationality-layer.md)）
 - 世界の新規作成に「ZIPから取り込む」を追加。AI（Codex・Claude Code・Gemini など）に作らせた `world.yaml`・`subjects/*.yaml` をZIPで取り込める（詳しくは[世界を ZIP から取り込む](../usage/import-world.md)）。ジャンルは省略でき、その場合は世界設定画面から後で選べる
+- 世界に予定イベントの**強制行動**（scheduled_events.force_action）を追加。指定した日・時間帯に、対象の行動そのものを動詞・引数ごと強制的に差し替えられる。世界画面の「時間」タブから編集
+- 道筋層を持つ世界に「[最短経路を調査](../concepts/route-layer.md#route-paths-survey)」を追加。世界画面のサイドバーから、結末までの段取り（最大3本）を読み取り専用で確認できる（閲覧専用の Viewer でも使用可）
 
 ## 2026-09-26
 

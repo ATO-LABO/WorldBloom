@@ -5,7 +5,8 @@ sources:
   - "docsite/ja/usage/llm-backends.md"
   - "docsite/ja/usage/gpu-guard.md"
   - "templates/"
-reviewed: "4394c7ef86af65bb0f995a9071da5f1744e3ef87"
+  - "docsite/ja/concepts/personality-growth.md"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 
 # FAQ
@@ -17,6 +18,10 @@ reviewed: "4394c7ef86af65bb0f995a9071da5f1744e3ef87"
 ## なぜ出来事の生成に LLM を使わないのですか？
 
 出来事の列（誰が何をしたか）を LLM に直接書かせると、なぜその展開になったのかを機械的に追跡できなくなります。WorldBloom は出来事の生成をシミュレーションと乱数だけに限ることで、[決定論](../concepts/determinism.md)を保証し、ある物語がどの世代のどの親から、どんな分岐で生まれたかを[系譜・転機](../concepts/sifting.md#compare-lineage-turning)として機械的に示せるようにしています。詳しくは[全体の流れ](../concepts/overview.md)を参照してください。
+
+## GA を使う意味は？
+
+方針（遺伝子）を進化させずに、無作為な個体だけで走らせても物語は生成できます（`scripts/random_baseline.py`）。[性格の成長](../concepts/personality-growth.md)とその第3軸を有効にした条件で、評価回数・乱数の種5通りを揃えて比べた実測では、GA の方が占有マス数（平均17.0 対 13.4）・QD スコア（平均4.80 対 3.47）・最高の質（平均0.429 対 0.382）のいずれも上回りました（検定はしていません）。ただし性格の成長・第3軸を使わない条件（18マスの格子）では、GA と無作為の差はほとんど出ませんでした。詳しくは[性格の成長](../concepts/personality-growth.md#ga-vs-random)を参照してください。
 
 ## GPU が無い PC でも使えますか？
 
