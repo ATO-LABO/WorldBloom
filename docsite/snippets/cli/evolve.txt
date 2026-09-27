@@ -10,7 +10,7 @@ usage: evolve.py [-h] --project PROJECT --template TEMPLATE --out OUT [--generat
                  [--rationality-num-ctx RATIONALITY_NUM_CTX]
                  [--rationality-table RATIONALITY_TABLE]
                  [--rationality-max-calls RATIONALITY_MAX_CALLS] [--route-rho ROUTE_RHO]
-                 [--resume] [--resume-allow-code-change]
+                 [--personality-growth] [--resume] [--resume-allow-code-change]
 
 Run deterministic MAP-Elites evolution.
 
@@ -63,6 +63,10 @@ options:
                         WB-ROUTE-001 S1: override templates/<genre>/route.yaml's rho (0 disables
                         the route weighting layer; that is the template default). Requesting rho>0
                         for a template with no route.yaml is an error.
+  --personality-growth  WB-GROWTH-001 S1: let a genome's plasticity gene evolve (off by default --
+                        plasticity stays 0 for every genome, byte-identical to a pre-growth run).
+                        Named "personality_growth", not "growth", to stay distinct from
+                        WORLDGROW-002's unrelated world-growth config.
   --resume              WB-GA-RESUME: resume from the last generation completed in
                         <out>/ga_state.json instead of starting over.
   --resume-allow-code-change
