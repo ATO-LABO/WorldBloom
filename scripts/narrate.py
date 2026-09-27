@@ -143,19 +143,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         with local_gpu_session(args.backend, output_settings, owner="narrate", wait_seconds=args.timeout):
             for cell_key in selected:
-                parts = cell_key.split("|")
+                # WB-GROWTH-001 S3 review fix (must #3): a cell key is 2
+                # elements (category|volatility_bin), or 3 when the arc axis
+                # is active (category|volatility_bin|arc_bin) -- both are
+                # valid archive.cells keys.
+                parts = tuple(cell_key.split("|"))
                 entry: dict[str, Any] = {
                     "cell": cell_key,
                     "status": "error",
                     "story_path": None,
                 }
-                if len(parts) != 2 or (parts[0], parts[1]) not in archive.cells:
+                if len(parts) not in (2, 3) or parts not in archive.cells:
                     entry["error"] = "selected cell is not present in archive"
                     entries.append(entry)
                     atomic_json(index_path, payload)
                     continue
 
-                elite = archive.cells[(parts[0], parts[1])]
+                elite = archive.cells[parts]
                 elite_payload = elite.to_dict()
                 elite_payload["cell"] = cell_key
                 stem = _safe_cell_name(cell_key)

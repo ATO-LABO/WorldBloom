@@ -9,6 +9,7 @@ from __future__ import annotations
 import http.client
 import json
 import shutil
+import subprocess
 import tempfile
 import time
 import unittest
@@ -18,13 +19,17 @@ from typing import Any
 import yaml
 
 from execution import worker
+from execution.provenance import atomic_json, canonical, sha256, write_bytes
 
 from gapengine.evolve import evolve
 from gapengine.genome import Genome
 from gapengine.qd import Archive, Descriptor, Elite, arc
 from gapengine.seed_genomes import from_archive as seed_genomes_from_archive
 from test_evolution_execution import EvolutionHttpPersonalityGrowthTests, cleanup_http_fixture
-from viewer import data
+from test_ga_replay import _genome as _ga_replay_genome, _publish_revision
+from test_output import _write_rows as _write_narrate_rows
+from viewer import data, ga_replay
+from viewer.data import RunRepository
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -201,6 +206,64 @@ class SeedGenomesArcCellTests(unittest.TestCase):
         self.assertEqual(entries[0]["cell"], "I|low|large")
 
 
+class NarrateThreeElementCellTests(unittest.TestCase):
+    """WB-GROWTH-001 S3 review fix (must #3): scripts/narrate.py's "is this
+    selected cell actually in the archive" check required exactly 2 "|"-
+    separated parts, so a selection naming a 3-element (arc-enabled) cell
+    was always rejected as "not present in archive" even when it plainly
+    was."""
+
+    def test_three_element_cell_key_resolves_against_the_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive_path = root / "archive.json"
+            layers_path = root / "g0" / "ind-0" / "seed-7" / "layers.jsonl"
+            selection_path = root / "selection.json"
+            stories_dir = root / "stories"
+
+            _write_narrate_rows(layers_path)
+            archive = Archive()
+            archive.volatility_thresholds = {"low_max": 0.1, "mid_max": 0.2}
+            archive.arc_thresholds = {"split": 0.1}
+            archive.cells[("III", "high", "large")] = Elite(
+                genome=Genome.neutral(),
+                quality=0.75,
+                descriptor=Descriptor(
+                    category="III", volatility=0.4, volatility_bin="high",
+                    arc=0.5, arc_bin="large",
+                ),
+                reach_rate=1.0,
+                exemplar={
+                    "engine_hash": "test",
+                    "layers_path": "g0/ind-0/seed-7/layers.jsonl",
+                    "precedent_hash": "test",
+                    "seed": 7,
+                },
+                generation=3,
+            )
+            archive.save(archive_path)
+            selection_path.write_text(
+                json.dumps({"selected": ["III|high|large"]}, ensure_ascii=False) + "\n",
+                encoding="utf-8", newline="\n",
+            )
+
+            from scripts.narrate import main as narrate_main
+
+            exit_code = narrate_main([
+                "--archive", str(archive_path),
+                "--runs", str(root),
+                "--selection", str(selection_path),
+                "--out", str(stories_dir),
+                "--backend", "none",
+            ])
+            self.assertEqual(exit_code, 0)
+
+            index = json.loads((stories_dir / "index.json").read_text(encoding="utf-8"))
+            entry = index["entries"][0]
+            self.assertEqual(entry["cell"], "III|high|large")
+            self.assertNotEqual(entry.get("status"), "error")
+
+
 class EvolveByteCompatibilityTests(unittest.TestCase):
     """A template whose qd.yaml has no arc_bins key must be entirely
     unaffected by WB-GROWTH-001 S3, even with --personality-growth on and
@@ -280,18 +343,68 @@ class MomotaroPlus2ArcAxisTests(unittest.TestCase):
                     (root / "second" / f"g{generation}" / "results.json").read_bytes(),
                 )
 
-    def test_personality_growth_off_collapses_every_cell_to_the_none_bin(self) -> None:
+    def test_growth_off_momotaro_plus2_matches_pre_s3_shape(self) -> None:
+        """WB-GROWTH-001 S3 review fix (should #2): qd.yaml declaring
+        arc_bins is not enough on its own -- the axis needs
+        personality_growth on too. A growth-off run on momotaro_plus2 (whose
+        qd.yaml now permanently has arc_bins) must produce the exact same
+        archive/results shape as the pre-S3 template that had no arc_bins
+        key at all: 2-element cells, grid_size 18, no arc_thresholds."""
+        old_qd_yaml = subprocess.run(
+            ["git", "show", "83dd57b:templates/momotaro_plus2/qd.yaml"],
+            cwd=ROOT, capture_output=True, check=True, text=True,
+        ).stdout
+        self.assertNotIn("arc_bins", old_qd_yaml)
+
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            cfg = {
-                "ga_seed": 2, "generations": 2, "keep": "all", "population": 4,
+            old_template = root / "template_pre_s3"
+            shutil.copytree(PLUS2_TEMPLATE, old_template)
+            (old_template / "qd.yaml").write_text(old_qd_yaml, encoding="utf-8")
+
+            common = {
+                "ga_seed": 4, "generations": 2, "keep": "all", "population": 4,
                 "processes": 1, "project": PLUS2_PROJECT, "seed_base": 0, "seeds": 1,
-                "template": PLUS2_TEMPLATE, "out": root / "out",
             }
-            archive = evolve(cfg)
-            for cell in archive.cells:
-                self.assertEqual(len(cell), 3)
-                self.assertEqual(cell[2], "none")
+            pre_s3 = evolve({**common, "template": old_template, "out": root / "pre_s3"})
+            growth_off = evolve({**common, "template": PLUS2_TEMPLATE, "out": root / "growth_off"})
+
+            self.assertIsNone(growth_off.arc_thresholds)
+            for cell in growth_off.cells:
+                self.assertEqual(len(cell), 2)
+
+            def strip_engine_hash(archive: dict) -> dict:
+                for elite in archive["cells"].values():
+                    elite["exemplar"].pop("engine_hash", None)
+                return archive
+
+            pre_s3_archive = strip_engine_hash(
+                json.loads((root / "pre_s3" / "archive.json").read_text(encoding="utf-8"))
+            )
+            growth_off_archive = strip_engine_hash(
+                json.loads((root / "growth_off" / "archive.json").read_text(encoding="utf-8"))
+            )
+            self.assertEqual(pre_s3_archive, growth_off_archive)
+
+            def strip_run_engine_hash(results: list) -> list:
+                for individual in results:
+                    for run in individual["runs"]:
+                        run.pop("engine_hash", None)
+                return results
+
+            for generation in range(2):
+                pre_results = strip_run_engine_hash(json.loads(
+                    (root / "pre_s3" / f"g{generation}" / "results.json").read_text(encoding="utf-8")
+                ))
+                off_results = strip_run_engine_hash(json.loads(
+                    (root / "growth_off" / f"g{generation}" / "results.json").read_text(encoding="utf-8")
+                ))
+                self.assertEqual(pre_results, off_results)
+
+            repository = data.RunRepository(root)
+            meta = data.experiment_meta(repository, repository.experiment("growth_off"))
+            self.assertEqual(meta["grid_size"], 18)
+            self.assertEqual(meta["arc_bins"], [])
 
     def test_resume_keeps_the_frozen_arc_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -347,6 +460,82 @@ class ViewerArcAxisTests(unittest.TestCase):
             self.assertEqual(cell_key.count("|"), 2)
             view = data.cell_view(repository, experiment, cell_key, view="digest")
             self.assertEqual(view["cell"], cell_key)
+
+
+class GaReplayArcCollapseTests(unittest.TestCase):
+    """WB-GROWTH-001 S3 review fix (must #1): viewer/static/ga_replay.js's
+    cellRects/paintCell only ever know the 2D "category|bin" grid --
+    replay_model() must fold a 3-element (arc-enabled) archive's cells,
+    every individual's own cell_key, and final_cells/prev_cells all down to
+    that pair (highest quality wins per pair) before handing them to the
+    client, or the map painted nothing at all for such a run."""
+
+    class _Handler:
+        def __init__(self, repository):
+            self.repository = repository
+
+    def test_three_element_archive_cells_collapse_to_pairs(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="wb-ga-replay-arc-") as temporary:
+            runs = Path(temporary) / "runs"
+            runs.mkdir()
+            repository = RunRepository(runs, control_root=Path(temporary) / "control")
+            run_id = "run-ga-replay-arc"
+            root = runs / run_id
+            root.mkdir(parents=True)
+            manifest = {
+                "schema_version": 1, "run_id": run_id, "config_id": "cfg-arc",
+                "evolution": {}, "target_endings": [],
+            }
+            manifest_bytes = canonical(manifest)
+            write_bytes(root / "manifest.json", manifest_bytes)
+            atomic_json(root / "complete.json", {"schema_version": 1, "manifest_sha256": sha256(manifest_bytes)})
+
+            genome_a = _ga_replay_genome()
+            genome_b = _ga_replay_genome({"I": 0.9}, risk_tolerance=0.9)
+
+            def result(index, genome, cell, quality):
+                return {
+                    "index": index, "genome": genome, "parents": [],
+                    "cell": list(cell), "classification_status": "classified",
+                    "shaped": quality, "reach_rate": 1.0,
+                    "runs": [{"reached": True, "quality": quality, "seed": 0}],
+                }
+
+            g0 = [
+                # Same (category, volatility) pair, two different arc bins --
+                # the losing one (lower quality) must not shadow the winner.
+                result(0, genome_a, ("I", "high", "small"), 0.4),
+                result(1, genome_b, ("I", "high", "large"), 0.9),
+            ]
+            (root / "g0").mkdir()
+            (root / "g0" / "results.json").write_text(json.dumps(g0, ensure_ascii=False), encoding="utf-8")
+
+            manifest1_bytes = _publish_revision(root, run_id, 1, {
+                "I|high|small": {"generation": 0, "quality": 0.4, "genome": genome_a, "parents": []},
+                "I|high|large": {"generation": 0, "quality": 0.9, "genome": genome_b, "parents": []},
+            })
+            atomic_json(root / "published" / "current.json", {
+                "schema_version": 1, "run_id": run_id, "revision": 1,
+                "manifest_sha256": sha256(manifest1_bytes),
+            })
+
+            handler = self._Handler(repository)
+            job = {"run_id": run_id, "publication_revision": 1}
+            model = ga_replay.replay_model(handler, job, (["I"], ["high"]))
+
+        self.assertIsNotNone(model)
+        # The 2 archive.json rows fold into exactly 1 map cell -- the
+        # higher-quality (arc=large) entry, keyed by the 2D pair only.
+        self.assertEqual(model["final_cells"], {"I|high": 0.9})
+        self.assertEqual(
+            {individual["cell_key"] for individual in model["individuals"]},
+            {"I|high"},
+        )
+        # The losing (arc=small) individual is "rejected" against the pair's
+        # collapsed winner, not silently treated as its own separate cell.
+        rejected = next(i for i in model["individuals"] if i["index"] == 0)
+        self.assertEqual(rejected["outcome"]["kind"], "rejected")
+        self.assertAlmostEqual(rejected["outcome"]["incumbent_quality"], 0.9)
 
 
 class EvolutionHttpArcFilterTests(EvolutionHttpPersonalityGrowthTests):

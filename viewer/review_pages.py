@@ -109,12 +109,22 @@ def grid(repo, name, *, job_store=None):
         for bin_name in bins:
             pair=f'{cat}|{bin_name}'
             if arc_bins:
-                # WB-GROWTH-001 S3: this read-only fallback grid has no arc
-                # filter of its own -- show the best-quality entry across
-                # arc bins for this (category, volatility_bin) pair.
-                candidates=[(key,value) for key,value in cells.items()
-                            if isinstance(key,str) and key.startswith(pair+'|') and isinstance(value,dict)]
-                best=max(candidates, key=lambda kv: kv[1].get('quality') if isinstance(kv[1].get('quality'),(int,float)) else -1.0, default=None)
+                # WB-GROWTH-001 S3 review fix (nice #5): this read-only
+                # fallback grid has no arc filter of its own -- show the
+                # best-quality entry across arc bins for this (category,
+                # volatility_bin) pair. A candidate with no numeric quality
+                # is excluded from the comparison entirely; ties are broken
+                # deterministically by sorting on the raw cell key ascending
+                # first (max() then keeps the first-seen maximum).
+                candidates=sorted(
+                    (
+                        (key,value) for key,value in cells.items()
+                        if isinstance(key,str) and key.startswith(pair+'|') and isinstance(value,dict)
+                        and isinstance(value.get('quality'),(int,float))
+                    ),
+                    key=lambda kv: kv[0],
+                )
+                best=max(candidates, key=lambda kv: kv[1]['quality'], default=None)
                 cell, elite = best if best is not None else (pair, None)
             else:
                 cell, elite = pair, cells.get(pair)

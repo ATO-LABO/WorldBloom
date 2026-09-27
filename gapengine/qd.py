@@ -998,7 +998,10 @@ class Archive:
         """Same freeze-on-first-generation shape as freeze_thresholds, but
         the split is a single point (median of the *positive* arcs only --
         arc==0, no growth at all, is always its own "none" bin, decided
-        before any threshold is consulted; see _arc_bin)."""
+        before any threshold is consulted; see _arc_bin). Frozen from
+        whatever generation 0 happens to produce, so a small population/seed
+        count can skew the small/large boundary for the rest of the run --
+        same caveat freeze_thresholds already carries for volatility."""
         if self.arc_thresholds is None:
             positive = [float(value) for value in arcs if float(value) > 0.0]
             # ponytail: no positive arc observed yet (e.g. this generation

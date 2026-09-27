@@ -1464,22 +1464,23 @@ def _qd_table(categories, bins, live):
             prefix = f"{category}|{bin_name}"
             cell = cells.get(prefix)
             if cell is None:
-                # WB-GROWTH-001 S3: an arc-enabled archive keys its cells
-                # category|volatility_bin|arc_bin -- this in-progress map has
-                # no arc filter of its own, so show the best across arc bins.
-                candidates = [
-                    value for key, value in cells.items()
-                    if isinstance(key, str) and key.startswith(prefix + "|")
-                ]
-                cell = max(
-                    candidates,
-                    key=lambda value: (
-                        value.get("quality")
-                        if isinstance(value.get("quality"), (int, float))
-                        else -1.0
+                # WB-GROWTH-001 S3 review fix (nice #5): an arc-enabled
+                # archive keys its cells category|volatility_bin|arc_bin --
+                # this in-progress map has no arc filter of its own, so show
+                # the best across arc bins. A candidate with no numeric
+                # quality is excluded from the comparison entirely; ties are
+                # broken deterministically by sorting on the raw cell key
+                # ascending first (max() then keeps the first-seen maximum).
+                candidates = sorted(
+                    (
+                        (key, value) for key, value in cells.items()
+                        if isinstance(key, str) and key.startswith(prefix + "|")
+                        and isinstance(value.get("quality"), (int, float))
                     ),
-                    default=None,
+                    key=lambda pair: pair[0],
                 )
+                best = max(candidates, key=lambda pair: pair[1]["quality"], default=None)
+                cell = best[1] if best is not None else None
             if cell is None:
                 columns.append('<td class="qd-cell empty"></td>')
             else:
@@ -1693,6 +1694,11 @@ def _live_map(handler, job):
         "revision": revision,
         "cells": cells,
         "generations": generations,
+        # WB-GROWTH-001 S3 review fix (should #2): whether this *published*
+        # archive actually froze arc thresholds -- the ground truth for
+        # whether the arc axis is active, independent of what the template's
+        # qd.yaml merely declares.
+        "arc_enabled": (snapshot.get("archive") or {}).get("arc_thresholds") is not None,
         "series": {
             "occupied": series("occupied_cells"),
             "quality": series("average_archive_quality"),
@@ -1802,7 +1808,21 @@ def _run_view(handler, *, world_id=None, config_id=None, job=None):
         template_dir = job_store.configs.repo / "templates" / config["template_id"]
     elif world.get("genre"):
         template_dir = job_store.configs.repo / "templates" / world["genre"]
-    axes = data.qd_axes(template_dir)
+    categories, bins, declared_arc_bins = data.qd_axes(template_dir)
+    # WB-GROWTH-001 S3 review fix (should #2): qd.yaml declaring arc_bins is
+    # not enough -- the axis is only actually active when personality_growth
+    # is (or was) on too (gapengine/evolve.py drops arc_bins from qd_cfg
+    # otherwise, so the archive never freezes arc_thresholds and every cell
+    # would be an always-empty "|none" no-op). A published run's own archive
+    # (arc_thresholds present or not) is the ground truth when there is one;
+    # before any publication exists yet, fall back to this config's own
+    # personality_growth setting for the pre-run grid_size estimate.
+    if live is not None and live.get("arc_enabled") is not None:
+        arc_bins = declared_arc_bins if live["arc_enabled"] else []
+    else:
+        growth_enabled = bool(((config or {}).get("evolution") or {}).get("personality_growth"))
+        arc_bins = declared_arc_bins if growth_enabled else []
+    axes = (categories, bins, arc_bins)
 
     estimate = _estimate(jobs, configs_by_id, world_id, config)
 
