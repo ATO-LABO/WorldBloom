@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Mapping, Sequence, TYPE_CHECKING
 
+from engine.log import delta_effective
 from engine.predicate import compile_predicate_syntax
 
 from gapengine.classify import Classification, classify
@@ -61,7 +62,7 @@ def _compile_rules(
         seen_ids.add(rule_id)
 
         scope = rule.get("scope")
-        if scope not in {"turn", "candidate"}:
+        if scope not in {"turn", "candidate", "outcome"}:
             raise ValueError(
                 f"Unknown policy rule scope: {rule_id}:{scope}"
             )
@@ -177,11 +178,25 @@ class Policy:
     ) -> None:
         self.genome = genome
         self.precedent = precedent
-        self.rules = tuple(
+        _enabled_rules = tuple(
             rule
             for rule in _compile_rules(rules)
             if genome.rule_bits.get(str(rule["id"]), True)
         )
+        # WB-GROWTH-001 S0: outcome-scope rules are kept out of self.rules
+        # entirely so the existing turn/candidate reweight loop (and the
+        # neutral-genome/annotation_only check) never sees them -- they are
+        # evaluated only by observe(), below.
+        self.rules = tuple(
+            rule for rule in _enabled_rules if rule["scope"] != "outcome"
+        )
+        self.outcome_rules = tuple(
+            rule for rule in _enabled_rules if rule["scope"] == "outcome"
+        )
+        # WB-GROWTH-001 S0: cumulative post-birth shift per adjustable gene
+        # key, written by observe() below. Never persisted/inherited -- a
+        # fresh Policy (one per seed) always starts at {}.
+        self.acquired: dict[str, float] = {}
         self.lam = min(1.0, max(0.0, float(lam)))
         self.eps = max(0.0, float(eps))
         self.self_table = self_table or PrecedentTable()
@@ -514,3 +529,124 @@ class Policy:
             str(classification.get("target_role", "none")),
         )
         subject.decision_history[(context, action_key)] += 1
+
+    def _outcome_target(
+        self,
+        world: World,
+        args: Sequence[Any],
+        details: Mapping[str, Any],
+    ) -> str | None:
+        for candidate in (
+            args[0] if args else None,
+            details.get("target"),
+            details.get("ally"),
+        ):
+            if isinstance(candidate, str) and candidate in world.subjects:
+                return candidate
+        return None
+
+    def observe(
+        self,
+        subject: Subject,
+        world: World,
+        present: list[Subject],
+        row: Mapping[str, Any],
+    ) -> list[dict[str, Any]]:
+        """WB-GROWTH-001 S0: react to one just-written decision/event row
+        with this subject's outcome-scope rules, accumulating any shift
+        into ``self.acquired`` and returning a "growth" marker per matched
+        rule (or [] when nothing matched or nothing actually shifted).
+
+        S0 note: the shift is always computed with plasticity fixed at 1.0
+        -- genome.plasticity does not exist yet (that is WB-GROWTH-001 S1),
+        and reweight() never reads self.acquired in S0 either, so this
+        method only records; it cannot change a single decision's weights.
+        """
+
+        if not self.outcome_rules:
+            return []
+        verb = row.get("verb")
+        if not isinstance(verb, str) or verb == "growth":
+            return []
+
+        details = row.get("details") or {}
+        args = row.get("args") or []
+        row_subject = row.get("subject")
+        actor_is_self = row_subject == subject.id
+        target = self._outcome_target(world, args, details) or subject.id
+
+        delta = row.get("delta") or {}
+        delta_targets = delta.get("targets") or {}
+        involves_self = (
+            actor_is_self
+            or target == subject.id
+            or subject.id in delta_targets
+        )
+
+        classification = row.get("classification") or {}
+        if actor_is_self:
+            stress_delta = (delta.get("actor") or {}).get("stress", 0.0)
+        else:
+            stress_delta = (
+                delta_targets.get(subject.id) or {}
+            ).get("stress", 0.0)
+
+        effective = row.get("effective")
+        if effective is None:
+            effective = delta_effective(delta)
+
+        bindings = {
+            "kind": row.get("kind"),
+            "verb": verb,
+            "result": row.get("result"),
+            "actor_is_self": actor_is_self,
+            "target": target,
+            "category": classification.get("category"),
+            "risk_class": classification.get("risk_class"),
+            "stance_sign": classification.get("stance_sign"),
+            "target_role": classification.get("target_role"),
+            "effective": bool(effective),
+            "stress_delta": float(stress_delta or 0.0),
+            "involves_self": involves_self,
+        }
+        namespace = world.namespace(
+            subject,
+            present,
+            turn=int(row.get("turn", 0)),
+            day=int(row.get("day", 0)),
+            bindings=bindings,
+        )
+
+        plasticity = 1.0  # S0: fixed; S1 reads genome.plasticity instead.
+        markers: list[dict[str, Any]] = []
+        for rule in self.outcome_rules:
+            if not rule["predicate"].evaluate(namespace):
+                continue
+            shift = {
+                key: plasticity * value
+                for key, value in rule["adjust"].items()
+            }
+            if not any(shift.values()):
+                continue
+            for key, value in shift.items():
+                self.acquired[key] = self.acquired.get(key, 0.0) + value
+            markers.append(
+                {
+                    "verb": "growth",
+                    "subject": subject.id,
+                    "details": {
+                        "rule": rule["id"],
+                        "description": rule.get("description", ""),
+                        "trigger": {
+                            "kind": row.get("kind"),
+                            "verb": verb,
+                            "result": row.get("result"),
+                            "turn": row.get("turn"),
+                        },
+                        "shift": dict(sorted(shift.items())),
+                        "plasticity": plasticity,
+                        "acquired_after": dict(sorted(self.acquired.items())),
+                    },
+                }
+            )
+        return markers

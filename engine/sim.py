@@ -93,6 +93,10 @@ class Simulation:
         self.slot: str | None = None
         self._last_fact_turn: dict[str, int] = {}
         self._previous_snapshot_layers: dict[str, Any] | None = None
+        # WB-GROWTH-001 S0: set for the duration of run()'s `with` block so
+        # _observe_row (the LayersWriter on_write hook) can write follow-up
+        # "growth" rows through the same writer.
+        self._writer: LayersWriter | None = None
 
         for subject_id in sorted(self.subjects):
             subject = self.subjects[subject_id]
@@ -1050,9 +1054,41 @@ class Simulation:
         )
         self._previous_snapshot_layers = layers
 
+    def _observe_row(self, row: dict[str, Any]) -> None:
+        """WB-GROWTH-001 S0: LayersWriter's on_write hook. For every
+        decision/event row (never headers/snapshots, and never a "growth"
+        row itself -- that would recurse), let each subject's policy react
+        to what just happened via its ``observe`` method (duck-typed like
+        ``record``/``reweight``) and log any resulting marker as a
+        "growth" event, in sorted subject-id order so this stays
+        deterministic. Consumes no randomness."""
+
+        if row.get("kind") not in ("decision", "event"):
+            return
+        verb = row.get("verb")
+        if verb is None or verb == "growth":
+            return
+        if self._writer is None:
+            return
+        for subject_id in sorted(self.subjects):
+            subject = self.subjects[subject_id]
+            policy = subject.policy
+            observe = getattr(policy, "observe", None)
+            if not callable(observe):
+                continue
+            markers = observe(
+                subject,
+                self.world,
+                self._present_for(subject),
+                row,
+            )
+            if markers:
+                self._write_markers(self._writer, markers)
+
     def run(self) -> Path:
         path = self.out_dir / "layers.jsonl"
-        with LayersWriter(path) as writer:
+        with LayersWriter(path, on_write=self._observe_row) as writer:
+            self._writer = writer
             writer.write(self._header())
 
             for day in range(1, self.world.days + 1):
