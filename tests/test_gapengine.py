@@ -186,6 +186,10 @@ class GapEngineTests(unittest.TestCase):
                 for row in neutral_rows
                 if row.get("kind") == "decision"
                 and row.get("subject") == world_neutral.protagonist
+                # WB-TIMEEVENT-001: departure_day's force_action bypasses
+                # policy.reweight/record entirely, so that decision never
+                # carries policy/classification (see test_engine E-1/E-9).
+                and row.get("forced") is None
             ]
             self.assertTrue(protagonist_decisions)
             self.assertTrue(
