@@ -7,17 +7,22 @@ from __future__ import annotations
 import dataclasses
 import json
 import random
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from engine.actions import Action
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.world import World
+from gapengine.evolve import _rule_ids, evolve
 from gapengine.genome import Genome
 from gapengine.policy import Policy
+from gapengine.seed_genomes import reconcile as reconcile_seed_genome
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -188,6 +193,89 @@ class PolicyOutcomeRuleTests(unittest.TestCase):
         self.assertEqual(policy.rules, ())
         self.assertEqual(len(policy.outcome_rules), 1)
 
+    def test_untargeted_row_does_not_involve_a_bystander(self) -> None:
+        # Review fix (should #2): an untargeted row (no args, no
+        # details.target/ally) used to default target to subject.id, which
+        # made involves_self true for *every* subject observing it. It must
+        # now be false for anyone who isn't the row's own actor.
+        rule = {
+            "id": "g_witness",
+            "scope": "outcome",
+            "when": "involves_self",
+            "adjust": {"risk_tolerance": 0.01},
+        }
+        genome = dataclasses.replace(Genome.neutral(), plasticity=1.0)
+        policy = Policy(genome, precedent=None, rules=[rule])
+        row = {
+            "kind": "decision",
+            "turn": 1,
+            "day": 1,
+            "subject": "桃太郎",
+            "verb": "rest",
+            "args": [],
+            "result": "rested",
+            "delta": {"actor": {}, "targets": {}, "relations": [], "objective": None},
+            "classification": {
+                "category": None,
+                "subtype": "rest",
+                "risk_class": "neutral",
+                "stance_sign": 0,
+                "target_role": "none",
+            },
+            "effective": False,
+        }
+        # The actor itself is involved (actor_is_self).
+        self.assertEqual(len(policy.observe(self.subjects["桃太郎"], self.world, [], row)), 1)
+        # A bystander with no stake in an untargeted row is not.
+        self.assertEqual(policy.observe(self.subjects["鬼"], self.world, [], row), [])
+
+    def test_stress_after_binding_is_none_on_marker_rows_and_a_value_on_decisions(
+        self,
+    ) -> None:
+        # Review fix (should #3): renamed from "stress_delta" (it was
+        # always the post-change value, never a difference, and a
+        # marker/event row -- delta={} always -- could never carry one).
+        genome = dataclasses.replace(Genome.neutral(), plasticity=1.0)
+        marker_probe = {
+            "id": "probe",
+            "scope": "outcome",
+            "when": "stress_after == None",
+            "adjust": {"risk_tolerance": 0.01},
+        }
+        policy = Policy(genome, precedent=None, rules=[marker_probe])
+        marker_row = {
+            "kind": "event",
+            "turn": 1,
+            "day": 1,
+            "subject": "桃太郎",
+            "verb": "downed",
+            "args": [],
+            "result": "applied",
+            "delta": {},
+            "details": {"downed_since": 1},
+        }
+        self.assertEqual(
+            len(policy.observe(self.subjects["桃太郎"], self.world, [], marker_row)), 1
+        )
+
+        decision_probe = {
+            "id": "probe2",
+            "scope": "outcome",
+            "when": "stress_after != None and stress_after > 0.5",
+            "adjust": {"risk_tolerance": 0.01},
+        }
+        policy2 = Policy(genome, precedent=None, rules=[decision_probe])
+        decision_row = dict(_synthetic_fight_lost_row("桃太郎", "鬼"))
+        decision_row["delta"] = {
+            "actor": {"stress": 1.2},
+            "targets": {},
+            "relations": [],
+            "objective": None,
+        }
+        self.assertEqual(
+            len(policy2.observe(self.subjects["桃太郎"], self.world, [], decision_row)), 1
+        )
+
     def test_current_genome_feeds_reweight_effective_genome_and_meta(self) -> None:
         genome = dataclasses.replace(Genome.neutral(), plasticity=1.0)
         policy = Policy(genome, precedent=None, rules=[FIGHT_LOST_RULE], cfg={"nodes": [], "edges": []})
@@ -227,34 +315,187 @@ class SimulationGrowthWiringTests(unittest.TestCase):
             rows = read_rows(path)
         self.assertFalse(any(row.get("verb") == "growth" for row in rows))
 
-    def test_momotaro_plus2_same_seed_is_byte_identical_with_growth_rules(self) -> None:
-        # templates/momotaro_plus2/rules.yaml now carries the WB-GROWTH-001
-        # outcome rules alongside its existing turn/candidate ones.
-        import yaml
+    def _plus2_rules(self) -> list[dict[str, Any]]:
+        return list(
+            yaml.safe_load((PLUS2_TEMPLATE / "rules.yaml").read_text(encoding="utf-8"))
+        )
 
+    def _run_plus2(self, out_dir: Path, genome: Genome, rules: list[dict[str, Any]]) -> Path:
+        world, subjects = load_fixture(PLUS2_PROJECT, PLUS2_TEMPLATE)
+        action_cfg = yaml.safe_load(
+            (PLUS2_TEMPLATE / "action_graph.yaml").read_text(encoding="utf-8")
+        )
+        policy = Policy(genome, precedent=None, rules=rules, cfg=action_cfg)
+        return Simulation(
+            1,
+            world,
+            subjects,
+            out_dir,
+            policies={world.protagonist: policy},
+        ).run()
+
+    def test_momotaro_plus2_same_seed_is_byte_identical_with_growth_active(self) -> None:
+        # Review fix (should #5): plasticity=0 (Genome.neutral()) can never
+        # exercise reweight()'s acquired-shift path -- use a plastic genome
+        # so this test actually covers growth *steering* weighting, not
+        # just recording it.
+        rules = self._plus2_rules()
+        self.assertTrue(any(rule.get("scope") == "outcome" for rule in rules))
+        genome = dataclasses.replace(Genome.neutral(), plasticity=1.0)
+
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            path_a = self._run_plus2(Path(first), genome, rules)
+            path_b = self._run_plus2(Path(second), genome, rules)
+            self.assertEqual(path_a.read_bytes(), path_b.read_bytes())
+            rows = read_rows(path_a)
+
+        growth_rows = [row for row in rows if row.get("verb") == "growth"]
+        self.assertGreaterEqual(len(growth_rows), 1)
+
+        acquired_rows = [
+            row
+            for row in rows
+            if row.get("kind") == "decision"
+            and isinstance(row.get("policy"), dict)
+            and "acquired" in row["policy"]
+        ]
+        self.assertGreaterEqual(len(acquired_rows), 1)
+
+    def test_zero_plasticity_layers_are_byte_identical_with_or_without_outcome_rules(
+        self,
+    ) -> None:
+        # Review fix (should #5): the absolute guarantee behind must #4 --
+        # plasticity=0 must make outcome rules a complete no-op on the
+        # written layers, not merely "close" -- pinned as an equality, not
+        # just "no growth rows".
+        rules_with_outcome = self._plus2_rules()
+        rules_without_outcome = [
+            rule for rule in rules_with_outcome if rule.get("scope") != "outcome"
+        ]
+        self.assertNotEqual(len(rules_with_outcome), len(rules_without_outcome))
+        genome = Genome.neutral()
+
+        with tempfile.TemporaryDirectory() as with_dir, tempfile.TemporaryDirectory() as without_dir:
+            path_with = self._run_plus2(Path(with_dir), genome, rules_with_outcome)
+            path_without = self._run_plus2(Path(without_dir), genome, rules_without_outcome)
+            self.assertEqual(path_with.read_bytes(), path_without.read_bytes())
+
+
+class MetaEvolutionRuleIdsTests(unittest.TestCase):
+    """Review fix (must #1): meta_evolution's rule_bits genes must never
+    include outcome-scope rules -- otherwise a template that merely *has*
+    outcome rules (whether or not personality_growth is even on) consumes
+    extra GA rng (mutate()'s per-bit flip draw) that a pre-WB-GROWTH-001
+    template with the same turn/candidate rules would not, silently
+    changing every meta_evolution run's genome/archive."""
+
+    def test_rule_ids_excludes_outcome_scope(self) -> None:
         rules = list(
             yaml.safe_load((PLUS2_TEMPLATE / "rules.yaml").read_text(encoding="utf-8"))
         )
-        self.assertTrue(any(rule.get("scope") == "outcome" for rule in rules))
+        outcome_count = sum(1 for rule in rules if rule.get("scope") == "outcome")
+        self.assertGreater(outcome_count, 0)
+        ids = _rule_ids(rules)
+        self.assertEqual(
+            set(ids),
+            {"hostile_lean", "after_crossing", "when_downed_ally"},
+        )
+        self.assertEqual(len(ids), len(rules) - outcome_count)
 
-        def run_once(out_dir: Path) -> bytes:
-            world, subjects = load_fixture(PLUS2_PROJECT, PLUS2_TEMPLATE)
-            genome = Genome.neutral()
-            action_cfg = yaml.safe_load(
-                (PLUS2_TEMPLATE / "action_graph.yaml").read_text(encoding="utf-8")
+    def test_small_meta_evolution_evolve_is_identical_with_or_without_outcome_rules(
+        self,
+    ) -> None:
+        # Reproduces the reported symptom directly: pop 4 / gen 2 / seed 1,
+        # meta_evolution=True, personality_growth left off (the default) --
+        # a template with WB-GROWTH-001's 5 outcome rules appended must
+        # produce a byte-identical archive.json to the same template with
+        # those 5 rules stripped back out.
+        with tempfile.TemporaryDirectory() as root_str:
+            root = Path(root_str)
+            stripped_template = root / "template_no_outcome"
+            shutil.copytree(PLUS2_TEMPLATE, stripped_template)
+            rules = yaml.safe_load(
+                (PLUS2_TEMPLATE / "rules.yaml").read_text(encoding="utf-8")
             )
-            policy = Policy(genome, precedent=None, rules=rules, cfg=action_cfg)
-            path = Simulation(
-                1,
-                world,
-                subjects,
-                out_dir,
-                policies={world.protagonist: policy},
-            ).run()
-            return path.read_bytes()
+            stripped_rules = [r for r in rules if r.get("scope") != "outcome"]
+            self.assertNotEqual(len(rules), len(stripped_rules))
+            (stripped_template / "rules.yaml").write_text(
+                yaml.safe_dump(stripped_rules, allow_unicode=True),
+                encoding="utf-8",
+            )
 
-        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
-            self.assertEqual(run_once(Path(first)), run_once(Path(second)))
+            common = {
+                "ga_seed": 1,
+                "generations": 2,
+                "keep": "all",
+                "meta_evolution": True,
+                "population": 4,
+                "project": PLUS2_PROJECT,
+                "seed_base": 0,
+                "seeds": 1,
+                "processes": 1,
+            }
+            with_outcome = evolve(
+                {**common, "template": PLUS2_TEMPLATE, "out": root / "with_outcome"}
+            )
+            without_outcome = evolve(
+                {**common, "template": stripped_template, "out": root / "without_outcome"}
+            )
+            self.assertEqual(
+                (root / "with_outcome" / "archive.json").read_bytes(),
+                (root / "without_outcome" / "archive.json").read_bytes(),
+            )
+            # This tiny population/generation count need not actually reach
+            # any QD cell -- the point is that both variants agree, not
+            # that either one succeeds at the world.
+            self.assertEqual(len(with_outcome.cells), len(without_outcome.cells))
+
+
+class SeedGenomesGrowthGateTests(unittest.TestCase):
+    def test_growth_disabled_zeroes_plasticity_even_if_the_source_archive_has_some(
+        self,
+    ) -> None:
+        # Review fix (should #7): a genome seeded from a prior
+        # --personality-growth experiment must not carry nonzero plasticity
+        # into a run where personality_growth is off.
+        raw = dataclasses.replace(Genome.neutral(), plasticity=0.7).to_dict()
+        self.assertEqual(
+            reconcile_seed_genome(raw, growth_enabled=False).plasticity, 0.0
+        )
+        self.assertEqual(
+            reconcile_seed_genome(raw, growth_enabled=True).plasticity, 0.7
+        )
+        # Default matches the feature's own off-by-default convention.
+        self.assertEqual(reconcile_seed_genome(raw).plasticity, 0.0)
+
+
+class PersonalityGrowthCfgKeyTests(unittest.TestCase):
+    def test_cfg_key_is_personality_growth_not_growth(self) -> None:
+        # Review fix (must #6): "growth" is execution/configs.py's
+        # WORLDGROW-002 world-growth cfg ({mode, epochs, auto_retire}) --
+        # gapengine.evolve's own key must not collide with it.
+        with tempfile.TemporaryDirectory() as root_str:
+            root = Path(root_str)
+            common = {
+                "ga_seed": 1,
+                "generations": 1,
+                "keep": "all",
+                "population": 2,
+                "project": MOMOTARO_PROJECT,
+                "seed_base": 0,
+                "seeds": 1,
+                "template": MOMOTARO_TEMPLATE,
+                "processes": 1,
+            }
+            plain = evolve({**common, "out": root / "plain"})
+            wrong_key = evolve(
+                {**common, "out": root / "wrong_key", "growth": {"enabled": True}}
+            )
+            self.assertEqual(
+                (root / "plain" / "archive.json").read_bytes(),
+                (root / "wrong_key" / "archive.json").read_bytes(),
+            )
+            self.assertEqual(len(plain.cells), len(wrong_key.cells))
 
 
 if __name__ == "__main__":

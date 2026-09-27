@@ -161,12 +161,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--growth",
+        "--personality-growth",
+        dest="personality_growth",
         action="store_true",
         help=(
             "WB-GROWTH-001 S1: let a genome's plasticity gene evolve (off "
             "by default -- plasticity stays 0 for every genome, byte-"
-            "identical to a pre-growth run)."
+            "identical to a pre-growth run). Named \"personality_growth\", "
+            "not \"growth\", to stay distinct from WORLDGROW-002's "
+            "unrelated world-growth config."
         ),
     )
     parser.add_argument(
@@ -303,7 +306,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "coevolve": args.coevolve,
             "ga_seed": args.ga_seed,
             "generations": args.generations,
-            "growth": {"enabled": args.growth},
+            "personality_growth": {"enabled": args.personality_growth},
             "keep": args.keep,
             "meta_evolution": args.meta_evolution,
             "out": args.out,

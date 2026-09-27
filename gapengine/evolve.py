@@ -530,12 +530,24 @@ def restore_job_cfgs(
 def _rule_ids(
     rules: Iterable[Mapping[str, Any]],
 ) -> tuple[str, ...]:
+    """meta_evolution's toggleable rule_bits genes -- one bit per turn/
+    candidate-scope rule. WB-GROWTH-001 review fix: outcome-scope rules
+    (gapengine.policy.Policy.observe) are deliberately excluded here, not
+    just filtered out of Policy.rules -- an excluded rule contributes no
+    rule_bits entry, so a template with outcome rules but growth disabled
+    consumes exactly the same GA rng sequence (mutate()'s per-bit flip
+    draw) as one with none. Toggling an outcome rule on/off through
+    meta_evolution is left as a future extension (see the WB-GROWTH-001 S1
+    review note)."""
+
     identifiers: list[str] = []
     for index, rule in enumerate(rules):
         if not isinstance(rule, Mapping):
             raise ValueError(
                 f"Policy rule at index {index} must be a mapping"
             )
+        if rule.get("scope") == "outcome":
+            continue
         rule_id = rule.get("id")
         if not isinstance(rule_id, str) or not rule_id:
             raise ValueError(
@@ -1409,10 +1421,14 @@ def _cfg_fingerprint(
         }
     if seed_genomes_sha256 is not None:
         payload["seed_genomes"] = seed_genomes_sha256
-    # WB-GROWTH-001 S1: only included when on, so growth.enabled=false (the
-    # default) fingerprints identically to a pre-S1 run.
+    # WB-GROWTH-001 S1 (review fix must #6): "personality_growth", not
+    # "growth" -- execution/configs.py's WORLDGROW-002 "world growth" cfg
+    # already owns the top-level "growth" key ({mode, epochs, auto_retire}
+    # -- a different feature). Only included when on, so
+    # personality_growth.enabled=false (the default) fingerprints
+    # identically to a pre-S1 run.
     if growth_enabled:
-        payload["growth"] = {"enabled": True}
+        payload["personality_growth"] = {"enabled": True}
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -1538,10 +1554,16 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     )
     rules = list(_load_yaml(template_dir / "rules.yaml", []))
     rule_ids = _rule_ids(rules) if meta_evolution else ()
-    # WB-GROWTH-001 S1: off (the default) means Genome.random/crossover/
-    # mutate below draw no plasticity gene at all, so a growth-unaware run
-    # stays byte-identical to before this feature existed (plan §S1.2).
-    growth_enabled = bool((cfg.get("growth") or {}).get("enabled", False))
+    # WB-GROWTH-001 S1 (review fix must #6): the cfg key is
+    # "personality_growth", not "growth" -- that name is already taken by
+    # execution/configs.py's WORLDGROW-002 "world growth"
+    # ({mode, epochs, auto_retire}), a different feature. Off (the default)
+    # means Genome.random/crossover/mutate below draw no plasticity gene at
+    # all, so a growth-unaware run stays byte-identical to before this
+    # feature existed (plan §S1.2).
+    growth_enabled = bool(
+        (cfg.get("personality_growth") or {}).get("enabled", False)
+    )
     canon = load_canon(template_dir / "canon.yaml")
 
     # WB-WORLDGROW-001 stage 5b: seed_genomes (--seed-genomes) carries only
@@ -1560,7 +1582,11 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         seed_source = dict(seed_doc.get("source") or {})
         seed_cells_order = [str(entry["cell"]) for entry in seed_doc["genomes"]]
         seed_pool = [
-            reconcile_seed_genome(entry["genome"], rule_ids=rule_ids)
+            reconcile_seed_genome(
+                entry["genome"],
+                rule_ids=rule_ids,
+                growth_enabled=growth_enabled,
+            )
             for entry in seed_doc["genomes"]
         ]
 

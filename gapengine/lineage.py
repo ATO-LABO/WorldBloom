@@ -43,7 +43,7 @@ _SCALAR_LABELS: dict[str, str] = {
     "risk_tolerance": "慎重さ",
     "stance_shift_bias": "態度の変わりやすさ",
     "novelty_drive": "前例を避ける度合い",
-    "plasticity": "変わりやすさ",
+    "plasticity": "経験で変わる度合い",
 }
 
 
