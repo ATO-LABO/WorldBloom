@@ -402,8 +402,9 @@ def _run_ga(
     # (leading category x volatility_bin, qd.Archive's own axis-1
     # bucketing) alongside each cell's quality, not just the cell count.
     cells = [
-        {"category": category, "volatility_bin": volatility_bin, "quality": round(elite.quality, 6)}
-        for (category, volatility_bin), elite in sorted(archive.cells.items())
+        {"category": key[0], "volatility_bin": key[1], "quality": round(elite.quality, 6)}
+        | ({"arc_bin": key[2]} if len(key) > 2 else {})
+        for key, elite in sorted(archive.cells.items())
     ]
     return {
         "rho": rho,
