@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import yaml
 import test_library as fixtures
+from engine.world import World
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from execution import world_editor
@@ -210,6 +211,119 @@ class WorldEditorTests(unittest.TestCase):
         with patch('execution.library.os.replace',side_effect=OSError('disk failure')):
             with self.assertRaises(OSError):world_editor.save(store,'momotaro',body)
         self.assertEqual(body['revision'],self.current()['revision'])
+
+    # WB-TIMEEVENT-001 (S2): scheduled_events.force_action editing.
+
+    def test_scheduled_event_add_edit_remove_round_trip(self):
+        # U-1
+        subjects_before = {p: p.read_bytes() for p in (self.repo / 'projects/momotaro/subjects').glob('*.yaml')}
+        status, result = self.submit('add-event', {
+            'id': 'test_event', 'label': 'テスト', 'day': 1, 'slot': '朝',
+            'targets': ['桃太郎'], 'verb': 'give_item', 'args': ['犬', ''],
+            'item_name': '', 'item_count': 1, 'stress_delta': 0,
+        })
+        self.assertEqual(status, 200, result)
+        events = self.current()['world']['scheduled_events']
+        index = next(i for i, e in enumerate(events) if e['id'] == 'test_event')
+        self.assertEqual(events[index]['force_action'], {'verb': 'give_item', 'args': ['犬']})
+        self.assertNotIn('grants_item', events[index])
+        self.assertNotIn('stress_delta', events[index])
+
+        status, result = self.submit('event', {
+            'id': 'test_event', 'label': '変更後', 'day': 2, 'slot': '朝',
+            'targets': ['桃太郎'], 'verb': 'give_item', 'args': ['犬', ''],
+            'item_name': '', 'item_count': 1, 'stress_delta': 0,
+        }, index)
+        self.assertEqual(status, 200, result)
+        updated = next(e for e in self.current()['world']['scheduled_events'] if e['id'] == 'test_event')
+        self.assertEqual(updated['label'], '変更後')
+        self.assertEqual(updated['day'], 2)
+
+        status, result = self.submit('remove-event', {}, index)
+        self.assertEqual(status, 200, result)
+        self.assertNotIn('test_event', [e.get('id') for e in self.current()['world']['scheduled_events']])
+        for path, raw in subjects_before.items():
+            self.assertEqual(path.read_bytes(), raw)
+        self.assertEqual(World.from_yaml(self.repo / 'projects/momotaro/world.yaml').name, '桃太郎')
+
+    def test_scheduled_event_edit_keeps_untouched_fields(self):
+        # U-2 (part 1): departure_day keeps grants_item/stress_delta across an edit
+        events = self.current()['world']['scheduled_events']
+        index = next(i for i, e in enumerate(events) if e['id'] == 'departure_day')
+        status, result = self.submit('event', {
+            'id': 'departure_day', 'label': '変更後ラベル', 'day': 1, 'slot': '朝',
+            'targets': ['桃太郎'], 'verb': 'move', 'args': ['道中'],
+            'item_name': '縄', 'item_count': 1, 'stress_delta': 0.3,
+        }, index)
+        self.assertEqual(status, 200, result)
+        updated = self.current()['world']['scheduled_events'][index]
+        self.assertEqual(updated['label'], '変更後ラベル')
+        self.assertEqual(updated['grants_item'], {'name': '縄', 'count': 1})
+        self.assertEqual(updated['stress_delta'], 0.3)
+        self.assertEqual(updated['force_action'], {'verb': 'move', 'args': ['道中']})
+
+    def test_scheduled_event_edit_drops_move_to_when_verb_added(self):
+        # U-2 (part 2): a move_to-only event loses move_to once a verb is set
+        store = LibraryStore(self.repo)
+        world = yaml.safe_load(store.read('world', 'momotaro', 'world.yaml'))
+        world['scheduled_events'].append({
+            'id': 'test_move_to_event', 'day': 1, 'slot': '朝', 'targets': ['桃太郎'],
+            'label': '移動イベント', 'move_to': '森', 'stress_delta': 0.1,
+        })
+        store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
+        events = self.current()['world']['scheduled_events']
+        index = next(i for i, e in enumerate(events) if e['id'] == 'test_move_to_event')
+
+        status, result = self.submit('event', {
+            'id': 'test_move_to_event', 'label': '移動イベント', 'day': 1, 'slot': '朝',
+            'targets': ['桃太郎'], 'verb': 'move', 'args': ['道中'],
+            'item_name': '', 'item_count': 1, 'stress_delta': 0.1,
+        }, index)
+        self.assertEqual(status, 200, result)
+        updated = self.current()['world']['scheduled_events'][index]
+        self.assertNotIn('move_to', updated)
+        self.assertEqual(updated['force_action'], {'verb': 'move', 'args': ['道中']})
+        self.assertEqual(updated['stress_delta'], 0.1)
+
+    def test_scheduled_event_invalid_requests_are_rejected(self):
+        # U-3
+        valid = {'id': 'test_bad', 'label': 'x', 'day': 1, 'slot': '朝', 'targets': ['桃太郎'],
+                 'verb': '', 'args': [], 'item_name': '', 'item_count': 1, 'stress_delta': 0}
+        before = self.current()['revision']
+        cases = [
+            {**valid, 'day': 9999},
+            {**valid, 'slot': '深夜'},
+            {**valid, 'targets': ['存在しない']},
+            {**valid, 'verb': 'move', 'slot': ''},
+            {**valid, 'verb': 'guard', 'args': []},
+            {**valid, 'verb': 'move', 'args': ['道中', '余分']},
+            {**valid, 'verb': 'give_item', 'args': ['', '犬']},
+            {**valid, 'verb': 'move', 'args': ['未登録の場所']},
+        ]
+        for values in cases:
+            with self.subTest(values=values):
+                status, error = self.submit('add-event', values)
+                self.assertEqual(status, 400, error)
+        self.assertEqual(before, self.current()['revision'])
+
+        status, error = self.submit('event', valid, 999)
+        self.assertEqual(status, 400, error)
+        status, error = self.submit('remove-event', {}, 999)
+        self.assertEqual(status, 400, error)
+
+        status, error = self.submit('add-event', {**valid, 'id': 'departure_day'})
+        self.assertEqual(status, 400, error)
+        self.assertEqual(before, self.current()['revision'])
+
+    def test_snapshot_and_render_include_force_action_specs(self):
+        # U-4
+        snap = self.current()
+        self.assertEqual(snap['force_action_specs']['move'], ['zone'])
+        status, html = self.get('/worlds/momotaro')
+        self.assertEqual(status, 200, html)
+        model = json.loads(re.search(r'id="wp-data">(.*?)</script>', html).group(1))
+        self.assertEqual(model['force_action_specs']['move'], ['zone'])
+        self.assertIn('scheduled_events', model['world'])
 
 
 if __name__=='__main__': unittest.main()

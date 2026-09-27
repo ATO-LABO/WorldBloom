@@ -68,6 +68,18 @@ class WorldPrototypeTests(unittest.TestCase):
         self.assertLess(content_close, template_open)
         self.assertEqual(result.count(marker), 1)
 
+    def test_wp_data_includes_scheduled_events_and_force_action_specs(self):
+        # WB-TIMEEVENT-001 (U-4)
+        store = LibraryStore(ROOT)
+        world = next(w for w in store.worlds() if w['id'] == 'momotaro')
+        source = library_pages._world_yaml_mapping(ROOT, world['id'])
+        subjects = world_graph.load_subjects(ROOT / 'projects' / world['id'])
+        result = world_prototype.render(world, source, subjects)
+        payload = json.loads(re.search(r'id="wp-data">(.*?)</script>', result).group(1))
+        self.assertEqual(payload['world']['scheduled_events'], source['scheduled_events'])
+        self.assertEqual(payload['force_action_specs']['move'], ['zone'])
+        self.assertEqual(payload['force_action_specs']['rest'], [])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -5,6 +5,7 @@ import html
 import json
 from urllib.parse import quote
 
+from engine.actions import FORCE_ARG_KINDS
 from viewer import data, pages
 
 
@@ -17,6 +18,10 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         "editable": job_store is not None and revision is not None, "revision": revision,
         "genre": world.get("genre"),
         "genres": [{"id": g["id"], "name": g.get("name") or g["id"]} for g in genres],
+        # WB-TIMEEVENT-001: verb -> argument kinds for the time screen's
+        # force_action form (same shape execution/world_editor.py._model()
+        # returns after a save, so world-prototype.js reads one shape).
+        "force_action_specs": {verb: list(kinds) for verb, kinds in FORCE_ARG_KINDS.items()},
     }
     wid = quote(world["id"], safe="")
     config = f'/configs/new?project={wid}'
