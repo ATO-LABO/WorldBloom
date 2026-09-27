@@ -210,6 +210,20 @@ class StallDetectionTests(unittest.TestCase):
         self.assertLess(len(stance_steps), 5, stance_steps)
         self.assertLess(len(result["steps"]), 20, result["steps"])
 
+    def test_fingerprint_stops_a_stance_raise_the_threshold_fix_cannot(self) -> None:
+        # stance saturates at 1.0, so a negotiate threshold of 5.0 can never
+        # be met: only the state-fingerprint detector (M2b) can stop this.
+        def mutate(world, subjects) -> None:
+            self._strip_to_dead_end(world, subjects)
+            world.negotiate_threshold = 5.0
+
+        cfg = load_route_config(TEMPLATE)
+        assert cfg is not None
+        result = walk(PROJECT, TEMPLATE, (1, "朝"), cfg, mutate=mutate)
+        stance_steps = [s for s in result["steps"] if s["kind"] == "stance"]
+        self.assertTrue(result["truncated"], result["steps"])
+        self.assertLessEqual(len(stance_steps), 2, stance_steps)
+
 
 class TimepointsTests(unittest.TestCase):
     def test_start_is_always_first(self) -> None:
