@@ -2,7 +2,8 @@
 sources:
   - "README.md"
   - "gapengine/route.py"
-reviewed: "9765a5cbd9e8fab7a136d509381a7f59bf3899cb"
+  - "gapengine/rationality.py"
+reviewed: "d87be6e73233700b5cade1a97a01a01fb9990341"
 ---
 
 # 変更履歴
@@ -11,6 +12,7 @@ reviewed: "9765a5cbd9e8fab7a136d509381a7f59bf3899cb"
 
 ## 2026-09-27
 
+- 合理性層の判定器に TypeSafe の Jev を追加。ローカル LLM（Ollama）より高速（1回約0.2秒、GPU不要）で、⚙設定「計算」タブでAPIキーを登録すると使える。実行設定の「合理性」区画で判定器を選べ、キー有効時の既定は Jev・κ=0.45（詳しくは[合理性層と Jev](../concepts/rationality-layer.md)）
 - 世界の新規作成に「ZIPから取り込む」を追加。AI（Codex・Claude Code・Gemini など）に作らせた `world.yaml`・`subjects/*.yaml` をZIPで取り込める（詳しくは[世界を ZIP から取り込む](../usage/import-world.md)）。ジャンルは省略でき、その場合は世界設定画面から後で選べる
 
 ## 2026-09-26

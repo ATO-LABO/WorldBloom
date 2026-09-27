@@ -1,5 +1,5 @@
 ---
-ja_rev: "d50f83ae14d9"
+ja_rev: "aa86796f5bf9"
 ---
 # settings.json
 
@@ -71,6 +71,16 @@ A mechanism that coordinates GPU use between local LLMs (Ollama and llama-server
 | `thermal.max_wait_seconds` | number (seconds) | 600 | How long to wait before giving up if it still hasn't dropped (giving up doesn't fail the generation itself) |
 | `ollama_base_url` | string | `http://localhost:11434` (same default as `gapengine/ollama.py`) | The URL used to judge whether Ollama is in use |
 | `observe_seconds` | number (seconds) | 15 | How long to observe Ollama for, to judge whether it's actually in use |
+
+## `rationality` (the rationality layer's judge)
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `rationality.jev.api_key` | string | none | The TypeSafe API key. Once saved from the "計算" (Compute) tab of Settings, the value itself is never returned again on screen or via the API (only the `has_api_key` boolean) |
+| `rationality.jev.model` | string | `jev-1.13.0` | The verified model name |
+| `rationality.jev.verified_at` | string (ISO datetime) | none | When the key was saved. Only "available" when both this and `api_key` are set |
+
+Which judge (Jev / Ollama) a given experiment uses is decided by `evolution.rationality_backend` (saved per run config) — `settings.json`'s `rationality` section is just where the key itself lives. See [Rationality Layer and Jev](../concepts/rationality-layer.md).
 
 ## `evolution` (GA compute resources)
 

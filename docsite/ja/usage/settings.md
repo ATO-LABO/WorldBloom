@@ -4,7 +4,9 @@ sources:
   - "execution/output_settings.py"
   - "execution/evolution_settings.py"
   - "viewer/app_desktop.py"
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+  - "execution/rationality_settings.py"
+  - "viewer/global_settings.py"
+reviewed: "d87be6e73233700b5cade1a97a01a01fb9990341"
 ---
 # 設定
 
@@ -35,6 +37,8 @@ GA 実験をこの PC でどれだけ並列に計算するかの設定です。
 | GA の並列数（processes） | GA の個体評価を同時に何本走らせるか。**結果は変わらず、速さだけが変わります** | `min(8, このPCのCPUコア数)` |
 
 開発環境（20コア）の実測では、並列数8前後で速度が頭打ちになりました。保存後に開始するGA実験から適用されます。
+
+**合理性の判定器（Jev）**: 同じタブに、TypeSafe の APIキーを登録する区画があります。キーを入力して「キーを保存」を押すと、保存前にそのキーで1問だけ実際に判定を投げて確認し、有効なときだけ保存されます（状態表示は「有効（jev-1.13.0、確認した日付）」）。キーは `settings.json` にだけ保存され、画面・API・実験の記録には一切表示されません。どの実験で Jev を使うかは、実験ごとに[実行設定](run-settings.md#04)の「合理性」区画で選びます。詳しくは[合理性層と Jev](../concepts/rationality-layer.md)を参照してください。
 
 ## 実行設定の保存版
 
