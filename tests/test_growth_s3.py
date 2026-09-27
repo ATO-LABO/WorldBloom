@@ -28,7 +28,7 @@ from gapengine.seed_genomes import from_archive as seed_genomes_from_archive
 from test_evolution_execution import EvolutionHttpPersonalityGrowthTests, cleanup_http_fixture
 from test_ga_replay import _genome as _ga_replay_genome, _publish_revision
 from test_output import _write_rows as _write_narrate_rows
-from viewer import data, ga_replay
+from viewer import data, ga_replay, run_workspace
 from viewer.data import RunRepository
 
 
@@ -462,6 +462,87 @@ class ViewerArcAxisTests(unittest.TestCase):
             self.assertEqual(view["cell"], cell_key)
 
 
+class RunWorkspaceArcAxisTests(unittest.TestCase):
+    """WB-GROWTH-001 S3 re-review fix (must #1): run_workspace.observation()
+    read the *captured template's* qd.yaml (inputs/templates/<id>/qd.yaml)
+    to decide the river page's arc_bins, but qd.yaml merely declaring
+    arc_bins is not enough (see gapengine/evolve.py) -- a growth-off run on
+    momotaro_plus2 (whose qd.yaml permanently has arc_bins) reserved 54
+    (18 x 3) all-empty river bands instead of 18, because band_order built
+    3-element pairs that no 2-element archive cell could ever match. The
+    run's own published archive (arc_thresholds present or not) must decide
+    this, same as experiment_meta()'s and observation()'s own legacy-
+    fallback branch already do."""
+
+    class _Handler:
+        def __init__(self, repository):
+            self.repository = repository
+            self.path = "/jobs/job-growth-off?view-data=1"
+
+    def test_growth_off_river_reserves_no_more_than_the_real_grid(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="wb-run-workspace-arc-") as temporary:
+            runs = Path(temporary) / "runs"
+            runs.mkdir()
+            repository = RunRepository(runs, control_root=Path(temporary) / "control")
+            run_id = "run-growth-off"
+            root = runs / run_id
+            root.mkdir(parents=True)
+            manifest = {
+                "schema_version": 1, "run_id": run_id, "config_id": "cfg-growth-off",
+                "evolution": {}, "target_endings": [],
+            }
+            manifest_bytes = canonical(manifest)
+            write_bytes(root / "manifest.json", manifest_bytes)
+            atomic_json(root / "complete.json", {"schema_version": 1, "manifest_sha256": sha256(manifest_bytes)})
+
+            # A growth-off run's captured template still has arc_bins
+            # declared (momotaro_plus2's own qd.yaml, unconditionally) --
+            # only the published archive's own (absent) arc_thresholds says
+            # the axis was actually off for this particular run.
+            captured_template = root / "inputs" / "templates" / "momotaro_plus2"
+            captured_template.mkdir(parents=True)
+            shutil.copyfile(PLUS2_TEMPLATE / "qd.yaml", captured_template / "qd.yaml")
+            self.assertIn("arc_bins", (captured_template / "qd.yaml").read_text(encoding="utf-8"))
+
+            genome = _ga_replay_genome()
+            g0 = [{
+                "index": 0, "genome": genome, "parents": [],
+                "cell": ["I", "low"], "classification_status": "classified",
+                "shaped": 0.5, "reach_rate": 1.0,
+                "runs": [{"reached": True, "quality": 0.5, "seed": 0}],
+            }]
+            (root / "g0").mkdir()
+            (root / "g0" / "results.json").write_text(json.dumps(g0, ensure_ascii=False), encoding="utf-8")
+
+            manifest1_bytes = _publish_revision(root, run_id, 1, {
+                "I|low": {"generation": 0, "quality": 0.5, "genome": genome, "parents": []},
+            })
+            atomic_json(root / "published" / "current.json", {
+                "schema_version": 1, "run_id": run_id, "revision": 1,
+                "manifest_sha256": sha256(manifest1_bytes),
+            })
+
+            handler = self._Handler(repository)
+            view = {
+                "job": {
+                    "run_id": run_id, "publication_revision": 1,
+                    "state": "succeeded", "job_id": "job-growth-off",
+                },
+                "run_name": None,
+                "config": {"template_id": "momotaro_plus2"},
+                "axes": (
+                    ["I", "II", "III", "IV", "V", "VI"], ["low", "mid", "high"],
+                    ["none", "small", "large"],
+                ),
+            }
+            result = run_workspace.observation(handler, view)
+
+        self.assertEqual(result["arc_bins"], [])
+        self.assertIsNotNone(result["river"])
+        cell_bands = [b for b in result["river"]["bands"] if b["key"] != "__offmap_parent__"]
+        self.assertLessEqual(len(cell_bands), 18)
+
+
 class GaReplayArcCollapseTests(unittest.TestCase):
     """WB-GROWTH-001 S3 review fix (must #1): viewer/static/ga_replay.js's
     cellRects/paintCell only ever know the 2D "category|bin" grid --
@@ -525,17 +606,104 @@ class GaReplayArcCollapseTests(unittest.TestCase):
 
         self.assertIsNotNone(model)
         # The 2 archive.json rows fold into exactly 1 map cell -- the
-        # higher-quality (arc=large) entry, keyed by the 2D pair only.
+        # higher-quality (arc=large) entry, keyed by the 2D pair only. Both
+        # individuals are genuinely their own exact cell's elite here (no
+        # prior generation to have lost anything to), so both read "new" --
+        # see ClassifyOutcomeArcAxisTests for the case where the pair's
+        # non-best entry must NOT be misclassified as "rejected".
         self.assertEqual(model["final_cells"], {"I|high": 0.9})
         self.assertEqual(
             {individual["cell_key"] for individual in model["individuals"]},
             {"I|high"},
         )
-        # The losing (arc=small) individual is "rejected" against the pair's
-        # collapsed winner, not silently treated as its own separate cell.
-        rejected = next(i for i in model["individuals"] if i["index"] == 0)
-        self.assertEqual(rejected["outcome"]["kind"], "rejected")
-        self.assertAlmostEqual(rejected["outcome"]["incumbent_quality"], 0.9)
+        self.assertTrue(
+            all(i["outcome"]["kind"] == "new" for i in model["individuals"])
+        )
+
+
+class ClassifyOutcomeArcAxisTests(unittest.TestCase):
+    """WB-GROWTH-001 S3 re-review fix (should #2): classify_outcome must be
+    fed the *exact* archive cell (not the display-collapsed 2D pair), or an
+    individual that legitimately is its own exact cell's current elite gets
+    misjudged against a *different* arc bin's better entry that merely
+    shares the same (category, volatility) pair -- wrongly "rejected" with
+    the wrong (other bin's) incumbent_quality."""
+
+    class _Handler:
+        def __init__(self, repository):
+            self.repository = repository
+
+    def test_pair_non_best_individual_is_not_rejected_by_a_sibling_arc_bin(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="wb-ga-replay-arc-classify-") as temporary:
+            runs = Path(temporary) / "runs"
+            runs.mkdir()
+            repository = RunRepository(runs, control_root=Path(temporary) / "control")
+            run_id = "run-ga-replay-arc-classify"
+            root = runs / run_id
+            root.mkdir(parents=True)
+            manifest = {
+                "schema_version": 1, "run_id": run_id, "config_id": "cfg-arc",
+                "evolution": {}, "target_endings": [],
+            }
+            manifest_bytes = canonical(manifest)
+            write_bytes(root / "manifest.json", manifest_bytes)
+            atomic_json(root / "complete.json", {"schema_version": 1, "manifest_sha256": sha256(manifest_bytes)})
+
+            genome_a = _ga_replay_genome()  # wins/keeps I|high|small
+            genome_b = _ga_replay_genome({"I": 0.9}, risk_tolerance=0.9)  # wins I|high|large (best of the pair)
+            genome_c = _ga_replay_genome({"I": 0.2}, risk_tolerance=0.2)  # genuinely loses I|high|small
+
+            def entry(index, genome, cell, quality):
+                return {
+                    "index": index, "genome": genome, "parents": [],
+                    "cell": list(cell), "classification_status": "classified",
+                    "shaped": quality, "reach_rate": 1.0,
+                    "runs": [{"reached": True, "quality": quality, "seed": 0}],
+                }
+
+            g1 = [
+                # This individual IS the exact archive elite for I|high|small
+                # (replacing an earlier, lower-quality one there) -- it must
+                # read "replaced", never "rejected", even though I|high|large
+                # (a different arc bin, same pair) has higher quality.
+                entry(0, genome_a, ("I", "high", "small"), 0.4),
+                # The pair's overall best -- a brand new cell (no prior elite
+                # at all, in any arc bin) -- reads "new".
+                entry(1, genome_b, ("I", "high", "large"), 0.9),
+                # Genuinely rejected: a different genome that did NOT win the
+                # exact I|high|small cell. Its incumbent_quality must be
+                # 0.4 (I|high|small's own elite), never 0.9 (the sibling
+                # arc bin's higher quality).
+                entry(2, genome_c, ("I", "high", "small"), 0.35),
+            ]
+            (root / "g1").mkdir()
+            (root / "g1" / "results.json").write_text(json.dumps(g1, ensure_ascii=False), encoding="utf-8")
+
+            _publish_revision(root, run_id, 1, {
+                "I|high|small": {"generation": 0, "quality": 0.3, "genome": genome_c, "parents": []},
+            })
+            manifest2_bytes = _publish_revision(root, run_id, 2, {
+                "I|high|small": {"generation": 1, "quality": 0.4, "genome": genome_a, "parents": []},
+                "I|high|large": {"generation": 1, "quality": 0.9, "genome": genome_b, "parents": []},
+            })
+            atomic_json(root / "published" / "current.json", {
+                "schema_version": 1, "run_id": run_id, "revision": 2,
+                "manifest_sha256": sha256(manifest2_bytes),
+            })
+
+            handler = self._Handler(repository)
+            job = {"run_id": run_id, "publication_revision": 2}
+            model = ga_replay.replay_model(handler, job, (["I"], ["high"]))
+
+        self.assertIsNotNone(model)
+        by_index = {i["index"]: i for i in model["individuals"]}
+        self.assertEqual(by_index[0]["outcome"]["kind"], "replaced")
+        self.assertAlmostEqual(by_index[0]["outcome"]["prev_quality"], 0.3)
+        self.assertEqual(by_index[1]["outcome"]["kind"], "new")
+        self.assertEqual(by_index[2]["outcome"]["kind"], "rejected")
+        self.assertAlmostEqual(by_index[2]["outcome"]["incumbent_quality"], 0.4)
+        # Display painting still collapses to the pair's best (0.9), unaffected.
+        self.assertEqual(model["final_cells"], {"I|high": 0.9})
 
 
 class EvolutionHttpArcFilterTests(EvolutionHttpPersonalityGrowthTests):

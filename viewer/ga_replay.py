@@ -56,20 +56,33 @@ _SAME_PARENT_NOTE = "同じ親が2回選ばれた。交叉しても変わらず�
 
 
 def _cell_key(cell):
-    """The 2D (category, volatility) map key this panel paints into.
+    """The 2D (category, volatility) map key this panel paints into --
+    display/client-side use ONLY (viewer/static/ga_replay.js's cellRects/
+    paintCell only ever know this 2-element "category|bin" grid, never the
+    raw archive cell). `cell` can be a 3-element (category, volatility_bin,
+    arc_bin) tuple/list when the archive's arc axis is active; always fold
+    down to the pair here.
 
-    WB-GROWTH-001 S3 review fix (must #1): `cell` can be a 3-element
-    (category, volatility_bin, arc_bin) tuple/list when the archive's arc
-    axis is active, but viewer/static/ga_replay.js's cellRects/paintCell
-    only ever know the 2-element "category|bin" grid -- always fold down to
-    that pair here (never the raw "|".join(cell)) so every consumer
-    (classify_outcome, the client-side map) agrees on one key space."""
+    WB-GROWTH-001 S3 re-review fix (should #2): classify_outcome must NOT
+    be fed this folded key -- it needs the exact archive cell (see
+    _exact_cell_key) to correctly tell "the actual current elite for this
+    individual's own cell" from "some other arc bin's elite that happens to
+    share the same (category, volatility) pair"."""
     if not cell:
         return None
     parts = [str(part) for part in cell]
     if len(parts) < 2:
         return None
     return f"{parts[0]}|{parts[1]}"
+
+
+def _exact_cell_key(cell):
+    """The exact archive.json-shaped cell key ("|".join(cell), every
+    element kept) -- what classify_outcome matches against the raw (never
+    pair-collapsed) final_cells/prev_cells mappings."""
+    if not cell:
+        return None
+    return "|".join(str(part) for part in cell)
 
 
 def _collapse_cells(cells):
@@ -295,10 +308,15 @@ def replay_model(handler, job, axes, generation=None):
         if not isinstance(generation, int) or generation < 0 or generation > latest_generation:
             generation = latest_generation
         final = _snapshot(catalog, run_id, root, generation + 1)
-        # WB-GROWTH-001 S3 review fix (must #1): collapsed to 2D pair keys
-        # up front, so classify_outcome and the model's own final_cells/
-        # prev_cells (below) never see a 3-element arc-axis cell key.
-        final_cells = _collapse_cells((final.get("archive") or {}).get("cells") or {})
+        # WB-GROWTH-001 S3 re-review fix (should #2): kept raw (exact,
+        # possibly 3-element, archive.json-shaped) here -- classify_outcome
+        # needs the *exact* cell an individual landed in, not the pair it
+        # shares with other arc bins, or a same-pair/different-arc-bin
+        # elite could get misread as "this individual's own current elite"
+        # (wrongly "kept"/"replaced") or as its "incumbent" (a wrong
+        # incumbent_quality/prev_quality). Only collapsed to 2D pairs for
+        # the model's own display-only final_cells/prev_cells, below.
+        final_cells_raw = (final.get("archive") or {}).get("cells") or {}
         raw_results = lineage._generation_results(handler.repository, root, generation)
         if not raw_results:
             return None
@@ -326,31 +344,33 @@ def replay_model(handler, job, axes, generation=None):
                 seed_run = None
 
         if generation == 0:
-            prev_cells = {}
+            prev_cells_raw = {}
         else:
             try:
                 prev_snapshot = _snapshot(catalog, run_id, root, generation)
-                prev_cells = _collapse_cells((prev_snapshot.get("archive") or {}).get("cells") or {})
+                prev_cells_raw = (prev_snapshot.get("archive") or {}).get("cells") or {}
             except _MODEL_ERRORS:
-                prev_cells = None
+                prev_cells_raw = None
 
         individuals = []
         for entry in raw_results:
             index = int(entry["index"])
             parent_refs = [str(ref) for ref in (entry.get("parents") or [])]
             genome = entry["genome"]
-            cell_key = _cell_key(entry.get("cell"))
+            raw_cell = entry.get("cell")
+            exact_cell_key = _exact_cell_key(raw_cell)
+            display_cell_key = _cell_key(raw_cell)
             best = _best_reached(entry)
             quality = float(best["quality"]) if best is not None else None
             outcome = classify_outcome(
                 {"generation": generation, "parents": parent_refs, "genome": genome,
-                 "cell_key": cell_key, "quality": quality,
+                 "cell_key": exact_cell_key, "quality": quality,
                  "classification_status": entry.get("classification_status")},
-                prev_cells, final_cells,
+                prev_cells_raw, final_cells_raw,
             )
             individual = {
                 "index": index, "parents": parent_refs, "genome": genome,
-                "cell_key": cell_key, "outcome": outcome,
+                "cell_key": display_cell_key, "outcome": outcome,
             }
             if index in seed_cell_by_index:
                 individual["seed_cell"] = seed_cell_by_index[index]
@@ -383,12 +403,17 @@ def replay_model(handler, job, axes, generation=None):
             "gene_labels": list(_GENE_LABELS),
             "gene_short": list(_GENE_SHORT),
             "gene_ranges": [list(pair) for pair in _GENE_RANGES],
+            # Display-only, collapsed to 2D pairs here (see _collapse_cells)
+            # -- classify_outcome above already ran against the raw, exact
+            # cells (final_cells_raw/prev_cells_raw).
             "prev_cells": (
-                None if prev_cells is None
-                else {key: elite.get("quality") for key, elite in prev_cells.items() if isinstance(elite, dict)}
+                None if prev_cells_raw is None
+                else {key: elite.get("quality") for key, elite in _collapse_cells(prev_cells_raw).items()}
             ),
-            "final_cells": {key: elite.get("quality") for key, elite in final_cells.items()
-                             if isinstance(elite, dict)},
+            "final_cells": {
+                key: elite.get("quality")
+                for key, elite in _collapse_cells(final_cells_raw).items()
+            },
             "individuals": representatives,
             "population": len(individuals),
             "counts": counts,
