@@ -35,6 +35,10 @@ class WorldPrototypeTests(unittest.TestCase):
         payload = re.search(r'<script type="application/json" id="wp-data">(.*?)</script>', result).group(1)
         self.assertEqual(json.loads(payload)['people'][0]['id'], attack)
 
+    def test_sidebar_has_routes_survey_button(self):
+        result = world_prototype.render({'id': 'empty', 'name': 'Empty'}, {}, [])
+        self.assertIn('data-screen="routes"', result)
+
     def test_empty_world_has_readonly_guidance_and_advanced_link(self):
         result = world_prototype.render({'id': 'empty', 'name': 'Empty'}, {}, [])
         self.assertIn('data-world-prototype', result)

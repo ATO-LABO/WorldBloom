@@ -206,3 +206,7 @@
 .we-approved li{margin-bottom:12px}
 .we-message{color:#934027}
 .we-reopen{margin-top:16px}
+
+.wp-steps{padding-left:20px}
+.wp-steps li{margin-bottom:8px}
+.wp-steps li small{display:block;color:var(--wp-muted)}

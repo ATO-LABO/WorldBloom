@@ -68,6 +68,7 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         <button type="button" data-screen="places">場所</button>
         <button type="button" data-screen="story">初期物語</button>
         <button type="button" data-screen="time">時間</button>
+        <button type="button" data-screen="routes">最短経路を調査</button>
         <div class="wp-preview"><strong>世界設定</strong><br>変更は次の実行から使われます。<a href="/worlds/{wid}?view=advanced">詳細設定・設定ファイル ↗</a></div>
       </nav>
       <div class="wp-content" id="wp-content"></div>
