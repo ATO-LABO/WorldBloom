@@ -121,6 +121,19 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         '<span class="field-error" data-error-for="evolution.seed_genomes" role="alert"></span></div>')
     toggles = ''.join(wb._checkbox_field(label, f"evolution.{key}", values[f"evolution.{key}"])
         for label, key in (("説明記録", "record_explanations"), ("共進化", "coevolve"), ("メタ進化", "meta_evolution")))
+    # WB-GROWTH-001 S2 review fix (nice #7): the description used to say
+    # "「世界を育てる」（下のタブ）とは別物" -- there is no tab, and this
+    # checkbox sits in the very same "03. 保存と進化" section as the
+    # "世界を育てる" select just above (line ~82), so a position claim like
+    # that goes stale the moment either field moves. Named against the
+    # other feature directly instead of describing where it lives.
+    toggles += wb._checkbox_field(
+        "性格の成長", "evolution.personality_growth",
+        values["evolution.personality_growth"],
+        desc="物語の中で起きた出来事（勝敗・仲間・裏切りなど）に応じて、"
+             "主人公の性格がわずかに変わっていくようにする。"
+             "上の「世界を育てる」とは別物で、世界そのものは変えない。既定オフ。",
+    )
     if rationality is not None:
         total = wb._as_int(values["evolution.generations"]) * wb._as_int(values["evolution.population"]) * wb._as_int(values["evolution.seeds"])
         # S2 (Opus review, WB-JEV-002 merge follow-up): _rationality_section

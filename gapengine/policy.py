@@ -626,6 +626,12 @@ class Policy:
         # already the stress value *after* the change, not a difference.
         # None (not 0.0) when there is nothing to report -- always the case
         # on a marker/event row, since those always log delta={}.
+        #
+        # Review fix (nice #6): a rule's "when" that reads this binding must
+        # guard it first (e.g. "stress_after is not None and stress_after
+        # > 0.5") -- comparing None with a number raises TypeError, which
+        # this method (like an unknown binding name) does not catch, so it
+        # propagates straight out of observe().
         if row.get("kind") == "decision":
             if actor_is_self:
                 raw_stress = (delta.get("actor") or {}).get("stress")

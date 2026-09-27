@@ -6,6 +6,14 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 
+# WB-GROWTH-001 S2 review fix (must #3): "growth" is deliberately absent
+# from this dict. It is always a *consequence* of some other row on the
+# same turn (a fight, a betrayal, an ally gained, ...) that already carries
+# its own weight here (or is the protagonist's own effective decision) --
+# giving it a weight of its own would let a personality shift alone bump a
+# turn ahead of an unrelated foreshadowing/objective-transfer/concede scene
+# competing for extract_scenes's limited `limit`. See _scene_growth's own
+# docstring for how a scene still reports growth that happened on it.
 SPECIAL_PRIORITY = {
     "ending": 100,
     "betrayal": 90,
@@ -13,10 +21,6 @@ SPECIAL_PRIORITY = {
     "revived": 84,
     "exposure": 80,
     "payoff": 75,
-    # WB-GROWTH-001 S2: same weight as "payoff" -- a personality shift is a
-    # payoff of sorts (an accumulated consequence of prior turns), and both
-    # are secondary to hard plot beats (betrayal/downed/exposure).
-    "growth": 75,
     "planted": 70,
     "ally_gained": 65,
     "concede": 60,
@@ -483,17 +487,28 @@ def _scene_motives(
 
 
 def _scene_growth(
-    narrative_rows: Sequence[Mapping[str, Any]],
+    turn_rows: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """WB-GROWTH-001 S2: one entry per "growth" event row in this scene
-    (each row is one matched outcome rule -- see gapengine.policy.Policy.
-    observe). Absent entirely when there are none (a run with no outcome
-    rules, or plasticity=0, never writes a "growth" row at all), so
-    extract_scenes's output stays byte-identical to before this existed --
-    same "no key when nothing to report" convention as ``_scene_motives``."""
+    """WB-GROWTH-001 S2 (review fix must #3): one entry per "growth" event
+    row on this turn (each row is one matched outcome rule -- see
+    gapengine.policy.Policy.observe). Deliberately scans **every** row on
+    this turn (``by_turn[turn]``), not just the scene's already-filtered
+    ``narrative_rows`` -- "growth" carries no SPECIAL_PRIORITY weight (a
+    personality shift is a consequence of the turn's other events, not a
+    reason to select the turn in the first place, or to outrank a
+    foreshadowing/objective-transfer/concede scene competing for the same
+    limited slot), so a growth row alone can never make ``_scene_rows``
+    select an otherwise-unremarkable turn, nor appear in this scene's
+    "events" prose (avoiding the double "動いた" mention between events and
+    the synopsis's own "性格の変化:" line) -- but a turn already selected
+    for some other reason still reports whatever grew on it. Absent
+    entirely when there are none (a run with no outcome rules, or
+    plasticity=0, never writes a "growth" row at all), so extract_scenes's
+    output stays byte-identical to before this existed -- same "no key
+    when nothing to report" convention as ``_scene_motives``."""
 
     growth: list[dict[str, Any]] = []
-    for row in narrative_rows:
+    for row in turn_rows:
         if str(row.get("verb", "")) != "growth":
             continue
         details = _as_mapping(row.get("details"))
@@ -623,7 +638,7 @@ def extract_scenes(
         motives = _scene_motives(narrative_rows, world_meta, protagonist)
         if motives:
             scene["motives"] = motives
-        growth = _scene_growth(narrative_rows)
+        growth = _scene_growth(turn_rows)
         if growth:
             scene["growth"] = growth
         candidates.append(scene)

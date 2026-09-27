@@ -286,6 +286,7 @@ class WorkbenchTests(unittest.TestCase):
             "evolution.keep", "evolution.world_expansion",
             "evolution.coevolve", "evolution.meta_evolution",
             "evolution.record_explanations", "evolution.target_ending",
+            "evolution.personality_growth",
             "execution_limits.wall_seconds",
         ):
             with self.subTest(field=field):
