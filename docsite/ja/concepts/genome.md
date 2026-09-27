@@ -4,7 +4,7 @@ sources:
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "gapengine/policy.py"
   - "docsite/ja/usage/run-settings.md"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "57ffba799ae61c176e714f5c58384321ba059008"
 ---
 # 遺伝子（Genome）
 
