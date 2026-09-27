@@ -156,6 +156,21 @@ def arc(
     return 0.0
 
 
+def gate_arc_axis(qd_cfg: dict[str, Any], *, enabled: bool) -> dict[str, Any]:
+    """Drop a template's qd.yaml arc_bins declaration unless the arc axis
+    is actually active for this run/rerun (WB-GROWTH-001 S3 re-review fix,
+    nice #3) -- qd.yaml merely declaring arc_bins is never enough on its
+    own (see gapengine.evolve._evolve). Shared by every qd_cfg construction
+    site so "enabled" (however each one decides it -- evolve.py: the
+    personality_growth cfg flag; gapengine.lineage._resolve_world_context,
+    which has no such flag handy when rebuilding a rerun's cfg: this
+    experiment's own archive.json having frozen arc_thresholds) is the only
+    thing that can differ between them. Mutates and returns `qd_cfg`."""
+    if not enabled:
+        qd_cfg.pop("arc_bins", None)
+    return qd_cfg
+
+
 def _volatility_bin(
     value: float,
     thresholds: Mapping[str, Any] | Sequence[float] | None,

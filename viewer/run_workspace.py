@@ -102,7 +102,17 @@ def observation(handler, view, generation=None):
                     captured_template = handler.repository.safe_path(root, f"inputs/templates/{template_id}")
                     if (captured_template / "qd.yaml").is_file():
                         captured_axes = data.qd_axes(captured_template)
-                        result["categories"], result["bins"], result["arc_bins"] = map(list, captured_axes)
+                        result["categories"], result["bins"], declared_arc_bins = map(list, captured_axes)
+                        # WB-GROWTH-001 S3 re-review fix (must #1): qd.yaml
+                        # merely *declaring* arc_bins is not enough (see
+                        # gapengine/evolve.py) -- whether this run's own
+                        # archive actually froze arc_thresholds is the
+                        # ground truth, same as experiment_meta()'s and the
+                        # legacy-fallback branch below's own check. Getting
+                        # this wrong made a growth-off run's river page
+                        # reserve 3x too many (all-empty) bands.
+                        arc_enabled = (latest_snapshot.get("archive") or {}).get("arc_thresholds") is not None
+                        result["arc_bins"] = declared_arc_bins if arc_enabled else []
                 result["replay"] = ga_replay.replay_model(
                     handler, job, (result["categories"], result["bins"]), selected)
                 result["replay_html"] = ga_replay.render_panel(result["replay"], urlsplit(handler.path).path)

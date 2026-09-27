@@ -27,7 +27,7 @@ from gapengine.evolve import (
     run_individual,
 )
 from gapengine.genome import CATEGORIES
-from gapengine.qd import read_rows, reached as qd_reached
+from gapengine.qd import gate_arc_axis, read_rows, reached as qd_reached
 
 
 _IND_REF = re.compile(r"^g(\d+)/ind-(\d+)$")
@@ -520,6 +520,27 @@ def _representative_header(
     return None
 
 
+def _archive_has_arc_axis(repository: Any, experiment: Path) -> bool:
+    """WB-GROWTH-001 S3 re-review fix (nice #3): whether this experiment's
+    own archive.json (the ground truth -- see viewer/data.py's
+    experiment_meta and viewer/workbench_pages.py's _live_map, which make
+    the same check) actually froze an arc axis, never the template's
+    static qd.yaml declaration alone. _resolve_world_context has no
+    personality_growth cfg flag handy the way gapengine.evolve._evolve
+    does when rebuilding a rerun's qd_cfg, so this is its own "was the arc
+    axis actually active" signal. Best-effort: any read failure just means
+    "no", same as an experiment with nothing recorded yet."""
+
+    archive_path = repository.safe_path(experiment, "archive.json")
+    if not archive_path.is_file():
+        return False
+    try:
+        archive = json.loads(archive_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    return isinstance(archive, Mapping) and archive.get("arc_thresholds") is not None
+
+
 def _resolve_world_context(
     repository: Any,
     experiment: Path,
@@ -575,6 +596,7 @@ def _resolve_world_context(
             },
         )
     )
+    gate_arc_axis(qd_cfg, enabled=_archive_has_arc_axis(repository, experiment))
     rules = list(_load_yaml(template_dir / "rules.yaml", []))
 
     summary = json.loads(

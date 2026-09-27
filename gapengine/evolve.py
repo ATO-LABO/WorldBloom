@@ -42,6 +42,7 @@ from gapengine.qd import (
     arc,
     descriptor,
     effective_sequence,
+    gate_arc_axis,
     quality,
     read_rows,
     reached,
@@ -1603,8 +1604,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     # freeze_arc_thresholds, viewer's qd_axes/experiment_meta -- honest
     # about "is the arc axis actually active for this run" with no separate
     # flag to keep in sync.
-    if not growth_enabled:
-        qd_cfg.pop("arc_bins", None)
+    gate_arc_axis(qd_cfg, enabled=growth_enabled)
     canon = load_canon(template_dir / "canon.yaml")
 
     # WB-WORLDGROW-001 stage 5b: seed_genomes (--seed-genomes) carries only
