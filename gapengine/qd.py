@@ -22,13 +22,24 @@ class Descriptor:
     category: str | None
     volatility: float
     volatility_bin: str | None = None
+    # WB-GROWTH-001 S3: the run's personality-change magnitude (see arc())
+    # and its bin. arc_bin stays None -- and to_dict()/the archive cell key
+    # omit it entirely -- unless the template's qd.yaml opts into the arc
+    # axis (templates/momotaro_plus2 only); this keeps every other
+    # template's archive.json byte-identical to before this feature.
+    arc: float = 0.0
+    arc_bin: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "category": self.category,
             "volatility": float(self.volatility),
             "volatility_bin": self.volatility_bin,
         }
+        if self.arc_bin is not None:
+            payload["arc"] = float(self.arc)
+            payload["arc_bin"] = self.arc_bin
+        return payload
 
 
 @dataclass(frozen=True)
@@ -73,6 +84,12 @@ class Elite:
                     if descriptor_raw.get("volatility_bin") is not None
                     else None
                 ),
+                arc=float(descriptor_raw.get("arc", 0.0)),
+                arc_bin=(
+                    str(descriptor_raw["arc_bin"])
+                    if descriptor_raw.get("arc_bin") is not None
+                    else None
+                ),
             ),
             reach_rate=float(raw["reach_rate"]),
             exemplar=dict(raw["exemplar"]),
@@ -104,6 +121,41 @@ def _l1(first: Sequence[float], second: Sequence[float]) -> float:
     )
 
 
+def arc(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    subject: str | None = None,
+) -> float:
+    """WB-GROWTH-001 S3: the run's personality-change magnitude -- the L1
+    sum of `subject`'s (the protagonist by default) *last* "growth" event's
+    ``details.acquired_after`` (gapengine.policy.Policy.observe), or 0.0 if
+    that subject never grew (no outcome rules matched, plasticity=0, or
+    personality_growth disabled -- the common case, and the only one before
+    this feature existed)."""
+
+    decision_subject = subject or _protagonist(rows)
+    for row in reversed(rows):
+        if (
+            row.get("kind") != "event"
+            or row.get("verb") != "growth"
+            or row.get("subject") != decision_subject
+        ):
+            continue
+        details = row.get("details")
+        acquired_after = (
+            details.get("acquired_after")
+            if isinstance(details, Mapping)
+            else None
+        )
+        if not isinstance(acquired_after, Mapping):
+            return 0.0
+        return round(
+            sum(abs(float(value)) for value in acquired_after.values()),
+            12,
+        )
+    return 0.0
+
+
 def _volatility_bin(
     value: float,
     thresholds: Mapping[str, Any] | Sequence[float] | None,
@@ -123,6 +175,18 @@ def _volatility_bin(
     if value <= mid_max:
         return "mid"
     return "high"
+
+
+def _arc_bin(
+    value: float,
+    thresholds: Mapping[str, Any] | None,
+) -> str | None:
+    if thresholds is None:
+        return None
+    if value <= 0.0:
+        return "none"
+    split = float(thresholds["split"])
+    return "small" if value <= split else "large"
 
 
 def descriptor(
@@ -900,8 +964,12 @@ def _quantile(values: Sequence[float], fraction: float) -> float:
 
 class Archive:
     def __init__(self) -> None:
-        self.cells: dict[tuple[str, str], Elite] = {}
+        self.cells: dict[tuple[str, ...], Elite] = {}
         self.volatility_thresholds: dict[str, float] | None = None
+        # WB-GROWTH-001 S3: frozen only when the template's qd.yaml declares
+        # arc_bins (opt-in). None means the arc axis is off for this
+        # archive, exactly like before this feature existed.
+        self.arc_thresholds: dict[str, float] | None = None
 
     def freeze_thresholds(
         self,
@@ -923,6 +991,29 @@ class Archive:
             raise RuntimeError("Archive volatility thresholds are not frozen")
         return value
 
+    def freeze_arc_thresholds(
+        self,
+        arcs: Sequence[float],
+    ) -> dict[str, float]:
+        """Same freeze-on-first-generation shape as freeze_thresholds, but
+        the split is a single point (median of the *positive* arcs only --
+        arc==0, no growth at all, is always its own "none" bin, decided
+        before any threshold is consulted; see _arc_bin)."""
+        if self.arc_thresholds is None:
+            positive = [float(value) for value in arcs if float(value) > 0.0]
+            # ponytail: no positive arc observed yet (e.g. this generation
+            # never grew) -- fall back to a fixed split so small/large stay
+            # reachable once growth does show up in a later generation.
+            split = round(_quantile(positive, 0.5), 12) if positive else 0.1
+            self.arc_thresholds = {"split": split}
+        return dict(self.arc_thresholds)
+
+    def arc_bin_for(self, value: float) -> str:
+        result = _arc_bin(value, self.arc_thresholds)
+        if result is None:
+            raise RuntimeError("Archive arc thresholds are not frozen")
+        return result
+
     def insert(self, elite: Elite) -> bool:
         category = elite.descriptor.category
         volatility_bin = elite.descriptor.volatility_bin
@@ -931,7 +1022,10 @@ class Archive:
         if volatility_bin is None:
             raise ValueError("Elite descriptor has no volatility bin")
 
-        cell = (category, volatility_bin)
+        cell_parts = [category, volatility_bin]
+        if elite.descriptor.arc_bin is not None:
+            cell_parts.append(elite.descriptor.arc_bin)
+        cell = tuple(cell_parts)
         existing = self.cells.get(cell)
         if existing is not None:
             if elite.quality < existing.quality:
@@ -943,13 +1037,16 @@ class Archive:
         return True
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "cells": {
                 "|".join(cell): self.cells[cell].to_dict()
                 for cell in sorted(self.cells)
             },
             "volatility_thresholds": self.volatility_thresholds,
         }
+        if self.arc_thresholds is not None:
+            payload["arc_thresholds"] = self.arc_thresholds
+        return payload
 
     def save(self, path: str | Path) -> Path:
         destination = Path(path)
@@ -983,11 +1080,14 @@ class Archive:
                 "low_max": float(thresholds["low_max"]),
                 "mid_max": float(thresholds["mid_max"]),
             }
+        arc_thresholds = raw.get("arc_thresholds")
+        if arc_thresholds is not None:
+            archive.arc_thresholds = {"split": float(arc_thresholds["split"])}
         for cell_text in sorted(raw.get("cells", {})):
             parts = cell_text.split("|")
-            if len(parts) != 2:
+            if len(parts) not in (2, 3):
                 raise ValueError(f"Invalid archive cell: {cell_text}")
-            archive.cells[(parts[0], parts[1])] = Elite.from_dict(
+            archive.cells[tuple(parts)] = Elite.from_dict(
                 raw["cells"][cell_text]
             )
         return archive

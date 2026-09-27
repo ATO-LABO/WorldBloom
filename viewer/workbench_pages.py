@@ -1461,7 +1461,25 @@ def _qd_table(categories, bins, live):
     for category in categories:
         columns = []
         for bin_name in bins:
-            cell = cells.get(f"{category}|{bin_name}")
+            prefix = f"{category}|{bin_name}"
+            cell = cells.get(prefix)
+            if cell is None:
+                # WB-GROWTH-001 S3: an arc-enabled archive keys its cells
+                # category|volatility_bin|arc_bin -- this in-progress map has
+                # no arc filter of its own, so show the best across arc bins.
+                candidates = [
+                    value for key, value in cells.items()
+                    if isinstance(key, str) and key.startswith(prefix + "|")
+                ]
+                cell = max(
+                    candidates,
+                    key=lambda value: (
+                        value.get("quality")
+                        if isinstance(value.get("quality"), (int, float))
+                        else -1.0
+                    ),
+                    default=None,
+                )
             if cell is None:
                 columns.append('<td class="qd-cell empty"></td>')
             else:
@@ -1524,8 +1542,8 @@ def _qd_metrics(live, grid_size):
 
 def _run_vessel_map(view):
     job, live = view["job"], view["live"]
-    categories, bins = view["axes"]
-    grid_size = len(categories) * len(bins)
+    categories, bins, arc_bins = view["axes"]
+    grid_size = len(categories) * len(bins) * (len(arc_bins) or 1)
     revision = live["revision"] if live else None
     if job is None:
         sub = f"この設定が埋めうる {grid_size} マス"

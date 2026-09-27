@@ -592,8 +592,13 @@ def resolve_genre(
 
 def qd_axes(
     template_dir: Path | None,
-) -> tuple[list[str], list[str]]:
-    """Return declared QD categories and volatility bins."""
+) -> tuple[list[str], list[str], list[str]]:
+    """Return declared QD categories, volatility bins, and arc bins.
+
+    Arc bins (WB-GROWTH-001 S3) are opt-in: an empty list means the
+    template's qd.yaml has no arc_bins key, so the archive has no third
+    axis at all (the common case -- only templates/momotaro_plus2 sets
+    this)."""
 
     raw = (
         _yaml_mapping(template_dir / "qd.yaml")
@@ -610,9 +615,15 @@ def qd_axes(
         for value in _as_list(raw.get("volatility_bins"))
         if str(value)
     ]
+    arc_bins = [
+        str(value)
+        for value in _as_list(raw.get("arc_bins"))
+        if str(value)
+    ]
     return (
         categories or list(DEFAULT_CATEGORIES),
         bins or list(DEFAULT_VOLATILITY_BINS),
+        arc_bins,
     )
 
 
@@ -806,7 +817,15 @@ def experiment_meta(
 
     resolved = resolve_genre(world)
     template_dir = resolved[2] if resolved is not None else None
-    categories, bins = qd_axes(template_dir)
+    categories, bins, declared_arc_bins = qd_axes(template_dir)
+    # WB-GROWTH-001 S3: whether this *archive* actually carries the arc
+    # axis, not merely whether the (possibly since-edited) template
+    # declares it -- archive.json's own arc_thresholds is the ground truth.
+    arc_bins = (
+        declared_arc_bins
+        if archive.get("arc_thresholds") is not None
+        else []
+    )
     stat = repository.safe_path(experiment, "archive.json").stat()
 
     return {
@@ -848,7 +867,7 @@ def experiment_meta(
             "final_archive_dissimilarity"
         ),
         "cells": len(cells),
-        "grid_size": len(categories) * len(bins),
+        "grid_size": len(categories) * len(bins) * (len(arc_bins) or 1),
         "thresholds": dict(
             _as_mapping(archive.get("volatility_thresholds"))
         ),
@@ -865,6 +884,7 @@ def experiment_meta(
         "synopsis_backend": synopsis_root.get("backend"),
         "categories": categories,
         "bins": bins,
+        "arc_bins": arc_bins,
         "world_meta": world_meta,
         "template_dir": template_dir,
     }
@@ -1245,15 +1265,21 @@ def _ordered_axes(
     categories: Sequence[str],
     bins: Sequence[str],
     cells: Mapping[str, Any],
-) -> tuple[list[str], list[str]]:
+    arc_bins: Sequence[str] = (),
+) -> tuple[list[str], list[str], list[str]]:
     present_categories: set[str] = set()
     present_bins: set[str] = set()
+    present_arc_bins: set[str] = set()
     for cell_key in cells:
         if not isinstance(cell_key, str) or "|" not in cell_key:
             continue
-        category, bin_name = cell_key.split("|", 1)
-        present_categories.add(category)
-        present_bins.add(bin_name)
+        parts = cell_key.split("|")
+        if len(parts) not in (2, 3) or not all(parts):
+            continue
+        present_categories.add(parts[0])
+        present_bins.add(parts[1])
+        if len(parts) == 3:
+            present_arc_bins.add(parts[2])
     return (
         [
             *categories,
@@ -1263,6 +1289,11 @@ def _ordered_axes(
             *bins,
             *sorted(present_bins.difference(bins)),
         ],
+        (
+            [*arc_bins, *sorted(present_arc_bins.difference(arc_bins))]
+            if arc_bins or present_arc_bins
+            else []
+        ),
     )
 
 
@@ -1279,11 +1310,11 @@ def cell_view(
         raise BadRequest("view must be digest, decisions, or all")
     repository.validate_segment(cell_key)
     if (
-        cell_key.count("|") != 1
-        or not all(cell_key.split("|", 1))
+        cell_key.count("|") not in (1, 2)
+        or not all(cell_key.split("|"))
     ):
         raise BadRequest(
-            "cell must have the form category|volatility_bin"
+            "cell must have the form category|volatility_bin[|arc_bin]"
         )
 
     archive = repository.archive(experiment)
@@ -1439,17 +1470,27 @@ def cell_view(
             day_states[day] = dict(current)
 
     meta = experiment_meta(repository, experiment)
-    categories, bins = _ordered_axes(
+    categories, bins, arc_bins = _ordered_axes(
         meta["categories"],
         meta["bins"],
         cells,
+        meta.get("arc_bins") or (),
     )
-    occupied = [
-        f"{category}|{bin_name}"
-        for category in categories
-        for bin_name in bins
-        if f"{category}|{bin_name}" in cells
-    ]
+    if arc_bins:
+        occupied = [
+            f"{category}|{bin_name}|{arc_bin}"
+            for category in categories
+            for bin_name in bins
+            for arc_bin in arc_bins
+            if f"{category}|{bin_name}|{arc_bin}" in cells
+        ]
+    else:
+        occupied = [
+            f"{category}|{bin_name}"
+            for category in categories
+            for bin_name in bins
+            if f"{category}|{bin_name}" in cells
+        ]
     if cell_key not in occupied:
         raise BadRequest(
             "cell is not addressable on the archive axes"
@@ -1572,8 +1613,8 @@ def lineage_view(
     from gapengine.world_patch import PatchError
 
     repository.validate_segment(cell_key)
-    if cell_key.count("|") != 1 or not all(cell_key.split("|", 1)):
-        raise BadRequest("cell must have the form category|volatility_bin")
+    if cell_key.count("|") not in (1, 2) or not all(cell_key.split("|")):
+        raise BadRequest("cell must have the form category|volatility_bin[|arc_bin]")
 
     archive = repository.archive(experiment)
     cells = _as_mapping(archive.get("cells"))

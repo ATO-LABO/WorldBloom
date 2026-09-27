@@ -98,7 +98,7 @@ def load(handler, run_id, *, query=None, grid=False):
         items.append(c)
     counts = Counter(c["state"] for c in items)
     query = query or {}
-    filter_query = {k:v for k,v in query.items() if k not in {"sort", "dir", "candidate", "view_mode", "panel", "q", "config", "run", "kind", "mode", "from_output", "ack", "cell", "publication"}}
+    filter_query = {k:v for k,v in query.items() if k not in {"sort", "dir", "candidate", "view_mode", "panel", "q", "config", "run", "kind", "mode", "from_output", "ack", "cell", "publication", "arc"}}
     filters, state_filter = wb._parse_filters(wb._clean_query(filter_query))
     visible_ids = {c["candidate_id"] for c in catalog.candidates(run_id, **filters)["candidates"]}
     visible = [c for c in items if c["candidate_id"] in visible_ids and (not state_filter or c["state"] == state_filter)]
@@ -114,16 +114,56 @@ def load(handler, run_id, *, query=None, grid=False):
         return (not valid, (-value if direction != "asc" else value) if valid else 0, c["candidate_id"])
     visible.sort(key=sort_value)
     resolved = data.resolve_genre(str((config or {}).get("preview", {}).get("world", {}).get("name", "")))
-    categories, bins = data.qd_axes(resolved[2] if resolved else None)
+    categories, bins, declared_arc_bins = data.qd_axes(resolved[2] if resolved else None)
     qd = (config or {}).get("preview", {}).get("qd", {})
     categories = list(qd.get("categories") or categories)
     bins = list(qd.get("volatility_bins") or bins)
+    arc_bins = list(qd.get("arc_bins") or declared_arc_bins)
     for cell in reps:
-        category, _, bin_name = cell.partition("|")
+        parts = cell.split("|")
+        category, bin_name = parts[0], (parts[1] if len(parts) > 1 else "")
         if category not in categories: categories.append(category)
         if bin_name not in bins: bins.append(bin_name)
+        if len(parts) > 2 and parts[2] not in arc_bins:
+            arc_bins.append(parts[2])
+
+    # WB-GROWTH-001 S3: reps is keyed by the archive's raw cell (2 or 3
+    # parts); grid_reps collapses it to one representative per
+    # (category, volatility_bin) pair for the grid table -- "all" (the
+    # default) picks the best-quality one across arc bins, a specific
+    # arc value narrows to just that bin. reps itself (exact cell keys)
+    # still decides c["representative"]/detail hrefs, unaffected by grid.
+    arc_enabled = any(isinstance(key, str) and key.count("|") == 2 for key in reps)
+    arc_filter = (query.get("arc") or ["all"])[0] if arc_enabled else "all"
+    if arc_filter not in ("all", "none", "small", "large"):
+        arc_filter = "all"
+    if not arc_enabled:
+        grid_reps = reps
+    elif arc_filter == "all":
+        items_by_id = {c["candidate_id"]: c for c in items}
+        best: dict[str, tuple[str, float]] = {}
+        for cell_key, cid in reps.items():
+            parts = cell_key.split("|")
+            if len(parts) != 3:
+                continue
+            pair = f"{parts[0]}|{parts[1]}"
+            candidate = items_by_id.get(cid)
+            quality = candidate.get("quality") if candidate else None
+            quality = quality if isinstance(quality, (int, float)) else -1.0
+            current = best.get(pair)
+            if current is None or quality > current[1]:
+                best[pair] = (cid, quality)
+        grid_reps = {pair: cid for pair, (cid, _) in best.items()}
+    else:
+        grid_reps = {
+            f"{parts[0]}|{parts[1]}": cid
+            for cell_key, cid in reps.items()
+            for parts in [cell_key.split("|")]
+            if len(parts) == 3 and parts[2] == arc_filter
+        }
     return dict(run_id=run_id, name=snapshot["experiment_name"], label=(config or {}).get("label") or snapshot["experiment_name"],
                 world=wb._config_world(config) if config else None, config=config, legacy=legacy,
                 revision=selected["revision"], publication=snapshot["revision"], items=items, visible=visible,
                 counts=dict(counts), reps=reps, rep_error=rep_error, categories=categories, bins=bins,
+                arc_bins=arc_bins, arc_enabled=arc_enabled, arc_filter=arc_filter, grid_reps=grid_reps,
                 output_error=output_error, running=running, busy=busy, history=history, query=query)

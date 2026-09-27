@@ -68,9 +68,10 @@ def observation(handler, view, generation=None):
     """Capture one publication, never scan beyond its committed generation."""
     job = view.get("job") or {}
     run_name = view.get("run_name")
-    categories, bins = view["axes"]
+    categories, bins, arc_bins = view["axes"]
     result = {"generation": None, "latest": None, "revision": job.get("publication_revision"),
               "generations": [], "cells": {}, "categories": list(categories), "bins": list(bins),
+              "arc_bins": list(arc_bins),
               "replay": None, "river": None, "candidate_count": 0,
               "historical": False, "notice": "", "run_name": run_name}
     snapshot = None
@@ -101,7 +102,7 @@ def observation(handler, view, generation=None):
                     captured_template = handler.repository.safe_path(root, f"inputs/templates/{template_id}")
                     if (captured_template / "qd.yaml").is_file():
                         captured_axes = data.qd_axes(captured_template)
-                        result["categories"], result["bins"] = map(list, captured_axes)
+                        result["categories"], result["bins"], result["arc_bins"] = map(list, captured_axes)
                 result["replay"] = ga_replay.replay_model(
                     handler, job, (result["categories"], result["bins"]), selected)
                 result["replay_html"] = ga_replay.render_panel(result["replay"], urlsplit(handler.path).path)
@@ -124,6 +125,7 @@ def observation(handler, view, generation=None):
             snapshot = {"archive": handler.repository.archive(root), "summary": summary}
             result["generations"] = summary.get("generations") or []
             result["categories"], result["bins"] = list(meta["categories"]), list(meta["bins"])
+            result["arc_bins"] = list(meta.get("arc_bins") or [])
             numbers = [g.get("generation") for g in result["generations"] if type(g.get("generation")) is int]
             result["generation"] = result["latest"] = max(numbers, default=None)
             result["notice"] = "旧実行の保存結果です。世代を指定したリプレイには対応していません。"
@@ -139,7 +141,8 @@ def observation(handler, view, generation=None):
         try:
             result["river"] = river_payload(lineage_river.river_model(
                 handler.repository, run_name, max_generation=result["generation"], snapshot_archive=archive,
-                snapshot_axes=(result["categories"], result["bins"]), snapshot_root=snapshot_root))
+                snapshot_axes=(result["categories"], result["bins"], result.get("arc_bins") or []),
+                snapshot_root=snapshot_root))
         except READ_ERRORS:
             pass
     return result
@@ -576,4 +579,4 @@ def experiment_page(handler, name):
     meta = data.experiment_meta(handler.repository, root)
     render(handler, {"world": {"id": "", "name": meta.get("world") or name},
                      "job": None, "config": None, "run_name": name,
-                     "axes": (meta["categories"], meta["bins"])})
+                     "axes": (meta["categories"], meta["bins"], meta.get("arc_bins") or [])})

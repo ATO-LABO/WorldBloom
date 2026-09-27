@@ -23,9 +23,9 @@ EDGE_LIMIT = 6000
 
 
 def _cell_key(cell: Any) -> str | None:
-    if not isinstance(cell, Sequence) or isinstance(cell, (str, bytes)) or len(cell) != 2:
+    if not isinstance(cell, Sequence) or isinstance(cell, (str, bytes)) or len(cell) not in (2, 3):
         return None
-    return f"{cell[0]}|{cell[1]}"
+    return "|".join(str(part) for part in cell)
 
 
 def build_index(generations: Sequence[Sequence[Mapping[str, Any]]]) -> dict:
@@ -95,10 +95,17 @@ def _resolve_parent_ref(
     if not archive_match:
         return None
     generation_limit = int(archive_match.group(1))
-    category, separator, volatility_bin = archive_match.group(2).rpartition("-")
-    if not separator or not category or not 0 <= generation_limit < len(archive_best):
+    cell_text = archive_match.group(2)
+    if not cell_text or not 0 <= generation_limit < len(archive_best):
         return None
-    return archive_best[generation_limit].get(f"{category}|{volatility_bin}")
+    # A category/volatility/arc bin could in principle contain "-" itself,
+    # so this never splits cell_text -- it "-".joins each candidate cell_key
+    # (already "|"-joined, of known arity) and compares the whole string,
+    # same approach as gapengine/lineage.py::_resolve_archive_ref.
+    for cell_key, node_key in archive_best[generation_limit].items():
+        if cell_key.replace("|", "-") == cell_text:
+            return node_key
+    return None
 
 
 def resolve_parents(index: Mapping, generations_count: int) -> tuple[list[dict], int]:
@@ -292,13 +299,24 @@ def river_model(
 
     survivor_map = survivors(index, edges, elite_nodes)
     try:
-        meta = ({"categories": snapshot_axes[0], "bins": snapshot_axes[1]} if snapshot_axes is not None
+        meta = ({"categories": snapshot_axes[0], "bins": snapshot_axes[1],
+                 "arc_bins": snapshot_axes[2] if len(snapshot_axes) > 2 else []}
+                if snapshot_axes is not None
                 else data.experiment_meta(repository, experiment))
-        band_order = [
-            f"{category}|{volatility_bin}"
-            for category in meta["categories"]
-            for volatility_bin in meta["bins"]
-        ]
+        arc_bins = meta.get("arc_bins") or ()
+        if arc_bins:
+            band_order = [
+                f"{category}|{volatility_bin}|{arc_bin}"
+                for category in meta["categories"]
+                for volatility_bin in meta["bins"]
+                for arc_bin in arc_bins
+            ]
+        else:
+            band_order = [
+                f"{category}|{volatility_bin}"
+                for category in meta["categories"]
+                for volatility_bin in meta["bins"]
+            ]
     except (OSError, ValueError, KeyError, TypeError):
         band_order = sorted(
             node["cell_key"] for node in index.values() if node.get("cell_key")

@@ -101,12 +101,23 @@ def candidate(repo, name, cell, model, story, reason, technical, nav_links, *, j
 
 def grid(repo, name, *, job_store=None):
     root=repo.experiment(name); archive=repo.archive(root); cells=data._as_mapping(archive.get('cells'))
-    meta=data.experiment_meta(repo,root); cats,bins=data._ordered_axes(meta['categories'],meta['bins'],cells)
+    meta=data.experiment_meta(repo,root)
+    cats,bins,arc_bins=data._ordered_axes(meta['categories'],meta['bins'],cells,meta.get('arc_bins') or ())
     synopses=data.synopsis_texts(repo,root); base=f'/exp/{U(name)}'; previews=[]; rows=[]
     for cat in cats:
         columns=[]
         for bin_name in bins:
-            cell=f'{cat}|{bin_name}'; elite=cells.get(cell)
+            pair=f'{cat}|{bin_name}'
+            if arc_bins:
+                # WB-GROWTH-001 S3: this read-only fallback grid has no arc
+                # filter of its own -- show the best-quality entry across
+                # arc bins for this (category, volatility_bin) pair.
+                candidates=[(key,value) for key,value in cells.items()
+                            if isinstance(key,str) and key.startswith(pair+'|') and isinstance(value,dict)]
+                best=max(candidates, key=lambda kv: kv[1].get('quality') if isinstance(kv[1].get('quality'),(int,float)) else -1.0, default=None)
+                cell, elite = best if best is not None else (pair, None)
+            else:
+                cell, elite = pair, cells.get(pair)
             if not isinstance(elite,dict): columns.append('<td class="ux-empty">—</td>');continue
             ident=len(previews); text=synopses.get(cell,''); title=(text.splitlines()[0][:48] if text else f'区画 {cell.replace("|"," / ")}')
             quality=elite.get('quality'); q=f'{quality:.4f}' if isinstance(quality,(int,float)) else '—'

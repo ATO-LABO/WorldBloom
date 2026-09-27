@@ -39,6 +39,7 @@ from gapengine.qd import (
     Descriptor,
     Elite,
     antagonist_quality,
+    arc,
     descriptor,
     effective_sequence,
     quality,
@@ -825,6 +826,12 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             "shaped": shaped(rows, world),
             "volatility": run_descriptor.volatility,
         }
+        # WB-GROWTH-001 S3: only recorded when the template's qd.yaml opts
+        # into the arc axis (qd_cfg["arc_bins"]) -- otherwise every
+        # template's results.json/archive.json stays byte-identical to
+        # before this feature (plan §4).
+        if qd_cfg.get("arc_bins"):
+            run_result["arc"] = arc(rows, subject=protagonist)
         # Only added when rationality actually ran this seed (Opus review
         # R1/P1): kappa<=0 (the template default) must leave results.json
         # byte-identical to a pre-Stage-2 run.
@@ -956,7 +963,7 @@ def _cell_for_run(
     archive: Archive,
     *,
     role: str = "protagonist",
-) -> tuple[str, str] | None:
+) -> tuple[str, ...] | None:
     category_key = (
         "antagonist_category"
         if role == "antagonist"
@@ -965,10 +972,13 @@ def _cell_for_run(
     category = run.get(category_key)
     if category is None:
         return None
-    return (
-        str(category),
-        archive.bin_for(float(run["volatility"])),
-    )
+    parts = [str(category), archive.bin_for(float(run["volatility"]))]
+    # WB-GROWTH-001 S3: the arc axis only ever applies to the protagonist
+    # archive (arc is the protagonist's own personality-change magnitude;
+    # antagonist_quality/antagonist_category have no equivalent).
+    if role != "antagonist" and archive.arc_thresholds is not None:
+        parts.append(archive.arc_bin_for(float(run.get("arc", 0.0))))
+    return tuple(parts)
 
 
 def _result_summary(
@@ -1055,10 +1065,14 @@ def _insert_result(
         sum(bool(run["reached"]) for run in result["runs"])
         / len(result["runs"])
     )
+    arc_enabled = role != "antagonist" and archive.arc_thresholds is not None
+    arc_value = float(best.get("arc", 0.0)) if arc_enabled else 0.0
     descriptor_value = Descriptor(
         category=str(best[category_key]),
         volatility=float(best["volatility"]),
         volatility_bin=archive.bin_for(float(best["volatility"])),
+        arc=arc_value,
+        arc_bin=archive.arc_bin_for(arc_value) if arc_enabled else None,
     )
     exemplar: dict[str, Any] = {
         "engine_hash": best.get("engine_hash"),
@@ -1087,11 +1101,11 @@ def _insert_result(
 def _parent_pool(
     archive: Archive,
     previous: list[dict[str, Any]],
-) -> list[tuple[Genome, str, tuple[str, str] | None]]:
-    pool: list[tuple[Genome, str, tuple[str, str] | None]] = []
+) -> list[tuple[Genome, str, tuple[str, ...] | None]]:
+    pool: list[tuple[Genome, str, tuple[str, ...] | None]] = []
     for cell in sorted(archive.cells):
         elite = archive.cells[cell]
-        label = f"g{elite.generation}/archive/{cell[0]}-{cell[1]}"
+        label = f"g{elite.generation}/archive/{'-'.join(cell)}"
         entry = (elite.genome, label, cell)
         pool.extend((entry, entry, entry))
 
@@ -1106,7 +1120,7 @@ def _parent_pool(
     for value in shaped_top:
         cell_raw = value.get("cell")
         cell = (
-            (str(cell_raw[0]), str(cell_raw[1]))
+            tuple(str(part) for part in cell_raw)
             if cell_raw is not None
             else None
         )
@@ -2031,6 +2045,14 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             archive.freeze_thresholds(
                 [
                     float(run["volatility"])
+                    for result in raw_results
+                    for run in result["runs"]
+                ]
+            )
+        if qd_cfg.get("arc_bins") and archive.arc_thresholds is None:
+            archive.freeze_arc_thresholds(
+                [
+                    float(run.get("arc", 0.0))
                     for result in raw_results
                     for run in result["runs"]
                 ]
