@@ -40,6 +40,7 @@ VERB_LABELS = {
     "ending": "結末に到達した",
     "exposure": "正体や秘密が露見した",
     "fight": "戦った",
+    "force_action_fallback": "予定された行動が取れず、自由に行動した",
     "give_item": "品物を渡した",
     "grand_gesture": "大きな代償を伴う行動に出た",
     "guard": "守った",

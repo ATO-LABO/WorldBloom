@@ -757,8 +757,18 @@ class EvolutionJobRationalityAndConsistencyTests(unittest.TestCase):
         # inputs/seed_genomes.json and g0/population.json's seed_cell
         # actually land in the second run's output.
         configs, jobs = self._make_store("seed", remove_adapter=False)
+        # WB-TIMEEVENT-001: departure_day now uses force_action instead of
+        # move_to. force_action itself draws no rng, but it shifts every
+        # later rng draw in the run by one slot, so this is a rng-sequence
+        # shuffle, not a real behavior change. population=3 (the old value
+        # here) was already a marginal setting that happened to reach a
+        # cell under the old sequence; under the new one it reaches none.
+        # Opus's review confirmed this isn't a regression in reach rate:
+        # momotaro_plus2's overall reach rate measured 0.077 before this
+        # change and 0.110 after (no worse). Bumped to population=8 here so
+        # this test reaches a cell deterministically again.
         configs.save({"label": "seed-source", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
-            "evolution": {"generations": 1, "population": 3, "seeds": 2, "processes": 1}}, config_id="cfg-seed-source")
+            "evolution": {"generations": 1, "population": 8, "seeds": 2, "processes": 1}}, config_id="cfg-seed-source")
         source_job, _ = jobs.submit({"request_id": "seed-source-req", "kind": "evolve", "config_id": "cfg-seed-source"})
         source_job = self._run_to_terminal(jobs, source_job["job_id"])
         self.assertEqual(source_job["state"], "succeeded", source_job)

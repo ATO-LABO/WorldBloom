@@ -12,6 +12,7 @@ import base64
 import hashlib
 import json
 from http import HTTPStatus
+from pathlib import Path
 
 import yaml
 
@@ -694,6 +695,33 @@ def _worlds_detail(handler, world_id):
 
 
 
+def _worlds_routes(handler, world_id):
+    """GET /api/worlds/<id>/routes (WB-ROUTE-PATHS-001): a read-only survey
+    of a handful of distinct step-by-step walkthroughs from the
+    protagonist's current state to the ending -- available even to a
+    read-only Viewer (no job_store required), same as the world page
+    itself."""
+
+    job_store = _job_store(handler)
+    repo = job_store.configs.repo if job_store is not None else data.ROOT
+    store = LibraryStore(repo)
+    world = next((w for w in store.worlds() if w["id"] == world_id), None)
+    if world is None:
+        raise ConfigError("world_id", "世界がありません", code="not_found")
+    from gapengine.route_paths import NO_ROUTE_CONFIG_MESSAGE, survey
+    genre = world["genre"]
+    if genre is None:
+        handler._send_json(HTTPStatus.OK, {
+            "status": "no_route_config",
+            "message": NO_ROUTE_CONFIG_MESSAGE,
+            "timepoints": [],
+        })
+        return
+    project_dir = Path(repo) / "projects" / world_id
+    template_dir = Path(repo) / "templates" / genre
+    handler._send_json(HTTPStatus.OK, survey(project_dir, template_dir))
+
+
 def _genres_new(handler):
     job_store = _job_store(handler)
     if job_store is None:
@@ -1213,6 +1241,8 @@ def _resolve(parts, method):
     if method != "GET" or not parts:
         return None
     head = parts[0]
+    if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "routes":
+        return _worlds_routes, (parts[2],)
     if head == "worlds":
         if len(parts) == 1:
             return _worlds_list, ()
