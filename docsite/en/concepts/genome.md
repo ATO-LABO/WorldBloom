@@ -1,5 +1,5 @@
 ---
-ja_rev: "8eda305a2b08"
+ja_rev: "bb07967956ce"
 ---
 # Genome
 
@@ -15,6 +15,10 @@ What WorldBloom evolves with its GA (genetic algorithm) is not the sequence of a
 | Novelty drive `novelty_drive` | 1 | [0, 1] | 0 | How much it avoids storylines already seen in the canon or in prior generations |
 
 The lower bound on category weights is 0.05 rather than 0 (which would allow disabling a category entirely) to keep the GA from settling into a local optimum like "zero out category II and discard observation altogether" (fully disabling a category is left to template-side pruning instead). When every gene sits at its neutral value (`Genome.neutral()`), the candidate weights receive no modulation at all, matching a Policy-free run byte for byte. This is the baseline point for the [determinism](determinism.md) regression tests.
+
+## A 10th scalar: plasticity (opt-in) { #plasticity }
+
+`plasticity` ([0, 1], neutral value 0) is a 10th scalar added on top of the nine above, in its own separate bucket. The GA only draws a random value for it when a caller explicitly opts in (the "Personality growth" toggle in run settings, or `--personality-growth` on the CLI); otherwise (the default) it stays exactly 0 and consumes no extra randomness at all. At 0, every mechanism it enables is fully disabled, matching a run from before personality growth existed byte for byte. See [Personality Growth](personality-growth.md) for details.
 
 ## Personality (temperament) is not evolved
 
