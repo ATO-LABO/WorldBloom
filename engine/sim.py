@@ -93,6 +93,11 @@ class Simulation:
         self.slot: str | None = None
         self._last_fact_turn: dict[str, int] = {}
         self._previous_snapshot_layers: dict[str, Any] | None = None
+        # WB-TIMEEVENT-001: subject_id -> {event_id,label,verb,args} registered
+        # by scheduled_events.force_action for the current slot, and the
+        # fallback record when a forced action could not be matched.
+        self._forced: dict[str, dict[str, Any]] = {}
+        self._fallback: dict[str, Any] | None = None
 
         for subject_id in sorted(self.subjects):
             subject = self.subjects[subject_id]
@@ -495,16 +500,41 @@ class Simulation:
             before = self._capture()
             self._apply_event_effects(event, targets)
             after = self._capture()
+            details: dict[str, Any] = {
+                "event_id": event.get("id"),
+                "label": event.get("label"),
+                "targets": [target.id for target in targets],
+            }
+            force_action = event.get("force_action")
+            if force_action:
+                verb = str(force_action["verb"])
+                args = [str(value) for value in force_action.get("args", [])]
+                registered: list[str] = []
+                skipped: list[str] = []
+                for target in targets:
+                    if target.vitality in {"alive", "revived"}:
+                        # Later scheduled events for the same subject/slot win.
+                        self._forced[target.id] = {
+                            "event_id": str(event["id"]),
+                            "label": event.get("label"),
+                            "verb": verb,
+                            "args": args,
+                        }
+                        registered.append(target.id)
+                    else:
+                        skipped.append(target.id)
+                details["force_action"] = {
+                    "verb": verb,
+                    "args": args,
+                    "subjects": registered,
+                    "skipped": skipped,
+                }
             writer.write(
                 self._event_row(
                     verb="scheduled_event",
                     subject=None,
                     delta=self._delta(None, before, after),
-                    details={
-                        "event_id": event.get("id"),
-                        "label": event.get("label"),
-                        "targets": [target.id for target in targets],
-                    },
+                    details=details,
                     event_id=str(event["id"]),
                 )
             )
@@ -625,6 +655,8 @@ class Simulation:
     def choose_action(
         self,
         subject: Subject,
+        *,
+        forced: dict[str, Any] | None = None,
     ) -> tuple[Action, float | None]:
         self._decision_context = None
         if self.record_explanations:
@@ -632,6 +664,58 @@ class Simulation:
                                       "present": [s.id for s in self._present_for(subject)],
                                       "selection": record_distribution([], [], None, fallback="no_candidates")}
         weighted = candidates(subject, self.world, self)
+
+        if forced is not None:
+            key_verb = str(forced["verb"])
+            key_args = tuple(str(value) for value in forced["args"])
+            matches = [
+                i
+                for i, (candidate_action, _) in enumerate(weighted)
+                if candidate_action.verb == key_verb
+                and tuple(str(value) for value in candidate_action.args)[
+                    : len(key_args)
+                ]
+                == key_args
+            ]
+            if matches:
+                index = max(
+                    matches,
+                    key=lambda i: (float(weighted[i][1]), -i),
+                )
+                action = weighted[index][0]
+                action.meta = dict(action.meta)
+                action.meta["forced"] = {
+                    "event_id": forced["event_id"],
+                    "label": forced.get("label"),
+                }
+                if self.record_explanations:
+                    weights = [
+                        max(0.0, float(weight))
+                        for _, weight in weighted
+                    ]
+                    self._decision_context["selection"] = (
+                        record_distribution(
+                            weighted,
+                            weights,
+                            index,
+                            fallback="forced_by_scheduled_event",
+                        )
+                    )
+                    self._decision_context["forced"] = dict(
+                        action.meta["forced"]
+                    )
+                return action, None
+            has_verb = any(
+                candidate_action.verb == key_verb
+                for candidate_action, _ in weighted
+            )
+            self._fallback = {
+                **forced,
+                "reason": (
+                    "args_not_offered" if has_verb else "verb_not_offered"
+                ),
+            }
+
         if not weighted:
             return Action("rest"), None
 
@@ -712,6 +796,10 @@ class Simulation:
             "delta": delta,
             "details": _plain(details),
         }
+
+        forced_meta = action.meta.get("forced")
+        if forced_meta is not None:
+            row["forced"] = _plain(forced_meta)
 
         if self.record_explanations:
             row["explanation"] = _plain(self._decision_context)
@@ -1074,9 +1162,28 @@ class Simulation:
                         if subject.vitality == "dead":
                             continue
 
+                        forced = self._forced.pop(subject.id, None)
                         action, probability = self.choose_action(
-                            subject
+                            subject, forced=forced
                         )
+                        if self._fallback is not None:
+                            fallback = self._fallback
+                            self._fallback = None
+                            writer.write(
+                                self._event_row(
+                                    verb="force_action_fallback",
+                                    subject=subject.id,
+                                    delta={},
+                                    details={
+                                        "event_id": fallback["event_id"],
+                                        "label": fallback.get("label"),
+                                        "verb": fallback["verb"],
+                                        "args": fallback["args"],
+                                        "reason": fallback["reason"],
+                                    },
+                                    event_id=str(fallback["event_id"]),
+                                )
+                            )
                         capture_ids = self._action_capture_ids(
                             subject,
                             action,
@@ -1157,6 +1264,7 @@ class Simulation:
                             self._write_aborted(writer)
                             return path
 
+                    self._forced.clear()
                     self._tick_vitality(writer)
                     self._recover_stamina()
                     self._evaluate_thresholds(writer)

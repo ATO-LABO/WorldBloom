@@ -188,6 +188,16 @@ class ExplanationTests(unittest.TestCase):
         self.assertEqual(cost["items"][0]["amount"], -1)
         self.assertEqual(cost["items"][0]["text"], "A の resources.assets -1")
 
+    def test_forced_decision_system_field_names_the_scheduled_event(self):
+        # WB-TIMEEVENT-001 E-9
+        row = decision(1, "move", args=["道中"])
+        row["forced"] = {"event_id": "departure_day", "label": "旅立ちの朝"}
+        item = explain_rows([header(), row])["decisions"][0]
+        self.assertEqual(item["system"]["status"], "confirmed")
+        self.assertIn("固定された行動", item["system"]["text"])
+        self.assertEqual(item["system"]["forced"], row["forced"])
+        self.assertIsNone(item["system"]["probability"])
+
 
 if __name__ == "__main__":
     unittest.main()
