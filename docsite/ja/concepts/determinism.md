@@ -2,7 +2,7 @@
 sources:
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "tests/"
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 # 決定論
 
