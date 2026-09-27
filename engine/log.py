@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Callable, TextIO
 
 
 def nested_diff(before: Any, after: Any) -> Any:
@@ -126,9 +126,18 @@ def delta_effective(delta: dict[str, Any]) -> bool:
 class LayersWriter:
     """Write stable UTF-8 JSONL with sorted object keys."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        on_write: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         self.path = path
         self._handle: TextIO | None = None
+        # WB-GROWTH-001 S0: optional hook invoked with each row right after
+        # it is written, so a caller (Simulation._observe_row) can react to
+        # the just-logged row -- e.g. writing its own follow-up rows -- from
+        # a single place instead of duplicating every write() call site.
+        self._on_write = on_write
 
     def __enter__(self) -> LayersWriter:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,6 +155,8 @@ class LayersWriter:
         )
         self._handle.write(serialized)
         self._handle.write("\n")
+        if self._on_write is not None:
+            self._on_write(row)
 
     def __exit__(
         self,

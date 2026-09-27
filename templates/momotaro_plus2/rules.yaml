@@ -19,3 +19,33 @@
   adjust:
     category_weight.III: 0.3
   description: 倒れた仲間がいるときは関係的行動を重視する
+
+- id: g_fight_lost
+  scope: outcome
+  when: "actor_is_self and verb == 'fight' and result == 'lost'"
+  adjust: {risk_tolerance: -0.15}
+  description: 敗北で慎重になる
+
+- id: g_fight_won
+  scope: outcome
+  when: "actor_is_self and verb == 'fight' and result == 'won'"
+  adjust: {risk_tolerance: 0.1, category_weight.I: 0.1}
+  description: 勝利で大胆になる
+
+- id: g_downed
+  scope: outcome
+  when: "kind == 'event' and verb == 'downed' and actor_is_self"
+  adjust: {risk_tolerance: -0.2}
+  description: 倒れて慎重になる
+
+- id: g_ally_gained
+  scope: outcome
+  when: "kind == 'event' and verb == 'ally_gained' and actor_is_self"
+  adjust: {category_weight.III: 0.1, stance_shift_bias: 0.1}
+  description: 仲間を得て人との関わりを重んじる
+
+- id: g_betrayed
+  scope: outcome
+  when: "kind == 'event' and verb == 'betrayal' and involves_self and not actor_is_self"
+  adjust: {stance_shift_bias: -0.2, category_weight.III: -0.1}
+  description: 裏切られて人を信じにくくなる
