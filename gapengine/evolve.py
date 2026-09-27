@@ -1135,6 +1135,7 @@ def _next_population(
     rng: random.Random,
     *,
     rule_ids: tuple[str, ...] = (),
+    growth_enabled: bool = False,
 ) -> list[tuple[Genome, list[str]]]:
     pool = _parent_pool(archive, previous)
     population: list[tuple[Genome, list[str]]] = []
@@ -1145,14 +1146,15 @@ def _next_population(
                     Genome.random(
                         rng,
                         rule_ids=rule_ids,
+                        plastic=growth_enabled,
                     ),
                     [],
                 )
             )
             continue
         first, second = _choose_parents(pool, rng)
-        child = Genome.crossover(first[0], second[0], rng)
-        child = Genome.mutate(child, rng)
+        child = Genome.crossover(first[0], second[0], rng, plastic=growth_enabled)
+        child = Genome.mutate(child, rng, plastic=growth_enabled)
         population.append((child, [first[1], second[1]]))
     return population
 
@@ -1358,6 +1360,7 @@ def _cfg_fingerprint(
     rationality_cfg: Mapping[str, Any] | None,
     route_cfg: Mapping[str, Any] | None = None,
     seed_genomes_sha256: str | None = None,
+    growth_enabled: bool = False,
 ) -> str:
     """WB-GA-RESUME: sha256 of every setting that changes what the GA
     computes -- resuming with a different value here is a bug (or a
@@ -1406,6 +1409,10 @@ def _cfg_fingerprint(
         }
     if seed_genomes_sha256 is not None:
         payload["seed_genomes"] = seed_genomes_sha256
+    # WB-GROWTH-001 S1: only included when on, so growth.enabled=false (the
+    # default) fingerprints identically to a pre-S1 run.
+    if growth_enabled:
+        payload["growth"] = {"enabled": True}
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -1531,6 +1538,10 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     )
     rules = list(_load_yaml(template_dir / "rules.yaml", []))
     rule_ids = _rule_ids(rules) if meta_evolution else ()
+    # WB-GROWTH-001 S1: off (the default) means Genome.random/crossover/
+    # mutate below draw no plasticity gene at all, so a growth-unaware run
+    # stays byte-identical to before this feature existed (plan §S1.2).
+    growth_enabled = bool((cfg.get("growth") or {}).get("enabled", False))
     canon = load_canon(template_dir / "canon.yaml")
 
     # WB-WORLDGROW-001 stage 5b: seed_genomes (--seed-genomes) carries only
@@ -1641,6 +1652,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         rationality_cfg=rationality_cfg,
         route_cfg=route_cfg,
         seed_genomes_sha256=seed_sha256,
+        growth_enabled=growth_enabled,
     )
     engine_hash = _engine_source_hash(_ENGINE_DIR)
     gapengine_hash = _engine_source_hash(_GAPENGINE_DIR)
@@ -1788,6 +1800,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 Genome.random(
                     ga_rng,
                     rule_ids=rule_ids,
+                    plastic=growth_enabled,
                 ),
                 [],
             )
@@ -1799,6 +1812,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                     Genome.random(
                         ga_rng,
                         rule_ids=rule_ids,
+                        plastic=growth_enabled,
                     ),
                     [],
                 )
@@ -1862,6 +1876,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 previous_results,
                 ga_rng,
                 rule_ids=rule_ids,
+                growth_enabled=growth_enabled,
             )
             if coevolve:
                 assert antagonist_archive is not None
@@ -1871,6 +1886,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                     previous_antagonist_results,
                     ga_rng,
                     rule_ids=rule_ids,
+                    growth_enabled=growth_enabled,
                 )
 
         _json_write(

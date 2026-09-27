@@ -321,7 +321,9 @@ class TurningPointTests(unittest.TestCase):
         shifts = lineage.genome_shift(before, after)
         self.assertEqual(shifts[0]["key"], "risk_tolerance")
         self.assertAlmostEqual(shifts[0]["delta"], 0.4)
-        self.assertEqual(len(shifts), 9)
+        # WB-GROWTH-001 S1: 6 category weights + risk/stance/novelty +
+        # plasticity = 10 (still excludes rule_bits).
+        self.assertEqual(len(shifts), 10)
 
 
 def _fight_decision(
