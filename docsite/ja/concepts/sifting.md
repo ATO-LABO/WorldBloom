@@ -3,7 +3,7 @@ sources:
   - "viewer/sifting_pages.py"
   - "viewer/pages.py"
   - "viewer/compare_pages.py"
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 # Sifting
 
@@ -29,6 +29,10 @@ Sifting（ふるい分け）は、[QD 格子](qd-map.md)に残った候補を人
 | ○ 未分類 | まだ判断していない（既定） |
 
 採用した候補だけが、次の[あらすじ・本文の生成](../usage/generate-text.md)の対象になります。保留にした候補はあとから見直して採用に切り替えられます。選定状態とメモは「選定版」として保存され、他のタブ・実行から先に保存されていると版が進み、あとからの保存は拒否されます（上書き防止のため、保存前に最新の状態を読み直す必要があります）。
+
+## 格子の絞り込み（性格の変化） { #arc-filter }
+
+その実験が[性格の成長](personality-growth.md)を有効にし、かつ[QD 格子の第3軸](qd-map.md#arc-axis)が有効なときだけ、格子の上に「すべて／なし／小／大」の切り替えが出て、性格の変化の大きさで代表候補を絞り込めます。軸が無効な実験ではこの切り替え自体が出ません。
 
 ## 比較・系譜・転機 { #compare-lineage-turning }
 

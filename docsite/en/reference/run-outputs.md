@@ -1,5 +1,5 @@
 ---
-ja_rev: "5ba98a3e4326"
+ja_rev: "23163b946f14"
 ---
 # Run Outputs
 
@@ -29,7 +29,7 @@ The QD (MAP-Elites) archive itself.
 {"cells": {"I|low": {...}}, "volatility_thresholds": {"low_max": 0.216, "mid_max": 0.226}}
 ```
 
-`cells` keys are `"<leading category>|<volatility band>"` (e.g. `I|low`). `{}` for an empty run. Each cell's value is the single best elite that survived in that cell among runs that reached the ending (genome, quality, descriptor, etc. — `gapengine/qd.py`'s `Elite`). `volatility_thresholds` are the `low_max`/`mid_max` boundary values decided from generation 0's population variance, fixed for the whole run (see [QD Map](../concepts/qd-map.md)).
+`cells` keys are `"<leading category>|<volatility band>"` (e.g. `I|low`). Only for a run with [personality growth](../concepts/personality-growth.md) enabled and the genre's `qd.yaml` declaring `arc_bins`, keys become the three-part `"<leading category>|<volatility band>|<arc bin>"` (e.g. `I|low|small`). `{}` for an empty run. Each cell's value is the single best elite that survived in that cell among runs that reached the ending (genome, quality, descriptor, etc. — `gapengine/qd.py`'s `Elite`). `volatility_thresholds` are the `low_max`/`mid_max` boundary values decided from generation 0's population variance, fixed for the whole run (the arc axis's own threshold is `arc_thresholds`) (see [QD Map](../concepts/qd-map.md)).
 
 ## `summary.json`
 
@@ -68,6 +68,8 @@ One run's raw log. One line = one event (JSON Lines). The first line has `kind: 
 ```
 
 Each line's `delta` is the seven layers' diff before and after that action. Determinism is verified as: given the same `(world, genome, seed, precedent)`, `layers.jsonl` matches byte for byte (see [Determinism](../concepts/determinism.md)). For analysis, it's converted from JSONL to Parquet (DuckDB).
+
+In a run with [personality growth](../concepts/personality-growth.md) enabled, every match of an outcome-scope rule adds a `verb: "growth"` derived event row (carrying `details.shift`, `details.acquired_after`, etc.). A run without it (the default) never has this row at all, staying byte-identical to the log format before this feature existed.
 
 ## `synopses.json` / `selection.json` / `stories/`
 

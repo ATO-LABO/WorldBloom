@@ -1,5 +1,5 @@
 ---
-ja_rev: "ce35761a8563"
+ja_rev: "9579d181d47c"
 ---
 # QD Map
 
@@ -17,6 +17,15 @@ Each genome is run against several fixed random seeds. Only runs that reach the 
 | Volatility (column) | Vectorizes the protagonist's seven-layer state per turn, and takes the variance of the change from the previous turn. Thresholds are fixed by splitting generation 0's population into terciles |
 
 The default grid is 6 rows × 3 columns (splitting volatility into low / mid / high); the category range and number of bands used for the axes can be adjusted per genre template (`templates/<genre>/qd.yaml`). Each cell keeps only its **single highest-quality representative individual (the model run)**, replaced only when a higher-quality individual later appears.
+
+## A third axis (opt-in): personality change { #arc-axis }
+
+Only when [personality growth](personality-growth.md) is enabled *and* the genre's `qd.yaml` declares `arc_bins: [none, small, large]` does the grid gain a third axis. If either is missing, this axis doesn't exist at all (existing cell keys and grid shape stay byte-identical).
+
+- **Personality-change magnitude (arc)**: the sum of the absolute values of the run's protagonist's last recorded personality-growth event.
+- **Bins**: a run with no change (`arc = 0`) is always "none." Others are split into "small"/"large" by the median of only the runs with a change, within that generation's population. This threshold is fixed once decided at generation 0.
+
+Cells become the three-part `category|volatility|personality change` (e.g. `I|low|small`), and the Sifting screen shows a "filter by personality change" toggle above the grid.
 
 ## Quality q (an absolute scale)
 
