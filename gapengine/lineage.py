@@ -43,6 +43,7 @@ _SCALAR_LABELS: dict[str, str] = {
     "risk_tolerance": "慎重さ",
     "stance_shift_bias": "態度の変わりやすさ",
     "novelty_drive": "前例を避ける度合い",
+    "plasticity": "変わりやすさ",
 }
 
 
@@ -59,6 +60,7 @@ def genome_scalars(genome: Mapping[str, Any]) -> dict[str, float]:
     values["risk_tolerance"] = float(genome.get("risk_tolerance", 0.5))
     values["stance_shift_bias"] = float(genome.get("stance_shift_bias", 0.0))
     values["novelty_drive"] = float(genome.get("novelty_drive", 0.0))
+    values["plasticity"] = float(genome.get("plasticity", 0.0))
     return values
 
 

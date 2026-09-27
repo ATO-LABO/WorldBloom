@@ -85,4 +85,5 @@ def reconcile(raw_genome: Mapping[str, Any], *, rule_ids: Iterable[str] = ()) ->
         stance_shift_bias=genome.stance_shift_bias,
         novelty_drive=genome.novelty_drive,
         rule_bits={rule_id: genome.rule_bits.get(rule_id, True) for rule_id in ids},
+        plasticity=genome.plasticity,
     )

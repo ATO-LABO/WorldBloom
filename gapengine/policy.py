@@ -139,6 +139,7 @@ def _adjust_genome(
         stance_shift_bias=stance_shift_bias,
         novelty_drive=novelty_drive,
         rule_bits=dict(genome.rule_bits),
+        plasticity=genome.plasticity,
     ).clip()
 
 
@@ -217,6 +218,19 @@ class Policy:
     def precedent_hash(self) -> str | None:
         return self.precedent.hash if self.precedent is not None else None
 
+    def current_genome(self) -> Genome:
+        """WB-GROWTH-001 S1: ``clip(genome + acquired)`` -- the personality
+        reweight() actually steers by. Acquired shifts are never inherited
+        (self.acquired resets to {} for every fresh Policy); this only ever
+        reflects what *this run* has experienced so far. Returns self.genome
+        unchanged (no new Genome allocated) when nothing has shifted yet, so
+        plasticity=0 (or a run with no outcome rules at all) stays exactly
+        as before this feature existed."""
+
+        if not any(self.acquired.values()):
+            return self.genome
+        return _adjust_genome(self.genome, [self.acquired])
+
     def _active_categories(self) -> tuple[str, ...]:
         configured = {
             str(node["category"])
@@ -293,8 +307,13 @@ class Policy:
         # WB-ROUTE-001 S1 §2: route is treated the same way -- it is a
         # constraint on the plan, not a personality trait, so at rho>0 it
         # must still steer even a personality-less genome.
+        # WB-GROWTH-001 S1: current_genome() (genome + acquired) decides
+        # neutrality here, not the birth genome -- an acquired shift from
+        # outcome rules must end annotation-only steering exactly like a
+        # turn/candidate rule would, even if the birth genome was neutral.
+        base_genome = self.current_genome()
         annotation_only = self.annotate_only or (
-            self.genome.is_neutral()
+            base_genome.is_neutral()
             and not self.rules
             and not (self.rationality is not None and self.rationality.enabled)
             and not (self.route is not None and self.route.enabled)
@@ -328,7 +347,7 @@ class Policy:
             and rule["predicate"].evaluate(turn_namespace)
         ]
         turn_genome = _adjust_genome(
-            self.genome,
+            base_genome,
             turn_adjustments,
         )
         active = self._active_categories()
@@ -370,7 +389,7 @@ class Policy:
                 turn_genome
                 if not candidate_adjustments
                 else _adjust_genome(
-                    self.genome,
+                    base_genome,
                     [*turn_adjustments, *candidate_adjustments],
                 )
             )
@@ -497,6 +516,14 @@ class Policy:
                 # no meta key at all (byte-identity with a route-free run).
                 if self.route is not None and self.route.enabled:
                     action.meta["policy"]["m_route"] = round(m_route, 12)
+            # WB-GROWTH-001 S1: only added when something has actually
+            # shifted -- a run with plasticity=0 (or no outcome rules) never
+            # gains this key, staying byte-identical to before S1.
+            if any(self.acquired.values()):
+                action.meta["policy"]["acquired"] = {
+                    key: round(value, 12)
+                    for key, value in sorted(self.acquired.items())
+                }
 
             if not annotation_only:
                 output.append(
@@ -552,16 +579,15 @@ class Policy:
         present: list[Subject],
         row: Mapping[str, Any],
     ) -> list[dict[str, Any]]:
-        """WB-GROWTH-001 S0: react to one just-written decision/event row
-        with this subject's outcome-scope rules, accumulating any shift
-        into ``self.acquired`` and returning a "growth" marker per matched
-        rule (or [] when nothing matched or nothing actually shifted).
+        """WB-GROWTH-001: react to one just-written decision/event row with
+        this subject's outcome-scope rules, accumulating any shift into
+        ``self.acquired`` and returning a "growth" marker per matched rule
+        (or [] when nothing matched or nothing actually shifted).
 
-        S0 note: the shift is always computed with plasticity fixed at 1.0
-        -- genome.plasticity does not exist yet (that is WB-GROWTH-001 S1),
-        and reweight() never reads self.acquired in S0 either, so this
-        method only records; it cannot change a single decision's weights.
-        """
+        S1: the shift is genome.plasticity x adjust, and reweight() reads
+        self.acquired back via current_genome() -- so plasticity=0 (the
+        default) makes every shift exactly 0 and this stays record-only,
+        same as S0."""
 
         if not self.outcome_rules:
             return []
@@ -617,7 +643,7 @@ class Policy:
             bindings=bindings,
         )
 
-        plasticity = 1.0  # S0: fixed; S1 reads genome.plasticity instead.
+        plasticity = self.genome.plasticity
         markers: list[dict[str, Any]] = []
         for rule in self.outcome_rules:
             if not rule["predicate"].evaluate(namespace):

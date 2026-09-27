@@ -79,7 +79,9 @@ class GeneOriginsTests(unittest.TestCase):
     def test_both_parents_unresolved(self):
         origins = ga_replay.gene_origins(GENOME_A, None, None)
         self.assertTrue(all(value is None for value in origins))
-        self.assertEqual(len(origins), 9)
+        # WB-GROWTH-001 S1: lineage.genome_scalars grew a 10th key
+        # (plasticity).
+        self.assertEqual(len(origins), 10)
 
 
 class ClassifyOutcomeTests(unittest.TestCase):

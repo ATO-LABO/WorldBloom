@@ -23,6 +23,12 @@ class Genome:
     stance_shift_bias: float
     novelty_drive: float
     rule_bits: dict[str, bool] = field(default_factory=dict)
+    # WB-GROWTH-001 S1: [0,1], neutral=0. How strongly outcome-scope policy
+    # rules (gapengine.policy.Policy.observe) shift this genome's acquired
+    # personality during a run. Never touched unless a caller explicitly
+    # asks for it (see the `plastic` flag below) -- so a genome built
+    # without that flag is byte-identical to a pre-S1 genome.
+    plasticity: float = 0.0
 
     @classmethod
     def neutral(
@@ -47,19 +53,29 @@ class Genome:
         rng: random.Random,
         *,
         rule_ids: Iterable[str] = (),
+        plastic: bool = False,
     ) -> Genome:
+        category_weight = {
+            category: rng.uniform(CATEGORY_MIN, CATEGORY_MAX)
+            for category in CATEGORIES
+        }
+        risk_tolerance = rng.uniform(0.0, 1.0)
+        stance_shift_bias = rng.uniform(-1.0, 1.0)
+        novelty_drive = rng.uniform(0.0, 1.0)
+        rule_bits = {
+            rule_id: True
+            for rule_id in sorted(set(map(str, rule_ids)))
+        }
+        # plastic=False (the default) draws nothing extra, so growth.enabled
+        # off stays byte-identical to a pre-S1 run's rng consumption.
+        plasticity = rng.uniform(0.0, 1.0) if plastic else 0.0
         return cls(
-            category_weight={
-                category: rng.uniform(CATEGORY_MIN, CATEGORY_MAX)
-                for category in CATEGORIES
-            },
-            risk_tolerance=rng.uniform(0.0, 1.0),
-            stance_shift_bias=rng.uniform(-1.0, 1.0),
-            novelty_drive=rng.uniform(0.0, 1.0),
-            rule_bits={
-                rule_id: True
-                for rule_id in sorted(set(map(str, rule_ids)))
-            },
+            category_weight=category_weight,
+            risk_tolerance=risk_tolerance,
+            stance_shift_bias=stance_shift_bias,
+            novelty_drive=novelty_drive,
+            rule_bits=rule_bits,
+            plasticity=plasticity,
         )
 
     @classmethod
@@ -68,42 +84,55 @@ class Genome:
         first: Genome,
         second: Genome,
         rng: random.Random,
+        *,
+        plastic: bool = False,
     ) -> Genome:
         rule_ids = sorted(
             set(first.rule_bits) | set(second.rule_bits)
         )
+        category_weight = {
+            category: (
+                first.category_weight[category]
+                if rng.random() < 0.5
+                else second.category_weight[category]
+            )
+            for category in CATEGORIES
+        }
+        risk_tolerance = (
+            first.risk_tolerance
+            if rng.random() < 0.5
+            else second.risk_tolerance
+        )
+        stance_shift_bias = (
+            first.stance_shift_bias
+            if rng.random() < 0.5
+            else second.stance_shift_bias
+        )
+        novelty_drive = (
+            first.novelty_drive
+            if rng.random() < 0.5
+            else second.novelty_drive
+        )
+        rule_bits = {
+            rule_id: (
+                first.rule_bits.get(rule_id, True)
+                if rng.random() < 0.5
+                else second.rule_bits.get(rule_id, True)
+            )
+            for rule_id in rule_ids
+        }
+        plasticity = (
+            (first.plasticity if rng.random() < 0.5 else second.plasticity)
+            if plastic
+            else 0.0
+        )
         return cls(
-            category_weight={
-                category: (
-                    first.category_weight[category]
-                    if rng.random() < 0.5
-                    else second.category_weight[category]
-                )
-                for category in CATEGORIES
-            },
-            risk_tolerance=(
-                first.risk_tolerance
-                if rng.random() < 0.5
-                else second.risk_tolerance
-            ),
-            stance_shift_bias=(
-                first.stance_shift_bias
-                if rng.random() < 0.5
-                else second.stance_shift_bias
-            ),
-            novelty_drive=(
-                first.novelty_drive
-                if rng.random() < 0.5
-                else second.novelty_drive
-            ),
-            rule_bits={
-                rule_id: (
-                    first.rule_bits.get(rule_id, True)
-                    if rng.random() < 0.5
-                    else second.rule_bits.get(rule_id, True)
-                )
-                for rule_id in rule_ids
-            },
+            category_weight=category_weight,
+            risk_tolerance=risk_tolerance,
+            stance_shift_bias=stance_shift_bias,
+            novelty_drive=novelty_drive,
+            rule_bits=rule_bits,
+            plasticity=plasticity,
         )
 
     @classmethod
@@ -115,12 +144,14 @@ class Genome:
         p: float = 0.3,
         sigma: Mapping[str, float] | None = None,
         rule_p: float = 0.1,
+        plastic: bool = False,
     ) -> Genome:
         deviations = {
             "cw": 0.1,
             "risk": 0.1,
             "bias": 0.2,
             "novelty": 0.1,
+            "plasticity": 0.1,
         }
         if sigma is not None:
             deviations.update(
@@ -153,12 +184,21 @@ class Genome:
                 enabled = not enabled
             rule_bits[rule_id] = enabled
 
+        # plastic=False draws nothing here either, and is always applied
+        # last so a non-plastic mutate()'s rng consumption never changes.
+        plasticity = genome.plasticity
+        if plastic and rng.random() < p:
+            plasticity += rng.gauss(0.0, deviations["plasticity"])
+        if not plastic:
+            plasticity = 0.0
+
         return cls(
             category_weight=category_weight,
             risk_tolerance=risk,
             stance_shift_bias=bias,
             novelty_drive=novelty,
             rule_bits=rule_bits,
+            plasticity=plasticity,
         ).clip()
 
     def clip(self) -> Genome:
@@ -179,6 +219,7 @@ class Genome:
             ),
             novelty_drive=_clip(self.novelty_drive, 0.0, 1.0),
             rule_bits=dict(sorted(self.rule_bits.items())),
+            plasticity=_clip(self.plasticity, 0.0, 1.0),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -193,6 +234,11 @@ class Genome:
         }
         if self.rule_bits:
             result["rule_bits"] = dict(sorted(self.rule_bits.items()))
+        # Only emitted when non-zero, so a neutral/pre-S1 genome's encoding
+        # (archive.json, seed_genomes.json, the layers.jsonl header) stays
+        # byte-identical to before plasticity existed.
+        if self.plasticity:
+            result["plasticity"] = float(self.plasticity)
         return result
 
     @classmethod
@@ -232,6 +278,7 @@ class Genome:
                     key=lambda pair: str(pair[0]),
                 )
             },
+            plasticity=float(raw.get("plasticity", 0.0)),
         ).clip()
 
     def is_neutral(self, tolerance: float = 1e-9) -> bool:
@@ -251,5 +298,6 @@ class Genome:
             <= tolerance
             and abs(self.novelty_drive - neutral.novelty_drive)
             <= tolerance
+            and abs(self.plasticity - neutral.plasticity) <= tolerance
             and all(self.rule_bits.values())
         )
