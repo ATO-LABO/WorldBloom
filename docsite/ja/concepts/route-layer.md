@@ -7,7 +7,9 @@ sources:
   - "templates/momotaro_plus2/route.yaml"
   - "templates/momotaro_plus2/motives.yaml"
   - "viewer/explanation_ui.py"
-reviewed: "9765a5cbd9e8fab7a136d509381a7f59bf3899cb"
+  - "gapengine/route_paths.py"
+  - "viewer/library_pages.py"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 # 道筋層（寄り道に理由を持たせる）
 
@@ -78,6 +80,16 @@ m_route = base ** rho
 ## 遺伝子による経路選び（gene_affinity）
 
 `route.yaml` の `gene_affinity`（既定 0）と `route_category`（経路名→行動カテゴリの対応）を設定すると、目的物の持ち主から奪う手段が複数ある局面（対決 vs 交渉など）で、どちらを「最善の計画」とみなすかが個体の遺伝子（対応するカテゴリの重み）でわずかに傾きます。`gene_affinity=0`（既定）では常にコストが低い方を最善とみなします。値を上げるほど、対応するカテゴリの重みが強い個体ほどその経路を「最善」と見なしやすくなります（記録される h 自体は素のままで、最善経路の選択にだけ影響します）。桃太郎＋2 の `route.yaml` では `gene_affinity: 0.5`、`route_category: {fight: I, negotiate: III}`（対決=カテゴリI、交渉=カテゴリIII）が設定されています。
+
+## 最短経路を調査（世界画面のサイドバー） { #route-paths-survey }
+
+道筋層（`route.yaml`）を持つジャンルの世界では、世界画面のサイドバーに「最短経路を調査」という読み取り専用の機能があります（`GET /api/worlds/<id>/routes`、実装は `gapengine/route_paths.py`）。閲覧専用の Viewer でも使えます（GA 実験を実行しなくても確認できます）。
+
+- 主人公の目標が「品物を手に入れて届ける」型でないジャンル（探偵・恋愛）では非対応の表示になります
+- 世界の予定イベント（`scheduled_events`、[強制行動](../reference/templates.md#scheduled-events)を含む）を、主人公自身はまだ動いていない前提で適用したあとの状態を起点に計算します
+- 起点となる時点ごとに、パターンの異なる段取りを**最大3本**まで提示します。並び順はコストの低い順ではなく、**#1 はエンジンが実際の GA 実行で最も自然（最もコストが低い）と判断する段取り**で、#2・#3 は#1と手段が異なる（例: 対決の代わりに交渉、この持ち物の代わりに別の持ち物）ことを条件に探した別解です。したがって #2・#3 が #1 より必ず遠回りとは限りません
+- 各段取りには、実際の手順（行動の並び）と、そこまでの累計コストが表示されます
+- そのジャンルの `route.yaml` が無い、または結末に到達する段取りがまったく見つからない（見通しなし）場合は、その理由が表示されます
 
 ## あらすじ・本文生成への反映
 

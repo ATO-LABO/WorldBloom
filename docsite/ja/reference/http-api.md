@@ -7,7 +7,8 @@ sources:
   - "viewer/workbench_pages.py"
   - "viewer/library_pages.py"
   - "viewer/run_catalog.py"
-reviewed: "281fe6aede8ab22d63e61f07b5a7a6bd8280b5e0"
+  - "gapengine/route_paths.py"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 # HTTP API
 
@@ -54,7 +55,7 @@ reviewed: "281fe6aede8ab22d63e61f07b5a7a6bd8280b5e0"
 
 ## 世界・ジャンルの編集 API（`viewer/library_pages.py`）
 
-世界・ジャンルの編集はGA実験そのものとは独立の機能ですが、各ハンドラは `_require_job_store` を通すため、動かすには `job_store`（＝`--control` 起動）が必要です。一覧取得の `GET /api/worlds`・`GET /api/genres` は存在しません（一覧は画面のHTMLに埋め込まれます）。
+世界・ジャンルの編集はGA実験そのものとは独立の機能で、`GET /api/worlds/<id>/routes` を除く各ハンドラは `_require_job_store` を通すため、動かすには `job_store`（＝`--control` 起動）が必要です。一覧取得の `GET /api/worlds`・`GET /api/genres` は存在しません（一覧は画面のHTMLに埋め込まれます）。
 
 | メソッド | パス | 用途 |
 |---|---|---|
@@ -68,6 +69,7 @@ reviewed: "281fe6aede8ab22d63e61f07b5a7a6bd8280b5e0"
 | POST | `/api/genres/<id>/{save,parse,check}` | ジャンルエディタの保存・構文解析・検証 |
 | POST | `/api/worlds/<id>/patches/<patch_id>/{approve,reject}` | 世界の自己拡張パッチの承認・却下 |
 | POST | `/api/worlds/<id>/patches/reopen` | 承認済み拡張パッチを差し戻す |
+| GET | `/api/worlds/<id>/routes` | [最短経路を調査](../concepts/route-layer.md#route-paths-survey)（読み取り専用）。他のこの表の行と異なり `job_store`（＝`--control`起動）を必要とせず、閲覧専用の Viewer でも使えます。世界のジャンルに `route.yaml` が無ければ `{"status": "no_route_config", ...}` を返します |
 
 ## 実験結果・選定 API
 
