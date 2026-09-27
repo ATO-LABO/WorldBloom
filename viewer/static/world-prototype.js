@@ -222,7 +222,7 @@
       const relevantVerbs=currentTargets.length
         ?Object.keys(specs).filter(v=>people.some(p=>currentTargets.includes(p.id)&&(p.verbs||[]).includes(v)))
         :Object.keys(specs);
-      const verbOptions=[['','固定しない'],...relevantVerbs.sort().map(v=>[v,v])];
+      const verbOptions=[['','固定しない'],...relevantVerbs.sort().map(v=>[v,v]),...(verb&&!relevantVerbs.includes(verb)?[[verb,`${verb}（現在値・無効）`]]:[])];
       fields=[
         field('id','出来事のID',ev.id||'','text',null,true),
         field('label','名前',ev.label||'','text'),
@@ -249,6 +249,11 @@
       name=`「${ev.label||ev.id}」を削除しますか？`;fields=[];
       applyEdit=()=>({operation:'remove-event',target:idx,values:{}});
     }else return;
+    const isRemove=key.startsWith('remove-event:');
+    document.getElementById('wp-dialog-desc').textContent=isRemove
+      ?'削除すると元に戻せません。過去の実行結果は変わりません。'
+      :'保存すると世界設定を更新します。過去の実行結果は変わりません。';
+    document.getElementById('wp-dialog-submit').textContent=isRemove?'削除する':'保存する';
     document.getElementById('wp-dialog-title').textContent=name;
     document.getElementById('wp-fields').innerHTML=fields.map(fieldHtml).join('')+'<p id="wp-edit-error" role="alert"></p>';
     document.getElementById('wp-field-verb')?.addEventListener('change',e=>{
@@ -272,11 +277,14 @@
       `<input id="wp-field-${f.key}" name="${f.key}" type="${f.type}" value="${esc(f.value)}" ${f.type==='number'?numAttrs(f.key):''}>`
     );
   }
+  function withCurrentIfMissing(options,value){
+    return value&&!options.some(([v])=>v===value)?[...options,[value,`${value}（現在値・無効）`]]:options;
+  }
   function argFieldDescriptor(kind,i,value){
     const key='arg'+i;
-    if(kind==='zone')return {key,label:`引数${i+1}（場所）`,value,type:'select',options:[['','（未指定）'],...zones.map(z=>[z.name,z.name])],required:false};
-    if(kind==='subject')return {key,label:`引数${i+1}（人物）`,value,type:'select',options:[['','（未指定）'],...people.map(p=>[p.id,p.id])],required:false};
-    if(kind.startsWith('enum:'))return {key,label:`引数${i+1}`,value,type:'select',options:[['','（未指定）'],...kind.slice(5).split('|').map(v=>[v,v])],required:false};
+    if(kind==='zone')return {key,label:`引数${i+1}（場所）`,value,type:'select',options:withCurrentIfMissing([['','（未指定）'],...zones.map(z=>[z.name,z.name])],value),required:false};
+    if(kind==='subject')return {key,label:`引数${i+1}（人物）`,value,type:'select',options:withCurrentIfMissing([['','（未指定）'],...people.map(p=>[p.id,p.id])],value),required:false};
+    if(kind.startsWith('enum:'))return {key,label:`引数${i+1}`,value,type:'select',options:withCurrentIfMissing([['','（未指定）'],...kind.slice(5).split('|').map(v=>[v,v])],value),required:false};
     return {key,label:`引数${i+1}`,value,type:'text',options:null,required:false};
   }
   root.addEventListener('click',e=>{

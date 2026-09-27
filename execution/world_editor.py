@@ -226,6 +226,8 @@ def save(store, ident, body):
                                     "effects": f"templates/{template_id}/effects.yaml"}
         elif operation in ("add-event", "event", "remove-event"):
             events = list(world.get("scheduled_events") or [])
+            if any(not isinstance(e, dict) for e in events):
+                _bad("target", "予定された出来事の形式を確認してください")
             if operation == "remove-event":
                 if type(target) is not int or not 0 <= target < len(events):
                     _bad("target", "予定された出来事がありません")
@@ -307,6 +309,8 @@ def save(store, ident, body):
                 stress_delta = values["stress_delta"]
                 if type(stress_delta) not in (int, float) or not math.isfinite(stress_delta):
                     _bad("stress_delta", "ストレスの増減は数値で指定してください")
+                if abs(stress_delta) > 1000:
+                    _bad("stress_delta", "ストレスの増減は-1000〜1000で指定してください")
 
                 base_event["id"] = event_id
                 if label:

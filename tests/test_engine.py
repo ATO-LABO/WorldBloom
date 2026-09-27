@@ -521,6 +521,48 @@ class EngineTests(unittest.TestCase):
         ]
         self.assertEqual(fallback_rows, [])
 
+    def test_force_action_bypasses_policy_and_rng(self) -> None:
+        # Review addition: a successful force_action must not touch the
+        # protagonist's Policy (no reweight/record) and must not consume
+        # any rng draw.
+        class SpyPolicy:
+            def reweight(self, *args: Any, **kwargs: Any) -> Any:
+                raise AssertionError(
+                    "reweight must not be called for a forced action"
+                )
+
+            def record(self, *args: Any, **kwargs: Any) -> Any:
+                raise AssertionError(
+                    "record must not be called for a forced action"
+                )
+
+        world, subjects, event = self._force_event_world(
+            {"verb": "move", "args": ["道中"]}
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            sim = Simulation(1, world, subjects, Path(temporary))
+            momotaro = subjects["桃太郎"]
+            momotaro.policy = SpyPolicy()
+            sim.day = 1
+            sim.turn = 1
+            sim.slot = "朝"
+            sim._apply_event_effects(dict(event), [momotaro])
+            before = sim.rng.getstate()
+            action, probability = sim.choose_action(
+                momotaro,
+                forced={
+                    "event_id": event["id"],
+                    "label": event["label"],
+                    "verb": "move",
+                    "args": ["道中"],
+                },
+            )
+            after = sim.rng.getstate()
+        self.assertEqual(before, after)
+        self.assertEqual(action.verb, "move")
+        self.assertEqual(list(action.args), ["道中"])
+        self.assertIsNone(probability)
+
     def test_force_action_move_without_args_picks_max_weight(self) -> None:
         # E-2
         event = {
