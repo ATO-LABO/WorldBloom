@@ -220,7 +220,11 @@ class Policy:
 
     def current_genome(self) -> Genome:
         """WB-GROWTH-001 S1: ``clip(genome + acquired)`` -- the personality
-        reweight() actually steers by. Acquired shifts are never inherited
+        reweight() actually steers by. Acquired shifts accumulate for the
+        run's lifetime with no decay (observe() below never subtracts
+        anything on its own, only what a matching outcome rule adds), and
+        clipping to each scalar's valid range happens only here, never on
+        ``self.acquired`` itself. Acquired shifts are never inherited
         (self.acquired resets to {} for every fresh Policy); this only ever
         reflects what *this run* has experienced so far. Returns self.genome
         unchanged (no new Genome allocated) when nothing has shifted yet, so
@@ -589,7 +593,11 @@ class Policy:
         default) makes every shift exactly 0 and this stays record-only,
         same as S0."""
 
-        if not self.outcome_rules:
+        # Review fix (must #4): plasticity=0 (the default) always yields an
+        # empty shift regardless of what follows, so skip the binding/
+        # namespace/rule-evaluation work entirely instead of doing it and
+        # discarding the (always-zero) result -- output is unchanged.
+        if not self.outcome_rules or not self.genome.plasticity:
             return []
         verb = row.get("verb")
         if not isinstance(verb, str) or verb == "growth":
@@ -599,7 +607,10 @@ class Policy:
         args = row.get("args") or []
         row_subject = row.get("subject")
         actor_is_self = row_subject == subject.id
-        target = self._outcome_target(world, args, details) or subject.id
+        # Review fix (should #2): "" (never a real subject id), not
+        # subject.id, when no target can be resolved -- an untargeted row
+        # (e.g. "rest") must not make involves_self true for every subject.
+        target = self._outcome_target(world, args, details) or ""
 
         delta = row.get("delta") or {}
         delta_targets = delta.get("targets") or {}
@@ -610,12 +621,21 @@ class Policy:
         )
 
         classification = row.get("classification") or {}
-        if actor_is_self:
-            stress_delta = (delta.get("actor") or {}).get("stress", 0.0)
+        # Review fix (should #3): renamed from "stress_delta" -- despite the
+        # name, engine.log.nested_diff's leaf convention means this was
+        # already the stress value *after* the change, not a difference.
+        # None (not 0.0) when there is nothing to report -- always the case
+        # on a marker/event row, since those always log delta={}.
+        if row.get("kind") == "decision":
+            if actor_is_self:
+                raw_stress = (delta.get("actor") or {}).get("stress")
+            else:
+                raw_stress = (delta_targets.get(subject.id) or {}).get(
+                    "stress"
+                )
         else:
-            stress_delta = (
-                delta_targets.get(subject.id) or {}
-            ).get("stress", 0.0)
+            raw_stress = None
+        stress_after = float(raw_stress) if raw_stress is not None else None
 
         effective = row.get("effective")
         if effective is None:
@@ -632,7 +652,7 @@ class Policy:
             "stance_sign": classification.get("stance_sign"),
             "target_role": classification.get("target_role"),
             "effective": bool(effective),
-            "stress_delta": float(stress_delta or 0.0),
+            "stress_after": stress_after,
             "involves_self": involves_self,
         }
         namespace = world.namespace(
@@ -655,7 +675,16 @@ class Policy:
             if not any(shift.values()):
                 continue
             for key, value in shift.items():
-                self.acquired[key] = self.acquired.get(key, 0.0) + value
+                # nice #10: no decay -- shifts accumulate for the run's
+                # lifetime -- but a key that nets back to exactly 0 (e.g. a
+                # win cancelling a prior loss) is dropped rather than kept
+                # as a stray 0.0 entry. clip() only ever happens on the
+                # combined current_genome(), never here.
+                updated = self.acquired.get(key, 0.0) + value
+                if updated:
+                    self.acquired[key] = updated
+                else:
+                    self.acquired.pop(key, None)
             markers.append(
                 {
                     "verb": "growth",

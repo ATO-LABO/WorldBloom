@@ -64,11 +64,26 @@ def load(path) -> dict[str, Any]:
     return doc
 
 
-def reconcile(raw_genome: Mapping[str, Any], *, rule_ids: Iterable[str] = ()) -> Genome:
+def reconcile(
+    raw_genome: Mapping[str, Any],
+    *,
+    rule_ids: Iterable[str] = (),
+    growth_enabled: bool = False,
+) -> Genome:
     """A seeded genome, its rule_bits reconciled against this run's own
     rule_ids (a template/meta_evolution change since the source archive was
     captured may have added or dropped rules -- missing bits default to
-    enabled, extra bits are dropped, same convention as Genome.crossover)."""
+    enabled, extra bits are dropped, same convention as Genome.crossover).
+
+    WB-GROWTH-001 review fix (should #7): ``growth_enabled=False`` (this
+    run's own personality_growth.enabled, not whatever the source archive
+    had) forces plasticity back to 0 -- otherwise a generation-0 population
+    seeded from an old --personality-growth experiment into a new run where
+    it is off would carry over nonzero plasticity for exactly one
+    generation (seed_genomes only ever seeds generation 0) before
+    Genome.mutate's plastic=False path zeroed it back out on the next
+    generation, a confusing one-generation mix of "growth on" and "growth
+    off" behavior in what should be a fully growth-off run."""
     try:
         genome = Genome.from_dict(raw_genome)
     except (KeyError, TypeError) as error:
@@ -85,5 +100,5 @@ def reconcile(raw_genome: Mapping[str, Any], *, rule_ids: Iterable[str] = ()) ->
         stance_shift_bias=genome.stance_shift_bias,
         novelty_drive=genome.novelty_drive,
         rule_bits={rule_id: genome.rule_bits.get(rule_id, True) for rule_id in ids},
-        plasticity=genome.plasticity,
+        plasticity=genome.plasticity if growth_enabled else 0.0,
     )
