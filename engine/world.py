@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
+from engine.actions import FORCE_ARG_KINDS
 from engine.predicate import (
     PREDICATE_NAMES,
     Namespace,
@@ -22,7 +23,46 @@ from engine.phase2 import (
     disguise_aliases,
     perceived_name as phase2_perceived_name,
 )
+from engine.verbs import HANDLED_VERBS
 from engine.yaml_cache import load_yaml
+
+
+def _validate_scheduled_events(
+    events: tuple[dict[str, Any], ...],
+) -> None:
+    """WB-TIMEEVENT-001: reject malformed scheduled_events.force_action."""
+
+    for event in events:
+        event_id = str(event.get("id", ""))
+        force_action = event.get("force_action")
+        if force_action is None:
+            continue
+        if event.get("slot") is None:
+            raise ValueError(
+                f"force_action requires slot: {event_id}"
+            )
+        if event.get("move_to") is not None:
+            raise ValueError(
+                f"force_action and move_to are exclusive: {event_id}"
+            )
+        if not isinstance(force_action, dict):
+            raise ValueError(
+                f"force_action must be a mapping: {event_id}"
+            )
+        verb = force_action.get("verb")
+        if verb not in HANDLED_VERBS:
+            raise ValueError(
+                f"Unknown force_action verb: {verb!r} ({event_id})"
+            )
+        args = force_action.get("args", [])
+        if not isinstance(args, list):
+            raise ValueError(
+                f"force_action args must be a list: {event_id}"
+            )
+        if len(args) > len(FORCE_ARG_KINDS[verb]):
+            raise ValueError(
+                f"force_action has too many args: {event_id}"
+            )
 
 
 def _load_action_graph(
@@ -604,6 +644,7 @@ class World:
                 ),
             )
         )
+        _validate_scheduled_events(self.scheduled_events)
         raw_daily = definition.get("daily_events")
         if raw_daily:
             self.daily_event_chance = float(

@@ -5,6 +5,14 @@ RealRunLineageTests for why ga_seed=1/generations=5/population=8/seeds=2 is
 pinned) so the page is exercised against genuine multi-generation ancestry,
 an immigrant/g0 single-node lineage, and a deliberately damaged ancestor --
 without paying for a second sim run.
+
+WB-TIMEEVENT-001: departure_day now uses force_action instead of move_to
+(see gapengine/lineage.py's RealRunLineageTests docstring for the full
+explanation). "III|mid" no longer exists in this fixture's archive; "I|high"
+(chain g1/ind-6 <- g0/archive/V-high) is its replacement, re-verified by
+hand the same way. No cell in this fixture is a single-node immigrant
+anymore, so test_lineage_page_immigrant_cell_reports_no_turning_point is
+skipped pending a fixture that reproduces one.
 """
 
 from __future__ import annotations
@@ -57,11 +65,11 @@ class LineagePageTests(unittest.TestCase):
         cls.temporary.cleanup()
 
     def test_cell_page_links_to_lineage(self) -> None:
-        rendered = pages.cell_page(self.repository, "exp1", "III|mid", view="digest")
-        self.assertIn('href="/exp/exp1/cell/III%7Cmid/lineage"', rendered)
+        rendered = pages.cell_page(self.repository, "exp1", "I|high", view="digest")
+        self.assertIn('href="/exp/exp1/cell/I%7Chigh/lineage"', rendered)
 
     def test_lineage_page_multi_generation_shows_band_cards_and_detail(self) -> None:
-        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
+        rendered = pages.lineage_page(self.repository, "exp1", "I|high")
         self.assertIn('class="lineage-band"', rendered)
         # Two ancestors -> two <li> band entries.
         self.assertEqual(rendered.count("lineage-node"), 2)
@@ -88,10 +96,10 @@ class LineagePageTests(unittest.TestCase):
         # section), and now traces that turning's own leading gene rather
         # than a mixed-gene personality_series.
         experiment = self.repository.experiment("exp1")
-        model = data.lineage_view(self.repository, experiment, "III|mid")
+        model = data.lineage_view(self.repository, experiment, "I|high")
         trait_series = model["turnings"][0]["trait_series"]
 
-        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
+        rendered = pages.lineage_page(self.repository, "exp1", "I|high")
 
         band_section = rendered.split('<section class="lw-overview">', 1)[1].split("</section>", 1)[0]
         self.assertNotIn('class="spark"', band_section)
@@ -104,11 +112,17 @@ class LineagePageTests(unittest.TestCase):
         # Only one turning exists for this cell; an out-of-range index must
         # not crash, and must fall back to the default (index 0) selection.
         rendered = pages.lineage_page(
-            self.repository, "exp1", "III|mid", turning_index=99,
+            self.repository, "exp1", "I|high", turning_index=99,
         )
         self.assertIn('aria-label="選んだ地点の詳細"', rendered)
         self.assertNotIn("転機が見つかりませんでした", rendered)
 
+    @unittest.skip(
+        "WB-TIMEEVENT-001: this fixture no longer has a single-node "
+        "immigrant cell (see module docstring) -- 'V|high' is now a 2-node "
+        "chain like 'I|high'. Needs a real-run fixture that reproduces an "
+        "immigrant cell to re-enable this."
+    )
     def test_lineage_page_immigrant_cell_reports_no_turning_point(self) -> None:
         # V|high's elite is a g0 individual (parents == []): a single-node
         # lineage, so there is nothing to compare -- must render the "no
@@ -126,16 +140,16 @@ class LineagePageTests(unittest.TestCase):
         self.addCleanup(shutil.copyfile, backup, precedent_path)
         precedent_path.unlink()
 
-        cache_path = experiment / "lineage" / "III-mid-cache.json"
+        cache_path = experiment / "lineage" / "I-high-cache.json"
         cache_path.unlink(missing_ok=True)
         self.addCleanup(cache_path.unlink, missing_ok=True)
-        rerun_dir = experiment / "lineage" / "g0-archive-I-low"
+        rerun_dir = experiment / "lineage" / "g0-archive-V-high"
         if rerun_dir.is_dir():
             shutil.rmtree(rerun_dir)
 
-        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
+        rendered = pages.lineage_page(self.repository, "exp1", "I|high")
         self.assertIn("再現できませんでした", rendered)
-        self.assertIn("g0/archive/I-low", rendered)
+        self.assertIn("g0/archive/V-high", rendered)
 
     def test_data_lineage_view_rejects_unknown_cell(self) -> None:
         experiment = self.repository.experiment("exp1")

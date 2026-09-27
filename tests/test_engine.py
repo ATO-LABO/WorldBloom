@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from engine.actions import Action, candidates
+from engine.actions import Action, FORCE_ARG_KINDS, candidates
 from engine.contest import believed_strength, strength
 from engine.phase2 import (
     apply_effect,
@@ -26,7 +26,7 @@ from engine.subject import (
     Modifier,
     Subject,
 )
-from engine.verbs import VerbEngine
+from engine.verbs import HANDLED_VERBS, VerbEngine
 from engine.vitality import down, tick
 from engine.world import World
 
@@ -355,8 +355,11 @@ class EngineTests(unittest.TestCase):
                 if seed == 153:
                     self.assertEqual(
                         normalized_layers_hash(first),
-                        "c9c60c156c1ab227b15cd76e47b4f120"
-                        "12a70d1fd133709bbb01c824b96d22df",
+                        # WB-TIMEEVENT-001: updated because departure_day now
+                        # uses force_action (verb-consuming move) instead of
+                        # move_to (instant teleport, no decision consumed).
+                        "9f054204564a2f0c496e525e93d1b2313"
+                        "98b3adc86eda9794cdc3729f7e26e82",
                     )
 
     def test_phase0_opt_in_removal_restores_old_seed_hash(
@@ -448,9 +451,311 @@ class EngineTests(unittest.TestCase):
                 # Phase-0 golden lineage: 3e95ce80...958e until the layer-vector identity
                 # dimension was corrected to `displayed != id` (D6 review A-1). Forcing that
                 # dimension back to 1.0 reproduces the old value exactly (verified).
-                "29477d28196692e2551dd83f1dd24742"
-                "eafacc63acf68d507b3def5133a1f498",
+                # WB-TIMEEVENT-001: updated again because departure_day now uses
+                # force_action (verb-consuming, single-decision move) instead of
+                # move_to (instant teleport that did not consume a decision).
+                "25e0640004f4e2838d1c1c80a2ab84a78"
+                "0526cb04e32d1eb85dc0c2a9e65c7c2",
             )
+
+    def _force_event_world(
+        self,
+        force_action: dict[str, Any],
+        *,
+        event_id: str = "test_force_event",
+        label: str | None = "テスト用の予定イベント",
+    ) -> tuple[World, dict[str, Subject], dict[str, Any]]:
+        """WB-TIMEEVENT-001: momotaro fixture squeezed to day1/朝 only,
+        with one scheduled event carrying `force_action`."""
+
+        world, subjects = load_fixture()
+        world.days = 1
+        world.slots = ("朝",)
+        world.daily_events = ()
+        world.daily_event_chance = 0.0
+        event: dict[str, Any] = {
+            "id": event_id,
+            "day": 1,
+            "slot": "朝",
+            "targets": ["桃太郎"],
+            "label": label,
+            "grants_item": {"name": "縄", "count": 1},
+            "stress_delta": 0.3,
+            "force_action": force_action,
+        }
+        world.scheduled_events = (event,)
+        return world, subjects, event
+
+    def test_force_action_move_succeeds_without_rng_draw(self) -> None:
+        # E-1
+        world, subjects, event = self._force_event_world(
+            {"verb": "move", "args": ["道中"]}
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Simulation(
+                1, world, subjects, Path(temporary)
+            ).run()
+            rows = read_rows(path)
+        decisions = [
+            row
+            for row in rows
+            if row.get("kind") == "decision"
+            and row.get("subject") == "桃太郎"
+        ]
+        self.assertEqual(len(decisions), 1)
+        decision_row = decisions[0]
+        self.assertEqual(decision_row["verb"], "move")
+        self.assertEqual(decision_row["args"], ["道中"])
+        self.assertEqual(decision_row["result"], "moved")
+        self.assertEqual(
+            decision_row["forced"],
+            {"event_id": event["id"], "label": event["label"]},
+        )
+        self.assertIsNone(decision_row["choice_prob"])
+        self.assertIsNone(decision_row["policy"])
+        fallback_rows = [
+            row
+            for row in rows
+            if row.get("kind") == "event"
+            and row.get("verb") == "force_action_fallback"
+        ]
+        self.assertEqual(fallback_rows, [])
+
+    def test_force_action_move_without_args_picks_max_weight(self) -> None:
+        # E-2
+        event = {
+            "id": "test_force_move_novalue",
+            "day": 1,
+            "slot": "朝",
+            "targets": ["桃太郎"],
+            "label": "行き先未指定の強制移動",
+            "grants_item": {"name": "縄", "count": 1},
+            "stress_delta": 0.3,
+            "force_action": {"verb": "move", "args": []},
+        }
+
+        predict_world, predict_subjects = load_fixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            predict_sim = Simulation(
+                1, predict_world, predict_subjects, Path(temporary)
+            )
+            predict_sim.day = 1
+            predict_sim.turn = 1
+            predict_sim.slot = "朝"
+            predict_momotaro = predict_subjects["桃太郎"]
+            predict_sim._apply_event_effects(
+                dict(event), [predict_momotaro]
+            )
+            weighted = candidates(
+                predict_momotaro, predict_world, predict_sim
+            )
+        move_candidates = [
+            (action, weight)
+            for action, weight in weighted
+            if action.verb == "move"
+        ]
+        self.assertTrue(move_candidates)
+        expected_destination = max(
+            move_candidates, key=lambda item: item[1]
+        )[0].args[0]
+
+        world, subjects, _event = self._force_event_world(
+            {"verb": "move", "args": []},
+            event_id="test_force_move_novalue",
+            label="行き先未指定の強制移動",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Simulation(
+                1, world, subjects, Path(temporary)
+            ).run()
+            rows = read_rows(path)
+        decisions = [
+            row
+            for row in rows
+            if row.get("kind") == "decision"
+            and row.get("subject") == "桃太郎"
+        ]
+        self.assertEqual(len(decisions), 1)
+        self.assertEqual(decisions[0]["verb"], "move")
+        self.assertEqual(decisions[0]["args"], [expected_destination])
+        self.assertIsNotNone(decisions[0].get("forced"))
+
+    def test_force_action_falls_back_when_not_offered(self) -> None:
+        # E-3: unreachable destination -> args_not_offered
+        world, subjects, event = self._force_event_world(
+            {"verb": "move", "args": ["鬼ヶ島"]}
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Simulation(
+                1, world, subjects, Path(temporary)
+            ).run()
+            rows = read_rows(path)
+        fallback_rows = [
+            row
+            for row in rows
+            if row.get("kind") == "event"
+            and row.get("verb") == "force_action_fallback"
+        ]
+        self.assertEqual(len(fallback_rows), 1)
+        self.assertEqual(
+            fallback_rows[0]["details"]["reason"], "args_not_offered"
+        )
+        self.assertEqual(
+            fallback_rows[0]["details"]["event_id"], event["id"]
+        )
+        decisions = [
+            row
+            for row in rows
+            if row.get("kind") == "decision"
+            and row.get("subject") == "桃太郎"
+        ]
+        self.assertEqual(len(decisions), 1)
+        self.assertIsNone(decisions[0].get("forced"))
+        self.assertIsInstance(decisions[0]["choice_prob"], float)
+
+        # verb not in 桃太郎's own verb list -> verb_not_offered
+        self.assertNotIn("guard", subjects["桃太郎"].verbs)
+        world2, subjects2, event2 = self._force_event_world(
+            {"verb": "guard", "args": []}
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path2 = Simulation(
+                1, world2, subjects2, Path(temporary)
+            ).run()
+            rows2 = read_rows(path2)
+        fallback_rows2 = [
+            row
+            for row in rows2
+            if row.get("kind") == "event"
+            and row.get("verb") == "force_action_fallback"
+        ]
+        self.assertEqual(len(fallback_rows2), 1)
+        self.assertEqual(
+            fallback_rows2[0]["details"]["reason"], "verb_not_offered"
+        )
+
+    def test_force_action_seed_is_byte_deterministic(self) -> None:
+        # E-4
+        for label, factory in (
+            ("success", lambda: self._force_event_world(
+                {"verb": "move", "args": ["道中"]}
+            )),
+            ("fallback", lambda: self._force_event_world(
+                {"verb": "move", "args": ["鬼ヶ島"]}
+            )),
+        ):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                world_a, subjects_a, _ = factory()
+                first = Simulation(
+                    1, world_a, subjects_a, root / "first"
+                ).run()
+                world_b, subjects_b, _ = factory()
+                second = Simulation(
+                    1, world_b, subjects_b, root / "second"
+                ).run()
+                self.assertEqual(
+                    first.read_bytes(),
+                    second.read_bytes(),
+                    f"{label} was not byte deterministic",
+                )
+
+    def test_force_action_load_time_validation(self) -> None:
+        # E-5
+        base_raw = yaml.safe_load(
+            WORLD_PATH.read_text(encoding="utf-8")
+        )
+
+        def with_event(event: dict[str, Any]) -> dict[str, Any]:
+            raw = dict(base_raw)
+            raw["scheduled_events"] = [event]
+            return raw
+
+        with self.assertRaisesRegex(ValueError, "requires slot"):
+            World(
+                with_event(
+                    {
+                        "id": "bad_no_slot",
+                        "day": 1,
+                        "targets": ["桃太郎"],
+                        "force_action": {"verb": "move", "args": []},
+                    }
+                ),
+                WORLD_PATH,
+            )
+
+        with self.assertRaisesRegex(ValueError, "exclusive"):
+            World(
+                with_event(
+                    {
+                        "id": "bad_move_to_and_force",
+                        "day": 1,
+                        "slot": "朝",
+                        "targets": ["桃太郎"],
+                        "move_to": "道中",
+                        "force_action": {"verb": "move", "args": []},
+                    }
+                ),
+                WORLD_PATH,
+            )
+
+        with self.assertRaisesRegex(ValueError, "Unknown force_action verb"):
+            World(
+                with_event(
+                    {
+                        "id": "bad_unknown_verb",
+                        "day": 1,
+                        "slot": "朝",
+                        "targets": ["桃太郎"],
+                        "force_action": {
+                            "verb": "not_a_real_verb",
+                            "args": [],
+                        },
+                    }
+                ),
+                WORLD_PATH,
+            )
+
+        with self.assertRaisesRegex(ValueError, "too many args"):
+            World(
+                with_event(
+                    {
+                        "id": "bad_too_many_args",
+                        "day": 1,
+                        "slot": "朝",
+                        "targets": ["桃太郎"],
+                        "force_action": {
+                            "verb": "move",
+                            "args": ["道中", "余分"],
+                        },
+                    }
+                ),
+                WORLD_PATH,
+            )
+
+    def test_force_arg_kinds_keys_match_handled_verbs(self) -> None:
+        # E-6
+        self.assertEqual(set(FORCE_ARG_KINDS), set(HANDLED_VERBS))
+
+    def test_force_arg_kinds_matches_all_fixture_candidate_shapes(
+        self,
+    ) -> None:
+        # E-7
+        world, subjects = load_fixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            sim = Simulation(1, world, subjects, Path(temporary))
+            sim.day = 1
+            sim.turn = 1
+            for subject in subjects.values():
+                for action, _weight in candidates(subject, world, sim):
+                    self.assertIn(
+                        action.verb, FORCE_ARG_KINDS, action.verb
+                    )
+                    self.assertEqual(
+                        len(action.args),
+                        len(FORCE_ARG_KINDS[action.verb]),
+                        (subject.id, action.verb, action.args),
+                    )
 
     def test_vitality_down_revive_ally_speedup_and_lethal(self) -> None:
         world, subjects = load_fixture()
@@ -1886,6 +2191,8 @@ class EngineTests(unittest.TestCase):
 
             def fixed_action(
                 subject: Subject,
+                *,
+                forced: dict[str, Any] | None = None,
             ) -> tuple[Action, float | None]:
                 if subject.id == "鬼":
                     return (
@@ -1953,6 +2260,8 @@ class EngineTests(unittest.TestCase):
 
             def fixed_action(
                 subject: Subject,
+                *,
+                forced: dict[str, Any] | None = None,
             ) -> tuple[Action, float | None]:
                 if subject.id == momotaro.id:
                     return (

@@ -136,7 +136,13 @@ class RecordingTests(unittest.TestCase):
                                     self.assertEqual(len(chosen), 1)
                                     self.assertEqual(chosen[0]["verb"], row["verb"])
                                     self.assertEqual(chosen[0]["args"], row["args"])
-                                    self.assertEqual(chosen[0]["probability"], row["choice_prob"])
+                                    # WB-TIMEEVENT-001: a force_action row still records which
+                                    # candidate was picked (for explainability) but choice_prob
+                                    # stays None -- it was never drawn by rng.choices.
+                                    if row.get("forced") is None:
+                                        self.assertEqual(chosen[0]["probability"], row["choice_prob"])
+                                    else:
+                                        self.assertIsNone(row["choice_prob"])
                     for row in rows:
                         row.pop("explanation", None)
                         row.pop("explanation_recording", None)
