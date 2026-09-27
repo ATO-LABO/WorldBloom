@@ -119,10 +119,37 @@
       `<section class="wp-section">${head('1日の流れ')}<ol class="wp-time-cycle">${cycle.map((slot,index)=>`<li><span>${index+1}</span><strong>${esc(slot)}</strong>${index<cycle.length-1?'<i aria-hidden="true">→</i>':''}</li>`).join('')}</ol><p class="wp-muted">最後の時間帯が終わると、次の日の最初の時間帯へ進みます。</p></section>`+
       `<section class="wp-section">${head('設定内容')}<dl class="wp-dl">${row('日数',days?`${esc(days)}日間`:'未設定')}${row('時間帯',esc(slots.join(' ／ ')||'未設定'))}</dl></section>`;
   }
+  let routesData=null, routesLoading=false, routesTimepoint=0;
+  function loadRoutes(){
+    if(routesLoading||routesData)return;
+    routesLoading=true;
+    fetch(`/api/worlds/${encodeURIComponent(model.id)}/routes`).then(r=>r.json()).then(data=>{
+      routesData=data; routesLoading=false; if(screen==='routes')render();
+    }).catch(()=>{routesLoading=false; routesData={status:'error',message:'取得に失敗しました。',timepoints:[]}; if(screen==='routes')render();});
+  }
+  function routesScreen(){
+    if(!routesData){loadRoutes();return title('最短経路を調査','主人公が結末へ至る段取りを計算しています…')+'<p class="wp-muted">計算中…</p>';}
+    const d=routesData;
+    if(d.status==='no_route_config'||d.status==='no_goal'||d.status==='error')
+      return title('最短経路を調査')+`<p class="wp-muted">${esc(d.message)}</p>`;
+    if(!d.timepoints.length)
+      return title('最短経路を調査')+`<p class="wp-muted">${esc(d.message||'結末に到達する段取りが見つかりません')}</p>`;
+    const tps=d.timepoints;
+    const tp=tps[Math.min(routesTimepoint,tps.length-1)];
+    const tabsHtml=tps.length>1?`<div class="wp-tabs" aria-label="時点の切り替え">${tps.map((t,i)=>`<button type="button" data-routes-tp="${i}" aria-pressed="${i===routesTimepoint}">${esc(t.label)}</button>`).join('')}</div>`:'';
+    const note='<p class="wp-muted">合理的に動いた場合の段取りです。予定イベントは対象が死亡している／物語が先に終わっている場合は発火しません。日替わりイベントと乱数は含みません。所要は目安で、鍛錬などは1手として数えています。</p>';
+    if(tp.blocked.length||!tp.routes.length){
+      const reasons=(tp.blocked||[]).map(b=>`<li>${esc(JSON.stringify(b))}</li>`).join('');
+      return title('最短経路を調査')+tabsHtml+`<p class="wp-muted">結末に到達する段取りが見つかりません</p>${reasons?`<ul>${reasons}</ul>`:''}`+note;
+    }
+    const routeSections=tp.routes.map(route=>`<section class="wp-section">${head(esc(route.label))}${route.conditions.length?`<p class="wp-muted">この段取りになる条件：${route.conditions.map(esc).join('・')}</p>`:''}<ol class="wp-steps">${route.steps.map(s=>`<li>${esc(s.text)}<small>累計 ${s.cumulative}</small></li>`).join('')}</ol>${route.truncated?'<p class="wp-muted">※途中で打ち切られました（手順が複雑すぎる可能性があります）。</p>':''}</section>`).join('');
+    const single=tp.routes.length<2?'<p class="wp-muted">別パターンは見つかりませんでした</p>':'';
+    return title('最短経路を調査','主人公が結末へ至る、パターンの違う段取りです。')+tabsHtml+routeSections+single+note;
+  }
   function render(focus=false){
     content.classList.toggle('is-people',screen==='people');
     content.dataset.screen=screen;
-    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen}[screen])();
+    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen,routes:routesScreen}[screen])();
     root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===screen)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     const missing=[];
     if(!model.genre)missing.push('ジャンル');
@@ -187,6 +214,7 @@
     }else if(b.hasAttribute('data-place')){
       place=Number(b.dataset.place);root.querySelectorAll('[data-place]').forEach(el=>el.setAttribute('aria-pressed',String(Number(el.dataset.place)===place)));root.querySelector('.wp-place-detail').innerHTML=placeDetail();
     }else if(b.dataset.view){const [group,value]=b.dataset.view.split(':');if(group==='people')peopleView=value;if(group==='places')placeView=value;if(group==='story')storyView=value;render();root.querySelector(`[data-view="${b.dataset.view}"]`).focus();}
+    else if(b.hasAttribute('data-routes-tp')){routesTimepoint=Number(b.dataset.routesTp);render();}
     else if(b.dataset.edit)openEditor(b.dataset.edit,b);
     else if(b.hasAttribute('data-route'))openEditor('route:'+b.dataset.route,b);
     else if(b.hasAttribute('data-close'))closeEditor();
