@@ -11,7 +11,7 @@
   let people = model.people.filter(p => p.id);
   let zones = (w.zones || []).map(z => typeof z === 'string' ? {name:z,note:''} : {...z});
   people.sort((a,b) => Number(b.id === w.protagonist) - Number(a.id === w.protagonist));
-  let screen = 'overview', person = 0, place = Math.max(0,zones.findIndex(z=>z.name==='海'));
+  let screen = 'overview', person = 0, place = Math.max(0,zones.findIndex(z=>z.name==='海')), eventDay = null;
   let peopleView = 'list', placeView = 'map', storyView = 'intro', query = '';
   let applyEdit = null, opener = null, changed = false, busy = false, blocked = false;
   const scrolls = {};
@@ -110,19 +110,107 @@
   function placesScreen(){return title('場所','この世界に登場する場所と、つながりを整理しましょう。',`<span>${zones.length}か所</span>${model.editable?'<button class="wp-add" data-edit="add-place">＋ 場所を追加</button>':''}`)+tabs('places',placeView,[['map','つながり'],['list','一覧']])+`<div class="wp-place-grid"><div>${placeView==='map'?map():`<div class="wp-list">${zones.map((z,i)=>`<button data-place="${i}" aria-pressed="${i===place}">${esc(z.name)}</button>`).join('')}</div>`}<p class="wp-muted">場所を選ぶと詳細を表示します。移動条件は右の経路から確認できます。</p></div><article class="wp-place-detail">${placeDetail()}</article></div>`;}
   function stateTable(){return `<p class="wp-muted">設定ファイルの初期値です。開始時イベント・乱数による変化は実行時に決まります。</p><table class="wp-state"><thead><tr><th>人物</th><th>居場所</th><th>持ち物</th><th>知識</th>${model.editable?'<th class="wp-state-action" aria-label="操作"></th>':''}</tr></thead><tbody>${people.map((p,i)=>`<tr><th><button data-person-link="${i}">${esc(p.id)} ↗</button></th><td>${esc(entry(p))}</td><td>${esc(items(p))}</td><td>${esc(knows(p))}</td>${model.editable?`<td class="wp-state-action"><button data-state-person="${i}" aria-label="${esc(p.id)}の初期状態を編集" title="初期状態を編集">✎</button></td>`:''}</tr>`).join('')}</tbody></table>`;}
   function story(){return title('初期物語','シミュレーションが始まる直前の状況')+tabs('story',storyView,[['intro','導入文'],['state','開始時点の状態']])+(storyView==='intro'?`<section class="wp-section">${head('物語の始まり',edit('intro','導入文を編集'))}<p class="wp-story-copy">${absent(model.intro)}</p></section><button class="wp-route" data-view="story:state">開始時点の状態を確認 →</button>`:`<section class="wp-section">${head('開始時点の状況')}${stateTable()}</section>`)+`<p class="wp-muted wp-section">この先の展開は、シミュレーションで決まります。導入文を編集しても開始状態は変わりません。</p>`;}
+  // WB-TIMEEVENT-001: scheduled_events display + edit on the time screen.
+  const eventSlotIndex = slot => {
+    if(!slot)return 0;
+    const slots=w.time?.slots||[];
+    const found=slots.indexOf(slot);
+    return found<0 ? slots.length+1 : found+1;
+  };
+  const sortedEvents = () => (w.scheduled_events||[]).map((e,i)=>({...e,__index:i}))
+    .sort((a,b)=>(Number(a.day)-Number(b.day))||(eventSlotIndex(a.slot)-eventSlotIndex(b.slot))||String(a.id).localeCompare(String(b.id)));
+  function eventDayGrid(events){
+    const days=Number(w.time?.days)||0;
+    if(!days||days>366)return '';
+    const counts={};
+    events.forEach(e=>{counts[e.day]=(counts[e.day]||0)+1;});
+    const buttons=[];
+    for(let d=1;d<=days;d++){
+      const count=counts[d]||0;
+      buttons.push(`<button type="button" data-event-day="${d}" aria-pressed="${eventDay===d}" ${count?`data-count="${count>9?'9+':count}"`:''}>${d}</button>`);
+    }
+    return `<div class="wp-event-days">${buttons.join('')}</div>`;
+  }
+  function eventSummary(e){
+    const parts=[];
+    if(e.grants_item)parts.push(`${esc(e.grants_item.name)}×${esc(e.grants_item.count??1)} を得る`);
+    if(e.grants_fact)parts.push(`${esc(e.grants_fact)} を知る`);
+    if(e.move_to)parts.push(`${esc(e.move_to)} へ移る（瞬間移動）`);
+    if(e.force_action)parts.push(`行動を『${esc(e.force_action.verb)}${e.force_action.args?.length?' '+esc(e.force_action.args.join(' ')):''}』に固定`);
+    if(e.stress_delta)parts.push(`ストレス ${e.stress_delta>0?'+':''}${esc(e.stress_delta)}`);
+    return parts.join('、')||'なし';
+  }
+  function eventsTable(){
+    const events=sortedEvents();
+    const filtered=eventDay==null?events:events.filter(e=>Number(e.day)===eventDay);
+    if(!filtered.length)return '<p class="wp-muted">予定された出来事はありません。</p>';
+    const rows=filtered.map(e=>`<tr><td>${esc(e.day)}</td><td>${esc(e.slot||'日の初め')}</td><td>${esc(e.label||e.id)}</td><td>${esc((e.targets||[]).join('、'))}</td><td>${eventSummary(e)}</td>${model.editable?`<td class="wp-state-action"><button data-edit="event:${e.__index}" aria-label="編集" title="編集">✎</button><button data-edit="remove-event:${e.__index}" aria-label="削除" title="削除">✕</button></td>`:''}</tr>`).join('');
+    return `<table class="wp-state wp-events"><thead><tr><th>日</th><th>時間帯</th><th>名前</th><th>対象</th><th>内容</th>${model.editable?'<th class="wp-state-action" aria-label="操作"></th>':''}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
   function timeScreen(){
     const days=Number(w.time?.days)||0;
     const slots=w.time?.slots||[];
     const cycle=slots.length?slots:['時間帯は未設定'];
+    const events=sortedEvents();
     return title('時間','シミュレーションの長さと、1日の進み方',edit('time','時間を編集'))+
       `<div class="wp-time-summary"><section><span class="wp-time-label">物語の期間</span><strong>${days?`${esc(days)}日間`:'未設定'}</strong><p>この期間の中で、人物が行動し物語が進みます。</p></section><section><span class="wp-time-label">1日の区切り</span><strong>${slots.length?`${esc(slots.length)}区切り`:'未設定'}</strong><p>${slots.length?'1日の中を複数の時間帯に分けて進めます。':'時間帯を設定してください。'}</p></section></div>`+
       `<section class="wp-section">${head('1日の流れ')}<ol class="wp-time-cycle">${cycle.map((slot,index)=>`<li><span>${index+1}</span><strong>${esc(slot)}</strong>${index<cycle.length-1?'<i aria-hidden="true">→</i>':''}</li>`).join('')}</ol><p class="wp-muted">最後の時間帯が終わると、次の日の最初の時間帯へ進みます。</p></section>`+
-      `<section class="wp-section">${head('設定内容')}<dl class="wp-dl">${row('日数',days?`${esc(days)}日間`:'未設定')}${row('時間帯',esc(slots.join(' ／ ')||'未設定'))}</dl></section>`;
+      `<section class="wp-section">${head('設定内容')}<dl class="wp-dl">${row('日数',days?`${esc(days)}日間`:'未設定')}${row('時間帯',esc(slots.join(' ／ ')||'未設定'))}</dl></section>`+
+      `<section class="wp-section">${head('予定された出来事',model.editable?'<button class="wp-add" data-edit="add-event">＋ 出来事を追加</button>':'')}${eventDayGrid(events)}${eventsTable()}</section>`;
+  }
+  let routesData=null, routesLoading=false, routesTimepoint=0;
+  function loadRoutes(){
+    if(routesLoading||routesData)return;
+    routesLoading=true;
+    fetch(`/api/worlds/${encodeURIComponent(model.id)}/routes`).then(r=>{
+      if(!r.ok)return r.json().catch(()=>null).then(body=>{throw new Error(body&&body.message||`HTTP ${r.status}`);});
+      return r.json();
+    }).then(data=>{
+      // S3 (Opus review): an error response's shape ({code,message}, from
+      // job_api.send_error) has no `timepoints` array at all -- rendering
+      // it as a successful survey threw a TypeError deep in routesScreen
+      // (d.timepoints.length on undefined). Validate the shape here, not
+      // just the HTTP status, before ever caching it as `routesData`.
+      if(!data||!Array.isArray(data.timepoints))throw new Error((data&&data.message)||'想定外の応答でした。');
+      routesData=data; routesLoading=false; if(screen==='routes')render();
+    }).catch(error=>{
+      // Deliberately NOT cached into routesData -- a transient failure
+      // (server restart, network blip) must be retryable by revisiting the
+      // tab, not stuck showing the same error forever.
+      routesLoading=false;
+      if(screen==='routes'){
+        content.innerHTML=title('最短経路を調査')+`<p class="wp-muted">取得に失敗しました：${esc(error.message||String(error))}</p>`;
+      }
+    });
+  }
+  function routesScreen(){
+    if(!routesData){loadRoutes();return title('最短経路を調査','主人公が結末へ至る段取りを計算しています…')+'<p class="wp-muted">計算中…</p>';}
+    const d=routesData;
+    if(d.status==='no_route_config'||d.status==='no_goal')
+      return title('最短経路を調査')+`<p class="wp-muted">${esc(d.message)}</p>`;
+    if(!d.timepoints.length)
+      return title('最短経路を調査')+`<p class="wp-muted">${esc(d.message||'結末に到達する段取りが見つかりません')}</p>`;
+    const tps=d.timepoints;
+    const tp=tps[Math.min(routesTimepoint,tps.length-1)];
+    const tabsHtml=tps.length>1?`<div class="wp-tabs" aria-label="時点の切り替え">${tps.map((t,i)=>`<button type="button" data-routes-tp="${i}" aria-pressed="${i===routesTimepoint}">${esc(t.label)}</button>`).join('')}</div>`:'';
+    // S4 (Opus review): clarify what "#1" means (the engine's own cheapest
+    // plan right now, not necessarily the shortest of the shown patterns
+    // once a knockout route happens to finish faster) and that this is a
+    // pre-play forecast (only scheduled events have been applied so far,
+    // no actual decisions).
+    const note='<p class="wp-muted">合理的に動いた場合の段取りです。#1はエンジンが今もっとも自然と判断した段取りで、必ずしも他より所要が短いとは限りません。主人公はまだ実際には動いていない前提（この時点までの予定イベントのみ適用）での見込みです。予定イベントは対象が死亡している／物語が先に終わっている場合は発火しません。日替わりイベントと乱数は含みません。所要は目安で、鍛錬などは1手として数えています。</p>';
+    if(tp.blocked.length||!tp.routes.length){
+      const reasons=(tp.blocked||[]).map(b=>`<li>${esc(b.text||JSON.stringify(b))}</li>`).join('');
+      return title('最短経路を調査')+tabsHtml+`<p class="wp-muted">結末に到達する段取りが見つかりません</p>${reasons?`<ul>${reasons}</ul>`:''}`+note;
+    }
+    const routeSections=tp.routes.map(route=>`<section class="wp-section">${head(esc(route.label))}${route.conditions.length?`<p class="wp-muted">この段取りになる条件：${route.conditions.map(esc).join('・')}</p>`:''}<ol class="wp-steps">${route.steps.map(s=>`<li>${esc(s.text)}<small>累計 ${s.cumulative}</small></li>`).join('')}</ol>${route.truncated?'<p class="wp-muted">※途中で打ち切られました（手順が複雑すぎる可能性があります）。目安の所要：'+esc(route.h)+'</p>':''}</section>`).join('');
+    const single=tp.routes.length<2?'<p class="wp-muted">別パターンは見つかりませんでした</p>':'';
+    return title('最短経路を調査','主人公が結末へ至る、パターンの違う段取りです。')+tabsHtml+routeSections+single+note;
   }
   function render(focus=false){
     content.classList.toggle('is-people',screen==='people');
     content.dataset.screen=screen;
-    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen}[screen])();
+    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen,routes:routesScreen}[screen])();
     root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===screen)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     const missing=[];
     if(!model.genre)missing.push('ジャンル');
@@ -171,14 +259,87 @@
       const route=(w.routes?.[zones[place].name]||[])[Number(key.split(':')[1])];if(!route)return;
       name=`${zones[place].name} → ${route.to} の条件`;fields=[field('item','必要な持ち物（空欄なら条件なし）',route.requires_item||'','text'),field('cost','移動コスト',route.cost??1,'number')];
       applyEdit=v=>({operation:'route',target:{from:zones[place].name,index:Number(key.split(':')[1])},values:{item:v.item,cost:Number(v.cost)}});
+    }else if(key==='add-event'||key.startsWith('event:')){
+      const idx=key==='add-event'?null:Number(key.split(':')[1]);
+      const ev=idx==null?{}:(w.scheduled_events||[])[idx];if(idx!=null&&!ev)return;
+      name=idx==null?'出来事を追加':`${ev.label||ev.id}を編集`;
+      const specs=model.force_action_specs||{};
+      const verb=ev.force_action?.verb||'';
+      const kinds=specs[verb]||[];
+      const args=ev.force_action?.args||[];
+      const currentTargets=ev.targets||[];
+      const relevantVerbs=currentTargets.length
+        ?Object.keys(specs).filter(v=>people.some(p=>currentTargets.includes(p.id)&&(p.verbs||[]).includes(v)))
+        :Object.keys(specs);
+      const verbOptions=[['','固定しない'],...relevantVerbs.sort().map(v=>[v,v]),...(verb&&!relevantVerbs.includes(verb)?[[verb,`${verb}（現在値・無効）`]]:[])];
+      fields=[
+        field('id','出来事のID',ev.id||'','text',null,true),
+        field('label','名前',ev.label||'','text'),
+        field('day','日',ev.day||1,'number'),
+        field('slot','時間帯',ev.slot||'','select',[['','日の初め'],...(w.time?.slots||[]).map(s=>[s,s])]),
+        field('targets','対象',currentTargets,'multiselect',people.map(p=>[p.id,p.id]),true),
+        field('verb','行動を固定する（空欄なら固定しない）',verb,'select',verbOptions),
+        {html:`<div id="wp-event-args">${kinds.map((kind,i)=>fieldHtml(argFieldDescriptor(kind,i,args[i]||''))).join('')}</div>`},
+        {html:'<p class="wp-muted">後ろの引数を空にすると、その部分はエンジンがその時点で最も自然な候補を選びます。取れない行動だった場合、その時間帯は自由行動になります。</p>'},
+        ...(ev.move_to?[{html:`<p class="wp-muted">行動を固定すると、瞬間移動（${esc(ev.move_to)}へ）は無効になります。</p>`}]:[]),
+        field('item_name','得る持ち物（空欄なら付与しない）',ev.grants_item?.name||'','text'),
+        field('item_count','個数',ev.grants_item?.count||1,'number'),
+        field('stress_delta','ストレスの増減',ev.stress_delta||0,'number'),
+      ];
+      applyEdit=values=>({operation:idx==null?'add-event':'event',target:idx,values:{
+        id:values.id,label:values.label,day:Number(values.day),slot:values.slot,
+        targets:values.targets||[],verb:values.verb,
+        args:Object.keys(values).filter(k=>/^arg\d+$/.test(k)).sort((a,b)=>Number(a.slice(3))-Number(b.slice(3))).map(k=>values[k]),
+        item_name:values.item_name,item_count:Number(values.item_count)||1,stress_delta:Number(values.stress_delta)||0,
+      }});
+    }else if(key.startsWith('remove-event:')){
+      const idx=Number(key.split(':')[1]);
+      const ev=(w.scheduled_events||[])[idx];if(!ev)return;
+      name=`「${ev.label||ev.id}」を削除しますか？`;fields=[];
+      applyEdit=()=>({operation:'remove-event',target:idx,values:{}});
     }else return;
+    const isRemove=key.startsWith('remove-event:');
+    document.getElementById('wp-dialog-desc').textContent=isRemove
+      ?'削除すると元に戻せません。過去の実行結果は変わりません。'
+      :'保存すると世界設定を更新します。過去の実行結果は変わりません。';
+    document.getElementById('wp-dialog-submit').textContent=isRemove?'削除する':'保存する';
     document.getElementById('wp-dialog-title').textContent=name;
-    document.getElementById('wp-fields').innerHTML=fields.map(f=>`<label for="wp-field-${f.key}">${esc(f.label)}</label>`+(f.type==='textarea'?`<textarea id="wp-field-${f.key}" name="${f.key}">${esc(f.value)}</textarea>`:f.type==='select'?`<select id="wp-field-${f.key}" name="${f.key}" ${f.required?'required':''}>${f.options.map(([value,label])=>`<option value="${esc(value)}" ${value===f.value?'selected':''}>${esc(label)}</option>`).join('')}</select>`:`<input id="wp-field-${f.key}" name="${f.key}" type="${f.type}" value="${esc(f.value)}" ${f.type==='number'?`min="${f.key==='cost'?'0.0001':'1'}" step="${f.key==='cost'?'any':'1'}" max="10000" required`:''}>`)).join('')+'<p id="wp-edit-error" role="alert"></p>';
+    document.getElementById('wp-fields').innerHTML=fields.map(fieldHtml).join('')+'<p id="wp-edit-error" role="alert"></p>';
+    document.getElementById('wp-field-verb')?.addEventListener('change',e=>{
+      const newKinds=(model.force_action_specs||{})[e.target.value]||[];
+      document.getElementById('wp-event-args').innerHTML=newKinds.map((kind,i)=>fieldHtml(argFieldDescriptor(kind,i,''))).join('');
+    });
     dialog.showModal();
+  }
+  function numAttrs(key){
+    const table={cost:['0.0001','any','10000'],day:['1','1',String(w.time?.days||10000)],
+                 item_count:['1','1','999'],stress_delta:['-1000','any','1000']};
+    const [min,step,max]=table[key]||['1','1','10000'];
+    return `min="${min}" step="${step}" max="${max}" required`;
+  }
+  function fieldHtml(f){
+    if(f.html!==undefined)return f.html;
+    return `<label for="wp-field-${f.key}">${esc(f.label)}</label>`+(
+      f.type==='textarea'?`<textarea id="wp-field-${f.key}" name="${f.key}">${esc(f.value)}</textarea>`:
+      f.type==='select'?`<select id="wp-field-${f.key}" name="${f.key}" ${f.required?'required':''}>${f.options.map(([value,label])=>`<option value="${esc(value)}" ${value===f.value?'selected':''}>${esc(label)}</option>`).join('')}</select>`:
+      f.type==='multiselect'?`<select id="wp-field-${f.key}" name="${f.key}" multiple ${f.required?'required':''}>${f.options.map(([value,label])=>`<option value="${esc(value)}" ${(f.value||[]).includes(value)?'selected':''}>${esc(label)}</option>`).join('')}</select>`:
+      `<input id="wp-field-${f.key}" name="${f.key}" type="${f.type}" value="${esc(f.value)}" ${f.type==='number'?numAttrs(f.key):''}>`
+    );
+  }
+  function withCurrentIfMissing(options,value){
+    return value&&!options.some(([v])=>v===value)?[...options,[value,`${value}（現在値・無効）`]]:options;
+  }
+  function argFieldDescriptor(kind,i,value){
+    const key='arg'+i;
+    if(kind==='zone')return {key,label:`引数${i+1}（場所）`,value,type:'select',options:withCurrentIfMissing([['','（未指定）'],...zones.map(z=>[z.name,z.name])],value),required:false};
+    if(kind==='subject')return {key,label:`引数${i+1}（人物）`,value,type:'select',options:withCurrentIfMissing([['','（未指定）'],...people.map(p=>[p.id,p.id])],value),required:false};
+    if(kind.startsWith('enum:'))return {key,label:`引数${i+1}`,value,type:'select',options:withCurrentIfMissing([['','（未指定）'],...kind.slice(5).split('|').map(v=>[v,v])],value),required:false};
+    return {key,label:`引数${i+1}`,value,type:'text',options:null,required:false};
   }
   root.addEventListener('click',e=>{
     const b=e.target.closest('button');if(!b)return;
     if(b.dataset.screen){scrolls[screen]=content.scrollTop;screen=b.dataset.screen;render(true);}
+    else if(b.hasAttribute('data-event-day')){const day=Number(b.dataset.eventDay);eventDay=eventDay===day?null:day;render();}
     else if(b.hasAttribute('data-state-person')){person=Number(b.dataset.statePerson);openEditor('state',b);}
     else if(b.dataset.personLink){person=Number(b.dataset.personLink);screen='people';render(true);}
     else if(b.hasAttribute('data-person')){
@@ -187,6 +348,7 @@
     }else if(b.hasAttribute('data-place')){
       place=Number(b.dataset.place);root.querySelectorAll('[data-place]').forEach(el=>el.setAttribute('aria-pressed',String(Number(el.dataset.place)===place)));root.querySelector('.wp-place-detail').innerHTML=placeDetail();
     }else if(b.dataset.view){const [group,value]=b.dataset.view.split(':');if(group==='people')peopleView=value;if(group==='places')placeView=value;if(group==='story')storyView=value;render();root.querySelector(`[data-view="${b.dataset.view}"]`).focus();}
+    else if(b.hasAttribute('data-routes-tp')){routesTimepoint=Number(b.dataset.routesTp);render();}
     else if(b.dataset.edit)openEditor(b.dataset.edit,b);
     else if(b.hasAttribute('data-route'))openEditor('route:'+b.dataset.route,b);
     else if(b.hasAttribute('data-close'))closeEditor();
@@ -207,7 +369,10 @@
   dialog.addEventListener('cancel',e=>{e.preventDefault();closeEditor();});
   form.addEventListener('submit',async e=>{
     e.preventDefault();if(busy||blocked||!form.reportValidity())return;
-    const request=applyEdit(Object.fromEntries(new FormData(form)));
+    const formData=new FormData(form);
+    const formValues=Object.fromEntries(formData);
+    form.querySelectorAll('select[multiple]').forEach(el=>{formValues[el.name]=formData.getAll(el.name);});
+    const request=applyEdit(formValues);
     request.revision=model.revision;
     const errorBox=document.getElementById('wp-edit-error');
     busy=true;errorBox.textContent='保存中…';

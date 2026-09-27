@@ -28,6 +28,41 @@ class Action:
     meta: dict[str, Any] = field(default_factory=dict)
 
 
+# WB-TIMEEVENT-001: argument shape for each handled verb, used to validate
+# and drive scheduled_events.force_action (world.py load-time check,
+# world_editor.py save-time check, and the world-prototype.js form).
+FORCE_ARG_KINDS: dict[str, tuple[str, ...]] = {
+    "move": ("zone",),
+    "rest": (),
+    "investigate": ("zone",),
+    "observe": ("subject",),
+    "neutralize": ("subject", "text"),
+    "sabotage": ("subject",),
+    "sacrifice": ("enum:asset|bond",),
+    "mislead": ("subject", "text", "text"),
+    "rethink": (),
+    "confront": ("subject", "fact"),
+    "share_knowledge": ("subject", "fact"),
+    "give_item": ("subject", "item"),
+    "persuade": ("subject",),
+    "pledge": ("subject",),
+    "negotiate": ("subject",),
+    "concede": ("subject",),
+    "craft": ("item",),
+    "fight": ("subject",),
+    "train": (),
+    "rescue": ("subject",),
+    "withdraw": (),
+    "guard": (),
+    "plant": ("text",),
+    "payoff": ("text",),
+    "disguise": ("text",),
+    "grand_gesture": ("subject",),
+    "trial": ("subject",),
+    "donate": ("item",),
+}
+
+
 def _action_key(candidate: tuple[Action, float]) -> tuple[str, tuple[str, ...]]:
     action = candidate[0]
     return action.verb, tuple(str(value) for value in action.args)

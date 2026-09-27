@@ -243,14 +243,21 @@ class GoldenTurnOneTests(unittest.TestCase):
                 run_out=Path(run_out),
             )
         point = points[0]
-        self.assertEqual(point["label"], "turn=1 day=1 zone=道中")
+        # WB-TIMEEVENT-001: departure_day now uses force_action (a real,
+        # policy-bypassing move decision) instead of move_to (an instant
+        # teleport applied before any decision). The Mode A recorder only
+        # sees a decision when policy.reweight is actually called, so the
+        # first recorded point is now the *second* protagonist decision --
+        # one turn later, after the 出発 threshold has already been
+        # evaluated at the end of turn 1's slot.
+        self.assertEqual(point["label"], "turn=2 day=1 zone=道中")
         self.assertEqual(
             point["state_text"],
             "\n".join(
                 [
                     "目的: 鬼ヶ島の宝物を村へ持ち帰る",
                     "現在地: 道中",
-                    "通過段階: なし",
+                    "通過段階: 出発",
                     "同席: 味方はいない、中立の相手がいる、敵対者はいない",
                     "目的物: 敵対者が持っている",
                     "所持: きびだんご: あり、船: 材料不足",
@@ -270,7 +277,7 @@ class GoldenTurnOneTests(unittest.TestCase):
             ),
         )
         chosen = [desc for desc, is_chosen in point["candidates"] if is_chosen]
-        self.assertEqual(chosen, ["知識を伝えた（中立、雑談）"])
+        self.assertEqual(chosen, ["品物を渡した（中立、きびだんご）"])
 
 
 class NoDisallowedNamesAcrossSeedsTests(unittest.TestCase):

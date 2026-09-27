@@ -90,6 +90,8 @@ if self.policy is not None:
 i = rng.choices(range(len(weighted)), weights=[w for _, w in weighted], k=1)[0]
 ```
 
+WB-TIMEEVENT-001: 予定イベント `force_action` で強制された手は、候補生成の結果から verb・引数（前方一致）が合う候補を重み最大で選び、抽選を行わない（乱数不消費）。一致する候補が無いときは通常の抽選に戻る（乱数 1 回消費）。したがって force_action を含む世界では乱数消費回数が状態依存になるが、入力が同一なら候補集合も同一なので再現性は保たれる。強制成立時は Policy の `reweight`/`record` を呼ばない（合理性判定・decision_history に積まない＝遺伝子に責任が乗らない）。
+
 `reweight` は候補ごとに `分類 → 有効遺伝子(修飾ルール適用) → 4 乗数`:
 
 ```
