@@ -1,10 +1,17 @@
 """Tests for the 系譜 (lineage) viewer page (WB-LINEAGE-002).
 
 Reuses one small real evolve() run (see gapengine/lineage.py's own
-RealRunLineageTests for why ga_seed=1/generations=5/population=8/seeds=2 is
+RealRunLineageTests for why ga_seed=5/generations=5/population=8/seeds=2 is
 pinned) so the page is exercised against genuine multi-generation ancestry,
 an immigrant/g0 single-node lineage, and a deliberately damaged ancestor --
 without paying for a second sim run.
+
+WB-TIMEEVENT-001: departure_day now uses force_action instead of move_to
+(see gapengine/lineage.py's RealRunLineageTests docstring for the full
+explanation). ga_seed=5 was hand-verified as a replacement pin: "III|high"
+(chain g3/ind-3 <- g2/ind-6 <- g1/ind-2 <- g0/ind-6, 3 turning points) is
+the multi-generation chain, and "III|mid" (a single g0/ind-7 node) is the
+single-node immigrant cell.
 """
 
 from __future__ import annotations
@@ -35,7 +42,7 @@ class LineagePageTests(unittest.TestCase):
         cls.runs_root = root / "runs"
         evolve(
             {
-                "ga_seed": 1,
+                "ga_seed": 5,
                 "generations": 5,
                 "keep": "all",
                 "population": 8,
@@ -57,20 +64,20 @@ class LineagePageTests(unittest.TestCase):
         cls.temporary.cleanup()
 
     def test_cell_page_links_to_lineage(self) -> None:
-        rendered = pages.cell_page(self.repository, "exp1", "III|mid", view="digest")
-        self.assertIn('href="/exp/exp1/cell/III%7Cmid/lineage"', rendered)
+        rendered = pages.cell_page(self.repository, "exp1", "III|high", view="digest")
+        self.assertIn('href="/exp/exp1/cell/III%7Chigh/lineage"', rendered)
 
     def test_lineage_page_multi_generation_shows_band_cards_and_detail(self) -> None:
-        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
+        rendered = pages.lineage_page(self.repository, "exp1", "III|high")
         self.assertIn('class="lineage-band"', rendered)
-        # Two ancestors -> two <li> band entries.
-        self.assertEqual(rendered.count("lineage-node"), 2)
+        # Four ancestors -> four <li> band entries.
+        self.assertEqual(rendered.count("lineage-node"), 4)
         self.assertIn("出発点", rendered)
         self.assertIn("初到達", rendered)
         self.assertIn("転機", rendered)
         self.assertIn('class="turning-columns"', rendered)
         self.assertIn('aria-label="選んだ地点の詳細"', rendered)
-        # Default selection is the first (only) turning point.
+        # Default selection is the first of the three turning points.
         self.assertIn('aria-current="page"', rendered)
         self.assertNotIn("転機が見つかりませんでした", rendered)
 
@@ -88,10 +95,10 @@ class LineagePageTests(unittest.TestCase):
         # section), and now traces that turning's own leading gene rather
         # than a mixed-gene personality_series.
         experiment = self.repository.experiment("exp1")
-        model = data.lineage_view(self.repository, experiment, "III|mid")
+        model = data.lineage_view(self.repository, experiment, "III|high")
         trait_series = model["turnings"][0]["trait_series"]
 
-        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
+        rendered = pages.lineage_page(self.repository, "exp1", "III|high")
 
         band_section = rendered.split('<section class="lw-overview">', 1)[1].split("</section>", 1)[0]
         self.assertNotIn('class="spark"', band_section)
@@ -101,19 +108,19 @@ class LineagePageTests(unittest.TestCase):
         self.assertIn(f'{trait_series["label"]}の推移', detail_section)
 
     def test_lineage_page_selects_turning_from_query_param(self) -> None:
-        # Only one turning exists for this cell; an out-of-range index must
+        # Three turnings exist for this cell; an out-of-range index must
         # not crash, and must fall back to the default (index 0) selection.
         rendered = pages.lineage_page(
-            self.repository, "exp1", "III|mid", turning_index=99,
+            self.repository, "exp1", "III|high", turning_index=99,
         )
         self.assertIn('aria-label="選んだ地点の詳細"', rendered)
         self.assertNotIn("転機が見つかりませんでした", rendered)
 
     def test_lineage_page_immigrant_cell_reports_no_turning_point(self) -> None:
-        # V|high's elite is a g0 individual (parents == []): a single-node
+        # III|mid's elite is a g0 individual (parents == []): a single-node
         # lineage, so there is nothing to compare -- must render the "no
         # turning point" fact, not crash or silently show a stale detail.
-        rendered = pages.lineage_page(self.repository, "exp1", "V|high")
+        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
         self.assertIn('class="lineage-band"', rendered)
         self.assertEqual(rendered.count("lineage-node"), 1)
         self.assertIn("転機が見つかりませんでした", rendered)
@@ -126,16 +133,16 @@ class LineagePageTests(unittest.TestCase):
         self.addCleanup(shutil.copyfile, backup, precedent_path)
         precedent_path.unlink()
 
-        cache_path = experiment / "lineage" / "III-mid-cache.json"
+        cache_path = experiment / "lineage" / "III-high-cache.json"
         cache_path.unlink(missing_ok=True)
         self.addCleanup(cache_path.unlink, missing_ok=True)
-        rerun_dir = experiment / "lineage" / "g0-archive-I-low"
+        rerun_dir = experiment / "lineage" / "g0-ind-6"
         if rerun_dir.is_dir():
             shutil.rmtree(rerun_dir)
 
-        rendered = pages.lineage_page(self.repository, "exp1", "III|mid")
+        rendered = pages.lineage_page(self.repository, "exp1", "III|high")
         self.assertIn("再現できませんでした", rendered)
-        self.assertIn("g0/archive/I-low", rendered)
+        self.assertIn("g0/ind-6", rendered)
 
     def test_data_lineage_view_rejects_unknown_cell(self) -> None:
         experiment = self.repository.experiment("exp1")

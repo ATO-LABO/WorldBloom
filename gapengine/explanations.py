@@ -190,7 +190,9 @@ def explain_rows(rows, *, layers_path="", sha256="", experiment="", cell=""):
                                     zone=context.get("zone", state.get("zone")), present=context.get("present"), alternatives=alternatives),
                     "grounds": field(CONFIRMED if known else UNKNOWN, note, knowledge=known,
                                      sources=list({v["line"]: v for v in known_sources}.values()), complete=False),
-                    "system": field(CONFIRMED if row.get("policy") else UNKNOWN, "抽選・重みの記録（本人の知識ではない）" if row.get("policy") else "選択要因は未記録",
+                    "system": field(CONFIRMED, f"予定イベント「{row['forced'].get('label') or row['forced'].get('event_id')}」により固定された行動（抽選なし）",
+                                    forced=row["forced"], probability=None) if row.get("forced") else
+                              field(CONFIRMED if row.get("policy") else UNKNOWN, "抽選・重みの記録（本人の知識ではない）" if row.get("policy") else "選択要因は未記録",
                                     policy=row.get("policy"), classification=row.get("classification"), probability=row.get("choice_prob")),
                     "outcome": {"result": row.get("result"), "details": details, "source": source(line)},
                     "cost": _cost(row, before, source(line), sources),

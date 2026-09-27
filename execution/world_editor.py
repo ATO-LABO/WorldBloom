@@ -5,6 +5,7 @@ import uuid
 
 import yaml
 
+from engine.actions import FORCE_ARG_KINDS
 from execution.library import LibraryStore, _validate_rel
 from execution.provenance import ConfigError, canonical, contained, directory_lock, identifier, sha256
 
@@ -55,7 +56,10 @@ def _model(ident, files, revision):
     return {"id": ident, "name": world.get("name") or ident, "world": world,
             "people": [value for rel, value in files.items() if rel != "world.yaml"],
             "overview": world.get("overview") or "", "intro": world.get("initial_story") or "",
-            "revision": revision}
+            "revision": revision,
+            # WB-TIMEEVENT-001: verb -> argument kinds, so the time screen's
+            # force_action form knows which fields to draw per verb.
+            "force_action_specs": {verb: list(kinds) for verb, kinds in FORCE_ARG_KINDS.items()}}
 
 
 def snapshot(store, ident):
@@ -73,11 +77,18 @@ def save(store, ident, body):
         "place": {"note"}, "add-person": {"name", "description", "entry"},
         "add-place": {"name", "description"}, "state": {"entry", "knowledge"},
         "route": {"item", "cost"},
+        "relation": {"label"},
         "roles": {"protagonist", "antagonist", "target_ending"},
         "file": {"content"},
         "genre": {"template_id"},
+        "add-event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
+        "event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
+        "remove-event": set(),
     }
-    if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict) or set(values) != allowed[operation]:
+    if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict):
+        _bad("values", "編集項目を確認してください")
+    optional = {"affiliation"} if operation in ("person", "add-person") else set()
+    if not allowed[operation] <= set(values) or not set(values) <= allowed[operation] | optional:
         _bad("values", "編集項目を確認してください")
     with directory_lock(_base(store, ident)):
         files, revision = _read(store, ident)
@@ -114,6 +125,26 @@ def save(store, ident, body):
             if any(e not in known for e in endings):
                 _bad("target_ending", "登録された結末を選んでください")
             updated["target_ending"] = endings
+        elif operation == "relation":
+            if not isinstance(target, dict) or set(target) != {"source", "target"}:
+                _bad("target", "関係の人物と相手を指定してください")
+            ids = [p.get("id") for _, p in people]
+            for key in ("source", "target"):
+                if not isinstance(target[key], str) or ids.count(target[key]) != 1:
+                    _bad(key, "登録された人物を一意に指定してください")
+            if target["source"] == target["target"]:
+                _bad("target", "相手には別の人物を指定してください")
+            rel, subject = next((r, p) for r, p in people if p.get("id") == target["source"])
+            relations = subject.get("relations")
+            if not isinstance(relations, dict) or not isinstance(relations.get(target["target"]), dict):
+                _bad("target", "登録された方向の関係を選んでください")
+            label = _text(values["label"], "label", maximum=120)
+            updated = deepcopy(subject)
+            relation = updated["relations"][target["target"]]
+            if label:
+                relation["label"] = label
+            else:
+                relation.pop("label", None)
         elif operation in ("person", "state"):
             matches = [(r, p) for r, p in people if isinstance(target, str) and p.get("id") == target]
             if len(matches) != 1:
@@ -121,6 +152,12 @@ def save(store, ident, body):
             rel, person = matches[0]
             updated = deepcopy(person)
             if operation == "person":
+                if "affiliation" in values:
+                    affiliation = _text(values["affiliation"], "affiliation", maximum=120)
+                    if affiliation:
+                        updated["affiliation"] = affiliation
+                    else:
+                        updated.pop("affiliation", None)
                 updated["description"] = _text(values["description"], "description")
                 updated["personality"] = _text(values["personality"], "personality")
                 goal = dict(updated.get("goal") or {})
@@ -129,7 +166,12 @@ def save(store, ident, body):
                 # Keep historical values available; new destinations must exist.
                 if destination and destination not in names and destination != goal.get("deliver_to"):
                     _bad("deliver_to", "届け先は登録済みの場所を選んでください")
-                goal["deliver_to"] = destination
+                if destination:
+                    goal["deliver_to"] = destination
+                else:
+                    # Subject/World treat missing as no destination; an empty
+                    # string is an unknown zone and breaks a later execution.
+                    goal.pop("deliver_to", None)
                 updated["goal"] = goal
             else:
                 entry = _text(values["entry"], "entry", maximum=120)
@@ -178,6 +220,10 @@ def save(store, ident, body):
                 updated = {"id": name, "description": description,
                            "traits": {key: 0.5 for key in ("social", "stubbornness", "curiosity", "diligence", "temper")},
                            "base": 50, "range": {"zones": list(names), **({"entry": entry} if entry else {})}, "goal": {}}
+                if "affiliation" in values:
+                    affiliation = _text(values["affiliation"], "affiliation", maximum=120)
+                    if affiliation:
+                        updated["affiliation"] = affiliation
         elif operation == "route":
             if not isinstance(target, dict) or set(target) != {"from", "index"} or not isinstance(target["from"], str) or type(target["index"]) is not int:
                 _bad("target", "経路を指定してください")
@@ -217,6 +263,126 @@ def save(store, ident, body):
             updated["gapengine"] = {**base_gapengine,
                                     "action_graph": f"templates/{template_id}/action_graph.yaml",
                                     "effects": f"templates/{template_id}/effects.yaml"}
+        elif operation in ("add-event", "event", "remove-event"):
+            events = list(world.get("scheduled_events") or [])
+            if any(not isinstance(e, dict) for e in events):
+                _bad("target", "予定された出来事の形式を確認してください")
+            if operation == "remove-event":
+                if type(target) is not int or not 0 <= target < len(events):
+                    _bad("target", "予定された出来事がありません")
+                del events[target]
+                updated["scheduled_events"] = events
+            else:
+                if operation == "add-event":
+                    if target is not None:
+                        _bad("target", "追加には対象を指定しません")
+                    base_event = {}
+                else:
+                    if type(target) is not int or not 0 <= target < len(events):
+                        _bad("target", "予定された出来事がありません")
+                    base_event = deepcopy(events[target])
+
+                event_id = _text(values["id"], "id", required=True, maximum=120)
+                other_ids = [str(e.get("id")) for i, e in enumerate(events) if operation != "event" or i != target]
+                if event_id in other_ids:
+                    _bad("id", "この予定イベントIDはすでに使われています")
+                label = _text(values["label"], "label", maximum=120)
+
+                day = values["day"]
+                days_total = int((world.get("time") or {}).get("days", 1))
+                if type(day) is not int or not 1 <= day <= days_total:
+                    _bad("day", f"日数は1〜{days_total}の整数で指定してください")
+
+                slot = values["slot"]
+                slots = list((world.get("time") or {}).get("slots") or [])
+                if not isinstance(slot, str) or (slot and slot not in slots):
+                    _bad("slot", "時間帯を確認してください")
+
+                targets = _list(values["targets"], "targets")
+                if not targets:
+                    _bad("targets", "対象を1人以上指定してください")
+                person_ids = [p.get("id") for _, p in people]
+                if any(t not in person_ids for t in targets):
+                    _bad("targets", "登録された人物を選んでください")
+
+                verb = values["verb"]
+                if not isinstance(verb, str) or (verb and verb not in FORCE_ARG_KINDS):
+                    _bad("verb", "行動を確認してください")
+                if verb and not slot:
+                    _bad("slot", "行動の固定には時間帯が必要です")
+                if verb:
+                    target_people = [p for _, p in people if p.get("id") in targets]
+                    for target_person in target_people:
+                        if verb not in (target_person.get("verbs") or []):
+                            _bad("verb", f"{target_person.get('id')} は {verb} を取れません")
+
+                raw_args = values["args"]
+                kinds = FORCE_ARG_KINDS.get(verb, ()) if verb else ()
+                if not isinstance(raw_args, list) or len(raw_args) > len(kinds):
+                    _bad("args", "引数の数を確認してください")
+                args = [_text(v, "args", maximum=120) for v in raw_args]
+                fact_ids = [f.get("id") for f in (world.get("facts") or []) if isinstance(f, dict)]
+                if verb == "share_knowledge":
+                    fact_ids = [*fact_ids, "雑談"]
+                seen_empty = False
+                for index, value in enumerate(args):
+                    if value == "":
+                        seen_empty = True
+                        continue
+                    if seen_empty:
+                        _bad("args", "引数は前から順に指定してください")
+                    kind = kinds[index]
+                    if kind == "zone" and value not in names:
+                        _bad("args", "場所を確認してください")
+                    elif kind == "subject" and value not in person_ids:
+                        _bad("args", "人物を確認してください")
+                    elif kind == "fact" and value not in fact_ids:
+                        _bad("args", "知識を確認してください")
+                    elif kind.startswith("enum:") and value not in kind[len("enum:"):].split("|"):
+                        _bad("args", "値を確認してください")
+                while args and args[-1] == "":
+                    args.pop()
+
+                item_name = _text(values["item_name"], "item_name", maximum=120)
+                item_count = values["item_count"]
+                stress_delta = values["stress_delta"]
+                if type(stress_delta) not in (int, float) or not math.isfinite(stress_delta):
+                    _bad("stress_delta", "ストレスの増減は数値で指定してください")
+                if abs(stress_delta) > 1000:
+                    _bad("stress_delta", "ストレスの増減は-1000〜1000で指定してください")
+
+                base_event["id"] = event_id
+                if label:
+                    base_event["label"] = label
+                else:
+                    base_event.pop("label", None)
+                base_event["day"] = day
+                if slot:
+                    base_event["slot"] = slot
+                else:
+                    base_event.pop("slot", None)
+                base_event["targets"] = targets
+                if item_name:
+                    if type(item_count) is not int or not 1 <= item_count <= 999:
+                        _bad("item_count", "個数は1〜999の整数で指定してください")
+                    base_event["grants_item"] = {"name": item_name, "count": item_count}
+                else:
+                    base_event.pop("grants_item", None)
+                if stress_delta:
+                    base_event["stress_delta"] = stress_delta
+                else:
+                    base_event.pop("stress_delta", None)
+                if verb:
+                    base_event["force_action"] = {"verb": verb, "args": args}
+                    base_event.pop("move_to", None)
+                else:
+                    base_event.pop("force_action", None)
+
+                if operation == "add-event":
+                    events.append(base_event)
+                else:
+                    events[target] = base_event
+                updated["scheduled_events"] = events
         _validate_rel("world", rel)
         # One atomic file replacement per operation; the rest of the world is untouched.
         store._write_file("world", ident, rel, yaml.safe_dump(updated, allow_unicode=True, sort_keys=False))
