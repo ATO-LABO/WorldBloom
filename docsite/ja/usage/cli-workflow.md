@@ -5,7 +5,7 @@ sources:
   - "scripts/narrate.py"
   - "scripts/random_baseline.py"
   - "templates/"
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 
 # CLI での作業手順
@@ -21,6 +21,7 @@ python scripts/evolve.py --project projects/momotaro --template templates/momota
 
 - `--project` / `--template` は同梱の `basic` / `momotaro` / `momotaro_plus` / `momotaro_plus2` / `detective` / `romance` が使えます（`templates/` 配下の一覧。`basic` は共通の基本ルールで、それ単体をジャンルとして指定することはあまりありません）
 - 出力先はリポジトリ外を推奨します（`.gitignore` は `runs/` を無視しますが、リポジトリ内に大量の実験出力を置くべきではありません）
+- `--personality-growth` を付けると[性格の成長](../concepts/personality-growth.md)が有効になります（既定オフ）。有効かつジャンルの `qd.yaml` に `arc_bins` があれば、下記の `selection.json` のセルキーが3項（例 `I|low|small`）になることがあります
 - 所要時間の目安: 世代数×個体数×seed数にほぼ比例します。既定の規模（20世代×100個体×3seed）は20コアで約1時間が目安です（並列数は[設定](settings.md)の「計算」で指定します）
 - 完了すると `<出力先>/exp1/archive.json` に格子（アーカイブ）が書き出されます。`cells=<件数>` は結末に到達して格子に残った代表個体の数です
 

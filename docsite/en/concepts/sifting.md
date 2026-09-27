@@ -1,5 +1,5 @@
 ---
-ja_rev: "844edc9fcb05"
+ja_rev: "c5140575ada7"
 ---
 # Sifting
 
@@ -25,6 +25,10 @@ Each candidate carries one of four statuses.
 | ○ 未分類 (Unsorted, default) | Not judged yet |
 
 Only adopted candidates go on to [generate a synopsis/text](../usage/generate-text.md). A held candidate can be revisited later and switched to adopted. Selection status and notes are saved as a "selection version" — if another tab or run already saved a newer version, a later save is rejected (to prevent overwrites, you need to reload the latest state before saving).
+
+## Filtering the grid (personality change) { #arc-filter }
+
+Only when that experiment has [personality growth](personality-growth.md) enabled *and* [the QD map's third axis](qd-map.md#arc-axis) is active, an "all / none / small / large" toggle appears above the grid, letting you filter representative candidates by the magnitude of personality change. Experiments without the axis never show this toggle.
 
 ## Comparison, lineage, and turning points { #compare-lineage-turning }
 

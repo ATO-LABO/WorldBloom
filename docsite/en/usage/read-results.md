@@ -1,5 +1,5 @@
 ---
-ja_rev: "cd6f1570ad8b"
+ja_rev: "0293b916071f"
 ---
 # Read Results
 
@@ -35,6 +35,10 @@ The candidate list screen shows these columns for each candidate:
 | 原記録 (Raw log) | あり (present) / 剪定済み (pruned) / 不在 (absent) / 不一致 (mismatched). "あり" (present) allows text generation and viewing the raw log |
 | 採用可 (Adoptable) | Whether it meets the requirements for text generation (reached the ending AND has a raw log) |
 | 稿 (Drafts) | Number of texts already generated from this candidate |
+
+## Personality change
+
+For an experiment with [personality growth](../concepts/personality-growth.md) enabled, a "filter by personality change" toggle (all / none / small / large) appears above the QD map whenever that axis is active for the run. Any run with at least one growth event gets a "Personality change" card in its detail, showing side-by-side nine-stat bars for personality at start vs. now, plus a list of every shift by turn.
 
 ## Choice, rationale, cost, and turning point
 

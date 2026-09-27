@@ -1,5 +1,5 @@
 ---
-ja_rev: "4d2b001d7996"
+ja_rev: "428a94283bc2"
 ---
 # CLI Workflow
 
@@ -14,6 +14,7 @@ python scripts/evolve.py --project projects/momotaro --template templates/momota
 
 - `--project` / `--template` can be any of the bundled `basic` / `momotaro` / `momotaro_plus` / `momotaro_plus2` / `detective` / `romance` (the full list is under `templates/`; `basic` holds the shared base rules and is rarely specified on its own as a genre)
 - An output directory outside the repository is recommended (`.gitignore` ignores `runs/`, but you shouldn't keep a large volume of experiment output inside the repository anyway)
+- Adding `--personality-growth` enables [personality growth](../concepts/personality-growth.md) (off by default). When it's on and the genre's `qd.yaml` declares `arc_bins`, the `selection.json` cell keys below can become three-part (e.g. `I|low|small`)
 - Rough time cost: scales close to linearly with generations × population × seeds. The default size (20 generations × 100 population × 3 seeds) takes about an hour on 20 cores as a guideline (the process count is set under "Compute" in [Settings](settings.md))
 - On completion, the grid (archive) is written to `<output dir>/exp1/archive.json`. `cells=<count>` is the number of representative individuals that reached the ending and stayed in the grid
 

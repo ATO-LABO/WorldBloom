@@ -8,7 +8,8 @@ sources:
   - "execution/configs.py"
   - "execution/jobs.py"
   - "execution/output_store.py"
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+  - "gapengine/policy.py"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 # 実行結果のファイル
 
@@ -38,7 +39,7 @@ QD（MAP-Elites）アーカイブ本体。
 {"cells": {"I|low": {...}}, "volatility_thresholds": {"low_max": 0.216, "mid_max": 0.226}}
 ```
 
-`cells` のキーは `"<主導カテゴリ>|<起伏区分>"`（例 `I|low`）。空の実験では `{}`。各セルの値は到達したランの中でその区画に残った最良1本のエリート（遺伝子・quality・descriptor 等。`gapengine/qd.py` の `Elite`）です。`volatility_thresholds` は世代0の母集団の分散から決めた `low_max`/`mid_max` の境界値で、実験全体を通して固定されます（[QD 格子](../concepts/qd-map.md)を参照）。
+`cells` のキーは `"<主導カテゴリ>|<起伏区分>"`（例 `I|low`）。[性格の成長](../concepts/personality-growth.md)が有効で、かつジャンルの `qd.yaml` が `arc_bins` を宣言している実験だけは、3要素 `"<主導カテゴリ>|<起伏区分>|<性格変化区分>"`（例 `I|low|small`）になります。空の実験では `{}`。各セルの値は到達したランの中でその区画に残った最良1本のエリート（遺伝子・quality・descriptor 等。`gapengine/qd.py` の `Elite`）です。`volatility_thresholds` は世代0の母集団の分散から決めた `low_max`/`mid_max` の境界値で、実験全体を通して固定されます（性格の変化の閾値は `arc_thresholds`）（[QD 格子](../concepts/qd-map.md)を参照）。
 
 ## `summary.json`
 
@@ -77,6 +78,8 @@ QD（MAP-Elites）アーカイブ本体。
 ```
 
 各行の `delta` はその行動前後の7層の差分です。決定論の検証は「同じ `(world, genome, seed, precedent)` なら `layers.jsonl` がバイト一致すること」で行います（[決定論](../concepts/determinism.md)）。分析用途では JSONL → Parquet（DuckDB）に変換します。
+
+[性格の成長](../concepts/personality-growth.md)が有効なランでは、outcome スコープのルールが一致するたびに `verb: "growth"` の派生イベント行が追加されます（`details.shift`・`details.acquired_after` などを持つ）。無効なラン（既定）ではこの行自体が一切現れず、既存のログ形式とバイト単位で一致します。
 
 ## `synopses.json` / `selection.json` / `stories/`
 
