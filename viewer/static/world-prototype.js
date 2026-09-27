@@ -1,6 +1,85 @@
+/* Pure, directed relationship model shared by the graph and matrix. */
+const WorldRelations = (() => {
+  const validObject = v => v && typeof v === 'object' && !Array.isArray(v);
+  const compare = (a,b) => a < b ? -1 : a > b ? 1 : 0;
+  const affiliation = p => (typeof p.affiliation === 'string' && p.affiliation.trim()) || p.range?.entry || 'その他';
+  function buildRelationGraph(people) {
+    const counts = new Map();
+    people.forEach(p => { if(typeof p.id === 'string' && p.id) counts.set(p.id,(counts.get(p.id)||0)+1); });
+    const nodes = people.filter(p => counts.get(p.id)===1).map(p => ({id:p.id,group:affiliation(p),person:p}));
+    const ids = new Set(nodes.map(n=>n.id)), edges=[], issues=[];
+    for(const [id,count] of counts) if(count>1) issues.push(`${id}: 人物名が重複しています`);
+    for(const n of nodes) {
+      if(n.person.relations != null && !validObject(n.person.relations)) { issues.push(`${n.id}: 関係の形式を確認してください`); continue; }
+      for(const [target,relation] of Object.entries(n.person.relations||{})) {
+        if(!validObject(relation)) { issues.push(`${n.id} → ${target}: 関係の形式を確認してください`); continue; }
+        if(!ids.has(target)) { issues.push(`${n.id} → ${target}: 相手が未登録または一意ではありません`); continue; }
+        if(n.id===target) continue;
+        edges.push({...relation,source:n.id,target});
+      }
+    }
+    edges.sort((a,b)=>compare(a.source,b.source)||compare(a.target,b.target));
+    return {nodes,edges,issues};
+  }
+  function buildVisualEdges(graph) {
+    const pairs=new Map();
+    for(const edge of graph.edges) {
+      const [a,b]=[edge.source,edge.target].sort(compare), key=JSON.stringify([a,b]);
+      if(!pairs.has(key)) pairs.set(key,{a,b,directions:[]});
+      pairs.get(key).directions.push(edge);
+    }
+    return [...pairs.values()];
+  }
+  function filterRelationGraph(graph,{mode='all',focusId='',scope='all',group='',kind='all'}={}) {
+    const eligible=graph.edges.filter(e=>kind==='all'||(kind==='positive'?Number(e.affinity)>0:kind==='negative'?Number(e.affinity)<0:Number(e.affinity)===0));
+    const reachable=new Set([focusId]);
+    if(mode==='focus' && scope!=='all') {
+      const depth=scope==='direct'?1:2;
+      for(let d=0;d<depth;d++) {
+        const prev=new Set(reachable);
+        eligible.forEach(e=>{if(prev.has(e.source))reachable.add(e.target);if(prev.has(e.target))reachable.add(e.source);});
+      }
+    }
+    const nodes=graph.nodes.filter(n=>(mode!=='focus'||scope==='all'||reachable.has(n.id))&&(!group||n.group===group||n.id===focusId));
+    const ids=new Set(nodes.map(n=>n.id));
+    return {nodes,edges:eligible.filter(e=>ids.has(e.source)&&ids.has(e.target)),issues:graph.issues};
+  }
+  function layoutRelationGraph(graph,anchorId="") {
+    const anchorGroup=graph.nodes.find(n=>n.id===anchorId)?.group;
+    const groups=[...new Set(graph.nodes.map(n=>n.group))].sort((a,b)=>Number(b===anchorGroup)-Number(a===anchorGroup)||compare(a,b));
+    const columns=Math.min(3,Math.max(1,groups.length)), positioned=[], boxes=[];
+    let y=32, width=columns*350+24;
+    for(let row=0;row<groups.length;row+=columns) {
+      const batch=groups.slice(row,row+columns).map(group=>({group,nodes:graph.nodes.filter(n=>n.group===group).sort((a,b)=>compare(a.id,b.id))}));
+      const heights=batch.map(g=>Math.max(330,Math.ceil(g.nodes.length/3)*112+94)), height=Math.max(...heights);
+      batch.forEach((g,i)=>{
+        const anchor=g.nodes.findIndex(n=>n.id===anchorId);
+        if(anchor>=0){const cols=Math.min(3,g.nodes.length),rows=Math.ceil(g.nodes.length/cols),center=Math.min(g.nodes.length-1,Math.floor((rows-1)/2)*cols+Math.floor(cols/2));[g.nodes[anchor],g.nodes[center]]=[g.nodes[center],g.nodes[anchor]];}
+        const x=24+i*350, h=heights[i];
+        boxes.push({name:g.group,x,y,width:326,height:h,index:groups.indexOf(g.group)});
+        g.nodes.forEach((n,j)=>{
+          const cols=Math.min(3,g.nodes.length), rows=Math.ceil(g.nodes.length/cols);
+          const nodeRow=Math.floor(j/cols), nodeCol=j%cols, lastCount=Math.min(cols,g.nodes.length-nodeRow*cols);
+          let nx=x+163+(nodeCol-(lastCount-1)/2)*101,ny=y+94+(nodeRow+(rows===1?0.5:0))*112;
+          // Small groups form a triangle/ring rather than a single ruler row.
+          if(g.nodes.length===1){nx=x+163;ny=y+190;}
+          else if(g.nodes.length===2){nx=x+88+j*150;ny=y+175;}
+          else if(g.nodes.length===3){const points=[[86,123],[240,123],[163,259]];nx=x+points[j][0];ny=y+points[j][1];}
+          positioned.push({...n,x:nx,y:ny,groupIndex:groups.indexOf(g.group)});
+        });
+      });
+      y+=height+24;
+    }
+    return {nodes:positioned,groups:boxes,width,height:Math.max(390,y)};
+  }
+  return {affiliation,buildRelationGraph,buildVisualEdges,filterRelationGraph,layoutRelationGraph};
+})();
+if(typeof module !== 'undefined' && module.exports) module.exports=WorldRelations;
+
 /* Saved world settings. No simulation or generation is started here. */
 (() => {
   'use strict';
+  if(typeof document === 'undefined') return;
   const root = document.querySelector('[data-world-prototype]');
   if (!root) return;
   const model = JSON.parse(document.getElementById('wp-data').textContent);
@@ -13,6 +92,8 @@
   people.sort((a,b) => Number(b.id === w.protagonist) - Number(a.id === w.protagonist));
   let screen = 'overview', person = 0, place = Math.max(0,zones.findIndex(z=>z.name==='海')), eventDay = null;
   let peopleView = 'list', placeView = 'map', storyView = 'intro', query = '';
+  let graphMode='all', relationScope='all', relationGroup='', relationKind='all', relationInspector=true, relationExpanded=false;
+  let relationZoom=1, relationPan={x:0,y:0}, relationDrag=null;
   let applyEdit = null, opener = null, changed = false, busy = false, blocked = false;
   const scrolls = {};
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -71,24 +152,61 @@
   function personDetail() {
     const p = people[person];
     if (!p) return '<p>人物を追加すると、ここに詳細が表示されます。</p>';
-    const relations = Object.entries(p.relations||{}).map(([name,r])=>`<span>${esc(name)} <small class="wp-muted">${r.affinity>0?'好意がある':r.affinity<0?'反感がある':'中立・未設定'}</small></span>`).join('') || '関係は未設定です。';
+    const relations = Object.entries(p.relations||{}).map(([name,r])=>`<span>${esc(name)} <small class="wp-muted">${r?.label?esc(r.label):r?.affinity>0?'好意がある':r?.affinity<0?'反感がある':'中立・未設定'}</small></span>`).join('') || '関係は未設定です。';
     return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目的',esc(goal(p)))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl><details open><summary>性格・能力の数値</summary>${statBars(p)}</details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
   }
-  function personButton(p,i){return `<button class="wp-person-button" data-person="${i}" aria-pressed="${i===person}" ${!p.id.includes(query)?'hidden':''}>${esc(p.id)}<small>${esc(role(p))}</small></button>`;}
+  function personButton(p,i){
+    const anchor=WorldRelations.affiliation(people.find(q=>q.id===w.protagonist)||{});
+    const groups=[...new Set(people.map(WorldRelations.affiliation))].sort((a,b)=>Number(b===anchor)-Number(a===anchor)||(a<b?-1:a>b?1:0));
+    return `<button class="wp-person-button wp-rel-color-${groups.indexOf(WorldRelations.affiliation(p))%4}" data-person="${i}" aria-pressed="${i===person}" ${!p.id.includes(query)?'hidden':''}><span class="wp-person-avatar" aria-hidden="true"></span><span>${esc(p.id)}<small>${esc(role(p))}</small></span></button>`;
+  }
   function peopleScreen() {
-    const top = title('登場人物','',`<span>${people.length}人</span>${model.editable?'<button class="wp-add" data-edit="add-person">＋ 人物を追加</button>':''}`);
-    return top + `<div class="wp-people"><aside class="wp-people-list"><input class="wp-search" type="search" aria-label="人物を探す" placeholder="人物を探す" value="${esc(query)}">${tabs('people',peopleView,[['list','一覧'],['relations','相関図']])}<div class="wp-person-options">${people.map(personButton).join('')}</div><p class="wp-muted" id="wp-no-results" ${people.some(p=>p.id.includes(query))?'hidden':''}>一致する人物がいません。</p></aside><article class="wp-person-detail">${peopleView==='relations'?relationsView():personDetail()}</article></div>`;
+    const top=title('登場人物','',`<span>${people.length}人</span>${model.editable?'<button class="wp-add" data-edit="add-person">＋ 人物を追加</button>':''}`);
+    return top+`<div class="wp-people wp-rel-people"><aside class="wp-people-list"><input class="wp-search" type="search" aria-label="人物を探す" placeholder="人物を探す" value="${esc(query)}"><div class="wp-person-options">${people.map(personButton).join('')}</div><p class="wp-muted" id="wp-no-results" ${people.some(p=>p.id.includes(query))?'hidden':''}>一致する人物がいません。</p></aside><article class="wp-person-detail">${tabs('people',peopleView,[['list','一覧'],['graph','相関図'],['matrix','関係表']])}${peopleBody()}</article></div>`;
   }
-  function relationsView(){
-    const p=people[person]; if(!p)return '<p>人物がいません。</p>';
-    const others=Object.entries(p.relations||{});
-    const points=others.map((_,i)=>[50+36*Math.cos(i/others.length*2*Math.PI),50+35*Math.sin(i/others.length*2*Math.PI)]);
-    const graph=`<div class="wp-map wp-relations"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${points.map(pt=>`<line x1="50" y1="50" x2="${pt[0]}" y2="${pt[1]}"/>`).join('')}</svg><span class="wp-graph-center">${esc(p.id)}</span>${others.map(([name],i)=>`<button style="left:${points[i][0]}%;top:${points[i][1]}%" data-person="${people.findIndex(p=>p.id===name)}" ${people.some(p=>p.id===name)?'':'disabled'}>${esc(name)}</button>`).join('')}</div>`;
-    return `<h2>${esc(p.id)}から見た関係</h2><p class="wp-muted">中心の人物から相手への関係です。相手の気持ちとは異なる場合があります。</p>${graph}<details><summary>関係を数値で確認</summary>` + others.map(([name,r])=>{
-      const i=people.findIndex(p=>p.id===name);
-      return `<button class="wp-route" ${i>=0?`data-person="${i}"`:'disabled'}>${esc(p.id)} → ${esc(name)}<small>親しさ ${esc(r.affinity??'未設定')} ／ 認知 ${esc(r.awareness??'未設定')}</small></button>`;
-    }).join('')+'</details>';
+  function peopleBody(){return peopleView==='graph'?relationsView():peopleView==='matrix'?relationMatrixView():personDetail();}
+  const relationText = e => `${e.source} → ${e.target}：${e.label||'ラベルなし'} ／ 親しさ ${e.affinity??'未設定'} ／ 認知 ${e.awareness??'未設定'}`;
+  function relationRows(graph,focusId) {
+    const edges=graph.edges.filter(e=>!focusId||e.source===focusId||e.target===focusId);
+    return edges.map(e=>`<div class="wp-rel-row"><span>${esc(relationText(e))}</span>${model.editable?`<button data-relation-source="${esc(e.source)}" data-relation-target="${esc(e.target)}" aria-label="${esc(e.source)}から${esc(e.target)}への関係ラベルを編集">ラベルを編集</button>`:''}</div>`).join('')||'<p class="wp-muted">関係は未設定です。</p>';
   }
+  function relationMatrixView() {
+    const graph=WorldRelations.buildRelationGraph(people), lookup=new Map(graph.edges.map(e=>[JSON.stringify([e.source,e.target]),e]));
+    return `<section class="wp-rel-matrix-view"><h2>関係表</h2><p class="wp-muted">行の人物 → 列の人物の関係です。逆方向は反対のセルで確認できます。「—」は関係なしです。</p><div class="wp-rel-matrix" tabindex="0" aria-label="人物の方向別関係表"><table><thead><tr><th scope="col">人物 → 相手</th>${graph.nodes.map(n=>`<th scope="col">${esc(n.id)}</th>`).join('')}</tr></thead><tbody>${graph.nodes.map(a=>`<tr><th scope="row"><button data-person="${people.findIndex(p=>p.id===a.id)}">${esc(a.id)}</button></th>${graph.nodes.map(b=>{
+      const e=lookup.get(JSON.stringify([a.id,b.id]));
+      return `<td ${a.id===b.id?'class="wp-rel-self"':''}>${a.id===b.id?'本人':!e?'—':`<span>${esc(e.label||'ラベルなし')}</span><small>親しさ ${esc(e.affinity??'未設定')}<br>認知 ${esc(e.awareness??'未設定')}</small>${model.editable?`<button data-relation-source="${esc(a.id)}" data-relation-target="${esc(b.id)}" aria-label="${esc(a.id)}から${esc(b.id)}への関係ラベルを編集">編集</button>`:''}`}</td>`;
+    }).join('')}</tr>`).join('')}</tbody></table></div>${graph.issues.length?`<p class="wp-muted">${esc(graph.issues.join(' ／ '))}</p>`:''}</section>`;
+  }
+  function relationsView() {
+    const graph=WorldRelations.buildRelationGraph(people), focusId=people[person]?.id||'';
+    const filtered=WorldRelations.filterRelationGraph(graph,{mode:graphMode,focusId,scope:relationScope,group:relationGroup,kind:relationKind});
+    const layout=WorldRelations.layoutRelationGraph(filtered,w.protagonist), byId=new Map(layout.nodes.map(n=>[n.id,n]));
+    const pairs=WorldRelations.buildVisualEdges(filtered), groups=[...new Set(graph.nodes.map(n=>n.group))].sort();
+    const connected=new Set(graph.edges.filter(e=>e.source===focusId||e.target===focusId).flatMap(e=>[e.source,e.target]).filter(id=>id!==focusId));
+    const p=people[person], major=[...connected].map(id=>({id,edges:graph.edges.filter(e=>(e.source===focusId&&e.target===id)||(e.target===focusId&&e.source===id))})).sort((a,b)=>Math.max(...b.edges.map(e=>Math.abs(Number(e.affinity)||0)))-Math.max(...a.edges.map(e=>Math.abs(Number(e.affinity)||0))));
+    const select=(name,value,options,label)=>`<label>${label}<select data-rel-select="${name}" aria-label="${label}">${options.map(([v,l])=>`<option value="${esc(v)}" ${value===v?'selected':''}>${esc(l)}</option>`).join('')}</select></label>`;
+    const header=`<h2>相関図</h2><p class="wp-rel-description">登場人物同士の関係を視覚的に確認できます。グループ分けや、人物同士のつながりも表示されます。</p>`;
+    const toolbar=`<div class="wp-rel-toolbar">${select('focus',focusId,[['','人物を選択してフォーカス…'],...graph.nodes.map(n=>[n.id,n.id])],'フォーカス人物')}<div class="wp-rel-segments" aria-label="グラフ表示">${[['all','全体'],['focus','人物フォーカス']].map(([v,l])=>`<button data-rel-mode="${v}" aria-pressed="${graphMode===v}" ${!p&&v==='focus'?'disabled':''}>${l}</button>`).join('')}</div>${select('kind',relationKind,[['all','すべて'],['positive','好意'],['negative','反感'],['neutral','中立']],'表示関係')}${select('group',relationGroup,[['','すべて'],...groups.map(g=>[g,g])],'所属')}<div class="wp-rel-scope"><span>表示範囲</span><div class="wp-rel-segments">${[['direct','直接関係'],['two','2段階'],['all','すべて']].map(([v,l])=>`<button data-rel-scope="${v}" aria-pressed="${relationScope===v}" ${graphMode==='all'?'disabled':''}>${l}</button>`).join('')}</div></div></div>`;
+    const svg=`<svg class="wp-rel-canvas" viewBox="0 0 ${layout.width} ${layout.height}" role="group" aria-label="人物相関図。人物を選ぶと詳細を表示します"><g data-rel-viewport>${layout.groups.map(g=>`<g class="wp-rel-group wp-rel-color-${g.index%4}"><rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="72"/><text x="${g.x+g.width/2}" y="${g.y+35}">${esc(g.name)}</text></g>`).join('')}${pairs.map(e=>{
+      const a=byId.get(e.a),b=byId.get(e.b),active=e.a===focusId||e.b===focusId,negative=e.directions.some(d=>Number(d.affinity)<0);
+      const outward=e.directions.find(d=>d.source===focusId), inward=e.directions.find(d=>d.target===focusId);
+      const labelPeer=e.a===focusId?e.b:e.a;
+      const visibleLabel=active&&major.slice(0,6).some(m=>m.id===labelPeer)?(outward?.label||(inward?.label?'← '+inward.label:'')):'';
+      return `<g class="wp-rel-edge ${active?'is-active':''} ${negative?'is-negative':''}"><title>${esc(e.directions.map(relationText).join('\n'))}</title><line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>${visibleLabel?`<text x="${(a.x+b.x)/2}" y="${(a.y+b.y)/2-9}">${esc(visibleLabel)}</text>`:''}</g>`;
+    }).join('')}${layout.nodes.map(n=>`<g class="wp-rel-node wp-rel-color-${n.groupIndex%4} ${n.id===focusId?'is-selected':connected.has(n.id)?'is-connected':'is-unrelated'}" role="button" tabindex="0" data-person="${people.findIndex(q=>q.id===n.id)}" aria-pressed="${n.id===focusId}" aria-label="${esc(n.id)}、${esc(n.group)}" transform="translate(${n.x} ${n.y})"><title>${esc(n.id)}・${esc(n.group)}</title><circle r="43"/><text${n.id.length===5?' style="font-size:16px"':''}>${n.id.length>5?`<tspan x="0" dy="-10">${esc(n.id.slice(0,4))}</tspan><tspan x="0" dy="23">${esc(n.id.length>8?n.id.slice(4,7)+'…':n.id.slice(4))}</tspan>`:esc(n.id)}</text></g>`).join('')}</g></svg>`;
+    const inspector=p&&relationInspector?`<aside class="wp-rel-inspector"><button class="wp-rel-dismiss" data-rel-inspector="close" aria-label="人物詳細パネルを閉じる">×</button><div class="wp-rel-person-heading"><span class="wp-rel-avatar"></span><div><h3>${esc(p.id)}</h3><small>${esc(role(p)||'登場人物')}</small></div></div><dl>${row('所属',esc(WorldRelations.affiliation(p)))}${row('直接関係',`${connected.size}人`)}${row('概要',absent(p.description||p.identity?.true))}</dl><h3>主な関係</h3><ul>${major.slice(0,6).map(m=>`<li><button data-person="${people.findIndex(q=>q.id===m.id)}">${esc(m.id)}</button><span>${m.edges.map(e=>`<small>${e.source===focusId?'→':'←'} ${esc(e.label||'ラベルなし')}</small>`).join('')}</span></li>`).join('')||'<li>関係は未設定です。</li>'}</ul>${major.length>6?`<p class="wp-muted">ほか${major.length-6}人との関係は下の数値詳細で確認できます。</p>`:''}<button class="wp-rel-detail-link" data-view="people:list">詳細を見る →</button></aside>`:'';
+    return header+`<section class="wp-rel-workspace ${relationExpanded?'is-expanded':''}">${toolbar}<div class="wp-rel-body ${inspector?'has-inspector':''}"><div class="wp-rel-canvas-wrap">${svg}${!filtered.nodes.length?'<p class="wp-rel-empty">表示できる人物がいません。</p>':''}<div class="wp-rel-controls"><button data-rel-zoom="out" aria-label="縮小">−</button><button data-rel-zoom="in" aria-label="拡大">＋</button><button data-rel-zoom="fit">画面に合わせる</button><button data-rel-fullscreen aria-pressed="${relationExpanded}" aria-label="${relationExpanded?'相関図の全画面表示を終了':'相関図を全画面表示'}">⛶</button>${!inspector&&p?'<button data-rel-inspector="open">人物詳細</button>':''}</div></div>${inspector}</div></section><details class="wp-rel-numbers"><summary>関係を数値で確認</summary>${relationRows(graph,focusId)}</details>${graph.issues.length?`<details class="wp-rel-numbers"><summary>設定の確認（${graph.issues.length}件）</summary><p>${esc(graph.issues.join('\n'))}</p></details>`:''}`;
+  }
+  function updateRelationTransform() {
+    const viewport=root.querySelector('[data-rel-viewport]');
+    if(viewport)viewport.setAttribute('transform',`translate(${relationPan.x} ${relationPan.y}) scale(${relationZoom})`);
+  }
+  function renderPeoplePanel() {
+    const panel=root.querySelector('.wp-person-detail');
+    panel.innerHTML=tabs('people',peopleView,[['list','一覧'],['graph','相関図'],['matrix','関係表']])+peopleBody();
+    updateRelationTransform();
+  }
+
   const routeLabel = r => `${r.requires_item ? `${r.requires_item}が必要` : '持ち物の条件なし'}${r.cost != null ? ` ・ コスト ${r.cost}` : ''}`;
   function placeDetail(){
     const z=zones[place];if(!z)return '<p>場所を追加すると詳細を表示します。</p>';
@@ -211,6 +329,7 @@
     content.classList.toggle('is-people',screen==='people');
     content.dataset.screen=screen;
     content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen,routes:routesScreen}[screen])();
+    updateRelationTransform();
     root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===screen)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     const missing=[];
     if(!model.genre)missing.push('ジャンル');
@@ -244,12 +363,17 @@
       applyEdit=v=>({operation:'time',target:null,values:{days:Number(v.days),slots:split(v.slots)}});
     }else if(key==='person'){
       const p=people[person];if(!p)return;
-      name=`${p.id}を編集`;fields=[field('description','人物の紹介',p.description||p.identity?.true||''),field('target','目標（手に入れたいものなど）',p.goal?.target||'','text'),field('deliver_to','届け先',p.goal?.deliver_to||'','select',zoneOptions(p.goal?.deliver_to)),field('personality','人物像',p.personality||'')];
+      name=`${p.id}を編集`;fields=[field('affiliation','所属（空欄なら開始時の居場所から表示）',p.affiliation||'','text'),field('description','人物の紹介',p.description||p.identity?.true||''),field('target','目標（手に入れたいものなど）',p.goal?.target||'','text'),field('deliver_to','届け先',p.goal?.deliver_to||'','select',zoneOptions(p.goal?.deliver_to)),field('personality','人物像',p.personality||'')];
       applyEdit=values=>({operation:'person',target:p.id,values});
+    }else if(key==='relation'){
+      const source=trigger.dataset.relationSource, target=trigger.dataset.relationTarget;
+      const relation=people.find(p=>p.id===source)?.relations?.[target];if(!relation)return;
+      name=`${source} → ${target} の関係ラベル`;fields=[field('label','関係ラベル（仲間・家族・敵対など／空欄で解除）',relation.label||'','text')];
+      applyEdit=values=>({operation:'relation',target:{source,target},values});
     }else if(key==='place'){
       const z=zones[place];if(!z)return;name=`${z.name}を編集`;fields=[field('note','場所の説明',z.note||'')];applyEdit=values=>({operation:'place',target:z.name,values});
     }else if(key==='add-person'||key==='add-place'){
-      name=key==='add-person'?'人物を追加':'場所を追加';fields=[field('name','名前','','text'),field('description','紹介・説明',''),...(key==='add-person'?[field('entry','開始時の居場所（あとで初期状態からも設定できます）','','select',zoneOptions(''))]:[])];
+      name=key==='add-person'?'人物を追加':'場所を追加';fields=[field('name','名前','','text'),field('description','紹介・説明',''),...(key==='add-person'?[field('affiliation','所属（任意）','','text'),field('entry','開始時の居場所（あとで初期状態からも設定できます）','','select',zoneOptions(''))]:[])];
       applyEdit=values=>({operation:key,target:null,values});
     }else if(key==='state'){
       const p=people[person];if(!p)return;name=`${p.id}の開始時点の状態`;
@@ -323,7 +447,7 @@
       f.type==='textarea'?`<textarea id="wp-field-${f.key}" name="${f.key}">${esc(f.value)}</textarea>`:
       f.type==='select'?`<select id="wp-field-${f.key}" name="${f.key}" ${f.required?'required':''}>${f.options.map(([value,label])=>`<option value="${esc(value)}" ${value===f.value?'selected':''}>${esc(label)}</option>`).join('')}</select>`:
       f.type==='multiselect'?`<select id="wp-field-${f.key}" name="${f.key}" multiple ${f.required?'required':''}>${f.options.map(([value,label])=>`<option value="${esc(value)}" ${(f.value||[]).includes(value)?'selected':''}>${esc(label)}</option>`).join('')}</select>`:
-      `<input id="wp-field-${f.key}" name="${f.key}" type="${f.type}" value="${esc(f.value)}" ${f.type==='number'?numAttrs(f.key):''}>`
+      `<input id="wp-field-${f.key}" name="${f.key}" type="${f.type}" ${['affiliation','label'].includes(f.key)?'maxlength="120"':''} value="${esc(f.value)}" ${f.type==='number'?numAttrs(f.key):''}>`
     );
   }
   function withCurrentIfMissing(options,value){
@@ -337,22 +461,56 @@
     return {key,label:`引数${i+1}`,value,type:'text',options:null,required:false};
   }
   root.addEventListener('click',e=>{
-    const b=e.target.closest('button');if(!b)return;
+    const b=e.target.closest('button,[data-person]');if(!b)return;
     if(b.dataset.screen){scrolls[screen]=content.scrollTop;screen=b.dataset.screen;render(true);}
     else if(b.hasAttribute('data-event-day')){const day=Number(b.dataset.eventDay);eventDay=eventDay===day?null:day;render();}
     else if(b.hasAttribute('data-state-person')){person=Number(b.dataset.statePerson);openEditor('state',b);}
     else if(b.dataset.personLink){person=Number(b.dataset.personLink);screen='people';render(true);}
     else if(b.hasAttribute('data-person')){
       person=Number(b.dataset.person);root.querySelectorAll('[data-person]').forEach(el=>el.setAttribute('aria-pressed',String(Number(el.dataset.person)===person)));
-      const panel=root.querySelector('.wp-person-detail');panel.innerHTML=peopleView==='relations'?relationsView():personDetail();panel.scrollTop=0;
-    }else if(b.hasAttribute('data-place')){
+      relationInspector=true;renderPeoplePanel();
+    }
+    else if(b.hasAttribute('data-rel-mode')){graphMode=b.dataset.relMode;relationZoom=1;relationPan={x:0,y:0};renderPeoplePanel();}
+    else if(b.hasAttribute('data-rel-scope')){relationScope=b.dataset.relScope;relationZoom=1;relationPan={x:0,y:0};renderPeoplePanel();}
+    else if(b.hasAttribute('data-rel-inspector')){relationInspector=b.dataset.relInspector==='open';renderPeoplePanel();}
+    else if(b.hasAttribute('data-rel-zoom')){
+      const svg=root.querySelector('.wp-rel-canvas'), view=svg.viewBox.baseVal, old=relationZoom;
+      if(b.dataset.relZoom==='fit'){relationZoom=1;relationPan={x:0,y:0};}
+      else {relationZoom=Math.max(.5,Math.min(3,relationZoom*(b.dataset.relZoom==='in'?1.25:.8)));const ratio=relationZoom/old;relationPan={x:view.width/2-(view.width/2-relationPan.x)*ratio,y:view.height/2-(view.height/2-relationPan.y)*ratio};}
+      updateRelationTransform();
+    }
+    else if(b.hasAttribute('data-rel-fullscreen')){relationExpanded=!relationExpanded;renderPeoplePanel();root.querySelector('[data-rel-fullscreen]').focus();}
+    else if(b.hasAttribute('data-place')){
       place=Number(b.dataset.place);root.querySelectorAll('[data-place]').forEach(el=>el.setAttribute('aria-pressed',String(Number(el.dataset.place)===place)));root.querySelector('.wp-place-detail').innerHTML=placeDetail();
     }else if(b.dataset.view){const [group,value]=b.dataset.view.split(':');if(group==='people')peopleView=value;if(group==='places')placeView=value;if(group==='story')storyView=value;render();root.querySelector(`[data-view="${b.dataset.view}"]`).focus();}
     else if(b.hasAttribute('data-routes-tp')){routesTimepoint=Number(b.dataset.routesTp);render();}
+    else if(b.hasAttribute('data-relation-source'))openEditor('relation',b);
     else if(b.dataset.edit)openEditor(b.dataset.edit,b);
     else if(b.hasAttribute('data-route'))openEditor('route:'+b.dataset.route,b);
     else if(b.hasAttribute('data-close'))closeEditor();
   });
+  root.addEventListener('change',e=>{
+    const key=e.target.dataset.relSelect;if(!key)return;
+    if(key==='focus'){const index=people.findIndex(p=>p.id===e.target.value);if(index>=0){person=index;graphMode='focus';relationInspector=true;}else graphMode='all';}
+    if(key==='group')relationGroup=e.target.value;
+    if(key==='kind')relationKind=e.target.value;
+    relationZoom=1;relationPan={x:0,y:0};render();
+  });
+  root.addEventListener('keydown',e=>{if(e.key==='Escape'&&relationExpanded){e.preventDefault();relationExpanded=false;renderPeoplePanel();root.querySelector('[data-rel-fullscreen]')?.focus();return;}if(e.target.matches('.wp-rel-node')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
+  root.addEventListener('pointerdown',e=>{
+    const svg=e.target.closest('.wp-rel-canvas');if(!svg||e.target.closest('[data-person]')||e.button!==0||e.pointerType==='touch')return;
+    const matrix=svg.getScreenCTM();if(!matrix)return;
+    const point=new DOMPoint(e.clientX,e.clientY).matrixTransform(matrix.inverse());
+    relationDrag={id:e.pointerId,x:point.x,y:point.y,pan:{...relationPan}};svg.setPointerCapture(e.pointerId);
+  });
+  root.addEventListener('pointermove',e=>{
+    if(!relationDrag||relationDrag.id!==e.pointerId)return;
+    const svg=e.target.closest('.wp-rel-canvas');if(!svg)return;
+    const point=new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    relationPan={x:relationDrag.pan.x+point.x-relationDrag.x,y:relationDrag.pan.y+point.y-relationDrag.y};updateRelationTransform();
+  });
+  root.addEventListener('pointerup',()=>{relationDrag=null;});
+  root.addEventListener('pointercancel',()=>{relationDrag=null;});
   root.addEventListener('input',e=>{
     if(!e.target.matches('.wp-search'))return;query=e.target.value;
     root.querySelectorAll('.wp-person-options [data-person]').forEach(b=>b.hidden=!people[Number(b.dataset.person)].id.includes(query));
@@ -410,8 +568,9 @@
     zones=(w.zones||[]).map(z=>typeof z==='string'?{name:z,note:''}:{...z});
     person=Math.max(0,people.findIndex(p=>p.id===personId));place=Math.max(0,zones.findIndex(z=>z.name===placeName));
     if(request.operation==='add-person')query='';
+    if(relationGroup&&!people.some(p=>WorldRelations.affiliation(p)===relationGroup))relationGroup='';
     changed=false;scrolls[screen]=content.scrollTop;const editKey=opener?.dataset.edit;dialog.close();render();
-    const focus=root.querySelector(`[data-edit="${editKey}"]`)||content.querySelector('h1');
+    const focus=request.operation==='relation'?Array.from(root.querySelectorAll('[data-relation-source]')).find(el=>el.dataset.relationSource===request.target.source&&el.dataset.relationTarget===request.target.target)||content.querySelector('h1'):root.querySelector(`[data-edit="${editKey}"]`)||content.querySelector('h1');
     focus?.focus({preventScroll:true});
     document.title=model.name+' | WorldBloom';
     const worldPicker=document.querySelector('[data-wb="world-picker"]');

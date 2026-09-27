@@ -77,6 +77,7 @@ def save(store, ident, body):
         "place": {"note"}, "add-person": {"name", "description", "entry"},
         "add-place": {"name", "description"}, "state": {"entry", "knowledge"},
         "route": {"item", "cost"},
+        "relation": {"label"},
         "roles": {"protagonist", "antagonist", "target_ending"},
         "file": {"content"},
         "genre": {"template_id"},
@@ -84,7 +85,10 @@ def save(store, ident, body):
         "event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "remove-event": set(),
     }
-    if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict) or set(values) != allowed[operation]:
+    if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict):
+        _bad("values", "編集項目を確認してください")
+    optional = {"affiliation"} if operation in ("person", "add-person") else set()
+    if not allowed[operation] <= set(values) or not set(values) <= allowed[operation] | optional:
         _bad("values", "編集項目を確認してください")
     with directory_lock(_base(store, ident)):
         files, revision = _read(store, ident)
@@ -121,6 +125,26 @@ def save(store, ident, body):
             if any(e not in known for e in endings):
                 _bad("target_ending", "登録された結末を選んでください")
             updated["target_ending"] = endings
+        elif operation == "relation":
+            if not isinstance(target, dict) or set(target) != {"source", "target"}:
+                _bad("target", "関係の人物と相手を指定してください")
+            ids = [p.get("id") for _, p in people]
+            for key in ("source", "target"):
+                if not isinstance(target[key], str) or ids.count(target[key]) != 1:
+                    _bad(key, "登録された人物を一意に指定してください")
+            if target["source"] == target["target"]:
+                _bad("target", "相手には別の人物を指定してください")
+            rel, subject = next((r, p) for r, p in people if p.get("id") == target["source"])
+            relations = subject.get("relations")
+            if not isinstance(relations, dict) or not isinstance(relations.get(target["target"]), dict):
+                _bad("target", "登録された方向の関係を選んでください")
+            label = _text(values["label"], "label", maximum=120)
+            updated = deepcopy(subject)
+            relation = updated["relations"][target["target"]]
+            if label:
+                relation["label"] = label
+            else:
+                relation.pop("label", None)
         elif operation in ("person", "state"):
             matches = [(r, p) for r, p in people if isinstance(target, str) and p.get("id") == target]
             if len(matches) != 1:
@@ -128,6 +152,12 @@ def save(store, ident, body):
             rel, person = matches[0]
             updated = deepcopy(person)
             if operation == "person":
+                if "affiliation" in values:
+                    affiliation = _text(values["affiliation"], "affiliation", maximum=120)
+                    if affiliation:
+                        updated["affiliation"] = affiliation
+                    else:
+                        updated.pop("affiliation", None)
                 updated["description"] = _text(values["description"], "description")
                 updated["personality"] = _text(values["personality"], "personality")
                 goal = dict(updated.get("goal") or {})
@@ -136,7 +166,12 @@ def save(store, ident, body):
                 # Keep historical values available; new destinations must exist.
                 if destination and destination not in names and destination != goal.get("deliver_to"):
                     _bad("deliver_to", "届け先は登録済みの場所を選んでください")
-                goal["deliver_to"] = destination
+                if destination:
+                    goal["deliver_to"] = destination
+                else:
+                    # Subject/World treat missing as no destination; an empty
+                    # string is an unknown zone and breaks a later execution.
+                    goal.pop("deliver_to", None)
                 updated["goal"] = goal
             else:
                 entry = _text(values["entry"], "entry", maximum=120)
@@ -185,6 +220,10 @@ def save(store, ident, body):
                 updated = {"id": name, "description": description,
                            "traits": {key: 0.5 for key in ("social", "stubbornness", "curiosity", "diligence", "temper")},
                            "base": 50, "range": {"zones": list(names), **({"entry": entry} if entry else {})}, "goal": {}}
+                if "affiliation" in values:
+                    affiliation = _text(values["affiliation"], "affiliation", maximum=120)
+                    if affiliation:
+                        updated["affiliation"] = affiliation
         elif operation == "route":
             if not isinstance(target, dict) or set(target) != {"from", "index"} or not isinstance(target["from"], str) or type(target["index"]) is not int:
                 _bad("target", "経路を指定してください")
