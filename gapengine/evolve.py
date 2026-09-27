@@ -1561,9 +1561,22 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     # means Genome.random/crossover/mutate below draw no plasticity gene at
     # all, so a growth-unaware run stays byte-identical to before this
     # feature existed (plan §S1.2).
-    growth_enabled = bool(
-        (cfg.get("personality_growth") or {}).get("enabled", False)
-    )
+    #
+    # WB-GROWTH-001 S2 review fix (must #1): scripts/evolve.py's own CLI
+    # wiring builds this as a nested {"enabled": bool} (matching
+    # route/rationality's own cfg shape), but execution/evolution_worker.py
+    # spreads manifest["evolution"] (execution/configs.py's *flat*
+    # personality_growth: bool, saved by the execution-settings form)
+    # straight into cfg -- unlike route_rho/kappa, nothing renests it before
+    # it gets here. A bare `.get("enabled")` on that flat bool crashed with
+    # AttributeError the moment a real run turned the toggle on. Accept
+    # either shape here rather than only fixing the worker, since any other
+    # future caller could just as easily hand this a flat bool too.
+    personality_growth_cfg = cfg.get("personality_growth")
+    if isinstance(personality_growth_cfg, Mapping):
+        growth_enabled = bool(personality_growth_cfg.get("enabled", False))
+    else:
+        growth_enabled = bool(personality_growth_cfg)
     canon = load_canon(template_dir / "canon.yaml")
 
     # WB-WORLDGROW-001 stage 5b: seed_genomes (--seed-genomes) carries only

@@ -1467,30 +1467,38 @@ def cell_view(
         cell_key,
     )
 
-    # WB-GROWTH-001 S2: the protagonist's own "growth" rows (see
-    # gapengine.policy.Policy.observe) and the last acquired shift any of
-    # its decision rows carried -- absent entirely (both stay empty) for a
-    # run with no outcome rules or plasticity=0, so the "性格の変化" panel
-    # simply does not render (viewer/pages.py's _growth_panel).
+    # WB-GROWTH-001 S2 (review fix should #2): the protagonist's own
+    # "growth" rows (see gapengine.policy.Policy.observe) and the acquired
+    # shift the *last* of them carried in its own "acquired_after" --
+    # absent entirely (both stay empty) for a run with no outcome rules or
+    # plasticity=0, so the "性格の変化" panel simply does not render
+    # (viewer/pages.py's _growth_panel).
+    #
+    # Deliberately not a decision row's "policy.acquired": that field is
+    # only ever a snapshot of self.acquired at the moment reweight() ran
+    # for *that* decision, so a growth event caused by the outcome of the
+    # protagonist's own last decision (e.g. a fight that is both the last
+    # decision row and knocks them down, writing a "growth" row right
+    # after it) would never be reflected there, and if self.acquired ever
+    # nets a key back to exactly 0 (Policy.observe drops it -- no stray 0.0
+    # entries linger), an older nonzero value from an earlier decision
+    # could wrongly outlive a reset that a later growth row already
+    # applied.
     growth_events: list[dict[str, Any]] = []
     last_acquired: dict[str, float] = {}
     for row in rows:
-        if row.get("subject") != protagonist:
+        if row.get("subject") != protagonist or row.get("verb") != "growth":
             continue
-        if row.get("verb") == "growth":
-            details = _as_mapping(row.get("details"))
-            growth_events.append(
-                {
-                    "turn": int(_number(row.get("turn"))),
-                    "rule": details.get("rule"),
-                    "description": details.get("description"),
-                    "shift": dict(_as_mapping(details.get("shift"))),
-                }
-            )
-        elif row.get("kind") == "decision":
-            acquired = _as_mapping(row.get("policy")).get("acquired")
-            if isinstance(acquired, Mapping):
-                last_acquired = dict(acquired)
+        details = _as_mapping(row.get("details"))
+        growth_events.append(
+            {
+                "turn": int(_number(row.get("turn"))),
+                "rule": details.get("rule"),
+                "description": details.get("description"),
+                "shift": dict(_as_mapping(details.get("shift"))),
+            }
+        )
+        last_acquired = dict(_as_mapping(details.get("acquired_after")))
     genome_now = None
     if growth_events:
         from gapengine import lineage as lineage_engine

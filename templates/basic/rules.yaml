@@ -1,3 +1,8 @@
+# WB-GROWTH-001 review fix (nice #6): a "when" predicate that reads
+# stress_after must guard it against None first (e.g.
+# "stress_after is not None and stress_after > 0.5") -- it is None on
+# every marker/event row (downed/ally_gained/betrayal/... all log
+# delta={}), and comparing None with a number raises TypeError.
 - id: g_fight_lost
   scope: outcome
   when: "actor_is_self and verb == 'fight' and result == 'lost'"

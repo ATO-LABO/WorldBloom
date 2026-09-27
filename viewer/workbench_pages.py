@@ -780,7 +780,7 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
             values["evolution.personality_growth"],
             desc="物語の中で起きた出来事（勝敗・仲間・裏切りなど）に応じて、"
                  "主人公の性格がわずかに変わっていくようにする。"
-                 "「世界を育てる」（下のタブ）とは別物で、世界そのものは変えない。既定オフ。",
+                 "「世界を育てる」とは別物で、世界そのものは変えない。既定オフ。",
         )
         + "</div>"
         + _radio_field(

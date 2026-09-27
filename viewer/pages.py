@@ -1229,6 +1229,11 @@ def _genome_panel(
             f'<strong>{value:.2f}</strong></div>'
         )
     plasticity = data._number(genome.get("plasticity"))
+    # Review fix (should #4): reuse gapengine.lineage's own scalar label
+    # instead of a second, slightly different hand-written one -- the two
+    # must never drift apart.
+    from gapengine.lineage import _SCALAR_LABELS
+
     return (
         f'<section class="card genome"><h2>{_escape(title)}</h2>'
         f'<div class="gene-bars">{"".join(bars)}</div>'
@@ -1236,7 +1241,11 @@ def _genome_panel(
         f'risk {data._number(genome.get("risk_tolerance")):+.2f} · '
         f'stance {data._number(genome.get("stance_shift_bias")):+.2f} · '
         f'novelty {data._number(genome.get("novelty_drive")):.2f}'
-        + (f' · 変わりやすさ {plasticity:.2f}' if plasticity else '')
+        + (
+            f' · {_SCALAR_LABELS["plasticity"]} {plasticity:.2f}'
+            if plasticity
+            else ''
+        )
         + "</p></section>"
     )
 

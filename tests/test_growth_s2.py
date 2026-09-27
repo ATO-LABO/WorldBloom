@@ -20,9 +20,12 @@ from gapengine.synopsis import (
 
 GROWTH_ROW = {
     "kind": "event",
-    "turn": 2,
+    # Same turn as the fight decision below: a "growth" row is always
+    # written right after the row that triggered it (engine/sim.py's
+    # on_write callback fires synchronously), never on some later turn.
+    "turn": 1,
     "day": 1,
-    "slot": "evening",
+    "slot": "morning",
     "subject": "桃太郎",
     "verb": "growth",
     "args": [],
@@ -31,7 +34,7 @@ GROWTH_ROW = {
     "details": {
         "rule": "g_fight_won",
         "description": "勝利で大胆になる",
-        "trigger": {"kind": "decision", "verb": "fight", "result": "won", "turn": 2},
+        "trigger": {"kind": "decision", "verb": "fight", "result": "won", "turn": 1},
         "shift": {"risk_tolerance": 0.1, "category_weight.I": 0.1},
         "plasticity": 1.0,
         "acquired_after": {"risk_tolerance": 0.1, "category_weight.I": 0.1},
@@ -60,10 +63,36 @@ NO_GROWTH_ROWS = [
 
 WITH_GROWTH_ROWS = NO_GROWTH_ROWS + [GROWTH_ROW]
 
+# Review fix (should #3): a turn where "growth" is the *only* protagonist-
+# relevant row -- a "rest" that is not effective, no objective change, no
+# SPECIAL_PRIORITY verb -- must never become a scene by itself.
+GROWTH_ONLY_ROWS = [
+    {"kind": "header", "protagonist": "桃太郎", "antagonist": "鬼"},
+    {
+        "kind": "decision",
+        "turn": 5,
+        "day": 1,
+        "slot": "evening",
+        "subject": "桃太郎",
+        "verb": "rest",
+        "args": [],
+        "result": "rested",
+        "effective": False,
+        "delta": {"actor": {}, "targets": {}, "relations": [], "objective": None},
+        "classification": {
+            "category": None, "subtype": "rest", "risk_class": "neutral",
+            "stance_sign": 0, "target_role": "none",
+        },
+    },
+    dict(GROWTH_ROW, turn=5, slot="evening"),
+]
+
 
 class ScenesGrowthTests(unittest.TestCase):
-    def test_growth_is_in_special_priority(self) -> None:
-        self.assertIn("growth", SPECIAL_PRIORITY)
+    def test_growth_is_not_in_special_priority(self) -> None:
+        # Review fix (must #3): growth must never bump a turn's priority or
+        # select it as a scene by itself.
+        self.assertNotIn("growth", SPECIAL_PRIORITY)
 
     def test_describe_row_growth_text(self) -> None:
         text = describe_row(GROWTH_ROW, {})
@@ -84,7 +113,7 @@ class ScenesGrowthTests(unittest.TestCase):
 
     def test_extract_scenes_adds_growth_key_only_when_present(self) -> None:
         scenes = extract_scenes(WITH_GROWTH_ROWS, {"protagonist": "桃太郎"})
-        matching = [scene for scene in scenes if scene["turn"] == 2]
+        matching = [scene for scene in scenes if scene["turn"] == 1]
         self.assertEqual(len(matching), 1)
         growth = matching[0]["growth"]
         self.assertEqual(len(growth), 1)
@@ -92,6 +121,38 @@ class ScenesGrowthTests(unittest.TestCase):
         self.assertEqual(
             growth[0]["shift"], {"category_weight.I": 0.1, "risk_tolerance": 0.1}
         )
+
+    def test_growth_alone_does_not_create_a_scene(self) -> None:
+        # Review fix (must #3): "growth" carries no SPECIAL_PRIORITY weight,
+        # so a turn with nothing else notable stays unselected even though
+        # it has a growth row.
+        scenes = extract_scenes(GROWTH_ONLY_ROWS, {"protagonist": "桃太郎"})
+        self.assertEqual([scene["turn"] for scene in scenes], [])
+
+    def test_growth_choice_of_scenes_is_unaffected_by_growth_presence(self) -> None:
+        # Review fix (must #3): which turns get selected as scenes must be
+        # identical whether or not a growth row is appended -- growth is an
+        # annotation on an already-selected scene, never a reason to select
+        # one, so it must not compete with foreshadowing/objective-transfer/
+        # concede scenes for extract_scenes's limited `limit`.
+        without = extract_scenes(NO_GROWTH_ROWS, {"protagonist": "桃太郎"})
+        with_growth = extract_scenes(WITH_GROWTH_ROWS, {"protagonist": "桃太郎"})
+        self.assertEqual(
+            [scene["turn"] for scene in without],
+            [scene["turn"] for scene in with_growth],
+        )
+
+    def test_growth_row_is_not_double_counted_in_events(self) -> None:
+        # nice #5: the growth row's own text must not appear a second time
+        # in scene["events"] alongside the (synopsis-rendered) "性格の変化:"
+        # line -- it is excluded from events entirely now that "growth" has
+        # no SPECIAL_PRIORITY weight (see must #3).
+        scenes = extract_scenes(WITH_GROWTH_ROWS, {"protagonist": "桃太郎"})
+        matching = [scene for scene in scenes if scene["turn"] == 1][0]
+        self.assertFalse(
+            any("勝利で大胆になる" in event for event in matching["events"])
+        )
+        self.assertIn("growth", matching)
 
 
 class SynopsisGrowthTests(unittest.TestCase):
@@ -194,7 +255,12 @@ def _write_growth_experiment(runs_root: Path, *, with_growth: bool) -> Path:
 
     rows = [header, fight_row]
     if with_growth:
-        fight_row["policy"] = {"ctx": [], "acquired": {"risk_tolerance": 0.1}}
+        # Deliberately NOT {"risk_tolerance": 0.1} here: a decision row's own
+        # "policy.acquired" meta is a snapshot from *before* that decision's
+        # own outcome was observed (reweight() runs first, then execute(),
+        # then observe()) -- so the very decision that triggers this growth
+        # row realistically still shows the *pre*-growth acquired state.
+        fight_row["policy"] = {"ctx": [], "acquired": {}}
         rows.append(dict(GROWTH_ROW, subject="桃太郎"))
     rows += [snapshot, ending_row]
     _write_jsonl(layers_path, rows)
@@ -238,6 +304,12 @@ class ViewerGrowthPanelTests(unittest.TestCase):
         growth_model = data.cell_view(repository, with_growth, "I|low", view="digest")
         self.assertEqual(len(growth_model["growth_events"]), 1)
         self.assertEqual(growth_model["growth_events"][0]["rule"], "g_fight_won")
+        # Review fix (should #2): the fixture's last decision row (the fight
+        # that itself triggers this growth) has an *empty* policy.acquired
+        # (its own reweight() ran before the outcome was observed) -- only
+        # reading the growth row's own "acquired_after" (0.1) gets this
+        # right; the old "last decision row's acquired" reading would have
+        # left this at 0.5 (the birth genome, unchanged).
         self.assertEqual(
             growth_model["genome_now"]["risk_tolerance"], 0.6,
         )

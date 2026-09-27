@@ -560,6 +560,94 @@ class EvolutionHttpRouteRhoTests(unittest.TestCase):
         self.assertTrue(any(row.get("policy") and "route" in row["policy"] for row in decisions))
 
 
+class EvolutionHttpPersonalityGrowthTests(unittest.TestCase):
+    """WB-GROWTH-001 S2 review fix (must #1) regression: a real job with
+    personality_growth turned on used to crash every time --
+    execution/evolution_worker.py's main() spreads manifest["evolution"]'s
+    *flat* personality_growth: bool straight into cfg (unlike route_rho/
+    kappa, nothing renests it), but gapengine.evolve._evolve() did
+    `(cfg.get("personality_growth") or {}).get("enabled")` -- AttributeError
+    the moment that value was a bool. Drives a real job through the actual
+    frozen adapter subprocess (not a direct evolve() call), so it only
+    passes once _evolve() accepts the flat bool shape the worker actually
+    hands it."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-growth-http-")
+        self.base = Path(self.temp.name)
+        self.repo = self.base / "repo"
+        self.repo.mkdir()
+        for name in ("engine", "gapengine", "scripts", "execution", "projects", "templates"):
+            shutil.copytree(ROOT / name, self.repo / name, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copyfile(ROOT / "requirements.txt", self.repo / "requirements.txt")
+        self.configs = ConfigStore(self.repo, self.base / "control", self.base / "runs")
+        self.configs.save({"label": "growth-on", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+            "evolution": {"generations": 2, "population": 2, "seeds": 1, "processes": 1,
+                          "personality_growth": True}},
+            config_id="cfg-growth-on")
+        self.configs.save({"label": "growth-off", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
+            "evolution": {"generations": 1, "population": 1, "seeds": 1, "processes": 1}},
+            config_id="cfg-growth-off")
+        self.jobs = JobStore(self.configs, cancel_grace_seconds=5)
+        self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
+        self.configs.runs.mkdir(exist_ok=True)
+        self.server.repository = RunRepository(self.configs.runs)
+        self.server.job_store = self.jobs
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True)
+        self.thread.start()
+        self.addCleanup(self.cleanup)
+
+    def cleanup(self):
+        cleanup_http_fixture(self.server, self.thread, self.jobs.root, self.temp)
+
+    def http(self, method, path, body=None):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            conn.request(method, path, None if body is None else json.dumps(body),
+                headers={"Content-Type": "application/json", "X-WorldBloom-Client": "1"})
+            response = conn.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            conn.close()
+
+    def _run_to_completion(self, config_id, *, request_id):
+        status, job = self.http("POST", "/api/jobs",
+            {"request_id": request_id, "kind": "evolve", "config_id": config_id})
+        self.assertEqual(status, 202, job)
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            status, value = self.http("GET", "/api/jobs/" + job["job_id"])
+            self.assertEqual(status, 200, value)
+            if value["state"] in worker.TERMINAL:
+                break
+            time.sleep(0.05)
+        else:
+            self.fail("real GA did not reach terminal state")
+        self.assertEqual(value["state"], "succeeded", value)
+        run_root = self.configs.runs / job["run_id"]
+        layer_files = sorted(run_root.glob("g*/ind-*/seed-*/layers.jsonl"))
+        self.assertTrue(layer_files)
+        return [
+            json.loads(line)
+            for path in layer_files
+            for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+
+    def test_personality_growth_true_completes_and_writes_growth_rows(self):
+        rows = self._run_to_completion("cfg-growth-on", request_id="growth-on-req")
+        headers = [row for row in rows if row.get("kind") == "header"]
+        self.assertTrue(headers)
+        self.assertTrue(all(row["genome"].get("plasticity") is not None for row in headers))
+        self.assertTrue(any(row.get("verb") == "growth" for row in rows))
+
+    def test_personality_growth_false_completes_with_no_growth_rows(self):
+        rows = self._run_to_completion("cfg-growth-off", request_id="growth-off-req")
+        headers = [row for row in rows if row.get("kind") == "header"]
+        self.assertTrue(headers)
+        self.assertTrue(all("plasticity" not in row["genome"] for row in headers))
+        self.assertFalse(any(row.get("verb") == "growth" for row in rows))
+
+
 @unittest.skipUnless(os.name == "nt", "Windows supervisor contract")
 class EvolutionJobRationalityAndConsistencyTests(unittest.TestCase):
     """WB-ROUTE-001 S4 follow-up (kappa/rationality_* scope widening, user
