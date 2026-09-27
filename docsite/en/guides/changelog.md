@@ -1,5 +1,5 @@
 ---
-ja_rev: "309301dd014d"
+ja_rev: "be45ee8b7ff1"
 ---
 # Changelog
 
@@ -7,6 +7,7 @@ The main changes that matter from a user's point of view, in date order. This is
 
 ## 2026-09-27
 
+- Added TypeSafe's Jev as a rationality-layer judge. Faster than the local LLM (Ollama) judge (about 0.2 seconds per call, no GPU needed) and available once you register an API key on the "計算" (Compute) tab of Settings. Pick the judge in the run settings' "合理性" (Rationality) section; the default is Jev with κ=0.45 whenever a key is verified (see [Rationality Layer and Jev](../concepts/rationality-layer.md))
 - Added "Import from ZIP" to world creation: bring in a `world.yaml`/`subjects/*.yaml` set built by an AI (Codex, Claude Code, Gemini, etc.) as a ZIP (see [Import a World from ZIP](../usage/import-world.md)). The genre can be omitted and picked later from the world settings screen
 
 ## 2026-09-26

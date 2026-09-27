@@ -1,5 +1,5 @@
 ---
-ja_rev: "e1476de2c4a2"
+ja_rev: "ed4e8e6660c1"
 ---
 # Glossary
 
@@ -33,7 +33,9 @@ A summary of terms used on WorldBloom's screens and throughout this documentatio
 | Meta-evolution | A mode that, in addition to the 9 numeric genes, also searches over enabling/disabling each rule. Off by default |
 | Random baseline | A control experiment (`scripts/random_baseline.py`) measuring the reach rate and diversity of purely policy-free, fully random individuals |
 | Determinism | The property that the log matches byte for byte given the same world, genome, seed, precedent table, and engine. See [Determinism](../concepts/determinism.md) |
-| κ (kappa, rationality) | The strength of a genre's rationality judgment (Jev). Set as a value from 0–1 in run settings. See [Run Settings](../usage/run-settings.md) |
+| κ (kappa, rationality) | How strongly the rationality layer discounts candidates it judges unreasonable. Set as a value from 0–1 in run settings. Defaults to 0.45 for Jev and 0.6 for Ollama when creating a new config. See [Rationality Layer and Jev](../concepts/rationality-layer.md) |
+| Rationality layer | A mechanism that has a judge model score how much sense each candidate makes from the protagonist's own point of view, and multiplies that in on top of the genome-driven multipliers. Off when κ=0. See [Rationality Layer and Jev](../concepts/rationality-layer.md) |
+| Jev | TypeSafe's rationality-layer judge (an API, model name `jev-1.13.0`). Faster than the local Ollama judge (about 0.2 seconds per call), but sends the protagonist's situation externally on every judgment call. See [Rationality Layer and Jev](../concepts/rationality-layer.md) |
 | Route layer | A mechanism that classifies each protagonist decision against "the shortest plan to the ending" (advance / prepare / detour / lost) and reins in unreasoned detours with weight ρ. Only for genres with a `route.yaml` (currently only 桃太郎＋2 / Peach Boy+2). See [Route Layer](../concepts/route-layer.md) |
 | ρ (rho, route weight) | A 0–1 value controlling how hard the route layer reins in unreasoned detours. 0 (default) means unmodulated, 1 means they're almost never chosen. Set in run settings. See [Route Layer](../concepts/route-layer.md) |
 | Motive table (motives.yaml) | A prioritized list of rules that gives a would-be "unreasoned" detour a reason, scaled by genome strength. Lives at `templates/<genre>/motives.yaml`, one per genre. See [Route Layer](../concepts/route-layer.md) |

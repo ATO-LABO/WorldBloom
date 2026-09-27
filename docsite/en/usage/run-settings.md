@@ -1,9 +1,9 @@
 ---
-ja_rev: "122a2f0a5f52"
+ja_rev: "818d9e943e29"
 ---
 # Run Settings
 
-This screen opens from "実行条件を決める →" (Decide run conditions →) on the world settings screen, or right after finishing "＋ 新しい世界を作る" (+ Create a new world) on the home screen. Here you decide how a single GA experiment run should behave, save it as a "config", and run it on the next screen. The GA experiment itself (candidate generation, weight computation, evolution) never calls an LLM. However, raising rationality κ (04. below) above 0 makes the run call a local judgment LLM (Ollama) for every GA decision — at least tens of seconds per run (one individual × seed pair), and it uses the GPU. Synopsis/text generation is a separate stage (see [Generate Text](generate-text.md)).
+This screen opens from "実行条件を決める →" (Decide run conditions →) on the world settings screen, or right after finishing "＋ 新しい世界を作る" (+ Create a new world) on the home screen. Here you decide how a single GA experiment run should behave, save it as a "config", and run it on the next screen. The GA experiment itself (candidate generation, weight computation, evolution) never calls an LLM. However, raising rationality κ (04. below) above 0 makes the run call a judge (the local LLM Ollama, or TypeSafe's Jev — see [Rationality Layer and Jev](../concepts/rationality-layer.md)) for every GA decision — Ollama takes at least tens of seconds per run (one individual × seed pair) and uses the GPU, while Jev takes about 0.2 seconds per call and needs no GPU. Synopsis/text generation is a separate stage (see [Generate Text](generate-text.md)).
 
 When creating a new one, the config name is auto-filled once the world and genre are chosen (e.g. `2026-09-25 10:00 detective - 星を運ぶ街`; the genre part is the genre ID). You can also duplicate a previously saved config (the world and genre stay fixed when duplicating).
 
@@ -52,9 +52,19 @@ Other toggles:
 
 **世界を育てる (Grow the world, growth.mode, default "off")**: repeats the run automatically as an "epoch chain" to grow the world itself little by little. An epoch is one cycle of growth — one experiment run, followed by proposing/checking/approving an expansion for a place the world came up short, then retiring any expansion that went unused — and the chain carries the previous epoch's personalities (the genomes of the individuals occupying its map) into the next epoch's generation 0. Choosing anything other than "off" reveals "何周回すか" (How many epochs, growth.epochs, 1-10, default 3) and "使われなかった拡張を自動で枯らす" (Automatically retire unused expansions, growth.auto_retire, default on for auto mode / off for manual mode), and forces 世界の拡張 (world_expansion) to "承認済みの拡張を適用" (Apply approved expansions). "自動で育てる" (Auto) also auto-approves and auto-retires whenever the proposal's holdout check looks good; "手動で育てる" (Manual) instead pauses on screen at every approval/rejection (a "次のエポックへ" (Next epoch) button on the run screen advances it).
 
-## 04. Rationality (how consistently the protagonist picks sound moves)
+## 04. Rationality (how consistently the protagonist picks sound moves) { #04 }
 
-If the genre has `rationality.yaml` (LLM-based rationality judgment / Jev), this section always shows regardless of whether the judgment model is currently reachable. Reachability only affects κ's **default value**. When creating a new config, κ defaults to 0.6 (and the time limit automatically rises to 21600 seconds) if judgment is actually usable, or 0 (off) if not. Raising κ makes irrational moves less likely to be chosen. At 0, no rationality judgment happens at all, and Ollama is never called. When κ is above 0, an estimated run time is shown on screen, figured at roughly 90 seconds per run (including the judge call).
+If the genre has `rationality.yaml` (the rationality layer — see [Rationality Layer and Jev](../concepts/rationality-layer.md)), this section always shows regardless of whether a judge is currently reachable. The **判定器 (Judge)** field lets you pick "Jev（TypeSafe、高速・外部送信）" (Jev (TypeSafe, fast, sends data externally)) or the template default (every genre's own `rationality.yaml` currently points at Ollama). At 0, no rationality judgment happens at all, and no judge is ever called. Raising κ makes irrational moves less likely to be chosen.
+
+The default judge and κ, when creating a new config, depend on what's actually usable right now:
+
+| State | Default judge | Default κ | Default time limit |
+|---|---|---|---|
+| Jev's API key is verified | Jev | 0.45 | 3600 seconds (unchanged) |
+| Jev isn't available, but Ollama is | template default (Ollama) | 0.6 | 21600 seconds |
+| Neither is available | — | 0 (off) | 3600 seconds (unchanged) |
+
+Duplicating/editing keeps the saved judge and κ as-is. Once κ is above 0, the form shows only "判定器を使うラン: ◯◯回" (Runs that call the judge: N), a machine-independent count. Actual run time varies a lot with machine performance (e.g. whether a GPU is available), so check the live "残り時間の目安" (Estimated time remaining) on the run screen (`/jobs`) once the run has started.
 
 ## 05. Route (how hard to rein in detours) { #05 }
 

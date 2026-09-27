@@ -21,7 +21,7 @@ from gapengine.evolve import _load_yaml, _rationality_backend_cfg
 from gapengine.ollama import DEFAULT_BASE_URL as RATIONALITY_DEFAULT_BASE_URL
 from gapengine.ollama import DEFAULT_MODEL as RATIONALITY_DEFAULT_MODEL
 from gapengine.ollama import availability as _ollama_availability
-from gapengine.rationality import JEV_DEFAULT_MODEL
+from gapengine.rationality import JEV_DEFAULT_KAPPA, JEV_DEFAULT_MODEL
 from viewer import data, explanation_ui, job_api, pages, world_graph
 
 
@@ -639,7 +639,7 @@ def _rationality_section(values, ctx, *, total_runs, heading_prefix=""):
         '</div><div class="cfg-sec-body">'
         + _rationality_backend_select(values, jev, ctx)
         + _kappa_field(kappa_value)
-        + '<p class="hint">0 無効 / 0.3 穏やか / 0.6 推奨 / 1.0 ほぼ判定器どおり</p>'
+        + '<p class="hint">0 無効 / 0.3 穏やか / 推奨は Jev 0.45・Ollama 0.6 / 1.0 ほぼ判定器どおり</p>'
         + status_rows
         + f'<p class="hint">{_escape(RATIONALITY_NOTE)}</p>'
         + runs_html
@@ -2333,8 +2333,12 @@ def _configs_new(handler):
         if rationality_ctx is not None:
             jev_available = bool((rationality_ctx.get("jev") or {}).get("available"))
             if jev_available:
+                # 0.45, not 0.6: Jev pushes the single "best" move harder
+                # than the 35b judge, and at 0.6 every momotaro_plus2 reach
+                # took the gun route (personality stopped choosing the path);
+                # 0.45 restored 3 routes (user decision 2026-09-27, WB-JEV-005).
                 values["evolution.rationality_backend"] = "jev"
-                values["evolution.kappa"] = 0.6
+                values["evolution.kappa"] = JEV_DEFAULT_KAPPA
                 values["execution_limits.wall_seconds"] = 3600
             elif rationality_ctx["available"]:
                 # WB-JEV-005 review (SHOULD 4): None, not "ollama" -- a new

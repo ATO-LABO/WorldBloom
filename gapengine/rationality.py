@@ -53,6 +53,9 @@ JEV_MAX_OPTIONS = 255
 # preferences are meant to pick among (WB-JEV-004). Half the grid step, same
 # idea as _floor_unobserved's "half the smallest observed mass".
 JEV_ZERO_FLOOR = 0.005
+# The run-settings form's default kappa when Jev is the judge (see
+# viewer/workbench_pages.py _configs_new).
+JEV_DEFAULT_KAPPA = 0.45
 JEV_CHOICE_INSTRUCTIONS = (
     "本人の知る限りで、目的に近づく手段として最も筋が通っているのはどれか。"
 )
