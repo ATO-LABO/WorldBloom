@@ -14,7 +14,10 @@ sources:
   - "templates/momotaro_plus2/motives.yaml"
   - "gapengine/route.py"
   - "docs/2026-09-11_gapengine-detailed-design.md"
-reviewed: "9765a5cbd9e8fab7a136d509381a7f59bf3899cb"
+  - "engine/world.py"
+  - "engine/sim.py"
+  - "templates/momotaro_plus2/rules.yaml"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 # テンプレート
 
@@ -112,7 +115,7 @@ volatility_bins: [low, mid, high]
   description: 敵対相手にはより攻撃的に
 ```
 
-`scope` は `candidate`（候補ごと。`target` が束縛される）か `turn`（ターンごと）。`adjust` は `category_weight.<I〜VI>`・`risk_tolerance`・`stance_shift_bias`・`novelty_drive` を一時的に加算するキー。`g_eff = clip(genome + Σ 該当ルールの adjust)` として実際の重みに使われます。
+`scope` は `candidate`（候補ごと。`target` が束縛される）・`turn`（ターンごと）・`outcome`（行動が起きたあと、[性格の成長](../concepts/personality-growth.md)が有効なときだけ）の3種類。`candidate`/`turn` の `adjust` は `category_weight.<I〜VI>`・`risk_tolerance`・`stance_shift_bias`・`novelty_drive` を一時的に加算するキーで、`g_eff = clip(genome + Σ 該当ルールの adjust)` として実際の重みに使われます。`outcome` スコープのルールは一時的な加算ではなく、`plasticity × adjust` の分だけそのランの性格に恒久的に積み上がります（詳しくは[性格の成長](../concepts/personality-growth.md)）。
 
 ### rationality.yaml（κ／Jev）
 
@@ -224,6 +227,28 @@ target_ending: [homecoming, homecoming_shared]
 ```
 
 `ending.when` は述語文字列 or `{agent, goal}` の2形式。`target_ending` に列挙した結末に届いたランだけが[QD 格子](../concepts/qd-map.md)のアーカイブに入ります。`zones`/`routes` は7層の「フェーズ層」（`phase_rules` による越境判定の土台）、`items` は「資源層」（持ち物として `inventory` に入る）、`facts` は「認識層」（`knowledge`・`beliefs_about` の元になる秘匿事実）に対応する世界側のデータです（詳しくは[7層構造](../concepts/seven-layers.md)）。
+
+### scheduled_events（予定イベント）と force_action（強制行動） { #scheduled-events }
+
+```yaml
+scheduled_events:
+  - id: departure
+    day: 3
+    slot: 朝
+    targets: [桃太郎]
+    label: 鬼ヶ島への出発
+    force_action:
+      verb: move
+      args: [道中]
+```
+
+`world.yaml` の `scheduled_events` は、指定した日・時間帯（`slot`）に自動で起きる出来事です。`force_action` を付けると、その時間帯に対象（`targets`）の行動そのものを強制的に指定した動詞・引数に差し替えます。バリデーション（世界の読み込み時）は次を強制します。
+
+- `force_action` を書くなら `slot` を省略できない（`day` だけの日次イベントには付けられない）
+- `move_to`（同じイベントのゾーン移動）と `force_action` は同時に指定できない
+- `verb` はエンジンが扱える動詞（`HANDLED_VERBS`）のいずれかで、`args` はその動詞が取れる引数の個数を超えられない
+
+対象が `alive`/`revived`（生きている・蘇生済み）でなければ強制は行われず、スキップされたことがログに残ります。同じ主体・同じ時間帯に複数の予定イベントが force_action を持つ場合は、あとに評価されたイベントが勝ちます。世界画面の「時間」タブから、日・時間帯・対象・動詞・引数を指定して編集できます。[最短経路を調査](../concepts/route-layer.md#route-paths-survey)は、`move` の強制行動だけを「主人公自身はまだ動いていない、確定した前提」として起点の状態に織り込みます（`move` 以外の強制行動は、実際の GA 実行にまかせます）。
 
 ### subjects/*.yaml の主なキー
 

@@ -1,5 +1,5 @@
 ---
-ja_rev: "106d1344ed2a"
+ja_rev: "0bb7f3b6b990"
 ---
 # Templates
 
@@ -97,7 +97,7 @@ Among the bundled genres (under `templates/`: `basic`, `detective`, `momotaro`, 
   description: 敵対相手にはより攻撃的に
 ```
 
-`scope` is either `candidate` (per candidate — `target` gets bound) or `turn` (per turn). `adjust` keys are `category_weight.<I–VI>`, `risk_tolerance`, `stance_shift_bias`, or `novelty_drive`, added temporarily. It's used as the actual weight via `g_eff = clip(genome + Σ matching rules' adjust)`.
+`scope` is one of three: `candidate` (per candidate — `target` gets bound), `turn` (per turn), or `outcome` (after an action happens, only when [personality growth](../concepts/personality-growth.md) is enabled). For `candidate`/`turn`, `adjust` keys are `category_weight.<I–VI>`, `risk_tolerance`, `stance_shift_bias`, or `novelty_drive`, added temporarily and used as the actual weight via `g_eff = clip(genome + Σ matching rules' adjust)`. An `outcome`-scope rule doesn't add temporarily — instead `plasticity × adjust` accumulates permanently into that run's personality (see [Personality Growth](../concepts/personality-growth.md)).
 
 ### rationality.yaml (κ / Jev)
 
@@ -209,6 +209,28 @@ target_ending: [homecoming, homecoming_shared]
 ```
 
 `ending.when` takes either a predicate string or `{agent, goal}`. Only runs that reach an ending listed in `target_ending` enter the [QD Map](../concepts/qd-map.md)'s archive. `zones`/`routes` are the world-side data behind the seven layers' Phase layer (the basis for `phase_rules`' crossing checks), `items` behind the Resource layer (they end up in `inventory`), and `facts` behind the Perception layer (the source of `knowledge`/`beliefs_about`) (see [Seven Layers](../concepts/seven-layers.md)).
+
+### scheduled_events and force_action { #scheduled-events }
+
+```yaml
+scheduled_events:
+  - id: departure
+    day: 3
+    slot: 朝
+    targets: [桃太郎]
+    label: 鬼ヶ島への出発
+    force_action:
+      verb: move
+      args: [道中]
+```
+
+`world.yaml`'s `scheduled_events` fire automatically on a given day/time-slot (`slot`). Adding `force_action` replaces the target's (`targets`) own action for that slot with the given verb/args, overriding it outright. Validation (at world load time) enforces:
+
+- `force_action` requires `slot` (it cannot be attached to a day-only, slot-less event)
+- `move_to` (a zone move on the same event) and `force_action` are mutually exclusive
+- `verb` must be one the engine handles (`HANDLED_VERBS`), and `args` cannot exceed that verb's argument count
+
+A target that isn't `alive`/`revived` is skipped, and the skip is logged. If more than one scheduled event with `force_action` targets the same subject in the same slot, the one evaluated later wins. The world screen's "Time" tab lets you edit the day, slot, target, verb, and args. [Surveying shortest routes](../concepts/route-layer.md#route-paths-survey) folds only `move` force-actions into its starting state, as a certain premise ("the protagonist hasn't acted yet"); any other forced verb is left to the actual GA run.
 
 ### Main keys in subjects/*.yaml
 

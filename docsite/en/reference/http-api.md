@@ -1,5 +1,5 @@
 ---
-ja_rev: "050df1a44e67"
+ja_rev: "eb00c0e9915b"
 ---
 # HTTP API
 
@@ -46,7 +46,7 @@ ja_rev: "050df1a44e67"
 
 ## World / genre editing API (`viewer/library_pages.py`)
 
-Editing a world/genre is functionally independent of GA experiments, but every handler here goes through `_require_job_store`, so it still needs a `job_store` (i.e. starting with `--control`). There is no `GET /api/worlds` or `GET /api/genres` — the listing is embedded in the screen's HTML.
+Editing a world/genre is functionally independent of GA experiments. Every handler here except `GET /api/worlds/<id>/routes` goes through `_require_job_store`, so it still needs a `job_store` (i.e. starting with `--control`). There is no `GET /api/worlds` or `GET /api/genres` — the listing is embedded in the screen's HTML.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -60,6 +60,7 @@ Editing a world/genre is functionally independent of GA experiments, but every h
 | POST | `/api/genres/<id>/{save,parse,check}` | Save / parse / validate in the genre editor |
 | POST | `/api/worlds/<id>/patches/<patch_id>/{approve,reject}` | Approve / reject a world self-expansion patch |
 | POST | `/api/worlds/<id>/patches/reopen` | Revert an approved expansion patch back to proposed |
+| GET | `/api/worlds/<id>/routes` | [Survey shortest routes](../concepts/route-layer.md#route-paths-survey) (read-only). Unlike every other row in this table, it does not need `job_store` (`--control`), and works in the read-only Viewer too. Returns `{"status": "no_route_config", ...}` if the world's genre has no `route.yaml` |
 
 ## Run-results and selection API
 

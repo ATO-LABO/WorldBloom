@@ -1,5 +1,5 @@
 ---
-ja_rev: "f9d48e6697b7"
+ja_rev: "77d2d9986208"
 ---
 # Create a World
 
@@ -30,10 +30,12 @@ Opening a world (or clicking "世界を開く", Open world, from its card on the
 | Tab | Contents |
 |---|---|
 | 世界の概要 (World overview) | Edit the name and overview. A world with no genre set (e.g. one created via [Import from ZIP](import-world.md)) can pick one here. Any approved or proposed changes from world self-expansion (below) are shown here |
-| 登場人物 (Characters) | View and edit each character's parameters (9 stats), starting position, etc. |
+| 登場人物 (Characters) | View and edit each character's parameters (9 stats), starting position, etc. Also where the **relationship graph** (below) opens |
 | 場所 (Places) | The list of places (zones) and the connections between them |
 | 初期物語 (Initial story) | Edit the opening text (the situation at the start) |
-| 時間 (Time) | The run's day count and the day's time-of-day breakdown |
+| 時間 (Time) | The run's day count and the day's time-of-day breakdown. **Scheduled events** (below) are also checked and edited here |
+
+For a world in a genre with a route layer (`route.yaml`), the world screen's sidebar also has "最短経路を調査" (Survey shortest routes) — a read-only feature showing up to 3 example walkthroughs to the ending. See [Route Layer](../concepts/route-layer.md#route-paths-survey) for details.
 
 Each field can be saved individually. Saving **does not change results from runs already executed** against that world (the new settings apply starting from the next run).
 
@@ -51,6 +53,25 @@ From "詳細設定・設定ファイル ↗" (Advanced settings / config files) 
 - **設定ファイル** (Config files): direct editing of the YAML files inside the world's folder
 
 To edit the template (genre) itself, use the "ジャンル" (Genre) tab on the home screen → open a genre, or "＋ 新しいジャンルを作る" (+ Create a new genre). A genre is the shared rule set — which actions exist and what they do — used across multiple worlds. An existing genre can only be changed after duplicating it via "複製して編集" (Duplicate and edit) (this doesn't affect other worlds still using the original genre).
+
+## Relationship graph { #relationship-workspace }
+
+Switching the "登場人物" (Characters) tab's view to "相関図" (Relationship graph) shows the characters' relationships as a directed graph. Characters are colored by affiliation (`affiliation`; falls back to their starting place if unset), with groups laid out around the protagonist's own affiliation.
+
+- **Scope**: toggle between "全体" (Everyone) and "人物フォーカス" (Focus on one character — pick one, then narrow to direct relationships / two hops / everyone)
+- **Filters**: narrow by relationship kind ("好意"/positive, "反感"/negative, "中立"/neutral) or by affiliation
+- Clicking a character opens a detail panel: affiliation, number of direct relationships, a summary, and their top relationships (up to 6)
+- "関係を数値で確認" (Check relationships as numbers, a collapsible section) switches to a list with `affinity` and `awareness` values, or a person-by-person matrix view
+- In an editable world, relationship rows show a "ラベルを編集" (Edit label) button — you can set or clear a text label (up to 120 characters) for one direction (source→target) of a relationship at a time (the numeric `affinity`/`awareness` themselves can't be edited here)
+- Editing a character's details (from "Advanced settings / config files") also lets you set their **affiliation** (`affiliation`, up to 120 characters, optional) — this value drives the graph's coloring and grouping
+
+Any configuration problems (e.g. malformed relationship data) are listed, with a count, under a "設定の確認" (Check configuration, collapsible) section.
+
+## Scheduled events and force actions { #scheduled-events }
+
+The "時間" (Time) tab, alongside the run's day count and time-of-day breakdown, also lets you check and edit the world's **scheduled events** (`scheduled_events`) — events (target, effect, label) that fire automatically on a given day/time-slot.
+
+An event carrying a **force action** (`force_action`) replaces the target's own action for that slot outright, with a given verb/args (e.g. force the protagonist to move to "道中" on the morning of day 3). The on-screen form guides you through which argument kinds and how many each verb takes. See [Templates](../reference/templates.md#scheduled-events) for the full spec (validation rules, etc.).
 
 ## World self-expansion { #world-expansion }
 

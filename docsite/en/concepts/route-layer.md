@@ -1,5 +1,5 @@
 ---
-ja_rev: "589f434c8ed6"
+ja_rev: "fcdaf4a28a9b"
 ---
 # Route Layer
 
@@ -70,6 +70,16 @@ For an individual with a weak lean toward that gene (gene_s=0), matching the mot
 ## Choosing a route by genome (gene_affinity)
 
 Setting `route.yaml`'s `gene_affinity` (default 0) and `route_category` (a mapping from route name to action category) lets the genome's corresponding category weight slightly tilt which of several ways to take the goal item from its holder (fight vs. negotiate, say) counts as "the best plan." At `gene_affinity=0` (the default) the lowest-cost option is always the best one. Raising it makes an individual with a stronger weight in the matching category more likely to see that route as "best" (the recorded h itself stays plain; only the choice of best route is affected). 桃太郎＋2 (Peach Boy+2)'s `route.yaml` sets `gene_affinity: 0.5` and `route_category: {fight: I, negotiate: III}`.
+
+## Surveying shortest routes (the world screen's sidebar) { #route-paths-survey }
+
+A world in a genre with a route layer (`route.yaml`) has a read-only "Survey shortest routes" feature in the world screen's sidebar (`GET /api/worlds/<id>/routes`, implemented in `gapengine/route_paths.py`). It works even in the read-only Viewer (no need to run a GA experiment to check it).
+
+- Genres whose protagonist's goal isn't the "obtain and deliver an item" shape (detective, romance) show an unsupported message instead
+- It starts from the state after the world's scheduled events (`scheduled_events`, including [force actions](../reference/templates.md#scheduled-events)) have been applied, on the premise that the protagonist itself hasn't acted yet
+- For each starting timepoint, it shows **up to 3** distinct walkthroughs. They aren't ordered by cost — **#1 is whichever walkthrough the engine judges most natural (lowest cost) in an actual GA run**, and #2/#3 are alternates found by requiring a different means from #1 (e.g. negotiating instead of fighting, a different item for the same purpose) — so #2/#3 aren't necessarily longer detours than #1
+- Each walkthrough shows the actual step sequence and its running cost
+- If that genre has no `route.yaml`, or no walkthrough to the ending exists at all (lost), the reason is shown instead
 
 ## Feeding into synopsis/text generation
 
