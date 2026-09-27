@@ -74,9 +74,10 @@ def _parent_display(ref):
     match = lineage._ARCHIVE_REF.match(ref)
     if match:
         generation = int(match.group(1))
-        category, _, volatility_bin = match.group(2).rpartition("-")
-        if category:
-            return f"地図の {category} × {volatility_bin}（第 {generation + 1} 世代に入った物語）"
+        cell_parts = match.group(2).split("-")
+        if cell_parts and cell_parts[0]:
+            label = " × ".join(cell_parts)
+            return f"地図の {label}（第 {generation + 1} 世代に入った物語）"
     return ref
 
 

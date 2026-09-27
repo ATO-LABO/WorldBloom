@@ -211,11 +211,13 @@ def _resolve_archive_ref(
     ref: str,
 ) -> dict[str, Any]:
     # Parent-ref cells are joined with "-" (gapengine/evolve.py::_parent_pool),
-    # unlike archive.json's own "|"-joined keys. Categories/volatility bins
-    # never contain "-" in any shipped template, so the last "-" is the split
-    # point.
-    category, _, volatility_bin = cell_text.rpartition("-")
-    if not category:
+    # unlike archive.json's own "|"-joined keys. A category/volatility/arc
+    # bin could in principle contain "-" itself, so this never splits
+    # cell_text -- it instead "-".joins each candidate result's own `cell`
+    # (a list of known arity, 2 or 3 with the WB-GROWTH-001 S3 arc axis) and
+    # compares the whole string, which is unambiguous regardless of arity or
+    # hyphenated components.
+    if not cell_text:
         raise LineageError(f"malformed archive cell in ref {ref!r}")
 
     best_key: tuple[float, int, int] | None = None
@@ -224,7 +226,7 @@ def _resolve_archive_ref(
     for generation in range(generation_limit + 1):
         for result in _generation_results(repository, experiment, generation):
             cell = result.get("cell")
-            if not cell or list(cell) != [category, volatility_bin]:
+            if not cell or "-".join(str(part) for part in cell) != cell_text:
                 continue
             best_run = _best_reached(result)
             if best_run is None:

@@ -109,14 +109,22 @@ def candidates(handler, run_id, grid=False):
     toolbar += '</div><div class="sf-mode-note" data-sf-mode-note hidden><span></span><button type="button" data-sf-mode="browse">候補選びに戻る</button><button type="button" data-sf-clear>対象を解除</button></div>'
     if grid:
         by_id = {c["candidate_id"]:c for c in items}
-        listing = '<div class="sf-grid-scroll"><table class="sf-grid"><caption>変動の大きさ · 色の濃さは品質</caption><thead><tr><th>主導カテゴリ</th>' + ''.join(f'<th>{E({"low":"低", "mid":"中", "high":"高"}.get(b,b))}</th>' for b in v["bins"]) + '</tr></thead><tbody>'
+        arc_note = ''
+        if v.get("arc_enabled"):
+            base = f'/exp/{U(v["name"])}'
+            arc_note = ('<div class="sf-arc-filter" role="group" aria-label="性格の変化で絞り込み">'
+                + ''.join(
+                    f'<a class="sf-pill{" active" if v["arc_filter"] == val else ""}" href="{E(base + "?arc=" + val)}">{label}</a>'
+                    for val, label in (("all", "すべて"), ("none", "なし"), ("small", "小"), ("large", "大"))
+                ) + '</div>')
+        listing = arc_note + '<div class="sf-grid-scroll"><table class="sf-grid"><caption>変動の大きさ · 色の濃さは品質</caption><thead><tr><th>主導カテゴリ</th>' + ''.join(f'<th>{E({"low":"低", "mid":"中", "high":"高"}.get(b,b))}</th>' for b in v["bins"]) + '</tr></thead><tbody>'
         for category in v["categories"]:
             listing += f'<tr><th scope="row">{E(category)}</th>'
             for bin_name in v["bins"]:
-                c = by_id.get(v["reps"].get(f'{category}|{bin_name}'))
+                c = by_id.get(v["grid_reps"].get(f'{category}|{bin_name}'))
                 listing += '<td>' + (candidate_row(c,grid=True) if c else '<span class="sf-empty-cell">代表候補なし</span>') + '</td>'
             listing += '</tr>'
-        listing += '</tbody></table></div><p class="sf-hint">各区画の代表候補です。全候補は「候補一覧」で確認できます。</p>'
+        listing += '</tbody></table></div><p class="sf-hint">各区画の代表候補です。全候補は「候補一覧」で確認できます。' + ('「性格の変化」は既定で最良の1件を表示しています。' if v.get("arc_enabled") else '') + '</p>'
     else:
         listing = '<div class="sf-list-scroll" data-sf-list>' + ''.join(candidate_row(c) for c in items) + ('<p class="sf-empty">条件に一致する候補はありません。絞り込みを解除してください。</p>' if not items else '') + '</div>'
     notice = '<p class="sf-warning">実行中のため選定は保存できません。' + (link(f'/jobs/{U(v["busy"][0]["job_id"])}','実行状況を見る →') if v["busy"] else '') + '</p>' if v["running"] else ''

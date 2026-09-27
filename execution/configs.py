@@ -522,7 +522,7 @@ def _describe(root, spec):
         elif not isinstance(_load_yaml(template / name, effective["action_graph.yaml"]), dict):
             raise ConfigError("inputs." + name, "テンプレートの形式が不正です")
     qd = effective["qd.yaml"]
-    for key in ("categories", "volatility_bins"):
+    for key in ("categories", "volatility_bins", "arc_bins"):
         if key in qd and (not isinstance(qd[key], list) or not qd[key]
                 or any(not isinstance(x, str) or not x for x in qd[key])
                 or len(set(qd[key])) != len(qd[key])):

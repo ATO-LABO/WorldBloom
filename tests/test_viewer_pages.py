@@ -41,7 +41,7 @@ class ViewerPageTests(unittest.TestCase):
     def test_detective_axes(self) -> None:
         self.assertEqual(
             data.qd_axes(data.ROOT / "templates" / "detective"),
-            (["I", "II", "III"], ["low", "mid", "high"]),
+            (["I", "II", "III"], ["low", "mid", "high"], []),
         )
 
     def test_experiment_meta(self) -> None:
