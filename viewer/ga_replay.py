@@ -56,7 +56,49 @@ _SAME_PARENT_NOTE = "同じ親が2回選ばれた。交叉しても変わらず�
 
 
 def _cell_key(cell):
-    return "|".join(cell) if cell else None
+    """The 2D (category, volatility) map key this panel paints into.
+
+    WB-GROWTH-001 S3 review fix (must #1): `cell` can be a 3-element
+    (category, volatility_bin, arc_bin) tuple/list when the archive's arc
+    axis is active, but viewer/static/ga_replay.js's cellRects/paintCell
+    only ever know the 2-element "category|bin" grid -- always fold down to
+    that pair here (never the raw "|".join(cell)) so every consumer
+    (classify_outcome, the client-side map) agrees on one key space."""
+    if not cell:
+        return None
+    parts = [str(part) for part in cell]
+    if len(parts) < 2:
+        return None
+    return f"{parts[0]}|{parts[1]}"
+
+
+def _collapse_cells(cells):
+    """Fold an archive.json-shaped {cell_key: elite dict} mapping down to
+    2D pair keys (see _cell_key) -- the same pair can hold several arc-bin
+    entries, so keep only the highest-quality elite per pair. Ties (equal
+    or missing quality) are broken deterministically by iterating the raw
+    cells in ascending key order and keeping the first one seen for that
+    pair, never by dict/insertion order."""
+    best: dict[str, dict] = {}
+    for key in sorted(cells):
+        elite = cells[key]
+        if not isinstance(elite, dict):
+            continue
+        pair = _cell_key(key.split("|")) if isinstance(key, str) else None
+        if pair is None:
+            continue
+        quality = elite.get("quality")
+        current = best.get(pair)
+        current_quality = current.get("quality") if current is not None else None
+        if current is None or (
+            isinstance(quality, (int, float))
+            and (
+                not isinstance(current_quality, (int, float))
+                or quality > current_quality
+            )
+        ):
+            best[pair] = elite
+    return best
 
 
 def _parent_display(ref):
@@ -253,7 +295,10 @@ def replay_model(handler, job, axes, generation=None):
         if not isinstance(generation, int) or generation < 0 or generation > latest_generation:
             generation = latest_generation
         final = _snapshot(catalog, run_id, root, generation + 1)
-        final_cells = (final.get("archive") or {}).get("cells") or {}
+        # WB-GROWTH-001 S3 review fix (must #1): collapsed to 2D pair keys
+        # up front, so classify_outcome and the model's own final_cells/
+        # prev_cells (below) never see a 3-element arc-axis cell key.
+        final_cells = _collapse_cells((final.get("archive") or {}).get("cells") or {})
         raw_results = lineage._generation_results(handler.repository, root, generation)
         if not raw_results:
             return None
@@ -285,7 +330,7 @@ def replay_model(handler, job, axes, generation=None):
         else:
             try:
                 prev_snapshot = _snapshot(catalog, run_id, root, generation)
-                prev_cells = (prev_snapshot.get("archive") or {}).get("cells") or {}
+                prev_cells = _collapse_cells((prev_snapshot.get("archive") or {}).get("cells") or {})
             except _MODEL_ERRORS:
                 prev_cells = None
 

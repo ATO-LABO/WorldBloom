@@ -1591,6 +1591,20 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         growth_enabled = bool(personality_growth_cfg.get("enabled", False))
     else:
         growth_enabled = bool(personality_growth_cfg)
+    # WB-GROWTH-001 S3 review fix (should #2): the arc axis needs BOTH the
+    # template's qd.yaml declaring arc_bins AND personality_growth actually
+    # being on for this run -- with growth off every run's arc is 0 anyway,
+    # so a template that merely *has* arc_bins would otherwise still turn on
+    # a pointless (always-"none") third axis, tripling grid_size/coverage
+    # denominators and changing the archive.json shape for a run that is
+    # otherwise identical to one from before this feature existed. Dropping
+    # the key here (rather than checking growth_enabled at every qd_cfg.get
+    # ("arc_bins") call site) keeps every one of those sites -- run_result,
+    # freeze_arc_thresholds, viewer's qd_axes/experiment_meta -- honest
+    # about "is the arc axis actually active for this run" with no separate
+    # flag to keep in sync.
+    if not growth_enabled:
+        qd_cfg.pop("arc_bins", None)
     canon = load_canon(template_dir / "canon.yaml")
 
     # WB-WORLDGROW-001 stage 5b: seed_genomes (--seed-genomes) carries only

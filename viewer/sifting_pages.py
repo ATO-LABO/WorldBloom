@@ -112,9 +112,14 @@ def candidates(handler, run_id, grid=False):
         arc_note = ''
         if v.get("arc_enabled"):
             base = f'/exp/{U(v["name"])}'
+            # WB-GROWTH-001 S3 review fix (nice #6): keep every other query
+            # param this page was loaded with (e.g. a candidate id echoed
+            # back into the URL) -- only "arc" itself gets replaced.
+            preserved = {k: vals[0] for k, vals in (v.get("query") or {}).items() if k != "arc" and vals}
             arc_note = ('<div class="sf-arc-filter" role="group" aria-label="性格の変化で絞り込み">'
                 + ''.join(
-                    f'<a class="sf-pill{" active" if v["arc_filter"] == val else ""}" href="{E(base + "?arc=" + val)}">{label}</a>'
+                    f'<a class="sf-pill{" active" if v["arc_filter"] == val else ""}"'
+                    f' href="{E(base + "?" + urlencode({**preserved, "arc": val}))}">{label}</a>'
                     for val, label in (("all", "すべて"), ("none", "なし"), ("small", "小"), ("large", "大"))
                 ) + '</div>')
         listing = arc_note + '<div class="sf-grid-scroll"><table class="sf-grid"><caption>変動の大きさ · 色の濃さは品質</caption><thead><tr><th>主導カテゴリ</th>' + ''.join(f'<th>{E({"low":"低", "mid":"中", "high":"高"}.get(b,b))}</th>' for b in v["bins"]) + '</tr></thead><tbody>'

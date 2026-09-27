@@ -142,14 +142,21 @@ def load(handler, run_id, *, query=None, grid=False):
     elif arc_filter == "all":
         items_by_id = {c["candidate_id"]: c for c in items}
         best: dict[str, tuple[str, float]] = {}
-        for cell_key, cid in reps.items():
+        # Deterministic tie-break: iterate cell_key ascending (never dict/
+        # insertion order) and only replace on a strictly higher quality, so
+        # equal-quality candidates keep whichever sorts first. A candidate
+        # with no numeric quality is excluded from the comparison entirely
+        # (never wins a pair merely for being visited first).
+        for cell_key in sorted(reps):
+            cid = reps[cell_key]
             parts = cell_key.split("|")
             if len(parts) != 3:
                 continue
             pair = f"{parts[0]}|{parts[1]}"
             candidate = items_by_id.get(cid)
             quality = candidate.get("quality") if candidate else None
-            quality = quality if isinstance(quality, (int, float)) else -1.0
+            if not isinstance(quality, (int, float)):
+                continue
             current = best.get(pair)
             if current is None or quality > current[1]:
                 best[pair] = (cid, quality)
