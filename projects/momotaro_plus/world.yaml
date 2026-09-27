@@ -299,8 +299,8 @@ scheduled_events:
     targets: [桃太郎]
     label: 旅立ちの朝
     grants_item: {name: 縄, count: 1}
-    move_to: 道中
     stress_delta: 0.3
+    force_action: {verb: move, args: [道中]}
 
 daily_events:
   chance: 0.35

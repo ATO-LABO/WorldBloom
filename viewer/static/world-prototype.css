@@ -201,6 +201,14 @@
 .wp-state .wp-state-action{width:44px;text-align:center}
 .wp-state .wp-state-action button{display:inline-block;font-size:16px;padding:2px 8px}
 
+/* WB-TIMEEVENT-001: scheduled_events on the time screen. .wp-events reuses
+   .wp-state's table look; .wp-event-days reuses .wp-time-cycle's circles. */
+.wp-event-days{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.wp-event-days button{position:relative;border:1px solid #9bb0a4;border-radius:50%;width:34px;height:34px;padding:0;font-size:13px;background:#dce6df}
+.wp-event-days button[aria-pressed=true]{border:3px solid #294f40;background:#d3e0d5}
+.wp-event-days button[data-count]::after{content:attr(data-count);position:absolute;top:-6px;right:-6px;background:var(--wp-orange);color:#fff;border-radius:50%;min-width:16px;height:16px;padding:0 2px;font-size:10px;line-height:16px}
+.wp-events td:last-child button{margin-right:4px}
+
 .we-approved{margin-top:16px}
 .we-approved ol,.we-approved ul{padding-left:20px}
 .we-approved li{margin-bottom:12px}
