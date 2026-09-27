@@ -5,7 +5,7 @@ sources:
   - "templates/detective/qd.yaml"
   - "templates/romance/qd.yaml"
   - "scripts/export_static.py"
-reviewed: "4394c7ef86af65bb0f995a9071da5f1744e3ef87"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 # 行動タイプ I〜VI
 

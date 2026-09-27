@@ -6,7 +6,7 @@ sources:
   - "gapengine/evolve.py"
   - "viewer/global_settings.py"
   - "viewer/workbench_pages.py"
-reviewed: "d87be6e73233700b5cade1a97a01a01fb9990341"
+reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ---
 # 合理性層と Jev
 
