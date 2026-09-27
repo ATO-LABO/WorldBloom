@@ -1,14 +1,21 @@
 ---
-ja_rev: "be45ee8b7ff1"
+ja_rev: "549bec5911b1"
 ---
 # Changelog
 
 The main changes that matter from a user's point of view, in date order. This isn't a list of individual commits. Get the latest release artifacts from [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases).
 
+## 2026-09-28
+
+- Added [personality growth](../concepts/personality-growth.md): an opt-in mechanism (default off; run settings "03. Save & evolution", or `--personality-growth` on the CLI) where the protagonist's personality shifts slightly, within a single run only, in response to events (wins, losses, allies, betrayal, etc.). When enabled, the QD map can also gain a third axis, "personality change" (none/small/large)
+- Added a **relationship graph** to the world's "Characters" tab: view and edit character relationships as a directed graph, including editing relationship labels and a character's affiliation
+
 ## 2026-09-27
 
 - Added TypeSafe's Jev as a rationality-layer judge. Faster than the local LLM (Ollama) judge (about 0.2 seconds per call, no GPU needed) and available once you register an API key on the "計算" (Compute) tab of Settings. Pick the judge in the run settings' "合理性" (Rationality) section; the default is Jev with κ=0.45 whenever a key is verified (see [Rationality Layer and Jev](../concepts/rationality-layer.md))
 - Added "Import from ZIP" to world creation: bring in a `world.yaml`/`subjects/*.yaml` set built by an AI (Codex, Claude Code, Gemini, etc.) as a ZIP (see [Import a World from ZIP](../usage/import-world.md)). The genre can be omitted and picked later from the world settings screen
+- Added scheduled-event **force actions** (`scheduled_events.force_action`) to worlds: on a given day/time-slot, force a target's own action to a specific verb/args. Edit these from the world screen's "時間" (Time) tab
+- Added "[Survey shortest routes](../concepts/route-layer.md#route-paths-survey)" for worlds with a route layer: a read-only view, in the world screen's sidebar, of up to 3 walkthroughs to the ending (works in the read-only Viewer too)
 
 ## 2026-09-26
 

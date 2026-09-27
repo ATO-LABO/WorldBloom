@@ -1,5 +1,5 @@
 ---
-ja_rev: "19139d2636fb"
+ja_rev: "cebaa182bfdb"
 ---
 # FAQ
 
@@ -10,6 +10,10 @@ No. No LLM is involved in the GA experiment itself (simulating the world, evolvi
 ## Why doesn't event generation use an LLM?
 
 Letting an LLM write the sequence of events (who did what) directly would make it impossible to mechanically trace why things unfolded the way they did. By limiting event generation to simulation and random draws alone, WorldBloom guarantees [determinism](../concepts/determinism.md) and can mechanically show which generation and parent a given story came from, and at what branch point, as [lineage and turning points](../concepts/sifting.md#compare-lineage-turning). See [Overview](../concepts/overview.md) for details.
+
+## Why bother with the GA at all?
+
+You can generate stories without evolving a policy (genome) at all, using only random individuals (`scripts/random_baseline.py`). A measured comparison under a condition with [personality growth](../concepts/personality-growth.md) and its third axis enabled (matched evaluation counts, 5 random seeds) shows the GA ahead on every metric — occupied cells (mean 17.0 vs. 13.4), QD score (mean 4.80 vs. 3.47), and best quality (mean 0.429 vs. 0.382) — though no statistical test was run. Under a condition without personality growth or the third axis (an 18-cell grid), the GA and random baseline showed almost no difference. See [Personality Growth](../concepts/personality-growth.md#ga-vs-random) for details.
 
 ## Can I use it on a PC with no GPU?
 
