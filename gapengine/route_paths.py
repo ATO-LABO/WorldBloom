@@ -26,6 +26,7 @@ import math
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from engine.actions import Action
 from engine.contest import believed_strength, strength
 from engine.subject import Subject
 from engine.sim import Simulation
@@ -130,10 +131,29 @@ def state_at(
         for slot in slots:
             sim.slot = slot
             sim._apply_scheduled(writer, slot=slot)
+            _apply_forced_move(sim, day)
             if day == target_day and slot == target_slot:
                 return sim.world, sim.subjects
 
     return sim.world, sim.subjects
+
+
+def _apply_forced_move(sim: Simulation, day: int) -> None:
+    """A scheduled ``force_action`` (WB-TIMEEVENT-001) replaces the
+    protagonist's action for this slot, so it is certain and belongs in the
+    starting state (momotaro's departure_day: 村 -> 道中). Only ``move`` is
+    replayed -- it is rng-free (``VerbEngine._move``); any other forced verb
+    is left to the actual run."""
+
+    protagonist = sim.world.protagonist
+    forced = sim._forced.pop(protagonist, None)
+    if forced and forced["verb"] == "move" and protagonist in sim.subjects:
+        sim.verb_engine._move(
+            sim.subjects[protagonist],
+            Action("move", tuple(forced["args"])),
+            turn=sim.turn,
+            day=day,
+        )
 
 
 def timepoints(world: World) -> list[tuple[int, str | None]]:
