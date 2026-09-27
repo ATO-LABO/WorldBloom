@@ -1201,6 +1201,8 @@ def layers_svg(
 def _genome_panel(
     genome: Mapping[str, Any],
     categories: Sequence[str],
+    *,
+    title: str = "遺伝子",
 ) -> str:
     weights = data._as_mapping(genome.get("category_weight"))
     active_categories = set(categories)
@@ -1226,14 +1228,55 @@ def _genome_panel(
             "</span>"
             f'<strong>{value:.2f}</strong></div>'
         )
+    plasticity = data._number(genome.get("plasticity"))
     return (
-        '<section class="card genome"><h2>遺伝子</h2>'
+        f'<section class="card genome"><h2>{_escape(title)}</h2>'
         f'<div class="gene-bars">{"".join(bars)}</div>'
         '<p class="gene-scalars">'
         f'risk {data._number(genome.get("risk_tolerance")):+.2f} · '
         f'stance {data._number(genome.get("stance_shift_bias")):+.2f} · '
         f'novelty {data._number(genome.get("novelty_drive")):.2f}'
-        "</p></section>"
+        + (f' · 変わりやすさ {plasticity:.2f}' if plasticity else '')
+        + "</p></section>"
+    )
+
+
+def _growth_panel(model: Mapping[str, Any]) -> str:
+    """WB-GROWTH-001 S2: "性格の変化" -- only when the run actually wrote at
+    least one "growth" row (gapengine.policy.Policy.observe). Shows the
+    protagonist's birth genome next to genome+acquired (never a turn rule's
+    temporary per-decision effective_genome), plus every growth event that
+    produced it."""
+
+    events = model.get("growth_events")
+    if not events:
+        return ""
+
+    categories = model["categories"]
+    genome_before = _genome_panel(
+        model["genome"], categories, title="性格（開始時）"
+    )
+    genome_after = _genome_panel(
+        model["genome_now"], categories, title="性格（今）"
+    )
+    from gapengine.scenes import growth_event_text
+
+    rows = "".join(
+        '<tr>'
+        f'<td>T{_escape(event["turn"])}</td>'
+        f'<td>{_escape(growth_event_text(event))}</td>'
+        '</tr>'
+        for event in events
+    )
+    return (
+        '<section class="card growth-section"><h2>性格の変化</h2>'
+        '<p class="muted">物語の中で起きた出来事の結果、性格がどう動いたかを示す。'
+        '下の「人物」表の気質はここでは変わらない。</p>'
+        f'<div class="genome-compare">{genome_before}{genome_after}</div>'
+        '<table class="growth-events"><thead><tr>'
+        '<th scope="col">ターン</th><th scope="col">きっかけと変化</th>'
+        '</tr></thead>'
+        f'<tbody>{rows}</tbody></table></section>'
     )
 
 
@@ -1330,6 +1373,8 @@ def _timeline(view_model: Mapping[str, Any]) -> str:
             )
             if scene.get("turning"):
                 tags += '<span class="tag">転機候補</span>'
+            if scene.get("growth"):
+                tags += '<span class="tag growth-tag">成長</span>'
             motive_lines = "".join(
                 _motive_line(motive) for motive in scene.get("motives") or []
             )
@@ -1549,6 +1594,7 @@ def cell_page(
         f'<dt>{_tip("layers", "layers")}</dt><dd>{_escape(model["layers_path"])}</dd>'
         '</dl></section>'
         + _genome_panel(model["genome"], model["categories"])
+        + _growth_panel(model)
         + '<section class="card chart-card"><h2>7層の推移</h2>'
         '<p class="muted">x = 日。▼ downed、▲ revived、● ending。</p>'
         f'{layers_svg(model["layer_points"], model["markers"])}</section>'

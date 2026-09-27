@@ -406,6 +406,11 @@ def _initial_values(*, label, project_id, template_id, evolution, execution_limi
     # .get(): a config saved before WB-ROUTE-001 S4 added "route_rho" to
     # evolution_defaults() has no such key either.
     values["evolution.route_rho"] = evolution.get("route_rho")
+    # .get(): a config saved before WB-GROWTH-001 S2 added
+    # "personality_growth" to evolution_defaults() has no such key either.
+    values["evolution.personality_growth"] = evolution.get(
+        "personality_growth", False
+    )
     values["evolution.target_ending"] = (
         ", ".join(evolution["target_ending"]) if evolution.get("target_ending") else ""
     )
@@ -769,6 +774,13 @@ def render_config_form(values, *, projects, templates, parent_config_id=None, wo
         + _checkbox_field(
             "説明記録", "evolution.record_explanations", values["evolution.record_explanations"],
             desc="各手番の「選択・根拠・代償・転機」を記録する。上映で使う。",
+        )
+        + _checkbox_field(
+            "性格の成長", "evolution.personality_growth",
+            values["evolution.personality_growth"],
+            desc="物語の中で起きた出来事（勝敗・仲間・裏切りなど）に応じて、"
+                 "主人公の性格がわずかに変わっていくようにする。"
+                 "「世界を育てる」（下のタブ）とは別物で、世界そのものは変えない。既定オフ。",
         )
         + "</div>"
         + _radio_field(

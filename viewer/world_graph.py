@@ -630,7 +630,13 @@ _SHEET_NOTE = (
     '<p class="muted sheet-note">気質と評判は 0〜1、基礎の強さは 100、'
     "体力と仲間への加勢はこの世界での最大値を上限にバーを描いています。"
     "右側は数値がすでに意味しているもの（見えない修正・秘密・伏線）で、生成された説明ではなく "
-    "world.yaml/subjects/effects.yaml の値とエンジンの計算式どおりです。</p>"
+    "world.yaml/subjects/effects.yaml の値とエンジンの計算式どおりです。"
+    # WB-GROWTH-001 S2: this table is the character's starting definition
+    # and never changes mid-story -- growth shifts a separate, in-run
+    # "personality" (gapengine.policy.Policy.acquired), shown on the run
+    # detail page instead.
+    "気質（この表）は物語の中では変わりません。性格の変化はラン詳細の"
+    "「性格の変化」に出ます。</p>"
 )
 
 

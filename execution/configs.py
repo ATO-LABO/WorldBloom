@@ -149,7 +149,10 @@ def normalize(spec):
         _integer(values[name], "evolution." + name, 1)
     _integer(values["seed_base"], "evolution.seed_base", 0)
     _integer(values["ga_seed"], "evolution.ga_seed")
-    for name in ("coevolve", "meta_evolution", "record_explanations"):
+    for name in (
+        "coevolve", "meta_evolution", "record_explanations",
+        "personality_growth",
+    ):
         if type(values[name]) is not bool:
             raise ConfigError("evolution." + name, "真偽値を指定してください")
     if values["keep"] not in ("all", "reached", "exemplar"):

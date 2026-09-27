@@ -92,6 +92,33 @@ def genome_shift(
     return shifts
 
 
+def current_genome_dict(
+    genome: Mapping[str, Any],
+    acquired: Mapping[str, float],
+) -> dict[str, Any]:
+    """WB-GROWTH-001 S2: ``clip(genome + acquired)`` as a plain genome dict
+    (same shape as ``Genome.to_dict()``) -- the birth ``genome`` (e.g. a
+    layers.jsonl header) plus this run's accumulated growth (a decision
+    row's ``policy.acquired``), never a turn/candidate rule's temporary
+    per-decision ``effective_genome``. Reuses
+    gapengine.policy.Policy.current_genome()'s own adjustment path
+    (``_adjust_genome``) so a viewer display can never disagree with what
+    reweight() actually used. Returns ``dict(genome)`` unchanged when
+    ``acquired`` is empty or all-zero (no new object needed, and no
+    clipping applied that wasn't already there)."""
+
+    if not acquired or not any(acquired.values()):
+        return dict(genome)
+    # Deferred: gapengine.policy is safe to import (no cycle back to
+    # lineage), but doing it lazily keeps this module's own import cost
+    # unchanged for callers that never touch growth.
+    from gapengine.genome import Genome
+    from gapengine.policy import _adjust_genome
+
+    base = Genome.from_dict(dict(genome))
+    return _adjust_genome(base, [dict(acquired)]).to_dict()
+
+
 def _trait_series(
     ancestry_entries: Sequence[Mapping[str, Any]],
     gene_shift: Sequence[Mapping[str, Any]],
