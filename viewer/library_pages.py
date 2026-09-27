@@ -708,15 +708,15 @@ def _worlds_routes(handler, world_id):
     world = next((w for w in store.worlds() if w["id"] == world_id), None)
     if world is None:
         raise ConfigError("world_id", "世界がありません", code="not_found")
+    from gapengine.route_paths import NO_ROUTE_CONFIG_MESSAGE, survey
     genre = world["genre"]
     if genre is None:
         handler._send_json(HTTPStatus.OK, {
             "status": "no_route_config",
-            "message": "このジャンルには道筋設定（route.yaml）が無いため計算できません。",
+            "message": NO_ROUTE_CONFIG_MESSAGE,
             "timepoints": [],
         })
         return
-    from gapengine.route_paths import survey
     project_dir = Path(repo) / "projects" / world_id
     template_dir = Path(repo) / "templates" / genre
     handler._send_json(HTTPStatus.OK, survey(project_dir, template_dir))

@@ -34,17 +34,22 @@ from engine.world import World
 from gapengine.evolve import _load_subjects
 from gapengine.route import (
     INF,
+    _acquire,
     _believed_win_probability,
     _blocked_on,
+    _holder_appears_to_have,
     _kinds,
     _leaf_tags,
     _leaf_zone,
+    _MAX_FIGHT_ROUNDS,
     _reachable_shortest_path,
     _STANCE_RAISE_COST,
     _BOOST_FALLBACK_COST,
     load_route_config,
     plan,
 )
+
+NO_ROUTE_CONFIG_MESSAGE = "このジャンルには道筋設定（route.yaml）が無いため計算できません。"
 
 Mutator = Callable[[World, dict[str, Subject]], None]
 
@@ -95,7 +100,17 @@ def state_at(
     slots in order) -- day-daily random events and per-subject actions are
     never applied (the planner only ever needs *scheduled* state, and must
     never consume randomness). ``mutate`` (used by knockout re-planning) is
-    applied once, right after loading, before any event replay."""
+    applied once, right after loading, before any event replay.
+
+    ``Simulation(0, ...)`` fixes both the RNG seed *and* (via ``World.
+    resolve_truth``, called from ``Simulation.__init__``) any ``truth_
+    candidates`` this world declares to their seed-0 draw -- deterministic
+    and safe for a fetch-and-deliver world like momotaro_plus2 (the
+    protagonist's own plan never reads ``world.truth`` at all, per route.py's
+    module docstring). A genre whose route.yaml goal instead depended on a
+    *resolved* truth fact (none currently do -- detective/romance have no
+    route.yaml) would need this call site revisited, since "seed 0's truth"
+    is one arbitrary draw, not the template's canonical answer."""
 
     world, subjects = _load_world_and_subjects(project_dir, template_dir)
     if mutate is not None:
@@ -146,13 +161,19 @@ def timepoints(world: World) -> list[tuple[int, str | None]]:
 
 
 def _timepoint_label(day: int, slot: str | None, world: World) -> str:
-    if (day, slot) == (1, list(world.slots)[0] if world.slots else None):
+    slots = list(world.slots)
+    if (day, slot) == (1, slots[0] if slots else None):
         return f"開始時（{day}日目 朝の予定イベント適用後）"
     events = world.scheduled_for(day, slot)
     names = "、".join(
         str(event.get("label") or event.get("id")) for event in events
     )
-    slot_label = slot if slot is not None else "朝"
+    # nice (Opus review): slot=None (the day-opening moment, before any of
+    # that day's own named time slots) must read differently from that same
+    # day's *first* named slot -- both can carry scheduled events, and
+    # conflating them ("朝" for slot=None regardless of what the first real
+    # slot is actually called) made two distinct timepoints look identical.
+    slot_label = slot if slot is not None else f"{day}日目の始まり"
     return f"{day}日目 {slot_label}『{names}』の後"
 
 
@@ -161,8 +182,19 @@ def _timepoint_label(day: int, slot: str | None, world: World) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _signature(best: frozenset) -> tuple:
-    return tuple(sorted((kind, value) for kind, value in best if kind in _SIGNATURE_KINDS))
+def _signature(plan_result: dict[str, Any]) -> tuple:
+    """The distinctness key for route enumeration. ``plan_result["route"]``
+    (fight/negotiate/None) must be included explicitly: while a
+    ``strong_enough`` danger-gate node is open, ``_acquire_from_subject``
+    demotes every ``("route", ...)`` tag out of ``best`` entirely (see
+    route.py's own docstring, "design judgment E"), so two plans that will
+    ultimately resolve to different routes can otherwise look identical
+    from their ``best`` tags alone (S1, Opus review)."""
+
+    tags = tuple(
+        sorted((kind, value) for kind, value in plan_result["best"] if kind in _SIGNATURE_KINDS)
+    )
+    return (("route_name", plan_result["route"]),) + tags
 
 
 def _make_item_knockout(item: str) -> Mutator:
@@ -192,17 +224,23 @@ def _make_verb_knockout(verb: str, subject_id: str) -> Mutator:
 
 
 def _knockouts_for(
-    best: frozenset, subject_id: str, world: World, subjects: dict[str, Subject]
+    plan_result: dict[str, Any], subject_id: str, world: World, subjects: dict[str, Subject]
 ) -> list[tuple[str, Mutator]]:
-    """One mechanical knockout per still-live lever in ``best``, in a fixed
-    rule-then-tag-name order (BFS determinism)."""
+    """One mechanical knockout per still-live lever, in a fixed
+    rule-then-tag-name order (BFS determinism). S1 (Opus review): the
+    fight/negotiate knockouts key off ``plan_result["route"]`` -- the
+    explicit winning branch ``_acquire_from_subject`` returns -- rather than
+    a ``("route", ...)`` tag in ``best``, which a danger-gated
+    (``strong_enough``) plan never carries even when it will resolve to
+    fight or negotiate once the gate clears."""
 
+    best = plan_result["best"]
     kinds = _kinds(best)
     subject = subjects[subject_id]
     result: list[tuple[str, Mutator]] = []
-    if ("route", "fight") in best and "fight" in subject.verbs:
+    if plan_result["route"] == "fight" and "fight" in subject.verbs:
         result.append(("K-fight", _make_verb_knockout("fight", subject_id)))
-    if ("route", "negotiate") in best and "negotiate" in subject.verbs:
+    if plan_result["route"] == "negotiate" and "negotiate" in subject.verbs:
         result.append(("K-negotiate", _make_verb_knockout("negotiate", subject_id)))
     for item in sorted(kinds.get("has_item", ())):
         if subject.has_item(str(item)):
@@ -255,12 +293,12 @@ def _enumerate_routes(
         min_win_prob=route_cfg["min_win_prob"],
     )
     calls = 1
-    seen = {_signature(baseline["best"])}
+    seen = {_signature(baseline)}
     # Each frontier/accepted entry carries its own knockout-name chain
     # alongside the mutator chain, so the UI can show "この段取りになる
     # 条件" without re-deriving it from opaque mutator closures.
     accepted: list[dict[str, Any]] = [
-        {"chain": (), "plan": baseline, "sig": _signature(baseline["best"]), "knockouts": ()}
+        {"chain": (), "plan": baseline, "sig": _signature(baseline), "knockouts": ()}
     ]
     frontier: list[tuple[tuple[Mutator, ...], tuple[str, ...], dict[str, Any]]] = [
         ((), (), baseline)
@@ -273,7 +311,7 @@ def _enumerate_routes(
             if plan_result["h"] in (None, INF):
                 continue
             world_c, subjects_c = state_at(project_dir, template_dir, upto, mutate=_compose(chain))
-            knockouts = _knockouts_for(plan_result["best"], subject_id, world_c, subjects_c)
+            knockouts = _knockouts_for(plan_result, subject_id, world_c, subjects_c)
             for name, mutator in knockouts:
                 if len(accepted) >= _MAX_ROUTES or calls >= _MAX_PLAN_CALLS:
                     break
@@ -292,7 +330,7 @@ def _enumerate_routes(
                 calls += 1
                 if plan2["h"] in (None, INF):
                     continue
-                sig2 = _signature(plan2["best"])
+                sig2 = _signature(plan2)
                 if sig2 in seen:
                     continue
                 seen.add(sig2)
@@ -324,7 +362,30 @@ def _fight_rounds(subject: Subject, holder: Subject, world: World) -> float:
     probability = _believed_win_probability(subject, holder, world, world.present_subjects(subject.zone))
     if probability <= 0.0:
         return INF
-    return float(math.ceil(min(30, 1.0 / probability)))
+    return float(math.ceil(min(_MAX_FIGHT_ROUNDS, 1.0 / probability)))
+
+
+def _state_fingerprint(subject: Subject, world: World) -> tuple:
+    """M2 (Opus review): a full, deterministic snapshot of everything a
+    ``plan()`` call actually reads off ``subject``/``world`` state --
+    location, inventory, knowledge, fight strength, and every giver's
+    stance toward the subject (route.py's own stance checks are always
+    ``giver -> subject``, see ``_trial_cost``/``_acquire_from_subject``).
+    Used only to detect a stalled walk (the exact same state recurring),
+    never to change what action is chosen."""
+
+    return (
+        subject.zone,
+        tuple(sorted(subject.inventory.items())),
+        tuple(sorted(subject.knowledge)),
+        round(subject.base, 6),
+        tuple(
+            sorted(
+                (giver_id, round(world.relations.stance(giver_id, subject.id), 6))
+                for giver_id in world.subjects
+            )
+        ),
+    )
 
 
 def _hop_toward(subject: Subject, world: World, dest: str) -> dict[str, Any] | None:
@@ -395,8 +456,20 @@ def _apply_has_item_leaf(
     return {"kind": "unknown", "text": f"{item}を手に入れる", "cost": 1.0}
 
 
-def _apply_stance_leaf(giver_id: str, subject: Subject, world: World) -> dict[str, Any]:
-    threshold = max(
+def _apply_stance_leaf(
+    giver_id: str, subject: Subject, world: World, believed_holder_id: str | None
+) -> dict[str, Any]:
+    """M2 (Opus review): the threshold to clear is not always a trial's own
+    ``requires.stance`` -- when ``giver_id`` is the objective's believed
+    holder, ``_acquire_from_subject``'s negotiate branch instead raises
+    stance against ``world.negotiate_threshold`` (route.py line ~1222,
+    "if world.relations.stance(holder.id, subject.id) < world.negotiate_
+    threshold"). Using only the trial threshold (default 0.0, when the
+    giver has no trial at all) under-shot the real requirement and made
+    negotiate's own stance_ge tag re-open every single step -- observed
+    looping "○○と親しくなる" ~53 times before the 60-step budget cut it off."""
+
+    trial_threshold = max(
         (
             float((trial.get("requires") or {}).get("stance", -1.0))
             for trial in world.trials
@@ -404,6 +477,9 @@ def _apply_stance_leaf(giver_id: str, subject: Subject, world: World) -> dict[st
         ),
         default=0.0,
     )
+    threshold = trial_threshold
+    if giver_id == believed_holder_id:
+        threshold = max(threshold, world.negotiate_threshold)
     current = world.relations.stance(giver_id, subject.id)
     world.relations.change(giver_id, subject.id, affinity=(threshold - current + 0.01))
     return {"kind": "stance", "text": f"{giver_id}と親しくなる", "cost": _STANCE_RAISE_COST}
@@ -412,6 +488,39 @@ def _apply_stance_leaf(giver_id: str, subject: Subject, world: World) -> dict[st
 def _apply_knows_leaf(fact_id: str, subject: Subject, world: World) -> dict[str, Any]:
     subject.knowledge.add(fact_id)
     return {"kind": "knows", "text": f"{subject.zone}で{fact_id}を調べる", "cost": 1.0}
+
+
+def _negotiate_offer_item(
+    holder: Subject,
+    subject: Subject,
+    world: World,
+    trial_reveal_facts: Any,
+) -> str | None:
+    """Same rule as route.py's own ``_best_offer``: nothing to offer at all
+    once stance is already high enough (``world.negotiate_threshold``);
+    otherwise the cheapest-to-acquire lootable+modifier item the holder
+    isn't already believed to have (an already-held item is free, ``h``==0,
+    and so always wins the tie -- ``_acquire`` returns 0.0 exactly for what
+    the subject already holds). M1 (Opus review): walk() used to offer
+    whatever lootable+modifier item it had *most recently picked up* for any
+    reason (e.g. a pure strength item fetched via ``_first_strength_item``),
+    which could name an item route.py's own plan never offered."""
+
+    if world.relations.stance(holder.id, subject.id) >= world.negotiate_threshold:
+        return None
+    candidates: list[tuple[float, str]] = []
+    for name, definition in sorted(world.items.items()):
+        if not definition.get("lootable") or not definition.get("modifier"):
+            continue
+        if _holder_appears_to_have(subject, holder, name, world):
+            continue
+        item_h, _best, _alt = _acquire(name, subject, world, frozenset(), trial_reveal_facts)
+        if item_h == INF:
+            continue
+        candidates.append((item_h, name))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda pair: pair[0])[1]
 
 
 def walk(
@@ -424,9 +533,29 @@ def walk(
     """One ordered, deterministic step-by-step walkthrough -- re-plans from
     scratch (``plan()``) before every single atomic step (one travel hop, or
     one leaf action), so the classification of "what to do next" always
-    matches the freshest state. ``truncated`` fires on a step budget
-    (``_MAX_WALK_STEPS``) or a non-monotonic ``h`` (a sign this symbolic
-    model's own approximations have looped)."""
+    matches the freshest state.
+
+    ``h`` (route.py's own cost estimate) is *not* a true shortest-remaining-
+    distance metric -- it sums each currently-open need's own ``_travel``
+    distance independently from the subject's *current* zone (route.py's own
+    documented limitation, module docstring: "h itself is not used for
+    [cause] classification and never will be: it is a report-only number
+    that can jump non-monotonically"). Empirically confirmed here too: a
+    single correct hop toward the nearest open leaf can raise ``h`` simply
+    because some *other*, unrelated need's distance-from-here changed. So
+    ``h`` is never used as a per-step progress gate here.
+
+    ``truncated`` instead fires on a step budget (``_MAX_WALK_STEPS``) or a
+    *repeated* full state fingerprint (M2, Opus review): zone + inventory +
+    knowledge + strength ``base`` + every stance toward the subject, taken
+    right after each step. A step that leaves every one of those unchanged
+    means nothing about the world actually moved, so re-planning next turn
+    can only pick the exact same leaf again -- an infinite loop, not
+    progress. Caught this way after ``_apply_stance_leaf`` was found looping
+    "○○と親しくなる" ~53 times in a fixture with no fight/negotiate verb and
+    no craftable/tradeable item at all (the fingerprint repeats after the
+    very first such step, since the stance leaf's own threshold bug -- fixed
+    alongside this -- kept re-raising the same relation by the same delta)."""
 
     world, subjects = state_at(project_dir, template_dir, upto, mutate=mutate)
     subject_id = world.protagonist
@@ -436,9 +565,8 @@ def walk(
 
     steps: list[dict[str, Any]] = []
     cumulative = 0.0
-    prev_h: float | None = None
     truncated = False
-    last_offer_item: str | None = None
+    seen_fingerprints: set[tuple] = set()
 
     for _ in range(_MAX_WALK_STEPS):
         result = plan(
@@ -454,17 +582,6 @@ def walk(
         if h == INF:
             truncated = True
             break
-        # NOTE: h is *not* a true shortest-remaining-distance metric -- it
-        # sums each currently-open need's own _travel distance independently
-        # from the subject's *current* zone (route.py's own documented
-        # limitation, module docstring: "h itself is not used for [cause]
-        # classification and never will be: it is a report-only number that
-        # can jump non-monotonically"). Empirically confirmed here too: a
-        # single correct hop toward the nearest open leaf can raise h simply
-        # because some *other*, unrelated need's distance-from-here changed.
-        # So h is only ever used as a stall detector (unchanged across a
-        # full step-budget window), never as a hard per-step monotonic gate.
-        prev_h = h
 
         best_kinds = _kinds(result["best"])
         leaves = _leaf_tags(best_kinds, world)
@@ -495,14 +612,12 @@ def walk(
                     kind, value = tag
                     if kind == "has_item":
                         action = _apply_has_item_leaf(str(value), subject, world, best_kinds)
-                        if action.get("kind") in ("investigate", "trial", "fight", "craft"):
-                            item_def = world.items.get(str(value), {})
-                            if item_def.get("lootable") and item_def.get("modifier"):
-                                last_offer_item = str(value)
                     elif kind == "knows":
                         action = _apply_knows_leaf(str(value), subject, world)
                     elif kind == "stance_ge":
-                        action = _apply_stance_leaf(str(value), subject, world)
+                        action = _apply_stance_leaf(
+                            str(value), subject, world, result["believed_holder"]
+                        )
                     elif kind == "win_fight":
                         holder = world.subjects.get(str(value))
                         if holder is not None:
@@ -518,7 +633,7 @@ def walk(
                     text = f"{deliver_to}へ届ける" if hop["zone"] == deliver_to else f"{hop['zone']}へ移動"
                     action = {"kind": "move", "zone": hop["zone"], "text": text, "cost": hop["cost"]}
         elif "strong_enough" in best_kinds:
-            target_holder = next(iter(best_kinds["strong_enough"]))
+            target_holder = sorted(best_kinds["strong_enough"])[0]
             holder = world.subjects.get(str(target_holder))
             if holder is not None:
                 current = strength(subject, world, world.present_subjects(subject.zone))
@@ -537,9 +652,12 @@ def walk(
                     if hop is not None:
                         action = {"kind": "move", "zone": hop["zone"], "text": f"{hop['zone']}へ移動", "cost": hop["cost"]}
                 else:
-                    if last_offer_item is not None and subject.has_item(last_offer_item):
-                        subject.remove_item(last_offer_item, 1)
-                        offer_text = f"（{last_offer_item}を差し出す）"
+                    offer_item = _negotiate_offer_item(
+                        holder, subject, world, route_cfg["trial_reveal_facts"]
+                    )
+                    if offer_item is not None and subject.has_item(offer_item):
+                        subject.remove_item(offer_item, 1)
+                        offer_text = f"（{offer_item}を差し出す）"
                     else:
                         offer_text = ""
                     subject.add_item(str(target), 1)
@@ -560,6 +678,12 @@ def walk(
                 "cumulative": round(cumulative, 4),
             }
         )
+
+        fingerprint = _state_fingerprint(subject, world)
+        if fingerprint in seen_fingerprints:
+            truncated = True
+            break
+        seen_fingerprints.add(fingerprint)
     else:
         truncated = True
 
@@ -571,6 +695,22 @@ def walk(
 # ---------------------------------------------------------------------------
 
 
+def _blocked_text(blocked: tuple[str, str, Any]) -> str:
+    """A short Japanese sentence for one ``gapengine.route._blocked_on``
+    result -- nice-to-have readability, never fed back into any decision."""
+
+    kind, value, detail = blocked
+    detail = detail or {}
+    if kind == "has_item":
+        held_by = detail.get("held_by")
+        return f"{value}が手に入らない" + (f"（{held_by}が所持）" if held_by else "")
+    if kind == "knows":
+        return f"{value}を知る手段がない"
+    if kind == "reach":
+        return f"{value}へたどり着けない"
+    return f"{kind}:{value}"
+
+
 def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
     project_dir = Path(project_dir)
     template_dir = Path(template_dir)
@@ -578,7 +718,7 @@ def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
     if cfg is None:
         return {
             "status": "no_route_config",
-            "message": "このジャンルには道筋設定（route.yaml）が無いため計算できません。",
+            "message": NO_ROUTE_CONFIG_MESSAGE,
             "timepoints": [],
         }
 
@@ -615,6 +755,11 @@ def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
         }
         if baseline["h"] in (None, INF):
             blocked = _blocked_on(subject, world, cfg["holder_belief_fact"], cfg["trial_reveal_facts"])
+            blocked_entries = (
+                [{"kind": blocked[0], "value": blocked[1], "detail": blocked[2], "text": _blocked_text(blocked)}]
+                if blocked
+                else []
+            )
             timepoint_results.append(
                 {
                     "label": _timepoint_label(day, slot, world),
@@ -626,7 +771,7 @@ def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
                     ],
                     "start": start_summary,
                     "routes": [],
-                    "blocked": [blocked] if blocked else [],
+                    "blocked": blocked_entries,
                 }
             )
             continue
@@ -643,11 +788,29 @@ def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
                 mutate=_compose(entry["chain"]),
             )
             conditions = [_knockout_condition_text(name) for name in entry["knockouts"]]
+            # S2 (Opus review): entry["plan"]["h"] is route.py's own upfront
+            # *estimate* (computed once, before any knockout-specific detour
+            # like a danger-gate boost item is actually walked through step
+            # by step) -- it can differ from the walked total (e.g. h=25 vs
+            # an actually-completed walk of 16, once a danger gate resolves
+            # earlier than the flat _BOOST_FALLBACK_COST estimate assumed).
+            # The heading shows the walked, *actual* total when the walk
+            # completed; h always ships too, labeled as an estimate.
+            completed_cost = (
+                walked["steps"][-1]["cumulative"]
+                if walked["steps"] and not walked["truncated"]
+                else None
+            )
+            if completed_cost is not None:
+                label = f"#{rank} 所要 {completed_cost:.0f}"
+            else:
+                label = f"#{rank} 所要 {entry['plan']['h']:.0f}（目安）"
             routes.append(
                 {
                     "rank": rank,
-                    "label": f"#{rank} 所要 {entry['plan']['h']:.0f}（目安）",
+                    "label": label,
                     "h": entry["plan"]["h"],
+                    "cost": completed_cost,
                     "route": entry["plan"]["route"],
                     "conditions": conditions,
                     "signature": list(entry["sig"]),
