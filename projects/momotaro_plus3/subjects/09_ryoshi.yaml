@@ -23,7 +23,7 @@ verbs:
   - rest
 
 identity:
-  "true": 街で船を操る漁師
+  "true": 海辺の砂浜で船を操る漁師
   displayed: 漁師
 
 goal:
