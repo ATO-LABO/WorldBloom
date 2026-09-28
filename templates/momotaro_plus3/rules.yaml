@@ -1,0 +1,56 @@
+- id: hostile_lean
+  scope: candidate
+  when: "stance(self, target) < -0.3"
+  adjust:
+    category_weight.I: 0.2
+    risk_tolerance: 0.1
+  description: 敵対相手にはより攻撃的に
+
+- id: after_crossing
+  scope: turn
+  when: "'越境' in phase"
+  adjust:
+    risk_tolerance: 0.2
+  description: 戸口を越えた後は大胆になる
+
+- id: when_downed_ally
+  scope: turn
+  when: "(stance(self, 犬) >= 0.6 and vitality(犬) == 'downed') or (stance(self, 猿) >= 0.6 and vitality(猿) == 'downed') or (stance(self, キジ) >= 0.6 and vitality(キジ) == 'downed') or (stance(self, 蜂) >= 0.6 and vitality(蜂) == 'downed') or (stance(self, 蟹) >= 0.6 and vitality(蟹) == 'downed') or (stance(self, 馬) >= 0.6 and vitality(馬) == 'downed') or (stance(self, 牛) >= 0.6 and vitality(牛) == 'downed') or (stance(self, 豚) >= 0.6 and vitality(豚) == 'downed')"
+  adjust:
+    category_weight.III: 0.3
+  description: 倒れた仲間がいるときは関係的行動を重視する
+
+# WB-GROWTH-001 review fix (nice #6): a "when" predicate that reads
+# stress_after must guard it against None first (e.g.
+# "stress_after is not None and stress_after > 0.5") -- it is None on
+# every marker/event row (downed/ally_gained/betrayal/... all log
+# delta={}), and comparing None with a number raises TypeError.
+- id: g_fight_lost
+  scope: outcome
+  when: "actor_is_self and verb == 'fight' and result == 'lost'"
+  adjust: {risk_tolerance: -0.15}
+  description: 敗北で慎重になる
+
+- id: g_fight_won
+  scope: outcome
+  when: "actor_is_self and verb == 'fight' and result == 'won'"
+  adjust: {risk_tolerance: 0.1, category_weight.I: 0.1}
+  description: 勝利で大胆になる
+
+- id: g_downed
+  scope: outcome
+  when: "kind == 'event' and verb == 'downed' and actor_is_self"
+  adjust: {risk_tolerance: -0.2}
+  description: 倒れて慎重になる
+
+- id: g_ally_gained
+  scope: outcome
+  when: "kind == 'event' and verb == 'ally_gained' and actor_is_self"
+  adjust: {category_weight.III: 0.1, stance_shift_bias: 0.1}
+  description: 仲間を得て人との関わりを重んじる
+
+- id: g_betrayed
+  scope: outcome
+  when: "kind == 'event' and verb == 'betrayal' and involves_self and not actor_is_self"
+  adjust: {stance_shift_bias: -0.2, category_weight.III: -0.1}
+  description: 裏切られて人を信じにくくなる
