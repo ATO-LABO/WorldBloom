@@ -425,5 +425,54 @@ class NegotiateOfferDescriptionTests(unittest.TestCase):
         self.assertEqual(text, "宝を譲るよう交渉した（敵対、差し出せる品なし）")
 
 
+class CompanionDynamicsAreOffByDefaultTests(unittest.TestCase):
+    """Phase C (momotaro_plus3) adds companionship.drift/infight_desertion/
+    drill_bond and give.shared_affinity, all opt-in per key. momotaro_plus2
+    configures none of them, so World must resolve them to the "disabled"
+    sentinel and the new engine code paths in engine/verbs.py must stay
+    inert here -- this is the plan's required proof that Phase C doesn't
+    change any existing world's behavior."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+
+    def test_new_companionship_keys_default_to_disabled(self) -> None:
+        self.assertEqual(self.world.companionship["drift"], ())
+        self.assertIsNone(self.world.companionship["infight_desertion"])
+        self.assertIsNone(self.world.companionship["drill_bond"])
+        self.assertNotIn(
+            "shared_affinity", self.world.items["きびだんご"]["give"]
+        )
+
+    def test_fight_never_emits_ally_lost_here(self) -> None:
+        dog = self.subjects["犬"]
+        monkey = self.subjects["猿"]
+        momotaro = self.subjects["桃太郎"]
+        for subject in (dog, monkey, momotaro):
+            subject.zone = "道中"
+        # Even a fully-loyal shared leader must not trigger desertion --
+        # infight_desertion is unconfigured here.
+        self.world.relations.change("犬", "桃太郎", affinity=1.0)
+        self.world.relations.change("猿", "桃太郎", affinity=1.0)
+        engine = VerbEngine(self.world, random.Random(1))
+        _result, _details, markers = engine.execute(
+            dog, Action("fight", ("猿",)), turn=1, day=1
+        )
+        self.assertFalse(any(m["verb"] == "ally_lost" for m in markers))
+
+    def test_train_does_not_bond_bystanders_here(self) -> None:
+        dog = self.subjects["犬"]
+        monkey = self.subjects["猿"]
+        momotaro = self.subjects["桃太郎"]
+        for subject in (dog, monkey, momotaro):
+            subject.zone = "道中"
+        self.world.relations.change("犬", "桃太郎", affinity=1.0)
+        self.world.relations.change("猿", "桃太郎", affinity=1.0)
+        before = self.world.relations.stance("犬", "猿")
+        engine = VerbEngine(self.world, random.Random(1))
+        engine.execute(momotaro, Action("train"), turn=1, day=1)
+        self.assertEqual(self.world.relations.stance("犬", "猿"), before)
+
+
 if __name__ == "__main__":
     unittest.main()

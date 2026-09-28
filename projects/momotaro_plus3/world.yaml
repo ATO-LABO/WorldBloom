@@ -58,6 +58,10 @@ stamina:
 companionship:
   threshold: 0.6
   weight: 2.0
+  drift:
+    - {between: [犬, 猿], per_slot: -0.03}
+  infight_desertion: -0.5
+  drill_bond: 0.05
 
 permission:
   restricted_weight: 0.15
@@ -136,6 +140,7 @@ items:
     give:
       receiver_affinity: 0.5
       giver_affinity: 0.1
+      shared_affinity: 0.15
     price:
       小判: 1
     shop_zone: 街

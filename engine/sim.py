@@ -582,6 +582,14 @@ class Simulation:
     def _record_encounters(self, writer: LayersWriter) -> None:
         before_relations = self.world.relations.snapshot()
         pairs: list[dict[str, str]] = []
+        # WB-MOMOTARO3-C: companionship.drift (natural affinity decay for a
+        # configured pair, e.g. dog/monkey) rides along on this same
+        # per-slot co-presence scan. Empty for every world that doesn't
+        # configure it, so this is a no-op there.
+        drift_per_pair = {
+            frozenset(entry["between"]): entry["per_slot"]
+            for entry in self.world.companionship["drift"]
+        }
         for zone in sorted(self.world.zones):
             subjects = self.world.present_subjects(zone)
             names = sorted(subject.id for subject in subjects)
@@ -597,6 +605,16 @@ class Simulation:
                         first,
                         awareness=self.world.awareness_per_encounter,
                     )
+                    per_slot = drift_per_pair.get(
+                        frozenset((first, second))
+                    )
+                    if per_slot:
+                        self.world.relations.change(
+                            first, second, affinity=per_slot
+                        )
+                        self.world.relations.change(
+                            second, first, affinity=per_slot
+                        )
                     pairs.append(
                         {
                             "first": first,

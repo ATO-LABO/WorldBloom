@@ -287,20 +287,58 @@ class World:
                 )
             ),
         }
+        raw_companionship = definition.get("companionship", {}) or {}
         self.companionship = {
             "threshold": float(
-                definition.get("companionship", {}).get(
-                    "threshold",
-                    0.6,
-                )
+                raw_companionship.get("threshold", 0.6)
             ),
             "weight": float(
-                definition.get("companionship", {}).get(
-                    "weight",
-                    1.0,
-                )
+                raw_companionship.get("weight", 1.0)
             ),
         }
+        # WB-MOMOTARO3-C S3.8: companion dynamics, all opt-in per key so
+        # worlds that don't configure them stay byte-identical (Phase C).
+        raw_drift = raw_companionship.get("drift") or []
+        if not isinstance(raw_drift, list):
+            raise ValueError("companionship.drift must be a list")
+        drift: list[dict[str, Any]] = []
+        for entry in raw_drift:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    "companionship.drift entries must be mappings"
+                )
+            between = entry.get("between")
+            if (
+                not isinstance(between, (list, tuple))
+                or len(between) != 2
+            ):
+                raise ValueError(
+                    "companionship.drift.between must name two subjects"
+                )
+            drift.append(
+                {
+                    "between": (
+                        str(between[0]),
+                        str(between[1]),
+                    ),
+                    "per_slot": float(entry.get("per_slot", 0.0)),
+                }
+            )
+        self.companionship["drift"] = tuple(drift)
+        raw_infight_desertion = raw_companionship.get(
+            "infight_desertion"
+        )
+        self.companionship["infight_desertion"] = (
+            float(raw_infight_desertion)
+            if raw_infight_desertion is not None
+            else None
+        )
+        raw_drill_bond = raw_companionship.get("drill_bond")
+        self.companionship["drill_bond"] = (
+            float(raw_drill_bond)
+            if raw_drill_bond is not None
+            else None
+        )
 
         self.action_graph, self.action_graph_enabled = (
             _load_action_graph(
@@ -1166,6 +1204,15 @@ class World:
             )
 
         subject_ids = set(subjects)
+        for drift_entry in self.companionship["drift"]:
+            unknown_drift = (
+                set(drift_entry["between"]) - subject_ids
+            )
+            if unknown_drift:
+                raise ValueError(
+                    "Unknown companionship drift subject: "
+                    f"{sorted(unknown_drift)}"
+                )
         item_collisions = subject_ids & set(self.items)
         if item_collisions:
             raise ValueError(
