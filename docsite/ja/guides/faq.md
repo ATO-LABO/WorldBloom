@@ -6,7 +6,7 @@ sources:
   - "docsite/ja/usage/gpu-guard.md"
   - "templates/"
   - "docsite/ja/concepts/personality-growth.md"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+reviewed: "53c98e6a1169e3a6f772c96460cb55c9c508abfe"
 ---
 
 # FAQ
