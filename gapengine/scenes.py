@@ -30,6 +30,7 @@ SPECIAL_PRIORITY = {
 VERB_LABELS = {
     "ally_gained": "仲間になった",
     "betrayal": "誓いを破った",
+    "buy": "買った",
     "concede": "譲歩した",
     "confront": "問い詰めた",
     "craft": "作った",
@@ -45,6 +46,7 @@ VERB_LABELS = {
     "grand_gesture": "大きな代償を伴う行動に出た",
     "guard": "守った",
     "investigate": "調べた",
+    "labor": "働いた",
     "mislead": "誤った情報へ誘導した",
     "move": "移動した",
     "negotiate": "交渉した",

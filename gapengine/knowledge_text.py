@@ -435,8 +435,8 @@ def describe_candidate_coarse(
     already have it."""
 
     label_key: str | None = None
-    if action.verb == "craft" and action.args:
-        label_key = f"craft:{action.args[0]}"
+    if action.verb in ("craft", "buy") and action.args:
+        label_key = f"{action.verb}:{action.args[0]}"
     elif action.verb == "trial":
         trial_id = action.meta.get("trial_id")
         if trial_id is not None:

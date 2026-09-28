@@ -854,6 +854,24 @@ class World:
                 if zone is not None and zone not in self.zones:
                     raise ValueError(f"Unknown item source zone: {item}:{zone}")
 
+            price = definition.get("price")
+            shop_zone = definition.get("shop_zone")
+            if price is None and shop_zone is None:
+                continue
+            if not isinstance(price, dict) or not price:
+                raise ValueError(f"Item price must be a non-empty mapping: {item}")
+            for currency, quantity in sorted(price.items()):
+                if currency not in self.items:
+                    raise ValueError(f"Unknown price currency: {item}:{currency}")
+                if (
+                    not isinstance(quantity, (int, float))
+                    or isinstance(quantity, bool)
+                    or quantity <= 0
+                ):
+                    raise ValueError(f"Item price must be positive: {item}:{currency}")
+            if not isinstance(shop_zone, str) or shop_zone not in self.zones:
+                raise ValueError(f"Unknown shop_zone: {item}:{shop_zone}")
+
     def _validate_recipe_cycles(self) -> None:
         visiting: set[str] = set()
         visited: set[str] = set()

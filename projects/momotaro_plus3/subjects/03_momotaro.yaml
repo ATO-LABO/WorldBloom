@@ -37,6 +37,8 @@ verbs:
   - pledge
   - negotiate
   - craft
+  - labor
+  - buy
   - fight
   - train
   - rescue
@@ -73,6 +75,7 @@ relations:
   馬: {affinity: 0.10, awareness: 0.15}
   牛: {affinity: 0.10, awareness: 0.15}
   豚: {affinity: 0.10, awareness: 0.15}
+  用心棒: {affinity: 0.0, awareness: 0.0}
 
 stamina:
   max: 14
@@ -85,6 +88,6 @@ range:
     - zones: [村]
       until_item: 鬼ヶ島の宝物
 
-companions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]
+companions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚, 用心棒]
 ally_value: 15
 objective_claimant: true
