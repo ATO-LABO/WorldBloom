@@ -319,3 +319,52 @@
 .wp-rel-workspace.is-expanded .wp-rel-canvas{height:calc(100dvh - 155px)}
 .wp-rel-workspace.is-expanded .wp-rel-inspector{max-height:calc(100dvh - 170px)}
 @media(max-width:760px){.wp-rel-workspace.is-expanded{inset:4px;height:calc(100dvh - 8px)}.wp-rel-workspace.is-expanded .wp-rel-canvas{height:480px}.wp-rel-workspace.is-expanded .wp-rel-inspector{max-height:360px}}
+
+/* AIT-78/79: route list-detail workspace. Cost and scheduled slots are distinct. */
+.wp-content.is-routes{display:flex;flex-direction:column;overflow:hidden;padding-top:20px;padding-bottom:16px;gap:12px}
+.is-routes>.wp-title{flex:none;margin:0}.is-routes h1{font-size:var(--ws-fs-h1)}
+.wp-routes-controls{display:flex;flex:none;gap:16px;flex-wrap:wrap}
+.wp-routes-controls:empty{display:none}
+.wp-routes-controls label{display:flex;align-items:center;gap:8px;font-size:var(--ws-fs-sm);min-width:0;max-width:100%}
+.wp-routes-controls select{min-width:0;max-width:100%;min-height:var(--ws-control-h-sm);border:1px solid var(--ws-control-line);border-radius:var(--ws-radius);background:var(--ws-surface);color:var(--ws-text);font-size:var(--ws-fs-sm);padding:4px 8px}
+.wp-routes-summary{display:flex;align-items:start;justify-content:space-between;gap:20px;flex:none;max-height:25%;overflow:auto}
+.wp-routes-summary h2{font-size:var(--ws-fs-h2);line-height:1.4}
+.wp-routes-summary>strong{white-space:nowrap;font-size:var(--ws-fs-md);font-weight:600;font-variant-numeric:tabular-nums}
+.wp-routes-condition,.wp-routes-meta{font-size:var(--ws-fs-xs);line-height:1.5!important;color:var(--ws-muted);margin-top:5px!important}
+.wp-routes-layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,1fr);gap:28px;min-height:0;flex:1}
+.wp-routes-list{display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;min-width:0}
+.wp-routes-table-head,.wp .wp-routes-step{display:grid;grid-template-columns:112px minmax(0,1fr) 64px;align-items:center;gap:12px;text-align:left;font-size:var(--ws-fs-sm);line-height:1.4;padding:9px 12px}
+.wp-routes-table-head{border-bottom:1px solid var(--ws-line);color:var(--ws-muted);padding-right:28px;flex:none}
+.wp-routes-table-head>span:last-child,.wp-routes-step>span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.wp-routes-scroll{min-height:0;overflow-y:scroll;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-color:var(--ws-control-line) var(--ws-surface)}
+.wp .wp-routes-step{width:100%;border-bottom:1px solid var(--ws-line);min-height:var(--ws-control-h);border-left:3px solid transparent;overflow-wrap:anywhere}
+.wp .wp-routes-step[aria-pressed=true]{background:var(--ws-select-bg);border-left-color:var(--ws-advance)}
+.wp .wp-routes-step:focus-visible{outline-offset:-3px}
+.wp-routes-step small{display:block;font-size:var(--ws-fs-xs);color:var(--ws-muted);margin-top:3px}
+.wp-routes-day{position:sticky;top:0;z-index:1;background:var(--ws-surface);padding:5px 12px;border-bottom:1px solid var(--ws-line);font-size:var(--ws-fs-xs);font-weight:600;line-height:1.5}
+.wp-routes-detail{min-height:0;min-width:0;overflow:auto;padding-left:24px;border-left:1px solid var(--ws-line);font-size:var(--ws-fs-sm)}
+.wp-routes-detail h2{font-size:var(--ws-fs-h2);margin:5px 0;line-height:1.4}
+.wp-routes-detail h3{font-size:var(--ws-fs-md);margin:6px 0 12px;line-height:1.5;overflow-wrap:anywhere}
+.wp-routes-detail dl{margin:0}.wp-routes-detail dl>div{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;margin:8px 0;line-height:1.5}
+.wp-routes-detail dt{color:var(--ws-muted);font-size:var(--ws-fs-xs)}.wp-routes-detail dd{margin:0;overflow-wrap:anywhere}
+.wp-routes-assumption{font-size:var(--ws-fs-xs);color:var(--ws-muted);margin-top:12px!important}
+.wp .wp-routes-back{display:none}
+.wp details.wp-routes-notes{padding:5px 0 0;flex:none;font-size:var(--ws-fs-xs);line-height:1.5;max-height:35%;overflow:auto}
+.wp-routes-notes p{font-size:var(--ws-fs-xs)!important;padding-top:7px!important}
+.wp-routes-empty{flex:1;min-height:0;overflow:auto;font-size:var(--ws-fs-md)}
+.wp-routes-empty .wp-primary{margin-top:16px}
+@media(max-width:1023px){
+  .wp-routes-layout{grid-template-columns:minmax(0,1fr);gap:0}
+  .wp-routes-layout>.wp-routes-detail{display:none;border:0;padding:0}
+  .wp-routes-layout.is-detail>.wp-routes-list{display:none}
+  .wp-routes-layout.is-detail>.wp-routes-detail{display:block}
+  .wp .wp-routes-back{display:inline-flex;padding-left:0;font-size:var(--ws-fs-sm);margin-bottom:8px}
+  .wp-routes-summary{gap:10px}.wp-routes-detail dl>div{grid-template-columns:135px minmax(0,1fr)}
+}
+@media(max-width:760px){
+  .wp-content.is-routes{padding:14px 16px;gap:10px}
+  .wp-routes-summary{flex-direction:column;gap:3px;max-height:28%}
+  .wp-routes-controls{gap:8px}.wp-routes-controls label{width:100%}.wp-routes-controls select{flex:1}
+  .wp-routes-table-head,.wp .wp-routes-step{grid-template-columns:80px minmax(0,1fr) 42px;gap:8px;padding-left:6px;padding-right:6px}
+  .wp-routes-table-head{padding-right:22px}.wp-routes-day{padding-left:6px}
+}
