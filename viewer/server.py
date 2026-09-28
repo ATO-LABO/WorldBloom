@@ -54,6 +54,7 @@ STATIC_FILES = {
     "run-workspace.css": "text/css; charset=utf-8",
     "sifting-workspace.css": "text/css; charset=utf-8",
     "sifting-workspace.js": "application/javascript; charset=utf-8",
+    "sifting-actions.js": "application/javascript; charset=utf-8",
     "raw-workspace.css": "text/css; charset=utf-8",
     "raw-workspace.js": "application/javascript; charset=utf-8",
     "lineage-workspace.css": "text/css; charset=utf-8",

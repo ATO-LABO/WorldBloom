@@ -1366,7 +1366,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(body.count('class="sf-inspector"'), 1)
         self.assertEqual(body.count('data-candidate-id="'), 2)
         self.assertEqual(body.count('name="sf-verdict"'), 4)
-        self.assertEqual(body.count('role="tabpanel"'), 3)
+        self.assertEqual(body.count('role="tabpanel"'), 4)
         self.assertIn('data-sf-mode="synopsis"', body)
         self.assertNotIn('id="generate-form"', body)
         self.assertEqual(self.fake.submitted, [])
