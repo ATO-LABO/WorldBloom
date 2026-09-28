@@ -19,7 +19,7 @@ zones:
   - name: 鬼ヶ島
     note: 鬼が宝物を守る固定の島
   - name: 街
-    note: 漁師や商人が行き交う港町
+    note: 商人が行き交う町
 
 routes:
   村:
