@@ -155,7 +155,7 @@ items:
 
   - name: 小判
     sources:
-      - {type: labor, zone: 街, count: 2, max: 8, stamina: 3}
+      - {type: labor, zone: 街, count: 1, max: 8, stamina: 3}
     lootable: true
     give:
       receiver_affinity: 0.2
