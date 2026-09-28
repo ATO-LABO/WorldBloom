@@ -1,5 +1,5 @@
 ---
-ja_rev: "77d2d9986208"
+ja_rev: "5b49aebc3c48"
 ---
 # Create a World
 
@@ -35,7 +35,7 @@ Opening a world (or clicking "世界を開く", Open world, from its card on the
 | 初期物語 (Initial story) | Edit the opening text (the situation at the start) |
 | 時間 (Time) | The run's day count and the day's time-of-day breakdown. **Scheduled events** (below) are also checked and edited here |
 
-For a world in a genre with a route layer (`route.yaml`), the world screen's sidebar also has "最短経路を調査" (Survey shortest routes) — a read-only feature showing up to 3 example walkthroughs to the ending. See [Route Layer](../concepts/route-layer.md#route-paths-survey) for details.
+The world screen's sidebar always has "最短経路を調査" (Survey shortest routes) — a read-only feature showing up to 3 example walkthroughs to the ending — regardless of genre. A genre with no route layer (`route.yaml`), or whose goal shape isn't supported, shows an unsupported-genre message instead. See [Route Layer](../concepts/route-layer.md#route-paths-survey) for details.
 
 Each field can be saved individually. Saving **does not change results from runs already executed** against that world (the new settings apply starting from the next run).
 
@@ -56,16 +56,14 @@ To edit the template (genre) itself, use the "ジャンル" (Genre) tab on the h
 
 ## Relationship graph { #relationship-workspace }
 
-Switching the "登場人物" (Characters) tab's view to "相関図" (Relationship graph) shows the characters' relationships as a directed graph. Characters are colored by affiliation (`affiliation`; falls back to their starting place if unset), with groups laid out around the protagonist's own affiliation.
+The "登場人物" (Characters) tab has three views: "一覧" (List), "相関図" (Relationship graph), and "関係表" (Relationship table).
 
-- **Scope**: toggle between "全体" (Everyone) and "人物フォーカス" (Focus on one character — pick one, then narrow to direct relationships / two hops / everyone)
-- **Filters**: narrow by relationship kind ("好意"/positive, "反感"/negative, "中立"/neutral) or by affiliation
-- Clicking a character opens a detail panel: affiliation, number of direct relationships, a summary, and their top relationships (up to 6)
-- "関係を数値で確認" (Check relationships as numbers, a collapsible section) switches to a list with `affinity` and `awareness` values, or a person-by-person matrix view
-- In an editable world, relationship rows show a "ラベルを編集" (Edit label) button — you can set or clear a text label (up to 120 characters) for one direction (source→target) of a relationship at a time (the numeric `affinity`/`awareness` themselves can't be edited here)
-- Editing a character's details (from "Advanced settings / config files") also lets you set their **affiliation** (`affiliation`, up to 120 characters, optional) — this value drives the graph's coloring and grouping
+- **相関図 (Relationship graph)**: shows characters' relationships as a directed graph. Characters are colored by affiliation (`affiliation`; falls back to their starting place if unset), with groups laid out around the protagonist's own affiliation. Toggle between "全体" (Everyone) and "人物フォーカス" (Focus on one character — pick one, then narrow to direct relationships / two hops / everyone), and filter by relationship kind ("好意"/positive, "反感"/negative, "中立"/neutral) or affiliation. Clicking a character opens a detail panel: affiliation, number of direct relationships, a summary, and their top relationships (up to 6). "関係を数値で確認" (Check relationships as numbers, a collapsible section) switches to a list with `affinity` and `awareness` values
+- **関係表 (Relationship table)**: a separate tab from the graph, showing every character's relationships at once as a person-by-person matrix
+- In either the graph or the table, an editable world shows a "ラベルを編集" (Edit label) button on relationship rows — you can set or clear a text label (up to 120 characters) for one direction (source→target) of a relationship at a time (the numeric `affinity`/`awareness` themselves can't be edited here)
+- A character's **affiliation** (`affiliation`, up to 120 characters, optional) is set from the "一覧" (List) view, via that character's "人物を編集" (Edit character) dialog. This value drives the graph's coloring and grouping
 
-Any configuration problems (e.g. malformed relationship data) are listed, with a count, under a "設定の確認" (Check configuration, collapsible) section.
+In the graph, any configuration problems (e.g. malformed relationship data) are listed, with a count, under a "設定の確認" (Check configuration, collapsible) section.
 
 ## Scheduled events and force actions { #scheduled-events }
 

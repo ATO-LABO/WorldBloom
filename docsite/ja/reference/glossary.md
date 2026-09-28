@@ -3,7 +3,7 @@ sources:
   - "viewer/pages.py"
   - "gapengine/route.py"
   - "gapengine/rationality.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 ---
 # 用語集
 
@@ -21,7 +21,7 @@ WorldBloom の画面と、このドキュメントに出てくる用語をまと
 | 正典（canon） | そのジャンルで「よくある」行動の傾向。新規性志向の遺伝子が避ける対象であり、前例表の初期値 |
 | 伏線（遅延効果） | 先に置いた行動が後で効く仕組み。設置と回収の条件を持ち、未回収のまま終わると品質 q が減点される |
 | 予定イベント（scheduled_events） | 世界の指定した日・時間帯に自動で起きる出来事。**強制行動**（force_action）を持つものは、その時間帯の対象の行動を指定の動詞・引数へ強制的に差し替える。詳しくは[テンプレート](../reference/templates.md#scheduled-events) |
-| 人物関係図 | 世界の「登場人物」タブから開く、人物どうしの関係の有向グラフ表示。ラベルの編集や、人物の所属（affiliation）の設定もここから行う。詳しくは[世界を作る](../usage/create-world.md#relationship-workspace) |
+| 人物関係図 | 世界の「登場人物」タブの「相関図」「関係表」から開く、人物どうしの関係の表示（有向グラフ・行列）。関係のラベル編集もここから行う（人物の所属＝affiliationは「一覧」タブの「人物を編集」で設定）。詳しくは[世界を作る](../usage/create-world.md#relationship-workspace) |
 
 ## 進化
 

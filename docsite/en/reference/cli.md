@@ -1,5 +1,5 @@
 ---
-ja_rev: "e7e940e79c4c"
+ja_rev: "d8667c740d30"
 ---
 # CLI
 
@@ -59,6 +59,13 @@ A control experiment measuring the reach rate and diversity produced by purely r
 ## scripts/world_patch.py — world self-expansion patches
 
 Has subcommands for `propose`, `check` (trial run), `approve`/`reject`, and `list`/`reopen`/`repair`. See [Create a World](../usage/create-world.md#world-expansion) for details.
+
+Plus subcommands around genre assets:
+
+- `retire`: wither an approved patch (re-measures its usage against the representative individuals of the experiment passed via `--experiment` before recording it)
+- `usage`: read-only view of each applied patch's usage and retirement candidates (`--experiment` required)
+- `export`: publish a strongly-used applied patch as a genre asset (usage is re-measured here too)
+- `import`: stage a genre asset as a new proposal (`trial_pending`) in this world — still needs `check`/`approve`
 
 ```
 --8<-- "cli/world_patch.txt"

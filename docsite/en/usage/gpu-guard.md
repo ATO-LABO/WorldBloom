@@ -1,5 +1,5 @@
 ---
-ja_rev: "777992f08c86"
+ja_rev: "3e449cf631bc"
 ---
 # GPU Guard
 
@@ -12,7 +12,9 @@ With `gpu_guard` configured, the following happen automatically before generatio
 - **Lease**: acquires a single machine-wide OS file lock (default `%LOCALAPPDATA%\WorldBloom`, changeable via the `WORLDBLOOM_GPU_LEASE_DIR` environment variable) before generating. If another process holds it, it waits until it's free, and fails with `GpuBusy` if it's still not free after waiting (it never waits indefinitely). If the process holding the lock crashes, the OS releases it automatically
 - **Coordinating with Ollama**: before using `llama-server`, it observes Ollama's `/api/ps` twice; if idle (no active response), it automatically unloads it with `keep_alive: 0`. While it judges Ollama to be in use, it waits, and fails with `GpuBusy` once the lease deadline passes. The reverse direction (checking whether llama-server is running before using Ollama) does not wait — if it's active, this fails immediately with `GpuBusy` (whichever started first is given priority, preventing both from exhausting VRAM at once)
 - **Auto-start / auto-stop**: if `llama-server`'s `base_url` already responds, that instance (started by a human) is used as-is and never stopped. If there's no response and `launch` (the startup command) is configured, it's started automatically, waiting up to `startup_seconds` (default 180) for it to come up. Once generation finishes, only a server it started itself is stopped automatically. If a server was left over from a previous crash, whichever side next acquires the lease shuts it down automatically
-- **Thermal guard**: checks GPU temperature (`nvidia-smi`) before each generation; if it's at or above `pause_at` (default 78°C), it waits at `poll_seconds` (default 15 second) intervals until it drops to `resume_at` (default 70°C) or below. If it's still not down after `max_wait_seconds` (default 600 seconds), it stops waiting and continues with generation anyway (this does not count as a failure). On environments where temperature can't be read, it never waits at all
+- **Thermal guard**: checks GPU temperature (`nvidia-smi`) before each generation; if it's at or above `pause_at` (default 78°C), it waits at `poll_seconds` (default 15 second) intervals until it drops to `resume_at` (default 70°C) or below. If it's still not down after `max_wait_seconds` (default 600 seconds), it stops waiting and continues with generation anyway (this does not count as a failure). On environments where temperature can't be read, it never waits at all. Setting `thermal.enabled` explicitly to `false` disables the thermal guard entirely (enabled by default)
+
+The "計算" (Compute) tab of Settings also lets you toggle the thermal guard on/off and set "一時停止する温度" (the pause temperature, `pause_at`, 50–95°C). `resume_at` can't be set directly from the screen — it auto-follows `pause_at`, keeping the default gap (78→70, 8°C; lowering `pause_at` lowers `resume_at` by the same 8°C).
 
 ## Writing settings.json
 

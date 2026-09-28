@@ -10,7 +10,7 @@ sources:
   - "scripts/export_static.py"
   - "scripts/pack_samples.py"
   - "viewer/server.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 ---
 # CLI
 
@@ -68,6 +68,13 @@ python scripts/evolve.py --project projects/momotaro_plus2 --template templates/
 ## scripts/world_patch.py — 世界の自己拡張パッチ
 
 `propose`（提案）・`check`（追試）・`approve`/`reject`（承認・却下）・`list`/`reopen`/`repair`（一覧・差し戻し・修復）のサブコマンドを持ちます。詳しくは[世界を作る](../usage/create-world.md#world-expansion)を参照してください。
+
+このほか、ジャンル資産まわりのサブコマンドもあります。
+
+- `retire`: 承認済みパッチを枯らす（`--experiment` で渡した実験の代表個体で使用状況を測り直してから記録）
+- `usage`: 適用中パッチごとの使用状況と枯れ候補を読み取り専用で確認（`--experiment` 必須）
+- `export`: よく使われている適用中パッチを、ジャンル資産として書き出す（使用状況はここでも測り直す）
+- `import`: ジャンル資産を、この世界の新しい提案（`trial_pending`。改めて `check`/`approve` が必要）として取り込む
 
 ```
 --8<-- "cli/world_patch.txt"

@@ -1,5 +1,5 @@
 ---
-ja_rev: "bb07967956ce"
+ja_rev: "e75a3d5e75ed"
 ---
 # Genome
 
@@ -18,7 +18,7 @@ The lower bound on category weights is 0.05 rather than 0 (which would allow dis
 
 ## A 10th scalar: plasticity (opt-in) { #plasticity }
 
-`plasticity` ([0, 1], neutral value 0) is a 10th scalar added on top of the nine above, in its own separate bucket. The GA only draws a random value for it when a caller explicitly opts in (the "Personality growth" toggle in run settings, or `--personality-growth` on the CLI); otherwise (the default) it stays exactly 0 and consumes no extra randomness at all. At 0, every mechanism it enables is fully disabled, matching a run from before personality growth existed byte for byte. See [Personality Growth](personality-growth.md) for details.
+`plasticity` ([0, 1], neutral value 0) is a 10th scalar added on top of the nine above, in its own separate bucket. Only when a caller explicitly opts in (the "Personality growth" toggle in run settings, or `--personality-growth` on the CLI) does it draw and evolve like the other nine — consuming randomness at initialization/crossover/mutation and inheriting across generations the normal way. Without opting in (the default) it stays exactly 0 and consumes no extra randomness for this 10th scalar at all. At 0, every mechanism personality growth enables (outcome rules, growth events, the QD map's third axis, etc.) is fully disabled, matching a run from before personality growth existed byte for byte. See [Personality Growth](personality-growth.md#plasticity) for details.
 
 ## Personality (temperament) is not evolved
 

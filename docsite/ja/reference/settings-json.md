@@ -10,7 +10,8 @@ sources:
   - "viewer/server.py"
   - ".gitignore"
   - "execution/rationality_settings.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+  - "execution/evolution_settings.py"
+reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 ---
 # settings.json
 
@@ -76,6 +77,7 @@ reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 
 | キー | 型 | 既定値 | 意味 |
 |---|---|---|---|
+| `thermal.enabled` | 真偽値 | 明示的な `false` 以外は有効 | 熱ガードそのもののオン・オフ。`false` にすると温度確認自体を行わない |
 | `thermal.pause_at` | 数値（℃） | 78 | この温度以上で生成前に一時待機する |
 | `thermal.resume_at` | 数値（℃） | 70 | この温度以下まで下がったら再開する |
 | `thermal.poll_seconds` | 数値（秒） | 15 | 熱ガード待機中の確認間隔 |

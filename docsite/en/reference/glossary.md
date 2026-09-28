@@ -1,5 +1,5 @@
 ---
-ja_rev: "a7e665b94723"
+ja_rev: "7716ca044b5b"
 ---
 # Glossary
 
@@ -17,7 +17,7 @@ A summary of terms used on WorldBloom's screens and throughout this documentatio
 | Canon | The "commonly seen" tendencies of actions in that genre. What a novelty-seeking genome avoids, and the initial value of the precedent table |
 | Foreshadowing (delayed effect) | A mechanism where an earlier action pays off later. Has a setup and a resolution condition; ending unresolved costs a penalty to quality q |
 | Scheduled event (scheduled_events) | An event that fires automatically on a given day/time-slot of the world. One carrying a **force action** (force_action) replaces the target's own action for that slot with the given verb/args. See [Templates](../reference/templates.md#scheduled-events) |
-| Relationship graph | The directed-graph view of characters' relationships, opened from the world's "Characters" tab. Also where you edit relationship labels and a character's affiliation. See [Create a World](../usage/create-world.md#relationship-workspace) |
+| Relationship graph | The graph/matrix views of characters' relationships, opened from the world's "Characters" tab ("相関図"/"関係表"). Also where you edit relationship labels (a character's affiliation is set from the "一覧"/List view's "Edit character" dialog instead). See [Create a World](../usage/create-world.md#relationship-workspace) |
 
 ## Evolution
 

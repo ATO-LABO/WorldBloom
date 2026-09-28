@@ -4,7 +4,7 @@ sources:
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "gapengine/policy.py"
   - "docsite/ja/usage/run-settings.md"
-reviewed: "57ffba799ae61c176e714f5c58384321ba059008"
+reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 ---
 # 遺伝子（Genome）
 
@@ -23,7 +23,7 @@ WorldBloom が GA（遺伝的アルゴリズム）で進化させる対象は、
 
 ## 10個目のスカラー：plasticity（任意） { #plasticity }
 
-`plasticity`（[0, 1]、中立値 0）は、上記9個とは別枠で追加された10個目のスカラーです。GA が明示的にオプトインしたとき（実行設定の「性格の成長」または CLI の `--personality-growth`）だけ乱数を1回消費して値を引き、それ以外（既定）では常に0のままで、乱数消費も一切ありません。0であれば以下の仕組みはすべて無効化され、性格の成長が存在する前とバイト単位で一致します。詳しくは[性格の成長](personality-growth.md)を参照してください。
+`plasticity`（[0, 1]、中立値 0）は、上記9個とは別枠で追加された10個目のスカラーです。GA が明示的にオプトインしたとき（実行設定の「性格の成長」または CLI の `--personality-growth`）だけ、初期化・交叉・突然変異のたびに乱数を消費して値を動かし、他の9個と同じく世代をまたいで遺伝します。オプトインしない（既定）ときは常に0のままで、この10個目のための乱数消費も一切ありません。0の個体は、性格の成長のあらゆる仕組み（outcome ルール・growth イベント・QD の第3軸など）が完全に無効化され、性格の成長が存在する前とバイト単位で一致します。詳しくは[性格の成長](personality-growth.md#plasticity)を参照してください。
 
 ## 性格（気質）は進化の対象外
 

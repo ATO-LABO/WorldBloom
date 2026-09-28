@@ -17,7 +17,7 @@ sources:
   - "engine/world.py"
   - "engine/sim.py"
   - "templates/momotaro_plus2/rules.yaml"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 ---
 # テンプレート
 
@@ -115,7 +115,7 @@ volatility_bins: [low, mid, high]
   description: 敵対相手にはより攻撃的に
 ```
 
-`scope` は `candidate`（候補ごと。`target` が束縛される）・`turn`（ターンごと）・`outcome`（行動が起きたあと、[性格の成長](../concepts/personality-growth.md)が有効なときだけ）の3種類。`candidate`/`turn` の `adjust` は `category_weight.<I〜VI>`・`risk_tolerance`・`stance_shift_bias`・`novelty_drive` を一時的に加算するキーで、`g_eff = clip(genome + Σ 該当ルールの adjust)` として実際の重みに使われます。`outcome` スコープのルールは一時的な加算ではなく、`plasticity × adjust` の分だけそのランの性格に恒久的に積み上がります（詳しくは[性格の成長](../concepts/personality-growth.md)）。
+`scope` は `candidate`（候補ごと。`target` が束縛される）・`turn`（ターンごと）・`outcome`（行動が起きたあと、[性格の成長](../concepts/personality-growth.md)が有効なときだけ）の3種類。`candidate`/`turn` の `adjust` は `category_weight.<I〜VI>`・`risk_tolerance`・`stance_shift_bias`・`novelty_drive` を一時的に加算するキーで、`g_eff = clip(genome + Σ 該当ルールの adjust)` として実際の重みに使われます。`outcome` スコープのルールは一時的な加算ではなく、`plasticity × adjust` の分だけそのランの性格に恒久的に積み上がります。またメタ進化がルールごとに有効・無効を探索する対象にも含まれません（詳しくは[性格の成長](../concepts/personality-growth.md)）。
 
 ### rationality.yaml（κ／Jev）
 
@@ -248,7 +248,11 @@ scheduled_events:
 - `move_to`（同じイベントのゾーン移動）と `force_action` は同時に指定できない
 - `verb` はエンジンが扱える動詞（`HANDLED_VERBS`）のいずれかで、`args` はその動詞が取れる引数の個数を超えられない
 
-対象が `alive`/`revived`（生きている・蘇生済み）でなければ強制は行われず、スキップされたことがログに残ります。同じ主体・同じ時間帯に複数の予定イベントが force_action を持つ場合は、あとに評価されたイベントが勝ちます。世界画面の「時間」タブから、日・時間帯・対象・動詞・引数を指定して編集できます。[最短経路を調査](../concepts/route-layer.md#route-paths-survey)は、`move` の強制行動だけを「主人公自身はまだ動いていない、確定した前提」として起点の状態に織り込みます（`move` 以外の強制行動は、実際の GA 実行にまかせます）。
+対象が `dead`（死亡）ならその対象自体がこのイベントから除外され、強制も記録も一切行われません。`downed`（倒れている）など `alive`/`revived`（生きている・蘇生済み）以外の対象は、強制が行われずスキップされたことがログに残ります。同じ主体・同じ時間帯に複数の予定イベントが force_action を持つ場合は、あとに評価されたイベントが勝ちます。
+
+強制された動詞・引数が、実際にその時点でその対象に選べる候補として提示されていない場合（例: 対象がすでに移動できない状態）は、強制は行われず通常の行動選択にフォールバックし、`verb: "force_action_fallback"` という行が `reason: "args_not_offered"`（動詞はあるが引数が一致しない）または `"verb_not_offered"`（動詞自体が候補に無い）として記録されます。
+
+世界画面の「時間」タブから、日・時間帯・対象・動詞・引数を指定して編集できます。[最短経路を調査](../concepts/route-layer.md#route-paths-survey)は、`move` の強制行動だけを「主人公自身はまだ動いていない、確定した前提」として起点の状態に織り込みます（`move` 以外の強制行動は、実際の GA 実行にまかせます）。
 
 ### subjects/*.yaml の主なキー
 
