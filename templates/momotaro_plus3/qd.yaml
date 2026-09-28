@@ -1,0 +1,3 @@
+categories: [I, II, III, IV, V, VI]
+volatility_bins: [low, mid, high]
+arc_bins: [none, small, large]

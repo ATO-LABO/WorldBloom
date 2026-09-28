@@ -1,0 +1,48 @@
+id: 漁師
+tags: [human]
+
+traits:
+  social: 0.55
+  stubbornness: 0.45
+  curiosity: 0.40
+  diligence: 0.65
+  temper: 0.30
+
+base: 20
+modifiers: []
+
+beliefs_about: {}
+knowledge: []
+inventory: {}
+reputation: 0.0
+phase: []
+
+verbs:
+  - share_knowledge
+  - give_item
+  - rest
+
+identity:
+  "true": 街で船を操る漁師
+  displayed: 漁師
+
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: null
+
+relations:
+  桃太郎: {affinity: 0.10, awareness: 0.10}
+
+stamina:
+  max: 8
+  recover_per_slot: 1.0
+
+range:
+  zones: [海]
+  entry: 海
+
+companions: []
+ally_value: 0
+objective_claimant: false
