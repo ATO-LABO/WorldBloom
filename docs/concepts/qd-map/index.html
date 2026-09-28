@@ -563,6 +563,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../action-types/" class="md-nav__link">
         
   
@@ -694,6 +722,17 @@
     <span class="md-ellipsis">
       
         2つの軸
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arc-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3つ目の軸（任意）：性格の変化
       
     </span>
   </a>
@@ -1608,6 +1647,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#arc-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3つ目の軸（任意）：性格の変化
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#q" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1673,6 +1723,13 @@
 </tbody>
 </table>
 <p>既定の格子は6行×3列（起伏を low / mid / high に区切る）で、軸に使うカテゴリの範囲や段階数はジャンルのテンプレート（<code>templates/&lt;genre&gt;/qd.yaml</code>）で調整できます。各セルには<strong>品質が最も高い代表個体（模範ラン）1本だけ</strong>が残り、あとから品質の高い個体が現れたときだけ入れ替わります。</p>
+<h2 id="arc-axis">3つ目の軸（任意）：性格の変化<a class="headerlink" href="#arc-axis" title="Permanent link">&para;</a></h2>
+<p><a href="../personality-growth/">性格の成長</a>を有効にし、かつジャンルの <code>qd.yaml</code> が <code>arc_bins: [none, small, large]</code> を宣言している場合だけ、格子に3つ目の軸が加わります。どちらか一方が欠けていれば、この軸は存在しません（既存のセルキー・格子形状とバイト単位で一致します）。</p>
+<ul>
+<li><strong>性格の変化量（arc）</strong>: そのランの主人公が最後に記録した性格の成長イベント時点までの累積変化（そのランを通じた総量）の絶対値の合計</li>
+<li><strong>区分</strong>: 変化が無かった（<code>arc = 0</code>）ランは必ず「なし」。それ以外は、その世代の母集団のうち変化があったランだけの中央値で「小」「大」に二分されます。この閾値は世代0で決まると以降固定されます（世代0に変化があったランが1本も無ければ、固定値0.1にフォールバックします）</li>
+</ul>
+<p>セルは <code>カテゴリ|起伏|性格の変化</code>（例 <code>I|low|small</code>）の3要素になり、Sifting の画面では「性格の変化」で絞り込む切り替えが格子の上に出ます。</p>
 <h2 id="q">品質 q（絶対スケール）<a class="headerlink" href="#q" title="Permanent link">&para;</a></h2>
 <p>品質 q は、他のランと比べた相対評価ではなく、0〜1の<strong>絶対スケール</strong>で計算します。</p>
 <ul>

@@ -563,6 +563,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../action-types/" class="md-nav__link">
         
   
@@ -817,6 +845,17 @@
     <span class="md-ellipsis">
       
         Choosing a route by genome (gene_affinity)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#route-paths-survey" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Surveying shortest routes (the world screen's sidebar)
       
     </span>
   </a>
@@ -1675,6 +1714,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#route-paths-survey" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Surveying shortest routes (the world screen's sidebar)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#feeding-into-synopsistext-generation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1856,6 +1906,15 @@ m_route = base ** rho
 <p>For an individual with a weak lean toward that gene (gene_s=0), matching the motive gets treated almost the same as "no reason." For one with a strong lean (gene_s=1), it's treated the same as body/belief (b=1.0, unpenalized). Simply appearing in the motive table doesn't grant free rein to detour — without a genome strong enough for that motive, the detour is still reined in.</p>
 <h2 id="choosing-a-route-by-genome-gene_affinity">Choosing a route by genome (gene_affinity)<a class="headerlink" href="#choosing-a-route-by-genome-gene_affinity" title="Permanent link">&para;</a></h2>
 <p>Setting <code>route.yaml</code>'s <code>gene_affinity</code> (default 0) and <code>route_category</code> (a mapping from route name to action category) lets the genome's corresponding category weight slightly tilt which of several ways to take the goal item from its holder (fight vs. negotiate, say) counts as "the best plan." At <code>gene_affinity=0</code> (the default) the lowest-cost option is always the best one. Raising it makes an individual with a stronger weight in the matching category more likely to see that route as "best" (the recorded h itself stays plain; only the choice of best route is affected). 桃太郎＋2 (Peach Boy+2)'s <code>route.yaml</code> sets <code>gene_affinity: 0.5</code> and <code>route_category: {fight: I, negotiate: III}</code>.</p>
+<h2 id="route-paths-survey">Surveying shortest routes (the world screen's sidebar)<a class="headerlink" href="#route-paths-survey" title="Permanent link">&para;</a></h2>
+<p>The world screen's sidebar always has a read-only "Survey shortest routes" feature, regardless of genre (<code>GET /api/worlds/&lt;id&gt;/routes</code>, implemented in <code>gapengine/route_paths.py</code>). It works even in the read-only Viewer (no need to run a GA experiment to check it).</p>
+<ul>
+<li>Genres whose protagonist's goal isn't the "obtain and deliver an item" shape (detective, romance), or that have no <code>route.yaml</code> at all, show an unsupported message instead</li>
+<li>It starts from the state after the world's scheduled events (<code>scheduled_events</code>, only the <code>move</code> <a href="../../reference/templates/#scheduled-events">force actions</a>) have been applied, on the premise that the protagonist itself hasn't acted yet</li>
+<li>For each starting timepoint, it shows <strong>up to 3</strong> distinct walkthroughs. <strong>#1 is the walkthrough chosen by the same criterion an actual GA run uses (the unconstrained best plan)</strong>. #2/#3 are alternates found by requiring a different means from #1 (e.g. negotiating instead of fighting, a different item for the same purpose), ordered by ascending cost (h)</li>
+<li>Each walkthrough shows the actual step sequence and its running cost. If it takes too many steps (a 60-step cap) or starts repeating the same state, it shows "cut short partway through" instead of finishing</li>
+<li>If that genre has no <code>route.yaml</code>, the goal shape is unsupported, or no walkthrough to the ending exists at all (lost), the reason is shown instead</li>
+</ul>
 <h2 id="feeding-into-synopsistext-generation">Feeding into synopsis/text generation<a class="headerlink" href="#feeding-into-synopsistext-generation" title="Permanent link">&para;</a></h2>
 <p>The reason text for every protagonist decision that carries a route record — advance and prepare included, regardless of classification or cause — is passed one at a time to the LLM that writes the synopsis/text, as "the action's reason." A detour ⟨no reason⟩ has no reason text; instead it's spelled out explicitly as "(no clear reason was recorded)." (Lost gets the fixed text "acted without any prospect of a way forward," except when its cause is body or belief.) The generation prompt itself is instructed not to invent an unrecorded motive for an action with no recorded reason. On screen, the same reason text appears in <a href="../../usage/read-results/">Read Results</a>'s timeline, four-field panel, and the breakdown at the top of the cell page.</p>
 

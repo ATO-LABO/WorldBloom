@@ -563,6 +563,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../action-types/" class="md-nav__link">
         
   
@@ -694,6 +722,17 @@
     <span class="md-ellipsis">
       
         The two axes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arc-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A third axis (opt-in): personality change
       
     </span>
   </a>
@@ -1608,6 +1647,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#arc-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A third axis (opt-in): personality change
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#quality-q-an-absolute-scale" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1673,6 +1723,13 @@
 </tbody>
 </table>
 <p>The default grid is 6 rows × 3 columns (splitting volatility into low / mid / high); the category range and number of bands used for the axes can be adjusted per genre template (<code>templates/&lt;genre&gt;/qd.yaml</code>). Each cell keeps only its <strong>single highest-quality representative individual (the model run)</strong>, replaced only when a higher-quality individual later appears.</p>
+<h2 id="arc-axis">A third axis (opt-in): personality change<a class="headerlink" href="#arc-axis" title="Permanent link">&para;</a></h2>
+<p>Only when <a href="../personality-growth/">personality growth</a> is enabled <em>and</em> the genre's <code>qd.yaml</code> declares <code>arc_bins: [none, small, large]</code> does the grid gain a third axis. If either is missing, this axis doesn't exist at all (existing cell keys and grid shape stay byte-identical).</p>
+<ul>
+<li><strong>Personality-change magnitude (arc)</strong>: the sum of the absolute values of the cumulative shift recorded at the run's last personality-growth event (i.e. the total change accumulated across the whole run).</li>
+<li><strong>Bins</strong>: a run with no change (<code>arc = 0</code>) is always "none." Others are split into "small"/"large" by the median of only the runs with a change, within that generation's population. This threshold is fixed once decided at generation 0 (falling back to a fixed 0.1 if no run in generation 0 had any change).</li>
+</ul>
+<p>Cells become the three-part <code>category|volatility|personality change</code> (e.g. <code>I|low|small</code>), and the Sifting screen shows a "filter by personality change" toggle above the grid.</p>
 <h2 id="quality-q-an-absolute-scale">Quality q (an absolute scale)<a class="headerlink" href="#quality-q-an-absolute-scale" title="Permanent link">&para;</a></h2>
 <p>Quality q is computed on an <strong>absolute 0–1 scale</strong>, not relative to other runs.</p>
 <ul>

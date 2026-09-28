@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1810,7 +1838,7 @@
 </tbody>
 </table>
 <h2 id="apiviewerlibrary_pagespy">世界・ジャンルの編集 API（<code>viewer/library_pages.py</code>）<a class="headerlink" href="#apiviewerlibrary_pagespy" title="Permanent link">&para;</a></h2>
-<p>世界・ジャンルの編集はGA実験そのものとは独立の機能ですが、各ハンドラは <code>_require_job_store</code> を通すため、動かすには <code>job_store</code>（＝<code>--control</code> 起動）が必要です。一覧取得の <code>GET /api/worlds</code>・<code>GET /api/genres</code> は存在しません（一覧は画面のHTMLに埋め込まれます）。</p>
+<p>世界・ジャンルの編集はGA実験そのものとは独立の機能で、<code>GET /api/worlds/&lt;id&gt;/routes</code> を除く各ハンドラは <code>_require_job_store</code> を通すため、動かすには <code>job_store</code>（＝<code>--control</code> 起動）が必要です。一覧取得の <code>GET /api/worlds</code>・<code>GET /api/genres</code> は存在しません（一覧は画面のHTMLに埋め込まれます）。</p>
 <table>
 <thead>
 <tr>
@@ -1869,6 +1897,11 @@
 <td>POST</td>
 <td><code>/api/worlds/&lt;id&gt;/patches/reopen</code></td>
 <td>承認済み拡張パッチを差し戻す</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/worlds/&lt;id&gt;/routes</code></td>
+<td><a href="../../concepts/route-layer/#route-paths-survey">最短経路を調査</a>（読み取り専用）。他のこの表の行と異なり <code>job_store</code>（＝<code>--control</code>起動）を必要とせず、閲覧専用の Viewer でも使えます。世界が無ければ <code>404 not_found</code>。世界のジャンルが未設定、またはジャンルに <code>route.yaml</code> が無ければ <code>status: "no_route_config"</code>、主人公の目標が対応する型でなければ <code>status: "no_goal"</code> を返します。応答形は <code>{"status": "ok"\|"unreachable"\|"no_goal"\|"no_route_config", "message", "timepoints": [{"label", "day", "slot", "events": [...], "start": {...}, "routes": [{"rank", "label", "h", "cost", "route", "conditions", "signature", "steps", "truncated"}], "blocked": [{"kind", "value", "detail", "text"}]}]}</code></td>
 </tr>
 </tbody>
 </table>

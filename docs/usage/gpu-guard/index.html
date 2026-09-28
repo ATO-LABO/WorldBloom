@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1657,8 +1685,9 @@
 <li><strong>リース</strong>: マシン全体で1つの OS ファイルロック（既定 <code>%LOCALAPPDATA%\WorldBloom</code>、環境変数 <code>WORLDBLOOM_GPU_LEASE_DIR</code> で変更可）を取ってから生成します。他プロセスが握っていれば空くまで待ち、待っても空かなければ <code>GpuBusy</code> で失敗します（無期限には待ちません）。ロックを持つプロセスが異常終了すれば OS が自動的に解放します</li>
 <li><strong>Ollama との調停</strong>: <code>llama-server</code> を使う前に Ollama の <code>/api/ps</code> を2回観測し、遊休（応答が進んでいない）なら <code>keep_alive: 0</code> で自動的に退避させます。使用中と判定した間は待ち、リースの締め切りを過ぎたら <code>GpuBusy</code> で失敗します。逆方向（Ollama を使う前に llama-server が動いているか）は待たず、動作中ならその場で即座に <code>GpuBusy</code> になります（先に起動している側を優先し、両方が同時に VRAM を使い切ることを防ぎます）</li>
 <li><strong>自動起動・自動停止</strong>: <code>llama-server</code> の <code>base_url</code> に既に応答があれば、それ（人が起動したもの）をそのまま使い、止めません。応答が無く <code>launch</code>（起動コマンド）が設定されていれば自動で起動し、<code>startup_seconds</code>（既定180秒）まで起動を待ちます。生成が終われば、自分が起動したサーバーだけを自動で停止します。前回異常終了して残ったサーバーがあれば、次にリースを取った側が自動で終了させます</li>
-<li><strong>熱ガード</strong>: 各生成の前に GPU 温度（<code>nvidia-smi</code>）を確認し、<code>pause_at</code>（既定78℃）以上なら <code>resume_at</code>（既定70℃）以下に下がるまで <code>poll_seconds</code>（既定15秒）間隔で一時的に待ちます。<code>max_wait_seconds</code>（既定600秒）を過ぎても下がらない場合は、それ以上は待たずに生成を続行します（失敗にはしません）。温度が読めない環境ではそもそも待ちません</li>
+<li><strong>熱ガード</strong>: 各生成の前に GPU 温度（<code>nvidia-smi</code>）を確認し、<code>pause_at</code>（既定78℃）以上なら <code>resume_at</code>（既定70℃）以下に下がるまで <code>poll_seconds</code>（既定15秒）間隔で一時的に待ちます。<code>max_wait_seconds</code>（既定600秒）を過ぎても下がらない場合は、それ以上は待たずに生成を続行します（失敗にはしません）。温度が読めない環境ではそもそも待ちません。<code>thermal.enabled</code> を明示的に <code>false</code> にすると熱ガード自体を無効化できます（既定は有効）</li>
 </ul>
+<p>⚙ 全体設定の「計算」タブからも、熱ガードのオン/オフと「一時停止する温度」（<code>pause_at</code>、50〜95℃）を指定できます。<code>resume_at</code> は画面からは直接指定できず、既定の差（78℃→70℃、8℃）を保ったまま <code>pause_at</code> に自動で追従します（<code>pause_at</code> を下げれば <code>resume_at</code> もその8℃下に下がります）。</p>
 <h2 id="settingsjson">settings.json の書き方<a class="headerlink" href="#settingsjson" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>

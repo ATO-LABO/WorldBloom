@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1944,6 +1972,13 @@ options:
 </code></pre></div>
 <h2 id="scriptsworld_patchpy">scripts/world_patch.py — 世界の自己拡張パッチ<a class="headerlink" href="#scriptsworld_patchpy" title="Permanent link">&para;</a></h2>
 <p><code>propose</code>（提案）・<code>check</code>（追試）・<code>approve</code>/<code>reject</code>（承認・却下）・<code>list</code>/<code>reopen</code>/<code>repair</code>（一覧・差し戻し・修復）のサブコマンドを持ちます。詳しくは<a href="../../usage/create-world/#world-expansion">世界を作る</a>を参照してください。</p>
+<p>このほか、ジャンル資産まわりのサブコマンドもあります。</p>
+<ul>
+<li><code>retire</code>: 承認済みパッチを枯らす（<code>--experiment</code> で渡した実験の代表個体で使用状況を測り直してから記録）</li>
+<li><code>usage</code>: 適用中パッチごとの使用状況と枯れ候補を読み取り専用で確認（<code>--experiment</code> 必須）</li>
+<li><code>export</code>: よく使われている適用中パッチを、ジャンル資産として書き出す（使用状況はここでも測り直す）</li>
+<li><code>import</code>: ジャンル資産を、この世界の新しい提案（<code>trial_pending</code>。改めて <code>check</code>/<code>approve</code> が必要）として取り込む</li>
+</ul>
 <div class="highlight"><pre><span></span><code>usage: world_patch.py [-h]
                       {propose,check,approve,reject,retire,usage,export,import,list,reopen,repair} ...
 

@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1945,6 +1973,13 @@ options:
 </code></pre></div>
 <h2 id="scriptsworld_patchpy-world-self-expansion-patches">scripts/world_patch.py — world self-expansion patches<a class="headerlink" href="#scriptsworld_patchpy-world-self-expansion-patches" title="Permanent link">&para;</a></h2>
 <p>Has subcommands for <code>propose</code>, <code>check</code> (trial run), <code>approve</code>/<code>reject</code>, and <code>list</code>/<code>reopen</code>/<code>repair</code>. See <a href="../../usage/create-world/#world-expansion">Create a World</a> for details.</p>
+<p>Plus subcommands around genre assets:</p>
+<ul>
+<li><code>retire</code>: wither an approved patch (re-measures its usage against the representative individuals of the experiment passed via <code>--experiment</code> before recording it)</li>
+<li><code>usage</code>: read-only view of each applied patch's usage and retirement candidates (<code>--experiment</code> required)</li>
+<li><code>export</code>: publish a strongly-used applied patch as a genre asset (usage is re-measured here too)</li>
+<li><code>import</code>: stage a genre asset as a new proposal (<code>trial_pending</code>) in this world — still needs <code>check</code>/<code>approve</code></li>
+</ul>
 <div class="highlight"><pre><span></span><code>usage: world_patch.py [-h]
                       {propose,check,approve,reject,retire,usage,export,import,list,reopen,repair} ...
 

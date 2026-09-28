@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1810,7 +1838,7 @@
 </tbody>
 </table>
 <h2 id="world-genre-editing-api-viewerlibrary_pagespy">World / genre editing API (<code>viewer/library_pages.py</code>)<a class="headerlink" href="#world-genre-editing-api-viewerlibrary_pagespy" title="Permanent link">&para;</a></h2>
-<p>Editing a world/genre is functionally independent of GA experiments, but every handler here goes through <code>_require_job_store</code>, so it still needs a <code>job_store</code> (i.e. starting with <code>--control</code>). There is no <code>GET /api/worlds</code> or <code>GET /api/genres</code> — the listing is embedded in the screen's HTML.</p>
+<p>Editing a world/genre is functionally independent of GA experiments. Every handler here except <code>GET /api/worlds/&lt;id&gt;/routes</code> goes through <code>_require_job_store</code>, so it still needs a <code>job_store</code> (i.e. starting with <code>--control</code>). There is no <code>GET /api/worlds</code> or <code>GET /api/genres</code> — the listing is embedded in the screen's HTML.</p>
 <table>
 <thead>
 <tr>
@@ -1869,6 +1897,11 @@
 <td>POST</td>
 <td><code>/api/worlds/&lt;id&gt;/patches/reopen</code></td>
 <td>Revert an approved expansion patch back to proposed</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/worlds/&lt;id&gt;/routes</code></td>
+<td><a href="../../concepts/route-layer/#route-paths-survey">Survey shortest routes</a> (read-only). Unlike every other row in this table, it does not need <code>job_store</code> (<code>--control</code>), and works in the read-only Viewer too. <code>404 not_found</code> if the world doesn't exist. <code>status: "no_route_config"</code> if the world's genre isn't set or has no <code>route.yaml</code>; <code>status: "no_goal"</code> if the protagonist's goal isn't a supported shape. Response shape: <code>{"status": "ok"\|"unreachable"\|"no_goal"\|"no_route_config", "message": str, "timepoints": [{"label", "day", "slot", "events": [...], "start": {...}, "routes": [{"rank", "label", "h", "cost", "route", "conditions", "signature", "steps", "truncated"}], "blocked": [{"kind", "value", "detail", "text"}]}]}</code></td>
 </tr>
 </tbody>
 </table>

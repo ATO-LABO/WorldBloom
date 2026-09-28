@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1494,6 +1522,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#why-bother-with-the-ga-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why bother with the GA at all?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#can-i-use-it-on-a-pc-with-no-gpu" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1674,6 +1713,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#why-bother-with-the-ga-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why bother with the GA at all?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#can-i-use-it-on-a-pc-with-no-gpu" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1786,6 +1836,8 @@
 <p>No. No LLM is involved in the GA experiment itself (simulating the world, evolving the genome, accumulating results into the QD map). The LLM is only used for <a href="../../usage/generate-text/">generating synopses and full text</a>, after a person has chosen candidates left in the grid. If you just want to see results without generating text, set the backend to "生成しない" (Don't generate, <code>none</code>) in ⚙ 全体設定 (Global settings) — it only saves the prompts and skips actual generation. See <a href="../../usage/llm-backends/">LLM Backends</a> for details.</p>
 <h2 id="why-doesnt-event-generation-use-an-llm">Why doesn't event generation use an LLM?<a class="headerlink" href="#why-doesnt-event-generation-use-an-llm" title="Permanent link">&para;</a></h2>
 <p>Letting an LLM write the sequence of events (who did what) directly would make it impossible to mechanically trace why things unfolded the way they did. By limiting event generation to simulation and random draws alone, WorldBloom guarantees <a href="../../concepts/determinism/">determinism</a> and can mechanically show which generation and parent a given story came from, and at what branch point, as <a href="../../concepts/sifting/#compare-lineage-turning">lineage and turning points</a>. See <a href="../../concepts/overview/">Overview</a> for details.</p>
+<h2 id="why-bother-with-the-ga-at-all">Why bother with the GA at all?<a class="headerlink" href="#why-bother-with-the-ga-at-all" title="Permanent link">&para;</a></h2>
+<p>You can generate stories without evolving a policy (genome) at all, using only random individuals (<code>scripts/random_baseline.py</code>). A measured comparison under a condition with <a href="../../concepts/personality-growth/">personality growth</a> and its third axis enabled (matched evaluation count of 400, 5 random seeds) shows the GA ahead on every metric — reach rate (mean 0.132 vs. 0.061), occupied cells (mean 17.0 vs. 13.4), QD score (mean 4.80 vs. 3.47), and best quality (mean 0.429 vs. 0.382). Under a condition without personality growth or the third axis (an 18-cell grid), the GA and random baseline showed almost no difference (occupied cells 7.2 vs. 7.2, QD score 2.12 vs. 2.21). Each condition was only tried 5 times with no statistical test, and the personality-growth/third-axis condition also has a larger cell cap (18 → 54), so this measurement can't separate how much of the GA's lead comes from the added exploration target versus simply more cells being available. See <a href="../../concepts/personality-growth/#ga-vs-random">Personality Growth</a> for details.</p>
 <h2 id="can-i-use-it-on-a-pc-with-no-gpu">Can I use it on a PC with no GPU?<a class="headerlink" href="#can-i-use-it-on-a-pc-with-no-gpu" title="Permanent link">&para;</a></h2>
 <p>Yes. The GA experiment (evolution) itself doesn't need a GPU. A GPU is only needed if you use a local LLM (Ollama or llama-server) for synopsis/text generation. Without a GPU, you can use an external API (Anthropic / OpenAI) or a CLI-based backend (Claude Code / Codex CLI), or just save prompts without generating. See <a href="../../usage/llm-backends/">LLM Backends</a> and <a href="../../usage/gpu-guard/">GPU Guard</a> for details.</p>
 <h2 id="why-do-i-get-the-same-result-every-time">Why do I get the same result every time?<a class="headerlink" href="#why-do-i-get-the-same-result-every-time" title="Permanent link">&para;</a></h2>

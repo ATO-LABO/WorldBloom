@@ -14,7 +14,7 @@
         <link rel="prev" href="../seven-layers/">
       
       
-        <link rel="next" href="../action-types/">
+        <link rel="next" href="../personality-growth/">
       
       
         
@@ -606,6 +606,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#plasticity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A 10th scalar: plasticity (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#personality-temperament-is-not-evolved" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -664,6 +675,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1619,6 +1658,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#plasticity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A 10th scalar: plasticity (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#personality-temperament-is-not-evolved" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1738,6 +1788,8 @@
 </tbody>
 </table>
 <p>The lower bound on category weights is 0.05 rather than 0 (which would allow disabling a category entirely) to keep the GA from settling into a local optimum like "zero out category II and discard observation altogether" (fully disabling a category is left to template-side pruning instead). When every gene sits at its neutral value (<code>Genome.neutral()</code>), the candidate weights receive no modulation at all, matching a Policy-free run byte for byte. This is the baseline point for the <a href="../determinism/">determinism</a> regression tests.</p>
+<h2 id="plasticity">A 10th scalar: plasticity (opt-in)<a class="headerlink" href="#plasticity" title="Permanent link">&para;</a></h2>
+<p><code>plasticity</code> ([0, 1], neutral value 0) is a 10th scalar added on top of the nine above, in its own separate bucket. Only when a caller explicitly opts in (the "Personality growth" toggle in run settings, or <code>--personality-growth</code> on the CLI) does it draw and evolve like the other nine — consuming randomness at initialization/crossover/mutation and inheriting across generations the normal way. Without opting in (the default) it stays exactly 0 and consumes no extra randomness for this 10th scalar at all. At 0, every mechanism personality growth enables (outcome rules, growth events, the QD map's third axis, etc.) is fully disabled, matching a run from before personality growth existed byte for byte. See <a href="../personality-growth/#plasticity">Personality Growth</a> for details.</p>
 <h2 id="personality-temperament-is-not-evolved">Personality (temperament) is not evolved<a class="headerlink" href="#personality-temperament-is-not-evolved" title="Permanent link">&para;</a></h2>
 <p>Characters also carry a <strong>temperament</strong> (<code>traits</code>) — sociability, stubbornness, curiosity, and so on — separately from the genome, but this belongs to the "setting" and never changes under the GA. Making temperament evolvable too would collapse into optimizing an ability ("raising stubbornness wins"), breaking the design principle that "only the policy is evolved." A candidate's weight is computed in two layers: base weight (determined by temperament and world state) × policy multiplier (determined by the genome and context).</p>
 <h2 id="four-multipliers">Four multipliers<a class="headerlink" href="#four-multipliers" title="Permanent link">&para;</a></h2>
@@ -1819,13 +1871,13 @@
         
         
           
-          <a href="../action-types/" class="md-footer__link md-footer__link--next" aria-label="Next: Action Types I–VI">
+          <a href="../personality-growth/" class="md-footer__link md-footer__link--next" aria-label="Next: Personality Growth">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Action Types I–VI
+                Personality Growth
               </div>
             </div>
             <div class="md-footer__button md-icon">

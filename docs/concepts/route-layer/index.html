@@ -563,6 +563,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../action-types/" class="md-nav__link">
         
   
@@ -817,6 +845,17 @@
     <span class="md-ellipsis">
       
         遺伝子による経路選び（gene_affinity）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#route-paths-survey" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        最短経路を調査（世界画面のサイドバー）
       
     </span>
   </a>
@@ -1675,6 +1714,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#route-paths-survey" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        最短経路を調査（世界画面のサイドバー）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1856,6 +1906,15 @@ m_route = base ** rho
 <p>その遺伝子への傾きが弱い個体（gene_s=0）では、動機に一致していても「理由なし」とほぼ同じ扱いになります。傾きが強い個体（gene_s=1）では、身体・思い込みと同じ b=1.0（罰なし）まで扱いが上がります。「動機表に載っている」だけでは自由に寄り道できるわけではなく、その動機に見合うだけ遺伝子が強くなければ、その寄り道はやはり抑えられます。</p>
 <h2 id="gene_affinity">遺伝子による経路選び（gene_affinity）<a class="headerlink" href="#gene_affinity" title="Permanent link">&para;</a></h2>
 <p><code>route.yaml</code> の <code>gene_affinity</code>（既定 0）と <code>route_category</code>（経路名→行動カテゴリの対応）を設定すると、目的物の持ち主から奪う手段が複数ある局面（対決 vs 交渉など）で、どちらを「最善の計画」とみなすかが個体の遺伝子（対応するカテゴリの重み）でわずかに傾きます。<code>gene_affinity=0</code>（既定）では常にコストが低い方を最善とみなします。値を上げるほど、対応するカテゴリの重みが強い個体ほどその経路を「最善」と見なしやすくなります（記録される h 自体は素のままで、最善経路の選択にだけ影響します）。桃太郎＋2 の <code>route.yaml</code> では <code>gene_affinity: 0.5</code>、<code>route_category: {fight: I, negotiate: III}</code>（対決=カテゴリI、交渉=カテゴリIII）が設定されています。</p>
+<h2 id="route-paths-survey">最短経路を調査（世界画面のサイドバー）<a class="headerlink" href="#route-paths-survey" title="Permanent link">&para;</a></h2>
+<p>世界画面のサイドバーには、ジャンルを問わず常に「最短経路を調査」という読み取り専用の機能があります（<code>GET /api/worlds/&lt;id&gt;/routes</code>、実装は <code>gapengine/route_paths.py</code>）。閲覧専用の Viewer でも使えます（GA 実験を実行しなくても確認できます）。</p>
+<ul>
+<li>主人公の目標が「品物を手に入れて届ける」型でないジャンル（探偵・恋愛）、またはそのジャンルに <code>route.yaml</code> が無い場合は非対応の案内が表示されます</li>
+<li>世界の予定イベント（<code>scheduled_events</code>、<a href="../../reference/templates/#scheduled-events">強制行動</a>のうち <code>move</code> だけ）を、主人公自身はまだ動いていない前提で適用したあとの状態を起点に計算します</li>
+<li>起点となる時点ごとに、パターンの異なる段取りを<strong>最大3本</strong>まで提示します。<strong>#1 は、実際の GA 実行と同じ基準（制約なしの最善の計画）で選んだ段取り</strong>です。#2・#3 は #1 と手段が異なる（例: 対決の代わりに交渉、この持ち物の代わりに別の持ち物）ことを条件に探した別解で、所要（h）の低い順に並びます</li>
+<li>各段取りには、実際の手順（行動の並び）と、そこまでの累計コストが表示されます。手順が多すぎる（60手が上限）、または同じ状態を繰り返してしまう場合は「途中で打ち切られました」と表示されます</li>
+<li>そのジャンルに <code>route.yaml</code> が無い、目標の型が非対応、または結末に到達する段取りがまったく見つからない（見通しなし）場合は、その理由が表示されます</li>
+</ul>
 <h2 id="_5">あらすじ・本文生成への反映<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>道筋を持つ主人公の決定（前進・準備を含め、分類・原因を問わずすべて）の理由文は、あらすじ・本文を書く LLM へのプロンプトに「行動の理由」として1件ずつ渡ります。寄り道〈理由なし〉には理由文がなく、代わりに「（はっきりした理由は記録されていない）」と明記されます（見通しなしは、身体・思い込みが原因の場合を除き「先の見通しが立たないまま動いた」という固定文）。生成プロンプト自身は「理由が記録されていない行動に、ログにない動機を創作しない」よう指示されます。画面上では、<a href="../../usage/read-results/">結果を読む</a>のタイムライン・四項目パネル・セルページ冒頭の内訳として、同じ理由文が表示されます。</p>
 

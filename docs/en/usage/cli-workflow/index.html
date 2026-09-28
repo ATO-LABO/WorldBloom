@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1636,6 +1664,7 @@
 <ul>
 <li><code>--project</code> / <code>--template</code> can be any of the bundled <code>basic</code> / <code>momotaro</code> / <code>momotaro_plus</code> / <code>momotaro_plus2</code> / <code>detective</code> / <code>romance</code> (the full list is under <code>templates/</code>; <code>basic</code> holds the shared base rules and is rarely specified on its own as a genre)</li>
 <li>An output directory outside the repository is recommended (<code>.gitignore</code> ignores <code>runs/</code>, but you shouldn't keep a large volume of experiment output inside the repository anyway)</li>
+<li>Adding <code>--personality-growth</code> enables <a href="../../concepts/personality-growth/">personality growth</a> (off by default). When it's on and the genre's <code>qd.yaml</code> declares <code>arc_bins</code>, the <code>selection.json</code> cell keys below can become three-part (e.g. <code>I|low|small</code>)</li>
 <li>Rough time cost: scales close to linearly with generations × population × seeds. The default size (20 generations × 100 population × 3 seeds) takes about an hour on 20 cores as a guideline (the process count is set under "Compute" in <a href="../settings/">Settings</a>)</li>
 <li>On completion, the grid (archive) is written to <code>&lt;output dir&gt;/exp1/archive.json</code>. <code>cells=&lt;count&gt;</code> is the number of representative individuals that reached the ending and stayed in the grid</li>
 </ul>

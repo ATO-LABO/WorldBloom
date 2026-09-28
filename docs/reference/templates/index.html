@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1373,6 +1401,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#scheduled-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        scheduled_events（予定イベント）と force_action（強制行動）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#subjectsyaml" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1814,6 +1853,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#scheduled-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        scheduled_events（予定イベント）と force_action（強制行動）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#subjectsyaml" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1950,7 +2000,7 @@
 <span class="w">    </span><span class="nt">risk_tolerance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.1</span>
 <span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">敵対相手にはより攻撃的に</span>
 </code></pre></div>
-<p><code>scope</code> は <code>candidate</code>（候補ごと。<code>target</code> が束縛される）か <code>turn</code>（ターンごと）。<code>adjust</code> は <code>category_weight.&lt;I〜VI&gt;</code>・<code>risk_tolerance</code>・<code>stance_shift_bias</code>・<code>novelty_drive</code> を一時的に加算するキー。<code>g_eff = clip(genome + Σ 該当ルールの adjust)</code> として実際の重みに使われます。</p>
+<p><code>scope</code> は <code>candidate</code>（候補ごと。<code>target</code> が束縛される）・<code>turn</code>（ターンごと）・<code>outcome</code>（行動が起きたあと、<a href="../../concepts/personality-growth/">性格の成長</a>が有効なときだけ）の3種類。<code>candidate</code>/<code>turn</code> の <code>adjust</code> は <code>category_weight.&lt;I〜VI&gt;</code>・<code>risk_tolerance</code>・<code>stance_shift_bias</code>・<code>novelty_drive</code> を一時的に加算するキーで、<code>g_eff = clip(genome + Σ 該当ルールの adjust)</code> として実際の重みに使われます。<code>outcome</code> スコープのルールは一時的な加算ではなく、<code>plasticity × adjust</code> の分だけそのランの性格に恒久的に積み上がります。またメタ進化がルールごとに有効・無効を探索する対象にも含まれません（詳しくは<a href="../../concepts/personality-growth/">性格の成長</a>）。</p>
 <h3 id="rationalityyamljev">rationality.yaml（κ／Jev）<a class="headerlink" href="#rationalityyamljev" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><span class="nt">kappa</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0</span>
 <span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">choice</span>
@@ -2110,6 +2160,26 @@
 <span class="nt">target_ending</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">homecoming</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">homecoming_shared</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p><code>ending.when</code> は述語文字列 or <code>{agent, goal}</code> の2形式。<code>target_ending</code> に列挙した結末に届いたランだけが<a href="../../concepts/qd-map/">QD 格子</a>のアーカイブに入ります。<code>zones</code>/<code>routes</code> は7層の「フェーズ層」（<code>phase_rules</code> による越境判定の土台）、<code>items</code> は「資源層」（持ち物として <code>inventory</code> に入る）、<code>facts</code> は「認識層」（<code>knowledge</code>・<code>beliefs_about</code> の元になる秘匿事実）に対応する世界側のデータです（詳しくは<a href="../../concepts/seven-layers/">7層構造</a>）。</p>
+<h3 id="scheduled-events">scheduled_events（予定イベント）と force_action（強制行動）<a class="headerlink" href="#scheduled-events" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nt">scheduled_events</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">departure</span>
+<span class="w">    </span><span class="nt">day</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">    </span><span class="nt">slot</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">朝</span>
+<span class="w">    </span><span class="nt">targets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">桃太郎</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">鬼ヶ島への出発</span>
+<span class="w">    </span><span class="nt">force_action</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">verb</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">move</span>
+<span class="w">      </span><span class="nt">args</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">道中</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p><code>world.yaml</code> の <code>scheduled_events</code> は、指定した日・時間帯（<code>slot</code>）に自動で起きる出来事です。<code>force_action</code> を付けると、その時間帯に対象（<code>targets</code>）の行動そのものを強制的に指定した動詞・引数に差し替えます。バリデーション（世界の読み込み時）は次を強制します。</p>
+<ul>
+<li><code>force_action</code> を書くなら <code>slot</code> を省略できない（<code>day</code> だけの日次イベントには付けられない）</li>
+<li><code>move_to</code>（同じイベントのゾーン移動）と <code>force_action</code> は同時に指定できない</li>
+<li><code>verb</code> はエンジンが扱える動詞（<code>HANDLED_VERBS</code>）のいずれかで、<code>args</code> はその動詞が取れる引数の個数を超えられない</li>
+</ul>
+<p>対象が <code>dead</code>（死亡）ならその対象自体がこのイベントから除外され、強制も記録も一切行われません。<code>downed</code>（倒れている）など <code>alive</code>/<code>revived</code>（生きている・蘇生済み）以外の対象は、強制が行われずスキップされたことがログに残ります。同じ主体・同じ時間帯に複数の予定イベントが force_action を持つ場合は、あとに評価されたイベントが勝ちます。</p>
+<p>強制された動詞・引数が、実際にその時点でその対象に選べる候補として提示されていない場合（例: 対象がすでに移動できない状態）は、強制は行われず通常の行動選択にフォールバックし、<code>verb: "force_action_fallback"</code> という行が <code>reason: "args_not_offered"</code>（動詞はあるが引数が一致しない）または <code>"verb_not_offered"</code>（動詞自体が候補に無い）として記録されます。</p>
+<p>世界画面の「時間」タブから、日・時間帯・対象・動詞・引数を指定して編集できます。<a href="../../concepts/route-layer/#route-paths-survey">最短経路を調査</a>は、<code>move</code> の強制行動だけを「主人公自身はまだ動いていない、確定した前提」として起点の状態に織り込みます（<code>move</code> 以外の強制行動は、実際の GA 実行にまかせます）。</p>
 <h3 id="subjectsyaml">subjects/*.yaml の主なキー<a class="headerlink" href="#subjectsyaml" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">おじいさん</span>
 <span class="nt">traits</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">social</span><span class="p">:</span><span class="w"> </span><span class="nv">0.55</span><span class="p p-Indicator">,</span><span class="nt"> stubbornness</span><span class="p">:</span><span class="w"> </span><span class="nv">0.45</span><span class="p p-Indicator">,</span><span class="nt"> curiosity</span><span class="p">:</span><span class="w"> </span><span class="nv">0.35</span><span class="p p-Indicator">,</span><span class="nt"> diligence</span><span class="p">:</span><span class="w"> </span><span class="nv">0.75</span><span class="p p-Indicator">,</span><span class="nt"> temper</span><span class="p">:</span><span class="w"> </span><span class="nv">0.30</span><span class="p p-Indicator">}</span>
