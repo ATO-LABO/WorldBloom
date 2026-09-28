@@ -33,7 +33,7 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 `plasticity`（[0, 1]、中立値 0）は、遺伝子に追加された10個目のスカラーです。ただし他の9個と違って**明示的にオプトインしない限り、常に0のまま**です。
 
 - **初期化**（`Genome.random`）: `plastic=True` を渡されたときだけ乱数を1回消費して値を引き、それ以外（既定）では乱数消費もなく `plasticity=0` になります
-- **交叉**（`Genome.crossover`）: `plastic=True` のときだけ、他の8個のスカラーと同じく両親どちらかの値を50%の確率でそのまま継ぎます（`plastic=False` なら常に0）
+- **交叉**（`Genome.crossover`）: `plastic=True` のときだけ、他の9個の値（カテゴリ重み6個とスカラー3個）と同じく両親どちらかの値を50%の確率でそのまま継ぎます（`plastic=False` なら常に0）
 - **突然変異**（`Genome.mutate`）: `plastic=True` のときだけ、確率 p（既定0.3）でガウス揺らぎ（σ=0.1）を加えたのち [0, 1] にクリップします（`plastic=False` なら常に0に戻されます）
 - **前の実験から引き継ぐ**（[実行設定](../usage/run-settings.md)の evolution.seed_genomes）: 引き継ぎ元の実験で plasticity が非ゼロでも、**今回のランで性格の成長がオフなら 0 に戻されます**（`gapengine/seed_genomes.py` の `reconcile`）。オンかつ引き継ぎ元がオフだった場合は 0 のまま引き継がれます
 
@@ -43,7 +43,7 @@ plasticity=0 の個体は、以下のあらゆる仕組みが完全に無効化�
 
 ジャンルの `rules.yaml` に、`scope: outcome` を持つルールを書けます（既存の `candidate`・`turn` スコープとは別枠で、通常の候補重み計算には一切混ざりません）。このルールは「行動が起きたあと」に評価され、条件に一致するたびに `plasticity × adjust` の分だけ、そのランの `Policy.acquired`（遺伝子への蓄積シフト）に加算されます（`gapengine/policy.py` の `Policy.observe`）。outcome スコープのルールは、[メタ進化](genome.md)がルールごとに有効・無効を探索する対象（`rule_bits`）にも含まれません（`gapengine/evolve.py` の `_rule_ids`）。オン・オフできるのは常に `candidate`・`turn` スコープのルールだけです。
 
-`observe` は主人公に限らず、Policy（遺伝子）を持つ全主体で毎ターン呼ばれます。既定では敵役は Policy を持たない（`policy=None`）ため growth するのは主人公だけですが、[共進化](genome.md#coevolution)をオンにして敵役にも遺伝子を持たせた場合、敵役の plasticity が非ゼロなら敵役も同様に growth し得ます。
+`observe` は主人公に限らず、Policy（遺伝子）を持つ全主体で、decision / event の行が書かれるたびに呼ばれます。既定では敵役は Policy を持たない（`policy=None`）ため growth するのは主人公だけですが、[共進化](genome.md#coevolution)をオンにして敵役にも遺伝子を持たせた場合、敵役の plasticity が非ゼロなら敵役も同様に growth し得ます。
 
 `when` 述語が読める束縛（bindings）:
 

@@ -1,5 +1,5 @@
 ---
-ja_rev: "13775741984c"
+ja_rev: "8a1bd4eb0e6f"
 ---
 # Personality Growth (plasticity)
 
@@ -19,7 +19,7 @@ The [Genome](genome.md) design principle — "only the policy evolves" — is un
 `plasticity` ([0, 1], neutral value 0) is a 10th scalar added to the genome. Unlike the other nine, though, **it stays exactly 0 unless a caller explicitly opts in**.
 
 - **Initialization** (`Genome.random`): only when passed `plastic=True` does it draw a random value (consuming randomness); otherwise (the default) it's 0 and consumes no randomness for this scalar at all
-- **Crossover** (`Genome.crossover`): only when `plastic=True`, it inherits either parent's value with 50% probability, same as the other eight scalars (always 0 when `plastic=False`)
+- **Crossover** (`Genome.crossover`): only when `plastic=True`, it inherits either parent's value with 50% probability, same as the other nine values (six category weights and three scalars) (always 0 when `plastic=False`)
 - **Mutation** (`Genome.mutate`): only when `plastic=True`, with probability p (default 0.3) it adds Gaussian noise (σ=0.1), then clips to [0, 1] (always reset to 0 when `plastic=False`)
 - **Carrying over from a previous experiment** (run settings' evolution.seed_genomes): even if the source experiment's plasticity was nonzero, **it's forced back to 0 if personality growth is off for this run** (`gapengine/seed_genomes.py`'s `reconcile`). If this run has it on but the source didn't, it stays carried over as 0.
 
@@ -29,7 +29,7 @@ A genome with `plasticity=0` has every mechanism below fully disabled, producing
 
 A genre's `rules.yaml` can declare rules with `scope: outcome` (a separate bucket from the existing `candidate`/`turn` scopes — it never mixes into the ordinary candidate-weighting pass). These rules are evaluated *after* an action happens, and each match adds `plasticity × adjust` to that run's `Policy.acquired` (an accumulating shift on the genome), via `gapengine.policy.Policy.observe`. Outcome-scope rules are also excluded from the set meta-evolution can toggle rule-by-rule (`rule_bits`, `gapengine/evolve.py`'s `_rule_ids`) — only `candidate`/`turn`-scope rules can ever be turned on or off that way.
 
-`observe` runs every turn for *any* subject with a Policy (genome), not just the protagonist. By default the antagonist has no Policy (`policy=None`), so only the protagonist grows — but with [coevolution](genome.md#coevolution) on and the antagonist given its own genome, the antagonist can grow too if its plasticity is nonzero.
+`observe` runs each time a decision or event row is written, for *any* subject with a Policy (genome), not just the protagonist. By default the antagonist has no Policy (`policy=None`), so only the protagonist grows — but with [coevolution](genome.md#coevolution) on and the antagonist given its own genome, the antagonist can grow too if its plasticity is nonzero.
 
 Bindings the rule's `when` predicate can read:
 
