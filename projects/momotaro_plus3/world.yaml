@@ -169,7 +169,7 @@ items:
     lootable: true
     modifier:
       id: item:鉄砲
-      value: 35
+      value: 50
       kind: item
       visible: true
 
