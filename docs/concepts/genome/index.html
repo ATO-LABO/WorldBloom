@@ -14,7 +14,7 @@
         <link rel="prev" href="../seven-layers/">
       
       
-        <link rel="next" href="../action-types/">
+        <link rel="next" href="../personality-growth/">
       
       
         
@@ -606,6 +606,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#plasticity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10個目のスカラー：plasticity（任意）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -664,6 +675,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1619,6 +1658,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#plasticity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10個目のスカラー：plasticity（任意）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1738,6 +1788,8 @@
 </tbody>
 </table>
 <p>カテゴリの重みの下限を 0（消去可能）ではなく 0.05 にしているのは、GA が「II をゼロにして観測をまるごと捨てる」といった局所解に落ちるのを防ぐためです（カテゴリを完全に無効化するのはテンプレート側の枝刈りの役目）。すべての遺伝子が中立値のとき（<code>Genome.neutral()</code>）は候補重みに一切変調がかからず、Policy 無しの実行とバイト単位で一致します。これが<a href="../determinism/">決定論</a>の回帰テストの基準点になっています。</p>
+<h2 id="plasticity">10個目のスカラー：plasticity（任意）<a class="headerlink" href="#plasticity" title="Permanent link">&para;</a></h2>
+<p><code>plasticity</code>（[0, 1]、中立値 0）は、上記9個とは別枠で追加された10個目のスカラーです。GA が明示的にオプトインしたとき（実行設定の「性格の成長」または CLI の <code>--personality-growth</code>）だけ、初期化・交叉・突然変異のたびに乱数を消費して値を動かし、他の9個と同じく世代をまたいで遺伝します。オプトインしない（既定）ときは常に0のままで、この10個目のための乱数消費も一切ありません。0の個体は、性格の成長のあらゆる仕組み（outcome ルール・growth イベント・QD の第3軸など）が完全に無効化され、性格の成長が存在する前とバイト単位で一致します。詳しくは<a href="../personality-growth/#plasticity">性格の成長</a>を参照してください。</p>
 <h2 id="_1">性格（気質）は進化の対象外<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <p>登場人物は遺伝子とは別に、社交性・頑固さ・好奇心などの<strong>気質</strong>（<code>traits</code>）も持ちますが、こちらは「設定」に属し、GA では変化しません。気質まで進化の対象にすると「頑固さを上げれば勝てる」のような能力の最適化に落ち込み、「進化させるのは方針だけ」という設計原則が崩れるためです。候補の重みは「基礎重み（気質と世界の状態から決まる）× 方針乗数（遺伝子と文脈から決まる）」の二層で計算されます。</p>
 <h2 id="4">4つの乗数<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
@@ -1819,13 +1871,13 @@
         
         
           
-          <a href="../action-types/" class="md-footer__link md-footer__link--next" aria-label="次: 行動タイプ I〜VI">
+          <a href="../personality-growth/" class="md-footer__link md-footer__link--next" aria-label="次: 性格の成長">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 次
               </span>
               <div class="md-ellipsis">
-                行動タイプ I〜VI
+                性格の成長
               </div>
             </div>
             <div class="md-footer__button md-icon">

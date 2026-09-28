@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1688,6 +1716,14 @@
 <td>Foreshadowing (delayed effect)</td>
 <td>A mechanism where an earlier action pays off later. Has a setup and a resolution condition; ending unresolved costs a penalty to quality q</td>
 </tr>
+<tr>
+<td>Scheduled event (scheduled_events)</td>
+<td>An event that fires automatically on a given day/time-slot of the world. One carrying a <strong>force action</strong> (force_action) replaces the target's own action for that slot with the given verb/args. See <a href="../templates/#scheduled-events">Templates</a></td>
+</tr>
+<tr>
+<td>Relationship graph</td>
+<td>The graph/matrix views of characters' relationships, opened from the world's "Characters" tab ("相関図"/"関係表"). Also where you edit relationship labels (a character's affiliation is set from the "一覧"/List view's "Edit character" dialog instead). See <a href="../../usage/create-world/#relationship-workspace">Create a World</a></td>
+</tr>
 </tbody>
 </table>
 <h2 id="evolution">Evolution<a class="headerlink" href="#evolution" title="Permanent link">&para;</a></h2>
@@ -1740,6 +1776,10 @@
 <td>A mode that, in addition to the 9 numeric genes, also searches over enabling/disabling each rule. Off by default</td>
 </tr>
 <tr>
+<td>Personality growth (plasticity)</td>
+<td>An opt-in mechanism where the protagonist's personality (genome) shifts slightly, within a single run only, in response to events that happen in the story. Off by default; the change never inherits into the next generation. See <a href="../../concepts/personality-growth/">Personality Growth</a></td>
+</tr>
+<tr>
 <td>Random baseline</td>
 <td>A control experiment (<code>scripts/random_baseline.py</code>) measuring the reach rate and diversity of purely policy-free, fully random individuals</td>
 </tr>
@@ -1774,6 +1814,10 @@
 <tr>
 <td>No reason</td>
 <td>One of the route layer's classifications: a detour that matches none of advance / prepare / body / ignorance / belief / the motive table. Raising ρ makes these almost never chosen</td>
+</tr>
+<tr>
+<td>Survey shortest routes</td>
+<td>A read-only feature on the world screen, for a world with a route layer, showing up to 3 walkthroughs to the ending. See <a href="../../concepts/route-layer/#route-paths-survey">Route Layer</a></td>
 </tr>
 </tbody>
 </table>
@@ -1813,6 +1857,10 @@
 <tr>
 <td>Diversity</td>
 <td>The average of how different the paths of runs left in the archive are from each other. Closer to 1 means more diverse</td>
+</tr>
+<tr>
+<td>Personality change (arc)</td>
+<td>An opt-in third axis of the QD map (none/small/large), available only for a genre with <a href="../../concepts/personality-growth/">personality growth</a> enabled. See <a href="../../concepts/qd-map/#arc-axis">QD Map</a></td>
 </tr>
 <tr>
 <td>Tendency</td>

@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1713,7 +1741,7 @@
 <p>QD（MAP-Elites）アーカイブ本体。</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"cells"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"I|low"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="err">...</span><span class="p">}},</span><span class="w"> </span><span class="nt">"volatility_thresholds"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"low_max"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.216</span><span class="p">,</span><span class="w"> </span><span class="nt">"mid_max"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.226</span><span class="p">}}</span>
 </code></pre></div>
-<p><code>cells</code> のキーは <code>"&lt;主導カテゴリ&gt;|&lt;起伏区分&gt;"</code>（例 <code>I|low</code>）。空の実験では <code>{}</code>。各セルの値は到達したランの中でその区画に残った最良1本のエリート（遺伝子・quality・descriptor 等。<code>gapengine/qd.py</code> の <code>Elite</code>）です。<code>volatility_thresholds</code> は世代0の母集団の分散から決めた <code>low_max</code>/<code>mid_max</code> の境界値で、実験全体を通して固定されます（<a href="../../concepts/qd-map/">QD 格子</a>を参照）。</p>
+<p><code>cells</code> のキーは <code>"&lt;主導カテゴリ&gt;|&lt;起伏区分&gt;"</code>（例 <code>I|low</code>）。<a href="../../concepts/personality-growth/">性格の成長</a>が有効で、かつジャンルの <code>qd.yaml</code> が <code>arc_bins</code> を宣言している実験だけは、3要素 <code>"&lt;主導カテゴリ&gt;|&lt;起伏区分&gt;|&lt;性格変化区分&gt;"</code>（例 <code>I|low|small</code>）になります。空の実験では <code>{}</code>。各セルの値は到達したランの中でその区画に残った最良1本のエリート（遺伝子・quality・descriptor 等。<code>gapengine/qd.py</code> の <code>Elite</code>）です。<code>volatility_thresholds</code> は世代0の母集団の分散から決めた <code>low_max</code>/<code>mid_max</code> の境界値で、実験全体を通して固定されます（性格の変化の閾値は <code>arc_thresholds</code>）（<a href="../../concepts/qd-map/">QD 格子</a>を参照）。</p>
 <h2 id="summaryjson"><code>summary.json</code><a class="headerlink" href="#summaryjson" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"generations"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"generation"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"reach_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"occupied_cells"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">                   </span><span class="nt">"action_share"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"I/craft/none"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">},</span><span class="w"> </span><span class="nt">"allies_mean_final"</span><span class="p">:</span><span class="w"> </span><span class="mf">2.0</span><span class="p">,</span>
@@ -1738,6 +1766,7 @@
 <span class="p">{</span><span class="nt">"turn"</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="nt">"day"</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="nt">"slot"</span><span class="p">:</span><span class="kc">null</span><span class="p">,</span><span class="nt">"subject"</span><span class="p">:</span><span class="s2">"桃太郎"</span><span class="p">,</span><span class="nt">"verb"</span><span class="p">:</span><span class="s2">"daily_event"</span><span class="p">,</span><span class="nt">"id"</span><span class="p">:</span><span class="s2">"sudden_storm"</span><span class="p">,</span><span class="nt">"result"</span><span class="p">:</span><span class="s2">"applied"</span><span class="p">,</span><span class="nt">"delta"</span><span class="p">:{</span><span class="nt">"actor"</span><span class="p">:{</span><span class="nt">"stress"</span><span class="p">:</span><span class="mf">0.7</span><span class="p">},</span><span class="nt">"objective"</span><span class="p">:</span><span class="kc">null</span><span class="p">,</span><span class="nt">"relations"</span><span class="p">:[],</span><span class="nt">"targets"</span><span class="p">:{}}}</span>
 </code></pre></div>
 <p>各行の <code>delta</code> はその行動前後の7層の差分です。決定論の検証は「同じ <code>(world, genome, seed, precedent)</code> なら <code>layers.jsonl</code> がバイト一致すること」で行います（<a href="../../concepts/determinism/">決定論</a>）。分析用途では JSONL → Parquet（DuckDB）に変換します。</p>
+<p><a href="../../concepts/personality-growth/">性格の成長</a>が有効なランでは、outcome スコープのルールが一致するたびに <code>verb: "growth"</code> の派生イベント行が追加されます（<code>details.shift</code>・<code>details.acquired_after</code> などを持つ）。無効なラン（既定）ではこの行自体が一切現れず、既存のログ形式とバイト単位で一致します。</p>
 <h2 id="synopsesjson-selectionjson-stories"><code>synopses.json</code> / <code>selection.json</code> / <code>stories/</code><a class="headerlink" href="#synopsesjson-selectionjson-stories" title="Permanent link">&para;</a></h2>
 <p><code>synopsize.py</code>・<code>narrate.py</code>・画面の3点は次のように連携します。</p>
 <ul>

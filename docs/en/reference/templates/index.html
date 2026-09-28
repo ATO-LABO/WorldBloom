@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1373,6 +1401,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#scheduled-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        scheduled_events and force_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#main-keys-in-subjectsyaml" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1814,6 +1853,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#scheduled-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        scheduled_events and force_action
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#main-keys-in-subjectsyaml" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1950,7 +2000,7 @@
 <span class="w">    </span><span class="nt">risk_tolerance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.1</span>
 <span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">敵対相手にはより攻撃的に</span>
 </code></pre></div>
-<p><code>scope</code> is either <code>candidate</code> (per candidate — <code>target</code> gets bound) or <code>turn</code> (per turn). <code>adjust</code> keys are <code>category_weight.&lt;I–VI&gt;</code>, <code>risk_tolerance</code>, <code>stance_shift_bias</code>, or <code>novelty_drive</code>, added temporarily. It's used as the actual weight via <code>g_eff = clip(genome + Σ matching rules' adjust)</code>.</p>
+<p><code>scope</code> is one of three: <code>candidate</code> (per candidate — <code>target</code> gets bound), <code>turn</code> (per turn), or <code>outcome</code> (after an action happens, only when <a href="../../concepts/personality-growth/">personality growth</a> is enabled). For <code>candidate</code>/<code>turn</code>, <code>adjust</code> keys are <code>category_weight.&lt;I–VI&gt;</code>, <code>risk_tolerance</code>, <code>stance_shift_bias</code>, or <code>novelty_drive</code>, added temporarily and used as the actual weight via <code>g_eff = clip(genome + Σ matching rules' adjust)</code>. An <code>outcome</code>-scope rule doesn't add temporarily — instead <code>plasticity × adjust</code> accumulates permanently into that run's personality. It's also never part of the set meta-evolution can toggle rule-by-rule (see <a href="../../concepts/personality-growth/">Personality Growth</a>).</p>
 <h3 id="rationalityyaml-jev">rationality.yaml (κ / Jev)<a class="headerlink" href="#rationalityyaml-jev" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><span class="nt">kappa</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0</span>
 <span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">choice</span>
@@ -2110,6 +2160,26 @@
 <span class="nt">target_ending</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">homecoming</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">homecoming_shared</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p><code>ending.when</code> takes either a predicate string or <code>{agent, goal}</code>. Only runs that reach an ending listed in <code>target_ending</code> enter the <a href="../../concepts/qd-map/">QD Map</a>'s archive. <code>zones</code>/<code>routes</code> are the world-side data behind the seven layers' Phase layer (the basis for <code>phase_rules</code>' crossing checks), <code>items</code> behind the Resource layer (they end up in <code>inventory</code>), and <code>facts</code> behind the Perception layer (the source of <code>knowledge</code>/<code>beliefs_about</code>) (see <a href="../../concepts/seven-layers/">Seven Layers</a>).</p>
+<h3 id="scheduled-events">scheduled_events and force_action<a class="headerlink" href="#scheduled-events" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nt">scheduled_events</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">departure</span>
+<span class="w">    </span><span class="nt">day</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">    </span><span class="nt">slot</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">朝</span>
+<span class="w">    </span><span class="nt">targets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">桃太郎</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">鬼ヶ島への出発</span>
+<span class="w">    </span><span class="nt">force_action</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">verb</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">move</span>
+<span class="w">      </span><span class="nt">args</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">道中</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p><code>world.yaml</code>'s <code>scheduled_events</code> fire automatically on a given day/time-slot (<code>slot</code>). Adding <code>force_action</code> replaces the target's (<code>targets</code>) own action for that slot with the given verb/args, overriding it outright. Validation (at world load time) enforces:</p>
+<ul>
+<li><code>force_action</code> requires <code>slot</code> (it cannot be attached to a day-only, slot-less event)</li>
+<li><code>move_to</code> (a zone move on the same event) and <code>force_action</code> are mutually exclusive</li>
+<li><code>verb</code> must be one the engine handles (<code>HANDLED_VERBS</code>), and <code>args</code> cannot exceed that verb's argument count</li>
+</ul>
+<p>A <code>dead</code> target is excluded from the event entirely — no force, no log row. A target that is neither <code>dead</code> nor <code>alive</code>/<code>revived</code> (i.e. <code>downed</code>) is skipped, and the skip is logged. If more than one scheduled event with <code>force_action</code> targets the same subject in the same slot, the one evaluated later wins.</p>
+<p>If the forced verb/args aren't actually offered as a candidate to that target at that moment (e.g. the target can no longer move), the force falls back to ordinary action selection, and a <code>verb: "force_action_fallback"</code> row is logged with <code>reason: "args_not_offered"</code> (the verb exists but the args don't match) or <code>"verb_not_offered"</code> (the verb itself isn't a candidate).</p>
+<p>The world screen's "Time" tab lets you edit the day, slot, target, verb, and args. <a href="../../concepts/route-layer/#route-paths-survey">Surveying shortest routes</a> folds only <code>move</code> force-actions into its starting state, as a certain premise ("the protagonist hasn't acted yet"); any other forced verb is left to the actual GA run.</p>
 <h3 id="main-keys-in-subjectsyaml">Main keys in subjects/*.yaml<a class="headerlink" href="#main-keys-in-subjectsyaml" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">おじいさん</span>
 <span class="nt">traits</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">social</span><span class="p">:</span><span class="w"> </span><span class="nv">0.55</span><span class="p p-Indicator">,</span><span class="nt"> stubbornness</span><span class="p">:</span><span class="w"> </span><span class="nv">0.45</span><span class="p p-Indicator">,</span><span class="nt"> curiosity</span><span class="p">:</span><span class="w"> </span><span class="nv">0.35</span><span class="p p-Indicator">,</span><span class="nt"> diligence</span><span class="p">:</span><span class="w"> </span><span class="nv">0.75</span><span class="p p-Indicator">,</span><span class="nt"> temper</span><span class="p">:</span><span class="w"> </span><span class="nv">0.30</span><span class="p p-Indicator">}</span>

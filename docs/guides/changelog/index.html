@@ -559,6 +559,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1498,6 +1526,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#2026-09-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-09-28
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2026-09-27" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1617,6 +1656,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#2026-09-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-09-28
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2026-09-27" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1715,10 +1765,17 @@
 
 <h1 id="_1">変更履歴<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <p>利用者から見て意味のある主な変更を日付順にまとめます。個々のコミットの一覧ではありません。最新のリリース物は <a href="https://github.com/ATO-LABO/WorldBloom/releases">GitHub Releases</a> から取得できます。</p>
+<h2 id="2026-09-28">2026-09-28<a class="headerlink" href="#2026-09-28" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../concepts/personality-growth/">性格の成長</a>を追加。物語の中で起きた出来事（勝敗・仲間・裏切りなど）に応じて、主人公の性格がそのランの中でだけわずかに変わる任意の機能（既定オフ、実行設定「03. 保存と進化」または CLI の <code>--personality-growth</code>）。有効時は QD 格子に3つ目の軸「性格の変化」（なし／小／大）も追加できる</li>
+<li>世界の「登場人物」タブに、人物関係を有向グラフで確認・編集できる<strong>人物関係図</strong>を追加。関係のラベル編集、人物の所属（affiliation）の設定も可能に</li>
+</ul>
 <h2 id="2026-09-27">2026-09-27<a class="headerlink" href="#2026-09-27" title="Permanent link">&para;</a></h2>
 <ul>
 <li>合理性層の判定器に TypeSafe の Jev を追加。ローカル LLM（Ollama）より高速（1回約0.2秒、GPU不要）で、⚙設定「計算」タブでAPIキーを登録すると使える。実行設定の「合理性」区画で判定器を選べ、キー有効時の既定は Jev・κ=0.45（詳しくは<a href="../../concepts/rationality-layer/">合理性層と Jev</a>）</li>
 <li>世界の新規作成に「ZIPから取り込む」を追加。AI（Codex・Claude Code・Gemini など）に作らせた <code>world.yaml</code>・<code>subjects/*.yaml</code> をZIPで取り込める（詳しくは<a href="../../usage/import-world/">世界を ZIP から取り込む</a>）。ジャンルは省略でき、その場合は世界設定画面から後で選べる</li>
+<li>世界に予定イベントの<strong>強制行動</strong>（scheduled_events.force_action）を追加。指定した日・時間帯に、対象の行動そのものを動詞・引数ごと強制的に差し替えられる。世界画面の「時間」タブから編集</li>
+<li>道筋層を持つ世界に「<a href="../../concepts/route-layer/#route-paths-survey">最短経路を調査</a>」を追加。世界画面のサイドバーから、結末までの段取り（最大3本）を読み取り専用で確認できる（閲覧専用の Viewer でも使用可）</li>
 </ul>
 <h2 id="2026-09-26">2026-09-26<a class="headerlink" href="#2026-09-26" title="Permanent link">&para;</a></h2>
 <ul>

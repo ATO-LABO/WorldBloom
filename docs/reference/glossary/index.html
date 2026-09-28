@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1688,6 +1716,14 @@
 <td>伏線（遅延効果）</td>
 <td>先に置いた行動が後で効く仕組み。設置と回収の条件を持ち、未回収のまま終わると品質 q が減点される</td>
 </tr>
+<tr>
+<td>予定イベント（scheduled_events）</td>
+<td>世界の指定した日・時間帯に自動で起きる出来事。<strong>強制行動</strong>（force_action）を持つものは、その時間帯の対象の行動を指定の動詞・引数へ強制的に差し替える。詳しくは<a href="../templates/#scheduled-events">テンプレート</a></td>
+</tr>
+<tr>
+<td>人物関係図</td>
+<td>世界の「登場人物」タブの「相関図」「関係表」から開く、人物どうしの関係の表示（有向グラフ・行列）。関係のラベル編集もここから行う（人物の所属＝affiliationは「一覧」タブの「人物を編集」で設定）。詳しくは<a href="../../usage/create-world/#relationship-workspace">世界を作る</a></td>
+</tr>
 </tbody>
 </table>
 <h2 id="_3">進化<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
@@ -1740,6 +1776,10 @@
 <td>9つの数値遺伝子に加えて、ルールごとの有効・無効も探索するモード。既定はオフ</td>
 </tr>
 <tr>
+<td>性格の成長（plasticity）</td>
+<td>物語の中で起きた出来事に応じて、主人公の性格（遺伝子）がそのランの中でだけわずかに変わっていく任意の機能。既定オフ、変化は次の世代に遺伝しない。詳しくは<a href="../../concepts/personality-growth/">性格の成長</a></td>
+</tr>
+<tr>
 <td>無作為基準</td>
 <td>方針を持たない完全無作為な個体だけで結末に届く割合と多様性を測る対照実験（<code>scripts/random_baseline.py</code>）</td>
 </tr>
@@ -1774,6 +1814,10 @@
 <tr>
 <td>理由なし</td>
 <td>道筋層の分類の1つ。前進・準備・身体・手探り・思い込み・動機表のどれにも当てはまらない寄り道。ρ を上げるとほとんど選ばれなくなる</td>
+</tr>
+<tr>
+<td>最短経路を調査</td>
+<td>道筋層を持つ世界で、世界画面から結末までの段取り（最大3本）を確認できる読み取り専用の機能。詳しくは<a href="../../concepts/route-layer/#route-paths-survey">道筋層</a></td>
 </tr>
 </tbody>
 </table>
@@ -1813,6 +1857,10 @@
 <tr>
 <td>相異度</td>
 <td>アーカイブに残ったラン同士がどれだけ違う経路を通ったかの平均。1に近いほど多様</td>
+</tr>
+<tr>
+<td>性格の変化（arc）</td>
+<td><a href="../../concepts/personality-growth/">性格の成長</a>が有効なジャンルだけが持てる、QD 格子の任意の3つ目の軸（なし／小／大）。詳しくは<a href="../../concepts/qd-map/#arc-axis">QD 格子</a></td>
 </tr>
 <tr>
 <td>傾向</td>

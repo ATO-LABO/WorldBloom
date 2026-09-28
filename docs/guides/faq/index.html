@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    性格の成長
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1494,6 +1522,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ga" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GA を使う意味は？
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#gpu-pc" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1674,6 +1713,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ga" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GA を使う意味は？
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#gpu-pc" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1786,6 +1836,8 @@
 <p>いいえ。GA 実験そのもの（世界のシミュレーション、遺伝子の進化、QD 格子への蓄積）に LLM は関与しません。LLM を使うのは、格子に残った候補を人が選んだあとの<a href="../../usage/generate-text/">あらすじ・本文の生成</a>だけです。生成をせず結果だけ見たい場合は、⚙ 設定で接続先を「生成しない」（<code>none</code>）にすれば、プロンプトの保存だけを行い実際の生成はしません。詳しくは<a href="../../usage/llm-backends/">LLM バックエンド</a>を参照してください。</p>
 <h2 id="llm">なぜ出来事の生成に LLM を使わないのですか？<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h2>
 <p>出来事の列（誰が何をしたか）を LLM に直接書かせると、なぜその展開になったのかを機械的に追跡できなくなります。WorldBloom は出来事の生成をシミュレーションと乱数だけに限ることで、<a href="../../concepts/determinism/">決定論</a>を保証し、ある物語がどの世代のどの親から、どんな分岐で生まれたかを<a href="../../concepts/sifting/#compare-lineage-turning">系譜・転機</a>として機械的に示せるようにしています。詳しくは<a href="../../concepts/overview/">全体の流れ</a>を参照してください。</p>
+<h2 id="ga">GA を使う意味は？<a class="headerlink" href="#ga" title="Permanent link">&para;</a></h2>
+<p>方針（遺伝子）を進化させずに、無作為な個体だけで走らせても物語は生成できます（<code>scripts/random_baseline.py</code>）。<a href="../../concepts/personality-growth/">性格の成長</a>とその第3軸を有効にした条件で、評価回数（400回）を揃えて比べた実測（乱数の種5通り）では、GA の方が到達率（平均0.132 対 0.061）・占有マス数（平均17.0 対 13.4）・QD スコア（平均4.80 対 3.47）・最高の質（平均0.429 対 0.382）のいずれも上回りました。ただし性格の成長・第3軸を使わない条件（18マスの格子）では、GA と無作為の差はほとんど出ませんでした（占有マス数7.2対7.2、QDスコア2.12対2.21）。試行はそれぞれ5回のみで検定は行っておらず、性格の成長・第3軸ありの条件はマスの上限自体も18から54に増えているため、GAが上回った理由を探索対象の増加とマス数上限の増加とに切り分けられていません。詳しくは<a href="../../concepts/personality-growth/#ga-vs-random">性格の成長</a>を参照してください。</p>
 <h2 id="gpu-pc">GPU が無い PC でも使えますか？<a class="headerlink" href="#gpu-pc" title="Permanent link">&para;</a></h2>
 <p>はい。GA 実験（進化）自体は GPU を必要としません。GPU が必要になるのは、あらすじ・本文の生成にローカル LLM（Ollama や llama-server）を使う場合だけです。GPU が無ければ、外部 API（Anthropic / OpenAI）や CLI 経由（Claude Code / Codex CLI）の接続先を使うか、生成をせずプロンプトの保存だけに留めることもできます。詳しくは<a href="../../usage/llm-backends/">LLM バックエンド</a>・<a href="../../usage/gpu-guard/">GPU ガード</a>を参照してください。</p>
 <h2 id="_1">結果が毎回同じなのはなぜですか？<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>

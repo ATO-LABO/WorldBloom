@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1657,8 +1685,9 @@
 <li><strong>Lease</strong>: acquires a single machine-wide OS file lock (default <code>%LOCALAPPDATA%\WorldBloom</code>, changeable via the <code>WORLDBLOOM_GPU_LEASE_DIR</code> environment variable) before generating. If another process holds it, it waits until it's free, and fails with <code>GpuBusy</code> if it's still not free after waiting (it never waits indefinitely). If the process holding the lock crashes, the OS releases it automatically</li>
 <li><strong>Coordinating with Ollama</strong>: before using <code>llama-server</code>, it observes Ollama's <code>/api/ps</code> twice; if idle (no active response), it automatically unloads it with <code>keep_alive: 0</code>. While it judges Ollama to be in use, it waits, and fails with <code>GpuBusy</code> once the lease deadline passes. The reverse direction (checking whether llama-server is running before using Ollama) does not wait — if it's active, this fails immediately with <code>GpuBusy</code> (whichever started first is given priority, preventing both from exhausting VRAM at once)</li>
 <li><strong>Auto-start / auto-stop</strong>: if <code>llama-server</code>'s <code>base_url</code> already responds, that instance (started by a human) is used as-is and never stopped. If there's no response and <code>launch</code> (the startup command) is configured, it's started automatically, waiting up to <code>startup_seconds</code> (default 180) for it to come up. Once generation finishes, only a server it started itself is stopped automatically. If a server was left over from a previous crash, whichever side next acquires the lease shuts it down automatically</li>
-<li><strong>Thermal guard</strong>: checks GPU temperature (<code>nvidia-smi</code>) before each generation; if it's at or above <code>pause_at</code> (default 78°C), it waits at <code>poll_seconds</code> (default 15 second) intervals until it drops to <code>resume_at</code> (default 70°C) or below. If it's still not down after <code>max_wait_seconds</code> (default 600 seconds), it stops waiting and continues with generation anyway (this does not count as a failure). On environments where temperature can't be read, it never waits at all</li>
+<li><strong>Thermal guard</strong>: checks GPU temperature (<code>nvidia-smi</code>) before each generation; if it's at or above <code>pause_at</code> (default 78°C), it waits at <code>poll_seconds</code> (default 15 second) intervals until it drops to <code>resume_at</code> (default 70°C) or below. If it's still not down after <code>max_wait_seconds</code> (default 600 seconds), it stops waiting and continues with generation anyway (this does not count as a failure). On environments where temperature can't be read, it never waits at all. Setting <code>thermal.enabled</code> explicitly to <code>false</code> disables the thermal guard entirely (enabled by default)</li>
 </ul>
+<p>The "計算" (Compute) tab of Settings also lets you toggle the thermal guard on/off and set "一時停止する温度" (the pause temperature, <code>pause_at</code>, 50–95°C). <code>resume_at</code> can't be set directly from the screen — it auto-follows <code>pause_at</code>, keeping the default gap (78→70, 8°C; lowering <code>pause_at</code> lowers <code>resume_at</code> by the same 8°C).</p>
 <h2 id="writing-settingsjson">Writing settings.json<a class="headerlink" href="#writing-settingsjson" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>

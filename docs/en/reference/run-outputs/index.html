@@ -561,6 +561,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../concepts/personality-growth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personality Growth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../concepts/action-types/" class="md-nav__link">
         
   
@@ -1713,7 +1741,7 @@
 <p>The QD (MAP-Elites) archive itself.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"cells"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"I|low"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="err">...</span><span class="p">}},</span><span class="w"> </span><span class="nt">"volatility_thresholds"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"low_max"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.216</span><span class="p">,</span><span class="w"> </span><span class="nt">"mid_max"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.226</span><span class="p">}}</span>
 </code></pre></div>
-<p><code>cells</code> keys are <code>"&lt;leading category&gt;|&lt;volatility band&gt;"</code> (e.g. <code>I|low</code>). <code>{}</code> for an empty run. Each cell's value is the single best elite that survived in that cell among runs that reached the ending (genome, quality, descriptor, etc. — <code>gapengine/qd.py</code>'s <code>Elite</code>). <code>volatility_thresholds</code> are the <code>low_max</code>/<code>mid_max</code> boundary values decided from generation 0's population variance, fixed for the whole run (see <a href="../../concepts/qd-map/">QD Map</a>).</p>
+<p><code>cells</code> keys are <code>"&lt;leading category&gt;|&lt;volatility band&gt;"</code> (e.g. <code>I|low</code>). Only for a run with <a href="../../concepts/personality-growth/">personality growth</a> enabled and the genre's <code>qd.yaml</code> declaring <code>arc_bins</code>, keys become the three-part <code>"&lt;leading category&gt;|&lt;volatility band&gt;|&lt;arc bin&gt;"</code> (e.g. <code>I|low|small</code>). <code>{}</code> for an empty run. Each cell's value is the single best elite that survived in that cell among runs that reached the ending (genome, quality, descriptor, etc. — <code>gapengine/qd.py</code>'s <code>Elite</code>). <code>volatility_thresholds</code> are the <code>low_max</code>/<code>mid_max</code> boundary values decided from generation 0's population variance, fixed for the whole run (the arc axis's own threshold is <code>arc_thresholds</code>) (see <a href="../../concepts/qd-map/">QD Map</a>).</p>
 <h2 id="summaryjson"><code>summary.json</code><a class="headerlink" href="#summaryjson" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"generations"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"generation"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"reach_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"occupied_cells"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">                   </span><span class="nt">"action_share"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"I/craft/none"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">},</span><span class="w"> </span><span class="nt">"allies_mean_final"</span><span class="p">:</span><span class="w"> </span><span class="mf">2.0</span><span class="p">,</span>
@@ -1738,6 +1766,7 @@
 <span class="p">{</span><span class="nt">"turn"</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="nt">"day"</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="nt">"slot"</span><span class="p">:</span><span class="kc">null</span><span class="p">,</span><span class="nt">"subject"</span><span class="p">:</span><span class="s2">"桃太郎"</span><span class="p">,</span><span class="nt">"verb"</span><span class="p">:</span><span class="s2">"daily_event"</span><span class="p">,</span><span class="nt">"id"</span><span class="p">:</span><span class="s2">"sudden_storm"</span><span class="p">,</span><span class="nt">"result"</span><span class="p">:</span><span class="s2">"applied"</span><span class="p">,</span><span class="nt">"delta"</span><span class="p">:{</span><span class="nt">"actor"</span><span class="p">:{</span><span class="nt">"stress"</span><span class="p">:</span><span class="mf">0.7</span><span class="p">},</span><span class="nt">"objective"</span><span class="p">:</span><span class="kc">null</span><span class="p">,</span><span class="nt">"relations"</span><span class="p">:[],</span><span class="nt">"targets"</span><span class="p">:{}}}</span>
 </code></pre></div>
 <p>Each line's <code>delta</code> is the seven layers' diff before and after that action. Determinism is verified as: given the same <code>(world, genome, seed, precedent)</code>, <code>layers.jsonl</code> matches byte for byte (see <a href="../../concepts/determinism/">Determinism</a>). For analysis, it's converted from JSONL to Parquet (DuckDB).</p>
+<p>In a run with <a href="../../concepts/personality-growth/">personality growth</a> enabled, every match of an outcome-scope rule adds a <code>verb: "growth"</code> derived event row (carrying <code>details.shift</code>, <code>details.acquired_after</code>, etc.). A run without it (the default) never has this row at all, staying byte-identical to the log format before this feature existed.</p>
 <h2 id="synopsesjson-selectionjson-stories"><code>synopses.json</code> / <code>selection.json</code> / <code>stories/</code><a class="headerlink" href="#synopsesjson-selectionjson-stories" title="Permanent link">&para;</a></h2>
 <p><code>synopsize.py</code>, <code>narrate.py</code>, and the on-screen workflow connect as follows.</p>
 <ul>
