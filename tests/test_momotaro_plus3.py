@@ -73,8 +73,9 @@ class LaborTests(unittest.TestCase):
             )
             self.assertEqual(result, "labored")
             gained += sum(1 for item in details["gathered"] if item["item"] == "小判")
-        # count=2 per source: two labor actions -> exactly one 小判.
-        self.assertEqual(gained, 1)
+        # count=1 per source (Phase D calibration): each labor action grants
+        # one 小判 immediately, same pace as 木材's investigate source.
+        self.assertEqual(gained, 2)
         self.assertEqual(start_stamina - self.momotaro.stamina, 2 * 3.0)
 
     def test_labor_stops_once_max_is_reached(self) -> None:
