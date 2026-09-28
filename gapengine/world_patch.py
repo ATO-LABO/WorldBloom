@@ -102,7 +102,7 @@ RESERVED_NAMES: frozenset[str] = frozenset({
     "sacrifice", "mislead", "rethink", "confront", "share_knowledge",
     "give_item", "persuade", "pledge", "negotiate", "concede", "craft",
     "fight", "train", "rescue", "withdraw", "guard", "plant", "payoff",
-    "disguise", "grand_gesture", "trial", "donate",
+    "disguise", "grand_gesture", "trial", "donate", "labor", "buy",
     # engine/phase2.py::_effect_reference's literal effect-target tokens, and
     # engine/world.py's truth-relative value tokens ($truth/$innocent:1/2 in
     # _validate_fact_sources's fact_truth_tokens). Same precautionary

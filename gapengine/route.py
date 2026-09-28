@@ -879,9 +879,48 @@ def _acquire(
                     alt = fact_alt | frozenset(material_alt) | travel_alt
                     options.append((fact_h + material_h + travel_h + 1.0, best, alt))
 
-    # 2. investigate a source zone
+    # 1.5 buy (Phase B: price/shop_zone -- craft's currency analogue, kept
+    # out of world.recipes so it never pollutes _material_products/give
+    # exclusion; same shape as the craft branch above with "currency" in
+    # place of "material" and no knowledge requirement).
+    price = definition.get("price")
+    shop_zone = definition.get("shop_zone")
+    if price and shop_zone:
+        currency_h = 0.0
+        currency_best: set[tuple[str, Any]] = set()
+        currency_alt: set[tuple[str, Any]] = set()
+        currency_ok = True
+        for currency, qty in sorted(price.items()):
+            if subject.inventory.get(currency, 0) >= qty:
+                continue
+            ch, cbest, calt = _acquire(
+                currency, subject, world, visiting, trial_reveal_facts, needed=qty
+            )
+            if ch == INF:
+                currency_ok = False
+                break
+            currency_h += ch
+            currency_best |= cbest
+            currency_best.add(("has_item", currency))
+            currency_alt |= calt
+        if currency_ok:
+            travel_h, travel_best, travel_alt = _travel(
+                subject, world, str(shop_zone), visiting, trial_reveal_facts
+            )
+            if travel_h != INF:
+                best = (
+                    frozenset({("has_item", item)})
+                    | frozenset(currency_best)
+                    | travel_best
+                )
+                alt = frozenset(currency_alt) | travel_alt
+                options.append((currency_h + travel_h + 1.0, best, alt))
+
+    # 2. investigate/labor a source zone (labor is Phase B's stamina-costed
+    # analogue of investigate's zone gather; same zone-travel + action-count
+    # shape, so it shares this branch)
     for source in definition.get("sources", []) or []:
-        if source.get("type") != "investigate" or not source.get("zone"):
+        if source.get("type") not in ("investigate", "labor") or not source.get("zone"):
             continue
         travel_h, travel_best, travel_alt = _travel(
             subject, world, str(source["zone"]), visiting, trial_reveal_facts
@@ -1449,7 +1488,7 @@ def plan(
 
 def _sourced_at_zone(item: str, world: World, zone: str) -> bool:
     for source in world.items.get(item, {}).get("sources", []) or []:
-        if source.get("type") == "investigate" and source.get("zone") == zone:
+        if source.get("type") in ("investigate", "labor") and source.get("zone") == zone:
             return True
     return False
 
@@ -1581,6 +1620,15 @@ def _leaf_tags(best_kinds: dict[str, set[Any]], world: World) -> list[tuple[str,
                 continue
             leaves.append(("has_item", item))
             continue
+        # Phase B: a priced (buy) item is blocked the same way a craft is --
+        # while a currency it needs is itself still an open "has_item" need,
+        # buying is not yet actionable here.
+        price = world.items.get(item, {}).get("price")
+        if price is not None:
+            if any(currency in best_kinds.get("has_item", ()) for currency in price):
+                continue
+            leaves.append(("has_item", item))
+            continue
         trial = next(
             (t for t in world.trials if (t.get("grants") or {}).get("item") == item),
             None,
@@ -1622,8 +1670,11 @@ def _leaf_zone(tag: tuple[str, Any], world: World) -> str | None:
         if item in world.recipes:
             craft_zone = definition.get("craft_zone")
             return str(craft_zone) if craft_zone is not None else None
+        shop_zone = definition.get("shop_zone")
+        if shop_zone is not None:
+            return str(shop_zone)
         for source in definition.get("sources", []) or []:
-            if source.get("type") == "investigate" and source.get("zone"):
+            if source.get("type") in ("investigate", "labor") and source.get("zone"):
                 return str(source["zone"])
         trial = next(
             (t for t in world.trials if (t.get("grants") or {}).get("item") == item),
@@ -1714,9 +1765,25 @@ def _match_advance_or_prepare(
             return "prepare"
         return None
 
+    if verb == "labor":
+        zone = subject.zone
+        if any(_sourced_at_zone(item, world, zone) for item in best_kinds.get("has_item", ())):
+            return "advance"
+        if any(_sourced_at_zone(item, world, zone) for item in alt_kinds.get("has_item", ())):
+            return "prepare"
+        return None
+
     if verb == "observe":
         target = action.meta.get("target")
         if target is not None and target in alt_kinds.get("boost_fight", set()) | best_kinds.get("boost_fight", set()):
+            return "prepare"
+        return None
+
+    if verb == "buy":
+        item = action.args[0] if action.args else None
+        if item in best_kinds.get("has_item", ()):
+            return "advance"
+        if item in alt_kinds.get("has_item", ()):
             return "prepare"
         return None
 
@@ -2004,6 +2071,8 @@ def _milestone_move_text(
         definition = world.items.get(value, {})
         if str(definition.get("craft_zone")) == dest:
             return f"{value}を作るため{dest}へ向かった"
+        if str(definition.get("shop_zone")) == dest:
+            return f"{value}を買うため{dest}へ向かった"
         return f"{value}を手に入れるため{dest}へ向かった"
     if kind == "knows":
         return f"{value}について調べるため{dest}へ向かった"
@@ -2116,6 +2185,12 @@ def _advance_text(
                 return f"{fact_id}について調べた"
         return "必要なものを調べた"
 
+    if verb == "labor":
+        for item in sorted(kinds.get("has_item", ())):
+            if _sourced_at_zone(item, world, subject.zone):
+                return f"{item}を得るため働いた"
+        return "働いた"
+
     if verb == "observe":
         return "相手の様子をうかがった"
 
@@ -2123,6 +2198,11 @@ def _advance_text(
         item = action.args[0] if action.args else "品"
         purpose = _craft_purpose_text(item, world, believed_holder_id)
         return f"{purpose}{item}を作った" if purpose else f"{item}を作った"
+
+    if verb == "buy":
+        item = action.args[0] if action.args else "品"
+        purpose = _craft_purpose_text(item, world, believed_holder_id)
+        return f"{purpose}{item}を買った" if purpose else f"{item}を買った"
 
     if verb == "trial":
         trial_id = action.meta.get("trial_id")

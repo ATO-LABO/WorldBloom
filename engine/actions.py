@@ -60,6 +60,8 @@ FORCE_ARG_KINDS: dict[str, tuple[str, ...]] = {
     "grand_gesture": ("subject",),
     "trial": ("subject",),
     "donate": ("item",),
+    "labor": (),
+    "buy": ("item",),
 }
 
 
@@ -241,6 +243,34 @@ def _gather_zones(subject: Subject, world: World) -> set[str]:
     return zones
 
 
+def _missing_price_currency(subject: Subject, world: World) -> set[str]:
+    """Phase B: the ``buy`` analogue of ``_missing_recipe_materials`` --
+    currencies still short for some not-yet-bought priced item."""
+
+    missing: set[str] = set()
+    for product, definition in sorted(world.items.items()):
+        price = definition.get("price")
+        if not price or subject.has_item(product):
+            continue
+        for currency, required in sorted(price.items()):
+            if subject.inventory.get(currency, 0) < int(required):
+                missing.add(currency)
+    return missing
+
+
+def _labor_zones(subject: Subject, world: World) -> set[str]:
+    """Phase B: the ``labor`` analogue of ``_gather_zones`` -- pulls movement
+    toward a zone that labors a currency still needed for a priced item."""
+
+    zones: set[str] = set()
+    missing = _missing_price_currency(subject, world)
+    for item in sorted(missing):
+        for source in world.items[item].get("sources", []) or []:
+            if source.get("type") == "labor" and source.get("zone"):
+                zones.add(str(source["zone"]))
+    return zones
+
+
 def _can_craft(subject: Subject, item: str, world: World) -> bool:
     definition = world.items[item]
     recipe = world.recipes[item]
@@ -278,6 +308,29 @@ def _craft_ready_destinations(
     return destinations
 
 
+def _buy_ready_destinations(subject: Subject, world: World) -> set[str]:
+    """Phase B: the ``buy`` analogue of ``_craft_ready_destinations`` --
+    pulls movement toward a shop zone for an item the subject can already
+    afford. Folded into ``_movement_candidates``'s craft-zone pull (buy is
+    craft-like, per the route layer's own classification) rather than a new
+    pulls key."""
+
+    destinations: set[str] = set()
+    for item, definition in sorted(world.items.items()):
+        price = definition.get("price")
+        if not price or subject.has_item(item):
+            continue
+        if not all(
+            subject.inventory.get(currency, 0) >= int(required)
+            for currency, required in price.items()
+        ):
+            continue
+        shop_zone = definition.get("shop_zone")
+        if shop_zone is not None:
+            destinations.add(str(shop_zone))
+    return destinations
+
+
 def _movement_candidates(
     subject: Subject,
     world: World,
@@ -298,7 +351,10 @@ def _movement_candidates(
         else None
     )
     gather_zones = _gather_zones(subject, world)
-    craft_zones = _craft_ready_destinations(subject, world)
+    craft_zones = _craft_ready_destinations(subject, world) | _buy_ready_destinations(
+        subject, world
+    )
+    labor_zones = _labor_zones(subject, world)
 
     companion_destination: str | None = None
     reachable_zones = set(paths)
@@ -343,6 +399,9 @@ def _movement_candidates(
 
         if destination in craft_zones:
             weight *= world.pulls.get("craft", 1.0)
+
+        if destination in labor_zones:
+            weight *= world.pulls.get("labor", 1.0)
 
         if destination == companion_destination:
             weight *= world.companionship["weight"]
@@ -418,6 +477,32 @@ def _investigate_candidates(
                 {"target": subject.zone, "gather": gather_here},
             ),
             weight,
+        )
+    ]
+
+
+def _labor_zone_eligible(subject: Subject, world: World) -> bool:
+    for item, definition in sorted(world.items.items()):
+        for index, source in enumerate(definition.get("sources", []) or []):
+            if source.get("type") != "labor" or source.get("zone") != subject.zone:
+                continue
+            maximum = int(source.get("max", 1))
+            gathered_key = f"item:{item}:{subject.zone}:{index}"
+            if subject.gathered.get(gathered_key, 0) < maximum:
+                return True
+    return False
+
+
+def _labor_candidates(
+    subject: Subject,
+    world: World,
+) -> list[tuple[Action, float]]:
+    if "labor" not in subject.verbs or not _labor_zone_eligible(subject, world):
+        return []
+    return [
+        (
+            Action("labor"),
+            1.0 + subject.traits["diligence"],
         )
     ]
 
@@ -1026,6 +1111,9 @@ def _give_candidates(
         for item in sorted(subject.inventory):
             if subject.inventory[item] <= 0 or item in excluded:
                 continue
+            give = world.items[item].get("give", {}) or {}
+            if set(give.get("ineffective_for") or []) & set(target.tags):
+                continue
             products = _material_products(item, world)
             multiplier = 1.0
             if products:
@@ -1297,6 +1385,33 @@ def _craft_candidates(
         )
         for item in sorted(world.recipes)
         if _can_craft(subject, item, world)
+    ]
+
+
+def _can_buy(subject: Subject, item: str, world: World) -> bool:
+    definition = world.items[item]
+    price = definition["price"]
+    if subject.zone != definition.get("shop_zone"):
+        return False
+    return all(
+        subject.inventory.get(currency, 0) >= int(required)
+        for currency, required in price.items()
+    )
+
+
+def _buy_candidates(
+    subject: Subject,
+    world: World,
+) -> list[tuple[Action, float]]:
+    if "buy" not in subject.verbs:
+        return []
+    return [
+        (
+            Action("buy", (item,), {"item": item}),
+            1.0 + subject.traits["diligence"],
+        )
+        for item, definition in sorted(world.items.items())
+        if definition.get("price") and _can_buy(subject, item, world)
     ]
 
 
@@ -1741,6 +1856,7 @@ def candidates(
         )
 
     weighted.extend(_investigate_candidates(subject, world))
+    weighted.extend(_labor_candidates(subject, world))
     weighted.extend(_observe_candidates(subject, world, present))
     weighted.extend(_neutralize_candidates(subject, world, present))
     weighted.extend(_sabotage_candidates(subject, world, present))
@@ -1755,6 +1871,7 @@ def candidates(
     weighted.extend(_negotiate_candidates(subject, world, present))
     weighted.extend(_concede_candidates(subject, world, present))
     weighted.extend(_craft_candidates(subject, world))
+    weighted.extend(_buy_candidates(subject, world))
     weighted.extend(_fight_candidates(subject, world, present))
     weighted.extend(_train_candidates(subject, hostile_targets))
     weighted.extend(_rescue_candidates(subject, world, present))

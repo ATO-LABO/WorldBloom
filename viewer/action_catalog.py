@@ -33,7 +33,7 @@ _ROLE_LABELS = {"hostile": "敵", "neutral": "中立", "ally": "味方"}
 # applies to them and the permission line would be a meaningless "allow" x3.
 _TARGETLESS_VERBS = frozenset({
     "train", "rest", "withdraw", "craft", "guard", "rethink",
-    "plant", "payoff", "disguise", "donate",
+    "plant", "payoff", "disguise", "donate", "labor", "buy",
 })
 
 

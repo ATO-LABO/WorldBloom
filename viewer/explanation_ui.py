@@ -11,7 +11,8 @@ VERBS = {"rethink":"再考", "confront":"告発", "neutralize":"無効化", "pay
          "persuade":"説得", "pledge":"誓約", "mislead":"誘導", "grand_gesture":"大盤振る舞い", "share_knowledge":"情報共有",
          "concede":"譲歩", "craft":"作成", "disguise":"変装", "donate":"寄付",
          "guard":"守り", "negotiate":"交渉", "plant":"伏線設置", "rescue":"救助",
-         "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退"}
+         "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退",
+         "labor":"労働", "buy":"購入"}
 
 
 def e(value):

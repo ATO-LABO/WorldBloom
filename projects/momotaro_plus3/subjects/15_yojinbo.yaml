@@ -1,14 +1,14 @@
-id: 犬
-tags: [animal]
+id: 用心棒
+tags: [human]
 
 traits:
-  social: 0.75
-  stubbornness: 0.60
-  curiosity: 0.40
-  diligence: 0.70
-  temper: 0.60
+  social: 0.40
+  stubbornness: 0.55
+  curiosity: 0.30
+  diligence: 0.60
+  temper: 0.55
 
-base: 30
+base: 40
 modifiers: []
 
 beliefs_about:
@@ -34,8 +34,8 @@ verbs:
   - withdraw
 
 identity:
-  "true": 村外れに住む犬
-  displayed: 犬
+  "true": 銭で雇われるのを待つ街の用心棒
+  displayed: 用心棒
 
 goal:
   target: 鬼ヶ島の宝物
@@ -44,20 +44,18 @@ goal:
   outcome: null
 
 relations:
-  桃太郎: {affinity: 0.15, awareness: 0.20}
-  猿: {affinity: 0.0, awareness: 0.50}
-  キジ: {affinity: 0.05, awareness: 0.10}
-  鬼: {affinity: -0.30, awareness: 0.30}
-  鬼の弟: {affinity: 0.0, awareness: 0.1}
+  桃太郎: {affinity: 0.0, awareness: 0.0}
+  鬼: {affinity: -0.20, awareness: 0.10}
+  鬼の弟: {affinity: 0.0, awareness: 0.0}
 
 stamina:
-  max: 12
+  max: 14
   recover_per_slot: 1.5
 
 range:
   zones: [村, 道中, 森, 海, 鬼ヶ島, 街]
-  entry: 道中
+  entry: 街
 
-companions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]
-ally_value: 15
+companions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚, 用心棒]
+ally_value: 20
 objective_claimant: false

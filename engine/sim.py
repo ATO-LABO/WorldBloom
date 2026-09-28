@@ -229,6 +229,8 @@ class Simulation:
             "train",
             "withdraw",
             "guard",
+            "labor",
+            "buy",
         }:
             return {subject.id}
 

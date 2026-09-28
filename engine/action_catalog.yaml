@@ -115,6 +115,26 @@ verbs:
         target: なし（自分の在庫を操作）。
         effect: レシピ材料を全消費し、アイテムを1個生成。回数ゲートはない。
 
+  labor:
+    design: {category: I, slot: "I-3"}
+    kinds:
+      - id: default
+        label: labor
+        precondition: 自ゾーンに labor 型の資源 source が存在し、上限（max）未到達。
+        target: なし（自分の在庫を操作）。
+        effect: >-
+          source 指定の回数（count）到達で1個獲得。stamina 指定分だけ体力を
+          消費（毎回）。上限（max）到達で以降その資源は獲得なし。
+
+  buy:
+    design: {category: I, slot: "I-3"}
+    kinds:
+      - id: default
+        label: buy
+        precondition: shop_zone に滞在し、price 分の通貨アイテムを所持。
+        target: なし（自分の在庫を操作）。
+        effect: price 分の通貨アイテムを全消費し、アイテムを1個生成。回数ゲートはない。
+
   fight:
     design: {category: I, slot: "I-4"}
     kinds:

@@ -91,6 +91,7 @@ class Subject:
     gathered: dict[str, int] = field(default_factory=dict)
     policy: Any | None = None
     initial_relations: dict[str, dict[str, float]] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> Subject:
@@ -340,6 +341,10 @@ class Subject:
                 raw.get("objective_claimant", True)
             ),
             initial_relations=initial_relations,
+            tags=[
+                str(value)
+                for value in raw.get("tags", []) or []
+            ],
         )
 
     def update_belief(

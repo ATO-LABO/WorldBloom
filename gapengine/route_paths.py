@@ -375,6 +375,15 @@ def _needed_qty(item: str, best_kinds: dict[str, set], world: World) -> int:
         for product in best_kinds.get("has_item", ())
         if product in world.recipes and item in world.recipes[product]
     ]
+    # Phase B: a priced (buy) item's currency is a "consumer" the same way a
+    # recipe's material is -- e.g. 街 labor must gather all 3 小判 a 鉄砲
+    # costs, not just 1.
+    consumers += [
+        int(world.items[product]["price"][item])
+        for product in best_kinds.get("has_item", ())
+        if world.items.get(product, {}).get("price")
+        and item in world.items[product]["price"]
+    ]
     return max(consumers, default=1)
 
 
@@ -428,10 +437,11 @@ def _apply_has_item_leaf(
     world: World,
     best_kinds: dict[str, set],
 ) -> dict[str, Any]:
-    """Same 4-branch priority order as ``_acquire`` (craft -> investigate ->
-    trial -> take), re-derived here (not reused from ``_acquire`` -- that
-    function only ever returns tags/cost, never "which branch won") purely
-    to narrate + apply the one already-cheapest, already-leaf-gated
+    """Same branch priority order as ``_acquire`` (craft -> buy ->
+    investigate/labor -> trial -> take), re-derived here (not reused from
+    ``_acquire`` -- that function only ever returns tags/cost, never "which
+    branch won") purely to narrate + apply the one already-cheapest,
+    already-leaf-gated
     acquisition. By construction (``_leaf_tags`` only exposes a leaf once
     its own prerequisites are already satisfied), every branch below finds
     its materials/stance/travel already in place."""
@@ -443,15 +453,25 @@ def _apply_has_item_leaf(
         subject.add_item(item, 1)
         return {"kind": "craft", "text": f"{subject.zone}で{item}を作る", "cost": 1.0}
 
+    price = definition.get("price")
+    shop_zone = definition.get("shop_zone")
+    if price and shop_zone:
+        for currency, qty in sorted(price.items()):
+            subject.remove_item(currency, int(qty))
+        subject.add_item(item, 1)
+        return {"kind": "buy", "text": f"{shop_zone}で{item}を買う", "cost": 1.0}
+
     for source in definition.get("sources", []) or []:
-        if source.get("type") == "investigate" and source.get("zone") == subject.zone:
+        if source.get("type") in ("investigate", "labor") and source.get("zone") == subject.zone:
             needed = _needed_qty(item, best_kinds, world)
             deficit = max(1, needed - subject.inventory.get(item, 0))
             per_action = max(1, int(source.get("count", 1) or 1))
             actions = math.ceil(deficit / per_action)
             subject.add_item(item, deficit)
-            label = f"{subject.zone}で{item}を調べる" + (f" ×{actions}" if actions > 1 else "")
-            return {"kind": "investigate", "text": label, "cost": float(actions), "count": actions}
+            verb_label = "働く" if source.get("type") == "labor" else "調べる"
+            label = f"{subject.zone}で{item}を{verb_label}" + (f" ×{actions}" if actions > 1 else "")
+            kind = "labor" if source.get("type") == "labor" else "investigate"
+            return {"kind": kind, "text": label, "cost": float(actions), "count": actions}
 
     trial = next(
         (t for t in world.trials if (t.get("grants") or {}).get("item") == item), None

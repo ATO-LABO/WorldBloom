@@ -1,6 +1,8 @@
 nodes:
   - {verb: train, category: I, subtype: self_strengthen, risk: neutral, sign: 0}
   - {verb: craft, category: I, subtype: item_gain, risk: neutral, sign: 0}
+  - {verb: buy, category: I, subtype: item_gain, risk: neutral, sign: 0}
+  - {verb: labor, category: I, subtype: gather, risk: neutral, sign: 0}
   - {verb: investigate, category: I, subtype: gather, risk: neutral, sign: 0, when: gather}
   - {verb: investigate, category: II, subtype: scout, risk: neutral, sign: 0}
   - {verb: observe, category: II, subtype: observe, risk: neutral, sign: 0}

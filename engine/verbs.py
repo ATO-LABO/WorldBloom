@@ -57,6 +57,8 @@ HANDLED_VERBS = frozenset(
         "grand_gesture",
         "trial",
         "donate",
+        "labor",
+        "buy",
     }
 )
 
@@ -317,6 +319,69 @@ class VerbEngine:
                     }
                 )
         return gathered
+
+    def _labor_gather(
+        self,
+        actor: Subject,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Phase B: a ``labor``-type source, kept separate from
+        ``_gather_items`` (investigate) so investigate's own RNG-free
+        progress/order is untouched. Returns (granted items, whether any
+        eligible source was actually worked -- the caller uses the latter to
+        tell "worked but not done yet" from "nothing to labor for here")."""
+
+        gathered: list[dict[str, Any]] = []
+        attempted = False
+        for item, definition in sorted(self.world.items.items()):
+            for index, source in enumerate(definition.get("sources", []) or []):
+                if source.get("type") != "labor":
+                    continue
+                if source.get("zone") != actor.zone:
+                    continue
+                maximum = int(source.get("max", 1))
+                gathered_key = f"item:{item}:{actor.zone}:{index}"
+                already = actor.gathered.get(gathered_key, 0)
+                if already >= maximum:
+                    continue
+                attempted = True
+                needed = max(1, int(source.get("count", 1)))
+                progress_key = f"progress:{gathered_key}"
+                progress = actor.gather_progress.get(progress_key, 0) + 1
+                actor.gather_progress[progress_key] = progress
+                stamina_cost = float(source.get("stamina", 0.0))
+                if stamina_cost:
+                    actor.change_stamina(-stamina_cost)
+                    self._update_exhausted(actor)
+                if progress < needed:
+                    continue
+                actor.gather_progress[progress_key] = 0
+                actor.gathered[gathered_key] = already + 1
+                actor.add_item(item, 1)
+                gathered.append(
+                    {
+                        "item": item,
+                        "count": 1,
+                        "source": actor.zone,
+                    }
+                )
+        return gathered, attempted
+
+    def _labor(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        gathered, attempted = self._labor_gather(actor)
+        if not attempted:
+            return "invalid", {"reason": "no_labor_here", "zone": actor.zone}, []
+        return (
+            "labored",
+            {"zone": actor.zone, "gathered": gathered},
+            [],
+        )
 
     def _learn_from_investigation(
         self,
@@ -1277,12 +1342,23 @@ class VerbEngine:
         item = str(action.args[1])
         if target is None:
             return "invalid", {"reason": "target_not_present"}, []
+        give = self.world.items.get(item, {}).get("give", {}) or {}
+        ineffective_for = give.get("ineffective_for") or []
+        if set(ineffective_for) & set(target.tags):
+            return (
+                "invalid",
+                {
+                    "reason": "ineffective_receiver",
+                    "target": target.id,
+                    "item": item,
+                },
+                [],
+            )
         if not actor.remove_item(item, 1):
             return "invalid", {"reason": "item_unavailable", "item": item}, []
 
         before = self.world.relations.stance(target.id, actor.id)
         target.add_item(item, 1)
-        give = self.world.items[item].get("give", {}) or {}
         receiver_delta = float(give.get("receiver_affinity", 0.2))
         giver_delta = float(give.get("giver_affinity", 0.05))
         self.world.relations.change(
@@ -1612,6 +1688,48 @@ class VerbEngine:
                 "item": item,
                 "count": 1,
                 "consumed": consumed,
+            },
+            [],
+        )
+
+    def _buy(
+        self,
+        actor: Subject,
+        action: Action,
+        *,
+        turn: int,
+        day: int,
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        item = str(action.args[0])
+        definition = self.world.items.get(item, {})
+        price = definition.get("price")
+        shop_zone = definition.get("shop_zone")
+        if not price or shop_zone is None:
+            return "invalid", {"reason": "not_for_sale", "item": item}, []
+        if actor.zone != shop_zone:
+            return "invalid", {"reason": "wrong_zone", "zone": shop_zone}, []
+        if not all(
+            actor.inventory.get(currency, 0) >= int(required)
+            for currency, required in price.items()
+        ):
+            return (
+                "invalid",
+                {"reason": "insufficient_funds", "item": item},
+                [],
+            )
+
+        spent: dict[str, int] = {}
+        for currency, required in sorted(price.items()):
+            count = int(required)
+            actor.remove_item(currency, count)
+            spent[currency] = count
+        actor.add_item(item, 1)
+        return (
+            "bought",
+            {
+                "item": item,
+                "count": 1,
+                "spent": spent,
             },
             [],
         )
