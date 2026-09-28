@@ -57,3 +57,32 @@
 .sf-shell .sf-tools[open]{grid-column:1/-1;max-height:min(42dvh,320px);overflow:auto;padding:0 2px 8px}
 .sf-shell .sf-tools[open]>summary{position:sticky;top:0;z-index:1}
 .sf-shell .sf-tools[open]+[data-sf-mode="synopsis"]{grid-column:1/-1}
+
+/* Candidate actions use recorded time and retain the decision controls. */
+@media(min-width:1024px){.sf-actions-active .sf-workspace{grid-template-columns:minmax(210px,25fr) minmax(0,75fr)}}
+.sf-action-reading{display:flex;overflow:hidden;padding:12px!important}
+.sf-reading .sf-actions{display:flex;flex:1;min-height:0;min-width:0;flex-direction:column}
+.sa-toolbar{display:flex;align-items:center;gap:8px;font-size:13px;padding:0 0 10px;flex-wrap:wrap}.sa-toolbar select{font:inherit;max-width:200px;min-height:32px}.sa-toolbar small{margin-left:auto;color:var(--rw-muted)}
+.sa-message{font-size:13px;padding:8px;background:#fff2dc;margin:0 0 8px!important;line-height:1.5!important}
+.sa-content{display:grid;grid-template-columns:minmax(0,58fr) minmax(0,42fr);flex:1;min-height:0;gap:14px;min-width:0}
+.sa-scroll{overflow:auto;min-height:0;border:1px solid var(--rw-line);overscroll-behavior:contain}
+.sa-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;table-layout:fixed}.sa-table th,.sa-table td{padding:7px 8px;border-bottom:1px solid var(--rw-line);text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.sa-table thead th{position:sticky;top:0;z-index:2;background:#f1f5f0;font-weight:600;font-size:12px}.sa-table th:nth-child(1){width:25%}.sa-table th:nth-child(2){width:16%}.sa-table th:nth-child(3){width:42%}.sa-table th:nth-child(4){width:17%}
+.sa-table .sa-day{position:sticky;top:32px;z-index:1;background:#e9efe8;font-size:12px;padding:5px 8px}.sa-table button{border:0;background:none;text-align:left;width:100%;font:inherit;min-height:32px;color:inherit;padding:0;text-decoration:underline;text-underline-offset:3px}.sa-table tr:has([aria-pressed=true]){background:#e0ece2;box-shadow:inset 3px 0 var(--rw-green)}
+.sa-detail{min-width:0;min-height:0;overflow:auto;padding:4px 8px 8px 0;font-size:13px;overflow-wrap:anywhere}.sa-detail h3{font-size:15px;margin:14px 0 8px}.sa-detail>h3{margin:0 0 12px}.sa-detail p{font-size:13px;line-height:1.6!important}.sa-detail dl{grid-template-columns:90px minmax(0,1fr);gap:6px}.sa-detail dd{font-size:13px;white-space:pre-wrap}.sa-detail table{width:100%;font-size:12px}.sa-detail th,.sa-detail td{padding:4px;text-align:left}.sa-detail pre{white-space:pre-wrap;font-size:12px;overflow-wrap:anywhere}.sa-detail details{margin:12px 0}.sa-detail>a{display:block;margin-top:14px;font-size:13px}.sa-back{display:none}
+.sf-action-memo{display:none;margin:0 0 8px}.sf-actions-active .sf-action-memo{display:flex;gap:10px;align-items:center}.sf-action-memo label{flex:0 0 auto;font-weight:600;cursor:default}.sf-action-memo textarea{flex:1;min-width:0;resize:vertical;max-height:65px;padding:6px 8px;font:inherit;border:1px solid var(--ws-control-line);border-radius:4px;background:var(--ws-surface);color:var(--ws-text)}
+.sf-actions-active .sf-inspector>header{padding:10px 20px 6px}.sf-actions-active .sf-inspector-heading h2{margin:0;font-size:20px}.sf-actions-active .sf-inspector>header>p{margin:4px 0}.sf-actions-active .sf-verdict{padding:8px 16px}.sf-actions-active .sf-verdict legend{font-size:12px;margin-bottom:4px}
+@media(max-width:1023px){.sa-content{display:flex}.sa-scroll{flex:1}.sa-detail{display:none;flex:1}.sa-show-detail .sa-scroll{display:none}.sa-show-detail .sa-detail{display:block}.sa-show-detail .sa-back{display:inline-block;align-self:flex-start;margin-bottom:8px}.sa-table .sa-day{top:32px}.sf-action-reading{padding:10px!important}}
+
+@media(max-width:1023px){
+ .sf-actions-active .sf-heading{padding:8px 12px;gap:6px}
+ .sf-actions-active .sf-heading h1{font-size:20px}
+ .sf-actions-active .sf-picker{margin:0;font-size:11px;gap:4px}
+ .sf-actions-active .sf-picker select{font-size:12px;min-height:30px;padding:4px 8px}
+ .sf-actions-active .sf-tabs button{padding:6px 4px;font-size:12px;white-space:nowrap;min-height:36px}
+ .sf-actions-active .sf-mobile-back{font-size:12px;min-height:28px;padding:4px 8px;margin-bottom:4px}
+ .sf-actions-active .sf-inspector>header{padding:6px 12px}
+ .sf-actions-active .sf-inspector-heading button{min-height:30px;padding:4px 10px}
+ .sf-actions-active .sf-verdict{padding:6px 12px}
+ .sf-actions-active .sf-action-memo{margin-bottom:4px}
+}

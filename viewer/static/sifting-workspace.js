@@ -39,13 +39,14 @@
   field('title',c.label);field('meta',`${labels[c.state]} · 品質 ${c.quality_text} · ${c.reached?'結末に到達':'未到達'}`);
   field('story',c.synopsis||`${c.synopsis_state}。記録から内容を確認できます。`);
   field('ending',c.ending_text);
-  const note=$('[data-sf-note]');if(note){note.value=pending.get(id)?.note??c.note;note.disabled=initial.running||mode!=='browse';}
+  for(const note of $$('[data-sf-note],[data-sf-action-note]')){note.value=pending.get(id)?.note??c.note;note.disabled=initial.running||mode!=='browse';}
   href('detail',c.detail_href||c.raw_href,c.detail_href?'物語と根拠を詳しく読む ↗':'原記録から内容を確認 ↗');href('raw',c.raw_href);href('output',c.output_href);
   href('synopsis',c.can_synopsis&&mode==='browse'?`/runs/${encodeURIComponent(initial.run_id)}/generate?kind=synopsize&candidate=${encodeURIComponent(id)}`:null);
   const data=$('[data-sf-data]');if(data){data.replaceChildren();for(const [label,value] of [['候補ID',id],['区画',c.cell_key],['世代',c.generation],['seed',c.seed],['原記録',c.availability]]){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value??'—';data.append(dt,dd);}}
   for(const radio of $$('[name="sf-verdict"]')){radio.checked=radio.value===(pending.get(id)?.state??c.state);radio.disabled=initial.running||mode!=='browse'||(radio.value==='adopted'&&!c.screenable);}
   field('reason',!c.screenable?`採用できません：${c.reached?c.availability:'結末に未到達'}`:'');
   const i=visible.indexOf(id);if($('[data-sf-prev]'))$('[data-sf-prev]').disabled=i<=0;if($('[data-sf-next]'))$('[data-sf-next]').disabled=i<0||i>=visible.length-1;
+  root.dispatchEvent(new CustomEvent('sf-candidate',{detail:c}));
   const url=new URL(location.href);url.searchParams.set('candidate',id);history.replaceState(null,'',url);remember();
   if(focus){root.classList.add('sf-show-detail');$('[data-sf-title]').setAttribute('tabindex','-1');$('[data-sf-title]').focus();}
  }
@@ -75,11 +76,10 @@
   finally{saving=false;footer();}})();return flushPromise;
  }
  $$('[data-sf-open]').forEach(b=>b.addEventListener('click',()=>select(b.dataset.sfOpen,true)));
- $$('[data-sf-tab]').forEach(b=>b.addEventListener('click',()=>{for(const tab of $$('[data-sf-tab]'))tab.setAttribute('aria-selected',String(tab===b));for(const panel of $$('[data-sf-panel]'))panel.hidden=panel.dataset.sfPanel!==b.dataset.sfTab;remember();}));
+ $$('[data-sf-tab]').forEach(b=>b.addEventListener('click',()=>{for(const tab of $$('[data-sf-tab]'))tab.setAttribute('aria-selected',String(tab===b));for(const panel of $$('[data-sf-panel]'))panel.hidden=panel.dataset.sfPanel!==b.dataset.sfTab;root.dispatchEvent(new CustomEvent('sf-panel',{detail:b.dataset.sfTab}));remember();}));
  $$('[data-sf-tab]').forEach(b=>b.addEventListener('keydown',e=>{const tabs=$$('[data-sf-tab]'),index=tabs.indexOf(b);let next;if(e.key==='ArrowRight')next=(index+1)%tabs.length;else if(e.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;else if(e.key==='Home')next=0;else if(e.key==='End')next=tabs.length-1;else return;e.preventDefault();tabs[next].click();tabs[next].focus();}));
  $$('[name="sf-verdict"]').forEach(r=>r.addEventListener('change',()=>{if(current){update(current,{state:r.value});flush();}}));
- $('[data-sf-note]')?.addEventListener('input',e=>{if(!current)return;update(current,{note:e.target.value});clearTimeout(timer);timer=setTimeout(flush,600);});
- $('[data-sf-note]')?.addEventListener('blur',()=>flush());
+ $$('[data-sf-note],[data-sf-action-note]').forEach(note=>{note.addEventListener('input',e=>{if(!current)return;for(const other of $$('[data-sf-note],[data-sf-action-note]'))if(other!==note)other.value=e.target.value;update(current,{note:e.target.value});clearTimeout(timer);timer=setTimeout(flush,600);});note.addEventListener('blur',()=>flush());});
  $('[data-sf-retry]')?.addEventListener('click',async()=>{try{await reconcile();failed=false;$('[data-sf-retry]').hidden=true;tell('');await flush();if(!pending.size){if(initial.view==='tray'){location.reload();return;}status('保存済みの判定を確認しました');footer();}}catch(e){tell(e.message);}});
  $('[data-sf-prev]')?.addEventListener('click',()=>select(visible[visible.indexOf(current)-1],true));
  $('[data-sf-next]')?.addEventListener('click',()=>select(visible[visible.indexOf(current)+1],true));

@@ -48,19 +48,26 @@ def shell(handler, v, active, title, body, footer, *, step=1, initial=None):
         content += generation_pages.surface(modal=True)
     doc = pages.document(title, content, phase="sifting", world=v.get("world"), run=v.get("name") or None, output_run=rid or None,
                          job_store=wb._job_store(handler), page_class="run-observer")
-    handler._send_html(doc.replace('</head>', generation_pages.ASSETS + '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/sifting-workspace.css"><script src="/static/sifting-workspace.js" defer></script></head>'))
+    handler._send_html(doc.replace('</head>', generation_pages.ASSETS + '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/sifting-workspace.css"><script src="/static/sifting-actions.js" defer></script><script src="/static/sifting-workspace.js" defer></script></head>'))
 
 
 def inspector():
-    tabs = ''.join(f'<button type="button" role="tab" id="sf-tab-{key}" aria-controls="sf-panel-{key}" aria-selected="{str(key=="story").lower()}" data-sf-tab="{key}">{label}</button>' for key,label in (("story","物語"),("note","選択とメモ"),("data","実験データ")))
+    tabs = ''.join(f'<button type="button" role="tab" id="sf-tab-{key}" aria-controls="sf-panel-{key}" aria-selected="{str(key=="story").lower()}" data-sf-tab="{key}">{label}</button>' for key,label in (("story","物語"),("actions","行動ログ"),("note","選択とメモ"),("data","実験データ")))
     return ('<aside class="sf-inspector" aria-label="候補の内容"><header><button type="button" class="sf-mobile-back" data-sf-back>← 一覧に戻る</button>'
             '<div class="sf-inspector-heading"><h2 data-sf-title>候補を選択</h2><div><button type="button" data-sf-prev aria-label="前の候補">‹</button><button type="button" data-sf-next aria-label="次の候補">›</button></div></div>'
             '<p data-sf-meta></p></header><div class="sf-tabs" role="tablist" aria-label="候補情報">' + tabs + '</div>'
             '<div class="sf-reading"><section role="tabpanel" id="sf-panel-story" aria-labelledby="sf-tab-story" data-sf-panel="story"><h3>あらすじ</h3><p class="sf-story" data-sf-story>左から候補を選んでください。</p>'
             '<a data-sf-synopsis hidden>この候補のあらすじを作る →</a><p><a data-sf-detail hidden>物語と根拠を詳しく読む ↗</a></p><p><a data-sf-output hidden>生成状況・作品を確認 ↗</a></p><div class="sf-ending"><h3>結末</h3><p data-sf-ending></p></div></section>'
+            '<section role="tabpanel" id="sf-panel-actions" aria-labelledby="sf-tab-actions" class="sf-actions" data-sf-panel="actions" hidden>'
+            '<div class="sa-toolbar"><label>行動した人物 <select data-sa-actor disabled><option>読み込み前</option></select></label><small data-sa-count></small></div>'
+            '<p class="sa-message" data-sa-message role="status" hidden></p><button type="button" data-sa-retry hidden>読み込みを再試行</button>'
+            '<button type="button" class="sa-back" data-sa-back>← 行動一覧に戻る</button>'
+            '<div class="sa-content"><div class="sa-scroll" data-sa-scroll><table class="sa-table" aria-label="記録された行動">'
+            '<thead><tr><th scope="col">日・スロット</th><th scope="col">人物</th><th scope="col">行動</th><th scope="col">結果</th></tr></thead><tbody data-sa-rows></tbody></table></div>'
+            '<section class="sa-detail" data-sa-detail aria-label="選択した行動の詳細" aria-live="polite"></section></div></section>'
             '<section role="tabpanel" id="sf-panel-note" aria-labelledby="sf-tab-note" data-sf-panel="note" hidden><h3>選んだ理由</h3><label for="sf-note">この候補についてのメモ</label><textarea id="sf-note" data-sf-note rows="6" placeholder="気になった点・選んだ理由を残す"></textarea><p>メモは自動保存されます。</p></section>'
             '<section role="tabpanel" id="sf-panel-data" aria-labelledby="sf-tab-data" data-sf-panel="data" hidden><h3>実験データ</h3><dl data-sf-data></dl><a data-sf-raw hidden>原記録を読む ↗</a></section></div>'
-            '<div class="sf-verdict" data-sf-verdict><fieldset><legend>この候補の判定</legend>' + ''.join(f'<label><input type="radio" name="sf-verdict" value="{key}"><span>{label}</span></label>' for key,label in LABELS.items()) + '</fieldset><p data-sf-reason></p><span data-sf-save role="status">判定・メモは自動保存。あとから変更できます。</span><button type="button" data-sf-retry hidden>再試行</button></div></aside>')
+            '<div class="sf-verdict" data-sf-verdict><div class="sf-action-memo"><label for="sf-action-note">メモ</label><textarea id="sf-action-note" data-sf-action-note rows="1" placeholder="この候補についてのメモ（自動保存）"></textarea></div><fieldset><legend>この候補の判定</legend>' + ''.join(f'<label><input type="radio" name="sf-verdict" value="{key}"><span>{label}</span></label>' for key,label in LABELS.items()) + '</fieldset><p data-sf-reason></p><span data-sf-save role="status">判定・メモは自動保存。あとから変更できます。</span><button type="button" data-sf-retry hidden>再試行</button></div></aside>')
 
 
 def candidate_row(c, *, grid=False):
