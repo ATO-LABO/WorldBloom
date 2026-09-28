@@ -1,5 +1,5 @@
 ---
-ja_rev: "eb00c0e9915b"
+ja_rev: "a473ad0137a8"
 ---
 # HTTP API
 
@@ -60,7 +60,7 @@ Editing a world/genre is functionally independent of GA experiments. Every handl
 | POST | `/api/genres/<id>/{save,parse,check}` | Save / parse / validate in the genre editor |
 | POST | `/api/worlds/<id>/patches/<patch_id>/{approve,reject}` | Approve / reject a world self-expansion patch |
 | POST | `/api/worlds/<id>/patches/reopen` | Revert an approved expansion patch back to proposed |
-| GET | `/api/worlds/<id>/routes` | [Survey shortest routes](../concepts/route-layer.md#route-paths-survey) (read-only). Unlike every other row in this table, it does not need `job_store` (`--control`), and works in the read-only Viewer too. Returns `{"status": "no_route_config", ...}` if the world's genre has no `route.yaml` |
+| GET | `/api/worlds/<id>/routes` | [Survey shortest routes](../concepts/route-layer.md#route-paths-survey) (read-only). Unlike every other row in this table, it does not need `job_store` (`--control`), and works in the read-only Viewer too. `404 not_found` if the world doesn't exist. `status: "no_route_config"` if the world's genre isn't set or has no `route.yaml`; `status: "no_goal"` if the protagonist's goal isn't a supported shape. Response shape: `{"status": "ok"\|"unreachable"\|"no_goal"\|"no_route_config", "message": str, "timepoints": [{"label", "day", "slot", "events": [...], "start": {...}, "routes": [{"rank", "label", "h", "cost", "route", "conditions", "signature", "steps", "truncated"}], "blocked": [{"kind", "value", "detail", "text"}]}]}` |
 
 ## Run-results and selection API
 

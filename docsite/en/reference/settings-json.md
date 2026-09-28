@@ -1,5 +1,5 @@
 ---
-ja_rev: "aa86796f5bf9"
+ja_rev: "147603325915"
 ---
 # settings.json
 
@@ -65,6 +65,7 @@ A mechanism that coordinates GPU use between local LLMs (Ollama and llama-server
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
+| `thermal.enabled` | boolean | on unless explicitly `false` | Whether the thermal guard runs at all. `false` skips the temperature check entirely |
 | `thermal.pause_at` | number (°C) | 78 | Pause before generating once the temperature reaches this or above |
 | `thermal.resume_at` | number (°C) | 70 | Resume once the temperature drops to this or below |
 | `thermal.poll_seconds` | number (seconds) | 15 | How often to check while waiting on the thermal guard |

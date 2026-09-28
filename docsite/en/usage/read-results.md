@@ -1,5 +1,5 @@
 ---
-ja_rev: "0293b916071f"
+ja_rev: "42d7d0eb3f05"
 ---
 # Read Results
 
@@ -38,7 +38,7 @@ The candidate list screen shows these columns for each candidate:
 
 ## Personality change
 
-For an experiment with [personality growth](../concepts/personality-growth.md) enabled, a "filter by personality change" toggle (all / none / small / large) appears above the QD map whenever that axis is active for the run. Any run with at least one growth event gets a "Personality change" card in its detail, showing side-by-side nine-stat bars for personality at start vs. now, plus a list of every shift by turn.
+For an experiment with [personality growth](../concepts/personality-growth.md) enabled, a "filter by personality change" toggle (all / none / small / large) appears above the QD map whenever that axis is active for that experiment. Any run with at least one growth event gets a "Personality change" card in its detail, showing side-by-side nine-stat bars for personality at start vs. now, plus a list of every shift by turn.
 
 ## Choice, rationale, cost, and turning point
 

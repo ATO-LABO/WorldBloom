@@ -8,7 +8,7 @@ sources:
   - "viewer/library_pages.py"
   - "viewer/run_catalog.py"
   - "gapengine/route_paths.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 ---
 # HTTP API
 
@@ -69,7 +69,7 @@ reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 | POST | `/api/genres/<id>/{save,parse,check}` | ジャンルエディタの保存・構文解析・検証 |
 | POST | `/api/worlds/<id>/patches/<patch_id>/{approve,reject}` | 世界の自己拡張パッチの承認・却下 |
 | POST | `/api/worlds/<id>/patches/reopen` | 承認済み拡張パッチを差し戻す |
-| GET | `/api/worlds/<id>/routes` | [最短経路を調査](../concepts/route-layer.md#route-paths-survey)（読み取り専用）。他のこの表の行と異なり `job_store`（＝`--control`起動）を必要とせず、閲覧専用の Viewer でも使えます。世界のジャンルに `route.yaml` が無ければ `{"status": "no_route_config", ...}` を返します |
+| GET | `/api/worlds/<id>/routes` | [最短経路を調査](../concepts/route-layer.md#route-paths-survey)（読み取り専用）。他のこの表の行と異なり `job_store`（＝`--control`起動）を必要とせず、閲覧専用の Viewer でも使えます。世界が無ければ `404 not_found`。世界のジャンルが未設定、またはジャンルに `route.yaml` が無ければ `status: "no_route_config"`、主人公の目標が対応する型でなければ `status: "no_goal"` を返します。応答形は `{"status": "ok"\|"unreachable"\|"no_goal"\|"no_route_config", "message", "timepoints": [{"label", "day", "slot", "events": [...], "start": {...}, "routes": [{"rank", "label", "h", "cost", "route", "conditions", "signature", "steps", "truncated"}], "blocked": [{"kind", "value", "detail", "text"}]}]}` |
 
 ## 実験結果・選定 API
 

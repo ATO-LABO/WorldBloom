@@ -2,7 +2,9 @@
 sources:
   - "gapengine/gpu_guard.py"
   - "viewer/pages.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+  - "viewer/global_settings.py"
+  - "execution/evolution_settings.py"
+reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 ---
 # GPU ガード
 
@@ -15,7 +17,9 @@ reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 - **リース**: マシン全体で1つの OS ファイルロック（既定 `%LOCALAPPDATA%\WorldBloom`、環境変数 `WORLDBLOOM_GPU_LEASE_DIR` で変更可）を取ってから生成します。他プロセスが握っていれば空くまで待ち、待っても空かなければ `GpuBusy` で失敗します（無期限には待ちません）。ロックを持つプロセスが異常終了すれば OS が自動的に解放します
 - **Ollama との調停**: `llama-server` を使う前に Ollama の `/api/ps` を2回観測し、遊休（応答が進んでいない）なら `keep_alive: 0` で自動的に退避させます。使用中と判定した間は待ち、リースの締め切りを過ぎたら `GpuBusy` で失敗します。逆方向（Ollama を使う前に llama-server が動いているか）は待たず、動作中ならその場で即座に `GpuBusy` になります（先に起動している側を優先し、両方が同時に VRAM を使い切ることを防ぎます）
 - **自動起動・自動停止**: `llama-server` の `base_url` に既に応答があれば、それ（人が起動したもの）をそのまま使い、止めません。応答が無く `launch`（起動コマンド）が設定されていれば自動で起動し、`startup_seconds`（既定180秒）まで起動を待ちます。生成が終われば、自分が起動したサーバーだけを自動で停止します。前回異常終了して残ったサーバーがあれば、次にリースを取った側が自動で終了させます
-- **熱ガード**: 各生成の前に GPU 温度（`nvidia-smi`）を確認し、`pause_at`（既定78℃）以上なら `resume_at`（既定70℃）以下に下がるまで `poll_seconds`（既定15秒）間隔で一時的に待ちます。`max_wait_seconds`（既定600秒）を過ぎても下がらない場合は、それ以上は待たずに生成を続行します（失敗にはしません）。温度が読めない環境ではそもそも待ちません
+- **熱ガード**: 各生成の前に GPU 温度（`nvidia-smi`）を確認し、`pause_at`（既定78℃）以上なら `resume_at`（既定70℃）以下に下がるまで `poll_seconds`（既定15秒）間隔で一時的に待ちます。`max_wait_seconds`（既定600秒）を過ぎても下がらない場合は、それ以上は待たずに生成を続行します（失敗にはしません）。温度が読めない環境ではそもそも待ちません。`thermal.enabled` を明示的に `false` にすると熱ガード自体を無効化できます（既定は有効）
+
+⚙ 全体設定の「計算」タブからも、熱ガードのオン/オフと「一時停止する温度」（`pause_at`、50〜95℃）を指定できます。`resume_at` は画面からは直接指定できず、既定の差（78℃→70℃、8℃）を保ったまま `pause_at` に自動で追従します（`pause_at` を下げれば `resume_at` もその8℃下に下がります）。
 
 ## settings.json の書き方
 

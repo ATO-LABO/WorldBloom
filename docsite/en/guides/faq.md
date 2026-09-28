@@ -1,5 +1,5 @@
 ---
-ja_rev: "cebaa182bfdb"
+ja_rev: "dfa0f78dbcbc"
 ---
 # FAQ
 
@@ -13,7 +13,7 @@ Letting an LLM write the sequence of events (who did what) directly would make i
 
 ## Why bother with the GA at all?
 
-You can generate stories without evolving a policy (genome) at all, using only random individuals (`scripts/random_baseline.py`). A measured comparison under a condition with [personality growth](../concepts/personality-growth.md) and its third axis enabled (matched evaluation counts, 5 random seeds) shows the GA ahead on every metric — occupied cells (mean 17.0 vs. 13.4), QD score (mean 4.80 vs. 3.47), and best quality (mean 0.429 vs. 0.382) — though no statistical test was run. Under a condition without personality growth or the third axis (an 18-cell grid), the GA and random baseline showed almost no difference. See [Personality Growth](../concepts/personality-growth.md#ga-vs-random) for details.
+You can generate stories without evolving a policy (genome) at all, using only random individuals (`scripts/random_baseline.py`). A measured comparison under a condition with [personality growth](../concepts/personality-growth.md) and its third axis enabled (matched evaluation count of 400, 5 random seeds) shows the GA ahead on every metric — reach rate (mean 0.132 vs. 0.061), occupied cells (mean 17.0 vs. 13.4), QD score (mean 4.80 vs. 3.47), and best quality (mean 0.429 vs. 0.382). Under a condition without personality growth or the third axis (an 18-cell grid), the GA and random baseline showed almost no difference (occupied cells 7.2 vs. 7.2, QD score 2.12 vs. 2.21). Each condition was only tried 5 times with no statistical test, and the personality-growth/third-axis condition also has a larger cell cap (18 → 54), so this measurement can't separate how much of the GA's lead comes from the added exploration target versus simply more cells being available. See [Personality Growth](../concepts/personality-growth.md#ga-vs-random) for details.
 
 ## Can I use it on a PC with no GPU?
 

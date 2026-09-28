@@ -1,5 +1,5 @@
 ---
-ja_rev: "9579d181d47c"
+ja_rev: "243e9cbe5d1c"
 ---
 # QD Map
 
@@ -22,8 +22,8 @@ The default grid is 6 rows × 3 columns (splitting volatility into low / mid / h
 
 Only when [personality growth](personality-growth.md) is enabled *and* the genre's `qd.yaml` declares `arc_bins: [none, small, large]` does the grid gain a third axis. If either is missing, this axis doesn't exist at all (existing cell keys and grid shape stay byte-identical).
 
-- **Personality-change magnitude (arc)**: the sum of the absolute values of the run's protagonist's last recorded personality-growth event.
-- **Bins**: a run with no change (`arc = 0`) is always "none." Others are split into "small"/"large" by the median of only the runs with a change, within that generation's population. This threshold is fixed once decided at generation 0.
+- **Personality-change magnitude (arc)**: the sum of the absolute values of the cumulative shift recorded at the run's last personality-growth event (i.e. the total change accumulated across the whole run).
+- **Bins**: a run with no change (`arc = 0`) is always "none." Others are split into "small"/"large" by the median of only the runs with a change, within that generation's population. This threshold is fixed once decided at generation 0 (falling back to a fixed 0.1 if no run in generation 0 had any change).
 
 Cells become the three-part `category|volatility|personality change` (e.g. `I|low|small`), and the Sifting screen shows a "filter by personality change" toggle above the grid.
 

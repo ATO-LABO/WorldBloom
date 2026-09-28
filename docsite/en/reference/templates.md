@@ -1,5 +1,5 @@
 ---
-ja_rev: "0bb7f3b6b990"
+ja_rev: "0f3d14749bf3"
 ---
 # Templates
 
@@ -97,7 +97,7 @@ Among the bundled genres (under `templates/`: `basic`, `detective`, `momotaro`, 
   description: 敵対相手にはより攻撃的に
 ```
 
-`scope` is one of three: `candidate` (per candidate — `target` gets bound), `turn` (per turn), or `outcome` (after an action happens, only when [personality growth](../concepts/personality-growth.md) is enabled). For `candidate`/`turn`, `adjust` keys are `category_weight.<I–VI>`, `risk_tolerance`, `stance_shift_bias`, or `novelty_drive`, added temporarily and used as the actual weight via `g_eff = clip(genome + Σ matching rules' adjust)`. An `outcome`-scope rule doesn't add temporarily — instead `plasticity × adjust` accumulates permanently into that run's personality (see [Personality Growth](../concepts/personality-growth.md)).
+`scope` is one of three: `candidate` (per candidate — `target` gets bound), `turn` (per turn), or `outcome` (after an action happens, only when [personality growth](../concepts/personality-growth.md) is enabled). For `candidate`/`turn`, `adjust` keys are `category_weight.<I–VI>`, `risk_tolerance`, `stance_shift_bias`, or `novelty_drive`, added temporarily and used as the actual weight via `g_eff = clip(genome + Σ matching rules' adjust)`. An `outcome`-scope rule doesn't add temporarily — instead `plasticity × adjust` accumulates permanently into that run's personality. It's also never part of the set meta-evolution can toggle rule-by-rule (see [Personality Growth](../concepts/personality-growth.md)).
 
 ### rationality.yaml (κ / Jev)
 
@@ -230,7 +230,11 @@ scheduled_events:
 - `move_to` (a zone move on the same event) and `force_action` are mutually exclusive
 - `verb` must be one the engine handles (`HANDLED_VERBS`), and `args` cannot exceed that verb's argument count
 
-A target that isn't `alive`/`revived` is skipped, and the skip is logged. If more than one scheduled event with `force_action` targets the same subject in the same slot, the one evaluated later wins. The world screen's "Time" tab lets you edit the day, slot, target, verb, and args. [Surveying shortest routes](../concepts/route-layer.md#route-paths-survey) folds only `move` force-actions into its starting state, as a certain premise ("the protagonist hasn't acted yet"); any other forced verb is left to the actual GA run.
+A `dead` target is excluded from the event entirely — no force, no log row. A target that is neither `dead` nor `alive`/`revived` (i.e. `downed`) is skipped, and the skip is logged. If more than one scheduled event with `force_action` targets the same subject in the same slot, the one evaluated later wins.
+
+If the forced verb/args aren't actually offered as a candidate to that target at that moment (e.g. the target can no longer move), the force falls back to ordinary action selection, and a `verb: "force_action_fallback"` row is logged with `reason: "args_not_offered"` (the verb exists but the args don't match) or `"verb_not_offered"` (the verb itself isn't a candidate).
+
+The world screen's "Time" tab lets you edit the day, slot, target, verb, and args. [Surveying shortest routes](../concepts/route-layer.md#route-paths-survey) folds only `move` force-actions into its starting state, as a certain premise ("the protagonist hasn't acted yet"); any other forced verb is left to the actual GA run.
 
 ### Main keys in subjects/*.yaml
 
