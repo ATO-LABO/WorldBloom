@@ -74,7 +74,57 @@ const WorldRelations = (() => {
   }
   return {affiliation,buildRelationGraph,buildVisualEdges,filterRelationGraph,layoutRelationGraph};
 })();
-if(typeof module !== 'undefined' && module.exports) module.exports=WorldRelations;
+/* Read-only presentation schedule; route cost is not elapsed time. */
+const WorldRoutes = (() => {
+  const kinds={move:'移動',investigate:'調査',craft:'製作',trial:'試練',fight:'戦闘',negotiate:'交渉',train:'鍛錬',stance:'関係づくり',unknown:'入手'};
+  const number=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
+  function clock(world,timepoint){
+    const slots=world.time?.slots||[],day=timepoint.day;
+    if(!Array.isArray(slots)||!slots.length||slots.some(s=>typeof s!=='string'||!s)||new Set(slots).size!==slots.length||!Number.isInteger(day)||day<1)return null;
+    const index=timepoint.slot==null?0:slots.indexOf(timepoint.slot);
+    if(index<0)return null;
+    // state_at has already replayed forced moves at a named slot. Do not
+    // assign another protagonist action to that same consumed slot.
+    const events=(world.scheduled_events||[]).filter(e=>e.day===day&&(e.targets||[]).includes(world.protagonist));
+    const opening=index===0?events.filter(e=>e.slot==null&&e.force_action):[];
+    const current=events.filter(e=>e.slot===timepoint.slot&&e.slot!=null&&e.force_action);
+    const forced=[...opening,...current].at(-1);
+    const consumed=timepoint.slot!=null&&forced?.force_action?.verb==='move';
+    const origin=(day-1)*slots.length+index+(consumed?1:0);
+    return {slots,origin,consumed,days:number(world.time?.days)};
+  }
+  function at(calendar,offset){
+    if(!calendar)return null;
+    const value=calendar.origin+offset,index=value%calendar.slots.length,day=Math.floor(value/calendar.slots.length)+1;
+    return {day,slot:calendar.slots[index],slotIndex:index+1,slotCount:calendar.slots.length,outside:calendar.days!=null&&day>calendar.days};
+  }
+  function format(moment){return moment?`${moment.day}日目 ${moment.slot}`:'日時未設定';}
+  function build(route,timepoint,world){
+    const calendar=clock(world,timepoint),rows=[];
+    let elapsed=0,overflow=false;
+    for(const [sourceIndex,step] of (route.steps||[]).entries()){
+      const cost=number(step.cost),total=number(step.cumulative);
+      const repeated=step.kind==='investigate'&&Number.isInteger(step.count)&&step.count>0?step.count:1;
+      const rounds=step.kind==='fight'&&cost!=null&&cost>0?Math.ceil(cost):1;
+      const count=step.kind==='fight'?rounds:repeated;
+      const base=total!=null&&cost!=null?total-cost:null;
+      const text=String(step.text||'行動未設定').replace(/\s*[×x]\s*\d+\s*$/u,'');
+      for(let repeat=0;repeat<count;repeat++){
+        if(rows.length>=5000){overflow=true;break;}
+        const partCost=cost==null?null:cost/count;
+        rows.push({id:`${sourceIndex}:${repeat}`,sourceIndex,kind:step.kind,kindLabel:kinds[step.kind]||'行動',zone:step.zone||'',text:count>1?`${text}（${repeat+1}/${count}${step.kind==='fight'?'・目安':''}）`:String(step.text||'行動未設定'),
+          cost:partCost,cumulative:base==null?null:Math.round((base+(repeat+1)*partCost)*10000)/10000,
+          at:at(calendar,elapsed),next:at(calendar,elapsed+1),assumed:step.kind==='fight'||step.kind==='train'||step.kind==='stance'||step.kind==='unknown'});
+        elapsed++;
+      }
+      if(overflow)break;
+    }
+    return {rows,calendar,overflow};
+  }
+  return {clock,at,format,build,kinds};
+})();
+
+if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRelations,WorldRoutes};
 
 /* Saved world settings. No simulation or generation is started here. */
 (() => {
@@ -276,57 +326,80 @@ if(typeof module !== 'undefined' && module.exports) module.exports=WorldRelation
       `<section class="wp-section">${head('設定内容')}<dl class="wp-dl">${row('日数',days?`${esc(days)}日間`:'未設定')}${row('時間帯',esc(slots.join(' ／ ')||'未設定'))}</dl></section>`+
       `<section class="wp-section">${head('予定された出来事',model.editable?'<button class="wp-add" data-edit="add-event">＋ 出来事を追加</button>':'')}${eventDayGrid(events)}${eventsTable()}</section>`;
   }
-  let routesData=null, routesLoading=false, routesTimepoint=0;
+  let routesData=null, routesLoading=false, routesTimepoint=0, routesError='', routesRequest=0, routesMobileDetail=false;
+  const routesStates=new Map();
+  const routeKinds={fight:'戦闘する経路',negotiate:'交渉する経路'};
+  const routeNumber=value=>typeof value==='number'&&Number.isFinite(value)?String(Math.round(value*10000)/10000):'未算出';
+  function routeState(){
+    const tp=routesData?.timepoints?.[routesTimepoint];
+    if(!tp)return null;
+    const key=String(routesTimepoint);
+    if(!routesStates.has(key))routesStates.set(key,{route:0,paths:new Map()});
+    const state=routesStates.get(key);
+    state.route=Math.min(Math.max(state.route,0),Math.max(0,tp.routes.length-1));
+    if(!state.paths.has(state.route))state.paths.set(state.route,{step:0,scroll:0});
+    const path=state.paths.get(state.route),route=tp.routes[state.route];
+    const timeline=route?WorldRoutes.build(route,tp,w):{rows:[],calendar:null};
+    path.step=Math.min(Math.max(path.step,0),Math.max(0,timeline.rows.length-1));
+    return {tp,state,path,route,timeline};
+  }
+  function rememberRoutes(){const current=routeState(),list=content.querySelector('.wp-routes-scroll');if(current&&list)current.path.scroll=list.scrollTop;}
+  function invalidateRoutes(){routesRequest++;routesData=null;routesLoading=false;routesError='';routesTimepoint=0;routesStates.clear();routesMobileDetail=false;}
   function loadRoutes(){
     if(routesLoading||routesData)return;
-    routesLoading=true;
+    routesLoading=true;routesError='';const request=++routesRequest;
     fetch(`/api/worlds/${encodeURIComponent(model.id)}/routes`).then(r=>{
-      if(!r.ok)return r.json().catch(()=>null).then(body=>{throw new Error(body&&body.message||`HTTP ${r.status}`);});
+      if(!r.ok)return r.json().catch(()=>null).then(body=>{throw new Error(body?.message||`HTTP ${r.status}`);});
       return r.json();
     }).then(data=>{
-      // S3 (Opus review): an error response's shape ({code,message}, from
-      // job_api.send_error) has no `timepoints` array at all -- rendering
-      // it as a successful survey threw a TypeError deep in routesScreen
-      // (d.timepoints.length on undefined). Validate the shape here, not
-      // just the HTTP status, before ever caching it as `routesData`.
-      if(!data||!Array.isArray(data.timepoints))throw new Error((data&&data.message)||'想定外の応答でした。');
-      routesData=data; routesLoading=false; if(screen==='routes')render();
+      if(!data||!Array.isArray(data.timepoints))throw new Error(data?.message||'想定外の応答でした。');
+      if(request!==routesRequest)return;
+      routesData=data;routesLoading=false;if(screen==='routes')render();
     }).catch(error=>{
-      // Deliberately NOT cached into routesData -- a transient failure
-      // (server restart, network blip) must be retryable by revisiting the
-      // tab, not stuck showing the same error forever.
-      routesLoading=false;
-      if(screen==='routes'){
-        content.innerHTML=title('最短経路を調査')+`<p class="wp-muted">取得に失敗しました：${esc(error.message||String(error))}</p>`;
-      }
+      if(request!==routesRequest)return;
+      routesLoading=false;routesError=error.message||String(error);if(screen==='routes')render();
     });
   }
-  function routesScreen(){
-    if(!routesData){loadRoutes();return title('最短経路を調査','主人公が結末へ至る段取りを計算しています…')+'<p class="wp-muted">計算中…</p>';}
-    const d=routesData;
-    if(d.status==='no_route_config'||d.status==='no_goal')
-      return title('最短経路を調査')+`<p class="wp-muted">${esc(d.message)}</p>`;
-    if(!d.timepoints.length)
-      return title('最短経路を調査')+`<p class="wp-muted">${esc(d.message||'結末に到達する段取りが見つかりません')}</p>`;
-    const tps=d.timepoints;
-    const tp=tps[Math.min(routesTimepoint,tps.length-1)];
-    const tabsHtml=tps.length>1?`<div class="wp-tabs" aria-label="時点の切り替え">${tps.map((t,i)=>`<button type="button" data-routes-tp="${i}" aria-pressed="${i===routesTimepoint}">${esc(t.label)}</button>`).join('')}</div>`:'';
-    // S4 (Opus review): clarify what "#1" means (the engine's own cheapest
-    // plan right now, not necessarily the shortest of the shown patterns
-    // once a knockout route happens to finish faster) and that this is a
-    // pre-play forecast (only scheduled events have been applied so far,
-    // no actual decisions).
-    const note='<p class="wp-muted">合理的に動いた場合の段取りです。#1はエンジンが今もっとも自然と判断した段取りで、必ずしも他より所要が短いとは限りません。主人公はまだ実際には動いていない前提（この時点までの予定イベントのみ適用）での見込みです。予定イベントは対象が死亡している／物語が先に終わっている場合は発火しません。日替わりイベントと乱数は含みません。所要は目安で、鍛錬などは1手として数えています。</p>';
-    if(tp.blocked.length||!tp.routes.length){
-      const reasons=(tp.blocked||[]).map(b=>`<li>${esc(b.text||JSON.stringify(b))}</li>`).join('');
-      return title('最短経路を調査')+tabsHtml+`<p class="wp-muted">結末に到達する段取りが見つかりません</p>${reasons?`<ul>${reasons}</ul>`:''}`+note;
-    }
-    const routeSections=tp.routes.map(route=>`<section class="wp-section">${head(esc(route.label))}${route.conditions.length?`<p class="wp-muted">この段取りになる条件：${route.conditions.map(esc).join('・')}</p>`:''}<ol class="wp-steps">${route.steps.map(s=>`<li>${esc(s.text)}<small>累計 ${s.cumulative}</small></li>`).join('')}</ol>${route.truncated?'<p class="wp-muted">※途中で打ち切られました（手順が複雑すぎる可能性があります）。目安の所要：'+esc(route.h)+'</p>':''}</section>`).join('');
-    const single=tp.routes.length<2?'<p class="wp-muted">別パターンは見つかりませんでした</p>':'';
-    return title('最短経路を調査','主人公が結末へ至る、パターンの違う段取りです。')+tabsHtml+routeSections+single+note;
+  function routeDetails(){
+    const current=routeState(),step=current?.timeline.rows[current.path.step];
+    if(!step)return '<p class="wp-muted">確認する行動はありません。</p>';
+    const moment=step.at;
+    return `<button type="button" class="wp-routes-back" data-routes-back>← 行動一覧へ</button><p class="wp-muted">選択した行動 · 実行前の目安</p><h2>${esc(WorldRoutes.format(moment))}</h2><h3>${esc(step.text)}</h3><dl>${row('スロット',moment?`${moment.slotIndex} / ${moment.slotCount}${moment.outside?' · 世界の期間外':''}`:'時間帯を設定してください')}${row('行動後の次のスロット',esc(WorldRoutes.format(step.next)))}${row('場所',esc(step.zone||'未設定'))}${row('種類',esc(step.kindLabel))}${row('今回のコスト',esc(routeNumber(step.cost)))}${row('累計コスト',esc(routeNumber(step.cumulative)))}</dl>${step.assumed?'<p class="wp-routes-assumption">戦闘は概算回数、鍛錬・関係づくりは1手を仮定した目安です。</p>':''}`;
   }
+  function updateRouteDetail(focus=false){
+    const current=routeState();if(!current)return;
+    content.querySelectorAll('[data-routes-step]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.routesStep)===current.path.step)));
+    const detail=content.querySelector('.wp-routes-detail');if(detail)detail.innerHTML=routeDetails();
+    const layout=content.querySelector('.wp-routes-layout');if(layout)layout.classList.toggle('is-detail',routesMobileDetail);
+    if(focus&&matchMedia('(max-width:1023px)').matches)detail?.querySelector('[data-routes-back]')?.focus({preventScroll:true});
+  }
+  function routesScreen(){
+    const heading=title('結末までの経路を調査');
+    if(!routesData){
+      if(routesError)return heading+`<div class="wp-routes-empty"><p role="alert">取得に失敗しました：${esc(routesError)}</p><button type="button" class="wp-primary" data-routes-retry>もう一度取得する</button></div>`;
+      loadRoutes();return heading+'<p class="wp-muted" role="status">主人公が結末へ至る段取りを計算しています…</p>';
+    }
+    const d=routesData;
+    if(d.status==='no_route_config'||d.status==='no_goal'||!d.timepoints.length)return heading+`<div class="wp-routes-empty"><p>${esc(d.message||'結末に到達する段取りが見つかりません')}</p></div>`;
+    const current=routeState(),{tp,state,path,route,timeline}=current;
+    const timeSelect=d.timepoints.length>1?`<label>基準時点<select data-routes-timepoint aria-label="経路の基準時点">${d.timepoints.map((t,i)=>`<option value="${i}" ${i===routesTimepoint?'selected':''}>${esc(t.label)}</option>`).join('')}</select></label>`:'';
+    const routeSelect=tp.routes.length>1?`<label>経路<select data-routes-path aria-label="調査する経路">${tp.routes.map((r,i)=>`<option value="${i}" ${i===state.route?'selected':''}>#${esc(r.rank??i+1)} · ${esc(routeKinds[r.route]||'結末までの経路')} · コスト ${esc(routeNumber(r.cost??r.h))}${r.truncated?'（打ち切り）':''}</option>`).join('')}</select></label>`:'';
+    const controls=`<div class="wp-routes-controls">${timeSelect}${routeSelect}</div>`;
+    if(tp.blocked?.length||!route)return heading+controls+`<div class="wp-routes-empty"><p>結末に到達する段取りが見つかりません</p><ul>${(tp.blocked||[]).map(b=>`<li>${esc(b.text||JSON.stringify(b))}</li>`).join('')}</ul></div>`;
+    const rows=timeline.rows;let previousDay;
+    const steps=rows.map((step,index)=>{
+      const day=step.at?.day,dayTitle=day!==previousDay||index===0?`<div class="wp-routes-day">${day?`${day}日目`:'日時未設定'}${step.at?.outside?' · 世界の期間外':''}</div>`:'';previousDay=day;
+      return `${dayTitle}<button type="button" class="wp-routes-step" data-routes-step="${index}" aria-pressed="${index===path.step}" aria-label="${esc(WorldRoutes.format(step.at)+' '+step.text+' 累計'+routeNumber(step.cumulative))}"><span>${esc(step.at?.slot||'未設定')}<small>${step.at?`${step.at.slotIndex}/${step.at.slotCount} スロット`:'時間帯なし'}</small></span><span>${esc(step.text)}</span><span>${esc(routeNumber(step.cumulative))}</span></button>`;
+    }).join('');
+    const conditions=route.conditions?.length?`<p class="wp-routes-condition">この経路の条件：${route.conditions.map(esc).join('・')}</p>`:'';
+    const status=route.truncated?'途中で打ち切り':`総コスト ${routeNumber(route.cost??route.h)}`;
+    const notes=`<details class="wp-routes-notes"><summary>計算の前提と所要の目安</summary><p>#1はエンジンが現在選ぶ経路で、他の経路より短いとは限りません。日・スロットはこの手順を順に行う場合の目安です。累計は経路コストで、経過スロット数とは異なります。戦闘は概算回数、鍛錬などは1手を仮定します。基準時点までの予定イベントだけを反映し、その後の予定イベント・日替わりイベント・乱数による実際の選択は含みません。</p>${route.truncated?`<p>手順は途中で打ち切られています。残りを含むコストの目安：${esc(routeNumber(route.h))}</p>`:''}${tp.routes.length<2?'<p>別パターンは見つかりませんでした。</p>':''}</details>`;
+    return heading+controls+`<div class="wp-routes-summary"><div><h2>#${esc(route.rank??state.route+1)} · ${esc(routeKinds[route.route]||'結末までの経路')}</h2>${conditions}<p class="wp-routes-meta">開始：${esc(WorldRoutes.format(WorldRoutes.at(timeline.calendar,0)))} · 実行前の目安${timeline.calendar?.consumed?'（基準スロットの強制移動後）':''}</p></div><strong>${esc(status)}</strong></div><div class="wp-routes-layout ${routesMobileDetail?'is-detail':''}"><section class="wp-routes-list" aria-label="経路の行動一覧"><div class="wp-routes-table-head"><span>行動時点（目安）</span><span>行動</span><span>累計</span></div><div class="wp-routes-scroll">${steps||'<p class="wp-muted">すでに結末へ到達しています。</p>'}${timeline.overflow?'<p>手順が非常に多いため5,000行まで表示しています。</p>':''}</div></section><aside class="wp-routes-detail" aria-live="polite" aria-label="選択した行動の詳細">${routeDetails()}</aside></div>`+notes;
+  }
+
   function render(focus=false){
     content.classList.toggle('is-people',screen==='people');
+    content.classList.toggle('is-routes',screen==='routes');
     content.dataset.screen=screen;
     content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen,routes:routesScreen}[screen])();
     updateRelationTransform();
@@ -343,7 +416,8 @@ if(typeof module !== 'undefined' && module.exports) module.exports=WorldRelation
     next.href=missing.length?`/worlds/${encodeURIComponent(model.id)}?view=advanced`:model.configUrl;
     next.textContent=missing.length?'未設定の項目を確認 →':'実行条件を決める →';
     if(model.editable)document.getElementById('wp-message').textContent=missing.length?'未設定：'+missing.join('・'):'編集した項目ごとに保存できます。';
-    content.scrollTop=scrolls[screen]||0;
+    content.scrollTop=screen==='routes'?0:(scrolls[screen]||0);
+    if(screen==='routes'){const current=routeState(),list=content.querySelector('.wp-routes-scroll');if(current&&list){list.scrollTop=current.path.scroll;list.addEventListener('scroll',()=>{current.path.scroll=list.scrollTop;},{passive:true});}}
     if(focus)content.querySelector('h1').focus({preventScroll:true});
   }
   function openEditor(key,trigger){
@@ -462,6 +536,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports=WorldRelation
   }
   root.addEventListener('click',e=>{
     const b=e.target.closest('button,[data-person]');if(!b)return;
+    if(screen==='routes')rememberRoutes();
     if(b.dataset.screen){scrolls[screen]=content.scrollTop;screen=b.dataset.screen;render(true);}
     else if(b.hasAttribute('data-event-day')){const day=Number(b.dataset.eventDay);eventDay=eventDay===day?null:day;render();}
     else if(b.hasAttribute('data-state-person')){person=Number(b.dataset.statePerson);openEditor('state',b);}
@@ -483,13 +558,17 @@ if(typeof module !== 'undefined' && module.exports) module.exports=WorldRelation
     else if(b.hasAttribute('data-place')){
       place=Number(b.dataset.place);root.querySelectorAll('[data-place]').forEach(el=>el.setAttribute('aria-pressed',String(Number(el.dataset.place)===place)));root.querySelector('.wp-place-detail').innerHTML=placeDetail();
     }else if(b.dataset.view){const [group,value]=b.dataset.view.split(':');if(group==='people')peopleView=value;if(group==='places')placeView=value;if(group==='story')storyView=value;render();root.querySelector(`[data-view="${b.dataset.view}"]`).focus();}
-    else if(b.hasAttribute('data-routes-tp')){routesTimepoint=Number(b.dataset.routesTp);render();}
+    else if(b.hasAttribute('data-routes-step')){const current=routeState();if(current){current.path.step=Number(b.dataset.routesStep);routesMobileDetail=true;updateRouteDetail(true);}}
+    else if(b.hasAttribute('data-routes-back')){routesMobileDetail=false;updateRouteDetail();content.querySelector(`[data-routes-step="${routeState()?.path.step}"]`)?.focus({preventScroll:true});}
+    else if(b.hasAttribute('data-routes-retry')){routesError='';loadRoutes();render();}
     else if(b.hasAttribute('data-relation-source'))openEditor('relation',b);
     else if(b.dataset.edit)openEditor(b.dataset.edit,b);
     else if(b.hasAttribute('data-route'))openEditor('route:'+b.dataset.route,b);
     else if(b.hasAttribute('data-close'))closeEditor();
   });
   root.addEventListener('change',e=>{
+    if(e.target.hasAttribute('data-routes-timepoint')){rememberRoutes();routesTimepoint=Number(e.target.value);routesMobileDetail=false;render();content.querySelector('[data-routes-timepoint]')?.focus({preventScroll:true});return;}
+    if(e.target.hasAttribute('data-routes-path')){rememberRoutes();const current=routeState();if(current)current.state.route=Number(e.target.value);routesMobileDetail=false;render();content.querySelector('[data-routes-path]')?.focus({preventScroll:true});return;}
     const key=e.target.dataset.relSelect;if(!key)return;
     if(key==='focus'){const index=people.findIndex(p=>p.id===e.target.value);if(index>=0){person=index;graphMode='focus';relationInspector=true;}else graphMode='all';}
     if(key==='group')relationGroup=e.target.value;
@@ -559,7 +638,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports=WorldRelation
     if(!saved)return;
     const personId=request.operation==='add-person'?request.values.name.trim():people[person]?.id;
     const placeName=request.operation==='add-place'?request.values.name.trim():zones[place]?.name;
-    Object.assign(model,saved);w=model.world;
+    Object.assign(model,saved);w=model.world;invalidateRoutes();
     // genre isn't part of snapshot()'s model (execution/world_editor.py);
     // rederive it from gapengine.action_graph the same way LibraryStore._genre_of() does.
     const genreMatch=/^templates\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})\//.exec(w.gapengine?.action_graph||'');
