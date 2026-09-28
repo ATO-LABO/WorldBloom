@@ -1390,6 +1390,35 @@ class VerbEngine:
                     },
                 }
             )
+
+        # WB-MOMOTARO3-C: give.shared_affinity ("sharing a meal") -- other
+        # companions of the giver who are present also warm up to the
+        # receiver. Opt-in per item; absent for every existing item.
+        shared_affinity = give.get("shared_affinity")
+        if shared_affinity:
+            for peer in sorted(
+                self._present(actor),
+                key=lambda value: value.id,
+            ):
+                if peer.id in (actor.id, target.id):
+                    continue
+                if peer.vitality not in {"alive", "revived"}:
+                    continue
+                if (
+                    self.world.relations.stance(peer.id, actor.id)
+                    < threshold
+                ):
+                    continue
+                self.world.relations.change(
+                    peer.id,
+                    target.id,
+                    affinity=float(shared_affinity),
+                )
+                self.world.relations.change(
+                    target.id,
+                    peer.id,
+                    affinity=float(shared_affinity),
+                )
         return (
             "given",
             {"target": target.id, "item": item, "count": 1},
@@ -1851,6 +1880,59 @@ class VerbEngine:
                     )
                 )
 
+        # WB-MOMOTARO3-C: infight_desertion. Runs only once the winner/loser
+        # and every roll above are settled -- consumes no randomness of its
+        # own and never fires unless the world configures it. Scoped to
+        # world.protagonist as the sole eligible "leader" (Opus review S1:
+        # scoring every mutually-liked bystander as a leader fired for
+        # unrelated pairs, e.g. おじいさん losing おばあさん over a fight
+        # between two other subjects entirely). A dead loser is exempt --
+        # vitality.kill already recorded the definitive outcome above.
+        infight_desertion = self.world.companionship["infight_desertion"]
+        if infight_desertion is not None and loser.vitality != "dead":
+            threshold = self.world.companionship["threshold"]
+            leader = next(
+                (
+                    subject
+                    for subject in present
+                    if subject.id == self.world.protagonist
+                ),
+                None,
+            )
+            if (
+                leader is not None
+                and leader.id not in (actor.id, target.id)
+                and leader.vitality in {"alive", "revived"}
+                and self.world.relations.stance(loser.id, leader.id)
+                >= threshold
+                and self.world.relations.stance(winner.id, leader.id)
+                >= threshold
+            ):
+                before_stance = self.world.relations.stance(
+                    loser.id, leader.id
+                )
+                self.world.relations.change(
+                    loser.id,
+                    leader.id,
+                    affinity=infight_desertion,
+                )
+                after_stance = self.world.relations.stance(
+                    loser.id, leader.id
+                )
+                if before_stance >= threshold > after_stance:
+                    # Opus review S2: let a future gift re-cross the
+                    # threshold fire "ally_gained" again -- without this,
+                    # the one-time _ally_gained set would silently swallow
+                    # the story beat of a companion coming back.
+                    self._ally_gained.discard((loser.id, leader.id))
+                    markers.append(
+                        {
+                            "verb": "ally_lost",
+                            "subject": loser.id,
+                            "details": {"ally": leader.id},
+                        }
+                    )
+
         details: dict[str, Any] = {
             "target": target.id,
             "winner": winner.id,
@@ -1895,6 +1977,36 @@ class VerbEngine:
         actor.base = round(actor.base + 4.0 * (1.0 - actor.base / 100.0), 2)
         actor.change_stamina(-1.0)
         self._update_exhausted(actor)
+
+        # WB-MOMOTARO3-C: companionship.drill_bond -- training together
+        # bonds the actor's current companions (not the actor itself) to
+        # each other. Opt-in; absent for every world that doesn't set it.
+        drill_bond = self.world.companionship["drill_bond"]
+        if drill_bond:
+            threshold = self.world.companionship["threshold"]
+            companions = sorted(
+                (
+                    peer
+                    for peer in self._present(actor)
+                    if peer.id != actor.id
+                    and peer.vitality in {"alive", "revived"}
+                    and self.world.relations.stance(peer.id, actor.id)
+                    >= threshold
+                ),
+                key=lambda value: value.id,
+            )
+            for index, first in enumerate(companions):
+                for second in companions[index + 1 :]:
+                    self.world.relations.change(
+                        first.id,
+                        second.id,
+                        affinity=float(drill_bond),
+                    )
+                    self.world.relations.change(
+                        second.id,
+                        first.id,
+                        affinity=float(drill_bond),
+                    )
         return (
             "trained",
             {

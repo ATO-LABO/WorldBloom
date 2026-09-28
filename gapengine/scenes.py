@@ -23,12 +23,14 @@ SPECIAL_PRIORITY = {
     "payoff": 75,
     "planted": 70,
     "ally_gained": 65,
+    "ally_lost": 65,
     "concede": 60,
     "threshold_crossed": 55,
 }
 
 VERB_LABELS = {
     "ally_gained": "仲間になった",
+    "ally_lost": "仲間から離脱した",
     "betrayal": "誓いを破った",
     "buy": "買った",
     "concede": "譲歩した",
@@ -388,6 +390,9 @@ def describe_row(
     elif verb == "ally_gained":
         ally = _display_name(details.get("ally"), world_meta)
         text = f"{subject}が{ally}の仲間になった"
+    elif verb == "ally_lost":
+        ally = _display_name(details.get("ally"), world_meta)
+        text = f"{subject}が{ally}のもとを離れた"
     elif verb == "betrayal":
         target = _display_name(details.get("target"), world_meta)
         text = f"{subject}が{target}との誓いを破った"

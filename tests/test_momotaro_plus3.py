@@ -6,11 +6,14 @@ fail if labor/buy/ineffective_for regressed later."""
 from __future__ import annotations
 
 import random
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
 from engine.actions import Action, candidates
+from engine.log import LayersWriter
+from engine.sim import Simulation
 from engine.subject import Subject
 from engine.verbs import VerbEngine
 from engine.world import World
@@ -191,6 +194,225 @@ class IneffectiveForTests(unittest.TestCase):
                 for action, _weight in weighted
             )
         )
+
+
+class DriftTests(unittest.TestCase):
+    """Phase C: companionship.drift (犬/猿, per_slot: -0.03) rides along on
+    Simulation._record_encounters's existing per-slot co-presence scan."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+
+    def _run_encounters(self) -> None:
+        with tempfile.TemporaryDirectory() as out_dir:
+            sim = Simulation(1, self.world, self.subjects, Path(out_dir))
+            sim.day = 1
+            sim.turn = 1
+            sim.slot = "朝"
+            with LayersWriter(Path(out_dir) / "layers.jsonl") as writer:
+                sim._record_encounters(writer)
+
+    def test_drift_applies_both_directions_when_sharing_a_zone_for_one_slot(
+        self,
+    ) -> None:
+        self.subjects["犬"].zone = "道中"
+        self.subjects["猿"].zone = "道中"
+        before_forward = self.world.relations.stance("犬", "猿")
+        before_backward = self.world.relations.stance("猿", "犬")
+        self._run_encounters()
+        after_forward = self.world.relations.stance("犬", "猿")
+        after_backward = self.world.relations.stance("猿", "犬")
+        self.assertAlmostEqual(after_forward - before_forward, -0.03)
+        self.assertAlmostEqual(after_backward - before_backward, -0.03)
+
+    def test_drift_does_not_apply_across_different_zones(self) -> None:
+        self.subjects["犬"].zone = "道中"
+        self.subjects["猿"].zone = "森"
+        before = self.world.relations.stance("犬", "猿")
+        self._run_encounters()
+        after = self.world.relations.stance("犬", "猿")
+        self.assertEqual(after, before)
+
+
+class InfightDesertionTests(unittest.TestCase):
+    """Phase C: companionship.infight_desertion (-0.5). A shared leader
+    (stance >= threshold from both combatants, co-located) sees the fight's
+    loser desert once their affinity toward the leader drops back below the
+    companionship threshold."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+        self.dog = self.subjects["犬"]
+        self.monkey = self.subjects["猿"]
+        self.momotaro = self.subjects["桃太郎"]
+        for subject in (self.dog, self.monkey, self.momotaro):
+            subject.zone = "道中"
+        self.world.relations.change("犬", "桃太郎", affinity=1.0)
+        self.world.relations.change("猿", "桃太郎", affinity=1.0)
+
+    def test_loser_deserts_the_shared_leader_and_emits_ally_lost(self) -> None:
+        engine = VerbEngine(self.world, random.Random(1))
+        _result, details, markers = engine.execute(
+            self.dog, Action("fight", ("猿",)), turn=1, day=1
+        )
+        loser_id = details["loser"]
+        stance_after = self.world.relations.stance(loser_id, "桃太郎")
+        self.assertLess(stance_after, self.world.companionship["threshold"])
+        ally_lost = [marker for marker in markers if marker["verb"] == "ally_lost"]
+        self.assertEqual(len(ally_lost), 1)
+        self.assertEqual(ally_lost[0]["subject"], loser_id)
+        self.assertEqual(ally_lost[0]["details"]["ally"], "桃太郎")
+
+    def test_no_ally_lost_without_a_co_located_shared_leader(self) -> None:
+        self.momotaro.zone = "村"
+        engine = VerbEngine(self.world, random.Random(1))
+        _result, _details, markers = engine.execute(
+            self.dog, Action("fight", ("猿",)), turn=1, day=1
+        )
+        self.assertFalse(any(marker["verb"] == "ally_lost" for marker in markers))
+
+    def test_a_non_protagonist_bystander_never_counts_as_leader(self) -> None:
+        # Opus review S1: scoring *any* mutually-liked bystander as a leader
+        # fired for unrelated pairs (e.g. おじいさん losing おばあさん over
+        # a fight between two other subjects). Only world.protagonist may
+        # be the leader now.
+        self.momotaro.zone = "村"
+        yojinbo = self.subjects["用心棒"]
+        yojinbo.zone = "道中"
+        self.world.relations.change("犬", "用心棒", affinity=1.0)
+        self.world.relations.change("猿", "用心棒", affinity=1.0)
+        engine = VerbEngine(self.world, random.Random(1))
+        _result, _details, markers = engine.execute(
+            self.dog, Action("fight", ("猿",)), turn=1, day=1
+        )
+        self.assertFalse(any(marker["verb"] == "ally_lost" for marker in markers))
+
+    def test_no_ally_lost_when_the_winner_does_not_follow_the_leader(self) -> None:
+        # Fixed for seed 1: 犬 wins, 猿 loses. Desertion requires *both*
+        # combatants to already be above threshold toward the leader.
+        self.world.relations.change("犬", "桃太郎", affinity=-1.0)
+        self.assertLess(
+            self.world.relations.stance("犬", "桃太郎"),
+            self.world.companionship["threshold"],
+        )
+        engine = VerbEngine(self.world, random.Random(1))
+        _result, _details, markers = engine.execute(
+            self.dog, Action("fight", ("猿",)), turn=1, day=1
+        )
+        self.assertFalse(any(marker["verb"] == "ally_lost" for marker in markers))
+
+    def test_fight_consumes_the_same_random_rolls_with_or_without_desertion(
+        self,
+    ) -> None:
+        with_desertion = VerbEngine(self.world, random.Random(1)).execute(
+            self.dog, Action("fight", ("猿",)), turn=1, day=1
+        )[1]
+        world2, subjects2 = load_fixture()
+        world2.companionship["infight_desertion"] = None
+        dog2, monkey2, momotaro2 = subjects2["犬"], subjects2["猿"], subjects2["桃太郎"]
+        for subject in (dog2, monkey2, momotaro2):
+            subject.zone = "道中"
+        world2.relations.change("犬", "桃太郎", affinity=1.0)
+        world2.relations.change("猿", "桃太郎", affinity=1.0)
+        without_desertion = VerbEngine(world2, random.Random(1)).execute(
+            dog2, Action("fight", ("猿",)), turn=1, day=1
+        )[1]
+        self.assertEqual(with_desertion["roll"], without_desertion["roll"])
+
+    def test_kibidango_can_restore_a_deserted_companion(self) -> None:
+        # User-confirmed decision: desertion is not permanent -- giving
+        # きびだんご again should cross the threshold back and re-fire
+        # ally_gained (proving the pair was dropped from the one-shot
+        # _ally_gained set rather than staying silenced forever).
+        engine = VerbEngine(self.world, random.Random(1))
+        _result, details, markers = engine.execute(
+            self.dog, Action("fight", ("猿",)), turn=1, day=1
+        )
+        loser_id = details["loser"]
+        self.assertTrue(any(marker["verb"] == "ally_lost" for marker in markers))
+        loser = self.subjects[loser_id]
+        loser.vitality = "revived"  # skip the multi-slot revive wait for this test
+        _result, _details, regain_markers = engine.execute(
+            self.momotaro,
+            Action(
+                "give_item",
+                (loser_id, "きびだんご"),
+                {"target": loser_id, "item": "きびだんご"},
+            ),
+            turn=2,
+            day=1,
+        )
+        self.assertGreaterEqual(
+            self.world.relations.stance(loser_id, "桃太郎"),
+            self.world.companionship["threshold"],
+        )
+        self.assertTrue(
+            any(marker["verb"] == "ally_gained" for marker in regain_markers)
+        )
+
+
+class SharedAffinityTests(unittest.TestCase):
+    """Phase C: きびだんご's give.shared_affinity (0.15). A bystander who
+    already follows the giver (stance >= threshold) also warms up to the
+    receiver."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+        self.momotaro = self.subjects["桃太郎"]
+        self.dog = self.subjects["犬"]
+        self.monkey = self.subjects["猿"]
+        for subject in (self.momotaro, self.dog, self.monkey):
+            subject.zone = "道中"
+        self.momotaro.add_item("きびだんご", 1)
+        self.world.relations.change("猿", "桃太郎", affinity=0.6)
+
+    def test_give_also_warms_a_present_ally_toward_the_receiver(self) -> None:
+        before_forward = self.world.relations.stance("猿", "犬")
+        before_backward = self.world.relations.stance("犬", "猿")
+        engine = VerbEngine(self.world, random.Random(1))
+        result, _details, _markers = engine.execute(
+            self.momotaro,
+            Action(
+                "give_item",
+                ("犬", "きびだんご"),
+                {"target": "犬", "item": "きびだんご"},
+            ),
+            turn=1,
+            day=1,
+        )
+        self.assertEqual(result, "given")
+        after_forward = self.world.relations.stance("猿", "犬")
+        after_backward = self.world.relations.stance("犬", "猿")
+        self.assertAlmostEqual(after_forward - before_forward, 0.15)
+        self.assertAlmostEqual(after_backward - before_backward, 0.15)
+
+
+class DrillBondTests(unittest.TestCase):
+    """Phase C: companionship.drill_bond (0.05). Training bonds the actor's
+    present companions to each other (not the actor itself)."""
+
+    def setUp(self) -> None:
+        self.world, self.subjects = load_fixture()
+        self.momotaro = self.subjects["桃太郎"]
+        self.dog = self.subjects["犬"]
+        self.monkey = self.subjects["猿"]
+        for subject in (self.momotaro, self.dog, self.monkey):
+            subject.zone = "道中"
+        self.world.relations.change("犬", "桃太郎", affinity=1.0)
+        self.world.relations.change("猿", "桃太郎", affinity=1.0)
+
+    def test_train_bonds_present_companions_to_each_other(self) -> None:
+        before_forward = self.world.relations.stance("犬", "猿")
+        before_backward = self.world.relations.stance("猿", "犬")
+        engine = VerbEngine(self.world, random.Random(1))
+        result, _details, _markers = engine.execute(
+            self.momotaro, Action("train"), turn=1, day=1
+        )
+        self.assertEqual(result, "trained")
+        after_forward = self.world.relations.stance("犬", "猿")
+        after_backward = self.world.relations.stance("猿", "犬")
+        self.assertAlmostEqual(after_forward - before_forward, 0.05)
+        self.assertAlmostEqual(after_backward - before_backward, 0.05)
 
 
 if __name__ == "__main__":
