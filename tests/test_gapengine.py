@@ -148,61 +148,78 @@ class GapEngineTests(unittest.TestCase):
                 )
             )
 
-            world_plain, subjects_plain = load_fixture()
-            world_plain.days = 2
-            plain_path = Simulation(
-                153,
-                world_plain,
-                subjects_plain,
-                output / "plain",
-                policies=None,
-            ).run()
+            # Seed 2 / 6 days: the protagonist meets and fights the
+            # antagonist alone (asserted below), exercising the fight group's
+            # mass. Seed 20 / 10 days: a multi-target fight split that
+            # diverged under the pre-fix policy-None-only advantage. A 2-day
+            # run never got that far and hid that branch in _fight_candidates.
+            for seed, days, meets_antagonist in ((2, 6, True), (20, 10, False)):
+                with self.subTest(seed=seed):
+                    world_plain, subjects_plain = load_fixture()
+                    world_plain.days = days
+                    plain_path = Simulation(
+                        seed,
+                        world_plain,
+                        subjects_plain,
+                        output / f"plain-{seed}",
+                        policies=None,
+                    ).run()
 
-            world_neutral, subjects_neutral = load_fixture()
-            world_neutral.days = 2
-            neutral_path = Simulation(
-                153,
-                world_neutral,
-                subjects_neutral,
-                output / "neutral",
-                policies={
-                    world_neutral.protagonist: Policy(
-                        Genome.neutral(),
-                        None,
-                        cfg=action_cfg,
+                    world_neutral, subjects_neutral = load_fixture()
+                    world_neutral.days = days
+                    neutral_path = Simulation(
+                        seed,
+                        world_neutral,
+                        subjects_neutral,
+                        output / f"neutral-{seed}",
+                        policies={
+                            world_neutral.protagonist: Policy(
+                                Genome.neutral(),
+                                None,
+                                cfg=action_cfg,
+                            )
+                        },
+                    ).run()
+
+                    plain_rows = read_rows(plain_path)
+                    neutral_rows = read_rows(neutral_path)
+                    self.assertTrue(
+                        not meets_antagonist
+                        or any(
+                            row.get("kind") == "decision"
+                            and row.get("verb") == "fight"
+                            and row.get("subject") == world_neutral.protagonist
+                            and row.get("args") == [world_neutral.antagonist]
+                            for row in neutral_rows
+                        )
                     )
-                },
-            ).run()
+                    self.assertEqual(
+                        without_policy_fields(plain_rows),
+                        without_policy_fields(neutral_rows),
+                    )
 
-            plain_rows = read_rows(plain_path)
-            neutral_rows = read_rows(neutral_path)
-            self.assertEqual(
-                without_policy_fields(plain_rows),
-                without_policy_fields(neutral_rows),
-            )
-
-            protagonist_decisions = [
-                row
-                for row in neutral_rows
-                if row.get("kind") == "decision"
-                and row.get("subject") == world_neutral.protagonist
-                # WB-TIMEEVENT-001: departure_day's force_action bypasses
-                # policy.reweight/record entirely, so that decision never
-                # carries policy/classification (see test_engine E-1/E-9).
-                and row.get("forced") is None
-            ]
-            self.assertTrue(protagonist_decisions)
-            self.assertTrue(
-                all(
-                    row["classification"] is not None
-                    and row["policy"] is not None
-                    and row["policy"]["m_cat"] == 1.0
-                    and row["policy"]["m_risk"] == 1.0
-                    and row["policy"]["m_stance"] == 1.0
-                    and row["policy"]["m_nov"] == 1.0
-                    for row in protagonist_decisions
-                )
-            )
+                    protagonist_decisions = [
+                        row
+                        for row in neutral_rows
+                        if row.get("kind") == "decision"
+                        and row.get("subject") == world_neutral.protagonist
+                        # WB-TIMEEVENT-001: departure_day's force_action bypasses
+                        # policy.reweight/record entirely, so that decision never
+                        # carries policy/classification (see test_engine E-1/E-9).
+                        and row.get("forced") is None
+                    ]
+                    self.assertTrue(protagonist_decisions)
+                    self.assertTrue(
+                        all(
+                            row["classification"] is not None
+                            and row["policy"] is not None
+                            and row["policy"]["m_cat"] == 1.0
+                            and row["policy"]["m_risk"] == 1.0
+                            and row["policy"]["m_stance"] == 1.0
+                            and row["policy"]["m_nov"] == 1.0
+                            for row in protagonist_decisions
+                        )
+                    )
 
     def test_genome_operations_stay_in_range(self) -> None:
         rng = random.Random(7)

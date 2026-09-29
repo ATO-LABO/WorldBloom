@@ -1434,6 +1434,7 @@ def _fight_candidates(
     )
 
     result: list[tuple[Action, float]] = []
+    best_advantage = 0.0
     for target in sorted(targets, key=lambda value: value.id):
         permission = (
             _permission_weight(
@@ -1459,8 +1460,11 @@ def _fight_candidates(
             world,
             present,
         )
+        # Believed strength sets the fight baseline for NPCs and GA subjects
+        # alike (neutral genome == policy None); the genome's m_risk then
+        # multiplies on top of it in gapengine/policy.py.
         advantage = 1.0
-        if world.action_graph_enabled and subject.policy is None:
+        if world.action_graph_enabled:
             strength_margin = (
                 actor_strength - perceived
             ) / max(
@@ -1471,6 +1475,7 @@ def _fight_candidates(
                 1.5,
                 max(0.5, 1.0 + strength_margin),
             )
+        best_advantage = max(best_advantage, advantage)
 
         meta = {
             "target": target.id,
@@ -1484,11 +1489,15 @@ def _fight_candidates(
                 single_weight * advantage * permission,
             )
         )
+    # _normalize_opened rescales the whole fight group to its mass, which
+    # cancels a per-target factor whenever there is only one target. Put the
+    # best advantage on the mass so "fight at all" reflects believed odds;
+    # per-target advantage still splits that mass between targets.
     return _normalize_opened(
         result,
         subject,
         world,
-        single_weight,
+        single_weight * best_advantage,
     )
 
 

@@ -358,8 +358,10 @@ class EngineTests(unittest.TestCase):
                         # WB-TIMEEVENT-001: updated because departure_day now
                         # uses force_action (verb-consuming move) instead of
                         # move_to (instant teleport, no decision consumed).
-                        "9f054204564a2f0c496e525e93d1b2313"
-                        "98b3adc86eda9794cdc3729f7e26e82",
+                        # Re-pinned: believed-strength advantage now scales
+                        # the fight group's mass for NPCs and GA alike.
+                        "7313b313d2757a0ff24775c41f399cb7"
+                        "70ad5837c357ce8d8e78de5d2a565cb5",
                     )
 
     def test_phase0_opt_in_removal_restores_old_seed_hash(
@@ -1400,6 +1402,53 @@ class EngineTests(unittest.TestCase):
             ["misjudged"],
         )
 
+    def test_outmatched_single_target_lowers_fight_mass(self) -> None:
+        # With one target, _normalize_opened cancels any per-target factor,
+        # so believed odds must scale the fight group's mass itself.
+        world, subjects = load_fixture()
+        momotaro = subjects["桃太郎"]
+        oni = subjects["鬼"]
+        for subject in subjects.values():
+            subject.zone = "村"
+        momotaro.zone = oni.zone = "鬼ヶ島"
+        momotaro.verbs = {"fight"}
+
+        weights = [
+            weight
+            for action, weight in candidates(
+                momotaro,
+                world,
+                SimpleNamespace(day=1, turn=1),
+            )
+            if action.verb == "fight"
+        ]
+        present = world.present_subjects(momotaro.zone)
+        actor_strength = strength(momotaro, world, present)
+        perceived = believed_strength(momotaro, oni, world, present)
+        self.assertGreater(perceived, actor_strength)
+        advantage = max(
+            0.5,
+            1.0
+            + (actor_strength - perceived)
+            / max(1.0, abs(actor_strength)),
+        )
+        base_weight = (
+            0.1 + momotaro.traits["stubbornness"] * 0.4
+        ) * (2.0 * momotaro.traits["temper"])
+        permission = world.permission(
+            "fight",
+            world.target_role(momotaro, oni),
+        )
+        self.assertEqual(len(weights), 1)
+        self.assertLess(advantage, 1.0)
+        self.assertAlmostEqual(
+            weights[0],
+            base_weight
+            * (1.0 + world.open_bonus)
+            * advantage
+            * permission,
+        )
+
     def test_prerequisite_permission_and_open_weight_total(self) -> None:
         world, subjects = load_fixture()
         momotaro = subjects["桃太郎"]
@@ -1534,7 +1583,11 @@ class EngineTests(unittest.TestCase):
             for target_id in eligible_permissions
         }
         advantage_total = sum(advantages.values())
-        opened_mass = base_weight * (1.0 + world.open_bonus)
+        opened_mass = (
+            base_weight
+            * (1.0 + world.open_bonus)
+            * max(advantages.values())
+        )
 
         self.assertEqual(
             set(fight_weights),

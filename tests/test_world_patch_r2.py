@@ -482,9 +482,20 @@ class FrozenReplay(unittest.TestCase):
     def test_new_usage_stays_zero_when_a_branch_is_never_reached(self):
         # Contrast for the acceptance test above: the shared FrozenReplay
         # fixture's real, un-trimmed momotaro world never actually wanders
-        # into proposal()'s branch off 海 within its forced 1-day return.
+        # into a branch off 村 within its forced 1-day return. (2026-09-29:
+        # the fight-advantage-weight fix changed the GA archive elites that
+        # run_trial replays, and one of them now enters the old branch off
+        # 海, so the branch is re-parented under 村. 桃太郎's range excludes
+        # 村 until he holds 鬼ヶ島の宝物, granted by the evening teleport
+        # home, so only the single evening decision after it can enter --
+        # rare, but not structurally impossible: a neutral-genome probe
+        # entered it in 1 of 60 seeds. Still trajectory-dependent; re-check
+        # the parent if this starts failing.)
         with tempfile.TemporaryDirectory() as work:
-            trial = run_trial(self.experiment, proposal(), work_dir=Path(work), max_runs=3, seeds_per_run=4)
+            trial = run_trial(
+                self.experiment, proposal(parent="村"), work_dir=Path(work),
+                max_runs=3, seeds_per_run=4,
+            )
         usage = trial["new_usage"]
         self.assertEqual(usage["moves_into_new_zones"], 0, usage)
         self.assertEqual(usage["decisions_in_new_zones"], 0, usage)

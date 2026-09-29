@@ -111,6 +111,7 @@ w' = w × m_cat × m_risk × m_stance × m_nov
 - 候補に**リスク級**: `risky`（fight / confront / compete / steal_credit / sabotage / sacrifice / 敵対者のいるゾーンへの越境 move / **信じている強さで劣勢な相手への fight**）、`safe_under_threat`（敵対者同席時の rest / withdraw / guard / 停滞）、それ以外 `neutral`。
 - `m_risk = r/0.5`（risky）、`(1−r)/0.5`（safe_under_threat）、1（neutral）。数的不利時の逃走加重も `(1−r)/0.5` でスケール。
 - 劣勢判定は §6 の `believed_strength`。観測していない桃太郎は金棒を知らないので「80 vs 90 で優勢」と信じて挑み、真値 120 に負ける——認識層が物語を駆動する要になる。
+- 信じている強さの差（advantage、[0.5, 1.5] にクランプ）は全主体共通で **fight 群の総量**（最大 advantage）に掛かり、標的間の配分にも使う。`m_risk` はその上に掛け算で重なるので、中立遺伝子は「格上なら最低 ×0.5 の基準線」、`r=1.0` で床をちょうど打ち消し「知っていてなお挑む」、`r=0` で完全回避。（2026-09-29 修正。それ以前は policy なし主体の標的間配分にしか効かず、単一標的では正規化で相殺されていた）
 
 ### 3.6 `stance_shift_bias`（行動の符号＋対象選択）
 
