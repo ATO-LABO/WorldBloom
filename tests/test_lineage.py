@@ -408,6 +408,18 @@ class RealRunLineageTests(unittest.TestCase):
     points) for the multi-generation-chain tests, and "III|mid" (a single
     g0/ind-7 node, seed 12, no parents, no turning points) for the
     immigrant-cell test below.
+
+    2026-09-29: the fight-advantage-weight fix in
+    engine/actions.py::_fight_candidates (advantage now multiplies the
+    whole fight-group mass, and applies to GA subjects too, not only
+    NPCs) shifted overall action weights enough that ga_seed=5 no longer
+    reaches at all (empty archive). ga_seed=17 was hand-verified as a
+    replacement that again gives both shapes in the same archive: "II|high"
+    (chain g3/ind-7 <- g2/ind-2 <- g1/ind-4 <- g0/ind-7, seed 11, 3 turning
+    points, all ancestors byte-match their originals) for the
+    multi-generation-chain tests, and "III|mid" (a single g4/ind-0 node --
+    an immigrant introduced at generation 4, not g0, but still with no
+    parents and no turning points) for the immigrant-cell test below.
     """
 
     @classmethod
@@ -420,7 +432,7 @@ class RealRunLineageTests(unittest.TestCase):
         cls.runs_root = root / "runs"
         cls.archive = evolve(
             {
-                "ga_seed": 5,
+                "ga_seed": 17,
                 "generations": 5,
                 "keep": "all",  # nothing pruned: every original stays comparable
                 "population": 8,
@@ -446,19 +458,19 @@ class RealRunLineageTests(unittest.TestCase):
         cls.temporary.cleanup()
 
     def test_multi_generation_chain_byte_matches_and_finds_a_turning_point(self) -> None:
-        chain = lineage.primary_lineage(self.repository, self.experiment, "III|high")
+        chain = lineage.primary_lineage(self.repository, self.experiment, "II|high")
         self.assertEqual(
             [(node["ref"], node["generation"]) for node in chain],
             [
-                ("g3/ind-3", 3),
-                ("g2/ind-6", 2),
-                ("g1/ind-2", 1),
-                ("g0/ind-6", 0),
+                ("g3/ind-7", 3),
+                ("g2/ind-2", 2),
+                ("g1/ind-4", 1),
+                ("g0/ind-7", 0),
             ],
         )
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, "III|high")
-        self.assertEqual(report["seed"], 12)
+        report = lineage.build_lineage_report(self.repository, self.experiment, "II|high")
+        self.assertEqual(report["seed"], 11)
         for entry in report["ancestry"]:
             self.assertIsNone(entry["rerun_error"])
         self.assertEqual(len(report["turnings"]), 3)
@@ -520,7 +532,7 @@ class RealRunLineageTests(unittest.TestCase):
 
     def test_immigrant_cell_has_single_node_chain_and_no_turning_points(self) -> None:
         chain = lineage.primary_lineage(self.repository, self.experiment, "III|mid")
-        self.assertEqual([node["ref"] for node in chain], ["g0/ind-7"])
+        self.assertEqual([node["ref"] for node in chain], ["g4/ind-0"])
 
         report = lineage.build_lineage_report(self.repository, self.experiment, "III|mid")
         self.assertEqual(report["turnings"], [])
@@ -537,20 +549,20 @@ class RealRunLineageTests(unittest.TestCase):
         self.addCleanup(shutil.copyfile, backup, precedent_path)
         precedent_path.unlink()
 
-        cache_path = self.experiment / "lineage" / "III-high-cache.json"
+        cache_path = self.experiment / "lineage" / "II-high-cache.json"
         cache_path.unlink(missing_ok=True)
         # This test's own (damaged) report must not poison the cache for
         # whichever test runs next (unittest does not guarantee method order
         # stays test-file order, and both tests share one class fixture).
         self.addCleanup(cache_path.unlink, missing_ok=True)
-        rerun_dir = self.experiment / "lineage" / "g0-ind-6"
+        rerun_dir = self.experiment / "lineage" / "g0-ind-7"
         if rerun_dir.is_dir():
             shutil.rmtree(rerun_dir)
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, "III|high")
+        report = lineage.build_lineage_report(self.repository, self.experiment, "II|high")
         by_ref = {entry["ref"]: entry for entry in report["ancestry"]}
-        self.assertIsNotNone(by_ref["g0/ind-6"]["rerun_error"])
-        self.assertIsNone(by_ref["g1/ind-2"]["rerun_error"])
+        self.assertIsNotNone(by_ref["g0/ind-7"]["rerun_error"])
+        self.assertIsNone(by_ref["g1/ind-4"]["rerun_error"])
         # Only the turning point spanning the damaged g0 ancestor drops out;
         # the other two (g1<-g2, g2<-g3) don't depend on g0's rerun.
         self.assertEqual(len(report["turnings"]), 2)
@@ -560,8 +572,8 @@ class RealRunLineageTests(unittest.TestCase):
         # "scalars" and turnings with no "trait_series" -- it must be treated
         # as stale and recomputed, not returned as-is (gapengine/lineage.py::
         # build_lineage_report's cache-validity check).
-        cache_path = self.experiment / "lineage" / "III-high-cache.json"
-        good_report = lineage.build_lineage_report(self.repository, self.experiment, "III|high")
+        cache_path = self.experiment / "lineage" / "II-high-cache.json"
+        good_report = lineage.build_lineage_report(self.repository, self.experiment, "II|high")
         self.addCleanup(
             cache_path.write_text,
             json.dumps(good_report, ensure_ascii=False),
@@ -575,7 +587,7 @@ class RealRunLineageTests(unittest.TestCase):
             turning.pop("trait_series", None)
         cache_path.write_text(json.dumps(stale, ensure_ascii=False), encoding="utf-8")
 
-        recomputed = lineage.build_lineage_report(self.repository, self.experiment, "III|high")
+        recomputed = lineage.build_lineage_report(self.repository, self.experiment, "II|high")
         for entry in recomputed["ancestry"]:
             self.assertIn("scalars", entry)
         for turning in recomputed["turnings"]:
@@ -618,7 +630,15 @@ class CoevolveLineageRerunTests(unittest.TestCase):
     precedent was silently dropped on rerun. This run actually coevolves
     (gapengine/evolve.py::evolve's own "coevolve" cfg), so
     g0/precedent.antagonist.json exists on disk precisely when the fix's
-    file-presence check is the only thing that can find it."""
+    file-presence check is the only thing that can find it.
+
+    2026-09-29: the fight-advantage-weight fix in
+    engine/actions.py::_fight_candidates changed which subjects reach a
+    result under coevolve, and the previously-pinned ga_seed=1 no longer
+    reaches at all (archive.json ends up with an empty "cells": {}).
+    ga_seed=0 was hand-verified as a replacement: it reaches ("III|mid",
+    a 3-node chain), and its full ancestry reruns byte-identical to the
+    originals (this class's own test below)."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -636,7 +656,7 @@ class CoevolveLineageRerunTests(unittest.TestCase):
                 # an antagonist alongside doesn't stop the protagonist from
                 # reaching, and this test needs a real elite/chain, not just
                 # a g0 individual, to exercise a rerun via build_lineage_report.
-                "ga_seed": 1,
+                "ga_seed": 0,
                 "generations": 5,
                 "keep": "all",
                 "population": 8,
