@@ -319,11 +319,14 @@ class OutputJobTests(unittest.TestCase):
         called.assert_not_called()
 
     def test_wall_limit_stops_started_call_and_keeps_unstarted_as_limit(self):
-        self.fixture_transport("ok",delay=30)
-        self.set_generation("openai","fixture-model",{"max_calls":2,"call_timeout_seconds":10,
-            "wall_seconds":12,"max_saved_response_bytes":4096})
+        # Include cold snapshot preparation, then expire while the first call is in progress.
+        # The fixture must outlast both budgets; otherwise it may return before the wall limit.
+        self.fixture_transport("ok",delay=120)
+        self.set_generation("openai","fixture-model",{"max_calls":2,"call_timeout_seconds":120,
+            "wall_seconds":60,"max_saved_response_bytes":4096})
         job=self.launch_fixture(self.request())
-        end=self.finish(job)
+        end=support.until(lambda:(j if (j:=self.jobs.get(job["job_id"]))["state"] in worker.TERMINAL else None),timeout=120)
+        support.until(lambda:worker.output_tree_stopped(self.jobs._read(job["job_id"])),timeout=120)
         self.assertEqual(end["state"],"failed",end)
         doc=self.jobs.output(job["output_id"],recover=True)
         self.assertEqual(doc["counts"],{"skipped_limit":1,"unknown":1},doc)
