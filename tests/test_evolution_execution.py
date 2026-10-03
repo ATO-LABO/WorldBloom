@@ -156,9 +156,17 @@ class EvolutionExecutionTests(unittest.TestCase):
         def sink(progress):
             if progress["completed_generations"] == 1 and not saved:
                 saved.update({p.relative_to(root).as_posix(): p.read_bytes() for p in (root / "published").rglob("*.json")})
-        with patch.object(module, "atomic_json", side_effect=fail_pointer), self.assertRaises(OSError):
-            with EvolutionObserver(root, "failure", cfg, sink=sink) as observer:
-                evolve(cfg, observer=observer)
+        observer = EvolutionObserver(root, "failure", cfg, sink=sink)
+        with patch.object(module, "atomic_json", side_effect=fail_pointer), self.assertRaisesRegex(OSError, "injected pointer write failure"):
+            try:
+                with observer:
+                    evolve(cfg, observer=observer)
+            except EvolutionCancelled as error:
+                # A monitor failure requests cancellation; expose its cause,
+                # rather than accepting an unrelated OSError as the injection.
+                if observer._error is not None:
+                    raise observer._error from error
+                raise
         self.assertEqual(read_json(root / "published/current.json")["revision"], 1)
         for path, data in saved.items():
             self.assertEqual((root / path).read_bytes(), data)
@@ -691,14 +699,14 @@ class EvolutionJobRationalityAndConsistencyTests(unittest.TestCase):
                     except OSError:
                         pass
 
-    def _run_to_terminal(self, jobs, job_id, timeout=45):
+    def _run_to_terminal(self, jobs, job_id, timeout=90):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             job = jobs.get(job_id)
             if job["state"] in worker.TERMINAL:
                 return job
             time.sleep(0.05)
-        self.fail("job did not reach terminal state")
+        self.fail(f"job did not reach terminal state; latest state: {jobs.get(job_id)!r}")
 
     def test_kappa_from_job_reaches_the_ga(self):
         # backend "none" (gapengine.rationality's AlwaysNoneJudge) is a real,

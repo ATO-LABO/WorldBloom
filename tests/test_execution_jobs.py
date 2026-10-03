@@ -25,7 +25,9 @@ from viewer.server import ViewerServer, ViewerHandler
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def until(predicate, timeout=20):
+# Cold snapshot preparation can exceed 20s as runtime modules grow.
+# Keep process/state assertions bounded without treating startup time as a 20s SLA.
+def until(predicate, timeout=60):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         value = predicate()
@@ -95,7 +97,10 @@ if mode == "fail":
         return self.jobs.submit({"request_id":rid,"kind":"evolve","config_id":"cfg-test"})[0]
 
     def wait_state(self, jid, states):
-        return until(lambda: (j if (j := self.jobs.get(jid))["state"] in states else None))
+        try:
+            return until(lambda: (j if (j := self.jobs.get(jid))["state"] in states else None))
+        except AssertionError as error:
+            raise AssertionError(f"{error}; latest job state: {self.jobs._read(jid)!r}") from error
 
     def started(self, job):
         marker = self.configs.runs / job["run_id"] / "started.json"
