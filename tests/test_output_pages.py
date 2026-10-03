@@ -489,7 +489,10 @@ class OutputPagesTests(unittest.TestCase):
         match = re.search(r'data-request="([^"]+)"', body)
         self.assertIsNotNone(match, body)
         request = json.loads(__import__("html").unescape(match.group(1)))
-        self.assertEqual(set(request.keys()), output_requests.FIELDS)
+        # Schema 1 excludes fields that belong exclusively to the confirmed-plan request.
+        self.assertEqual(request["schema_version"], 1)
+        self.assertEqual(set(request), output_requests.FIELDS - {"pipeline", "story_refs"})
+        self.assertEqual(set(request), set(output_requests.normalize(request)))
 
     def test_generate_confirm_unavailable_backend_has_no_start_button(self):
         rid, cids = self._legacy_run("exp-gen-unavail", count=1)
@@ -625,7 +628,14 @@ class OutputPagesTests(unittest.TestCase):
         self._finish(store, oid, cids[1], "unknown", "dispatch_unknown", stage="receive",
                      call_state="started", retry_policy="explicit_confirmation")
         self.fake.add(_gen_job(jid, rid, oid, "narrate", "succeeded"))
+        # The default two-stage route needs confirmed outlines, including for adopted candidates.
         status, body, _ = self.get_status(f"/selected?run={rid}&config=cfg-test")
+        self.assertEqual(status, 200, body)
+        self.assertIsNone(_sifting_initial(body)['request'])
+        self.assertIn('素材・骨格を整理', body)
+        self.assertNotIn('data-sf-generate', body)
+        # The retained schema-1 confirmation still applies its existing output eligibility rules.
+        status, body, _ = self.get_status(f"/runs/{rid}/generate?kind=narrate&config=cfg-test")
         self.assertEqual(status, 200, body)
         self.assertIn('採用 3件のうち、今回の対象', body)
         self.assertIn('class="sf-total">1 件', body)

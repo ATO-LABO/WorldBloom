@@ -154,10 +154,18 @@ def transport(request, command):
     if backend == "ollama":
         url, payload = ollama.build_request(
             {**request["credentials"], "model": request["model"]}, request["prompt"])
+        if request.get("response_format") == "story_json":
+            payload["format"] = {"type":"object","required":["paragraphs"],"additionalProperties":False,
+                "properties":{"paragraphs":{"type":"array","minItems":1,"items":{"type":"object",
+                "required":["text","event_ids","embellishments"],"additionalProperties":False,"properties":{
+                    "text":{"type":"string"}, "event_ids":{"type":"array","items":{"type":"string"}},
+                    "embellishments":{"type":"array","items":{"type":"string"}}}}}}}
         headers = {}
     elif backend == "llama-server":
         url, payload = llama_server.build_request(
             {**request["credentials"], "model": request["model"]}, request["prompt"])
+        if request.get("response_format") == "story_json":
+            payload["response_format"] = {"type":"json_object"}
         headers = {}
     elif backend == "anthropic":
         key = request["credentials"]["api_key"]

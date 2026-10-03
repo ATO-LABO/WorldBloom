@@ -19,6 +19,8 @@ def plan(handler, run_id, query=None):
     jobs = wb._job_store(handler)
     if jobs is None or handler.repository.catalog is None:
         raise ConfigError("run_id", "生成に必要な実行記録がありません", code="unavailable")
+    if query.get("kind",[None])[0] == "narrate":
+        query = {"pipeline":["story_v1"],**query}
     view = build_confirmation(handler, run_id, query)
     errors, request = list(view["errors"]), view["request"]
     active = next((j for j in jobs.list() if j.get("run_id") == run_id and j.get("state") in wb.RUNNING_STATES), None)
@@ -38,6 +40,8 @@ def plan(handler, run_id, query=None):
     else:
         request = {**request, "candidate_ids": accepted,
                    "synopsis_refs": {k:v for k,v in request["synopsis_refs"].items() if k in accepted}}
+    if request and request.get("pipeline") == "story_v1":
+        request["story_refs"] = {cid:request["story_refs"][cid] for cid in accepted}
     return {"run_id": run_id, "kind": view["kind"], "request": request, "errors": errors,
             "active_job": {k:active.get(k) for k in ("job_id", "kind")} if active else None,
             "config_id": view["config_id"], "legacy": view["legacy"],

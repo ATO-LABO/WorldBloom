@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from viewer import data, pages, job_api, library_pages, run_catalog, workbench_pages, output_pages
+from viewer import data, pages, job_api, library_pages, run_catalog, workbench_pages, output_pages, story_pages
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution.provenance import ConfigError
@@ -33,6 +33,8 @@ from viewer.data import (
 
 MAX_POST_BYTES = 64 * 1024
 STATIC_FILES = {
+    "story-workspace.css":"text/css; charset=utf-8",
+    "story-workspace.js":"application/javascript; charset=utf-8",
     "review-workspace.css": "text/css; charset=utf-8",
     "review-workspace.js": "application/javascript; charset=utf-8",
     "world-advanced.js": "application/javascript; charset=utf-8",
@@ -205,6 +207,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
 
     def _dispatch_get(self) -> None:
         parts = self._parts()
+        if story_pages.dispatch(self, parts, "GET"):
+            return
         if output_pages.dispatch(self, parts, "GET"):
             return
         if workbench_pages.dispatch(self, parts, "GET"):
@@ -470,6 +474,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
     def _dispatch_post(self) -> None:
         try:
             parts = self._parts()
+            if story_pages.dispatch(self, parts, "POST"):
+                return
             if output_pages.dispatch(self, parts, "POST"):
                 return
             if workbench_pages.dispatch(self, parts, "POST"):

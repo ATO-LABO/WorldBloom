@@ -325,6 +325,11 @@ class JobStore:
                 request = outputs.request(output_id)
             except FileNotFoundError as error:
                 raise ConfigError("output_id", "生成版がありません", code="not_found") from error
+            if request.get("pipeline") == "story_v1" and request["job_id"].startswith("cli-"):
+                if recover:
+                    raise ConfigError("output_id", "CLI評価の復旧は実行環境で停止確認が必要です", code="conflict")
+                outputs.verify_artifacts(output_id)
+                return {**outputs.project(output_id), "request":request, "job_state":None}
             job = self._reconcile(self._read(request["job_id"]))
             stopped = job["state"] in worker.TERMINAL and worker.output_tree_stopped(job)
             if recover and not stopped:

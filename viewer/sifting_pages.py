@@ -170,7 +170,7 @@ def tray(handler, run_id=None, confirmation=None):
     v = sifting_view.load(handler,run_id)
     plan = confirmation
     if state == "adopted" and plan is None:
-        plan = output_pages.build_confirmation(handler,run_id,{**{k:vals for k,vals in query.items() if k in ("config",)},"kind":["narrate"]})
+        plan = output_pages.build_confirmation(handler,run_id,{**{k:vals for k,vals in query.items() if k in ("config",)},"kind":["narrate"],"pipeline":["story_v1"]})
     if plan is None and state == "adopted": return
     entries = [c for c in v["items"] if c["state"] == state]
     toolbar = '<div class="sf-list-toolbar">' + ''.join(link(f'/selected?run={U(run_id)}&state={key}',f'{label} {v["counts"].get(key,0)}','sf-pill' + (' active' if state == key else '')) for key,label in (("adopted","採用"),("held","保留"))) + '<span class="sf-hint">保留は生成対象に含まれません</span></div>'
@@ -179,6 +179,7 @@ def tray(handler, run_id=None, confirmation=None):
         status = c["status"].get("narrate")
         rows += f'<article class="sf-tray-card"><header><strong>{E(c["label"])}</strong>{badge(c["state"])}</header><small>品質 {E(c["quality_text"])} · 第{E(c.get("generation"))}世代</small><p>{E(c["synopsis"][:300] or c["synopsis_state"])}</p><p class="sf-note-preview"><b>選んだ理由</b> {E(c["note"] or "メモはありません")}</p><p>' + link(f'/runs/{U(run_id)}/candidates?candidate={U(c["candidate_id"])}','内容を読む ↗')
         rows += f' <button type="button" data-sf-tray-state="{E(c["candidate_id"])}" data-state="{"held" if state=="adopted" else "adopted"}"' + (' disabled' if v["running"] or (state=="held" and not c.get("screenable")) else '') + f'>{"保留に戻す" if state=="adopted" else "採用する"}</button></p>'
+        rows += ' ' + link(f'/stories/{U(run_id)}/{U(c["candidate_id"])}' + ('?config='+U(plan['config_id']) if plan and plan.get('config_id') else ''),'素材・骨格を整理 →')
         if status: rows += '<p>' + E(output_pages.ENTRY_STATUS_LABELS.get(status,status)) + ' ' + link(c["output_href"], '生成状況・作品を確認 ↗') + '</p>'
         if not c.get("screenable"): rows += '<p class="sf-warning">採用・生成できません：' + E(c["availability"]) + '</p>'
         rows += '</article>'
@@ -216,6 +217,8 @@ def generation_summary(handler,v,plan):
         # Freeze exactly the reviewed subset; later output changes cannot add targets.
         request = {**request, "candidate_ids": list(accepted),
                    "synopsis_refs": {cid:ref for cid,ref in request["synopsis_refs"].items() if cid in accepted}}
+    if request and request.get("pipeline") == "story_v1":
+        request["story_refs"] = {cid:request["story_refs"][cid] for cid in accepted}
     m = len(accepted)
     text = "プロンプト保存" if prompt_only else "本文生成"
     aside = f'<aside class="rs-summary sf-generation"><h2>今回の{text}</h2><strong class="sf-total">{m} 件</strong><p>採用 {v["counts"].get("adopted",0)}件のうち、今回の対象</p>'
@@ -227,7 +230,7 @@ def generation_summary(handler,v,plan):
     if errors: aside += '<div class="sf-warning">' + ''.join(f'<p>{E(e)}</p>' for e in errors) + '</div>'
     if plan["legacy"]:
         options = ''.join(f'<option value="{E(c["config_id"])}"' + (' selected' if c['config_id'] == plan['config_id'] else '') + f'>{E(c["label"])}</option>' for c in wb._job_store(handler).configs.list())
-        fixed = {"kind": ["narrate"], "mode": [plan["mode"]], "candidate": plan["candidate_ids"]}
+        fixed = {"kind": ["narrate"], "pipeline":["story_v1"], "mode": [plan["mode"]], "candidate": plan["candidate_ids"]}
         current_query = parse_qs(urlsplit(handler.path).query)
         for key in ("ack", "from_output"):
             if key in current_query: fixed[key] = current_query[key]
