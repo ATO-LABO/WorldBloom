@@ -1655,6 +1655,12 @@ def cell_explanation(repository, experiment, cell_key):
 
 
 def _with_reader(repository, experiment, explanation):
+    from viewer.comparison_story import frozen_goal
+    from gapengine.world_patch import PatchError
+    try:
+        explanation["comparison_goal"] = frozen_goal(experiment)
+    except (PatchError, OSError, ValueError, KeyError, TypeError) as error:
+        raise BadRequest(f"実行時の結末条件の封印を検証できません: {error}") from error
     reader = load_summary(repository, experiment, explanation)
     if reader is not None:
         explanation["reader_summary"] = reader
@@ -1671,8 +1677,8 @@ def ensure_reader_summary(repository, experiment, cell_key, *, settings_path, ba
     from execution.provenance import ConfigError, atomic_json, directory_lock
     from gapengine.reader_summary import artifact_name, generate, unreviewed_summary
 
-    explanation = cell_explanation(repository, experiment, cell_key)
     with directory_lock(experiment):
+        explanation = cell_explanation(repository, experiment, cell_key)
         cached = load_summary(repository, experiment, explanation)
         if cached is not None:
             return cached
@@ -1684,6 +1690,15 @@ def ensure_reader_summary(repository, experiment, cell_key, *, settings_path, ba
             # prompt was too large -- nothing was generated, nothing to
             # save.
             raise ConfigError("generation", str(error), code="unavailable") from error
+        # Do not persist a response against evidence replaced during generation.
+        from gapengine.reader_summary import build_packet
+        try:
+            current = cell_explanation(repository, experiment, cell_key)
+            unchanged = build_packet(current) == packet
+        except (OSError, ValueError, KeyError, TypeError, BadRequest):
+            unchanged = False
+        if not unchanged:
+            raise ConfigError("generation", "生成中に原記録または実行時設定が変更されました", code="conflict")
         path = repository.safe_path(experiment, "reader-summaries/" + artifact_name(packet["cell"]))
         atomic_json(path, artifact)
         if artifact["status"] != "generated":

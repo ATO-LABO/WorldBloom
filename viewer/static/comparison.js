@@ -6,6 +6,20 @@
  const cards=new Map($$('[data-cp-card]').map(c=>[c.dataset.cpCard,c]));
  const pending=new Map(), endpoint=`/api/runs/${encodeURIComponent(initial.run_id)}/selection`;
  const draftKey=`comparison:${initial.run_id}:draft`;
+ const viewKey=`comparison:${initial.run_id}:${initial.publication}:view`;
+ let current=null,currentTab='story';
+ function rememberView(){try{sessionStorage.setItem(viewKey,JSON.stringify({candidate:current,tab:currentTab}));}catch{}}
+ function selectCandidate(id,focus=false){
+  if(!cards.has(id))return;current=id;
+  for(const [cid,card] of cards)card.hidden=cid!==id;
+  for(const button of $$('[data-cp-open]'))button.setAttribute('aria-pressed',String(button.dataset.cpOpen===id));
+  $('#cp-panel').scrollTop=0;rememberView();
+  if(focus){root.classList.add('cp-reading');$('.cp-workspace').scrollTop=0;$('#cp-panel').focus({preventScroll:true});}
+ }
+ $$('[data-cp-open]').forEach(button=>button.addEventListener('click',()=>selectCandidate(button.dataset.cpOpen,true)));
+ $('[data-cp-back]')?.addEventListener('click',()=>{root.classList.remove('cp-reading');$$('[data-cp-open]').find(b=>b.dataset.cpOpen===current)?.focus();});
+ root.classList.add('cp-dim-common');
+ $('[data-cp-dim]')?.addEventListener('change',e=>root.classList.toggle('cp-dim-common',e.target.checked));
  let revision=initial.revision,busy=false,blocked=false,canRetry=false,timer,flight;
  const notify=text=>{$('[data-cp-notice]').textContent=text;$('[data-cp-notice]').hidden=!text;};
  const status=text=>{$('[data-cp-save]').textContent=text;};
@@ -23,7 +37,9 @@
  function paint(){
   for(const [id,card] of cards){const c=value(id);for(const r of card.querySelectorAll('[data-cp-state]'))r.checked=r.value===c.state;
    const note=card.querySelector('[data-cp-note]');if(note.value!==c.note)note.value=c.note||'';
-  }footer();
+  }
+  for(const button of $$('[data-cp-open]')){const badge=button.querySelector('[data-cp-row-state]');if(badge)badge.textContent=({unclassified:'未分類',adopted:'採用',held:'保留',rejected:'除外'})[value(button.dataset.cpOpen).state];}
+  footer();
  }
  async function api(path,body){
   const response=await fetch(path,{method:body?'POST':'GET',headers:{'X-WorldBloom-Client':'1',...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -82,6 +98,7 @@
  const captions={story:'あらすじは保存された生成文です。各候補の照合状態と原記録を確認できます。',evidence:'原記録から同じ四項目を比較します。「不明」や転機の「候補」は、確認済みの事実と区別します。',data:'記録された世代・品質・原記録の状態です。物語の優劣は判定していません。'};
  captions.evidence+=' '+initial.trajectory_message;
  function tab(key){
+  currentTab=key;rememberView();
   for(const b of $$('[data-cp-tab]')){const active=b.dataset.cpTab===key;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;}
   for(const p of $$('[data-cp-view]'))p.hidden=p.dataset.cpView!==key;
   $('.cp-matrix').dataset.view=key;$('#cp-panel').setAttribute('aria-labelledby',`cp-tab-${key}`);
@@ -94,9 +111,8 @@
  });
  const dialog=$('.cp-picker'),choices=$$('[data-cp-choice]');
  function pickerCount(){
-  const n=choices.filter(c=>c.checked).length;$('[data-cp-picked]').textContent=`${n}件を選択（2〜4件）`;
-  for(const c of choices)c.disabled=!c.checked&&n>=4;
-  $('[data-cp-apply]').disabled=n<2||n>4;
+  const n=choices.filter(c=>c.checked).length;$('[data-cp-picked]').textContent=`${n}件を選択 / ${choices.length}件の代表候補`;
+  $('[data-cp-apply]').disabled=false;
  }
  $('[data-cp-picker]').addEventListener('click',()=>{
   for(const c of choices)c.checked=initial.bound.includes(c.value);
@@ -115,7 +131,7 @@
    qs.set('publication',initial.publication);location.href=initial.base+'?'+qs;
   }catch(e){dialog.close();notify(e.message);}
  }
- $('[data-cp-apply]').addEventListener('click',()=>{const ids=choices.filter(c=>c.checked).map(c=>c.value);if(ids.length>=2&&ids.length<=4)compare(ids);});
+ $('[data-cp-apply]').addEventListener('click',()=>{const ids=choices.filter(c=>c.checked).map(c=>c.value);compare(ids);});
  $$('[data-cp-remove]').forEach(b=>b.addEventListener('click',()=>compare(initial.bound.filter(id=>id!==b.dataset.cpRemove))));
  window.addEventListener('wb-generation-entry',e=>{
   if(e.detail.run_id!==initial.run_id)return;const card=cards.get(e.detail.candidate_id);if(!card)return;
@@ -123,5 +139,8 @@
  });
  try{for(const [id,change] of JSON.parse(sessionStorage.getItem(draftKey)||'[]'))if(items.has(id))pending.set(id,change);}catch{}
  if(pending.size){blocked=true;status('未保存の入力を復元しました');notify('未保存の入力を保持しています。「保存状況を確認」で最新の判定と照合してください。');}
+ let savedView={};try{savedView=JSON.parse(sessionStorage.getItem(viewKey)||'{}')||{};}catch{}
+ selectCandidate(cards.has(savedView.candidate)?savedView.candidate:initial.bound[0]);
+ if(['story','evidence','data'].includes(savedView.tab))tab(savedView.tab);
  paint();
 })();
