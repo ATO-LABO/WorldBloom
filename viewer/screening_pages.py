@@ -27,6 +27,8 @@ def shell(handler, title, content, *, query, history, active="reader", world=Non
     navigation = '<nav class="rw-sidebar sc-nav" aria-label="上映メニュー">'
     for key, label in (("reader", "作品を読む"), ("history", "生成履歴")):
         navigation += link(href(run=rid, view=key if key == "history" else None), label, 'aria-current="page"' if key == active else '')
+    if wb._job_store(handler) is not None:
+        navigation += link("/stories", "物語の比較と評価")
     navigation += link(f'/runs/{U(rid)}/candidates' if rid else '/selected', '← Siftingへ戻る', 'class="sc-back"') + '</nav>'
     options = '<option value="/outputs' + ('?view=history' if active == 'history' else '') + '">すべての実行</option>'
     for item in history:
@@ -153,6 +155,8 @@ def reader(work, draft, works, query, job_store, names, usage_html=""):
         body += '<div class="sc-prose">' + E(draft['text']) + '</div>'
     else:
         body += '<div class="sc-empty"><h3>' + E(view.LABELS.get(draft['status'], draft['status'])) + '</h3><p>この稿には読める本文がありません。</p>' + link(record, '生成記録を確認する →') + '</div>'
+    if draft["request"].get("pipeline") == "story_v1":
+        body += '<p>' + link(f'/stories/outputs/{U(oid)}/{U(cid)}','固定した骨格・検査結果・採否を確認 →') + '</p><p>本文の採否はレビュー待ちです。参照の検査は物語の正しさを保証しません。</p>'
     summary = view.synopsis(OutputStore(job_store.configs.control), draft, cid)
     body += '</section><section role="tabpanel" id="sc-panel-synopsis" aria-labelledby="sc-tab-synopsis" data-sc-panel="synopsis" hidden><h3>この稿に使ったあらすじ</h3><div class="sc-prose">' + E(summary) + '</div></section>'
     body += '<section role="tabpanel" id="sc-panel-info" aria-labelledby="sc-tab-info" data-sc-panel="info" hidden><h3>生成情報</h3><dl class="sc-info">'

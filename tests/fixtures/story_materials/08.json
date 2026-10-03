@@ -1,0 +1,1109 @@
+{
+  "notice": "元ログの選択行を保存した疎な実物fixture。元SHAとfixture SHAは異なる。",
+  "source": {
+    "internal": "random_jev-r3",
+    "blind_id": "作品08",
+    "arm": "random_jev",
+    "replicate": 3,
+    "generation": 0,
+    "individual": 13,
+    "seed": 21,
+    "quality": 0.195604395604,
+    "layers_path": "C:\\Projects\\WorldBloom-local\\runs\\jev-ga-ablation-plus3-20260929-01\\runs\\random_jev-r3\\g0\\ind-13\\seed-21\\layers.jsonl",
+    "layers_sha256": "94f530aae3b385232d2da1f7a751a4a75f670a9a8b20175bb3f8c59adf979248",
+    "scenes": null
+  },
+  "inputs": {
+    "project/world.yaml": "name: 桃太郎＋3\n\ntime:\n  days: 20\n  slots: [朝, 昼, 夕方, 夜]\n\nprotagonist: 桃太郎\nantagonist: 鬼\n\nzones:\n  - name: 村\n    note: おじいさんとおばあさんが暮らす旅の起点\n  - name: 道中\n    note: 桃太郎が犬・猿・キジと出会う道\n  - name: 森\n    note: 船を作る木材が採れる林\n  - name: 海\n    note: 鬼ヶ島へ渡る船を組み立てる海辺\n  - name: 鬼ヶ島\n    note: 鬼が宝物を守る固定の島\n  - name: 街\n    note: 商人が行き交う町\n\nroutes:\n  村:\n    - {to: 道中}\n  道中:\n    - {to: 村}\n    - {to: 森}\n    - {to: 海}\n    - {to: 街}\n  森:\n    - {to: 道中}\n  海:\n    - {to: 道中}\n    - {to: 鬼ヶ島, cost: 4, requires_item: 船}\n  鬼ヶ島:\n    - {to: 海, cost: 4, requires_item: 船}\n  街:\n    - {to: 道中}\n\nmovement:\n  action_weight: 2.5\n  hop_decay: 0.6\n  destination_weights:\n    村: 1.0\n    道中: 2.2\n    森: 1.5\n    海: 1.2\n    鬼ヶ島: 0.8\n    街: 1.3\n\nstamina:\n  default_max: 10\n  default_recover_per_slot: 1.0\n  exhausted_ratio: 0.2\n\ncompanionship:\n  threshold: 0.6\n  weight: 2.0\n  drift:\n    - {between: [犬, 猿], per_slot: -0.03}\n  infight_desertion: -0.5\n  drill_bond: 0.05\n\npermission:\n  restricted_weight: 0.15\n\ngapengine:\n  action_graph: templates/momotaro_plus3/action_graph.yaml\n  effects: templates/momotaro_plus3/effects.yaml\n\nphase1:\n  open_bonus: 0.5\n  negotiate_threshold: 0.3\n  sacrifice_rewards:\n    asset_base: 8\n    bond_stress: -3\n    bond_phase: 決意\n\ndisguises:\n  - id: momotaro_merchant\n    subject: 桃太郎\n    as: 旅の商人\n    when: \"zone(self) == '海'\"\n\ntrials:\n  - id: monkey_shortcut_trial\n    giver: 猿\n    requires:\n      stance: 0.4\n      item: きびだんご\n    grants:\n      fact: 猿の知恵\n\n  - id: brother_letter_trial\n    giver: 鬼の弟\n    requires:\n      stance: 0.4\n      item: きびだんご\n    grants:\n      item: 弟の手紙\n\n  - id: fisherman_ferry\n    giver: 漁師\n    requires:\n      stance: 0.4\n    grants:\n      item: 船\n\nphase_rules:\n  - id: after_crossing\n    when: \"'越境' in phase\"\n    disable:\n      - train\n\n  - id: otouto_neutral_fight_lock\n    when: \"self == '鬼の弟' and stance(self, 桃太郎) > -0.2\"\n    disable:\n      - fight\n\nawareness_per_encounter: 0.15\n\npulls:\n  pursue: 1.5\n  pursue_from_day: 4\n  deliver: 3.0\n  gather: 2.0\n  craft: 3.0\n  labor: 2.0\n\nthresholds:\n  - id: 出発\n    when: \"zone(self) != '村'\"\n  - id: 越境\n    when: \"zone(self) == '鬼ヶ島'\"\n\nitems:\n  - name: きびだんご\n    give:\n      receiver_affinity: 0.5\n      giver_affinity: 0.1\n      shared_affinity: 0.15\n    price:\n      小判: 1\n    shop_zone: 街\n\n  - name: 木材\n    sources:\n      - {type: investigate, zone: 森, count: 1, max: 2}\n\n  - name: 縄\n    sources:\n      - {type: investigate, zone: 村, count: 2, max: 2}\n\n  - name: 小判\n    sources:\n      - {type: labor, zone: 街, count: 1, max: 8, stamina: 3}\n    lootable: true\n    give:\n      receiver_affinity: 0.2\n      giver_affinity: 0.0\n      ineffective_for: [animal]\n\n  - name: 鉄砲\n    price:\n      小判: 3\n    shop_zone: 街\n    lootable: true\n    modifier:\n      id: item:鉄砲\n      value: 50\n      kind: item\n      visible: true\n\n  - name: 弟の手紙\n    lootable: true\n    modifier:\n      id: item:弟の手紙\n      value: 3\n      kind: item\n      visible: true\n\n  - name: 鬼ヶ島の宝物\n    lootable: true\n    objective: true\n\n  - name: 金棒\n    lootable: true\n    modifier:\n      id: item:金棒\n      value: 40\n      kind: item\n      visible: false\n      lethal: true\n      lethal_chance: 0.5\n\n  - name: 船\n    made_from:\n      木材: 2\n      縄: 1\n    requires:\n      knowledge: 造船術\n    craft_zone: 海\n    lootable: false\n    vehicle: true\n    access:\n      mode: owner\n      allow: [companions]\n\nfacts:\n  - id: 造船術\n    label: 船の組み方を知っている\n    secrecy: 0.2\n    share_min_affinity: 0.3\n\n  - id: 猿の知恵\n    label: 猿が知る鬼ヶ島の抜け道\n\n  - id: 弟の消息\n    label: 鬼には生き別れの弟がいて、森で木こりをしている\n    sources:\n      - {type: investigate, zone: 村, count: 2}\n\n  - id: oni_weakness\n    label: 鬼の力の要は{value}だ\n    values: [金棒, 火, 塩]\n    secrecy: 0.4\n    share_min_affinity: 0.0\n    act_threshold: 0.6\n\n  - id: treasure_thief\n    label: 宝を奪ったのは{value}だ\n    values: [鬼, 猿, 犬]\n    secrecy: 1.0\n    act_threshold: 0.5\n\n  - id: elder_testimony\n    label: おじいさんは宝を奪ったのは鬼だと証言した\n    sources:\n      - {type: investigate, agent: おじいさん, count: 2}\n    implies:\n      fact: treasure_thief\n      value: 鬼\n      confidence: 0.5\n\n  - id: road_gossip\n    label: 道中では猿が宝を奪ったと噂されている\n    sources:\n      - {type: investigate, zone: 道中, count: 2}\n    implies:\n      fact: treasure_thief\n      value: 猿\n      confidence: 0.4\n\n  - id: 金棒の由来\n    label: 鬼の力は金棒に支えられている\n    secret_of: 鬼\n    secrecy: 0.3\n    share_min_affinity: 0.0\n    sources:\n      - {type: investigate, zone: 鬼ヶ島, count: 1}\n    implies:\n      fact: oni_weakness\n      value: 金棒\n      confidence: 0.8\n\n  - id: 耐火の痕跡\n    label: 鬼は火を恐れていない\n    secrecy: 0.2\n    share_min_affinity: 0.0\n    sources:\n      - {type: investigate, agent: 鬼, count: 2}\n    refutes:\n      fact: oni_weakness\n      value: 火\n      confidence: 0.7\n\ntruth:\n  oni_weakness: 金棒\n  treasure_thief: 鬼\n\ndefault_strength_prior: 50\n\ncontest:\n  tau: 10.0\n  epsilon: 5.0\n\nvitality:\n  revive_after: 4\n  ally_speedup: 1\n  revive_base_penalty: 2\n  lethal_exempt: [桃太郎]\n\ngrief:\n  stress: 1.0\n  affinity_to_killer: -0.6\n\nending:\n  - id: homecoming_shared\n    when: \"holds(桃太郎, 鬼ヶ島の宝物) and zone(桃太郎) == '村' and '還元' in phase\"\n    label: 宝を村へ還元し、皆で喜びを分かち合った\n    deliver:\n      subject: 桃太郎\n      item: 鬼ヶ島の宝物\n      zone: 村\n\n  - id: homecoming\n    when:\n      agent: 桃太郎\n      goal: attained\n    label: 鬼退治を果たし、宝を村へ持ち帰った\n\ntarget_ending: [homecoming, homecoming_shared]\n\nscheduled_events:\n  - id: departure_day\n    day: 1\n    slot: 朝\n    targets: [桃太郎]\n    label: 旅立ちの朝\n    stress_delta: 0.3\n    force_action: {verb: move, args: [道中]}\n\n  - id: otouto_grudge_seed\n    day: 1\n    slot: 朝\n    targets: [鬼の弟]\n    label: 兄を思う弟の胸騒ぎ\n    force_action: {verb: plant, args: [brother_grudge]}\n\ndaily_events:\n  chance: 0.35\n  events:\n    - id: warm_kibidango\n      label: おばあさんのきびだんごで元気づいた\n      weight: 3\n      stress_delta: -0.4\n\n    - id: mountain_view\n      label: 峠から遠い山々を眺めた\n      weight: 2\n      stress_delta: -0.3\n\n    - id: steep_path\n      label: 険しい山道に足を取られた\n      weight: 2\n      stress_delta: 0.5\n\n    - id: sudden_storm\n      label: 突然の嵐に見舞われた\n      weight: 1\n      stress_delta: 0.7\n",
+    "project/subjects/01_ojiisan.yaml": "id: おじいさん\n\ntraits:\n  social: 0.55\n  stubbornness: 0.45\n  curiosity: 0.35\n  diligence: 0.75\n  temper: 0.30\n\nbase: 10\nmodifiers: []\nbeliefs_about: {}\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - share_knowledge\n  - give_item\n  - rest\n\nidentity:\n  \"true\": 山へ芝刈りに行くおじいさん\n  displayed: おじいさん\n\ngoal:\n  target: null\n  deliver_to: null\n  obstacles: []\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.85, awareness: 1.0}\n  おばあさん: {affinity: 0.80, awareness: 1.0}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 6\n  recover_per_slot: 0.5\n\nrange:\n  zones: [村]\n  entry: 村\n\ncompanions: []\nally_value: 0\nobjective_claimant: false\n",
+    "project/subjects/02_obaasan.yaml": "id: おばあさん\n\ntraits:\n  social: 0.70\n  stubbornness: 0.35\n  curiosity: 0.40\n  diligence: 0.65\n  temper: 0.30\n\nbase: 10\nmodifiers: []\nbeliefs_about: {}\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - share_knowledge\n  - give_item\n  - rest\n\nidentity:\n  \"true\": 川へ洗濯に行くおばあさん\n  displayed: おばあさん\n\ngoal:\n  target: null\n  deliver_to: null\n  obstacles: []\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.90, awareness: 1.0}\n  おじいさん: {affinity: 0.80, awareness: 1.0}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 6\n  recover_per_slot: 0.5\n\nrange:\n  zones: [村]\n  entry: 村\n\ncompanions: []\nally_value: 0\nobjective_claimant: false\n",
+    "project/subjects/03_momotaro.yaml": "id: 桃太郎\n\ntraits:\n  social: 0.65\n  stubbornness: 0.55\n  curiosity: 0.55\n  diligence: 0.70\n  temper: 0.70\n\nbase: 50\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: [造船術]\ninventory: {きびだんご: 3, 縄: 1}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - observe\n  - neutralize\n  - sabotage\n  - sacrifice\n  - mislead\n  - confront\n  - share_knowledge\n  - give_item\n  - persuade\n  - pledge\n  - negotiate\n  - craft\n  - labor\n  - buy\n  - fight\n  - train\n  - rescue\n  - rest\n  - withdraw\n  - plant\n  - payoff\n  - disguise\n  - grand_gesture\n  - trial\n  - donate\n\nidentity:\n  \"true\": 桃から生まれた者\n  displayed: 桃太郎\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: 村\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  おじいさん: {affinity: 0.85, awareness: 1.0}\n  おばあさん: {affinity: 0.90, awareness: 1.0}\n  猿: {affinity: 0.10, awareness: 0.15}\n  犬: {affinity: 0.10, awareness: 0.15}\n  キジ: {affinity: 0.10, awareness: 0.15}\n  鬼: {affinity: -0.50, awareness: 0.60}\n  鬼の弟: {affinity: 0.10, awareness: 0.10}\n  漁師: {affinity: 0.10, awareness: 0.10}\n  蜂: {affinity: 0.10, awareness: 0.15}\n  蟹: {affinity: 0.10, awareness: 0.15}\n  馬: {affinity: 0.10, awareness: 0.15}\n  牛: {affinity: 0.10, awareness: 0.15}\n  豚: {affinity: 0.10, awareness: 0.15}\n  用心棒: {affinity: 0.0, awareness: 0.0}\n\nstamina:\n  max: 14\n  recover_per_slot: 1.5\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 村\n  exclude:\n    - zones: [村]\n      until_item: 鬼ヶ島の宝物\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚, 用心棒]\nally_value: 15\nobjective_claimant: true\n",
+    "project/subjects/04_inu.yaml": "id: 犬\ntags: [animal]\n\ntraits:\n  social: 0.75\n  stubbornness: 0.60\n  curiosity: 0.40\n  diligence: 0.70\n  temper: 0.60\n\nbase: 30\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 村外れに住む犬\n  displayed: 犬\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.15, awareness: 0.20}\n  猿: {affinity: 0.0, awareness: 0.50}\n  キジ: {affinity: 0.05, awareness: 0.10}\n  鬼: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 12\n  recover_per_slot: 1.5\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 道中\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]\nally_value: 15\nobjective_claimant: false\n",
+    "project/subjects/05_saru.yaml": "id: 猿\ntags: [animal]\n\ntraits:\n  social: 0.50\n  stubbornness: 0.50\n  curiosity: 0.75\n  diligence: 0.50\n  temper: 0.40\n\nbase: 30\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 山に住む猿\n  displayed: 猿\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.10, awareness: 0.15}\n  犬: {affinity: 0.0, awareness: 0.50}\n  キジ: {affinity: 0.05, awareness: 0.10}\n  鬼: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 12\n  recover_per_slot: 1.5\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 道中\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]\nally_value: 15\nobjective_claimant: false\n",
+    "project/subjects/06_kiji.yaml": "id: キジ\ntags: [animal]\n\ntraits:\n  social: 0.45\n  stubbornness: 0.40\n  curiosity: 0.65\n  diligence: 0.55\n  temper: 0.30\n\nbase: 30\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 空を飛ぶキジ\n  displayed: キジ\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.15, awareness: 0.20}\n  猿: {affinity: 0.05, awareness: 0.10}\n  犬: {affinity: 0.05, awareness: 0.10}\n  鬼: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 10\n  recover_per_slot: 2.0\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 道中\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]\nally_value: 10\nobjective_claimant: false\n",
+    "project/subjects/07_oni.yaml": "id: 鬼\n\ntraits:\n  social: 0.30\n  stubbornness: 0.80\n  curiosity: 0.20\n  diligence: 0.60\n  temper: 0.80\n\nbase: 80\nmodifiers: []\n\nbeliefs_about:\n  桃太郎:\n    known_modifiers: []\n    base_estimate: 50\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory:\n  鬼ヶ島の宝物: 1\n  金棒: 1\n\nreputation: 0.0\nphase: []\n\nverbs:\n  - guard\n  - fight\n  - concede\n  - rest\n\nidentity:\n  \"true\": 鬼ヶ島の鬼の頭領\n  displayed: 鬼\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [桃太郎]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: -0.50, awareness: 0.60}\n  旅の商人: {affinity: 0.0, awareness: 0.0}\n  犬: {affinity: -0.30, awareness: 0.30}\n  猿: {affinity: -0.30, awareness: 0.30}\n  キジ: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.70, awareness: 0.90}\n\nstamina:\n  max: 12\n  recover_per_slot: 1.0\n\nrange:\n  zones: [鬼ヶ島]\n  entry: 鬼ヶ島\n\ncompanions: []\nally_value: 0\nobjective_claimant: true\n",
+    "project/subjects/08_oni_no_otouto.yaml": "id: 鬼の弟\n\ntraits:\n  social: 0.60\n  stubbornness: 0.40\n  curiosity: 0.35\n  diligence: 0.55\n  temper: 0.20\n\nbase: 25\nmodifiers: []\n\nbeliefs_about: {}\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rest\n  - plant\n\nidentity:\n  \"true\": 鬼の生き別れの弟\n  displayed: 森の木こり\n\ngoal:\n  target: null\n  deliver_to: null\n  obstacles: []\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.10, awareness: 0.10}\n  鬼: {affinity: 0.60, awareness: 0.90}\n  犬: {affinity: 0.0, awareness: 0.1}\n  猿: {affinity: 0.0, awareness: 0.1}\n  キジ: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 6\n  recover_per_slot: 0.5\n\nrange:\n  zones: [森]\n  entry: 森\n\ncompanions: []\nally_value: 0\nobjective_claimant: false\n",
+    "project/subjects/09_ryoshi.yaml": "id: 漁師\ntags: [human]\n\ntraits:\n  social: 0.55\n  stubbornness: 0.45\n  curiosity: 0.40\n  diligence: 0.65\n  temper: 0.30\n\nbase: 20\nmodifiers: []\n\nbeliefs_about: {}\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - share_knowledge\n  - give_item\n  - rest\n\nidentity:\n  \"true\": 海辺の砂浜で船を操る漁師\n  displayed: 漁師\n\ngoal:\n  target: null\n  deliver_to: null\n  obstacles: []\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.10, awareness: 0.10}\n\nstamina:\n  max: 8\n  recover_per_slot: 1.0\n\nrange:\n  zones: [海]\n  entry: 海\n\ncompanions: []\nally_value: 0\nobjective_claimant: false\n",
+    "project/subjects/10_hachi.yaml": "id: 蜂\ntags: [animal]\n\ntraits:\n  social: 0.55\n  stubbornness: 0.45\n  curiosity: 0.60\n  diligence: 0.65\n  temper: 0.50\n\nbase: 15\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 森に住む蜂\n  displayed: 蜂\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.15, awareness: 0.20}\n  鬼: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 6\n  recover_per_slot: 2.0\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 森\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]\nally_value: 3\nobjective_claimant: false\n",
+    "project/subjects/11_kani.yaml": "id: 蟹\ntags: [animal]\n\ntraits:\n  social: 0.40\n  stubbornness: 0.65\n  curiosity: 0.35\n  diligence: 0.55\n  temper: 0.45\n\nbase: 25\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 海辺に住む蟹\n  displayed: 蟹\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.15, awareness: 0.20}\n  鬼: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 10\n  recover_per_slot: 1.0\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 海\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]\nally_value: 5\nobjective_claimant: false\n",
+    "project/subjects/12_uma.yaml": "id: 馬\ntags: [animal]\n\ntraits:\n  social: 0.60\n  stubbornness: 0.50\n  curiosity: 0.45\n  diligence: 0.70\n  temper: 0.40\n\nbase: 35\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 道中を駆ける馬\n  displayed: 馬\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.15, awareness: 0.20}\n  鬼: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 16\n  recover_per_slot: 1.2\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 道中\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]\nally_value: 12\nobjective_claimant: false\n",
+    "project/subjects/13_ushi.yaml": "id: 牛\ntags: [animal]\n\ntraits:\n  social: 0.45\n  stubbornness: 0.70\n  curiosity: 0.30\n  diligence: 0.60\n  temper: 0.35\n\nbase: 35\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 街で荷を引く牛\n  displayed: 牛\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.15, awareness: 0.20}\n  鬼: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 14\n  recover_per_slot: 0.8\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 街\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]\nally_value: 10\nobjective_claimant: false\n",
+    "project/subjects/14_buta.yaml": "id: 豚\ntags: [animal]\n\ntraits:\n  social: 0.50\n  stubbornness: 0.55\n  curiosity: 0.50\n  diligence: 0.50\n  temper: 0.40\n\nbase: 25\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 道中に迷い込んだ豚\n  displayed: 豚\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.15, awareness: 0.20}\n  鬼: {affinity: -0.30, awareness: 0.30}\n  鬼の弟: {affinity: 0.0, awareness: 0.1}\n\nstamina:\n  max: 12\n  recover_per_slot: 1.0\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 道中\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚]\nally_value: 5\nobjective_claimant: false\n",
+    "project/subjects/15_yojinbo.yaml": "id: 用心棒\ntags: [human]\n\ntraits:\n  social: 0.40\n  stubbornness: 0.55\n  curiosity: 0.30\n  diligence: 0.60\n  temper: 0.55\n\nbase: 40\nmodifiers: []\n\nbeliefs_about:\n  鬼:\n    known_modifiers: []\n    base_estimate: 80\n    identity_seen: false\n    observe_progress: 0.0\n\nknowledge: []\ninventory: {}\nreputation: 0.0\nphase: []\n\nverbs:\n  - move\n  - investigate\n  - share_knowledge\n  - give_item\n  - fight\n  - rescue\n  - rest\n  - withdraw\n\nidentity:\n  \"true\": 銭で雇われるのを待つ街の用心棒\n  displayed: 用心棒\n\ngoal:\n  target: 鬼ヶ島の宝物\n  deliver_to: null\n  obstacles: [鬼]\n  outcome: null\n\nrelations:\n  桃太郎: {affinity: 0.0, awareness: 0.0}\n  鬼: {affinity: -0.20, awareness: 0.10}\n  鬼の弟: {affinity: 0.0, awareness: 0.0}\n\nstamina:\n  max: 14\n  recover_per_slot: 1.5\n\nrange:\n  zones: [村, 道中, 森, 海, 鬼ヶ島, 街]\n  entry: 街\n\ncompanions: [桃太郎, 猿, 犬, キジ, 蜂, 蟹, 馬, 牛, 豚, 用心棒]\nally_value: 20\nobjective_claimant: false\n",
+    "template/effects.yaml": "- id: kibidango_loyalty\n  plant:\n    verb: give_item\n    item: きびだんご\n    to_role: [neutral, ally]\n  payoff:\n    condition: \"stance(target, planter) >= 0.5 and hostile_present(planter)\"\n    description: きびだんごの恩に報いる仲間の奮戦\n    effect:\n      modifier:\n        target: planter\n        source: \"$target\"\n        value: 10\n        kind: loyal\n    mode: auto\n\n- id: oni_gap\n  plant:\n    verb: observe\n    reveals:\n      target: 鬼\n      source: 金棒\n  payoff:\n    condition: \"present(鬼) and vitality(planter) != 'downed'\"\n    description: 金棒の隙を見切って仲間に合図を送る\n    effect:\n      modifier:\n        target: planter\n        source: 見切り\n        value: 15\n        kind: insight\n    mode: chosen\n\n- id: campfire_oath\n  plant:\n    verb: share_knowledge\n    topic: 雑談\n    to_role: [ally]\n  payoff:\n    condition: \"hostile_present(planter) and vitality(planter) != 'downed'\"\n    description: 焚き火で交わした約束に仲間が応える\n    effect:\n      modifier:\n        target: planter\n        source: \"$target\"\n        value: 8\n        kind: oath\n    mode: chosen\n\n- id: forest_shortcut\n  plant:\n    verb: investigate\n    zone: 森\n  payoff:\n    condition: \"zone(planter) == '海'\"\n    description: 森で見つけた抜け道の記憶が海で役に立つ\n    effect:\n      modifier:\n        target: planter\n        source: 森の抜け道\n        value: 5\n        kind: insight\n    mode: chosen\n\n- id: village_promise\n  plant:\n    verb: plant\n    when: \"zone(planter) == '道中' and day <= 2\"\n  payoff:\n    condition: \"holds(planter, 鬼ヶ島の宝物) and zone(planter) == '村'\"\n    description: 旅立ちの朝に交わした約束を果たす\n    effect:\n      reputation:\n        target: planter\n        delta: 0.3\n    mode: chosen\n\n# WB card A-2: 鬼の弟の敵対分岐。装填は day1 の scheduled_events で\n# 鬼の弟に force_action(plant, [brother_grudge]) させ、常に彼自身を\n# planter/target に固定する(重複装填を防ぐため when で本人に限定)。\n# 支払いは鬼が倒された瞬間に自動発火し、桃太郎への好感度を大きく下げる。\n- id: brother_grudge\n  plant:\n    verb: plant\n    when: \"self == '鬼の弟'\"\n  payoff:\n    condition: \"vitality(鬼) == 'downed'\"\n    description: 兄が討たれたと知り、鬼の弟の恨みが桃太郎へ向かう\n    effect:\n      stance:\n        a: 鬼の弟\n        b: 桃太郎\n        delta: -0.7\n    mode: auto\n"
+  },
+  "rows": [
+    {
+      "row": 114,
+      "record": {
+        "args": [
+          "猿"
+        ],
+        "choice_prob": 0.145013722400252,
+        "classification": {
+          "category": "II",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "observe",
+          "target_role": "neutral"
+        },
+        "day": 2,
+        "delta": {
+          "actor": {
+            "belief": {
+              "猿": {
+                "base_estimate": 50.0,
+                "identity_seen": false,
+                "known_modifiers": []
+              }
+            }
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "exposed_estimate": null,
+          "identity_seen": false,
+          "revealed": [],
+          "target": "猿"
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発"
+            ],
+            false,
+            "hostile",
+            "alive",
+            "hostile",
+            false
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.4910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.6705401412001404,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.694335298533,
+          "m_nov": 0.976322319526,
+          "m_rat": 1.163692023617,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.0625,
+          "p_rat": 0.086538461538
+        },
+        "result": "observed",
+        "slot": "昼",
+        "subject": "桃太郎",
+        "turn": 6,
+        "verb": "observe"
+      }
+    },
+    {
+      "row": 148,
+      "record": {
+        "args": [
+          "鬼の弟"
+        ],
+        "choice_prob": 0.19659934986029254,
+        "classification": {
+          "category": "II",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "observe",
+          "target_role": "neutral"
+        },
+        "day": 2,
+        "delta": {
+          "actor": {
+            "belief": {
+              "鬼の弟": {
+                "base_estimate": 50.0,
+                "identity_seen": false,
+                "known_modifiers": []
+              }
+            }
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "exposed_estimate": null,
+          "identity_seen": false,
+          "revealed": [],
+          "target": "鬼の弟"
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発"
+            ],
+            false,
+            "hostile",
+            "alive",
+            "hostile",
+            false
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.4910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.6705401412001404,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.694335298533,
+          "m_nov": 0.968089494216,
+          "m_rat": 1.336085752689,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.077083333333,
+          "p_rat": 0.106796116505
+        },
+        "result": "observed",
+        "slot": "夜",
+        "subject": "桃太郎",
+        "turn": 8,
+        "verb": "observe"
+      }
+    },
+    {
+      "row": 249,
+      "record": {
+        "args": [
+          "漁師"
+        ],
+        "choice_prob": 0.09814275946537969,
+        "classification": {
+          "category": "II",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "observe",
+          "target_role": "neutral"
+        },
+        "day": 4,
+        "delta": {
+          "actor": {
+            "belief": {
+              "漁師": {
+                "base_estimate": 50.0,
+                "identity_seen": false,
+                "known_modifiers": []
+              }
+            }
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "exposed_estimate": null,
+          "identity_seen": false,
+          "revealed": [],
+          "target": "漁師"
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発"
+            ],
+            false,
+            "hostile",
+            "alive",
+            "hostile",
+            false
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.4910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.6705401412001404,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.694335298533,
+          "m_nov": 0.970840070194,
+          "m_rat": 0.896815237834,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.072222222222,
+          "p_rat": 0.037735849057
+        },
+        "result": "observed",
+        "slot": "朝",
+        "subject": "桃太郎",
+        "turn": 13,
+        "verb": "observe"
+      }
+    },
+    {
+      "row": 282,
+      "record": {
+        "args": [
+          "旅の商人"
+        ],
+        "choice_prob": 0.009522153724915288,
+        "classification": {
+          "category": "IV",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "disguise",
+          "target_role": "none"
+        },
+        "day": 4,
+        "delta": {
+          "actor": {
+            "identity": {
+              "displayed": "旅の商人"
+            },
+            "resources": {
+              "bonds": 0.0
+            }
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {
+            "犬": {
+              "belief": {
+                "桃太郎": {
+                  "base_estimate": 50.0,
+                  "identity_seen": false,
+                  "known_modifiers": []
+                }
+              }
+            }
+          }
+        },
+        "details": {
+          "before": "桃太郎",
+          "displayed": "旅の商人",
+          "unaware": [
+            "犬"
+          ]
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発"
+            ],
+            false,
+            "hostile",
+            "alive",
+            "hostile",
+            false
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.4910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.6705401412001404,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.71374760948,
+          "m_nov": 0.985099446984,
+          "m_rat": 0.391680631292,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.046842105263,
+          "p_rat": 0.004761904762
+        },
+        "result": "disguised",
+        "slot": "夕方",
+        "subject": "桃太郎",
+        "turn": 15,
+        "verb": "disguise"
+      }
+    },
+    {
+      "row": 341,
+      "record": {
+        "args": [
+          "蟹"
+        ],
+        "choice_prob": 0.14539121422191173,
+        "classification": {
+          "category": "II",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "observe",
+          "target_role": "neutral"
+        },
+        "day": 5,
+        "delta": {
+          "actor": {
+            "belief": {
+              "蟹": {
+                "base_estimate": 50.0,
+                "identity_seen": false,
+                "known_modifiers": []
+              }
+            }
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "exposed_estimate": null,
+          "identity_seen": false,
+          "revealed": [],
+          "target": "蟹"
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発"
+            ],
+            false,
+            "hostile",
+            "alive",
+            "hostile",
+            true
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.4910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.6705401412001404,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.694335298533,
+          "m_nov": 0.969921901377,
+          "m_rat": 1.188377004032,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.073846153846,
+          "p_rat": 0.076923076923
+        },
+        "result": "observed",
+        "slot": "昼",
+        "subject": "桃太郎",
+        "turn": 18,
+        "verb": "observe"
+      }
+    },
+    {
+      "row": 380,
+      "record": {
+        "args": [
+          "鬼の弟"
+        ],
+        "choice_prob": 0.0604641403106794,
+        "classification": {
+          "category": "II",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "observe",
+          "target_role": "ally"
+        },
+        "day": 5,
+        "delta": {
+          "actor": {
+            "belief": {
+              "鬼の弟": {
+                "base_estimate": 25.0,
+                "identity_seen": true
+              }
+            }
+          },
+          "objective": null,
+          "relations": [
+            {
+              "affinity": -0.64,
+              "awareness": -1.0,
+              "observer": "桃太郎",
+              "target": "森の木こり"
+            }
+          ],
+          "targets": {}
+        },
+        "details": {
+          "exposed_estimate": null,
+          "identity_seen": true,
+          "revealed": [],
+          "target": "鬼の弟"
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発"
+            ],
+            false,
+            "hostile",
+            "alive",
+            "hostile",
+            true
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.4910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.6705401412001404,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.694335298533,
+          "m_nov": 0.983398391505,
+          "m_rat": 0.56907483356,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.049885583524,
+          "p_rat": 0.009433962264
+        },
+        "result": "observed",
+        "slot": "夜",
+        "subject": "桃太郎",
+        "turn": 20,
+        "verb": "observe"
+      }
+    },
+    {
+      "row": 381,
+      "record": {
+        "args": [],
+        "day": 5,
+        "delta": {
+          "actor": {},
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "actual": "鬼の弟",
+          "displayed": "森の木こり",
+          "source": "observe",
+          "target": "鬼の弟"
+        },
+        "kind": "event",
+        "result": "applied",
+        "slot": "夜",
+        "subject": "桃太郎",
+        "turn": 20,
+        "verb": "exposure"
+      }
+    },
+    {
+      "row": 435,
+      "record": {
+        "args": [
+          "犬"
+        ],
+        "choice_prob": 0.21989098841624746,
+        "classification": {
+          "category": "II",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "observe",
+          "target_role": "neutral"
+        },
+        "day": 6,
+        "delta": {
+          "actor": {
+            "belief": {
+              "犬": {
+                "base_estimate": 50.0,
+                "identity_seen": false,
+                "known_modifiers": []
+              }
+            }
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "exposed_estimate": null,
+          "identity_seen": false,
+          "revealed": [],
+          "target": "犬"
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発"
+            ],
+            false,
+            "hostile",
+            "alive",
+            "hostile",
+            true
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.4910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.6705401412001404,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.694335298533,
+          "m_nov": 0.970539694461,
+          "m_rat": 1.580590236767,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.072753623188,
+          "p_rat": 0.115384615385
+        },
+        "result": "observed",
+        "slot": "夕方",
+        "subject": "桃太郎",
+        "turn": 23,
+        "verb": "observe"
+      }
+    },
+    {
+      "row": 480,
+      "record": {
+        "args": [
+          "鬼"
+        ],
+        "choice_prob": 0.3014055732969976,
+        "classification": {
+          "category": "II",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "observe",
+          "target_role": "hostile"
+        },
+        "day": 7,
+        "delta": {
+          "actor": {},
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "believed_diff": -27.15,
+          "exposed_estimate": null,
+          "identity_seen": false,
+          "revealed": [],
+          "strength_diff": -70.2,
+          "target": "鬼"
+        },
+        "effective": false,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発",
+              "越境"
+            ],
+            true,
+            "hostile",
+            "alive",
+            "hostile",
+            true
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.6910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.9705401412001403,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.694335298533,
+          "m_nov": 0.96454368207,
+          "m_rat": 1.79158581732,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.083333333333,
+          "p_rat": 0.194174757282
+        },
+        "result": "observed",
+        "slot": "朝",
+        "subject": "桃太郎",
+        "turn": 25,
+        "verb": "observe"
+      }
+    },
+    {
+      "row": 489,
+      "record": {
+        "args": [],
+        "day": 7,
+        "delta": {
+          "actor": {},
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "downed_since": 25
+        },
+        "kind": "event",
+        "result": "applied",
+        "slot": "朝",
+        "subject": "桃太郎",
+        "turn": 25,
+        "verb": "downed"
+      }
+    },
+    {
+      "row": 573,
+      "record": {
+        "args": [],
+        "day": 8,
+        "delta": {
+          "actor": {
+            "ability": {
+              "base": 48.0
+            },
+            "vitality": "revived"
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "base": 48.0,
+          "by": null
+        },
+        "kind": "event",
+        "result": "applied",
+        "slot": "朝",
+        "subject": "桃太郎",
+        "turn": 29,
+        "verb": "revived"
+      }
+    },
+    {
+      "row": 599,
+      "record": {
+        "args": [
+          "鬼"
+        ],
+        "choice_prob": 0.3175345661216557,
+        "classification": {
+          "category": "II",
+          "risk_class": "neutral",
+          "stance_sign": 0,
+          "subtype": "observe",
+          "target_role": "hostile"
+        },
+        "day": 8,
+        "delta": {
+          "actor": {
+            "belief": {
+              "鬼": {
+                "identity_seen": true,
+                "known_modifiers": [
+                  "金棒"
+                ]
+              }
+            },
+            "pending": [
+              {
+                "condition": "present(鬼) and vitality(planter) != 'downed'",
+                "description": "金棒の隙を見切って仲間に合図を送る",
+                "effect": {
+                  "modifier": {
+                    "kind": "insight",
+                    "source": "見切り",
+                    "target": "planter",
+                    "value": 15
+                  }
+                },
+                "id": "oni_gap:鬼",
+                "library_id": "oni_gap",
+                "mode": "chosen",
+                "planted_by": "桃太郎",
+                "planted_turn": 31,
+                "resolved": false,
+                "resolved_turn": null,
+                "target": "鬼"
+              }
+            ]
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "believed_diff": -69.15,
+          "exposed_estimate": null,
+          "identity_seen": true,
+          "revealed": [
+            "金棒"
+          ],
+          "strength_diff": -72.2,
+          "target": "鬼"
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発",
+              "越境"
+            ],
+            true,
+            "hostile",
+            "revived",
+            "hostile",
+            true
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.6910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.9705401412001403,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.694335298533,
+          "m_nov": 0.961526788956,
+          "m_rat": 1.857891390787,
+          "m_risk": 1.0,
+          "m_stance": 1.0,
+          "p_prec": 0.088636363636,
+          "p_rat": 0.23645320197
+        },
+        "result": "observed",
+        "slot": "夕方",
+        "subject": "桃太郎",
+        "turn": 31,
+        "verb": "observe"
+      }
+    },
+    {
+      "row": 658,
+      "record": {
+        "args": [],
+        "day": 9,
+        "delta": {
+          "actor": {},
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "downed_since": 33
+        },
+        "kind": "event",
+        "result": "applied",
+        "slot": "朝",
+        "subject": "桃太郎",
+        "turn": 33,
+        "verb": "downed"
+      }
+    },
+    {
+      "row": 734,
+      "record": {
+        "args": [],
+        "day": 10,
+        "delta": {
+          "actor": {
+            "ability": {
+              "base": 46.0
+            },
+            "vitality": "revived"
+          },
+          "objective": null,
+          "relations": [],
+          "targets": {}
+        },
+        "details": {
+          "base": 46.0,
+          "by": null
+        },
+        "kind": "event",
+        "result": "applied",
+        "slot": "朝",
+        "subject": "桃太郎",
+        "turn": 37,
+        "verb": "revived"
+      }
+    },
+    {
+      "row": 741,
+      "record": {
+        "args": [
+          "鬼",
+          "金棒"
+        ],
+        "choice_prob": 0.19746836091599945,
+        "classification": {
+          "category": "I",
+          "risk_class": "risky",
+          "stance_sign": -1,
+          "subtype": "weaken_indirect",
+          "target_role": "hostile"
+        },
+        "day": 10,
+        "delta": {
+          "actor": {
+            "ability": {
+              "modifiers": [
+                {
+                  "active": true,
+                  "id": "effect:oni_gap:鬼",
+                  "value": 15.0,
+                  "visible": true
+                },
+                {
+                  "active": true,
+                  "id": "item:金棒",
+                  "value": 40.0,
+                  "visible": false
+                }
+              ]
+            },
+            "resources": {
+              "assets": {
+                "金棒": 1
+              }
+            }
+          },
+          "objective": null,
+          "relations": [
+            {
+              "affinity": -0.2,
+              "awareness": 0.0,
+              "observer": "鬼",
+              "target": "桃太郎"
+            }
+          ],
+          "targets": {
+            "鬼": {
+              "ability": {
+                "modifiers": [
+                  {
+                    "active": false,
+                    "id": "item:金棒",
+                    "value": 40.0,
+                    "visible": false
+                  }
+                ]
+              },
+              "resources": {
+                "assets": {
+                  "金棒": null
+                }
+              }
+            }
+          }
+        },
+        "details": {
+          "believed_diff": 23.85,
+          "neutralized": {
+            "source": "金棒",
+            "target": "鬼",
+            "transferred": true
+          },
+          "strength_diff": 20.8
+        },
+        "effective": true,
+        "kind": "decision",
+        "policy": {
+          "ctx": [
+            [
+              "出発",
+              "越境"
+            ],
+            true,
+            "hostile",
+            "revived",
+            "hostile",
+            true
+          ],
+          "effective_genome": {
+            "category_weight": {
+              "I": 0.6910108198129674,
+              "II": 0.8128172192974256,
+              "III": 0.09172392194427775,
+              "IV": 0.8221298155810893,
+              "V": 0.29321110442258946,
+              "VI": 0.3674649740885933
+            },
+            "novelty_drive": 0.5517555972411828,
+            "risk_tolerance": 0.9705401412001403,
+            "stance_shift_bias": 0.01744987302244727
+          },
+          "m_cat": 1.440427190616,
+          "m_nov": 0.972301072598,
+          "m_rat": 0.483654325068,
+          "m_risk": 1.9410802824,
+          "m_stance": 0.982550126978,
+          "p_prec": 0.06963562753,
+          "p_rat": 0.009756097561
+        },
+        "result": "neutralized",
+        "slot": "昼",
+        "subject": "桃太郎",
+        "turn": 38,
+        "verb": "neutralize"
+      }
+    },
+    {
+      "row": 770,
+      "record": {
+        "args": [],
+        "day": 10,
+        "delta": {
+          "actor": {
+            "objective": {
+              "鬼ヶ島の宝物": "村"
+            }
+          },
+          "objective": {
+            "鬼ヶ島の宝物": "村"
+          },
+          "relations": [],
+          "targets": {
+            "おじいさん": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "おばあさん": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "キジ": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "漁師": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "牛": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "犬": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "猿": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "用心棒": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "蜂": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "蟹": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "豚": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "馬": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "鬼": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            },
+            "鬼の弟": {
+              "objective": {
+                "鬼ヶ島の宝物": "村"
+              }
+            }
+          }
+        },
+        "details": {
+          "dangling_effects": 10,
+          "delivered": {
+            "鬼ヶ島の宝物": "村"
+          },
+          "label": "鬼退治を果たし、宝を村へ持ち帰った"
+        },
+        "id": "homecoming",
+        "kind": "event",
+        "result": "applied",
+        "slot": "夕方",
+        "subject": "桃太郎",
+        "turn": 39,
+        "verb": "ending"
+      }
+    }
+  ]
+}

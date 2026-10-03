@@ -291,8 +291,19 @@ def build_confirmation(handler, run_id, query=None):
             errors.append("指定された設定が見つかりません")
             config_id = None
 
+    story_pipeline = kind == "narrate" and qval("pipeline") == "story_v1"
+    story_refs = {}
+    if story_pipeline:
+        from execution.story_store import StoryStore
+        stories = StoryStore(job_store.configs.control)
+        for cid in candidate_ids:
+            current = stories.current(run_id,cid)
+            if not current or not current["confirmed"]:
+                errors.append(f"{_short_id(cid)}: 素材・骨格を整理して確認してください")
+            else:
+                story_refs[cid] = stories.reference(current["plan"]["plan_id"])
     synopsis_refs = {}
-    if kind == "narrate" and config is not None:
+    if kind == "narrate" and config is not None and not story_pipeline:
         synopsis_refs = _auto_synopsis_refs(job_store, run_id, set(candidate_ids))
 
     attempt_ids = []
@@ -337,6 +348,8 @@ def build_confirmation(handler, run_id, query=None):
             "acknowledge_unknown": acknowledge_unknown, "attempt_ids": attempt_ids,
         }
 
+    if request is not None and story_pipeline:
+        request.update(schema_version=2,pipeline="story_v1",story_refs=story_refs,synopsis_refs={})
     return dict(
         run_id=run_id, kind=kind, mode=mode, candidate_ids=candidate_ids, by_id=by_id,
         selection_revision=selected["revision"], config_id=config_id, config=config,
@@ -776,6 +789,11 @@ def _entry_article(entry, candidates_by_id, store, output_id, run_id, synopsis_r
         try:
             raw = verified(contained(store.folder(output_id), entry["text_ref"]), entry["text_sha256"])
             text = raw.decode("utf-8")
+            if store.request(output_id).get("pipeline") == "story_v1":
+                from execution.story_service import read_story_output
+                result = read_story_output(store,output_id,cid)
+                text = result["text"] if result else None
+                parts.append(f'<p><a href="/stories/outputs/{_url(output_id)}/{_url(cid)}">本文と骨格・検査を比較 →</a></p>')
         except (ConfigError, OSError, UnicodeDecodeError):
             text = None
         if text is None:
@@ -811,6 +829,12 @@ def _entry_text(handler, output_id, candidate_id):
         raise ConfigError("candidate_id", "本文がありません", code="not_found")
     store = OutputStore(job_store.configs.control)
     raw = verified(contained(store.folder(output_id), entry["text_ref"]), entry["text_sha256"])
+    if store.request(output_id).get("pipeline") == "story_v1":
+        from execution.story_service import read_story_output
+        result = read_story_output(store,output_id,candidate_id)
+        if not result or result["text"] is None:
+            raise ConfigError("story","本文の形式を確認できません",code="conflict")
+        raw = result["text"].encode("utf-8")
     handler._send_bytes(HTTPStatus.OK, "text/plain; charset=utf-8", raw)
 
 

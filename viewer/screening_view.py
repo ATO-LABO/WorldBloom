@@ -15,6 +15,10 @@ def body_text(store, oid, entry):
     if entry.get("status") != "ok" or not entry.get("text_ref"):
         return None
     try:
+        if store.request(oid).get("pipeline") == "story_v1":
+            from execution.story_service import read_story_output
+            result = read_story_output(store,oid,entry["candidate_id"])
+            return result["text"] if result else None
         return verified(contained(store.folder(oid), entry["text_ref"]), entry["text_sha256"]).decode("utf-8")
     except ERRORS:
         return None

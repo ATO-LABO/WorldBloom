@@ -103,6 +103,13 @@ def run(control, output_id):
                 call = sink.call_request(auth)
                 call["deadline"] = job["created_at"] + job["wall_seconds"]
                 run_generation(call, sink)
+                if request.get("pipeline") == "story_v1":
+                    from execution.story_service import process_story_output
+                    try:
+                        process_story_output(store, output_id, cid)
+                    except (OSError, ValueError, ConfigError) as error:
+                        from execution.provenance import atomic_json
+                        atomic_json(sink.folder / "story-validation-error.json", {"code":"validation_error","type":type(error).__name__})
             payload = store.project(output_id)
             counts = {}
             for entry in payload["entries"]:
@@ -135,6 +142,15 @@ def build(root):
         elite["cell"] = cell
         archive["cells"][cid] = elite
         archive["candidate_mapping"][cid] = {"candidate_id": cid, "cell": cell}
+
+        if request.get("pipeline") == "story_v1":
+            from execution.story_service import pinned_story
+            from gapengine.story_narration import build_story_prompt
+            prompt_request = {**request, "sources":[{"candidate_id":c["candidate_id"],
+                "source_log_sha256":c["source_log_sha256"]} for c in plan["candidates"]]}
+            material, story_plan, _ = pinned_story(root, cid, prompt_request)
+            prompts[cid] = build_story_prompt(material, story_plan)
+            continue
         rows = read_rows(root / "inputs/candidates" / cid / "layers.jsonl")
         scenes = extract_scenes(rows, meta)
         synopsis = None if request["synopsis_refs"][cid] is None else (

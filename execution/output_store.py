@@ -14,7 +14,7 @@ from execution.generation import Response, result, validate_response, aggregate
 REQUEST_FIELDS = frozenset({"schema_version", "output_id", "request_id", "job_id", "kind", "run_id", "settings_provenance",
     "config_id", "publication_revision", "candidates_sha256", "selection_revision", "selection_sha256",
     "candidate_ids", "sources", "backend", "model", "limits", "mode", "synopsis_refs",
-    "input_manifest_sha256", "config_sha256", "runtime_manifest_sha256", "acknowledge_unknown", "attempt_ids"})
+    "input_manifest_sha256", "config_sha256", "runtime_manifest_sha256", "acknowledge_unknown", "attempt_ids", "pipeline", "story_refs"})
 
 
 def verified(path, digest):
@@ -56,7 +56,12 @@ class OutputStore:
             pending = contained(self.root, ".pending-" + uuid.uuid4().hex)
             pending.mkdir()
             doc = deepcopy(request)
-            doc["schema_version"] = 1
+            version = doc.get("schema_version", 1)
+            if type(version) is not int or version not in (1, 2):
+                raise ConfigError("schema_version", "未対応の生成要求版です")
+            if version == 2 and (doc.get("pipeline") != "story_v1" or doc.get("kind") != "narrate"):
+                raise ConfigError("pipeline", "未対応の本文生成方式です")
+            doc["schema_version"] = version
             atomic_json(pending / "request.json", doc)
             item_hashes = {}
             for cid in ids:
@@ -103,6 +108,30 @@ class OutputStore:
     def sink(self, output_id, candidate_id, *, request=None):
         return AttemptSink(self, output_id, candidate_id, request=request)
 
+    def begin_cli_execution(self, output_id):
+        """Start the standalone budget once, preserving the preparation timestamp."""
+        request = self.request(output_id)
+        if (request.get("schema_version") != 2 or request.get("pipeline") != "story_v1"
+                or not str(request.get("job_id", "")).startswith("cli-")):
+            raise ConfigError("output_id", "CLI本文生成だけが実行時計を開始できます")
+        folder = self.folder(output_id)
+        if not (folder / "worker-started.json").is_file():
+            raise ConfigError("output_id", "所有workerの開始記録が必要です", code="conflict")
+        with directory_lock(folder):
+            quota = read_json(folder / "quota.json")
+            started = quota.get("execution_started_at")
+            if started is not None:
+                import math
+                if type(started) not in (int, float) or not math.isfinite(started):
+                    raise ConfigError("quota", "実行時計が不正です", code="snapshot_changed")
+                return started
+            if quota["started"] or any(self.sink(output_id, cid, request=request).current()
+                                       for cid in request["candidate_ids"]):
+                raise ConfigError("quota", "開始済み試行の時計は再定義できません", code="conflict")
+            quota["execution_started_at"] = time.time()
+            atomic_json(folder / "quota.json", quota)
+            return quota["execution_started_at"]
+
     def project(self, output_id):
         request = self.request(output_id)
         entries = []
@@ -144,10 +173,13 @@ class AttemptSink:
         self.prompt_sha256 = item["prompt_sha256"]
 
     def call_request(self, credentials=None):
-        return {**self.identity, "backend": self.request["backend"], "model": self.request["model"],
+        call = {**self.identity, "backend": self.request["backend"], "model": self.request["model"],
                 "limits": deepcopy(self.request["limits"]), "prompt_sha256": self.prompt_sha256,
                 "prompt": verified(self.folder / "prompt.txt", self.prompt_sha256).decode("utf-8"),
                 "credentials": credentials or {}}
+        if self.request.get("pipeline") == "story_v1":
+            call["response_format"] = "story_json"
+        return call
 
     def check(self, request):
         if self.current() is not None or self.started():
@@ -169,8 +201,14 @@ class AttemptSink:
                 raise ConfigError("attempt_id", "生成呼出しは既に予約されています", code="conflict")
             quota = read_json(self.output / "quota.json")
             limits = self.request["limits"]
+            started_at = quota["created_at"]
+            if (self.request.get("schema_version") == 2 and self.request.get("pipeline") == "story_v1"
+                    and str(self.request.get("job_id", "")).startswith("cli-")):
+                started_at = quota.get("execution_started_at")
+                if started_at is None:
+                    return False
             if (len(quota["started"]) >= min(limits["max_calls"], len(self.request["candidate_ids"]))
-                    or time.time() - quota["created_at"] >= limits["wall_seconds"]):
+                    or time.time() - started_at >= limits["wall_seconds"]):
                 return False
             quota["started"].append(self.identity["attempt_id"])
             atomic_json(self.output / "quota.json", quota)
