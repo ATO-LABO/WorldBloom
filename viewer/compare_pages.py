@@ -1,7 +1,7 @@
 """Candidate comparison bound to a verified publication and candidate IDs."""
 import json
 from hashlib import sha256
-from viewer import data, pages, explanation_ui as ex, reader_ui, sifting_view, workbench_pages as wb, generation_pages
+from viewer import comparison_story, data, pages, explanation_ui as ex, reader_ui, sifting_view, workbench_pages as wb, generation_pages
 
 E, U = pages._escape, pages._url_segment
 VERDICTS = (("unclassified", "未分類"), ("adopted", "採用"), ("held", "保留"), ("rejected", "除外"))
@@ -46,6 +46,9 @@ def _evidence(explanation, raw_href):
 
 def _comparison_fields(candidate, explanation):
     """Use recorded fields only; a representative action is not necessarily decisive."""
+    if candidate.get("comparison"):
+        info = candidate["comparison"]
+        return info["goal"], info["choice"], info["consequence"]
     goal = candidate.get("target_ending") or candidate.get("ending")
     goal = goal if isinstance(goal, str) and goal else None
     item = (explanation or {}).get("representative") or {}
@@ -67,13 +70,14 @@ def _comparison_list(bound, items, explanations):
               and len({fields[cid][i] for cid in bound}) == 1 for i in range(3)]
     different = [len({fields[cid][i] for cid in bound if fields[cid][i] is not None}) > 1 for i in range(3)]
     html = '<section class="cp-overview" aria-label="物語の違い"><div class="cp-overview-tools"><strong>' + str(len(bound)) + '件を比較</strong><label><input type="checkbox" data-cp-dim checked> 共通する記録を薄く表示</label></div>'
-    html += '<p class="cp-hint">目的は記録された結末条件、選択は原ログの代表場面です。決定的な選択とは限りません。矢印はその行動と直後の結果を結びます。</p>'
+    html += '<p class="cp-hint">目的は記録された結末条件、選択は原ログの代表場面です。決定的な選択とは限りません。後続は記録されたつながりと到達した結末です。結末全体の原因を断定しません。</p>'
     if not bound:
         html += '<p class="cp-hint">比較候補は未選択です。上の「比較する候補を変更」から選んでください。候補がない場合は一覧で実験の状況を確認できます。</p>'
     html += '<div class="cp-row-head" aria-hidden="true"><span>候補</span><span>目的・結末条件</span><span>記録された選択</span><span>その結果</span></div><div class="cp-rows">'
     for index, cid in enumerate(bound):
         c = items[cid]
-        html += f'<button type="button" class="cp-row" data-cp-open="{E(cid)}" aria-controls="cp-panel" aria-pressed="false"><span class="cp-row-title"><b>{index + 1:02d}</b><span>{E(c["label"])}<small data-cp-row-state>{E(dict(VERDICTS).get(c["state"], "未分類"))}</small></span></span>'
+        info = c.get("comparison", {})
+        html += f'<button type="button" class="cp-row" data-cp-open="{E(cid)}" aria-controls="cp-panel" aria-pressed="false"><span class="cp-row-title"><b>{index + 1:02d}</b><span>{E(c["label"])}<small data-cp-row-state>{E(dict(VERDICTS).get(c["state"], "未分類"))}</small><small>{E(info.get("label", ""))}</small></span></span>'
         for i, (label, fallback) in enumerate((("目的・結末条件", "目的は記録から未確認"), ("記録された選択", "選択の記録なし"), ("その結果", "結果の記録なし"))):
             value = fields[cid][i]
             style = "cp-common" if common[i] else "cp-difference" if value and different[i] else ""
@@ -135,6 +139,9 @@ def render(handler, experiment_name, query):
             if not c["synopsis"]:
                 c["synopsis"] = "\n\n".join(p["text"] for p in reader["summary"]["synopsis"])
                 c["reader_label"] = reader_ui._short_label(reader)
+        c["comparison"] = comparison_story.describe(explanation)
+        if not c.get("title") and c["comparison"]["title"]:
+            c["label"] = c["comparison"]["title"]
         if c["synopsis"]:
             c["can_synopsis"] = False
     # The cell-based extractor must still belong to the publication we just bound.
@@ -179,6 +186,14 @@ def render(handler, experiment_name, query):
                 body += f'<p><a data-cp-generate href="/runs/{U(rid)}/generate?kind=synopsize&amp;candidate={U(cid)}">この候補のあらすじを準備 →</a></p>'
             elif c["output_href"]:
                 body += '<p>' + _link(c["output_href"], "生成状況を確認 →") + '</p>'
+        info = c["comparison"]
+        body += '<details class="cp-reading-evidence"><summary>比較の根拠・後続の展開</summary><p>' + E(info['label']) + '</p>'
+        body += '<p>' + E(info['consequence'] or '後続のつながり・結末は未確認') + '</p>'
+        if info['goal_source']:
+            body += '<p>結末条件の出典: 実行時の封印検証済み設定 ' + E(info['goal_source']) + '</p>'
+        else:
+            body += '<p>実行時の結末条件は未記録です。到達した結末を目的として読み替えていません。</p>'
+        body += '<p>' + ' · '.join(_link(f'{c["raw_href"]}?line={n}#L{n}', f'原ログ L{n}') for n in info['lines'] if c['raw_href']) + '</p></details>'
         body += '<p>' + _link(c["detail_href"] or c["raw_href"], "この物語と根拠を詳しく読む →") + '</p></section>'
         body += '<div class="cp-evidence" data-cp-view="evidence" hidden>' + _evidence(explanations[cid], c["raw_href"]) + '</div>'
         body += '<section class="cp-body cp-data" data-cp-view="data" hidden><h3>実験データ</h3><dl>'

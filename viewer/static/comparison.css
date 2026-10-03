@@ -131,3 +131,5 @@
 @media(max-width:1100px) and (min-width:768px){.cp-workspace{grid-template-columns:minmax(0,1fr) minmax(320px,1fr)}.cp-row-head{display:none}.cp-row{grid-template-columns:1fr!important;gap:10px!important}.cp-fact>small{display:block;font-size:11px;color:#667086}.cp-fact:nth-child(n+3):before{display:none}}
 @media(max-width:767px){.cp-workspace{display:block;overflow:auto}.cp-overview{padding:8px 12px}.cp-rows{overflow:visible}.cp-row-head{display:none}.cp-shell .cp-row{grid-template-columns:1fr;gap:14px;padding:20px 16px}.cp-fact>small{display:block;font-size:11px;color:#667086}.cp-fact:nth-child(n+3):before{display:none}.cp-inspector{display:none;border:0}.cp-reading .cp-overview{display:none}.cp-reading .cp-inspector{display:flex}.cp-back{display:block;align-self:flex-start;margin:0 20px 12px}.cp-scroll{overflow:visible}.cp-map{max-height:none}.cp-card-head h2{font-size:21px}.cp-shell .cp-prose{font-size:16px}.cp-heading h1{font-size:23px}}
 @media(min-width:768px){.cp-heading h1{font-size:30px;letter-spacing:.02em}.cp-heading{padding-block:20px}.cp-heading p{font-size:14px}}
+
+.cp-row-title>b{flex-shrink:0;white-space:nowrap}
