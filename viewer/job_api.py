@@ -98,7 +98,7 @@ def dispatch(handler, parts, method):
             boundary(handler, client_header=False, body_required=False)
             from viewer import local_status
             settings = getattr(handler.server, "settings_path", None)
-            handler._send_json(HTTPStatus.OK, local_status.snapshot(settings))
+            handler._send_json(HTTPStatus.OK, local_status.snapshot(settings, telemetry=handler.server.local_telemetry))
             return True
         if method == "POST" and parts in (["api", "status", "local", "preload"], ["api", "status", "local", "unload"]):
             # Same job_store exemption as the GET route above -- the Viewer
