@@ -143,6 +143,7 @@ class SnapshotTests(unittest.TestCase):
             temperature_read=_no_temperature,
             lease_state=_lease_free,
             llama_is_ready=_llama_not_ready,
+            llama_list_models=lambda config: ([], "server_unreachable"),
             ollama_list_models=_ollama_unreachable,
             ollama_loaded_models=_no_loaded_models,
             has_preloaded_llama_server=_no_preloaded_llama_server,

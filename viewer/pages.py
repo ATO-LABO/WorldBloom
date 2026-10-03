@@ -162,16 +162,7 @@ def _header_pickers(
         '<a href="/configs" title="設定" aria-label="設定">'
         '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M10 2h4l.6 3 2 .9 2.6-1.5 2 3.5-2.2 2v2.2l2.2 2-2 3.5-2.6-1.5-2 .9-.6 3h-4l-.6-3-2-.9-2.6 1.5-2-3.5 2.2-2V10L2.8 8l2-3.5 2.6 1.5 2-.9L10 2zm2 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg><span>設定</span></a>'
         "</span>"
-        '<dialog class="sheet-dialog local-status-dialog" id="local-status-dialog" '
-        'data-fetch="/api/status/local" aria-label="GPU・ローカルAIの動作状況">'
-        '<section class="local-status">'
-        '<div class="sheet-head"><h4>GPU・ローカルAIの動作状況</h4>'
-        '<button type="button" class="button" data-local-status-refresh>更新</button>'
-        '<button type="button" class="button" data-close-dialog>閉じる</button></div>'
-        '<p class="local-status-backend" data-local-status-backend>確認中…</p>'
-        '<dl class="local-status-rows" data-local-status-rows></dl>'
-        '<p class="local-status-time" data-local-status-time></p>'
-        "</section></dialog>"
+        '<dialog class="sheet-dialog local-status-dialog" id="local-status-dialog" data-fetch="/api/status/local" aria-label="GPU・ローカルAIの動作状況">\n<section class="local-status">\n  <div class="sheet-head"><h4>GPU・ローカルAIの動作状況</h4><div class="ls-head-actions"><button type="button" class="button" data-local-status-refresh>更新</button><button type="button" class="button" data-close-dialog>閉じる</button></div></div>\n  <div class="ls-route"><p class="local-status-backend" data-local-status-backend>確認中…</p><span class="ls-update" data-ls-update>自動更新</span></div>\n  <p class="ls-error" data-ls-error role="alert" hidden></p>\n  <section class="ls-temperature" aria-labelledby="ls-temp-heading">\n    <div class="ls-section-head"><h5 id="ls-temp-heading">GPU温度</h5><div class="ls-chart-controls"><select data-ls-gpu aria-label="表示するGPU" hidden></select><label>表示期間 <select data-ls-range aria-label="温度の表示期間"><option value="5">直近5分</option><option value="15" selected>直近15分</option><option value="60">直近60分</option></select></label></div></div>\n    <p class="ls-gpu-name" data-ls-gpu-name>GPU情報を確認中…</p>\n    <div class="ls-temp-summary"><strong data-ls-temp>—</strong><span data-ls-delta>直近1分の推移を収集中</span></div>\n    <svg class="ls-chart" data-ls-chart role="img" aria-label="GPU温度の時系列グラフ"></svg>\n    <div class="ls-chart-foot"><span data-ls-history-note>履歴を収集中</span><span data-ls-readout>—</span></div>\n    <p class="ls-thermal" data-ls-thermal></p>\n  </section>\n  <div class="ls-metrics">\n    <section class="ls-metric" aria-labelledby="ls-util-heading"><h5 id="ls-util-heading">GPU計算使用率</h5><strong class="ls-metric-value" data-ls-util>—</strong><div class="ls-meter" data-ls-util-meter role="meter" aria-label="GPU計算使用率 %" aria-valuemin="0" aria-valuemax="100" hidden><span data-ls-util-fill></span></div><p data-ls-activity>取得中…</p></section>\n    <section class="ls-metric" aria-labelledby="ls-vram-heading"><h5 id="ls-vram-heading">GPUメモリ（VRAM）</h5><strong class="ls-metric-value" data-ls-vram>—</strong><div class="ls-meter ls-vram-meter" data-ls-vram-meter role="meter" aria-label="VRAM使用量 MiB" aria-valuemin="0" hidden><span data-ls-vram-fill></span></div><p data-ls-memory>取得中…</p></section>\n  </div>\n  <section class="ls-models" aria-labelledby="ls-model-heading"><h5 id="ls-model-heading">モデルの準備状態</h5><div data-local-status-rows></div></section>\n  <div class="ls-status-foot"><span data-ls-lease>WorldBloomのGPU利用予約：確認中</span><span data-local-status-time>—</span></div>\n</section>\n</dialog>'
         "</div>"
     )
 
@@ -237,7 +228,7 @@ def document(
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{_escape(title)} | WorldBloom</title>"
         '<link rel="stylesheet" href="/static/app.css">'
-        '<script src="/static/app.js" defer></script>'
+        '<script src="/static/app.js" defer></script><script src="/static/local-status.js" defer></script>'
         '<script src="/static/workbench.js" defer></script>'
         f"</head><body{body_class}>"
         '<div class="app-shell">'

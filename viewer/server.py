@@ -50,6 +50,7 @@ STATIC_FILES = {
     "screening-workspace.js": "application/javascript; charset=utf-8",
     "app.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
+    "local-status.js": "application/javascript; charset=utf-8",
     "workbench.js": "text/javascript; charset=utf-8",
     "run-workspace.css": "text/css; charset=utf-8",
     "sifting-workspace.css": "text/css; charset=utf-8",
@@ -92,6 +93,15 @@ class ViewerServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
     _last_reconcile = 0.0
+
+    def __init__(self, *args, **kwargs):
+        from viewer.local_telemetry import TelemetryMonitor
+        self.local_telemetry = TelemetryMonitor()
+        super().__init__(*args, **kwargs)
+
+    def server_close(self):
+        self.local_telemetry.close()
+        super().server_close()
 
     def service_actions(self):
         jobs = getattr(self, "job_store", None)

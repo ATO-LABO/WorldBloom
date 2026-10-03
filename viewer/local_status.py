@@ -15,6 +15,8 @@ from typing import Any, Mapping
 from execution.output_settings import read_output_settings
 from execution.provenance import read_json
 from gapengine import gpu_guard, llama_server, ollama
+from viewer.local_models import read_loaded_models, ollama_items
+from viewer.local_telemetry import number
 
 # Which row a preload/unload targets, keyed by the resolved backend name
 # (settings.json's default_backend), since VRAM can't hold both at once --
@@ -83,50 +85,53 @@ def _lease_row(guard: Mapping[str, Any], *, enabled: bool, state=gpu_guard.lease
     return {"id": "gpu_lease", "label": "GPUの使用", "value": f"使用中: {owner}{elapsed}", "level": "warn"}
 
 
-def _llama_row(config: Mapping[str, Any], *, is_ready=llama_server.is_ready) -> dict[str, Any]:
-    # Probed at its (possibly default) base_url even with no explicit config,
-    # same as _ollama_row -- a server already listening there is real signal.
-    # "ready"/"has_launch" are internal-only: snapshot() uses them to gate the
-    # preload/unload buttons and strips them before the row goes out as JSON.
+def _llama_row(config: Mapping[str, Any], *, is_ready=llama_server.is_ready, list_models=None) -> dict[str, Any]:
     ready = is_ready(config)
     has_launch = llama_server.has_launch_command(config)
-    if ready:
-        model = config.get("model") or "?"
-        return {"id": "llama_server", "label": "llama-server", "value": f"起動中 — {model}", "level": "ok",
-                "ready": True, "has_launch": has_launch}
-    if has_launch:
-        value = "停止中（生成時に自動起動）"
-    elif not config:
-        value = "未設定"
-    else:
-        value = "停止中"
-    return {"id": "llama_server", "label": "llama-server", "value": value, "level": "off",
-            "ready": False, "has_launch": has_launch}
+    model = str(config.get("model") or "モデル名未取得")
+    names, reason = list_models(config) if ready and list_models else ([], "unavailable")
+    names = [n for n in names if isinstance(n, str) and n]
+    known = ready and reason is None and bool(names)
+    models = [{"name": name, "configured": name == model,
+               "state": "loaded", "placement": "unknown", "vram_bytes": None,
+               "size_bytes": None, "execution": "unknown"} for name in names] if known else []
+    if config and not any(m["configured"] for m in models):
+        models.insert(0, {"name": model, "configured": True, "state": "unknown",
+                          "placement": "unknown", "vram_bytes": None,
+                          "size_bytes": None, "execution": "unknown"})
+    if ready and not models:
+        models.append({"name": "モデル名未取得", "configured": False, "state": "unknown",
+                       "placement": "unknown", "vram_bytes": None,
+                       "size_bytes": None, "execution": "unknown"})
+    value = f"起動中 — {model}" if ready else (
+        "停止中（生成時に自動起動）" if has_launch else ("未設定" if not config else "停止中"))
+    return {"id": "llama_server", "label": "llama-server", "value": value,
+            "level": "ok" if ready else "off", "ready": ready, "has_launch": has_launch,
+            "server_state": "up" if ready else ("unconfigured" if not config else "down"),
+            "models_known": known, "models": models}
 
 
 def _ollama_row(
-    guard: Mapping[str, Any],
-    config: Mapping[str, Any],
-    *,
-    list_models=ollama.list_models,
-    loaded_models=gpu_guard.ollama_models,
+    guard: Mapping[str, Any], config: Mapping[str, Any], *,
+    list_models=ollama.list_models, loaded_models=read_loaded_models,
 ) -> dict[str, Any]:
-    # The base_url that actually matters here is the one generation itself
-    # would use (config.base_url, per gapengine/ollama.py); gpu_guard's
-    # ollama_base_url is only for arbitration and is a fallback for it.
-    # "has_model_loaded" is internal-only, same reason as _llama_row's "ready".
     base_url = str(config.get("base_url") or guard.get("ollama_base_url") or ollama.DEFAULT_BASE_URL)
-    _names, reason = list_models({"base_url": base_url})
+    names, reason = list_models({"base_url": base_url})
+    configured = str(config.get("model") or ollama.DEFAULT_MODEL)
+    loaded = loaded_models(base_url) if reason is None else None
+    items = ollama_items(names, loaded, configured, available=reason is None)
     if reason is not None:
-        return {"id": "ollama", "label": "Ollama", "value": "応答なし（未起動）", "level": "off",
-                "has_model_loaded": False}
-    loaded = loaded_models(base_url)
-    if not loaded:
-        return {"id": "ollama", "label": "Ollama", "value": "起動中 — モデル未読み込み", "level": "ok",
-                "has_model_loaded": False}
-    running = ", ".join(str(model.get("name")) for model in loaded if model.get("name"))
-    return {"id": "ollama", "label": "Ollama", "value": f"起動中 — {running} を読み込み中", "level": "ok",
-            "has_model_loaded": True}
+        value, level = "応答なし（接続できません）", "off"
+    elif loaded is None:
+        value, level = "起動中 — モデル状態取得不可", "warn"
+    elif not loaded:
+        value, level = "起動中 — モデル未読み込み", "ok"
+    else:
+        running = ", ".join(str(m.get("name") or m.get("model")) for m in loaded if m.get("name") or m.get("model"))
+        value, level = f"起動中 — {running} ロード済み", "ok"
+    return {"id": "ollama", "label": "Ollama", "value": value, "level": level,
+            "has_model_loaded": bool(loaded), "server_state": "up" if reason is None else "down",
+            "models_known": loaded is not None, "models": items}
 
 
 def _read_settings(settings_path) -> Mapping[str, Any]:
@@ -156,9 +161,11 @@ def snapshot(
     temperature_read=gpu_guard.read_gpu_temperature,
     lease_state=gpu_guard.lease_state,
     llama_is_ready=llama_server.is_ready,
+    llama_list_models=llama_server.list_models,
     ollama_list_models=ollama.list_models,
-    ollama_loaded_models=gpu_guard.ollama_models,
+    ollama_loaded_models=read_loaded_models,
     has_preloaded_llama_server=gpu_guard.has_preloaded_llama_server,
+    telemetry=None,
 ) -> dict[str, Any]:
     """A diagnostic snapshot for the topbar's GPU/AI status dialog."""
 
@@ -177,10 +184,18 @@ def snapshot(
     with _preload_lock:
         preload_state = dict(_preload_state)
 
+    gpu = telemetry.snapshot() if telemetry is not None else None
+    if gpu is not None:
+        first = next((d for d in gpu["devices"] if d["index"] == 0), {})
+        temperature_read = lambda: first.get("temperature_c")
+    lease = lease_state() if guard_enabled else {"busy": False}
+    thermal = {**thermal,
+               "pause_at": number(thermal.get("pause_at")) if number(thermal.get("pause_at")) is not None else gpu_guard.DEFAULT_THERMAL["pause_at"],
+               "resume_at": number(thermal.get("resume_at")) if number(thermal.get("resume_at")) is not None else gpu_guard.DEFAULT_THERMAL["resume_at"]}
     rows = [
         _temperature_row(thermal, guard_enabled and thermal.get("enabled") is not False, read=temperature_read),
-        _lease_row(guard, enabled=guard_enabled, state=lease_state),
-        _llama_row(llama_config, is_ready=llama_is_ready),
+        _lease_row(guard, enabled=guard_enabled, state=lambda: lease),
+        _llama_row(llama_config, is_ready=llama_is_ready, list_models=llama_list_models),
         _ollama_row(guard, ollama_config, list_models=ollama_list_models, loaded_models=ollama_loaded_models),
     ]
     for row in rows:
@@ -216,6 +231,25 @@ def snapshot(
             if row["in_use"]:
                 row["can_preload"] = guard_enabled and not row["has_model_loaded"] and not starting
             row["can_unload"] = guard_enabled and bool(row["has_model_loaded"])
+        if row["id"] in ("llama_server", "ollama"):
+            configured_model = next((m for m in row["models"] if m["configured"]), None)
+            row["can_preload_selected"] = (row["can_preload"] or (
+                guard_enabled and row["in_use"] and row["id"] == "ollama" and not starting
+                and row["models_known"] and configured_model is not None
+                and configured_model["state"] == "unloaded"))
+            if row["id"] == "ollama":
+                row["can_preload_selected"] = bool(row["can_preload_selected"] and row["models_known"]
+                    and configured_model and configured_model["state"] == "unloaded")
+            for model in row["models"]:
+                model["selected"] = row["in_use"] and model["configured"]
+                if model["configured"] and row["id"] == starting:
+                    model["state"] = "loading"
+                elif (model["configured"] and preload_state["error"] and
+                      row["id"] == _ROW_ID_FOR_BACKEND.get(preload_state["backend"]) and model["state"] != "loaded"):
+                    model["state"] = "error"
+            row["actions_disabled"] = bool(lease.get("busy") or preload_state["phase"] == "starting"
+                                           or (row["id"] == "ollama" and not row["models_known"])
+                                           or (row["id"] == "llama_server" and row["ready"] and not row["models_known"]))
         row.pop("ready", None)
         row.pop("has_launch", None)
         row.pop("has_model_loaded", None)
@@ -229,6 +263,15 @@ def snapshot(
         # the (Japanese, display-only) row text.
         "preloading": preload_state["phase"] == "starting",
     }
+    result["lease"] = {"enabled": guard_enabled, "busy": bool(lease.get("busy")), "owner": lease.get("owner")}
+    result["thermal"] = {"enabled": guard_enabled and thermal.get("enabled") is not False,
+                         "pause_at": thermal["pause_at"], "resume_at": thermal["resume_at"], "gpu_index": 0}
+    result["checked_at_epoch"] = time.time()
+    if gpu is not None:
+        telemetry.record_context(busy=bool(lease.get("busy")) and str(lease.get("owner", "")).startswith("output:"),
+                                 preloading=preload_state["phase"] == "starting", error=preload_state["error"])
+        gpu["events"] = telemetry.snapshot(start=False)["events"]
+        result["gpu"] = gpu
     if preload_state["error"]:
         result["preload_error"] = preload_state["error"]
     return result

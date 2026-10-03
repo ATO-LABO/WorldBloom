@@ -5960,3 +5960,70 @@ main:has(.cfg-form) .form-actions {
  .header-pickers>.picker:has(.picker-value){grid-row:2;grid-column:2;width:100%;max-width:none}
  .header-pickers:not(:has(.picker-value))>.picker{grid-column:1/-1}
 }
+
+/* AIT-91: always-visible GPU trend, use and model readiness. */
+.local-status-dialog { width: min(46rem, calc(100vw - 2rem)); }
+.local-status { padding: 1rem 1.4rem; line-height: 1.45; }
+.local-status .sheet-head { flex-wrap: wrap; align-items: center; gap: .7rem; margin-bottom: .8rem; }
+.local-status .sheet-head h4 { font-size: 1.2rem; }
+.ls-head-actions, .ls-chart-controls, .ls-provider-head, .ls-model-main, .ls-model-detail, .ls-model-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.ls-head-actions { margin-left: auto; }
+.ls-head-actions .button { padding: .35rem .65rem; }
+.ls-route { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem; padding-bottom: .75rem; border-bottom: 1px solid var(--line); }
+.local-status-backend { margin: 0; }
+.ls-update { font-size: .8rem; color: var(--ws-confirm); }
+.ls-error { color: var(--danger); font-size: .9rem; margin: .6rem 0; overflow-wrap: anywhere; }
+.ls-error[hidden], .ls-meter[hidden], .ls-chart-controls select[hidden] { display: none; }
+.ls-temperature { margin-top: .9rem; }
+.local-status h5 { font-size: .95rem; margin: 0; color: var(--text); }
+.ls-section-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.ls-chart-controls label { display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--muted); }
+.ls-chart-controls select { background: var(--surface); color: var(--text); border: 1px solid var(--ws-control-line); border-radius: var(--radius-s); padding: .3rem .45rem; font-family: inherit; font-size: .85rem; max-width: 100%; }
+.ls-gpu-name { color: var(--muted); font-size: .8rem; margin: .4rem 0 0; overflow-wrap: anywhere; }
+.ls-temp-summary { display: flex; align-items: center; flex-wrap: wrap; gap: .8rem; margin-top: .35rem; font-variant-numeric: tabular-nums; }
+.ls-temp-summary strong { font-size: 2rem; font-weight: 600; line-height: 1.3; }
+.ls-temp-summary span { font-size: .85rem; color: var(--muted); }
+.ls-chart { display: block; width: 100%; height: 180px; touch-action: pan-y; }
+.ls-chart text { fill: var(--muted); font: 12px var(--font-ui); }
+.ls-chart-grid { stroke: var(--line); stroke-width: 1; }
+.ls-chart-path { fill: none; stroke: var(--ws-confirm); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.ls-chart-dot { fill: var(--ws-confirm); }
+.ls-chart-threshold { stroke: var(--ws-advance); stroke-width: 1; stroke-dasharray: 5 4; }
+.ls-chart-event { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; }
+.ls-chart-foot, .ls-status-foot { display: flex; justify-content: space-between; gap: .4rem 1rem; flex-wrap: wrap; color: var(--muted); font-size: .75rem; }
+.ls-chart-foot [data-ls-readout] { font-variant-numeric: tabular-nums; white-space: nowrap; margin-left: auto; }
+.ls-thermal { color: var(--muted); font-size: .75rem; margin: .3rem 0 0; }
+.ls-metrics { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .8rem; margin: 1rem 0; }
+.ls-metric { background: var(--ws-panel-bg); border-radius: var(--radius-m); padding: .8rem 1rem; }
+.ls-metric-value { display: block; font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; margin: .2rem 0 .5rem; overflow-wrap: anywhere; }
+.ls-metric p { font-size: .75rem; color: var(--muted); margin: .4rem 0 0; }
+.ls-meter { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.ls-meter span { display: block; height: 100%; background: var(--ws-confirm); border-radius: 4px; }
+.ls-vram-meter span { background: var(--accent-2); }
+.ls-models > h5 { margin-bottom: .5rem; }
+.ls-provider { padding: .65rem 0; border-top: 1px solid var(--line); }
+.ls-provider-head { gap: .5rem .8rem; }
+.ls-server-state { font-size: .8rem; color: var(--muted); }
+.ls-model-actions { margin-left: auto; }
+.ls-action { font: inherit; font-size: .8rem; padding: .2rem .55rem; min-height: 30px; }
+.ls-action:disabled { cursor: not-allowed; }
+.ls-model-list { list-style: none; margin: .6rem 0 0; padding: 0; }
+.ls-model-item { padding: .4rem 0; }
+.ls-model-name { font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
+.ls-model-selected { font-size: .7rem; background: var(--ws-confirm-soft); color: var(--ws-confirm); border-radius: var(--radius-s); padding: .1rem .35rem; }
+.ls-model-state { font-size: .8rem; background: var(--ws-panel-bg); color: var(--text); border-radius: var(--radius-s); padding: .1rem .4rem; margin-left: auto; }
+.ls-model-state.state-error { background: var(--danger-soft); color: var(--danger); }
+.ls-model-state.state-loading { background: var(--warm-soft); color: var(--warm); }
+.ls-model-detail { font-size: .75rem; color: var(--muted); margin-top: .25rem; gap: .4rem 1rem; }
+.ls-status-foot { border-top: 1px solid var(--line); padding-top: .65rem; margin-top: .4rem; }
+@media (max-width: 520px) {
+  .local-status-dialog { width: calc(100vw - 1rem); }
+  .local-status { padding: .9rem; }
+  .local-status .sheet-head h4 { font-size: 1.05rem; }
+  .ls-metrics { gap: .6rem; }
+  .ls-metric { padding: .65rem; }
+  .ls-metric-value { font-size: 1.1rem; }
+  .ls-model-actions { margin-left: 0; }
+  .ls-section-head { align-items: flex-start; }
+}
+@media (pointer: coarse) { .ls-action, .ls-chart-controls select { min-height: 44px; } }
