@@ -240,6 +240,13 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             ConfigStore(alias, self.repo / "output", self.base / "other-runs")
 
+    def test_preview_substituted_root_alias_freezes_the_same_inputs(self):
+        expected = self.store.preview(self.spec)["input_manifest_sha256"]
+        alias = self.repo / ".." / self.repo.name
+        with patch.object(self.store, "repo", alias):
+            actual = self.store.preview(self.spec)["input_manifest_sha256"]
+        self.assertEqual(actual, expected)
+
     def test_repo_relative_graph_rebased_without_changing_original(self):
         # An empty chosen template makes World use its world-side reference.
         (self.repo / "templates/blank").mkdir()
@@ -376,7 +383,7 @@ class ConfigTests(unittest.TestCase):
     def test_permission_error_not_hidden_as_missing_input(self):
         real = Path.read_bytes
         def denied(path):
-            if path == self.repo / "projects/romance/world.yaml":
+            if path == self.store.repo / "projects/romance/world.yaml":
                 raise PermissionError("denied")
             return real(path)
         with patch.object(Path, "read_bytes", denied), self.assertRaises(PermissionError):
@@ -384,7 +391,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_linked_input_is_rejected_before_read(self):
         real = Path.is_symlink
-        target = self.repo / "projects/romance/world.yaml"
+        target = self.store.repo / "projects/romance/world.yaml"
         with patch.object(Path, "is_symlink", lambda path: path == target or real(path)):
             with self.assertRaises(ConfigError):
                 self.store.preview(self.spec)

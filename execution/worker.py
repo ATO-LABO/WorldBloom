@@ -79,7 +79,15 @@ def process_identity(pid):
     try:
         if api.WaitForSingleObject(handle, 0) == 0:
             return None
-        return {"pid": pid, **identity_from_handle(api, handle)}
+        try:
+            return {"pid": pid, **identity_from_handle(api, handle)}
+        except OSError:
+            # A process can exit between the first wait and the image query
+            # (WinError 31). Confirm exit on the same open handle; never infer
+            # death from a query error or reopen a potentially recycled PID.
+            if api.WaitForSingleObject(handle, 100) == 0:
+                return None
+            raise
     finally:
         api.CloseHandle(handle)
 

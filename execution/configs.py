@@ -317,6 +317,9 @@ def generation_availability(generation, settings_path=None):
 
 def _capture_inputs(repo, spec, runs=None):
     """Read a closed YAML set once; rebase only World's external graph reference."""
+    # Draft/preview callers can substitute a root without calling ConfigStore's
+    # constructor. Keep the same checked, canonical boundary at this entry too.
+    repo = contained(repo, ".").resolve()
     blobs, records = {}, {}
     def add(path):
         relative = path.relative_to(repo).as_posix()

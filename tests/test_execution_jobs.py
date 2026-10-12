@@ -30,7 +30,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def until(predicate, timeout=60):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        value = predicate()
+        try:
+            value = predicate()
+        except ConfigError as error:
+            if error.code != "conflict":
+                raise
+            # Ledger reads may transiently contend with the independent writer;
+            # retry within the existing deadline, without hiding other errors.
+            value = None
         if value:
             return value
         time.sleep(0.05)

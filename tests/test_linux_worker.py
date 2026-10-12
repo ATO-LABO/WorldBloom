@@ -9,6 +9,7 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
+from unittest.mock import Mock
 
 from execution import worker
 
@@ -23,6 +24,26 @@ def until(predicate, timeout=10):
 
 
 class PlatformDispatchTests(unittest.TestCase):
+    def test_windows_query_failure_is_dead_only_after_handle_signals(self):
+        api = Mock()
+        api.OpenProcess.return_value = 123
+        api.WaitForSingleObject.side_effect = [258, 0]
+        with patch.object(worker.sys, "platform", "win32"), patch.object(worker, "kernel", return_value=api), \
+             patch.object(worker, "identity_from_handle", side_effect=OSError("image unavailable")):
+            self.assertIsNone(worker.process_identity(7))
+        api.WaitForSingleObject.assert_any_call(123, 100)
+        api.CloseHandle.assert_called_once_with(123)
+
+    def test_windows_query_failure_keeps_live_or_unknown_process_unconfirmed(self):
+        api = Mock()
+        api.OpenProcess.return_value = 123
+        api.WaitForSingleObject.side_effect = [258, 258]
+        with patch.object(worker.sys, "platform", "win32"), patch.object(worker, "kernel", return_value=api), \
+             patch.object(worker, "identity_from_handle", side_effect=OSError("image unavailable")), \
+             self.assertRaises(OSError):
+            worker.process_identity(7)
+        api.CloseHandle.assert_called_once_with(123)
+
     @unittest.skipUnless(sys.platform in ("linux", "win32"), "Windows/Linux containment")
     def test_isolated_child_uses_utf8_for_japanese_io(self):
         with tempfile.TemporaryDirectory() as temporary:
