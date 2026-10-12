@@ -10,7 +10,7 @@
 
 ## 設定例
 
-世界固有の `projects/<world>/route.yaml` があればそれを設定全体として使い、なければ従来の `templates/<genre>/route.yaml` を使う（部分 merge はしない）。現在の UI エディタには目標入力欄を追加していないので、設定は YAML で行う。既存 GET `/api/worlds/<id>/routes` で結果を取得・表示できる。
+世界固有の `projects/<world>/route.yaml` があればそれを設定全体として使い、なければ従来の `templates/<genre>/route.yaml` を使う（部分 merge はしない）。世界設定から「経路の目標を入力・検証」を開くと、登録済みの人物・場所・品物・情報・時刻を入力して検証・保存できる。YAML と既存 GET `/api/worlds/<id>/routes` も引き続き利用できる。
 
 ```yaml
 goal:
@@ -80,7 +80,21 @@ BFS は各遷移が正の同じ1スロットであることを前提に、最初
 
 配送型の取得・対決/交渉・後方計画・Policy は従来どおり。route.yaml を既に持つ世界に新しい goal を強制しない。一般目標をシミュレーションの ending/Policy に自動接続しない。目標調査の結果と人物が自然に選ぶ通常経路は用途が異なる。
 
-次の段階は目標エディタ、遷移 adapter の分離と実エンジンに沿った時刻定義、複数日・force_action・状態依存ルール、戦闘/交渉の確率的達成条件。追加機能があって初めて全状態や期待値の保証を議論できる。本人や世界の設定を勝手に変えて成功経路を作らない。
+次の段階は遷移 adapter の分離と実エンジンに沿った時刻定義、複数日・force_action・状態依存ルール、戦闘/交渉の確率的達成条件。追加機能があって初めて全状態や期待値の保証を議論できる。本人や世界の設定を勝手に変えて成功経路を作らない。
+
+## AIT-134 独立目標エディタ
+
+この変更は PR #5 の `b787363a64a5d4dd490edf7f0fd5682290304b2c` 基点の独立修正。Linux PR #4 や未取得の文化祭統合 ZIP と一致・統合済みとは主張しない。Choice GA の再開は含めない。
+
+入口は `/worlds/<id>` の目標入力リンク、編集ページは `/worlds/<id>/goal`。非空の AND（上限100条件）、操作人物1人、条件ごとの人物、at/holds/knows、品物の正整数数量、any/at/by を扱う。検証・探索は未保存の入力を評価し、保存は世界専用 route.yaml のみを atomic に更新する。人物の配送設定、通常 Policy、結末、過去の設定版・run は変更しない。
+
+`GoalSpec.to_input_dict()` は zone/item/fact を明示する入力用 serializer。説明用 `as_dict()` の value/legacy は保存しない。any は mode だけを保存し、at/by は登録時刻と day を保存する。legacy adapter は明示目標へ勝手に変換しない。
+
+API は GET/POST `/api/worlds/<id>/route-goal`、POST `/api/worlds/<id>/route-goal/validate`。書込は既存の job_store・HTTP 境界で保護する。世界・人物・世界専用 route の有無と bytes・ジャンル YAML の revision を確認し、競合時は409で拒否する。世界専用設定を初めて作る場合はジャンル設定全体を複製して goal のみ変更する。旧配送へ戻すと goal のみを除き、他の経路設定を保持する。入力 config snapshot は世界専用 route.yaml も凍結する。
+
+取消・再読込・離脱は未保存変更を確認する。失敗した保存・競合では入力を保持する。閲覧専用は編集/保存不可。未対応条件・不正な保存済み目標は黙って置き換えずエラーを表示する。時間モデルが対応しない設定は保存を拒否し、unreachable/cutoff は目標が不正とは扱わない。モデルの判定範囲を結果に表示する。
+
+検証は `tests/test_route_goal_editor.py`（serializer round trip、早着/待機、参照/数量/時刻拒否、HTTP、保存再読込、revision、atomic故障、旧設定・凍結入力の保持）、`node tests/test_route_goal_input.js`、既存の route/timeline 回帰。実ブラウザによる10シナリオの証拠は実装成果の検証 archive に保存する。統合 Windows・3系統統合版の検証とは区別する。
 
 ## 検証
 
