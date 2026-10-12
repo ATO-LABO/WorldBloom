@@ -6,6 +6,7 @@ There are no retries and no changes to either test's internal deadline.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,12 +22,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--phase", choices=("before-full", "after-full"), required=True)
+    parser.add_argument("--phase", choices=("before-full", "after-full", "original-after-full"), required=True)
     args = parser.parse_args()
     evidence = Path(os.environ["WB_REGRESSION_EVIDENCE_DIR"]).resolve()
     evidence.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, WB_REGRESSION_PHASE=args.phase,
-               WB_REGRESSION_DIAGNOSTICS="1")
+               WB_REGRESSION_DIAGNOSTICS="1",
+               WB_EPOCH_CAPTURE_STDERR="1" if args.phase == "before-full" else "0")
     env["PYTHONPATH"] = os.pathsep.join(
         (str(ROOT / "tests"), str(ROOT), env.get("PYTHONPATH", "")))
     node = shutil.which("node")
@@ -45,15 +47,27 @@ def main() -> int:
                                 if node_version else None)}
     print(json.dumps(runtime), flush=True)
     targets = ["test_raw_workspace.RawWorkspaceTests.test_clipboard_exact_text_and_denied_permission_fallback"]
-    if args.phase == "before-full":
+    if args.phase in ("before-full", "original-after-full"):
         targets.append("test_epoch_chain.HeavyRealChainEndToEndTest.test_two_epoch_auto_chain_with_real_ga_and_real_approval")
     results = []
     for index, target in enumerate(targets):
         started = time.monotonic()
+        script_sha256 = None
         try:
-            result = subprocess.run([sys.executable, "-B", "-m", "unittest", target, "-v"],
-                                    cwd=ROOT, env=env, capture_output=True, timeout=650,
-                                    check=False)
+            command = [sys.executable, "-B", "-m", "unittest", target, "-v"]
+            bound = 650
+            if args.phase == "original-after-full" and index == 0:
+                # Exact original assertion-bearing harness; no added phase I/O.
+                original = subprocess.run(
+                    ["git", "show", "eb2b452be269d9a08bf4b92c65450f40c2e3c97f:tests/raw_workspace_ui.cjs"],
+                    cwd=ROOT, capture_output=True, check=True, timeout=15).stdout
+                script = evidence / "original-raw-workspace-ui.cjs"
+                script.write_bytes(original)
+                script_sha256 = hashlib.sha256(original).hexdigest()
+                command = [node, str(script), str(ROOT / "viewer/static/raw-workspace.js")]
+                bound = 15
+            result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True,
+                                    timeout=bound, check=False)
             stdout, stderr, code = result.stdout, result.stderr, result.returncode
             timed_out = False
         except subprocess.TimeoutExpired as exc:
@@ -65,7 +79,10 @@ def main() -> int:
             (evidence / f"{prefix}.{label}.log").write_bytes(value[-262144:])
         record = {"target": target, "seconds": time.monotonic() - started,
                   "returncode": code, "probe_outer_timeout": timed_out,
-                  "stdout_bytes": len(stdout), "stderr_bytes": len(stderr)}
+                  "stdout_bytes": len(stdout), "stderr_bytes": len(stderr),
+                  "skipped": b"OK (skipped=1)" in stderr,
+                  "original_harness_sha256": script_sha256,
+                  "mode": "original" if args.phase == "original-after-full" else "observed"}
         results.append(record)
         print(json.dumps(record), flush=True)
         print(stdout[-65536:].decode("utf-8", "replace"), flush=True)
