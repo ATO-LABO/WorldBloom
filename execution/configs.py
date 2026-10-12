@@ -317,6 +317,9 @@ def generation_availability(generation, settings_path=None):
 
 def _capture_inputs(repo, spec, runs=None):
     """Read a closed YAML set once; rebase only World's external graph reference."""
+    # Draft/preview callers can substitute a root without calling ConfigStore's
+    # constructor. Keep the same checked, canonical boundary at this entry too.
+    repo = contained(repo, ".").resolve()
     blobs, records = {}, {}
     def add(path):
         relative = path.relative_to(repo).as_posix()
@@ -552,6 +555,9 @@ class ConfigStore:
         self.runs = Path(runs_root).absolute()
         for root in (self.repo, self.control, self.runs):
             contained(root, ".boundary")
+        # Check links first, then canonicalize harmless aliases (Windows 8.3
+        # temp paths, '..') before containment comparisons and frozen references.
+        self.repo, self.control, self.runs = (root.resolve() for root in (self.repo, self.control, self.runs))
         for target in (self.control, self.runs):
             if target == self.repo or target.is_relative_to(self.repo):
                 raise ConfigError("storage", "実行データはリポジトリ外へ保存してください")

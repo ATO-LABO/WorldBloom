@@ -100,6 +100,12 @@ def _job(jid, run_id, state, *, phase="evaluating", config_id="cfg-test",
 
 
 class WorkbenchTests(unittest.TestCase):
+    # Configuration saves fsync multiple snapshot files. Hosted Windows disks
+    # can take longer than five seconds even for this small fixture; these
+    # tests assert the response/content, not a storage-performance deadline.
+    # Keep a finite socket deadline and never retry mutating HTTP requests.
+    HTTP_TIMEOUT = 30
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wb-ui007-")
         self.base = Path(self.temp.name)
@@ -150,7 +156,7 @@ class WorkbenchTests(unittest.TestCase):
     def get_status(self, path, *, port=None):
         port = port or self.server.server_port
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as response:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=WorkbenchTests.HTTP_TIMEOUT) as response:
                 return response.status, response.read().decode("utf-8"), response.headers
         except urllib.error.HTTPError as error:
             return error.code, error.read().decode("utf-8"), error.headers
@@ -176,7 +182,7 @@ class WorkbenchTests(unittest.TestCase):
 
     def http(self, method, path, body=None, headers=None, *, port=None):
         port = port or self.server.server_port
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=WorkbenchTests.HTTP_TIMEOUT)
         defaults = {"Content-Type": "application/json", "X-WorldBloom-Client": "1"}
         if headers:
             defaults.update(headers)
