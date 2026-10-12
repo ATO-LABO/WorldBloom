@@ -633,6 +633,9 @@ def _lineage_stats(
 
 
 def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
+    if job.get("search_adapter") == "cultural_festival_choices_v1":
+        from gapengine.festival_ga import run_individual as run_festival_individual
+        return run_festival_individual(job)
     raw_genome = job.get("genome")
     genome = (
         Genome.from_dict(raw_genome)
@@ -1102,6 +1105,7 @@ def _insert_result(
 def _parent_pool(
     archive: Archive,
     previous: list[dict[str, Any]],
+    *, genome_codec=None,
 ) -> list[tuple[Genome, str, tuple[str, ...] | None]]:
     pool: list[tuple[Genome, str, tuple[str, ...] | None]] = []
     for cell in sorted(archive.cells):
@@ -1127,7 +1131,7 @@ def _parent_pool(
         )
         pool.append(
             (
-                Genome.from_dict(value["genome"]),
+                (Genome if genome_codec is None else genome_codec).from_dict(value["genome"]),
                 f"g{int(value['generation'])}/ind-{int(value['index'])}",
                 cell,
             )
@@ -1163,14 +1167,17 @@ def _next_population(
     *,
     rule_ids: tuple[str, ...] = (),
     growth_enabled: bool = False,
+    genome_codec=None,
 ) -> list[tuple[Genome, list[str]]]:
-    pool = _parent_pool(archive, previous)
+    pool = (_parent_pool(archive, previous) if genome_codec is None
+            else _parent_pool(archive, previous, genome_codec=genome_codec))
+    codec = Genome if genome_codec is None else genome_codec
     population: list[tuple[Genome, list[str]]] = []
     for _ in range(size):
         if not pool or rng.random() < 0.1:
             population.append(
                 (
-                    Genome.random(
+                    codec.random(
                         rng,
                         rule_ids=rule_ids,
                         plastic=growth_enabled,
@@ -1180,8 +1187,8 @@ def _next_population(
             )
             continue
         first, second = _choose_parents(pool, rng)
-        child = Genome.crossover(first[0], second[0], rng, plastic=growth_enabled)
-        child = Genome.mutate(child, rng, plastic=growth_enabled)
+        child = codec.crossover(first[0], second[0], rng, plastic=growth_enabled)
+        child = codec.mutate(child, rng, plastic=growth_enabled)
         population.append((child, [first[1], second[1]]))
     return population
 
@@ -1507,6 +1514,9 @@ def _refuse_stale_archive(
 
 
 def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
+    if cfg.get("search_adapter") == "cultural_festival_choices_v1":
+        from gapengine.festival_ga import evolve_choices
+        return evolve_choices(cfg, observer=observer)
     project_dir = Path(str(cfg["project"])).resolve()
     template_dir = Path(str(cfg["template"])).resolve()
     out_dir = Path(str(cfg["out"])).resolve()
