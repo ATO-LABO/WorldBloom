@@ -335,6 +335,8 @@ def _capture_inputs(repo, spec, runs=None):
     if not project.is_dir() or not template.is_dir():
         raise ConfigError("inputs", "世界またはテンプレートがありません")
     world_key = add(project / "world.yaml")
+    if (project / "route.yaml").exists():
+        add(project / "route.yaml")
     subjects = sorted((project / "subjects").glob("*.yaml"))
     if not subjects:
         raise ConfigError("inputs.subjects", "登場人物の入力がありません")

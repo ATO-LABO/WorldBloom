@@ -695,6 +695,36 @@ def _worlds_detail(handler, world_id):
 
 
 
+def _route_goal_store(handler):
+    jobs = _job_store(handler)
+    return LibraryStore(jobs.configs.repo if jobs is not None else data.ROOT)
+
+
+def _route_goal_get(handler, world_id):
+    from execution.route_goal_editor import snapshot
+    handler._send_json(HTTPStatus.OK, snapshot(_route_goal_store(handler), world_id))
+
+
+def _route_goal_page(handler, world_id):
+    from execution.route_goal_editor import snapshot
+    from viewer.route_goal_page import render
+    store = _route_goal_store(handler)
+    model = snapshot(store, world_id)
+    world = next(w for w in store.worlds() if w["id"] == world_id)
+    handler._send_html(render(world, model, job_store=_job_store(handler)))
+
+
+def _route_goal_post(handler, world_id, action):
+    body = _boundary_body(handler)
+    from execution import route_goal_editor
+    if action == "save":
+        _require_job_store(handler)
+        result = route_goal_editor.save(_route_goal_store(handler), world_id, body)
+    else:
+        result = route_goal_editor.validate(_route_goal_store(handler), world_id, body)
+    handler._send_json(HTTPStatus.OK, result)
+
+
 def _worlds_routes(handler, world_id):
     """GET /api/worlds/<id>/routes (WB-ROUTE-PATHS-001): a read-only survey
     of a handful of distinct step-by-step walkthroughs from the
@@ -1208,6 +1238,10 @@ def _import_patch_action(handler, world_id):
 
 def _resolve(parts, method):
     if method == "POST":
+        if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "route-goal":
+            return _route_goal_post, (parts[2], "save")
+        if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3:] == ["route-goal", "validate"]:
+            return _route_goal_post, (parts[2], "validate")
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "edit":
             return _edit_world, (parts[2],)
         if len(parts) == 4 and parts[:2] == ["api", "genres"] and parts[3] in ("save", "parse", "check"):
@@ -1241,9 +1275,13 @@ def _resolve(parts, method):
     if method != "GET" or not parts:
         return None
     head = parts[0]
+    if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "route-goal":
+        return _route_goal_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "routes":
         return _worlds_routes, (parts[2],)
     if head == "worlds":
+        if len(parts) == 3 and parts[2] == "goal":
+            return _route_goal_page, (parts[1],)
         if len(parts) == 1:
             return _worlds_list, ()
         if len(parts) == 2 and parts[1] == "new":
