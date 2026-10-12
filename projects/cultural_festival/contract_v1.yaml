@@ -1,0 +1,235 @@
+version: 1
+world: 凪野高校・文化祭
+play:
+  title: 帰り道の約束
+  zone: 体育館
+  start: '15:00'
+  duration_minutes: 15
+  lead: 蒼
+  partner: 蓮
+clock:
+  slots:
+  - 06:00
+  - 06:30
+  - 07:00
+  - 07:30
+  - 08:00
+  - 08:30
+  - 09:00
+  - 09:30
+  - '10:00'
+  - '10:30'
+  - '11:00'
+  - '11:30'
+  - '12:00'
+  - '12:30'
+  - '13:00'
+  - '13:30'
+  - '14:00'
+  - '14:30'
+  - '15:00'
+  - '15:30'
+  - '16:00'
+  - '16:30'
+  - '17:00'
+  t_range:
+  - 0
+  - 22
+  slot_minutes: 30
+  edge_duration_slots: 1
+  edge_note: 場面時間。徒歩自体が30分という意味ではない
+  tick_order:
+  - 前枠行動の完了を反映
+  - 予定を通知（強制行動なし）
+  - 同室の観測
+  - 15時primary判定
+  - 次行動を選択（t=22では次行動なし）
+  start_at_15_move_is_late: true
+zones:
+- 自宅
+- 校門
+- 部室
+- 体育館
+- 展示室
+routes:
+  自宅:
+  - 校門
+  校門:
+  - 自宅
+  - 部室
+  部室:
+  - 校門
+  - 体育館
+  - 展示室
+  体育館:
+  - 部室
+  - 展示室
+  展示室:
+  - 部室
+  - 体育館
+gate:
+  zone: 校門
+  opens_at: 08:00
+  preentered:
+  - 紗季
+  - 蓮
+  - 灯
+initial_locations:
+  蒼: 自宅
+  紗季: 部室
+  蓮: 部室
+  灯: 展示室
+known_schedules:
+- time: 09:00
+  zone: 部室
+  label: 集合
+- time: '12:00'
+  zone: 体育館
+  label: リハーサル
+- time: '14:30'
+  zone: 体育館
+  label: 袖集合
+- time: '15:00'
+  zone: 体育館
+  label: 二人芝居「帰り道の約束」開演（15分）
+- time: '17:00'
+  label: 片付け終了
+initial_state:
+  蒼:
+    script_outline_learned: true
+    inventory:
+    - 台本
+  costume_zone: 部室
+  sound_checked: false
+  line_change_requested_by: 蓮
+  unfinished_exhibit_known_by:
+  - 蒼
+  - 灯
+  sound_procedure_known_by:
+  - 紗季
+personality:
+  蒼:
+    social: 0.65
+    stubbornness: 0.6
+    curiosity: 0.5
+    diligence: 0.8
+    temper: 0.2
+  紗季:
+    social: 0.7
+    stubbornness: 0.7
+    curiosity: 0.4
+    diligence: 0.9
+    temper: 0.2
+  蓮:
+    social: 0.7
+    stubbornness: 0.45
+    curiosity: 0.6
+    diligence: 0.7
+    temper: 0.2
+  灯:
+    social: 0.75
+    stubbornness: 0.55
+    curiosity: 0.6
+    diligence: 0.8
+    temper: 0.2
+goals:
+  蒼:
+  - 出演の約束を守る
+  - 共同展示への責任を果たす
+  - 不十分な出来を見せたくない
+  紗季:
+  - 開演時刻を守る
+  - 演劇準備を整える
+  蓮:
+  - 相手役として出演する
+  - 終盤の一台詞の短縮を相談する
+  灯:
+  - 共同展示パネルを完成させる
+  - 演劇を潰す意図はない
+initial_relations_source: subjects/*.yaml
+actions:
+  move:
+    duration_slots: 1
+    adjacent_only: true
+  wait:
+    duration_slots: 1
+  practice:
+    duration_slots: 1
+  costume_prepare:
+    duration_slots: 1
+    zone: 部室
+  sound_check:
+    duration_slots: 1
+    actor: 紗季
+    zone: 体育館
+  consult_request_accept_decline:
+    duration_slots: 1
+    channel:
+    - same_room
+    - addressed_contact
+  exhibit_help:
+    duration_slots: 1
+  joint_transport:
+    duration_slots: 2
+    actors:
+    - 蒼
+    - 灯
+    same_room: true
+    prior_agreement: true
+    duration_known_before_start: true
+    safe_interrupt_after_slots: 1
+    interruption_means_incomplete: true
+fallback:
+  initial_trial_one_slot_actions_only: true
+  joint_transport_disabled_if_unsupported: true
+knowledge:
+  initial_facts:
+    蒼:
+    - 共通予定
+    - 台詞骨子習得
+    - 共同展示未完成
+    紗季:
+    - 共通予定
+    - 音響手順
+    蓮:
+    - 共通予定
+    - 終盤短縮希望
+    灯:
+    - 共通予定
+    - 共同展示未完成
+  delivery:
+  - 同室の発言と観測できる行動
+  - 宛先を指定した連絡の完了
+  no_global_location_or_inner_state_sharing: true
+  log_each_character: true
+evaluation:
+  primary: t=18の次行動選択前に蒼が体育館にいるか
+  readiness_separate:
+  - 衣装準備
+  - 練習
+  - 音響確認
+  - 蓮の在場
+  separate_fields:
+  - primary_presence
+  - late_arrival
+  - declines_to_perform
+  - execution_failure
+  missing_readiness_is_unknown: true
+  observed_classification_only:
+  - 来られない
+  - 他を優先
+  - 行きたくない
+invariants:
+  same_world: true
+  same_personalities: true
+  same_initial_conditions: true
+  vary_only:
+  - 可能な行動の選択
+  - 人物間の相互作用
+  do_not_force_absence: true
+  no_new_dangerous_accidents: true
+  paid_api_or_llm: false
+  gpu: false
+  auth_or_permissions_changes: false
+  push_pr_merge_deploy: false
+status: specification; not a claim of native runtime support
