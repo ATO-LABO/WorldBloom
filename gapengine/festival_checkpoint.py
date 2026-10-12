@@ -187,7 +187,7 @@ def new_state(config, sources, inputs):
     rng = random.Random(config["ga_seed"])
     population = [(ChoiceGenome.random(rng), []) for _ in range(config["population"])]
     return {"format": FORMAT, "version": VERSION, "adapter": ADAPTER, "codec": CODEC,
-            "python": [sys.implementation.name, *sys.version_info[:3]], "config": config,
+            "python": [sys.implementation.name, *sys.version_info[:3], sys.platform], "config": config,
             "source_manifest": sources, "input_manifest": inputs,
             "completed_generations": 0, "rng_state": _rng_state_to_json(rng),
             "population": population_dict(population), "history": [], "previous_results": [],
@@ -208,7 +208,7 @@ def validate(out, config, sources, inputs):
             raise ValueError("Choice checkpoint checksum mismatch")
         for key, expected in (("config", config), ("source_manifest", sources),
                 ("input_manifest", inputs),
-                ("python", [sys.implementation.name, *sys.version_info[:3]])):
+                ("python", [sys.implementation.name, *sys.version_info[:3], sys.platform])):
             if state[key] != expected:
                 raise ValueError("Choice checkpoint " + key + " mismatch")
         completed = state["completed_generations"]
@@ -312,7 +312,8 @@ def publish_generation(stage, out, generation, state):
     directory = stage / f"g{generation}"
     for path in sorted(directory.rglob("*")):
         if path.is_file():
-            with path.open("rb") as stream:
+            # Windows FlushFileBuffers requires a writable handle.
+            with path.open("r+b") as stream:
                 os.fsync(stream.fileno())
     if os.name != "nt":
         directories = [directory, *(p for p in directory.rglob("*") if p.is_dir())]
