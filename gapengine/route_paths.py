@@ -1,4 +1,8 @@
-"""WB-ROUTE-PATHS-001: "最短経路を調査" -- enumerate a handful of distinct,
+"""Read-only route survey. Explicit typed goals dispatch to route_search's
+finite slot projection; existing delivery goals retain the legacy survey below.
+Every shortest/unreachable result is qualified by its model and search scope.
+
+WB-ROUTE-PATHS-001: "最短経路を調査" -- enumerate a handful of distinct,
 ordered step-by-step walkthroughs from the protagonist's current state to
 the story's ending, reusing ``gapengine.route``'s existing backward-chaining
 planner (``plan()``) as the only source of truth for cost (``h``) and for
@@ -23,6 +27,7 @@ written to.
 from __future__ import annotations
 
 import math
+import yaml
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -33,6 +38,8 @@ from engine.sim import Simulation
 from engine.world import World
 
 from gapengine.evolve import _load_subjects
+from gapengine.route_goals import resolve_goal
+from gapengine.route_search import UnsupportedModel, survey_goal
 from gapengine.route import (
     INF,
     _acquire,
@@ -605,7 +612,6 @@ def walk(
 
     steps: list[dict[str, Any]] = []
     cumulative = 0.0
-    truncated = False
     seen_fingerprints: set[tuple] = set()
 
     for _ in range(_MAX_WALK_STEPS):
@@ -620,7 +626,6 @@ def walk(
         if h is None or h == 0.0:
             break
         if h == INF:
-            truncated = True
             break
 
         best_kinds = _kinds(result["best"])
@@ -704,7 +709,6 @@ def walk(
                     action = {"kind": "negotiate", "text": f"{holder_id}と交渉する{offer_text}", "cost": 1.0}
 
         if action is None:
-            truncated = True
             break
 
         cumulative += action["cost"]
@@ -721,13 +725,12 @@ def walk(
 
         fingerprint = _state_fingerprint(subject, world)
         if fingerprint in seen_fingerprints:
-            truncated = True
             break
         seen_fingerprints.add(fingerprint)
-    else:
-        truncated = True
 
-    return {"steps": steps, "truncated": truncated}
+    goal = resolve_goal(None, world, subjects)
+    reached = goal is not None and goal.satisfied(subjects)
+    return {"steps": steps, "truncated": not reached, "reached": reached}
 
 
 # ---------------------------------------------------------------------------
@@ -754,7 +757,12 @@ def _blocked_text(blocked: tuple[str, str, Any]) -> str:
 def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
     project_dir = Path(project_dir)
     template_dir = Path(template_dir)
-    cfg = load_route_config(template_dir)
+    # Per-world settings take precedence; generic goals need not edit a genre.
+    try:
+        cfg = load_route_config(project_dir) if (project_dir / "route.yaml").is_file() else load_route_config(template_dir)
+    except (ValueError, TypeError, yaml.YAMLError) as exc:
+        return {"status": "invalid_config", "message": str(exc), "timepoints": [],
+                "shortest_guaranteed": False}
     if cfg is None:
         return {
             "status": "no_route_config",
@@ -763,13 +771,21 @@ def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
         }
 
     world0, subjects0 = _load_world_and_subjects(project_dir, template_dir)
-    protagonist = subjects0[world0.protagonist]
-    if protagonist.goal.target is None:
+    try:
+        goal = resolve_goal(cfg.get("goal"), world0, subjects0)
+        if goal is not None and not goal.legacy:
+            return survey_goal(world0, subjects0, goal, cfg.get("search"))
+    except UnsupportedModel as exc:
+        return {"status": "unsupported", "message": str(exc), "timepoints": [],
+                "shortest_guaranteed": False}
+    except ValueError as exc:
+        return {"status": "invalid_config", "message": str(exc), "timepoints": [],
+                "shortest_guaranteed": False}
+    if goal is None:
         return {
             "status": "no_goal",
             "message": (
-                "主人公の目標が『品物を手に入れて届ける』型ではないため、"
-                "現在は計算できません（探偵・恋愛は未対応）。"
+                "経路目標がありません。route.yaml の goal.all に人物・場所・所持品などの条件を設定してください。"
             ),
             "timepoints": [],
         }
@@ -837,14 +853,14 @@ def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
             # The heading shows the walked, *actual* total when the walk
             # completed; h always ships too, labeled as an estimate.
             completed_cost = (
-                walked["steps"][-1]["cumulative"]
-                if walked["steps"] and not walked["truncated"]
+                (walked["steps"][-1]["cumulative"] if walked["steps"] else 0.0)
+                if not walked["truncated"]
                 else None
             )
             if completed_cost is not None:
-                label = f"#{rank} 所要 {completed_cost:.0f}"
+                label = f"#{rank} 概算所要 {completed_cost:.0f}（最短保証なし）"
             else:
-                label = f"#{rank} 所要 {entry['plan']['h']:.0f}（目安）"
+                label = f"#{rank} 所要 {entry['plan']['h']:.0f}（目安・手順生成打切り）"
             routes.append(
                 {
                     "rank": rank,
@@ -856,6 +872,8 @@ def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
                     "signature": list(entry["sig"]),
                     "steps": walked["steps"],
                     "truncated": walked["truncated"],
+                    "shortest_guaranteed": False,
+                    "result_label": "概算の配送手順（最短保証なし）" if not walked["truncated"] else "手順生成打切り（到達可能性は未判定）",
                 }
             )
 
@@ -874,6 +892,9 @@ def survey(project_dir: str | Path, template_dir: str | Path) -> dict[str, Any]:
             }
         )
 
-    status = "ok" if any_reachable else "unreachable"
-    message = "" if any_reachable else "結末に到達する段取りが見つかりません"
-    return {"status": status, "message": message, "timepoints": timepoint_results}
+    completed = any(not route["truncated"] for tp in timepoint_results for route in tp["routes"])
+    status = "ok" if completed else "cutoff" if any_reachable else "no_plan"
+    message = "概算の配送手順（最短保証なし）" if completed else "手順生成打切り（到達可能性は未判定）" if any_reachable else "概算モデルで段取りが見つかりません（到達不能の証明ではありません）"
+    return {"status": status, "message": message, "timepoints": timepoint_results,
+            "goal": goal.as_dict(), "model": "legacy_delivery_estimate",
+            "shortest_guaranteed": False, "optimality_scope": None}
