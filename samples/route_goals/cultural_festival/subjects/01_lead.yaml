@@ -1,0 +1,7 @@
+id: 主役
+traits: {social: 0.5, stubbornness: 0.5, curiosity: 0.5, diligence: 0.5, temper: 0.5}
+base: 1
+verbs: [move, investigate, craft]
+range: {entry: 教室, zones: [教室, 衣装室, 体育館]}
+inventory: {}
+knowledge: []
