@@ -31,7 +31,9 @@ class FestivalGAResumeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='wb-choice-resume-')
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # Windows TEMP may be an 8.3 alias; production resolves output paths.
+        # Match that canonical root so fault injection hits the intended call.
+        self.root = Path(self.temp.name).resolve()
         self.project = self.root / 'project'
         shutil.copytree(PROJECT, self.project)
 
