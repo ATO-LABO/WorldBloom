@@ -21,7 +21,7 @@
  function footer(){
   const n=counts(), counter=$('[data-sf-adopted]');if(counter)counter.textContent=n;
   const button=$('[data-sf-proceed]');
-  if(button){button.disabled=saving||pending.size>0||failed||(mode==='browse'?n===0:chosen.size===0||(mode==='compare'&&(chosen.size<2||chosen.size>4)));
+  if(button){button.disabled=saving||pending.size>0||failed||(mode==='browse'?n===0:mode==='synopsis'&&chosen.size===0);
    button.textContent=mode==='browse'?`採用候補を確認（${n}件） →`:mode==='compare'?`選んだ${chosen.size}件を比較`:`あらすじの生成対象を確認（${chosen.size}件） →`;
    $('[data-sf-footer-note]').textContent=mode==='browse'?(n?'次の画面で対象を確認します':'候補を採用すると次へ進めます'):`対象 ${chosen.size}件（採用とは別の選択です）`;
   }
@@ -87,7 +87,7 @@
  $('[data-sf-fit]')?.addEventListener('click',e=>{root.classList.toggle('sf-grid-fit');e.target.textContent=root.classList.contains('sf-grid-fit')?'読みやすい大きさに戻す':'格子を全体表示';});
  async function switchMode(next){if(pending.size&&!await flush())return;mode=next;chosen.clear();
   for(const choice of $$('.sf-choice')){choice.hidden=mode==='browse';const input=choice.querySelector('input');input.checked=false;const c=items.get(input.dataset.sfChoice);input.disabled=mode==='synopsis'?!c.can_synopsis:!c.representative;input.title=input.disabled?(initial.running?'実行中のため変更できません':!c.screenable?(c.unavailable_reason||c.availability):c.synopsis_state):'対象にする';}
-  const bar=$('[data-sf-mode-note]');bar.hidden=mode==='browse';bar.querySelector('span').textContent=mode==='compare'?'比較する区画を2〜4件選んでください':'あらすじを準備する候補を選んでください';
+  const bar=$('[data-sf-mode-note]');bar.hidden=mode==='browse';bar.querySelector('span').textContent=mode==='compare'?'読み比べたい区画を選んでください（件数は自由です）':'あらすじを準備する候補を選んでください';
   $('[data-sf-verdict]').hidden=mode!=='browse';if(current)select(current);footer();
  }
  $$('[data-sf-mode]').forEach(b=>b.addEventListener('click',()=>switchMode(b.dataset.sfMode)));
