@@ -77,6 +77,29 @@ class GoalSpec:
         ], "time": {"mode": self.mode, "day": self.day, "slot": self.slot},
                 "legacy": self.legacy}
 
+    def to_input_dict(self) -> dict[str, Any]:
+        """Serialize an explicit goal to the input YAML schema, not a report.
+
+        Legacy delivery is represented by absence of ``goal`` and must never
+        be silently promoted to an explicit survey goal by an editor.
+        """
+        if self.legacy:
+            raise ValueError("Legacy delivery must retain an absent goal")
+        predicates = []
+        for condition in self.conditions:
+            field = {"at": "zone", "holds": "item", "knows": "fact"}.get(condition.kind)
+            if field is None:
+                raise ValueError("Unsupported goal predicate")
+            row = {"predicate": condition.kind, "subject": condition.subject,
+                   field: condition.value}
+            if condition.kind == "holds":
+                row["quantity"] = condition.quantity
+            predicates.append(row)
+        timing = {"mode": self.mode}
+        if self.mode != "any":
+            timing.update(day=self.day, slot=self.slot)
+        return {"actor": self.actor, "all": predicates, "time": timing}
+
 
 def resolve_goal(raw: Any, world: Any, subjects: Mapping[str, Any]) -> GoalSpec | None:
     """Absent config adapts target/deliver_to without changing Subject.goal.
