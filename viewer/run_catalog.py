@@ -184,7 +184,8 @@ class RunCatalog:
                 verified_json(contained(root, "manifest.json"), read_json(contained(root, "complete.json"))["manifest_sha256"])
                 return name
             raise invalid("実行manifestの識別子が一致しません")
-        return "legacy-" + sha256(str(root).encode("utf-8"))
+        # Match RunRepository's resolved runs root, including Windows 8.3 aliases.
+        return "legacy-" + sha256(str(root.resolve()).encode("utf-8"))
 
     def resolve(self, run_id):
         identifier(run_id, "run_id")

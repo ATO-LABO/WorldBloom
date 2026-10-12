@@ -1,4 +1,4 @@
-"""Windows process, persistence, idempotency and HTTP boundaries for UI-003."""
+"""Windows/Linux process, persistence, idempotency and HTTP job boundaries."""
 from concurrent.futures import ThreadPoolExecutor
 import http.client
 import json
@@ -30,14 +30,21 @@ ROOT = Path(__file__).resolve().parents[1]
 def until(predicate, timeout=60):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        value = predicate()
+        try:
+            value = predicate()
+        except ConfigError as error:
+            if error.code != "conflict":
+                raise
+            # Ledger reads may transiently contend with the independent writer;
+            # retry within the existing deadline, without hiding other errors.
+            value = None
         if value:
             return value
         time.sleep(0.05)
     raise AssertionError("condition did not become true")
 
 
-@unittest.skipUnless(os.name == "nt", "Windows supervisor contract")
+@unittest.skipUnless(sys.platform in ("win32", "linux"), "Windows/Linux supervisor contract")
 class JobTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wb-ui003-")

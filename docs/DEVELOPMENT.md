@@ -11,7 +11,9 @@
 
 ## 決定論の約束
 
-同じ `(world, genome, seed, precedent, engine hash)` の組で、`layers.jsonl` はバイト単位で一致します。乱数は単一の `random.Random(seed)`（GA側は `random.Random(ga_seed)` と分離）、候補生成と Policy（遺伝子の変調）は乱数を消費せず、同点のタイブレークは名前順です。**この前提を崩す変更（乱数の消費順序が変わる変更など）は、設計書にその旨を明記してください。**
+同じ Python バージョンと `(world, genome, seed, precedent, engine hash)` の組で、`layers.jsonl` はバイト単位で一致します。乱数は単一の `random.Random(seed)`（GA側は `random.Random(ga_seed)` と分離）、候補生成と Policy（遺伝子の変調）は乱数を消費せず、同点のタイブレークは名前順です。**この前提を崩す変更（乱数の消費順序が変わる変更など）は、設計書にその旨を明記してください。**
+
+Python 3.12では浮動小数点の `sum()` の精度が改善され、3.11と比べて行動確率の記録の末尾ビットが変わる場合があります。今回確認した固定seedでは行動・結果・状態は一致しました。厳密な比較では来歴に記録されたPython版も固定してください。回帰テストは許容誤差で丸めず、3.11と3.12以降それぞれの厳密な期待ハッシュを検証します（[Python公式説明](https://docs.python.org/3.12/library/functions.html#sum)）。
 
 ## 回帰テスト
 
@@ -30,6 +32,32 @@ python viewer/server.py --runs <runsの場所> --control <controlの場所> --po
 ```
 
 `--control` を付けない場合、画面から実験の実行・設定編集はできませんが、選定（採用チェックボックスなど）だけは書き込めます。この操作はジョブ管理を経由せず、`runs` 側の各実験フォルダに直接 `selection.json` を書き込みます（`viewer/data.py` の `toggle_selection()` が `directory_lock` を取って書く、`--control` 用の `JobStore` を介さない経路）。詳しくは[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)の「ソースから」を参照してください。
+
+## Linux でのジョブ管理
+
+ソース版の `--control` 付きビューアは Windows と Linux で利用できます。Linux は
+Python 3.11 以上と PyYAML に加え、Linux 5.3 以上の `pidfd`、子プロセスを引き受ける
+`PR_SET_CHILD_SUBREAPER`、同じ PID 名前空間の `/proc` が必要です。これらが利用できない
+環境ではジョブを受け付けません。追加パッケージや管理者権限は不要です。
+
+Windows では従来の Job Object と `msvcrt` ロックを使います。Linux では `flock` と
+独立した監視プロセスを使い、プロセスの開始時刻・実行ファイル・boot ID を確認して
+開いた pidfd から停止します。監視元とのパイプが閉じると、HTTP サーバーや再接続の
+有無によらず子・孫プロセスを停止して回収します。`setsid()` で別セッションに移った
+子も対象です。監視プロセスの停止記録はジョブフォルダーの `process-trees/` に残り、
+終了確認が取れるまでは後続ジョブ・出力復旧を認めません。
+
+これは信頼するローカルの処理を管理する機能で、敵対的コードのサンドボックスでは
+ありません。独立監視プロセス自体が強制終了された、`/proc` が読めない、停止不能な
+プロセスが残った場合は終了を推定せず状態不明として扱います。OS のアクセス権、
+セキュリティ設定、ネットワーク設定は変更しません。
+
+回帰テストは Windows/Linux 両方で同じコマンドを使います。Linux の終了後ポート確認は、
+サーバーと同じ `SO_REUSEADDR` を使い、TIME_WAIT と残存リスナーを区別します。
+
+```
+python -m unittest discover -s tests -v
+```
 
 ## GPU 調停の仕組みに外部コードから参加する
 

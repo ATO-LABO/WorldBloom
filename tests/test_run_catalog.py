@@ -63,6 +63,13 @@ class CatalogTests(unittest.TestCase):
         atomic_json(root / "archive.json", archive)
         return root, self.catalog.register_legacy(name)
 
+    def test_equivalent_root_alias_has_the_same_legacy_identity(self):
+        root, rid = self.legacy()
+        alias = self.runs / ".." / self.runs.name
+        catalog = RunCatalog(alias, self.control)
+        self.assertEqual(catalog.run_id(root.name), rid)
+        self.assertEqual(catalog.register_legacy(root.name), rid)
+
     def test_read_only_legacy_registration_and_history(self):
         root, rid = self.legacy()
         before = saved(root)

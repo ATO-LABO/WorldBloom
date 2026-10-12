@@ -11,6 +11,7 @@ import secrets
 import shutil
 import subprocess
 import time
+import sys
 
 from execution.configs import ConfigStore
 from execution.provenance import (ConfigError, atomic_json, canonical, contained,
@@ -89,6 +90,15 @@ class JobStore:
             raise ConfigError("job_id", "ジョブがありません", code="not_found") from error
 
     def _save(self, job, **updates):
+        if sys.platform == "linux" and updates.get("state") in worker.TERMINAL:
+            if not worker.output_tree_stopped(job):
+                # Reconciliation can kill a supervisor before its guardian has
+                # finished draining. Preserve why we stopped it, but do not
+                # publish a terminal state or admit new work during cleanup.
+                updates = {"state": "stopping", "pending_terminal": updates,
+                           "reconciliation": "unknown"}
+            else:
+                updates["pending_terminal"] = None
         if job.get("output_id") and updates.get("state") in worker.TERMINAL:
             if not worker.output_tree_stopped(job):
                 return {**job, "reconciliation": "unknown"}
@@ -144,6 +154,15 @@ class JobStore:
             return job
         status = self._identity_status(job)
         if status == "dead":
+            if sys.platform == "linux":
+                deadline = time.monotonic() + 1
+                while not worker.output_tree_stopped(job) and time.monotonic() < deadline:
+                    time.sleep(0.02)
+            pending = job.get("pending_terminal")
+            if pending:
+                if job.get("cancel_requested_at") is not None:
+                    pending = {**pending, "state": "cancelled", "error": None}
+                return self._save(job, **{**pending, "finished_at": time.time(), "reconciliation": "confirmed"})
             return self._save(job, state="cancelled" if job.get("cancel_requested_at") is not None else "interrupted", finished_at=time.time(),
                               reconciliation="confirmed", error={"code":"worker_disappeared"})
         if status == "unknown":
@@ -289,7 +308,7 @@ class JobStore:
             try:
                 process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                            stderr=subprocess.DEVNULL,
-                                           creationflags=subprocess.CREATE_NO_WINDOW, close_fds=True)
+                                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0, close_fds=True)
                 threading.Thread(target=process.wait, daemon=True).start()
                 identity = worker.process_identity(process.pid)
                 self._save(job, launch_identity=identity)
