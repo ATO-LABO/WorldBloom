@@ -14,7 +14,7 @@ from execution import route_goal_editor as editor
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from gapengine.route_goals import resolve_goal
-from gapengine.route_paths import survey
+from gapengine.route_paths import survey, _load_world_and_subjects
 import test_library as fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +34,7 @@ class GoalEditorTests(unittest.TestCase):
         shutil.copyfile(sample / 'action_graph.yaml', self.template / 'action_graph.yaml')
         self.world_path = self.project / 'world.yaml'
         w = yaml.safe_load(self.world_path.read_text())
-        w['gapengine'] = {'action_graph':'templates/festival/action_graph.yaml', 'effects':'../../templates/festival/effects.yaml'}
+        w['gapengine'] = {'action_graph':'templates/festival/action_graph.yaml', 'effects':'templates/festival/effects.yaml'}
         w['facts'] = [{'id':'合図'}]
         self.world_path.write_text(yaml.safe_dump(w, allow_unicode=True))
         self.store = LibraryStore(self.repo)
@@ -54,8 +54,7 @@ class GoalEditorTests(unittest.TestCase):
         goal = self.snapshot()['goal']
         goal['all'] += [{'predicate':'knows','subject':'実行委員','fact':'合図'}]
         goal['all'][1]['quantity'] = 2
-        world = World.from_yaml(self.world_path, action_graph_path=self.template/'action_graph.yaml')
-        people = {p.id:p for p in (Subject.from_yaml(p) for p in sorted((self.project/'subjects').glob('*.yaml')))}
+        world, people = _load_world_and_subjects(self.project, self.template)
         for mode in ('any','at','by'):
             with self.subTest(mode=mode):
                 raw = {**goal, 'time':{'mode':mode} if mode=='any' else {'mode':mode,'day':1,'slot':'15:00'}}
