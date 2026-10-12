@@ -12,7 +12,7 @@ import random
 import statistics
 
 from gapengine.festival_choices import ChoiceGenome
-from gapengine.qd import Archive,Descriptor,Elite,read_rows
+from gapengine.qd import Archive,read_rows
 from scripts.cultural_festival_probe import dump,digest,input_manifest,source_manifest,PROJECT
 from scripts.cultural_festival_state_search import run
 
@@ -100,13 +100,16 @@ def run_individual(job):
         result=run(directory,int(seed),choice_genome=genome,project=project)
         evaluation=completed_evaluation(read_rows(directory/'layers.jsonl'))
         assert result['audit']['failures']==[]
+        # Timings are observational telemetry, not deterministic GA evaluations.
+        result.pop('performance', None)
+        result['evaluation_id']=f"g{job['generation']}/ind-{job['index']}/seed-{seed}"
         result['temporal_evaluation']=evaluation
         result['ga_individual_evaluation']=True
         dump(directory/'run.json',result)
-        results.append({**result,'layers_path':str((directory/'layers.jsonl').relative_to(root)),
+        results.append({**result,'layers_path':(directory/'layers.jsonl').relative_to(root).as_posix(),
             'quality':evaluation['fitness'],'reached':evaluation['opening']['primary_presence'],
             'effective_sequence':evaluation['effective_sequence'],'volatility':evaluation['volatility']})
-    output={'index':int(job['index']),'generation':int(job['generation']),'parents':list(job.get('parents',[])),
+    output={'candidate_id':f"g{job['generation']}/ind-{job['index']}",'index':int(job['index']),'generation':int(job['generation']),'parents':list(job.get('parents',[])),
         'genome':genome.to_dict(),'genome_kind':'action_choices_only','runs':results,
         'quality':statistics.mean(r['quality'] for r in results),
         'shaped':statistics.mean(r['quality'] for r in results),
@@ -120,58 +123,80 @@ def run_individual(job):
 
 
 def evolve_choices(cfg,*,observer=None):
-    # Reuse actual existing GA job dispatch, parent pool/selection, crossover/
-    # mutation loop, and MAP-Elites archive. Only codec and run evaluator differ.
-    from gapengine.evolve import _evaluate_jobs,_next_population,_rng_state_to_json,_json_write
-    out=Path(cfg['out']).resolve()
-    if out.exists():raise ValueError('Fresh output directory required')
-    size,generations=int(cfg.get('population',4)),int(cfg.get('generations',2))
-    seeds=list(cfg.get('seeds',[0]))
-    if not 2<=size<=4 or not 1<=generations<=2 or not 1<=len(seeds)<=2:
-        raise ValueError('Initial CPU adapter limited to population2..4/generations1..2/seeds1..2')
-    if cfg.get('rationality_cfg') or cfg.get('growth_enabled') or int(cfg.get('processes',1))!=1:
-        raise ValueError('Only single-process CPU/no-judge/no-growth trial supported')
+    """Continue only this adapter, using strict generation-committed state.
+
+    Generations is the total target, not a count to append. The existing
+    88-quantile codec, fitness and breeding RNG order remain unchanged.
+    """
+    from gapengine.evolve import _evaluate_jobs,_rng_state_to_json,_rng_state_from_json
+    from gapengine import festival_checkpoint as checkpoint
+    allowed={'search_adapter','out','population','generations','ga_seed','seeds',
+             'processes','project','resume','rationality_cfg','growth_enabled'}
+    if set(cfg)-allowed:
+        raise ValueError('Unsupported Choice configuration keys: '+','.join(sorted(set(cfg)-allowed)))
+    if cfg.get('search_adapter',ADAPTER)!=ADAPTER:
+        raise ValueError('Wrong Choice execution adapter')
+    size,generations=cfg.get('population',4),cfg.get('generations',2)
+    ga_seed=cfg.get('ga_seed',20261012)
+    seeds=cfg.get('seeds',[0])
+    if (type(size) is not int or not 2<=size<=4 or type(generations) is not int
+            or not 1<=generations<=4 or type(ga_seed) is not int
+            or not isinstance(seeds,list) or not 1<=len(seeds)<=2
+            or any(type(seed) is not int for seed in seeds) or len(set(seeds))!=len(seeds)):
+        raise ValueError('Choice CPU adapter requires population2..4/generations1..4/unique1..2 integer seeds')
+    if (cfg.get('rationality_cfg') or cfg.get('growth_enabled')
+            or type(cfg.get('processes',1)) is not int or cfg.get('processes',1)!=1
+            or type(cfg.get('resume',False)) is not bool):
+        raise ValueError('Only single-process CPU/no-judge/no-growth Choice trial supported')
+    requested=Path(cfg['out']).absolute()
+    if requested.is_symlink():
+        raise ValueError('Symlink Choice output forbidden')
+    out=requested.resolve()
     project=Path(cfg.get('project',PROJECT)).resolve()
-    inputs,sources=input_manifest(project),source_manifest()
-    rng=random.Random(int(cfg.get('ga_seed',20261012)))
-    population=[(ChoiceGenome.random(rng),[]) for _ in range(size)]
-    archive=Archive();history=[];previous=[]
-    for generation in range(generations):
-        jobs=[{'search_adapter':ADAPTER,'index':i,'generation':generation,'genome':g.to_dict(),
-            'parents':parents,'seeds':seeds,'out_dir':str(out/f'g{generation}'/f'ind-{i}'),
-            'logical_root':str(out),'world_path':str(project/'world.yaml'),'subjects_dir':str(project/'subjects'),
-            'expected_input_manifest':inputs} for i,(g,parents) in enumerate(population)]
-        results=_evaluate_jobs(jobs,1,observer=observer)
-        archive.freeze_thresholds([r['volatility'] for r in results])
-        for result in results:
-            exemplar=max(result['runs'],key=lambda r:r['quality'])
-            descriptor=Descriptor(result['category'],result['volatility'],archive.bin_for(result['volatility']))
-            result['cell']=[descriptor.category,descriptor.volatility_bin]
-            elite=Elite(ChoiceGenome.from_dict(result['genome']),result['quality'],descriptor,
-                result['reach_rate'],{'layers_path':exemplar['layers_path'],'seed':exemplar['seed']},
-                generation,tuple(result['parents']))
-            archive.insert(elite)
-            assert all(r['input_manifest']==inputs and r['source_manifest']==sources for r in result['runs'])
-        history.append(results);previous=results
-        dump(out/f'g{generation}'/'results.json',results)
-        archive.save(out/'archive.json')
-        _json_write(out/'ga_state.json',{'adapter':ADAPTER,'completed_generations':generation+1,
-            'rng_state':_rng_state_to_json(rng),'archive':archive.to_dict(),
-            'source_manifest':sources,'input_manifest':inputs})
-        if generation+1<generations:
-            population=_next_population(size,archive,previous,rng,genome_codec=ChoiceGenome)
-    assert sources==source_manifest() and inputs==input_manifest(project)
-    # Codec round trip explicitly validates the reused archive's serialization.
-    assert Archive.from_dict(archive.to_dict(),genome_codec=ChoiceGenome).to_dict()==archive.to_dict()
-    fingerprints=[r['decision_fingerprint'] for gen in history for ind in gen for r in ind['runs']]
-    summary={'adapter':ADAPTER,'ga_evolution':True,'population':size,'generations':generations,'seeds':seeds,
-        'individuals':size*generations,'distinct_action_sequences':len(set(fingerprints)),
-        'reused':['evolve._evolve dispatch','evolve.run_individual','_evaluate_jobs','_parent_pool',
-                  '_choose_parents','_next_population','qd.Archive/Elite','GA RNG/checkpoint writer'],
-        'history':history,'source_manifest':sources,'input_manifest':inputs,
-        'personality_evolved':False,'goals_evolved':False,'world_changed':False,'jev_calls':0,
-        'shared_policy_factory_actors':list(sorted(ChoiceGenome.random(random.Random(0)).to_dict()['actors'])),
-        'fitness_absence_bonus':0,'archive_cells':len(archive.cells),
-        'limitations':['small smoke experiment','no CLI resume','no Jev','no panel completion','no joint transport']}
-    dump(out/'summary.json',summary)
-    return archive
+    config={'population':size,'ga_seed':ga_seed,'seeds':seeds,'processes':1}
+    with checkpoint.writer_lock(out):
+        sources,inputs=checkpoint.source_fingerprint(),checkpoint.input_fingerprint(project)
+        if cfg.get('resume',False):
+            state=checkpoint.validate(out,config,sources,inputs)
+            if generations<state['completed_generations']:
+                raise ValueError('Choice total generation target precedes checkpoint')
+            checkpoint.cleanup(out,state)
+        else:
+            if out.exists():
+                raise ValueError('Fresh output directory required; use resume for Choice checkpoints')
+            out.mkdir()
+            state=checkpoint.save(out,checkpoint.new_state(config,sources,inputs))
+        rng=random.Random()
+        rng.setstate(_rng_state_from_json(state['rng_state']))
+        archive=Archive.from_dict(state['archive'],genome_codec=ChoiceGenome)
+        previous=state['previous_results']
+        population=[(ChoiceGenome.from_dict(p['genome']),p['parents']) for p in state['population']]
+        for generation in range(state['completed_generations'],generations):
+            if generation:
+                population=checkpoint.breed(size,archive,previous,rng)
+            stage=checkpoint.start_generation(out,state)
+            jobs=[{'search_adapter':ADAPTER,'index':i,'generation':generation,'genome':g.to_dict(),
+                'parents':parents,'seeds':seeds,'out_dir':str(stage/f'g{generation}'/f'ind-{i}'),
+                'logical_root':str(stage),'world_path':str(project/'world.yaml'),
+                'subjects_dir':str(project/'subjects'),'expected_input_manifest':input_manifest(project)}
+                for i,(g,parents) in enumerate(population)]
+            results=_evaluate_jobs(jobs,1,observer=observer)
+            if (sources!=checkpoint.source_fingerprint() or inputs!=checkpoint.input_fingerprint(project)):
+                raise ValueError('Choice source/input changed during generation; checkpoint not committed')
+            checkpoint.insert_results(archive,results)
+            # The same candidate results (including the assigned archive cell)
+            # are published to both the generation journal and individual log.
+            for result in results:
+                dump(stage/result['candidate_id']/'result.json',result)
+            dump(stage/f'g{generation}'/'results.json',results)
+            next_state={**state,'completed_generations':generation+1,
+                'rng_state':_rng_state_to_json(rng),'archive':archive.to_dict(),
+                'population':checkpoint.population_dict(population),
+                'previous_results':results,'history':[*state['history'],results],
+                'artifacts':{**state['artifacts'],f'g{generation}':
+                    checkpoint.files_manifest(stage/f'g{generation}')}}
+            state=checkpoint.publish_generation(stage,out,generation,next_state)
+            previous=results
+            checkpoint.exports(out,state)
+        checkpoint.exports(out,state)
+        return archive
