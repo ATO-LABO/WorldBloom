@@ -45,7 +45,7 @@ PR #6以前のChoice `ga_state.json` は集団/前世代結果/全履歴を持�
 
 - 完了世代、現在集団、前世代結果、全評価履歴、Archive、GA RNG。
 - 合計世代目標と出力パスを除いた計算設定。
-- Python実装/3要素版、ソース集合・内容、固定projectとtemplatesの全ファイル集合・内容。
+- Python実装/3要素版/OS platform、ソース集合・内容、固定projectとtemplatesの全ファイル集合・内容。
 - commit済み世代の全成果ファイルのsize/SHA-256とcheckpoint checksum。
 
 評価は出力内の `.choice-pending/gN` に書く。各ファイルをfsyncし、ディレクトリを
@@ -71,7 +71,7 @@ checkpointは評価後・次世代breed前のRNGを保存する。再開も一�
 
 ## 再開の拒否と排他
 
-JSONの重複key/非有限値/破損、checksum、schema/adapter/codec版、Python版、
+JSONの重複key/非有限値/破損、checksum、schema/adapter/codec版、Python版/OS platform、
 source/input/world/template集合と内容、計算設定の不一致を拒否する。ソース変更を
 許可するfallbackはない。履歴から元の乱数順・集団・候補/親ID・Archiveを再構築し、
 checkpointの状態と照合する。完了世代の成果に追加・削除・変更があっても拒否する。

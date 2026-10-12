@@ -169,6 +169,7 @@ class FestivalGAResumeTests(unittest.TestCase):
             'adapter': lambda s: s.__setitem__('adapter', 'personality'),
             'codec': lambda s: s.__setitem__('codec', 'festival_choices_v999'),
             'python': lambda s: s.__setitem__('python', '0.0-incompatible'),
+            'platform': lambda s: s['python'].__setitem__(-1, 'different-os-platform'),
             'source': lambda s: s.__setitem__('source_manifest', {'files': {}, 'sha256': '0' * 64}),
             'input': lambda s: s.__setitem__('input_manifest', {'files': {}, 'common_settings_sha256': '0' * 64}),
             'rng': lambda s: s.__setitem__('rng_state', [3, [1, 2, 3], None]),
