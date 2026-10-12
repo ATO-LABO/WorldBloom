@@ -87,6 +87,8 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
     doc = pages.document(model["name"], body, world={"id": world["id"], "name": model["name"]},
                          phase="world", page_class="world-prototype", job_store=job_store, pin=pin)
     doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/world-prototype.css">'
+                      '<link rel="stylesheet" href="/static/time-settings.css">'
+                      '<script src="/static/time-settings.js" defer></script>'
                       '<script src="/static/world-prototype.js" defer></script>'
                       '<script src="/static/world-expansion.js" defer></script></head>')
     doc = doc.replace('data-wb="world-picker"', 'data-wb="world-picker" aria-label="世界"')
