@@ -25,7 +25,6 @@ jobs:
       PYTHONIOENCODING: utf-8
       WB_REGRESSION_DIAGNOSTICS: '1'
       WB_REGRESSION_PHASE: full-suite
-      WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,11 +36,17 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Observe Windows targets before the full suite
         if: runner.os == 'Windows'
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
         run: python -B tests/windows_regression_probe.py --phase before-full
       - name: Run offline regression tests
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
         run: python -B tests/regression_suite_capture.py
       - name: Observe Windows clipboard after the full suite
         if: always() && runner.os == 'Windows'
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
         run: python -B tests/windows_regression_probe.py --phase after-full
       - name: Preserve diagnostic evidence
         if: always()
