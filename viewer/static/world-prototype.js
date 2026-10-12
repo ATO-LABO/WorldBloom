@@ -76,7 +76,7 @@ const WorldRelations = (() => {
 })();
 /* Read-only presentation schedule; route cost is not elapsed time. */
 const WorldRoutes = (() => {
-  const kinds={move:'移動',investigate:'調査',craft:'製作',trial:'試練',fight:'戦闘',negotiate:'交渉',train:'鍛錬',stance:'関係づくり',unknown:'入手'};
+  const kinds={move:'移動',wait:'待機',investigate:'調査',craft:'製作',trial:'試練',fight:'戦闘',negotiate:'交渉',train:'鍛錬',stance:'関係づくり',unknown:'入手'};
   const number=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
   function clock(world,timepoint){
     const slots=world.time?.slots||[],day=timepoint.day;
@@ -101,6 +101,10 @@ const WorldRoutes = (() => {
   function format(moment){return moment?`${moment.day}日目 ${moment.slot}`:'日時未設定';}
   function build(route,timepoint,world){
     const calendar=clock(world,timepoint),rows=[];
+    if(route.timing==='model'){
+      const moment=m=>{const index=calendar?.slots.indexOf(m?.slot);return m&&index>=0?{...m,slotIndex:index+1,slotCount:calendar.slots.length,outside:false}:null;};
+      return {calendar,overflow:false,rows:(route.steps||[]).map((s,i)=>({...s,id:`${i}:0`,sourceIndex:i,kindLabel:kinds[s.kind]||'行動',at:moment(s.at),next:moment(s.next),assumed:false}))};
+    }
     let elapsed=0,overflow=false;
     for(const [sourceIndex,step] of (route.steps||[]).entries()){
       const cost=number(step.cost),total=number(step.cumulative);
@@ -385,15 +389,16 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const timeSelect=d.timepoints.length>1?`<label>基準時点<select data-routes-timepoint aria-label="経路の基準時点">${d.timepoints.map((t,i)=>`<option value="${i}" ${i===routesTimepoint?'selected':''}>${esc(t.label)}</option>`).join('')}</select></label>`:'';
     const routeSelect=tp.routes.length>1?`<label>経路<select data-routes-path aria-label="調査する経路">${tp.routes.map((r,i)=>`<option value="${i}" ${i===state.route?'selected':''}>#${esc(r.rank??i+1)} · ${esc(routeKinds[r.route]||'結末までの経路')} · コスト ${esc(routeNumber(r.cost??r.h))}${r.truncated?'（打ち切り）':''}</option>`).join('')}</select></label>`:'';
     const controls=`<div class="wp-routes-controls">${timeSelect}${routeSelect}</div>`;
-    if(tp.blocked?.length||!route)return heading+controls+`<div class="wp-routes-empty"><p>結末に到達する段取りが見つかりません</p><ul>${(tp.blocked||[]).map(b=>`<li>${esc(b.text||JSON.stringify(b))}</li>`).join('')}</ul></div>`;
+    if(tp.blocked?.length||!route)return heading+controls+`<div class="wp-routes-empty"><p>${esc(tp.message||d.message||'概算モデルで段取りが見つかりません')}</p><ul>${(tp.blocked||[]).map(b=>`<li>${esc(b.text||JSON.stringify(b))}</li>`).join('')}</ul></div>`;
     const rows=timeline.rows;let previousDay;
     const steps=rows.map((step,index)=>{
       const day=step.at?.day,dayTitle=day!==previousDay||index===0?`<div class="wp-routes-day">${day?`${day}日目`:'日時未設定'}${step.at?.outside?' · 世界の期間外':''}</div>`:'';previousDay=day;
       return `${dayTitle}<button type="button" class="wp-routes-step" data-routes-step="${index}" aria-pressed="${index===path.step}" aria-label="${esc(WorldRoutes.format(step.at)+' '+step.text+' 累計'+routeNumber(step.cumulative))}"><span>${esc(step.at?.slot||'未設定')}<small>${step.at?`${step.at.slotIndex}/${step.at.slotCount} スロット`:'時間帯なし'}</small></span><span>${esc(step.text)}</span><span>${esc(routeNumber(step.cumulative))}</span></button>`;
     }).join('');
     const conditions=route.conditions?.length?`<p class="wp-routes-condition">この経路の条件：${route.conditions.map(esc).join('・')}</p>`:'';
-    const status=route.truncated?'途中で打ち切り':`総コスト ${routeNumber(route.cost??route.h)}`;
-    const notes=`<details class="wp-routes-notes"><summary>計算の前提と所要の目安</summary><p>#1はエンジンが現在選ぶ経路で、他の経路より短いとは限りません。日・スロットはこの手順を順に行う場合の目安です。累計は経路コストで、経過スロット数とは異なります。戦闘は概算回数、鍛錬などは1手を仮定します。基準時点までの予定イベントだけを反映し、その後の予定イベント・日替わりイベント・乱数による実際の選択は含みません。</p>${route.truncated?`<p>手順は途中で打ち切られています。残りを含むコストの目安：${esc(routeNumber(route.h))}</p>`:''}${tp.routes.length<2?'<p>別パターンは見つかりませんでした。</p>':''}</details>`;
+    const status=route.truncated?(route.result_label||'途中で打ち切り'):`${route.result_label?route.result_label+' · ':''}${route.timing==='model'?'経過スロット数':'総コスト'} ${routeNumber(route.cost??route.h)}`;
+    const explanation=route.timing==='model'?`${(d.assumptions||[]).map(esc).join(' ')} 経過 ${esc(route.cost)} スロット／${esc(d.elapsed_minutes)} 分。`:'#1は概算の後方計画が選ぶ手順で、他の経路より短いとは限りません。人物が実際に自然に選ぶ通常経路とは別です。日・スロットはこの手順を順に行う場合の目安です。累計は経路コストで、経過スロット数とは異なります。戦闘は概算回数、鍛錬などは1手を仮定します。基準時点までの予定イベントだけを反映し、その後の予定イベント・日替わりイベント・乱数による実際の選択は含みません。';
+    const notes=`<details class="wp-routes-notes"><summary>計算の前提と所要の目安</summary><p>${explanation}</p>${route.truncated?`<p>手順は途中で打ち切られています。残りを含むコストの目安：${esc(routeNumber(route.h))}</p>`:''}${tp.routes.length<2?'<p>別パターンは見つかりませんでした。</p>':''}</details>`;
     return heading+controls+`<div class="wp-routes-summary"><div><h2>#${esc(route.rank??state.route+1)} · ${esc(routeKinds[route.route]||'結末までの経路')}</h2>${conditions}<p class="wp-routes-meta">開始：${esc(WorldRoutes.format(WorldRoutes.at(timeline.calendar,0)))} · 実行前の目安${timeline.calendar?.consumed?'（基準スロットの強制移動後）':''}</p></div><strong>${esc(status)}</strong></div><div class="wp-routes-layout ${routesMobileDetail?'is-detail':''}"><section class="wp-routes-list" aria-label="経路の行動一覧"><div class="wp-routes-table-head"><span>行動時点（目安）</span><span>行動</span><span>累計</span></div><div class="wp-routes-scroll">${steps||'<p class="wp-muted">すでに結末へ到達しています。</p>'}${timeline.overflow?'<p>手順が非常に多いため5,000行まで表示しています。</p>':''}</div></section><aside class="wp-routes-detail" aria-live="polite" aria-label="選択した行動の詳細">${routeDetails()}</aside></div>`+notes;
   }
 

@@ -1,0 +1,9 @@
+# Per-world survey settings; does not change personality or normal Policy.
+goal:
+  actor: 主役
+  all:
+    - {predicate: at, zone: 体育館}
+    - {predicate: holds, item: 衣装, quantity: 1}
+  time: {mode: at, day: 1, slot: '15:00'}
+search:
+  max_expansions: 5000

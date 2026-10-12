@@ -56,4 +56,11 @@ test('configured period limit is shown and empty routes stay empty',()=>{
  const result=R.build(route,point,{...world,time:{days:1,slots:['朝','昼','夕方','夜']}});assert.equal(result.rows[3].at.outside,false);assert.equal(result.rows[4].at.outside,true);assert.deepEqual(R.build({steps:[]},point,world).rows,[]);
 });
 test('very long repeats cannot freeze the workspace',()=>{const result=R.build({steps:[{kind:'investigate',text:'調査',count:1000000,cost:1000000,cumulative:1000000}]},point,world);assert.equal(result.rows.length,5000);assert.equal(result.overflow,true);});
+test('model timestamps and waiting survive without invented dates',()=>{
+ const clockWorld={...world,time:{days:1,slots:['06:00','06:30','07:00']}};
+ const result=R.build({timing:'model',steps:[{kind:'wait',text:'待機する',cost:1,cumulative:1,at:{day:1,slot:'06:00'},next:{day:1,slot:'06:30'}},{kind:'move',text:'体育館へ移動',cost:1,cumulative:2,at:{day:1,slot:'06:30'},next:{day:1,slot:'07:00'}}]},{day:1,slot:'06:00'},clockWorld);
+ assert.equal(result.rows[0].kindLabel,'待機');assert.equal(result.rows[0].assumed,false);
+ assert.equal(R.format(result.rows[0].at),'1日目 06:00');assert.equal(R.format(result.rows[1].next),'1日目 07:00');
+ assert.equal(result.rows[1].cumulative,2);
+});
 console.log(`${checks} route timeline cases passed`);
