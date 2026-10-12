@@ -29,9 +29,15 @@ Python は15秒上限を保ち、TimeoutExpired の捕捉出力を安全に復�
 ## CI
 
 元の4構成・contents read権限・45分ジョブ上限を維持する。
-Windowsでは全回帰の前に対象2件を各1回、後にclipboardを1回観測する。
+Windowsでは全回帰の前に対象2件を各1回、後に元の対象2件を各1回観測する。
 固定回数で単独／suite条件を比較し、観測probeの結果と全回帰の成否を
 別々に記録する。全回帰の実際の終了コードをCIへ返す。
+
+初回観測head e50b747の全4構成・固定probeは成功したが、元の原因は
+未確定。stderrの出力先変更による影響を分けるため、次の固定比較では
+全回帰と後段epoch probeのコピーworkerを元のbytes/DEVNULLのままにする。
+前段だけは捕捉コピーを使う。後段clipboardは固定基点eb2b452の元harnessを
+そのまま取得し、同じ15秒上限・assertionsで実行する。
 
 全回帰ログと診断資料は always artifact に7日保存する。Node段階ログと
 失敗時の子stderr抜粋はCI本文にも残す。診断を追加した後の成功だけで

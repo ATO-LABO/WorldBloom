@@ -814,6 +814,7 @@ def _save_epoch_diagnostics(base, *, result=None, failure=None, elapsed=None):
                "driver_failure_type": type(failure).__name__ if failure else None,
                "bounds": {"driver_seconds": 580, "chain_seconds": 550}, "jobs": [], "files": []}
     summary["chain"] = _epoch_read_json(base / "result.json")
+    summary["worker_observation"] = _epoch_read_json(base / "worker-observation.json")
     for folder in sorted((base / "control/jobs").glob("job-*"))[:24]:
         job = _epoch_read_json(folder / "job.json")
         summary["jobs"].append({key: job.get(key) for key in (
@@ -867,7 +868,7 @@ def _save_epoch_diagnostics(base, *, result=None, failure=None, elapsed=None):
             save(name, value)
             if failure is not None or name == "driver.stderr.log":
                 excerpt(name, value, 8192)
-    paths = [base / "result.json", base / "driver-observation.json"]
+    paths = [base / "result.json", base / "driver-observation.json", base / "worker-observation.json"]
     patterns = ["control/epochs/*/chain.json", "control/jobs/job-*/job.json",
                 "control/jobs/job-*/request.json", "control/jobs/job-*/prepared.json",
                 "control/jobs/job-*/launch.json", "control/jobs/job-*/events.jsonl",
@@ -896,6 +897,7 @@ def _save_epoch_diagnostics(base, *, result=None, failure=None, elapsed=None):
     brief = {key: summary[key] for key in ("test", "phase", "driver_elapsed_seconds", "driver_returncode",
                                          "driver_failure_type", "jobs")}
     brief["artifact_directory"] = summary.get("artifact_directory")
+    brief["worker_observation"] = summary["worker_observation"]
     brief_text = json.dumps(brief, ensure_ascii=False).encode("utf-8")
     print("[epoch-regression-diagnostic] " + brief_text[:32768].decode("utf-8", errors="replace"),
           file=sys.stderr, flush=True)
@@ -1070,8 +1072,19 @@ class HeavyRealChainEndToEndTest(unittest.TestCase):
             from test_world_patch_cli import VALID_ADD
             experiment, project, template = frozen_experiment(base)
             repo = base / "repo"
-            if _epoch_diagnostics_enabled():
+            before_worker = (repo / "execution/worker.py").read_bytes()
+            capture_worker = (_epoch_diagnostics_enabled()
+                              and os.environ.get("WB_EPOCH_CAPTURE_STDERR", "1") == "1")
+            if capture_worker:
                 _instrument_epoch_worker_copy(repo)
+            after_worker = (repo / "execution/worker.py").read_bytes()
+            if not capture_worker:
+                self.assertEqual(after_worker, before_worker)
+            (base / "worker-observation.json").write_text(json.dumps({
+                "mode": "captured-stderr-copy" if capture_worker else "original-worker",
+                "before_sha256": hashlib.sha256(before_worker).hexdigest(),
+                "after_sha256": hashlib.sha256(after_worker).hexdigest(),
+                "original_bytes_preserved": after_worker == before_worker}), encoding="utf-8")
 
             # Shrink the holdout trial (default 5x8 reruns would add minutes) --
             # same technique tests/test_world_patch_job.py uses.
