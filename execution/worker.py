@@ -1,4 +1,4 @@
-"""Standalone, copied supervisor for persistent jobs (Windows).
+"""Standalone, copied supervisor for persistent jobs (Windows and Linux).
 
 Only this file is executed before the run snapshot exists. The GA entry point
 waits on a gate until it belongs to the supervisor's kill-on-close Job Object.
@@ -17,6 +17,9 @@ import subprocess
 import sys
 import time
 import uuid
+import select
+import signal
+import threading
 
 TERMINAL = frozenset({"succeeded", "partial", "failed", "cancelled", "interrupted"})
 
@@ -65,6 +68,8 @@ def identity_from_handle(api, handle):
 
 
 def process_identity(pid):
+    if sys.platform == "linux":
+        return _linux_identity(pid)
     api = kernel()
     handle = api.OpenProcess(0x1000 | 0x100000, False, pid)
     if not handle:
@@ -89,6 +94,21 @@ def probe(identity):
 
 def terminate_verified(identity):
     """Keep the verified handle open through termination; never kill by PID."""
+    if sys.platform == "linux":
+        try:
+            descriptor = os.pidfd_open(identity["pid"])
+        except ProcessLookupError:
+            return False
+        try:
+            if process_identity(identity["pid"]) != identity:
+                return False
+            try:
+                signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # It exited after verification; the open descriptor remains authoritative.
+            return bool(select.select([descriptor], [], [], 10)[0])
+        finally:
+            os.close(descriptor)
     api = kernel()
     handle = api.OpenProcess(0x1000 | 0x100000 | 1, False, identity["pid"])
     if not handle:
@@ -128,7 +148,7 @@ class BasicAccounting(ctypes.Structure):
                 (name, wt.DWORD) for name in ("page_faults", "total", "active", "terminated")]
 
 
-class ProcessTree:
+class _WindowsProcessTree:
     def __init__(self, *, include_self=False, name=None):
         self.api = kernel()
         self.handle = self.api.CreateJobObjectW(None, name)
@@ -191,8 +211,267 @@ class ProcessTree:
             self.handle = None
 
 
+def _linux_stat(pid):
+    # comm can contain spaces and parentheses; fields after its last ')' are fixed.
+    fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    return fields[0], int(fields[1]), int(fields[19])
+
+
+def _linux_identity(pid):
+    try:
+        state, _, created = _linux_stat(pid)
+        if state in ("Z", "X"):
+            return None
+        image = os.readlink(f"/proc/{pid}/exe")
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        return {"pid": pid, "created": created, "image": image, "boot_id": boot}
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+
+def _linux_descendants():
+    """Subreaper-owned descendants, including children that called setsid()."""
+    parents = {}
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            state, parent, created = _linux_stat(int(entry.name))
+            parents[int(entry.name)] = (parent, created)
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+    owned = {os.getpid()}
+    while True:
+        extra = {pid for pid, (parent, _) in parents.items() if parent in owned} - owned
+        if not extra:
+            return {pid: parents[pid][1] for pid in owned - {os.getpid()}}
+        owned.update(extra)
+
+
+def _linux_drain():
+    """Kill by verified descriptors, adopt/reap orphans, and confirm an empty tree."""
+    deadline = time.monotonic() + 10
+    while True:
+        descendants = _linux_descendants()
+        for pid, created in descendants.items():
+            try:
+                identity = process_identity(pid)
+                # /proc enumeration and descriptor opening are separate: never
+                # signal a PID that has been recycled since the owned snapshot.
+                if identity and identity["created"] == created and _linux_owned(pid, created):
+                    terminate_verified(identity)
+            except ProcessLookupError:
+                pass
+        while True:
+            try:
+                if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                    break
+            except ChildProcessError:
+                break
+        if not _linux_descendants():
+            return
+        if time.monotonic() >= deadline:
+            raise OSError("owned process termination was not confirmed")
+        time.sleep(0.01)
+
+
+def _linux_owned(pid, created):
+    """Recheck the live ancestry after a /proc snapshot, before descriptor signalling."""
+    try:
+        _, parent, actual_created = _linux_stat(pid)
+        if actual_created != created:
+            return False
+        seen = {pid}
+        while parent != os.getpid():
+            if parent <= 1 or parent in seen:
+                return False
+            seen.add(parent)
+            _, parent, _ = _linux_stat(parent)
+        return True
+    except (FileNotFoundError, ProcessLookupError):
+        return False
+
+
+def _linux_guard(registry, input_fd, output_fd):
+    """The lifetime pipe closes on owner death, independently of HTTP/reconciliation.
+
+    Establish orphan adoption before accepting any command. Only this guardian
+    launches execution, so a crash between launch and acknowledgement cannot
+    leave an unregistered child. The record is completed only after reaping.
+    """
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(36, 1, 0, 0, 0):  # PR_SET_CHILD_SUBREAPER
+        raise OSError(ctypes.get_errno(), "child subreaper is unavailable")
+    record = {"identity": process_identity(os.getpid()), "stopped": False}
+    path = Path(registry) if registry else None
+    if path:
+        atomic(path, record)
+    def reply(value):
+        sys.stdout.buffer.write((json.dumps(value) + "\n").encode())
+        sys.stdout.buffer.flush()
+    child = None
+    returncode = None
+    try:
+        reply({"ready": True})
+        for raw in sys.stdin.buffer:
+            request = json.loads(raw)
+            if request["action"] == "launch":
+                if child is not None:
+                    raise OSError("process tree already launched")
+                child = subprocess.Popen(request["argv"], cwd=request["cwd"],
+                    stdin=input_fd if input_fd >= 0 else subprocess.DEVNULL,
+                    stdout=output_fd if output_fd >= 0 else subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+                for fd in (input_fd, output_fd):
+                    if fd >= 0:
+                        os.close(fd)
+                input_fd = output_fd = -1
+                reply({"pid": child.pid})
+            elif request["action"] == "poll":
+                returncode = child.poll() if returncode is None else returncode
+                reply({"returncode": returncode})
+            elif request["action"] == "finish":
+                returncode = child.poll() if returncode is None else returncode
+                _linux_drain()
+                # waitpid in drain may have reaped the direct child too.
+                if returncode is None:
+                    returncode = -signal.SIGKILL
+                if path:
+                    atomic(path, {**record, "stopped": True})
+                reply({"returncode": returncode})
+                return 0
+            else:
+                raise OSError("unknown guardian command")
+    finally:
+        _linux_drain()
+        if path:
+            atomic(path, {**record, "stopped": True})
+        for fd in (input_fd, output_fd):
+            if fd >= 0:
+                os.close(fd)
+    return 0
+
+
+class _LinuxChild:
+    def __init__(self, tree, pid, stdin=None, stdout=None):
+        self.tree, self.pid = tree, pid
+        self.stdin, self.stdout = stdin, stdout
+        self.returncode = None
+
+    def poll(self):
+        if self.returncode is None:
+            self.returncode = self.tree._request({"action": "poll"})["returncode"]
+        return self.returncode
+
+    def wait(self, timeout=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while self.poll() is None:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired("WorldBloom execution", timeout)
+            time.sleep(0.02)
+        return self.returncode
+
+
+class _LinuxProcessTree:
+    def __init__(self, *, registry=None):
+        # Probe capabilities before admission; never downgrade to unsafe PID kills.
+        if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
+            raise OSError("Linux pidfd support is required")
+        descriptor = os.pidfd_open(os.getpid())
+        os.close(descriptor)
+        mode = ctypes.c_int()
+        if ctypes.CDLL(None, use_errno=True).prctl(37, ctypes.byref(mode), 0, 0, 0):
+            raise OSError("Linux child subreaper support is required")
+        self.registry, self.guard, self.child = registry, None, None
+        self._mutex = threading.Lock()
+
+    def _request(self, value=None):
+        with self._mutex:
+            if value is not None:
+                self.guard.stdin.write((json.dumps(value) + "\n").encode())
+                self.guard.stdin.flush()
+            if not select.select([self.guard.stdout], [], [], 12)[0]:
+                raise OSError("process guardian did not acknowledge")
+            raw = self.guard.stdout.readline()
+            if not raw:
+                raise OSError("process guardian disappeared")
+            return json.loads(raw)
+
+    def launch(self, argv, cwd, *, capture=False):
+        if self.guard is not None:
+            raise OSError("process tree already launched")
+        inputs, outputs = os.pipe() if capture else (-1, -1), os.pipe() if capture else (-1, -1)
+        record = ""
+        if self.registry:
+            Path(self.registry).mkdir(parents=True, exist_ok=True)
+            record = str(Path(self.registry) / (uuid.uuid4().hex + ".json"))
+        try:
+            self.guard = subprocess.Popen([_python_executable(), "-I", "-B", str(Path(__file__).resolve()),
+                "--linux-guard", record, str(inputs[0]), str(outputs[1])],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                close_fds=True, pass_fds=tuple(fd for fd in (inputs[0], outputs[1]) if fd >= 0),
+                start_new_session=True)
+            for fd in (inputs[0], outputs[1]):
+                if fd >= 0:
+                    os.close(fd)
+            inputs = (-1, inputs[1]); outputs = (outputs[0], -1)
+            if not self._request().get("ready"):
+                raise OSError("process guardian did not establish containment")
+            launched = self._request({"action": "launch", "argv": list(argv), "cwd": str(cwd)})
+            self.child = _LinuxChild(self, launched["pid"],
+                os.fdopen(inputs[1], "wb") if capture else None,
+                os.fdopen(outputs[0], "rb") if capture else None)
+            return self.child
+        except BaseException:
+            if self.guard is not None:
+                self.guard.stdin.close()  # EOF requests guardian cleanup, never abandon it.
+                self.guard.wait(timeout=12)
+                self.guard.stdout.close()
+            for fd in (*inputs, *outputs):
+                if fd >= 0:
+                    os.close(fd)
+            raise
+
+    def terminate(self):
+        self.finish()
+
+    def finish(self):
+        if self.guard is None:
+            return
+        response = self._request({"action": "finish"})
+        if self.child is not None:
+            self.child.returncode = response["returncode"]
+        self.guard.stdin.close()
+        code = self.guard.wait(timeout=12)
+        self.guard.stdout.close()
+        self.guard = None
+        if code:
+            raise OSError("owned process termination was not confirmed")
+
+    def close(self):
+        self.finish()
+
+
+def ProcessTree(*, include_self=False, name=None, registry=None):
+    if os.name == "nt":
+        return _WindowsProcessTree(include_self=include_self, name=name)
+    if sys.platform == "linux":
+        return _LinuxProcessTree(registry=registry)
+    raise OSError("process containment requires Windows or Linux")
+
+
 def output_tree_stopped(job):
     """Query the named lifetime group, including descendants after owner death."""
+    if sys.platform == "linux":
+        try:
+            root = Path(job["entrypoint"]).parent / "process-trees"
+            for path in root.glob("*.json"):
+                record = read(path)
+                if not record["stopped"] or probe(record["identity"]) != "dead":
+                    return False
+            return True
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
     if not job.get("output_id"):
         return True
     api = kernel()
@@ -243,7 +522,10 @@ def atomic(path, value):
 
 @contextmanager
 def lock(folder):
-    import msvcrt
+    if os.name == "nt":
+        import msvcrt
+    else:
+        import fcntl
     with (folder / ".write.lock").open("a+b") as stream:
         stream.seek(0, 2)
         if not stream.tell():
@@ -251,7 +533,10 @@ def lock(folder):
         while True:
             stream.seek(0)
             try:
-                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                if os.name == "nt":
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except OSError:
                 time.sleep(0.05)
@@ -259,7 +544,10 @@ def lock(folder):
             yield
         finally:
             stream.seek(0)
-            msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            if os.name == "nt":
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_UN)
 
 
 def record_event(folder, job):
@@ -358,7 +646,7 @@ def main(argv=None):
         # The inner tree can be closed before the terminal state is persisted.
         lifetime_tree = ProcessTree(include_self=True,
             name="Local\\WorldBloom-" + args.nonce if job.get("output_id") else None)
-        tree = ProcessTree()
+        tree = ProcessTree(registry=folder / "process-trees")
         identity = process_identity(os.getpid())
         receipt = {"nonce": args.nonce, "identity": identity, "entrypoint": str(entry),
                    "worker_sha256": job["worker_sha256"]}
@@ -390,7 +678,7 @@ def main(argv=None):
                    finished_at=time.time(), heartbeat=time.time())
             return 0 if cancelled else 1
         manifest = read(folder / "prepared.json")
-        tree = ProcessTree()
+        tree = ProcessTree(registry=folder / "process-trees")
         if job.get("output_id"):
             run_root = Path(args.control) / "outputs" / job["output_id"]
             launch_argv = manifest["argv"]
@@ -458,4 +746,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--linux-guard":
+        raise SystemExit(_linux_guard(sys.argv[2], int(sys.argv[3]), int(sys.argv[4])))
     raise SystemExit(main())

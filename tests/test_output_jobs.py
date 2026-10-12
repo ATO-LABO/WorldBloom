@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TEXT = "二人は昔の約束を思い出し、すれ違いの理由を話し合って気持ちを確かめた。"
 
 
-@unittest.skipUnless(os.name == "nt", "Windows generation supervision")
+@unittest.skipUnless(sys.platform in ("win32", "linux"), "Windows/Linux generation supervision")
 class OutputJobTests(unittest.TestCase):
     cleanup_jobs = support.JobTests.cleanup_jobs
     wait_state = support.JobTests.wait_state

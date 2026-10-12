@@ -1,4 +1,4 @@
-"""Windows process, persistence, idempotency and HTTP boundaries for UI-003."""
+"""Windows/Linux process, persistence, idempotency and HTTP job boundaries."""
 from concurrent.futures import ThreadPoolExecutor
 import http.client
 import json
@@ -37,7 +37,7 @@ def until(predicate, timeout=60):
     raise AssertionError("condition did not become true")
 
 
-@unittest.skipUnless(os.name == "nt", "Windows supervisor contract")
+@unittest.skipUnless(sys.platform in ("win32", "linux"), "Windows/Linux supervisor contract")
 class JobTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wb-ui003-")
