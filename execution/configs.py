@@ -352,6 +352,21 @@ def _capture_inputs(repo, spec, runs=None):
     try:
         world = yaml.safe_load(blobs[world_key])
         _object(world, "inputs.world")
+        slot = world.get("slot_execution")
+        if slot is not None:
+            _object(slot, "inputs.slot_execution")
+            contract = slot.get("contract")
+            if (not isinstance(contract, str) or not contract or Path(contract).is_absolute()
+                    or ".." in Path(contract).parts):
+                raise ConfigError("inputs.slot_execution", "契約参照は世界内の相対YAMLを指定してください")
+            add(contained(repo, (project / contract).relative_to(repo).as_posix()))
+            # The native festival audit hashes/replays its authored feasibility
+            # witness too. Preserve it without rewriting any world definition.
+            if slot.get("mode") == "cultural_festival_next_boundary_v1" and (project / "pattern0_plan.yaml").is_file():
+                add(project / "pattern0_plan.yaml")
+        # Generic route surveys may use project-specific goal configuration.
+        if (project / "route.yaml").is_file():
+            add(project / "route.yaml")
         for field in ("action_graph", "effects"):
             graph = (world.get("gapengine") or {}).get(field)
             if graph is None:
