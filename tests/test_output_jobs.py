@@ -105,7 +105,8 @@ class OutputJobTests(unittest.TestCase):
             source += f"    if request['candidate_id'] == {self.ids[-1]!r}: raise BoundaryError('process_exit_unknown')\n"
         elif mode == "slow_second":
             source += f"    if request['candidate_id'] == {self.ids[-1]!r}: time.sleep(300)\n"
-        source += f"    return Response({canonical({"status":"completed","output":[{"content":[{"type":"output_text","text":TEXT}]}]})!r})\n"
+        response = canonical({"status":"completed","output":[{"content":[{"type":"output_text","text":TEXT}]}]})
+        source += f"    return Response({response!r})\n"
         path.write_text(source, encoding="utf-8")
         self.set_generation("openai", "fixture-model", {"max_calls": 2, "call_timeout_seconds": 10,
             "wall_seconds": 60, "max_saved_response_bytes": 4096})

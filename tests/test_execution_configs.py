@@ -232,6 +232,14 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             self.store.preview(self.spec)
 
+    def test_equivalent_root_alias_freezes_the_same_inputs(self):
+        alias = self.repo / ".." / self.repo.name
+        store = ConfigStore(alias, self.base / "alias-control", self.base / "alias-runs")
+        self.assertEqual(store.preview(self.spec)["input_manifest_sha256"],
+                         self.store.preview(self.spec)["input_manifest_sha256"])
+        with self.assertRaises(ConfigError):
+            ConfigStore(alias, self.repo / "output", self.base / "other-runs")
+
     def test_repo_relative_graph_rebased_without_changing_original(self):
         # An empty chosen template makes World use its world-side reference.
         (self.repo / "templates/blank").mkdir()

@@ -17,6 +17,10 @@ jobs:
         python: ['3.11', '3.13']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    env:
+      # Japanese CLI output must also work on English Windows runners.
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
         with:

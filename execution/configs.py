@@ -552,6 +552,9 @@ class ConfigStore:
         self.runs = Path(runs_root).absolute()
         for root in (self.repo, self.control, self.runs):
             contained(root, ".boundary")
+        # Check links first, then canonicalize harmless aliases (Windows 8.3
+        # temp paths, '..') before containment comparisons and frozen references.
+        self.repo, self.control, self.runs = (root.resolve() for root in (self.repo, self.control, self.runs))
         for target in (self.control, self.runs):
             if target == self.repo or target.is_relative_to(self.repo):
                 raise ConfigError("storage", "実行データはリポジトリ外へ保存してください")

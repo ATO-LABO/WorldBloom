@@ -11,7 +11,9 @@
 
 ## 決定論の約束
 
-同じ `(world, genome, seed, precedent, engine hash)` の組で、`layers.jsonl` はバイト単位で一致します。乱数は単一の `random.Random(seed)`（GA側は `random.Random(ga_seed)` と分離）、候補生成と Policy（遺伝子の変調）は乱数を消費せず、同点のタイブレークは名前順です。**この前提を崩す変更（乱数の消費順序が変わる変更など）は、設計書にその旨を明記してください。**
+同じ Python バージョンと `(world, genome, seed, precedent, engine hash)` の組で、`layers.jsonl` はバイト単位で一致します。乱数は単一の `random.Random(seed)`（GA側は `random.Random(ga_seed)` と分離）、候補生成と Policy（遺伝子の変調）は乱数を消費せず、同点のタイブレークは名前順です。**この前提を崩す変更（乱数の消費順序が変わる変更など）は、設計書にその旨を明記してください。**
+
+Python 3.12では浮動小数点の `sum()` の精度が改善され、3.11と比べて行動確率の記録の末尾ビットが変わる場合があります。今回確認した固定seedでは行動・結果・状態は一致しました。厳密な比較では来歴に記録されたPython版も固定してください。回帰テストは許容誤差で丸めず、3.11と3.12以降それぞれの厳密な期待ハッシュを検証します（[Python公式説明](https://docs.python.org/3.12/library/functions.html#sum)）。
 
 ## 回帰テスト
 

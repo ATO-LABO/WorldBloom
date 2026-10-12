@@ -169,7 +169,7 @@ class _WindowsProcessTree:
         gate = ("import sys,runpy; p=sys.argv[1]; sys.argv=sys.argv[1:]; "
                 "token=sys.stdin.buffer.read(1); "
                 "sys.exit(125) if token!=b'1' else None; runpy.run_path(p,run_name='__main__')")
-        child = subprocess.Popen([argv[0], "-I", "-B", "-c", gate, *argv[3:]],
+        child = subprocess.Popen([argv[0], "-I", "-B", "-Xutf8", "-c", gate, *argv[3:]],
                                  cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         try:
@@ -318,7 +318,12 @@ def _linux_guard(registry, input_fd, output_fd):
             if request["action"] == "launch":
                 if child is not None:
                     raise OSError("process tree already launched")
-                child = subprocess.Popen(request["argv"], cwd=request["cwd"],
+                argv = request["argv"]
+                # -I ignores PYTHONUTF8/PYTHONIOENCODING. Match Windows's
+                # gated interpreter and keep Japanese prompts/output portable.
+                if argv[1:3] == ["-I", "-B"]:
+                    argv = [*argv[:3], "-Xutf8", *argv[3:]]
+                child = subprocess.Popen(argv, cwd=request["cwd"],
                     stdin=input_fd if input_fd >= 0 else subprocess.DEVNULL,
                     stdout=output_fd if output_fd >= 0 else subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL, close_fds=True, start_new_session=True)

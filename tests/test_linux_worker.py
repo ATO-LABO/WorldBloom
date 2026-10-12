@@ -23,6 +23,24 @@ def until(predicate, timeout=10):
 
 
 class PlatformDispatchTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform in ("linux", "win32"), "Windows/Linux containment")
+    def test_isolated_child_uses_utf8_for_japanese_io(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script = root / "utf8.py"
+            script.write_text("import sys\nassert sys.flags.isolated and sys.flags.utf8_mode\n"
+                              "sys.stdout.write(sys.stdin.read() + '確認')\n", encoding="utf-8")
+            tree = worker.ProcessTree()
+            try:
+                child = tree.launch([sys.executable, "-I", "-B", str(script)], root, capture=True)
+                child.stdin.write("入力".encode("utf-8")); child.stdin.close()
+                self.assertEqual(child.wait(timeout=5), 0)
+                tree.finish()
+                self.assertEqual(child.stdout.read().decode("utf-8"), "入力確認")
+                child.stdout.close()
+            finally:
+                tree.close()
+
     def test_windows_keeps_existing_named_job_object_arguments(self):
         with patch.object(worker.os, "name", "nt"), patch.object(worker, "_WindowsProcessTree") as original:
             result = worker.ProcessTree(include_self=True, name="Local\\WorldBloom-test", registry="unused")
