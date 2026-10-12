@@ -89,9 +89,17 @@ def _load_world_and_subjects(
 ) -> tuple[World, dict[str, Subject]]:
     project_dir = Path(project_dir)
     template_dir = Path(template_dir)
-    world = World.from_yaml(
-        project_dir / "world.yaml", action_graph_path=template_dir / "action_graph.yaml"
-    )
+    world_path = project_dir / "world.yaml"
+    definition = yaml.safe_load(world_path.read_bytes())
+    if not isinstance(definition, dict):
+        raise ValueError("World YAML must contain a mapping")
+    # The survey's caller selects the repository/template. Resolve its usual
+    # repo-relative effect reference there too, rather than falling through
+    # to phase2's source-code ROOT in a different checkout. Never rewrite YAML.
+    gapengine = definition.get("gapengine")
+    if isinstance(gapengine, dict) and gapengine.get("effects") == f"templates/{template_dir.name}/effects.yaml":
+        gapengine["effects"] = str((template_dir / "effects.yaml").absolute())
+    world = World(definition, world_path, action_graph_path=template_dir / "action_graph.yaml")
     subjects = _load_subjects(project_dir / "subjects")
     return world, subjects
 
