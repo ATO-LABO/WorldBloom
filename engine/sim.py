@@ -103,6 +103,15 @@ class Simulation:
         self._forced: dict[str, dict[str, Any]] = {}
         self._fallback: dict[str, Any] | None = None
 
+        if (isinstance(getattr(self.world, 'slot_execution', None), dict)
+                and self.world.slot_execution.get('mode') == 'calendar_promises_v2'):
+            from engine.calendar_inputs import read_subjects, subject_spec
+            declared = read_subjects(self.world.source, self.world.slot_execution)
+            expected = {actor: subject_spec(person) for actor, person in declared.items()}
+            actual = {actor: subject_spec(person) for actor, person in self.subjects.items()}
+            if actual != expected:
+                raise ValueError('Runtime people differ from the explicitly declared project inputs')
+
         for subject_id in sorted(self.subjects):
             subject = self.subjects[subject_id]
             if subject.stamina_max <= 0.0:
@@ -123,7 +132,12 @@ class Simulation:
         self.verb_engine = VerbEngine(self.world, self.rng)
         self.slot_runtime = None
         if getattr(self.world, "slot_execution", None) is not None:
-            from engine.slot_runtime import SlotRuntime
+            if self.world.slot_execution.get("mode") == "calendar_promises_v2":
+                if policies is not None:
+                    raise ValueError("calendar v2 action-search policy/codec is unsupported; use explicit choices")
+                from engine.calendar_runtime import CalendarRuntime as SlotRuntime
+            else:
+                from engine.slot_runtime import SlotRuntime
             self.slot_runtime = SlotRuntime(self)
 
     def _present_for(self, subject: Subject) -> list[Subject]:
