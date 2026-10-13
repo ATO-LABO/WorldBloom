@@ -1,0 +1,179 @@
+name: 凪野高校・文化祭 calendar_promises_v2（steps1〜3確認版）
+time:
+  days: 3
+  slots:
+  - 06:00
+  - 06:30
+  - 07:00
+  - 07:30
+  - 08:00
+  - 08:30
+  - 09:00
+  - 09:30
+  - '10:00'
+  - '10:30'
+  - '11:00'
+  - '11:30'
+  - '12:00'
+  - '12:30'
+  - '13:00'
+  - '13:30'
+  - '14:00'
+  - '14:30'
+  - '15:00'
+  - '15:30'
+  - '16:00'
+  - '16:30'
+  - '17:00'
+protagonist: 蒼
+antagonist: 紗季
+zones:
+- name: 自宅
+- name: 校門
+- name: 部室
+- name: 体育館
+- name: 展示室
+- name: 教室
+- name: 実行委員室
+- name: 放送室
+routes:
+  自宅:
+  - to: 校門
+    cost: 1
+  校門:
+  - to: 教室
+    cost: 1
+  - to: 自宅
+    cost: 1
+  - to: 部室
+    cost: 1
+  部室:
+  - to: 体育館
+    cost: 1
+  - to: 実行委員室
+    cost: 1
+  - to: 展示室
+    cost: 1
+  - to: 教室
+    cost: 1
+  - to: 校門
+    cost: 1
+  体育館:
+  - to: 展示室
+    cost: 1
+  - to: 放送室
+    cost: 1
+  - to: 部室
+    cost: 1
+  展示室:
+  - to: 体育館
+    cost: 1
+  - to: 教室
+    cost: 1
+  - to: 部室
+    cost: 1
+  教室:
+  - to: 展示室
+    cost: 1
+  - to: 校門
+    cost: 1
+  - to: 部室
+    cost: 1
+  実行委員室:
+  - to: 部室
+    cost: 1
+  放送室:
+  - to: 体育館
+    cost: 1
+movement:
+  action_weight: 1
+  hop_decay: 1
+items:
+- name: 台本
+- name: 衣装
+  sources:
+  - type: investigate
+    zone: 部室
+    count: 1
+    max: 1
+- name: 校門通行可
+  note: 8時開門を表すschema用フラグ。物語上の所持品ではない。
+facts:
+- id: 共通予定
+  label: 9時部室集合、12時体育館リハ、14時30分袖集合、15時開演、17時片付け終了
+  share_min_affinity: 0.0
+  sources: []
+- id: 台詞骨子習得
+  label: 蒼は台詞骨子を習得している
+  share_min_affinity: 0.0
+  sources: []
+- id: 共同展示未完成
+  label: 蒼と灯の共同展示パネルは未完成
+  share_min_affinity: 0.0
+  sources: []
+- id: 終盤短縮希望
+  label: 蓮は終盤の一台詞を短くしたい
+  share_min_affinity: 0.0
+  sources: []
+- id: 音響手順
+  label: 紗季は体育館の音響確認手順を知っている
+  share_min_affinity: 0.0
+  sources: []
+truth: {}
+scheduled_events:
+- id: schedule-0
+  day: 3
+  slot: 09:00
+  label: 集合
+  targets: []
+- id: schedule-1
+  day: 3
+  slot: '12:00'
+  label: リハーサル
+  targets: []
+- id: schedule-2
+  day: 3
+  slot: '14:30'
+  label: 袖集合
+  targets: []
+- id: schedule-3
+  day: 3
+  slot: '15:00'
+  label: 二人芝居「帰り道の約束」開演（15分）
+  targets: []
+- id: schedule-4
+  day: 3
+  slot: '17:00'
+  label: 片付け終了
+  targets: []
+ending:
+- id: observation_finished
+  when: turn > 23
+  label: 観測終了
+target_ending: observation_finished
+stamina:
+  default_max: 100
+  default_recover_per_slot: 1
+companionship:
+  threshold: 0.6
+  weight: 1
+cultural_festival:
+  projection_only: false
+  contract: contract_v2.yaml
+  runtime_note: 別版。v1の30分移動/pledgeを暗黙変換しない。
+slot_execution:
+  mode: calendar_promises_v2
+  contract: contract_v2.yaml
+  subjects:
+  - id: 蒼
+    path: subjects/01_蒼.yaml
+  - id: 紗季
+    path: subjects/02_紗季.yaml
+  - id: 蓮
+    path: subjects/03_蓮.yaml
+  - id: 灯
+    path: subjects/04_灯.yaml
+  - id: 悠
+    path: 05_悠.yaml
+  - id: 実
+    path: 06_実.yaml

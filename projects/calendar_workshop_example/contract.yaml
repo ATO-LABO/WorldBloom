@@ -1,0 +1,49 @@
+version: 3
+calendar:
+  schema_version: 1
+  period: {start_date: '2026-11-01', end_date: '2026-11-02'}
+  normal:
+    bands:
+      - {id: day, name: Daytime display, start: '09:00', end: '10:00', overnight: false, interval_minutes: 17}
+    weekdays: {}
+    holidays: []
+  specials: []
+timezone: UTC
+start_time: '21:00'
+end_time: '01:00'
+travel_minutes:
+  Bench: {Store: 10}
+  Store: {Bench: 10}
+roles:
+  Ada: [maker]
+  Bo: [receiver]
+tasks:
+  pieces:
+    label: Make three pieces
+    place: Bench
+    units: 3
+    minutes_per_unit: 10
+    dependencies: []
+    resource: bench-tool
+    roles: [maker]
+    materials_per_unit: {blank: 1}
+    operation: work
+  handoff:
+    label: Hand over completed pieces
+    place: Bench
+    units: 1
+    minutes_per_unit: 2
+    dependencies: [pieces]
+    resource: handoff-place
+    roles: [maker]
+    materials_per_unit: {}
+    operation: deliver
+materials: {blank: 3}
+facility_hours: {}
+appraisal: {fulfilled: 0.05, unexplained_breach: -0.05}
+assumptions:
+  - Explicit acceptance input in an independent workshop; no action search.
+  - One worker makes three units and hands them to a named receiver.
+initial_task_knowledge:
+  Ada: [pieces, handoff]
+  Bo: []
