@@ -1,0 +1,433 @@
+version: 2
+calendar:
+  schema_version: 1
+  period:
+    start_date: '2026-10-13'
+    end_date: '2026-10-15'
+  normal:
+    bands:
+    - id: morning
+      name: 朝
+      start: 07:45
+      end: 08:30
+      overnight: false
+      interval_minutes: 15
+    - id: lunch
+      name: 昼休み
+      start: '12:20'
+      end: '13:00'
+      overnight: false
+      interval_minutes: 10
+    - id: after
+      name: 放課後
+      start: '15:30'
+      end: '18:00'
+      overnight: false
+      interval_minutes: 30
+    weekdays:
+      '5': &id001
+      - id: morning
+        name: 休日午前
+        start: 09:00
+        end: '12:00'
+        overnight: false
+        interval_minutes: 60
+      - id: lunch
+        name: 休日休憩
+        start: '12:00'
+        end: '13:00'
+        overnight: false
+        interval_minutes: 30
+      - id: after
+        name: 休日午後
+        start: '13:00'
+        end: '17:00'
+        overnight: false
+        interval_minutes: 60
+      '6': *id001
+    holidays: []
+  specials:
+  - id: festival
+    name: 文化祭当日
+    enabled: true
+    selector:
+      kind: last
+      offset: 0
+    priority: 10
+    bands:
+    - id: morning
+      name: 文化祭朝
+      start: 06:00
+      end: '12:00'
+      overnight: false
+      interval_minutes: 60
+    - id: lunch
+      name: 文化祭昼休み
+      start: '12:00'
+      end: '13:00'
+      overnight: false
+      interval_minutes: 60
+    - id: after
+      name: 文化祭放課後
+      start: '13:00'
+      end: '17:00'
+      overnight: false
+      interval_minutes: 60
+timezone: Asia/Tokyo
+start_time: 06:00
+end_time: '17:00'
+travel_minutes:
+  自宅:
+    校門: 10
+  校門:
+    自宅: 10
+    部室: 10
+    教室: 10
+  部室:
+    校門: 10
+    体育館: 10
+    展示室: 10
+    教室: 10
+    実行委員室: 10
+  体育館:
+    部室: 10
+    展示室: 10
+    放送室: 10
+  展示室:
+    部室: 10
+    体育館: 10
+    教室: 10
+  教室:
+    部室: 10
+    展示室: 10
+    校門: 10
+  実行委員室:
+    部室: 10
+  放送室:
+    体育館: 10
+roles:
+  蒼:
+  - 演劇主役
+  - 展示制作
+  - student:蒼
+  紗季:
+  - 演劇進行
+  - student:紗季
+  蓮:
+  - 演劇相手役
+  - student:蓮
+  灯:
+  - 展示制作
+  - 展示受付
+  - student:灯
+  悠:
+  - 実行委員
+  - student:悠
+  実:
+  - 放送
+  - student:実
+tasks:
+  panel-headline:
+    label: P1の見出し取付1枚
+    place: 展示室
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 展示制作
+    dependencies: []
+    resource: panel-table
+    materials_per_unit: {}
+    operation: work
+  panel-cards:
+    label: P1の説明カード4枚取付
+    place: 展示室
+    units: 4
+    minutes_per_unit: 10
+    roles:
+    - 展示制作
+    dependencies: []
+    resource: panel-table
+    materials_per_unit:
+      説明カード: 1
+    operation: work
+  panel-photo:
+    label: 完成P1確認写真1枚
+    place: 展示室
+    units: 1
+    minutes_per_unit: 2
+    roles:
+    - 展示制作
+    dependencies:
+    - panel-headline
+    - panel-cards
+    resource: panel-photo
+    materials_per_unit: {}
+    operation: work
+  photo-handoff:
+    label: 灯へ完成写真1枚手渡し
+    place: 展示室
+    units: 1
+    minutes_per_unit: 2
+    roles:
+    - 展示制作
+    dependencies:
+    - panel-photo
+    resource: photo-handoff
+    materials_per_unit: {}
+    operation: deliver
+  reception-signs:
+    label: 展示受付札3枚
+    place: 展示室
+    units: 3
+    minutes_per_unit: 10
+    roles:
+    - 展示受付
+    dependencies: []
+    resource: reception-signs
+    materials_per_unit:
+      受付札用紙: 1
+    operation: work
+  costume-ready:
+    label: 衣装準備
+    place: 部室
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 演劇進行
+    - 演劇主役
+    dependencies: []
+    resource: costume-ready
+    materials_per_unit: {}
+    operation: work
+  practice-ready:
+    label: 骨子習得済み台詞の稽古
+    place: 部室
+    units: 1
+    minutes_per_unit: 30
+    roles:
+    - 演劇主役
+    - 演劇相手役
+    dependencies: []
+    resource: practice-ready
+    materials_per_unit: {}
+    operation: work
+  sound-ready:
+    label: 音響確認
+    place: 体育館
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 演劇進行
+    dependencies: []
+    resource: sound-ready
+    materials_per_unit: {}
+    operation: work
+  venue-ready:
+    label: 会場利用と案内確認
+    place: 実行委員室
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 実行委員
+    dependencies: []
+    resource: venue-ready
+    materials_per_unit: {}
+    operation: work
+  broadcast-ready:
+    label: 放送案内準備
+    place: 放送室
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 放送
+    dependencies:
+    - venue-ready
+    resource: broadcast-ready
+    materials_per_unit: {}
+    operation: work
+  class-am:蒼:
+    label: 午前授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 230
+    roles:
+    - student:蒼
+    dependencies: []
+    resource: seat:蒼
+    materials_per_unit: {}
+    operation: work
+  class-pm:蒼:
+    label: 午後授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 150
+    roles:
+    - student:蒼
+    dependencies: []
+    resource: seat:蒼
+    materials_per_unit: {}
+    operation: work
+  class-am:紗季:
+    label: 午前授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 230
+    roles:
+    - student:紗季
+    dependencies: []
+    resource: seat:紗季
+    materials_per_unit: {}
+    operation: work
+  class-pm:紗季:
+    label: 午後授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 150
+    roles:
+    - student:紗季
+    dependencies: []
+    resource: seat:紗季
+    materials_per_unit: {}
+    operation: work
+  class-am:蓮:
+    label: 午前授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 230
+    roles:
+    - student:蓮
+    dependencies: []
+    resource: seat:蓮
+    materials_per_unit: {}
+    operation: work
+  class-pm:蓮:
+    label: 午後授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 150
+    roles:
+    - student:蓮
+    dependencies: []
+    resource: seat:蓮
+    materials_per_unit: {}
+    operation: work
+  class-am:灯:
+    label: 午前授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 230
+    roles:
+    - student:灯
+    dependencies: []
+    resource: seat:灯
+    materials_per_unit: {}
+    operation: work
+  class-pm:灯:
+    label: 午後授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 150
+    roles:
+    - student:灯
+    dependencies: []
+    resource: seat:灯
+    materials_per_unit: {}
+    operation: work
+  class-am:悠:
+    label: 午前授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 230
+    roles:
+    - student:悠
+    dependencies: []
+    resource: seat:悠
+    materials_per_unit: {}
+    operation: work
+  class-pm:悠:
+    label: 午後授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 150
+    roles:
+    - student:悠
+    dependencies: []
+    resource: seat:悠
+    materials_per_unit: {}
+    operation: work
+  class-am:実:
+    label: 午前授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 230
+    roles:
+    - student:実
+    dependencies: []
+    resource: seat:実
+    materials_per_unit: {}
+    operation: work
+  class-pm:実:
+    label: 午後授業への参加
+    place: 教室
+    units: 2
+    minutes_per_unit: 150
+    roles:
+    - student:実
+    dependencies: []
+    resource: seat:実
+    materials_per_unit: {}
+    operation: work
+materials:
+  説明カード: 4
+  受付札用紙: 3
+facility_hours:
+  校門:
+    opens: 08:00
+    closes: '18:00'
+  部室:
+    opens: 08:00
+    closes: '18:00'
+  体育館:
+    opens: 08:00
+    closes: '18:00'
+  展示室:
+    opens: 08:00
+    closes: '18:00'
+  教室:
+    opens: 08:00
+    closes: '18:00'
+  実行委員室:
+    opens: 08:00
+    closes: '18:00'
+  放送室:
+    opens: 08:00
+    closes: '18:00'
+play:
+  event_id: schedule-3
+  place: 体育館
+  lead: 蒼
+  partner: 蓮
+  preparation_tasks:
+  - costume-ready
+  - practice-ready
+  - sound-ready
+appraisal:
+  fulfilled: 0.05
+  unexplained_breach: -0.05
+initial_task_knowledge:
+  蒼:
+  - panel-headline
+  - panel-cards
+  灯:
+  - panel-headline
+  - panel-cards
+assumptions:
+- 本人レビュー前のv2仮設定。初期4人の原YAML・性格・目的・知識・所持品は保持。
+- 追加2人は悠=実行委員、実=放送。学校予定と担当工程を持つ固定人物。性格数値は中立寄り仮値。
+- 教室/実行委員室/放送室を追加、隣接徒歩10分。v1の1枠移動を10分と再解釈しない。
+- P1下地は開始前に灯が完成済みという新v2仮定。残り見出し20分+説明カード4枚各10分。
+- 写真撮影/手渡し各2分、受付札3枚各10分。作業は一人ずつ同一机を占有。
+- 比較3ケースは明示行動入力の機構受入witness。行動探索・文学作品・自然な内面生成ではない。
+- 授業は平日のみ、休日は自由時間窓。夜間宛先通知は受信と翌6時既読を区別。
+- 信頼に対応する既存有向affinity軸を観測時のみ±.05。再相談そのものへの報酬なし。
+- 共同運搬/複数人速度合成/公演内部/探索codec/作品本文は今回未実装。
