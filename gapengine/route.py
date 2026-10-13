@@ -337,6 +337,8 @@ def load_route_config(template_dir: str | Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("route.yaml must be a mapping")
     return {
         "holder_belief_fact": raw.get("holder_belief_fact"),
         "trial_reveal_facts": {
@@ -365,6 +367,9 @@ def load_route_config(template_dir: str | Path) -> dict[str, Any] | None:
         # every caller of load_route_config (evolve.py, the eval/probe
         # scripts, tests) gets it for free via Route.from_config.
         "motives": load_motives(template_dir),
+        # Survey-only goals never change Policy's natural action selection.
+        "goal": raw.get("goal"),
+        "search": raw.get("search", {}),
     }
 
 

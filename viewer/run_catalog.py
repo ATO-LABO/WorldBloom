@@ -184,7 +184,8 @@ class RunCatalog:
                 verified_json(contained(root, "manifest.json"), read_json(contained(root, "complete.json"))["manifest_sha256"])
                 return name
             raise invalid("実行manifestの識別子が一致しません")
-        return "legacy-" + sha256(str(root).encode("utf-8"))
+        # Match RunRepository's resolved runs root, including Windows 8.3 aliases.
+        return "legacy-" + sha256(str(root.resolve()).encode("utf-8"))
 
     def resolve(self, run_id):
         identifier(run_id, "run_id")
@@ -417,6 +418,9 @@ def dispatch(handler, parts, method):
             result = {"schema_version": 1, "runs": catalog.history()}
         elif method == "GET" and parts == ["api", "selected"]:
             result = {"schema_version": 1, "candidates": selections.tray()}
+        elif method == "GET" and len(parts) == 6 and parts[1] == "runs" and parts[3] == "candidates" and parts[5] == "actions":
+            from viewer import action_log
+            result = action_log.load(catalog, parts[2], parts[4], parse_qs(urlsplit(handler.path).query, keep_blank_values=True))
         elif len(parts) == 4 and parts[1] == "runs":
             rid, action = parts[2:]
             if action == "selection" and method == "GET":

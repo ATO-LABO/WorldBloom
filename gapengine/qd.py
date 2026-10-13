@@ -67,10 +67,10 @@ class Elite:
         }
 
     @classmethod
-    def from_dict(cls, raw: Mapping[str, Any]) -> Elite:
+    def from_dict(cls, raw: Mapping[str, Any], *, genome_codec=None) -> Elite:
         descriptor_raw = raw["descriptor"]
         return cls(
-            genome=Genome.from_dict(raw["genome"]),
+            genome=(Genome if genome_codec is None else genome_codec).from_dict(raw["genome"]),
             quality=float(raw["quality"]),
             descriptor=Descriptor(
                 category=(
@@ -1083,7 +1083,7 @@ class Archive:
         return destination
 
     @classmethod
-    def from_dict(cls, raw: Mapping[str, Any]) -> Archive:
+    def from_dict(cls, raw: Mapping[str, Any], *, genome_codec=None) -> Archive:
         """WB-GA-RESUME: the same reconstruction ``load()`` does from a
         parsed archive.json, but from an already-parsed mapping -- used to
         restore an archive embedded directly in ga_state.json (version>=2),
@@ -1105,9 +1105,8 @@ class Archive:
             parts = cell_text.split("|")
             if len(parts) not in (2, 3):
                 raise ValueError(f"Invalid archive cell: {cell_text}")
-            archive.cells[tuple(parts)] = Elite.from_dict(
-                raw["cells"][cell_text]
-            )
+            archive.cells[tuple(parts)] = (Elite.from_dict(raw["cells"][cell_text])
+                if genome_codec is None else Elite.from_dict(raw["cells"][cell_text],genome_codec=genome_codec))
         return archive
 
     @classmethod

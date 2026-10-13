@@ -1,5 +1,5 @@
 ---
-ja_rev: "1d3f35c5a0dd"
+ja_rev: "b3a45c266c26"
 ---
 # Route Layer
 
@@ -75,11 +75,31 @@ Setting `route.yaml`'s `gene_affinity` (default 0) and `route_category` (a mappi
 
 The world screen's sidebar always has a read-only "Survey shortest routes" feature, regardless of genre (`GET /api/worlds/<id>/routes`, implemented in `gapengine/route_paths.py`). It works even in the read-only Viewer (no need to run a GA experiment to check it).
 
-- Genres whose protagonist's goal isn't the "obtain and deliver an item" shape (detective, romance), or that have no `route.yaml` at all, show an unsupported message instead
+- World-specific `projects/<world>/route.yaml` takes precedence over the genre's `route.yaml`. Missing configuration produces an explanatory message
 - It starts from the state after the world's scheduled events (`scheduled_events`, only the `move` [force actions](../reference/templates.md#scheduled-events)) have been applied, on the premise that the protagonist itself hasn't acted yet
-- For each starting timepoint, it shows **up to 3** distinct walkthroughs. **#1 is the walkthrough chosen by the same criterion an actual GA run uses (the unconstrained best plan)**. #2/#3 are alternates found by requiring a different means from #1 (e.g. negotiating instead of fighting, a different item for the same purpose), ordered by ascending cost (h)
+- Legacy delivery goals show **up to 3** walkthroughs per starting point. #1 comes from the approximate backward planner; #2/#3 use different means. Both h and walkthrough costs are model estimates, with no global shortest-path guarantee. These surveys are separate from a character's natural route choices
 - Each walkthrough shows the actual step sequence and its running cost. If it takes too many steps (a 60-step cap) or starts repeating the same state, it shows "cut short partway through" instead of finishing
-- If that genre has no `route.yaml`, the goal shape is unsupported, or no walkthrough to the ending exists at all (lost), the reason is shown instead
+- Failure to find an approximate plan does not prove that the whole world is unreachable. A truncated walkthrough is also reported separately
+
+### Person, time, location and inventory goals
+
+An explicit survey-only `goal` in `route.yaml` accepts an AND of `at` (location), `holds` (item and quantity) and `knows` (known fact). Any registered person can be the actor. Each condition's subject defaults to that actor. Goals are currently configured through YAML.
+
+```yaml
+goal:
+  actor: 主役
+  all:
+    - {predicate: at, zone: 体育館}
+    - {predicate: holds, item: 衣装, quantity: 1}
+  time: {mode: at, day: 1, slot: '15:00'}
+search: {max_expansions: 5000}
+```
+
+Time mode `at` requires all conditions at the exact boundary; `by` succeeds at any boundary up to and including the deadline; `any` (also the default when time is omitted) succeeds within the configured calendar. Waiting after early arrival consumes slots. Supported scheduled events at the judgment boundary apply before the goal check.
+
+The minimum implementation supports one day of evenly spaced HH:MM boundaries, static adjacent movement, waiting, investigation and crafting. `samples/route_goals/cultural_festival` provides 06:00–17:00 at 30-minute intervals. The shortest guarantee applies only to elapsed slots including waiting in this declared model. It excludes stamina, relationships, randomness, other characters' autonomous actions and the engine's multi-edge moves. Arbitrary natural-language conditions are unsupported.
+
+Results distinguish success, model-scoped unreachability, budget cutoff, unsupported features and invalid settings. Unsupported event effects such as force_action produce a message rather than being ignored. Surveys do not change the world, personalities or normal action selection.
 
 ## Feeding into synopsis/text generation
 

@@ -121,6 +121,10 @@ class Simulation:
         self.world.resolve_truth(self.seed)
         self.world.bind_subjects(self.subjects)
         self.verb_engine = VerbEngine(self.world, self.rng)
+        self.slot_runtime = None
+        if getattr(self.world, "slot_execution", None) is not None:
+            from engine.slot_runtime import SlotRuntime
+            self.slot_runtime = SlotRuntime(self)
 
     def _present_for(self, subject: Subject) -> list[Subject]:
         return self.world.present_subjects(subject.zone)
@@ -687,7 +691,9 @@ class Simulation:
             self._decision_context = {"zone": subject.zone,
                                       "present": [s.id for s in self._present_for(subject)],
                                       "selection": record_distribution([], [], None, fallback="no_candidates")}
-        weighted = candidates(subject, self.world, self)
+        weighted = (self.slot_runtime.candidates(subject)
+                    if self.slot_runtime is not None
+                    else candidates(subject, self.world, self))
 
         if forced is not None:
             key_verb = str(forced["verb"])
@@ -1194,6 +1200,8 @@ class Simulation:
                 self._write_markers(self._writer, markers)
 
     def run(self) -> Path:
+        if self.slot_runtime is not None:
+            return self.slot_runtime.run()
         path = self.out_dir / "layers.jsonl"
         with LayersWriter(path, on_write=self._observe_row) as writer:
             self._writer = writer

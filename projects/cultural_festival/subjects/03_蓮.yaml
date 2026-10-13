@@ -1,0 +1,58 @@
+id: 蓮
+traits:
+  social: 0.7
+  stubbornness: 0.45
+  curiosity: 0.6
+  diligence: 0.7
+  temper: 0.2
+base: 50
+modifiers: []
+beliefs_about: {}
+beliefs: {}
+knowledge:
+- 共通予定
+- 終盤短縮希望
+inventory: {}
+reputation: 0
+phase: []
+verbs:
+- move
+- rest
+- share_knowledge
+identity:
+  'true': 蓮
+  displayed: 蓮
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: observation_finished
+relations:
+  蒼:
+    affinity: 0.45
+    awareness: 0.8
+  紗季:
+    affinity: 0.45
+    awareness: 0.8
+  灯:
+    affinity: 0.45
+    awareness: 0.8
+stamina:
+  max: 100
+  recover_per_slot: 1
+range:
+  zones:
+  - 自宅
+  - 校門
+  - 部室
+  - 体育館
+  - 展示室
+  entry: 部室
+companions: []
+ally_value: 0
+objective_claimant: false
+cultural_festival:
+  goals:
+  - 相手役として出演する
+  - 終盤の一台詞の短縮を相談する
+  notes: traits数値と初期関係はこの試走用仮値。全run固定。goal複数目的は現行engineに未接続。

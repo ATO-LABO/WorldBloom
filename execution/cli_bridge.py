@@ -1,13 +1,14 @@
 """Run one CLI inside the already assigned, gated per-call process group."""
 import subprocess
 import sys
+import os
 
 if __name__ == "__main__":
     prompt = sys.stdin.buffer.read()
     try:
         child = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE,
             stdout=sys.stdout.buffer, stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW)
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
     except OSError:
         # Reserved bridge code: the external executable was provably not started.
         raise SystemExit(124)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -264,7 +265,7 @@ def prepare(configs, job, plan):
         built = subprocess.run([python_executable(), "-I", "-B",
             str(tmp / "runtime/execution/output_worker.py"), "--build", str(tmp)],
             cwd=tmp, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW)
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         if built.returncode:
             raise ConfigError("prompt", "固定入力からのプロンプト構築に失敗しました")
         result = read_json(tmp / "build-result.json")

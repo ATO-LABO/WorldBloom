@@ -729,6 +729,11 @@ class World:
         self._validate_item_references()
         self._validate_recipe_cycles()
         self._validate_fact_sources()
+        # Explicit opt-in only. Legacy worlds retain their existing execution.
+        self.slot_execution = definition.get("slot_execution")
+        if self.slot_execution is not None:
+            from engine.slot_runtime import load_contract
+            self.slot_contract = load_contract(self, self.slot_execution)
 
     @classmethod
     def from_yaml(

@@ -317,6 +317,9 @@ def generation_availability(generation, settings_path=None):
 
 def _capture_inputs(repo, spec, runs=None):
     """Read a closed YAML set once; rebase only World's external graph reference."""
+    # Draft/preview callers can substitute a root without calling ConfigStore's
+    # constructor. Keep the same checked, canonical boundary at this entry too.
+    repo = contained(repo, ".").resolve()
     blobs, records = {}, {}
     def add(path):
         relative = path.relative_to(repo).as_posix()
@@ -349,6 +352,21 @@ def _capture_inputs(repo, spec, runs=None):
     try:
         world = yaml.safe_load(blobs[world_key])
         _object(world, "inputs.world")
+        slot = world.get("slot_execution")
+        if slot is not None:
+            _object(slot, "inputs.slot_execution")
+            contract = slot.get("contract")
+            if (not isinstance(contract, str) or not contract or Path(contract).is_absolute()
+                    or ".." in Path(contract).parts):
+                raise ConfigError("inputs.slot_execution", "契約参照は世界内の相対YAMLを指定してください")
+            add(contained(repo, (project / contract).relative_to(repo).as_posix()))
+            # The native festival audit hashes/replays its authored feasibility
+            # witness too. Preserve it without rewriting any world definition.
+            if slot.get("mode") == "cultural_festival_next_boundary_v1" and (project / "pattern0_plan.yaml").is_file():
+                add(project / "pattern0_plan.yaml")
+        # Generic route surveys may use project-specific goal configuration.
+        if (project / "route.yaml").is_file():
+            add(project / "route.yaml")
         for field in ("action_graph", "effects"):
             graph = (world.get("gapengine") or {}).get(field)
             if graph is None:
@@ -552,6 +570,9 @@ class ConfigStore:
         self.runs = Path(runs_root).absolute()
         for root in (self.repo, self.control, self.runs):
             contained(root, ".boundary")
+        # Check links first, then canonicalize harmless aliases (Windows 8.3
+        # temp paths, '..') before containment comparisons and frozen references.
+        self.repo, self.control, self.runs = (root.resolve() for root in (self.repo, self.control, self.runs))
         for target in (self.control, self.runs):
             if target == self.repo or target.is_relative_to(self.repo):
                 raise ConfigError("storage", "実行データはリポジトリ外へ保存してください")
