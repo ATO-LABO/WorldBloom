@@ -724,8 +724,284 @@ class EpochApiTests(EpochChainTestBase):
 # the same files.
 # --------------------------------------------------------------------------
 
+# Diagnostic files are deliberately bounded and live outside the disposable
+# fixture. They observe existing outcomes; no deadline or assertion is relaxed.
+_EPOCH_DIAGNOSTIC_FILE_LIMIT = 128 * 1024
+_EPOCH_DIAGNOSTIC_TOTAL_LIMIT = 4 * 1024 * 1024
+_EPOCH_DIAGNOSTIC_FILE_COUNT = 96
+
+
+def _epoch_diagnostics_enabled():
+    return os.environ.get("WB_REGRESSION_DIAGNOSTICS") == "1" or bool(
+        os.environ.get("WB_REGRESSION_EVIDENCE_DIR"))
+
+
+_EPOCH_WORKER_OBSERVATION = '''
+# TEST COPY ONLY. Installed before freezing inputs/runtime, never on production.
+import traceback as _epoch_traceback
+
+def _epoch_exception_observation(phase):
+    if os.environ.get("WB_EPOCH_CAPTURE_ROOT"):
+        error = sys.exc_info()[1]
+        print(json.dumps({"diagnostic": "epoch-worker-exception", "phase": phase,
+                          "exception_type": type(error).__name__}), file=sys.stderr, flush=True)
+        _epoch_traceback.print_exc(file=sys.stderr)
+
+if os.environ.get("WB_EPOCH_CAPTURE_ROOT") and not hasattr(subprocess, "_epoch_original_popen"):
+    subprocess._epoch_original_popen = subprocess.Popen
+    def _epoch_observed_popen(*args, **kwargs):
+        if kwargs.get("stderr") != subprocess.DEVNULL:
+            return subprocess._epoch_original_popen(*args, **kwargs)
+        directory = Path(os.environ["WB_EPOCH_CAPTURE_ROOT"])
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = str(os.getpid()) + "-" + str(time.time_ns())
+        filename = directory / (stamp + ".stderr.log")
+        # A file, not an undrained PIPE: observing stderr must not stall a child.
+        with filename.open("ab") as stream:
+            copied = dict(kwargs, stderr=stream)
+            process = subprocess._epoch_original_popen(*args, **copied)
+        command = args[0] if args else kwargs.get("args", [])
+        record = {"parent_pid": os.getpid(), "child_pid": process.pid,
+                  "started_at": time.time(), "cwd": str(kwargs.get("cwd", "")),
+                  "argv": list(command) if isinstance(command, (list, tuple)) else str(command),
+                  "stderr_file": filename.name}
+        with (directory / "spawn.jsonl").open("ab") as stream:
+            stream.write((json.dumps(record, ensure_ascii=False) + "\\n").encode("utf-8"))
+        return process
+    subprocess.Popen = _epoch_observed_popen
+'''
+
+
+def _instrument_epoch_worker_copy(repo):
+    """Expose discarded child stderr/prepare exceptions only in this fixture."""
+    path = repo / "execution/worker.py"
+    source = path.read_text(encoding="utf-8")
+    prepare_hook = "    except BaseException:\n        # Only the supervisor owns job transitions"
+    supervisor_hook = "    except BaseException as error:\n        if tree is not None:"
+    entry_hook = '\nif __name__ == "__main__":'
+    if source.count(prepare_hook) != 1 or source.count(supervisor_hook) != 1 or source.count(entry_hook) != 1:
+        raise AssertionError("Epoch diagnostic hooks no longer match the copied worker")
+    source = source.replace(prepare_hook,
+        '    except BaseException:\n        _epoch_exception_observation("preparing")\n'
+        '        # Only the supervisor owns job transitions', 1)
+    source = source.replace(supervisor_hook,
+        '    except BaseException as error:\n        _epoch_exception_observation("supervising")\n'
+        '        if tree is not None:', 1)
+    source = source.replace(entry_hook, "\n" + _EPOCH_WORKER_OBSERVATION + entry_hook, 1)
+    compile(source, str(path), "exec")
+    path.write_text(source, encoding="utf-8")
+
+
+def _epoch_read_json(path):
+    try:
+        if path.is_symlink() or path.stat().st_size > 2 * 1024 * 1024:
+            return {"diagnostic_read_error": "unsafe_or_oversized"}
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        return {"diagnostic_read_error": type(error).__name__}
+
+
+def _save_epoch_diagnostics(base, *, result=None, failure=None, elapsed=None):
+    """Best-effort bounded observation, called before TemporaryDirectory cleanup."""
+    import time
+    import uuid
+    root = os.environ.get("WB_REGRESSION_EVIDENCE_DIR")
+    phase = os.environ.get("WB_REGRESSION_PHASE", "full-suite")
+    phase = "".join(c if c.isalnum() or c in "-_" else "_" for c in phase)[:64]
+    summary = {"test": "HeavyRealChainEndToEndTest.test_two_epoch_auto_chain_with_real_ga_and_real_approval",
+               "phase": phase, "observed_at": time.time(), "driver_elapsed_seconds": elapsed,
+               "driver_returncode": getattr(result, "returncode", None),
+               "driver_failure_type": type(failure).__name__ if failure else None,
+               "bounds": {"driver_seconds": 580, "chain_seconds": 550}, "jobs": [], "files": []}
+    summary["chain"] = _epoch_read_json(base / "result.json")
+    summary["worker_observation"] = _epoch_read_json(base / "worker-observation.json")
+    for folder in sorted((base / "control/jobs").glob("job-*"))[:24]:
+        job = _epoch_read_json(folder / "job.json")
+        summary["jobs"].append({key: job.get(key) for key in (
+            "job_id", "run_id", "kind", "state", "phase", "error", "exit_code", "progress",
+            "created_at", "started_at", "finished_at", "updated_at", "wall_seconds",
+            "receipt", "launch_identity", "child_identity", "preparation_identity")})
+    destination = None
+    if root:
+        external = Path(root).resolve()
+        fixture = base.resolve()
+        if external == fixture or fixture in external.parents:
+            summary["artifact_error"] = "evidence_dir_must_be_outside_fixture"
+        else:
+            destination = external / ("epoch-chain-" + phase + "-" + uuid.uuid4().hex[:12])
+            destination.mkdir(parents=True, exist_ok=False)
+    budget = _EPOCH_DIAGNOSTIC_TOTAL_LIMIT
+    count = 0
+    excerpts = []
+    excerpt_budget = 32768
+
+    def excerpt(name, data, limit):
+        nonlocal excerpt_budget
+        if isinstance(data, str):
+            data = data.encode("utf-8", errors="replace")
+        if not data or not excerpt_budget:
+            return
+        data = data[-min(limit, excerpt_budget):]
+        excerpt_budget -= len(data)
+        excerpts.append((name, data.decode("utf-8", errors="replace")))
+
+    def save(name, data, total_bytes=None):
+        nonlocal budget, count
+        if isinstance(data, str): data = data.encode("utf-8", errors="replace")
+        original_bytes = len(data) if total_bytes is None else total_bytes
+        data = data[-min(_EPOCH_DIAGNOSTIC_FILE_LIMIT, budget):] if budget else b""
+        if count >= _EPOCH_DIAGNOSTIC_FILE_COUNT or not budget:
+            summary["collection_truncated"] = True
+            return
+        count += 1; budget -= len(data)
+        record = {"path": name, "original_bytes": original_bytes, "saved_bytes": len(data),
+                  "truncated": original_bytes > len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        summary["files"].append(record)
+        if destination is not None:
+            target = destination / name; target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+    for name, value in (("driver.stdout.log", getattr(result, "stdout", None)),
+                        ("driver.stderr.log", getattr(result, "stderr", None))):
+        if value is None and failure is not None:
+            value = getattr(failure, "stdout" if "stdout" in name else "stderr", None)
+        if value is not None:
+            save(name, value)
+            if failure is not None or name == "driver.stderr.log":
+                excerpt(name, value, 8192)
+    paths = [base / "result.json", base / "driver-observation.json", base / "worker-observation.json"]
+    patterns = ["control/epochs/*/chain.json", "control/jobs/job-*/job.json",
+                "control/jobs/job-*/request.json", "control/jobs/job-*/prepared.json",
+                "control/jobs/job-*/launch.json", "control/jobs/job-*/events.jsonl",
+                "control/jobs/job-*/process-trees/*.json", "runs/*/manifest.json",
+                "runs/*/runtime-manifest.json", "runs/*/progress.json",
+                "runs/*/evaluation/*.json", "worker-stderr/*"]
+    for pattern in patterns:
+        paths.extend(sorted(base.glob(pattern))[:24])
+    for path in paths:
+        if not path.is_file() or path.is_symlink(): continue
+        try:
+            with path.open("rb") as stream:
+                stream.seek(0, os.SEEK_END); size = stream.tell()
+                stream.seek(max(0, size - _EPOCH_DIAGNOSTIC_FILE_LIMIT))
+                data = stream.read(_EPOCH_DIAGNOSTIC_FILE_LIMIT)
+            save(path.relative_to(base).as_posix(), data, size)
+            if failure is not None and path.parent.name == "worker-stderr" and path.name.endswith(".stderr.log"):
+                excerpt(path.relative_to(base).as_posix(), data, 4096)
+        except OSError as error:
+            summary.setdefault("collection_errors", []).append({"path": path.name, "type": type(error).__name__})
+    if destination is not None:
+        summary["artifact_directory"] = str(destination)
+        (destination / "diagnostic.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+                                                    encoding="utf-8")
+    # Stage timings on success as well, not just a final failed assertion.
+    brief = {key: summary[key] for key in ("test", "phase", "driver_elapsed_seconds", "driver_returncode",
+                                         "driver_failure_type", "jobs")}
+    brief["artifact_directory"] = summary.get("artifact_directory")
+    brief["worker_observation"] = summary["worker_observation"]
+    brief_text = json.dumps(brief, ensure_ascii=False).encode("utf-8")
+    print("[epoch-regression-diagnostic] " + brief_text[:32768].decode("utf-8", errors="replace"),
+          file=sys.stderr, flush=True)
+    for name, content in excerpts:
+        print("[epoch-regression-log-tail] " + name + "\n" + content, file=sys.stderr, flush=True)
+    return summary
+
+
+class EpochDiagnosticTests(unittest.TestCase):
+    def test_failure_evidence_survives_cleanup_with_bounded_child_stderr(self):
+        import io
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory(prefix="wb-epoch-evidence-") as external:
+            with tempfile.TemporaryDirectory(prefix="wb-epoch-observation-") as fixture:
+                base = Path(fixture)
+                folder = base / "control/jobs/job-observed"
+                folder.mkdir(parents=True)
+                job = {"job_id": "job-observed", "state": "failed", "phase": "preparing",
+                       "exit_code": 1, "error": {"code": "prepare_failed"}}
+                original = json.dumps(job).encode("utf-8")
+                (folder / "job.json").write_bytes(original)
+                (folder / "events.jsonl").write_text('{"event":"prepare_failed"}\n', encoding="utf-8")
+                captured = base / "worker-stderr"
+                captured.mkdir()
+                raw = b"x" * (_EPOCH_DIAGNOSTIC_FILE_LIMIT + 100) + b"\nchild traceback marker\n"
+                (captured / "child.stderr.log").write_bytes(raw)
+                console = io.StringIO()
+                with mock.patch.dict(os.environ, {"WB_REGRESSION_EVIDENCE_DIR": external,
+                                                   "WB_REGRESSION_PHASE": "before-full"}), \
+                        mock.patch("sys.stderr", console):
+                    summary = _save_epoch_diagnostics(base,
+                        result=SimpleNamespace(returncode=1, stdout="driver stdout", stderr="driver stage"),
+                        failure=AssertionError("chain failed"), elapsed=3.25)
+                self.assertEqual((folder / "job.json").read_bytes(), original)
+                self.assertEqual(summary["jobs"][0]["phase"], "preparing")
+                self.assertEqual(summary["jobs"][0]["exit_code"], 1)
+                self.assertEqual(summary["bounds"], {"driver_seconds": 580, "chain_seconds": 550})
+                directory = Path(summary["artifact_directory"])
+                record = next(row for row in summary["files"] if row["path"] == "worker-stderr/child.stderr.log")
+                self.assertTrue(record["truncated"])
+                self.assertEqual(record["saved_bytes"], _EPOCH_DIAGNOSTIC_FILE_LIMIT)
+                self.assertEqual(record["original_bytes"], len(raw))
+                self.assertIn("worker-stderr/child.stderr.log", console.getvalue())
+                self.assertIn("child traceback marker", console.getvalue())
+                self.assertIn("driver stage", console.getvalue())
+                self.assertLess(len(console.getvalue().encode("utf-8")), 65536)
+            self.assertFalse(base.exists())
+            saved = (directory / "worker-stderr/child.stderr.log").read_bytes()
+            self.assertEqual(hashlib.sha256(saved).hexdigest(), record["sha256"])
+            self.assertTrue((directory / "diagnostic.json").is_file())
+
+    def test_evidence_destination_inside_fixture_is_refused(self):
+        import io
+        with tempfile.TemporaryDirectory(prefix="wb-epoch-observation-") as fixture:
+            base = Path(fixture)
+            nested = base / "not-persistent"
+            with mock.patch.dict(os.environ, {"WB_REGRESSION_EVIDENCE_DIR": str(nested)}), \
+                    mock.patch("sys.stderr", io.StringIO()):
+                summary = _save_epoch_diagnostics(base)
+            self.assertEqual(summary["artifact_error"], "evidence_dir_must_be_outside_fixture")
+            self.assertNotIn("artifact_directory", summary)
+            self.assertFalse(nested.exists())
+
+    def test_copied_worker_captures_real_child_stderr_and_preparation_traceback(self):
+        import subprocess
+        tracked_source = (ROOT / "execution/worker.py").read_bytes()
+        with tempfile.TemporaryDirectory(prefix="wb-epoch-worker-observation-") as fixture:
+            base = Path(fixture)
+            repo = base / "repo"
+            package = repo / "execution"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            (package / "worker.py").write_bytes(tracked_source)
+            (package / "configs.py").write_text(
+                'class ConfigStore:\n    def __init__(self, *args):\n'
+                '        raise RuntimeError("intentional preparation diagnostic")\n', encoding="utf-8")
+            _instrument_epoch_worker_copy(repo)
+            code = ('import sys, subprocess\nfrom pathlib import Path\nfrom types import SimpleNamespace\n'
+                    'sys.path.insert(0, sys.argv[1])\nimport execution.worker as worker\n'
+                    'subprocess.run([sys.executable, "-c", "import sys; print(\'child-observation\', file=sys.stderr)"], '
+                    'stderr=subprocess.DEVNULL, check=True)\n'
+                    'args=SimpleNamespace(repo=sys.argv[1], control=sys.argv[2], runs=sys.argv[2])\n'
+                    'print(worker.prepare(args, {}, Path(sys.argv[2])))\n')
+            captured = base / "stderr"
+            result = subprocess.run([sys.executable, "-c", code, str(repo), str(base)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+                env={**os.environ, "WB_EPOCH_CAPTURE_ROOT": str(captured)})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "1")
+            self.assertIn('"phase": "preparing"', result.stderr)
+            self.assertIn('"exception_type": "RuntimeError"', result.stderr)
+            self.assertIn("Traceback (most recent call last)", result.stderr)
+            self.assertIn("intentional preparation diagnostic", result.stderr)
+            stderr_files = list(captured.glob("*.stderr.log"))
+            self.assertEqual(len(stderr_files), 1)
+            self.assertIn(b"child-observation", stderr_files[0].read_bytes())
+            spawn = json.loads((captured / "spawn.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(spawn["stderr_file"], stderr_files[0].name)
+            self.assertGreater(spawn["child_pid"], 0)
+        self.assertEqual((ROOT / "execution/worker.py").read_bytes(), tracked_source)
+
+
 _DRIVER_SOURCE = '''
-import sys, json, time
+import sys, json, time, os
 repo, base, tests_dir = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.path.insert(0, repo)
 sys.path.insert(1, tests_dir)
@@ -741,6 +1017,23 @@ store = ConfigStore(Path(repo), base / "control", base / "runs")
 jobs = JobStore(store, cancel_grace_seconds=5)
 chain = ec.EpochChain(jobs, base / "settings.json")
 
+started = time.monotonic()
+stages = []
+last_stage = None
+def observe(c):
+    global last_stage
+    if not os.environ.get("WB_REGRESSION_DIAGNOSTICS") and not os.environ.get("WB_REGRESSION_EVIDENCE_DIR"):
+        return
+    ep = c["epochs"][-1]
+    stage = (c["state"], ep["index"], ep["step"], ep.get("run_job_id"), ep.get("propose_job_id"))
+    if stage != last_stage:
+        record = {"elapsed_seconds": time.monotonic() - started, "state": stage[0],
+                  "epoch": stage[1], "step": stage[2], "run_job_id": stage[3], "propose_job_id": stage[4]}
+        stages.append(record)
+        print("[epoch-chain-stage] " + json.dumps(record), file=sys.stderr, flush=True)
+        last_stage = stage
+        (base / "driver-observation.json").write_text(json.dumps({"stages": stages[-128:]}), encoding="utf-8")
+
 patched = False
 with mock.patch("execution.world_patch_job.generation_availability", return_value={"available": True}):
     chain.start({"base_config_id": "cfg-e2e-base", "max_epochs": 2, "approval": "auto",
@@ -749,6 +1042,7 @@ with mock.patch("execution.world_patch_job.generation_availability", return_valu
     while time.monotonic() < deadline:
         c = chain.current()
         ep = c["epochs"][-1]
+        observe(c)
         if not patched and ep["step"] == "propose" and ep.get("run_id") and ep.get("propose_job_id") is None:
             _write_world_demand(store.runs / ep["run_id"])
             patched = True
@@ -758,6 +1052,7 @@ with mock.patch("execution.world_patch_job.generation_availability", return_valu
         time.sleep(0.3)
 
 (base / "result.json").write_text(json.dumps(chain.current(), ensure_ascii=False), encoding="utf-8")
+observe(chain.current())
 '''
 
 
@@ -766,70 +1061,105 @@ class HeavyRealChainEndToEndTest(unittest.TestCase):
     def test_two_epoch_auto_chain_with_real_ga_and_real_approval(self):
         temp = tempfile.TemporaryDirectory(prefix="wb-epoch-chain-e2e-")
         self.addCleanup(temp.cleanup)
+        import time
         base = Path(temp.name)
-        from world_patch_fixtures import frozen_experiment
-        from test_world_patch_cli import VALID_ADD
-        experiment, project, template = frozen_experiment(base)
-        repo = base / "repo"
+        result = failure = None
+        driver_elapsed = None
+        started = time.monotonic()
+        try:
+            base = Path(temp.name)
+            from world_patch_fixtures import frozen_experiment
+            from test_world_patch_cli import VALID_ADD
+            experiment, project, template = frozen_experiment(base)
+            repo = base / "repo"
+            before_worker = (repo / "execution/worker.py").read_bytes()
+            capture_worker = (_epoch_diagnostics_enabled()
+                              and os.environ.get("WB_EPOCH_CAPTURE_STDERR", "1") == "1")
+            if capture_worker:
+                _instrument_epoch_worker_copy(repo)
+            after_worker = (repo / "execution/worker.py").read_bytes()
+            if not capture_worker:
+                self.assertEqual(after_worker, before_worker)
+            (base / "worker-observation.json").write_text(json.dumps({
+                "mode": "captured-stderr-copy" if capture_worker else "original-worker",
+                "before_sha256": hashlib.sha256(before_worker).hexdigest(),
+                "after_sha256": hashlib.sha256(after_worker).hexdigest(),
+                "original_bytes_preserved": after_worker == before_worker}), encoding="utf-8")
 
-        # Shrink the holdout trial (default 5x8 reruns would add minutes) --
-        # same technique tests/test_world_patch_job.py uses.
-        wpj_path = repo / "execution" / "world_patch_job.py"
-        wpj_path.write_text(
-            wpj_path.read_text(encoding="utf-8") + '\nTRIAL_ARGS = ("--max-runs", "5", "--seeds-per-run", "4")\n',
-            encoding="utf-8")
-        # Stub generate_text in the CLONED repo only -- no real LLM.
-        source = (ROOT / "gapengine" / "synopsis.py").read_text(encoding="utf-8")
-        payload = json.dumps({"title": "海辺の船大工小屋", "rationale": "海でのinvestigateが空振りし続けている",
-                               "add": VALID_ADD}, ensure_ascii=False)
-        source += ("\n\ndef generate_text(backend, prompt, *, settings_path=None, timeout=600):\n"
-                   f"    return GenerationResult(status='ok', text={payload!r})\n")
-        (repo / "gapengine" / "synopsis.py").write_text(source, encoding="utf-8")
+            # Shrink the holdout trial (default 5x8 reruns would add minutes) --
+            # same technique tests/test_world_patch_job.py uses.
+            wpj_path = repo / "execution" / "world_patch_job.py"
+            wpj_path.write_text(
+                wpj_path.read_text(encoding="utf-8") + '\nTRIAL_ARGS = ("--max-runs", "5", "--seeds-per-run", "4")\n',
+                encoding="utf-8")
+            # Stub generate_text in the CLONED repo only -- no real LLM.
+            source = (ROOT / "gapengine" / "synopsis.py").read_text(encoding="utf-8")
+            payload = json.dumps({"title": "海辺の船大工小屋", "rationale": "海でのinvestigateが空振りし続けている",
+                                   "add": VALID_ADD}, ensure_ascii=False)
+            source += ("\n\ndef generate_text(backend, prompt, *, settings_path=None, timeout=600):\n"
+                       f"    return GenerationResult(status='ok', text={payload!r})\n")
+            (repo / "gapengine" / "synopsis.py").write_text(source, encoding="utf-8")
 
-        (base / "settings.json").write_text(json.dumps({"output": {"default_backend": "codex-cli",
-            "codex-cli": {"limits": {"wall_seconds": 600}}}}), encoding="utf-8")
+            (base / "settings.json").write_text(json.dumps({"output": {"default_backend": "codex-cli",
+                "codex-cli": {"limits": {"wall_seconds": 600}}}}), encoding="utf-8")
 
-        store = ConfigStore(repo, base / "control", base / "runs")
-        store.save({"label": "e2e", "project_id": "momotaro", "template_id": "momotaro",
-                    "evolution": {"generations": 2, "population": 12, "seeds": 2, "seed_base": 31, "ga_seed": 29,
-                                  "processes": 1, "keep": "all", "record_explanations": True},
-                    "growth": {"mode": "auto", "epochs": 2, "auto_retire": True}}, config_id="cfg-e2e-base")
+            store = ConfigStore(repo, base / "control", base / "runs")
+            store.save({"label": "e2e", "project_id": "momotaro", "template_id": "momotaro",
+                        "evolution": {"generations": 2, "population": 12, "seeds": 2, "seed_base": 31, "ga_seed": 29,
+                                      "processes": 1, "keep": "all", "record_explanations": True},
+                        "growth": {"mode": "auto", "epochs": 2, "auto_retire": True}}, config_id="cfg-e2e-base")
 
-        driver = base / "chain_driver.py"
-        driver.write_text(_DRIVER_SOURCE, encoding="utf-8")
-        import subprocess
-        result = subprocess.run(
-            [sys.executable, str(driver), str(repo), str(base), str(ROOT / "tests")],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=580)
-        self.assertTrue((base / "result.json").is_file(),
-                         f"driver produced no result.json -- rc={result.returncode}\n"
-                         f"stdout={result.stdout[-2000:]}\nstderr={result.stderr[-2000:]}")
-        chain = json.loads((base / "result.json").read_text(encoding="utf-8"))
-        self.assertEqual(chain["state"], "completed", chain)
-        epoch0, epoch1 = chain["epochs"]
+            driver = base / "chain_driver.py"
+            driver.write_text(_DRIVER_SOURCE, encoding="utf-8")
+            import subprocess
+            started = time.monotonic()
+            result = subprocess.run(
+                [sys.executable, str(driver), str(repo), str(base), str(ROOT / "tests")],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=580,
+                env={**os.environ, **({"WB_EPOCH_CAPTURE_ROOT": str(base / "worker-stderr")}
+                                     if _epoch_diagnostics_enabled() else {})})
+            driver_elapsed = time.monotonic() - started
+            self.assertTrue((base / "result.json").is_file(),
+                             f"driver produced no result.json -- rc={result.returncode}\n"
+                             f"stdout={result.stdout[-2000:]}\nstderr={result.stderr[-2000:]}")
+            chain = json.loads((base / "result.json").read_text(encoding="utf-8"))
+            self.assertEqual(chain["state"], "completed", chain)
+            epoch0, epoch1 = chain["epochs"]
 
-        # Auto-approval succeeded, idle_streak reset by it, and the
-        # just-approved patch was excluded from this same epoch's
-        # auto-retire (the "猶予1" grace rule).
-        self.assertIsNotNone(epoch0["approved_rev"])
-        self.assertEqual(epoch0["retired"], [])
-        self.assertIn("自動承認しました", epoch0["notes"])
+            # Auto-approval succeeded, idle_streak reset by it, and the
+            # just-approved patch was excluded from this same epoch's
+            # auto-retire (the "猶予1" grace rule).
+            self.assertIsNotNone(epoch0["approved_rev"])
+            self.assertEqual(epoch0["retired"], [])
+            self.assertIn("自動承認しました", epoch0["notes"])
 
-        # e1's config never carries growth, is forced to "expand", carries
-        # e0's approved patch in its input-manifest, and its seed_genomes.json
-        # sources e0's own run_id.
-        e1_config = json.loads((base / "control/configs" / epoch1["config_id"] / "config.json").read_text("utf-8"))
-        self.assertNotIn("growth", e1_config)
-        self.assertEqual(e1_config["evolution"]["world_expansion"], "expand")
-        self.assertEqual(e1_config["evolution"]["seed_genomes"], epoch0["run_id"])
-        manifest = json.loads(
-            (base / "control/configs" / epoch1["config_id"] / "input-manifest.json").read_text("utf-8"))
-        world_patch_ids = {p["id"] for record in manifest["files"]
-                            for p in (record.get("world_patches") or [])}
-        self.assertIn(epoch0["patch_id"], world_patch_ids)
-        seed_genomes = json.loads(
-            (base / "control/configs" / epoch1["config_id"] / "inputs/seed_genomes.json").read_text("utf-8"))
-        self.assertEqual(seed_genomes["source"]["run_id"], epoch0["run_id"])
+            # e1's config never carries growth, is forced to "expand", carries
+            # e0's approved patch in its input-manifest, and its seed_genomes.json
+            # sources e0's own run_id.
+            e1_config = json.loads((base / "control/configs" / epoch1["config_id"] / "config.json").read_text("utf-8"))
+            self.assertNotIn("growth", e1_config)
+            self.assertEqual(e1_config["evolution"]["world_expansion"], "expand")
+            self.assertEqual(e1_config["evolution"]["seed_genomes"], epoch0["run_id"])
+            manifest = json.loads(
+                (base / "control/configs" / epoch1["config_id"] / "input-manifest.json").read_text("utf-8"))
+            world_patch_ids = {p["id"] for record in manifest["files"]
+                                for p in (record.get("world_patches") or [])}
+            self.assertIn(epoch0["patch_id"], world_patch_ids)
+            seed_genomes = json.loads(
+                (base / "control/configs" / epoch1["config_id"] / "inputs/seed_genomes.json").read_text("utf-8"))
+            self.assertEqual(seed_genomes["source"]["run_id"], epoch0["run_id"])
+        except BaseException as error:
+            failure = error
+            if driver_elapsed is None: driver_elapsed = time.monotonic() - started
+            raise
+        finally:
+            if _epoch_diagnostics_enabled() or failure is not None:
+                try:
+                    _save_epoch_diagnostics(base, result=result, failure=failure, elapsed=driver_elapsed)
+                except Exception as diagnostic_error:
+                    print("[epoch-regression-diagnostic] collection failed: " + type(diagnostic_error).__name__,
+                          file=sys.stderr, flush=True)
+
 
 
 if __name__ == "__main__":

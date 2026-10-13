@@ -9,11 +9,20 @@ import tempfile
 import threading
 import shutil
 import subprocess
+import os
+import time
 import unittest
 from urllib.request import urlopen
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from viewer import data, pages, raw_view, raw_pages, server
+
+
+def _child_output(value):
+    """TimeoutExpired may retain bytes even when subprocess text=True."""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return str(value or "")[-8192:]
 
 
 def rows():
@@ -219,10 +228,24 @@ class RawWorkspaceTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
     def test_clipboard_exact_text_and_denied_permission_fallback(self):
         root=Path(__file__).resolve().parents[1]
-        result=subprocess.run([shutil.which("node"),str(root/"tests/raw_workspace_ui.cjs"),
-                               str(root/"viewer/static/raw-workspace.js")],
-                              capture_output=True,text=True,timeout=15)
-        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        command=[shutil.which("node"),str(root/"tests/raw_workspace_ui.cjs"),
+                 str(root/"viewer/static/raw-workspace.js")]
+        started=time.monotonic()
+        try:
+            result=subprocess.run(command, capture_output=True,text=True,
+                                  encoding="utf-8",errors="replace",timeout=15)
+        except subprocess.TimeoutExpired as error:
+            self.fail(f"Node clipboard harness exceeded its 15s bound; "
+                      f"elapsed={time.monotonic()-started:.3f}s\n"
+                      f"stdout={_child_output(error.stdout)}\n"
+                      f"stderr={_child_output(error.stderr)}")
+        diagnostic=(f"Node clipboard harness elapsed={time.monotonic()-started:.3f}s "
+                    f"returncode={result.returncode}\n"
+                    f"stdout={_child_output(result.stdout)}\n"
+                    f"stderr={_child_output(result.stderr)}")
+        if os.environ.get("WB_REGRESSION_DIAGNOSTICS") == "1":
+            print(diagnostic,flush=True)
+        self.assertEqual(result.returncode,0,diagnostic)
 
     def test_server_passes_queries_and_serves_assets(self):
         host=server.ViewerServer(("127.0.0.1",0),server.ViewerHandler)
