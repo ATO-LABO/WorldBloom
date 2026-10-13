@@ -31,8 +31,14 @@ class CalendarRuntimeTests(unittest.TestCase):
 
     def execute(self, commands, name='run', *, until=None, project=PROJECT, lead=None):
         if lead:
-            world, people = load(project)
-            world.slot_contract['play']['lead'] = lead
+            import yaml
+            authored = self.root/('authored-'+name)
+            write_fixture(authored)
+            contract_path = authored/'contract_v2.yaml'
+            contract = yaml.safe_load(contract_path.read_text())
+            contract['observers'][0]['fields']['primary_present']['actor'] = lead
+            contract_path.write_text(yaml.safe_dump(contract, allow_unicode=True))
+            world, people = load(authored)
             sim = Simulation(0, world, people, self.root/name)
             sim.slot_runtime.configure(commands)
         else:
@@ -96,8 +102,8 @@ class CalendarRuntimeTests(unittest.TestCase):
                 observation = next(r for r in rt.rows if r['id'] == 'play-opening-observation')
                 move = next(r for r in rt.rows if r['id'] == 'complete:departure')
                 self.assertEqual(move['absolute_minute']-at, 10)
-                self.assertEqual(move['details']['arrived_at'] <= rt.opening['at'], expected)
-                self.assertEqual(rt.opening['primary_present'], expected)
+                self.assertEqual(move['details']['arrived_at'] <= rt.observations['play-opening-observation']['at'], expected)
+                self.assertEqual(rt.observations['play-opening-observation']['primary_present'], expected)
                 if expected:
                     self.assertLess(rt.rows.index(move), rt.rows.index(observation))
                 else:
@@ -250,7 +256,7 @@ class CalendarRuntimeTests(unittest.TestCase):
         sim.slot_runtime.run()
         self.assertEqual(sim.subjects['紗季'].zone, '体育館')
         self.assertTrue(sim.slot_runtime.done)
-        self.assertEqual(sim.slot_runtime.opening['at'], minute_for(cal, cal['end_date'], '15:00'))
+        self.assertEqual(sim.slot_runtime.observations['play-opening-observation']['at'], minute_for(cal, cal['end_date'], '15:00'))
 
     def test_bad_checkpoint_validation_never_partially_changes_live_state(self):
         rt = self.simulation('validation').slot_runtime

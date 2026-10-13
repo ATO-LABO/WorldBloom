@@ -1,0 +1,70 @@
+[
+  {
+    "id": "offer-order",
+    "actor": "Ada",
+    "at": 1290,
+    "verb": "offer",
+    "terms": {
+      "promise_id": "piece-order",
+      "version": 1,
+      "proposer": "Ada",
+      "promisor": "Ada",
+      "beneficiary": "Bo",
+      "acceptance_parties": [
+        "Ada",
+        "Bo"
+      ],
+      "place": "Bench",
+      "start": 1425,
+      "deadline": 1462,
+      "grace_until": null,
+      "requirements": [
+        {
+          "task_id": "pieces",
+          "units": 3,
+          "contribution_by": "Ada"
+        },
+        {
+          "task_id": "handoff",
+          "units": 1,
+          "contribution_by": "Ada",
+          "delivered_to": "Bo"
+        }
+      ]
+    }
+  },
+  {
+    "id": "accept-maker",
+    "actor": "Ada",
+    "at": 1292,
+    "verb": "accept",
+    "promise_id": "piece-order",
+    "version": 1,
+    "terms_hash": "7510ad9daedd766b48b7403d94a291b7e31e0b03c387d1473bb8862dcb8f95d0"
+  },
+  {
+    "id": "accept-receiver",
+    "actor": "Bo",
+    "at": 1292,
+    "verb": "accept",
+    "promise_id": "piece-order",
+    "version": 1,
+    "terms_hash": "7510ad9daedd766b48b7403d94a291b7e31e0b03c387d1473bb8862dcb8f95d0"
+  },
+  {
+    "id": "make-pieces",
+    "actor": "Ada",
+    "at": 1425,
+    "verb": "work",
+    "task_id": "pieces",
+    "minutes": 30
+  },
+  {
+    "id": "give-pieces",
+    "actor": "Ada",
+    "at": 1460,
+    "verb": "deliver",
+    "task_id": "handoff",
+    "target": "Bo"
+  }
+]

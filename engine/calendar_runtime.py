@@ -15,10 +15,11 @@ from pathlib import Path
 
 from engine.calendar_checkpoint import CheckpointStore, atomic_bytes, compatibility, digest, strict_json
 from engine.calendar_v2 import compile_calendar, minute_for, time_label
+from engine.calendar_inputs import validate_execution_config, validate_fixed_version, safe_project_path, read_project_yaml
+from engine.calendar_observers import validate_observers, evaluate_observer, validate_observation_state
 from engine.log import LayersWriter
 from engine.promises_v2 import PromiseRegistry
 from engine.relations import Relations
-from engine.yaml_cache import load_yaml
 from execution.provenance import canonical
 
 
@@ -29,22 +30,21 @@ def integer(value, name, minimum=0, maximum=1000000):
 
 
 def load_contract(world, config):
-    if (not isinstance(config, dict) or not {'mode', 'contract'} <= config.keys()
-            or set(config)-{'mode', 'contract', 'fixed_version'} or config['mode'] != 'calendar_promises_v2'
-            or ('fixed_version' in config and config['fixed_version'] is not True)):
-        raise ValueError('Invalid calendar execution configuration')
-    if not isinstance(config['contract'], str):
-        raise ValueError('Contract must be a relative file')
-    path = (world.source.parent/config['contract']).resolve()
-    if world.source.parent.resolve() not in path.parents or path.is_symlink():
-        raise ValueError('Contract must remain in its project')
-    value = load_yaml(path)
+    try:
+        return _load_contract(world, config)
+    except (TypeError, KeyError, AttributeError, OverflowError) as error:
+        raise ValueError('Malformed calendar execution contract') from error
+
+
+def _load_contract(world, config):
+    config = validate_execution_config(config)
+    value = read_project_yaml(world.source, config['contract'])
     required = {'version', 'calendar', 'timezone', 'start_time', 'end_time', 'travel_minutes',
-                'roles', 'tasks', 'materials', 'facility_hours', 'play', 'appraisal',
+                'roles', 'tasks', 'materials', 'facility_hours', 'appraisal',
                 'assumptions', 'initial_task_knowledge'}
-    if not isinstance(value, dict) or set(value) != required or type(value['version']) is not int or value['version'] != 2:
+    if not isinstance(value, dict) or not required <= set(value) or set(value)-required-{'observers'} or type(value['version']) is not int or value['version'] != 3:
         raise ValueError('Unsupported or incomplete calendar contract')
-    for field in ('travel_minutes', 'roles', 'materials', 'facility_hours', 'play', 'appraisal', 'initial_task_knowledge'):
+    for field in ('travel_minutes', 'roles', 'materials', 'facility_hours', 'appraisal', 'initial_task_knowledge'):
         if not isinstance(value[field], dict):
             raise ValueError('Contract '+field+' must be a mapping')
     if not isinstance(value['assumptions'], list) or any(not isinstance(x, str) for x in value['assumptions']):
@@ -59,33 +59,7 @@ def load_contract(world, config):
         raise ValueError('Invalid fixed appraisal coefficients')
     calendar = compile_calendar(value['calendar'], timezone=value['timezone'],
                                 scheduled_events=list(world.scheduled_events))
-    frozen_path = world.source.parent/'execution-version.json'
-    if config.get('fixed_version') and not frozen_path.is_file():
-        raise ValueError('Required executable fixed version is missing')
-    if frozen_path.exists():
-        frozen = strict_json(frozen_path.read_text(encoding='utf-8'))
-        keys = {'schema_version', 'contract', 'calendar', 'inputs', 'source_world_revision',
-                'original_subject_files', 'source_design_id', 'engine_supported', 'execution_ready', 'transfer', 'id'}
-        if (not isinstance(frozen, dict) or set(frozen) != keys or type(frozen['schema_version']) is not int
-                or frozen['schema_version'] != 2 or frozen['engine_supported'] is not True
-                or frozen['execution_ready'] is not True or not isinstance(frozen['inputs'], dict)
-                or not isinstance(frozen['original_subject_files'], dict) or not isinstance(frozen['transfer'], dict)):
-            raise ValueError('Invalid executable fixed version envelope')
-        body = {k: v for k, v in frozen.items() if k != 'id'}
-        if frozen.get('id') != digest(body) or frozen.get('contract') != 'calendar_promises_v2' or frozen.get('calendar') != calendar:
-            raise ValueError('Executable calendar version integrity mismatch')
-        if set(frozen['inputs']) != {'world.yaml', 'contract_v2.yaml', '05_悠.yaml', '06_実.yaml', 'calendar_design.json'}:
-            raise ValueError('Unexpected frozen file set')
-        for name, sha in frozen['inputs'].items():
-            file = world.source.parent/name
-            if file.is_symlink() or not file.is_file() or hashlib.sha256(file.read_bytes()).hexdigest() != sha:
-                raise ValueError('Frozen input changed')
-        originals = Path(__file__).resolve().parents[1]/'projects/cultural_festival/subjects'
-        if set(frozen['original_subject_files']) != {p.name for p in originals.glob('*.yaml')}:
-            raise ValueError('Unexpected frozen original person set')
-        for name, sha in frozen['original_subject_files'].items():
-            if hashlib.sha256((originals/name).read_bytes()).hexdigest() != sha:
-                raise ValueError('Frozen original person changed')
+    validate_fixed_version(world.source, config, calendar)
     if world.days != len(calendar['days']):
         raise ValueError('World days and compiled calendar differ')
     if world.daily_events or world.thresholds or world.effect_library or getattr(world, 'phase_rules', ()):
@@ -117,6 +91,8 @@ def load_contract(world, config):
         integer(spec['minutes_per_unit'], 'task unit duration', 1, 1440)
         if spec['operation'] not in ('work', 'deliver'):
             raise ValueError('Unsupported task operation')
+        if spec['operation'] == 'deliver' and spec['materials_per_unit']:
+            raise ValueError('Material consumption during handoff is unsupported; model production as work')
         if spec['place'] not in world.zones or not spec['roles'] or not isinstance(spec['resource'], str) or not spec['resource']:
             raise ValueError('Task place/role/resource missing')
         if any(dep not in tasks or dep == task for dep in spec['dependencies']):
@@ -141,17 +117,7 @@ def load_contract(world, config):
             raise ValueError('Facility must open and close within a day')
         minute_for(calendar, calendar['start_date'], hours['opens'])
         minute_for(calendar, calendar['start_date'], hours['closes'])
-    play = value['play']
-    if (set(play) != {'event_id', 'place', 'lead', 'partner', 'preparation_tasks'}
-            or not isinstance(play['preparation_tasks'], list)
-            or any(not isinstance(t, str) for t in play['preparation_tasks'])
-            or play['lead'] not in value['roles'] or play['partner'] not in value['roles']):
-        raise ValueError('Invalid play actors/readiness definition')
-    opening = [e for e in calendar['events'] if e['id'] == value['play']['event_id']]
-    if len(opening) != 1 or set(value['play']) != {'event_id', 'place', 'lead', 'partner', 'preparation_tasks'}:
-        raise ValueError('Play must reference one existing scheduled event')
-    if value['play']['place'] not in world.zones or any(t not in tasks for t in value['play']['preparation_tasks']):
-        raise ValueError('Invalid play readiness requirements')
+    validate_observers(value.get('observers', []), calendar, set(value['roles']), set(world.zones), set(tasks))
     return value
 
 
@@ -161,6 +127,14 @@ class CalendarRuntime:
         self.world = simulation.world
         self.people = simulation.subjects
         self.contract = deepcopy(self.world.slot_contract)
+        if self.contract != load_contract(self.world, self.world.slot_execution):
+            raise ValueError('Runtime contract differs from the declared project input')
+        provenance = getattr(self.world, 'calendar_input_provenance', None)
+        if provenance is not None:
+            for name, expected in provenance['inputs'].items():
+                data = safe_project_path(self.world.source, name).read_bytes()
+                if expected != {'size_bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}:
+                    raise ValueError('Project input changed after loading')
         self.calendar = compile_calendar(self.contract['calendar'], timezone=self.contract['timezone'],
                                          scheduled_events=list(self.world.scheduled_events))
         if set(self.people) != set(self.contract['roles']):
@@ -197,7 +171,7 @@ class CalendarRuntime:
         self.appraisals = {}
         self.rows = []
         self.commands = []
-        self.opening = None
+        self.observations = {}
         self.done = False
         self.store = None
         self.facilities = {}
@@ -291,6 +265,12 @@ class CalendarRuntime:
         self.appraisals[key] = desired
 
     def configure(self, commands):
+        try:
+            return self._configure(commands)
+        except (TypeError, KeyError, AttributeError, OverflowError) as error:
+            raise ValueError('Malformed explicit calendar choices') from error
+
+    def _configure(self, commands):
         if self.store is not None:
             raise ValueError('Choices are frozen for this run')
         if not isinstance(commands, list) or len(commands) > 10000:
@@ -360,8 +340,11 @@ class CalendarRuntime:
                 result.append({'verb': 'work', 'task_id': task, 'minutes_per_unit': spec['minutes_per_unit'],
                                'known_units': None if known is None else known['units'],
                                'requirements': spec['dependencies'], 'feasibility': 'check_at_execution'})
-        result += [{'verb': name, 'minutes': 2} for name in
-                   ('offer', 'accept', 'change', 'accept_change', 'cancel', 'deliver', 'tell', 'depend', 'replan')]
+        handoffs = {task: spec['minutes_per_unit'] for task, spec in self.contract['tasks'].items()
+                    if spec['operation'] == 'deliver'}
+        for name in ('offer', 'accept', 'change', 'accept_change', 'cancel', 'deliver', 'tell', 'depend', 'replan'):
+            result.append({'verb': name, 'task_minutes': handoffs} if name == 'deliver' and any(v != 2 for v in handoffs.values())
+                          else {'verb': name, 'minutes': 2})
         return result
 
     def _start(self, command):
@@ -417,6 +400,13 @@ class CalendarRuntime:
                         for item, qty in spec['materials_per_unit'].items():
                             self.ledger['materials'][item] -= reserve*qty
                         task['reserved_units'] += reserve
+        elif verb == 'deliver':
+            spec = self.contract['tasks'].get(choice.get('task_id'))
+            if (spec is None or spec['operation'] != 'deliver' or spec['place'] != person.zone
+                    or not (set(spec['roles']) & set(self.contract['roles'][actor]))):
+                reason = 'task_place_or_role'
+            else:
+                duration = spec['minutes_per_unit']
         if reason:
             self.emit('reject:'+ident, 'action_rejected', actor, result='rejected', reason=reason, choice=choice)
             return
@@ -642,29 +632,25 @@ class CalendarRuntime:
                                       reason='facility_closed', task_id=action['task_id'],
                                       duration_minutes=self.now-action['start'], started_at=action['start'], choice=deepcopy(action),
                                       retained=deepcopy(self.ledger['tasks'][action['task_id']]))
-        opening = None
+        observers = []
         for event in sorted(self.calendar['events'], key=lambda e: e['id']):
             key = 'scheduled:'+event['id']
             if event['minute'] == at and key not in self.processed:
                 self.processed.add(key)
                 row = self.emit(key, 'scheduled_notice', label=event.get('label'), schedule=event)
-                # Authored school schedule is common public information; this
+                # Authored schedule is common public information; this
                 # grants no private promise/work knowledge or teleportation.
                 self.observe(row, list(self.people), 'public_schedule')
-                if event['id'] == self.contract['play']['event_id']:
-                    opening = event
+                observers.extend(observer for observer in self.contract.get('observers', [])
+                                 if observer['event_id'] == event['id'])
         self._evaluate()
         for actor, action in semantic:
             self._complete(actor, action)
         self._evaluate()
-        if opening:
-            play = self.contract['play']
-            self.opening = {'at': at, 'primary_present': self.people[play['lead']].zone == play['place'],
-                            'partner_present': self.people[play['partner']].zone == play['place'],
-                            'preparation': {t: self.ledger['tasks'][t]['units'] >= self.contract['tasks'][t]['units'] for t in play['preparation_tasks']},
-                            'consent': 'not_inferred_from_presence', 'performance_started': False,
-                            'performance_internals': 'unsupported'}
-            self.emit('play-opening-observation', 'play_opening_observation', **self.opening)
+        for observer in observers:
+            value = evaluate_observer(observer, self.people, self.ledger, self.contract['tasks'], at)
+            self.observations[observer['id']] = value
+            self.emit(observer['id'], observer['verb'], **value)
         buffered = self._observation_buffer
         self._observation_buffer = None
         for row, audience, source, via in buffered:
@@ -699,7 +685,7 @@ class CalendarRuntime:
                 'known_terms': deepcopy(self.known_terms), 'known_tasks': deepcopy(self.known_tasks),
                 'knowledge': deepcopy(self.knowledge), 'pending_read': deepcopy(self.pending_read),
                 'dependencies': deepcopy(self.dependencies), 'appraisals': deepcopy(self.appraisals),
-                'rows': deepcopy(self.rows), 'opening': deepcopy(self.opening), 'done': self.done,
+                'rows': deepcopy(self.rows), 'observations': deepcopy(self.observations), 'done': self.done,
                 'facilities': deepcopy(self.facilities), 'rng': self.sim.rng.getstate()}
 
     def restore_state(self, state):
@@ -797,6 +783,8 @@ class CalendarRuntime:
             raise ValueError('Duplicate/missing event identity')
         if any(type(r.get('absolute_minute')) is not int or r['absolute_minute'] > state['now'] for r in state['rows']):
             raise ValueError('Invalid event time')
+        validate_observation_state(state['observations'], self.contract.get('observers', []),
+                                   self.calendar, state['rows'], state['now'])
         def tuples(v):
             return tuple(tuples(i) for i in v) if isinstance(v, (tuple, list)) else v
         rng = tuples(state['rng'])
@@ -813,7 +801,7 @@ class CalendarRuntime:
         self.world.relations = relations
         self.registry = parsed_registry
         for field in ('now', 'energy', 'ledger', 'busy', 'known_terms', 'known_tasks', 'knowledge', 'pending_read',
-                      'dependencies', 'appraisals', 'rows', 'opening', 'done', 'facilities'):
+                      'dependencies', 'appraisals', 'rows', 'observations', 'done', 'facilities'):
             setattr(self, field, deepcopy(state[field]))
         self.processed = set(state['processed'])
         self.observed = {p: set(v) for p, v in state['observed'].items()}
@@ -822,13 +810,14 @@ class CalendarRuntime:
     def inputs(self):
         files = {'world': hashlib.sha256(self.world.source.read_bytes()).hexdigest(),
                  'contract': hashlib.sha256((self.world.source.parent/self.world.slot_execution['contract']).read_bytes()).hexdigest()}
-        for name in ('execution-version.json', 'calendar_design.json'):
+        for name in ('execution-version.json',):
             path = self.world.source.parent/name
             if path.exists():
                 files[name] = hashlib.sha256(path.read_bytes()).hexdigest()
         return {'files': files, 'contract': self.contract, 'calendar': self.calendar, 'seed': self.sim.seed,
                 'initial_subjects': self.initial, 'personality': {p: self.people[p].traits for p in self.people},
                 'subject_sources': getattr(self.world, 'calendar_subject_sources', None),
+                'input_provenance': getattr(self.world, 'calendar_input_provenance', None),
                 'initial_relations': self.initial_relations}
 
     def _outputs(self):
@@ -844,7 +833,7 @@ class CalendarRuntime:
                 kind = choice['verb'] if choice['verb'] in ('work', 'move', 'wait') else 'communication'
                 usage[row['subject']][kind] += row['details']['duration_minutes']
         summary = {'contract': 'calendar_promises_v2', 'now': self.now, 'done': self.done,
-                   'opening': self.opening, 'tasks': self.ledger['tasks'], 'materials': self.ledger['materials'],
+                   'observations': self.observations, 'tasks': self.ledger['tasks'], 'materials': self.ledger['materials'],
                    'promises': self.registry.export_state(), 'people': self._people(),
                    'knowledge': self.knowledge, 'relations': self.world.relations.snapshot(),
                    'dependencies': self.dependencies, 'pending_read': self.pending_read,
@@ -856,6 +845,10 @@ class CalendarRuntime:
         atomic_bytes(self.store.out/'summary.json', canonical(summary))
 
     def run(self, *, until=None, resume=False):
+        project = self.world.source.parent.resolve()
+        output = self.sim.out_dir.resolve()
+        if output == project or project in output.parents:
+            raise ValueError('Run output must be outside the input project')
         boundary = self.end if until is None else integer(until, 'stop minute', self.now, self.end)
         expected = compatibility(self.inputs(), self.commands)
         self.store = CheckpointStore(self.sim.out_dir, expected)

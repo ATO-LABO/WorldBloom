@@ -1,0 +1,12 @@
+id: Ada
+traits: {social: 0.5, stubbornness: 0.5, curiosity: 0.5, diligence: 0.7, temper: 0.2}
+base: 50
+knowledge: []
+inventory: {}
+verbs: [move, rest, share_knowledge]
+stamina: {max: 100, current: 70, recover_per_slot: 1}
+range: {zones: [Bench, Store], entry: Bench}
+relations:
+  Bo: {affinity: 0.2, awareness: 0.5}
+goal: {outcome: observation_finished}
+objective_claimant: false

@@ -1,0 +1,23 @@
+name: Night workshop
+time:
+  days: 2
+  slots: ['00:01']
+protagonist: Ada
+antagonist: Bo
+zones:
+  - name: Bench
+  - name: Store
+routes:
+  Bench: [{to: Store, cost: 1}]
+  Store: [{to: Bench, cost: 1}]
+ending:
+  - {id: observed, when: 'False', label: Observation only}
+target_ending: observed
+scheduled_events:
+  - {id: new-shift, day: 2, slot: '00:01', label: New shift notice}
+slot_execution:
+  mode: calendar_promises_v2
+  contract: contract.yaml
+  subjects:
+    - {id: Ada, path: subjects/ada.yaml}
+    - {id: Bo, path: subjects/bo.yaml}

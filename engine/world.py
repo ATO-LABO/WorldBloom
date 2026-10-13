@@ -86,7 +86,14 @@ def _load_action_graph(
             "world.gapengine.action_graph must be a path"
         )
 
-    configured = Path(raw_path)
+    if (isinstance(definition.get('slot_execution'), dict)
+            and definition['slot_execution'].get('mode') == 'calendar_promises_v2'):
+        if action_graph_path is not None:
+            raise ValueError('Calendar project graph must be explicitly declared in its world')
+        from engine.calendar_inputs import safe_project_path
+        configured = safe_project_path(source, raw_path)
+    else:
+        configured = Path(raw_path)
     project_root = Path(__file__).resolve().parents[1]
     if configured.is_absolute():
         candidates = [configured]
@@ -113,7 +120,12 @@ def _load_action_graph(
             f"Action graph does not exist; tried: {attempted}"
         )
 
-    raw_graph = load_yaml(graph_path)
+    if (isinstance(definition.get('slot_execution'), dict)
+            and definition['slot_execution'].get('mode') == 'calendar_promises_v2'):
+        from engine.calendar_inputs import read_project_yaml
+        raw_graph = read_project_yaml(source, str(graph_path.relative_to(source.parent.resolve())))
+    else:
+        raw_graph = load_yaml(graph_path)
     if not isinstance(raw_graph, dict):
         raise ValueError(
             f"Action graph must contain a mapping: {graph_path}"
