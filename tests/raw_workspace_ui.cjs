@@ -1,3 +1,14 @@
+// Observation only: bounded stage records, no timers, retries or forced exit.
+let phaseCount=0;
+function phase(name,details={}){
+ if(phaseCount++>=24)return;
+ const resources=typeof process.getActiveResourcesInfo==='function'
+  ?process.getActiveResourcesInfo().slice(0,16).map(value=>String(value).slice(0,64)):['unavailable'];
+ process.stderr.write(JSON.stringify({phase:name,uptime:process.uptime(),resources,...details})+'\n');
+}
+phase('entry',{node:process.version,execPath:process.execPath.slice(0,1024),
+ scriptPath:String(process.argv[1]||'').slice(0,1024),inputPath:String(process.argv[2]||'').slice(0,1024)});
+process.once('beforeExit',()=>phase('before-exit'));
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
@@ -27,18 +38,26 @@ class Element {
  const history={replaceState:(state,title,url)=>{location.href=String(url)}};
  let copied=null,blocked=false;
  const navigator={clipboard:{writeText:async text=>{if(blocked)throw new Error('denied');copied=text;}}};
+ phase('before-vm');
  vm.runInNewContext(fs.readFileSync(process.argv[2],'utf8'),{document,location,history,navigator,URL});
+ phase('after-vm');
+ phase('before-record-copy');
  await record.events.click();
+ phase('after-record-copy');
  assert.equal(copied,exactText,'original text must not be JSON-reserialized');
  assert.match(status.textContent,/原文をコピーしました/);
+ phase('before-link-copy');
  await link.events.click();
+ phase('after-link-copy');
  const url=new URL(copied);
  assert.equal(url.searchParams.get('line'),'7');
  assert.equal(url.searchParams.get('source'),'a'.repeat(64));
  assert.equal(url.searchParams.get('mode'),'json');
  assert.equal(url.hash,'#L7');
  blocked=true;
+ phase('before-denied-copy');
  await record.events.click();
+ phase('after-denied-copy');
  assert.match(status.textContent,/できません/);
  const dialog=root.children.at(-1),area=dialog.children.find(n=>n.tag==='textarea');
  assert.equal(dialog.open,true);
@@ -48,5 +67,6 @@ class Element {
  dialog.close();
  assert.equal(record.focused,true);
  assert.equal(dialog.removed,true);
+ phase('all-assertions-pass');
  console.log('original copy, bound link, denied clipboard fallback: OK');
-})().catch(error=>{console.error(error);process.exitCode=1;});
+})().catch(error=>{phase('failed',{errorName:String(error.name).slice(0,64)});console.error(error);process.exitCode=1;});
