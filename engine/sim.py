@@ -123,7 +123,12 @@ class Simulation:
         self.verb_engine = VerbEngine(self.world, self.rng)
         self.slot_runtime = None
         if getattr(self.world, "slot_execution", None) is not None:
-            from engine.slot_runtime import SlotRuntime
+            if self.world.slot_execution.get("mode") == "calendar_promises_v2":
+                if policies is not None:
+                    raise ValueError("calendar v2 action-search policy/codec is unsupported; use explicit choices")
+                from engine.calendar_runtime import CalendarRuntime as SlotRuntime
+            else:
+                from engine.slot_runtime import SlotRuntime
             self.slot_runtime = SlotRuntime(self)
 
     def _present_for(self, subject: Subject) -> list[Subject]:
