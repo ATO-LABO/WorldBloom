@@ -725,6 +725,20 @@ def _route_goal_post(handler, world_id, action):
     handler._send_json(HTTPStatus.OK, result)
 
 
+def _time_settings_get(handler, world_id):
+    from execution.time_settings import snapshot
+    handler._send_json(HTTPStatus.OK, snapshot(_route_goal_store(handler), world_id))
+
+
+def _time_settings_post(handler, world_id, action):
+    from execution import time_settings
+    body = _boundary_body(handler)
+    if action != "validate":
+        _require_job_store(handler)
+    handler._send_json(HTTPStatus.OK, getattr(time_settings, action)(
+        _route_goal_store(handler), world_id, body))
+
+
 def _worlds_routes(handler, world_id):
     """GET /api/worlds/<id>/routes (WB-ROUTE-PATHS-001): a read-only survey
     of a handful of distinct step-by-step walkthroughs from the
@@ -1238,6 +1252,10 @@ def _import_patch_action(handler, world_id):
 
 def _resolve(parts, method):
     if method == "POST":
+        if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings":
+            return _time_settings_post, (parts[2], "save")
+        if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings" and parts[4] in ("validate", "archive_design", "finalize"):
+            return _time_settings_post, (parts[2], parts[4])
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "route-goal":
             return _route_goal_post, (parts[2], "save")
         if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3:] == ["route-goal", "validate"]:
@@ -1275,6 +1293,8 @@ def _resolve(parts, method):
     if method != "GET" or not parts:
         return None
     head = parts[0]
+    if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "time-settings":
+        return _time_settings_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "route-goal":
         return _route_goal_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "routes":

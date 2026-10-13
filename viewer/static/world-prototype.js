@@ -141,6 +141,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   const dialog = root.querySelector('dialog');
   const form = document.getElementById('wp-form');
   let w = model.world;
+  const timeSettings = new WorldTimeSettings(model);
   let people = model.people.filter(p => p.id);
   let zones = (w.zones || []).map(z => typeof z === 'string' ? {name:z,note:''} : {...z});
   people.sort((a,b) => Number(b.id === w.protagonist) - Number(a.id === w.protagonist));
@@ -324,10 +325,9 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const slots=w.time?.slots||[];
     const cycle=slots.length?slots:['時間帯は未設定'];
     const events=sortedEvents();
-    return title('時間','シミュレーションの長さと、1日の進み方',edit('time','時間を編集'))+
-      `<div class="wp-time-summary"><section><span class="wp-time-label">物語の期間</span><strong>${days?`${esc(days)}日間`:'未設定'}</strong><p>この期間の中で、人物が行動し物語が進みます。</p></section><section><span class="wp-time-label">1日の区切り</span><strong>${slots.length?`${esc(slots.length)}区切り`:'未設定'}</strong><p>${slots.length?'1日の中を複数の時間帯に分けて進めます。':'時間帯を設定してください。'}</p></section></div>`+
-      `<section class="wp-section">${head('1日の流れ')}<ol class="wp-time-cycle">${cycle.map((slot,index)=>`<li><span>${index+1}</span><strong>${esc(slot)}</strong>${index<cycle.length-1?'<i aria-hidden="true">→</i>':''}</li>`).join('')}</ol><p class="wp-muted">最後の時間帯が終わると、次の日の最初の時間帯へ進みます。</p></section>`+
-      `<section class="wp-section">${head('設定内容')}<dl class="wp-dl">${row('日数',days?`${esc(days)}日間`:'未設定')}${row('時間帯',esc(slots.join(' ／ ')||'未設定'))}</dl></section>`+
+    return title('時間','期間と通常日の設定、特別日を確認する')+
+      '<div data-time-settings></div>'+
+      `<details class="wp-section"><summary>現在の実行エンジンの設定（既存 v1）</summary><dl class="wp-dl">${row('日数',days?`${esc(days)}日間`:'未設定')}${row('時間帯',esc(slots.join(' ／ ')||'未設定'))}</dl>${edit('time','既存 v1 の時間を編集')}<p class="wp-muted">下書きの可変時間設定とは別です。開始済みの実行結果は変更しません。</p></details>`+
       `<section class="wp-section">${head('予定された出来事',model.editable?'<button class="wp-add" data-edit="add-event">＋ 出来事を追加</button>':'')}${eventDayGrid(events)}${eventsTable()}</section>`;
   }
   let routesData=null, routesLoading=false, routesTimepoint=0, routesError='', routesRequest=0, routesMobileDetail=false;
@@ -407,6 +407,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     content.classList.toggle('is-routes',screen==='routes');
     content.dataset.screen=screen;
     content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen,routes:routesScreen}[screen])();
+    if(screen==='time')timeSettings.mount(content.querySelector('[data-time-settings]'));
     updateRelationTransform();
     root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===screen)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     const missing=[];
@@ -542,7 +543,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   root.addEventListener('click',e=>{
     const b=e.target.closest('button,[data-person]');if(!b)return;
     if(screen==='routes')rememberRoutes();
-    if(b.dataset.screen){scrolls[screen]=content.scrollTop;screen=b.dataset.screen;render(true);}
+    if(b.dataset.screen){const nextScreen=b.dataset.screen;timeSettings.guard(()=>{timeSettings.leave();scrolls[screen]=content.scrollTop;screen=nextScreen;render(true);});}
     else if(b.hasAttribute('data-event-day')){const day=Number(b.dataset.eventDay);eventDay=eventDay===day?null:day;render();}
     else if(b.hasAttribute('data-state-person')){person=Number(b.dataset.statePerson);openEditor('state',b);}
     else if(b.dataset.personLink){person=Number(b.dataset.personLink);screen='people';render(true);}
@@ -567,7 +568,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     else if(b.hasAttribute('data-routes-back')){routesMobileDetail=false;updateRouteDetail();content.querySelector(`[data-routes-step="${routeState()?.path.step}"]`)?.focus({preventScroll:true});}
     else if(b.hasAttribute('data-routes-retry')){routesError='';loadRoutes();render();}
     else if(b.hasAttribute('data-relation-source'))openEditor('relation',b);
-    else if(b.dataset.edit)openEditor(b.dataset.edit,b);
+    else if(b.dataset.edit){if(screen==='time')timeSettings.guard(()=>openEditor(b.dataset.edit,b));else openEditor(b.dataset.edit,b);}
     else if(b.hasAttribute('data-route'))openEditor('route:'+b.dataset.route,b);
     else if(b.hasAttribute('data-close'))closeEditor();
   });
@@ -644,6 +645,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const personId=request.operation==='add-person'?request.values.name.trim():people[person]?.id;
     const placeName=request.operation==='add-place'?request.values.name.trim():zones[place]?.name;
     Object.assign(model,saved);w=model.world;invalidateRoutes();
+    timeSettings.refreshWorld(model);
     // genre isn't part of snapshot()'s model (execution/world_editor.py);
     // rederive it from gapengine.action_graph the same way LibraryStore._genre_of() does.
     const genreMatch=/^templates\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})\//.exec(w.gapengine?.action_graph||'');
