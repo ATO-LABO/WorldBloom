@@ -190,6 +190,10 @@ class World:
         self.source = source
         self.name = str(definition["name"])
         time = definition.get("time", {})
+        if (isinstance(definition.get("slot_execution"), dict)
+                and definition["slot_execution"].get("mode") == "calendar_promises_v2"
+                and type(time.get("days", 1)) is not int):
+            raise ValueError("Calendar v2 days must be an integer")
         self.days = int(time.get("days", 1))
         self.slots = tuple(str(slot) for slot in time.get("slots", []))
         if self.days < 1 or not self.slots:
@@ -732,7 +736,10 @@ class World:
         # Explicit opt-in only. Legacy worlds retain their existing execution.
         self.slot_execution = definition.get("slot_execution")
         if self.slot_execution is not None:
-            from engine.slot_runtime import load_contract
+            if isinstance(self.slot_execution, dict) and self.slot_execution.get("mode") == "calendar_promises_v2":
+                from engine.calendar_runtime import load_contract
+            else:
+                from engine.slot_runtime import load_contract
             self.slot_contract = load_contract(self, self.slot_execution)
 
     @classmethod
