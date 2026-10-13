@@ -301,6 +301,19 @@ class RoutesApiTests(unittest.TestCase):
         self.assertEqual(status, 404, payload)
         self.assertEqual(payload["code"], "not_found")
 
+    def test_generic_goal_is_available_through_the_existing_endpoint(self) -> None:
+        sample = ROOT / "samples/route_goals/cultural_festival"
+        project = self.repo / "projects/festival"
+        shutil.copytree(sample, project)
+        raw = yaml.safe_load((project / "world.yaml").read_text())
+        raw["gapengine"] = {"action_graph": "templates/momotaro/action_graph.yaml", "effects": "templates/momotaro/effects.yaml"}
+        (project / "world.yaml").write_text(yaml.safe_dump(raw, allow_unicode=True))
+        status, payload = self.get("/api/worlds/festival/routes")
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["status"], "found")
+        self.assertEqual(payload["reached"]["slot"], "15:00")
+        self.assertEqual(payload["goal"]["actor"], "主役")
+
 
 class RoutesApiReadOnlyViewerTests(unittest.TestCase):
     """nice (Opus review): the endpoint's own docstring claims it works for

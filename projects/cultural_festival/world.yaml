@@ -1,0 +1,157 @@
+name: 凪野高校・文化祭 共通世界v1（現行schema診断用）
+time:
+  days: 1
+  slots:
+  - 06:00
+  - 06:30
+  - 07:00
+  - 07:30
+  - 08:00
+  - 08:30
+  - 09:00
+  - 09:30
+  - '10:00'
+  - '10:30'
+  - '11:00'
+  - '11:30'
+  - '12:00'
+  - '12:30'
+  - '13:00'
+  - '13:30'
+  - '14:00'
+  - '14:30'
+  - '15:00'
+  - '15:30'
+  - '16:00'
+  - '16:30'
+  - '17:00'
+protagonist: 蒼
+antagonist: 紗季
+zones:
+- name: 自宅
+- name: 校門
+- name: 部室
+- name: 体育館
+- name: 展示室
+routes:
+  自宅:
+  - to: 校門
+    cost: 1
+    requires_item: 校門通行可
+  校門:
+  - to: 自宅
+    cost: 1
+    requires_item: 校門通行可
+  - to: 部室
+    cost: 1
+    requires_item: 校門通行可
+  部室:
+  - to: 校門
+    cost: 1
+    requires_item: 校門通行可
+  - to: 体育館
+    cost: 1
+  - to: 展示室
+    cost: 1
+  体育館:
+  - to: 部室
+    cost: 1
+  - to: 展示室
+    cost: 1
+  展示室:
+  - to: 部室
+    cost: 1
+  - to: 体育館
+    cost: 1
+movement:
+  action_weight: 1
+  hop_decay: 1
+items:
+- name: 台本
+- name: 衣装
+  sources:
+  - type: investigate
+    zone: 部室
+    count: 1
+    max: 1
+- name: 校門通行可
+  note: 8時開門を表すschema用フラグ。物語上の所持品ではない。
+facts:
+- id: 共通予定
+  label: 9時部室集合、12時体育館リハ、14時30分袖集合、15時開演、17時片付け終了
+  share_min_affinity: 0.0
+  sources: []
+- id: 台詞骨子習得
+  label: 蒼は台詞骨子を習得している
+  share_min_affinity: 0.0
+  sources: []
+- id: 共同展示未完成
+  label: 蒼と灯の共同展示パネルは未完成
+  share_min_affinity: 0.0
+  sources: []
+- id: 終盤短縮希望
+  label: 蓮は終盤の一台詞を短くしたい
+  share_min_affinity: 0.0
+  sources: []
+- id: 音響手順
+  label: 紗季は体育館の音響確認手順を知っている
+  share_min_affinity: 0.0
+  sources: []
+truth: {}
+scheduled_events:
+- id: gate-opens
+  day: 1
+  slot: 08:00
+  label: 校門開門（通行フラグのみ、行動は強制しない）
+  targets:
+  - 蒼
+  - 紗季
+  - 蓮
+  - 灯
+  grants_item:
+    name: 校門通行可
+    count: 1
+- id: schedule-0
+  day: 1
+  slot: 09:00
+  label: 集合
+  targets: []
+- id: schedule-1
+  day: 1
+  slot: '12:00'
+  label: リハーサル
+  targets: []
+- id: schedule-2
+  day: 1
+  slot: '14:30'
+  label: 袖集合
+  targets: []
+- id: schedule-3
+  day: 1
+  slot: '15:00'
+  label: 二人芝居「帰り道の約束」開演（15分）
+  targets: []
+- id: schedule-4
+  day: 1
+  slot: '17:00'
+  label: 片付け終了
+  targets: []
+ending:
+- id: observation_finished
+  when: turn > 23
+  label: 観測終了
+target_ending: observation_finished
+stamina:
+  default_max: 100
+  default_recover_per_slot: 1
+companionship:
+  threshold: 0.6
+  weight: 1
+cultural_festival:
+  projection_only: false
+  antagonist_field_note: schema必須参照。紗季を敵役にする意図はない。敵意・戦闘行動なし。
+  contract: contract_v1.yaml
+  runtime_note: 契約v1を実行する明示的な一枠実行方式。元の世界・人物・初期条件の意味は同じ。
+slot_execution:
+  mode: cultural_festival_next_boundary_v1
+  contract: contract_v1.yaml

@@ -3,6 +3,7 @@ from copy import deepcopy
 import http.client
 import json
 import os
+import sys
 from pathlib import Path
 import shutil
 import tempfile
@@ -400,7 +401,7 @@ class CleanupBoundaryTests(unittest.TestCase):
             process.wait(timeout=5)
 
 
-@unittest.skipUnless(os.name == "nt", "Windows supervisor contract")
+@unittest.skipUnless(sys.platform in ("win32", "linux"), "Windows/Linux supervisor contract")
 class EvolutionHttpTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wb-ui004-http-")
@@ -495,7 +496,7 @@ class EvolutionHttpTests(unittest.TestCase):
             self.assertEqual((root / path).read_bytes(), data)
 
 
-@unittest.skipUnless(os.name == "nt", "Windows supervisor contract")
+@unittest.skipUnless(sys.platform in ("win32", "linux"), "Windows/Linux supervisor contract")
 class EvolutionHttpRouteRhoTests(unittest.TestCase):
     """WB-ROUTE-001 S4 bugfix regression: a run's route_rho (set on the job
     screen) used to be silently ignored end-to-end -- execution/
@@ -656,7 +657,7 @@ class EvolutionHttpPersonalityGrowthTests(unittest.TestCase):
         self.assertFalse(any(row.get("verb") == "growth" for row in rows))
 
 
-@unittest.skipUnless(os.name == "nt", "Windows supervisor contract")
+@unittest.skipUnless(sys.platform in ("win32", "linux"), "Windows/Linux supervisor contract")
 class EvolutionJobRationalityAndConsistencyTests(unittest.TestCase):
     """WB-ROUTE-001 S4 follow-up (kappa/rationality_* scope widening, user
     decision): mirrors EvolutionHttpRouteRhoTests but for kappa, and

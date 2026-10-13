@@ -84,6 +84,9 @@ def _wait_for_port_release(port: int, timeout: float = 10.0) -> None:
                 socket.AF_INET,
                 socket.SOCK_STREAM,
             ) as listener:
+                # Match the server's reuse policy so Linux TIME_WAIT sockets do
+                # not look like a live listener after the process was reaped.
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 listener.bind(("127.0.0.1", port))
                 return
         except OSError as error:
