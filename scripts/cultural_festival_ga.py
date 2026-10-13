@@ -15,10 +15,11 @@ def main():
     p.add_argument('--population',type=int,default=4)
     p.add_argument('--generations',type=int,default=2)
     p.add_argument('--ga-seed',type=int,default=20261012)
+    p.add_argument('--resume',action='store_true',help='Resume only a compatible Choice GA checkpoint; generations is the total target')
     args=p.parse_args();out=args.out.resolve()
     if out==ROOT or ROOT in out.parents:p.error('Output outside checkout required')
     archive=_evolve({'search_adapter':ADAPTER,'out':str(out),'population':args.population,
-        'generations':args.generations,'ga_seed':args.ga_seed,'seeds':[0],'processes':1})
+        'generations':args.generations,'ga_seed':args.ga_seed,'seeds':[0],'processes':1,'resume':args.resume})
     print({'archive_cells':len(archive.cells),'out':str(out)})
 
 

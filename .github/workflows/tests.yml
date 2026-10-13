@@ -2,7 +2,7 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 permissions:
@@ -23,6 +23,11 @@ jobs:
       # Japanese CLI output must also work on English Windows runners.
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
+      WB_REGRESSION_DIAGNOSTICS: '1'
+      WB_REGRESSION_PHASE: full-suite
+      # The full-suite gate uses the original worker/DEVNULL. Before-full probes
+      # opt into capture; after-full probes compare the original worker/harness.
+      WB_EPOCH_CAPTURE_STDERR: '0'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,5 +37,25 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
+      - name: Observe Windows targets before the full suite
+        if: runner.os == 'Windows'
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
+        run: python -B tests/windows_regression_probe.py --phase before-full
       - name: Run offline regression tests
-        run: python -B -m unittest discover -s tests -v
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
+        run: python -B tests/regression_suite_capture.py
+      - name: Compare original Windows targets after the full suite
+        if: always() && runner.os == 'Windows'
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
+        run: python -B tests/windows_regression_probe.py --phase original-after-full
+      - name: Preserve diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-diagnostics-${{ matrix.os }}-py${{ matrix.python }}
+          path: ${{ runner.temp }}/worldbloom-regression-evidence
+          if-no-files-found: ignore
+          retention-days: 7
