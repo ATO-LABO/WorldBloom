@@ -86,3 +86,9 @@
  .sf-actions-active .sf-verdict{padding:6px 12px}
  .sf-actions-active .sf-action-memo{margin-bottom:4px}
 }
+
+/* On compact screens, scroll the workspace before fixed controls consume the action list. */
+@media(max-width:1023px){
+ .run-observer>.page-content:has(.sf-actions-active){overflow:auto}
+ .sf-shell.sf-actions-active{min-height:780px;flex-shrink:0}
+}
