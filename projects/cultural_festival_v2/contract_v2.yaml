@@ -1,4 +1,4 @@
-version: 2
+version: 3
 calendar:
   schema_version: 1
   period:
@@ -402,15 +402,36 @@ facility_hours:
   放送室:
     opens: 08:00
     closes: '18:00'
-play:
+observers:
+- id: play-opening-observation
   event_id: schedule-3
-  place: 体育館
-  lead: 蒼
-  partner: 蓮
-  preparation_tasks:
-  - costume-ready
-  - practice-ready
-  - sound-ready
+  verb: play_opening_observation
+  fields:
+    primary_present:
+      check: at
+      actor: 蒼
+      place: 体育館
+    partner_present:
+      check: at
+      actor: 蓮
+      place: 体育館
+    preparation:
+      group:
+        costume-ready:
+          check: task_complete
+          task_id: costume-ready
+        practice-ready:
+          check: task_complete
+          task_id: practice-ready
+        sound-ready:
+          check: task_complete
+          task_id: sound-ready
+    consent:
+      literal: not_inferred_from_presence
+    performance_started:
+      literal: false
+    performance_internals:
+      literal: unsupported
 appraisal:
   fulfilled: 0.05
   unexplained_breach: -0.05

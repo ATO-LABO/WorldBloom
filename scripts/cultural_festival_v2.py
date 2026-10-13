@@ -11,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -21,6 +22,7 @@ from engine.promises_v2 import PromiseRegistry
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.world import World
+from engine.calendar_inputs import load_project, freeze_project
 
 PROJECT = ROOT/'projects/cultural_festival_v2'
 ORIGINAL = ROOT/'projects/cultural_festival'
@@ -62,7 +64,9 @@ def fixture(*, festival='2026-10-15', prep_days=2):
     world['scheduled_events'] = [
         dict(event, day=prep_days+1) for event in world['scheduled_events']
         if event['id'] != 'gate-opens']
-    world['slot_execution'] = {'mode': 'calendar_promises_v2', 'contract': 'contract_v2.yaml'}
+    world['slot_execution'] = {'mode': 'calendar_promises_v2', 'contract': 'contract_v2.yaml',
+                               'subjects': [{'id': name, 'path': ('subjects/' if i < 4 else '')+str(i+1).zfill(2)+'_'+name+'.yaml'}
+                                            for i, name in enumerate(NAMES)]}
     world['cultural_festival'] = {'projection_only': False, 'contract': 'contract_v2.yaml',
                                  'runtime_note': '別版。v1の30分移動/pledgeを暗黙変換しない。'}
     roles = {'蒼': ['演劇主役', '展示制作'], '紗季': ['演劇進行'], '蓮': ['演劇相手役'],
@@ -92,12 +96,19 @@ def fixture(*, festival='2026-10-15', prep_days=2):
     for p in NAMES:
         task('class-am:'+p, '午前授業への参加', '教室', max(1, school_days), 230, ['student:'+p], resource='seat:'+p)
         task('class-pm:'+p, '午後授業への参加', '教室', max(1, school_days), 150, ['student:'+p], resource='seat:'+p)
-    contract = {'version': 2, 'calendar': calendar, 'timezone': 'Asia/Tokyo', 'start_time': '06:00',
+    contract = {'version': 3, 'calendar': calendar, 'timezone': 'Asia/Tokyo', 'start_time': '06:00',
                 'end_time': '17:00', 'travel_minutes': graph, 'roles': roles, 'tasks': tasks,
                 'materials': {'説明カード': 4, '受付札用紙': 3},
                 'facility_hours': {p: {'opens': '08:00', 'closes': '18:00'} for p in graph if p != '自宅'},
-                'play': {'event_id': 'schedule-3', 'place': '体育館', 'lead': '蒼', 'partner': '蓮',
-                         'preparation_tasks': ['costume-ready', 'practice-ready', 'sound-ready']},
+                'observers': [{'id': 'play-opening-observation', 'event_id': 'schedule-3',
+                               'verb': 'play_opening_observation', 'fields': {
+                                   'primary_present': {'check': 'at', 'actor': '蒼', 'place': '体育館'},
+                                   'partner_present': {'check': 'at', 'actor': '蓮', 'place': '体育館'},
+                                   'preparation': {'group': {task: {'check': 'task_complete', 'task_id': task}
+                                                            for task in ('costume-ready', 'practice-ready', 'sound-ready')}},
+                                   'consent': {'literal': 'not_inferred_from_presence'},
+                                   'performance_started': {'literal': False},
+                                   'performance_internals': {'literal': 'unsupported'}}}],
                 'appraisal': {'fulfilled': 0.05, 'unexplained_breach': -0.05},
                 'initial_task_knowledge': {'蒼': ['panel-headline', 'panel-cards'], '灯': ['panel-headline', 'panel-cards']},
                 'assumptions': [
@@ -123,29 +134,34 @@ def fixture(*, festival='2026-10-15', prep_days=2):
     return world, contract, extras
 
 
+def _write_fixture_files(path, world, contract, extras):
+    for name, value in [('world.yaml', world), ('contract_v2.yaml', contract)]:
+        (path/name).write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    (path/'subjects').mkdir()
+    originals = [yaml.safe_load(p.read_text(encoding='utf-8'))
+                 for p in sorted((ORIGINAL/'subjects').glob('*.yaml'))]
+    people = originals + extras
+    by_id = {person['id']: person for person in people}
+    if set(by_id) != set(NAMES) or len(people) != len(NAMES):
+        raise ValueError('Festival adapter requires its explicitly configured six-person fixture')
+    for reference in world['slot_execution']['subjects']:
+        person = deepcopy(by_id[reference['id']])
+        # This adapter authors new project-local range settings. The original
+        # project is never edited and the generic loader never expands ranges.
+        person['range']['zones'] = [zone['name'] for zone in world['zones']]
+        (path/reference['path']).write_text(yaml.safe_dump(person, allow_unicode=True, sort_keys=False), encoding='utf-8')
+
+
 def write_fixture(path, **options):
     path = Path(path)
     if path.exists() and any(path.iterdir()):
         raise ValueError('Existing project is protected')
     path.mkdir(parents=True, exist_ok=True)
-    world, contract, extras = fixture(**options)
-    for name, value in [('world.yaml', world), ('contract_v2.yaml', contract),
-                        ('05_悠.yaml', extras[0]), ('06_実.yaml', extras[1])]:
-        (path/name).write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    _write_fixture_files(path, *fixture(**options))
 
 
 def load(project=PROJECT):
-    project = Path(project)
-    world = World.from_yaml(project/'world.yaml')
-    subjects = {s.id: s for s in [Subject.from_yaml(p) for p in sorted((ORIGINAL/'subjects').glob('*.yaml'))]}
-    for p in sorted(project.glob('0[56]_*.yaml')):
-        subject = Subject.from_yaml(p); subjects[subject.id] = subject
-    for s in subjects.values():
-        s.range_zones = set(world.zones)
-    world.calendar_subject_sources = {
-        Subject.from_yaml(p).id: hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in list((ORIGINAL/'subjects').glob('*.yaml'))+list(project.glob('0[56]_*.yaml'))}
-    return world, subjects
+    return load_project(Path(project)/'world.yaml')
 
 
 def choices(world, case):
@@ -250,10 +266,11 @@ def run_case(out, case, *, project=PROJECT, resume=False, until=None):
 
 
 def freeze_design(destination, design):
-    """Explicit transfer of a PR9 design into a separate executable v2 project.
+    """Explicit festival-only adapter; generic projects use freeze_project.
 
-    The source's design-only flags/revision are preserved. The new school world
-    explicitly places its festival notices on the selected last date.
+    The PR9 source design and its design-only flags are retained in provenance
+    metadata. This creates a new school fixture; it is not arbitrary world
+    transfer and does not edit an existing project or design.
     """
     if not isinstance(design, dict):
         raise ValueError('Calendar design must be an object')
@@ -261,32 +278,18 @@ def freeze_design(destination, design):
     settings = deepcopy(design.get('settings', design))
     first = date.fromisoformat(settings['period']['start_date'])
     last = date.fromisoformat(settings['period']['end_date'])
-    prep_days = (last-first).days
-    world, contract, extras = fixture(festival=str(last), prep_days=prep_days)
-    world['slot_execution']['fixed_version'] = True
-    compiled = compile_calendar(design, scheduled_events=world['scheduled_events'])
+    world, contract, extras = fixture(festival=str(last), prep_days=(last-first).days)
     contract['calendar'] = settings
-    compiled = compile_calendar(settings, scheduled_events=world['scheduled_events'])
-    destination = Path(destination)
-    if destination.exists() and any(destination.iterdir()):
-        raise ValueError('Existing project is protected')
-    destination.mkdir(parents=True, exist_ok=True)
-    for name, value in [('world.yaml', world), ('contract_v2.yaml', contract),
-                        ('05_悠.yaml', extras[0]), ('06_実.yaml', extras[1])]:
-        (destination/name).write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False), encoding='utf-8')
-    (destination/'calendar_design.json').write_bytes(json.dumps(design, ensure_ascii=False, sort_keys=True).encode())
-    files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(destination.iterdir()) if p.is_file()}
-    version = {'schema_version': 2, 'contract': 'calendar_promises_v2', 'calendar': compiled,
-               'inputs': files, 'source_world_revision': design.get('world_revision'),
-               'original_subject_files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                                           for p in sorted((ORIGINAL/'subjects').glob('*.yaml'))},
-               'source_design_id': design.get('id'), 'engine_supported': True, 'execution_ready': True,
-               'transfer': {'explicit': True, 'festival_date': compiled['end_date'],
-                            'scheduled_event_day': prep_days+1,
-                            'note': 'New v2 school fixture; source project/design/old runs unchanged'}}
-    version['id'] = digest(version)
-    (destination/'execution-version.json').write_bytes(json.dumps(version, ensure_ascii=False, sort_keys=True).encode())
-    return version
+    compile_calendar(settings, scheduled_events=world['scheduled_events'])
+    metadata = {'adapter': 'cultural_festival_sample', 'source_design': deepcopy(design),
+                'source_world_revision': design.get('world_revision'), 'source_design_id': design.get('id'),
+                'transfer': {'explicit': True, 'festival_date': str(last),
+                             'scheduled_event_day': (last-first).days+1,
+                             'note': 'New school fixture; source project/design/old runs unchanged'}}
+    with tempfile.TemporaryDirectory(prefix='worldbloom-festival-adapter-') as temporary:
+        project = Path(temporary)
+        _write_fixture_files(project, world, contract, extras)
+        return freeze_project(project/'world.yaml', destination, metadata=metadata)
 
 
 def main():

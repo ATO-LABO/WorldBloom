@@ -103,6 +103,15 @@ class Simulation:
         self._forced: dict[str, dict[str, Any]] = {}
         self._fallback: dict[str, Any] | None = None
 
+        if (isinstance(getattr(self.world, 'slot_execution', None), dict)
+                and self.world.slot_execution.get('mode') == 'calendar_promises_v2'):
+            from engine.calendar_inputs import read_subjects, subject_spec
+            declared = read_subjects(self.world.source, self.world.slot_execution)
+            expected = {actor: subject_spec(person) for actor, person in declared.items()}
+            actual = {actor: subject_spec(person) for actor, person in self.subjects.items()}
+            if actual != expected:
+                raise ValueError('Runtime people differ from the explicitly declared project inputs')
+
         for subject_id in sorted(self.subjects):
             subject = self.subjects[subject_id]
             if subject.stamina_max <= 0.0:

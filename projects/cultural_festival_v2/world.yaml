@@ -164,3 +164,16 @@ cultural_festival:
 slot_execution:
   mode: calendar_promises_v2
   contract: contract_v2.yaml
+  subjects:
+  - id: 蒼
+    path: subjects/01_蒼.yaml
+  - id: 紗季
+    path: subjects/02_紗季.yaml
+  - id: 蓮
+    path: subjects/03_蓮.yaml
+  - id: 灯
+    path: subjects/04_灯.yaml
+  - id: 悠
+    path: 05_悠.yaml
+  - id: 実
+    path: 06_実.yaml
