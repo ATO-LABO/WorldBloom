@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import uuid
 
 import yaml
@@ -101,8 +102,20 @@ def write_bytes(path: Path, data: bytes):
 def atomic_json(path: Path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
-    write_bytes(temporary, canonical(value))
-    os.replace(temporary, path)
+    try:
+        write_bytes(temporary, canonical(value))
+        # A concurrent Windows reader can briefly deny replacement. Retain the
+        # complete previous file while retrying; persistent denial still fails.
+        for attempt in range(6):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError as error:
+                if getattr(error, 'winerror', None) not in (5, 32, 33) or attempt == 5:
+                    raise
+                time.sleep(0.02 * (attempt + 1))
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 _mutex = threading.Lock()
