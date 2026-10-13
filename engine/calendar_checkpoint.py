@@ -24,13 +24,13 @@ def digest(value):
 
 def source_hash():
     root = Path(__file__).resolve().parents[1]
-    paths = list((root/'engine').glob('*.py'))+[root/'execution/provenance.py', root/'scripts/cultural_festival_v2.py']
+    paths = list((root/'engine').glob('*.py'))+[root/'execution/provenance.py', root/'scripts/calendar_sim.py']
     files = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
     return digest(files)
 
 
 def compatibility(inputs, choices):
-    return {'family': FAMILY, 'schema_version': 2, 'source_hash': source_hash(),
+    return {'family': FAMILY, 'schema_version': 3, 'source_hash': source_hash(),
             'inputs_hash': digest(inputs), 'choices_hash': digest(choices),
             'python': sys.version.split()[0], 'platform': platform.system()}
 
