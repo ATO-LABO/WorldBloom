@@ -97,6 +97,11 @@ class Subject:
     def from_yaml(cls, path: str | Path) -> Subject:
         source = Path(path)
         raw = load_yaml(source)
+        return cls.from_definition(raw, source=source)
+
+    @classmethod
+    def from_definition(cls, raw: Any, *, source: str | Path = '<declared>') -> Subject:
+        """Build from an already validated input snapshot without re-reading it."""
         if not isinstance(raw, dict):
             raise ValueError(
                 f"Subject YAML must contain a mapping: {source}"
