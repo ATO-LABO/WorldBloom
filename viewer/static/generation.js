@@ -64,7 +64,7 @@
   $('entries').parentElement.scrollTop=scroll;
   $('primary').hidden=true;
   if(stopConfirm){button('停止する',busy);$('secondary').textContent='生成を続ける';}
-  else if(terminal.has(job.state)){const anyOk=output?.entries?.some(e=>e.status==='ok');if(job.kind==='narrate'&&anyOk){$('result').href=`/outputs/${encodeURIComponent(job.output_id)}`;$('result').textContent='上映で本文を読む →';$('result').hidden=false;}else{button(job.kind==='synopsize'?'候補選びに戻る':'結果を確認');}if(job.error)error(job.error.message||'生成を完了できませんでした。詳細の記録を確認してください。');}
+  else if(terminal.has(job.state)){const anyOk=output?.entries?.some(e=>e.status==='ok');if(output?.request?.pipeline==='facts_v1'&&anyOk){const entry=output.entries.find(e=>e.status==='ok');$('result').href=`/facts/outputs/${encodeURIComponent(job.output_id)}/${encodeURIComponent(entry.candidate_id)}`;$('result').textContent=job.kind==='synopsize'?'あらすじと使用した入力を確認 →':'本文と使用した入力を確認 →';$('result').hidden=false;}else if(job.kind==='narrate'&&anyOk){$('result').href=`/outputs/${encodeURIComponent(job.output_id)}`;$('result').textContent='上映で本文を読む →';$('result').hidden=false;}else{button(job.kind==='synopsize'?'候補選びに戻る':'結果を確認');}if(job.error)error(job.error.message||'生成を完了できませんでした。詳細の記録を確認してください。');}
  }
  async function submit(){if(busy||!request)return;if(request.acknowledge_unknown&&!$('ack').checked){error('結果不明の再生成について確認してください。');return;}busy=true;uncertain=true;persist();base();button('受付を確認中…',true);$('message').textContent='生成を受け付けています。';error('');
   try{job=await api('/api/jobs',request);if(!job.job_id)throw Error('受付結果を確認できません');uncertain=false;persist();await watch(job.job_id);}

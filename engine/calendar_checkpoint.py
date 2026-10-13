@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import platform
 import sys
+import time
 from uuid import uuid4
 
 from execution.provenance import canonical, directory_lock
@@ -43,7 +44,16 @@ def atomic_bytes(path, data):
     try:
         with temporary.open('xb') as stream:
             stream.write(data); stream.flush(); os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        # Windows readers/scanners can briefly deny replacement. Keep the old
+        # authoritative file intact; retry only these errors, then fail normally.
+        for attempt in range(6):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError as error:
+                if getattr(error, 'winerror', None) not in (5, 32, 33) or attempt == 5:
+                    raise
+                time.sleep(0.02 * (attempt + 1))
     finally:
         temporary.unlink(missing_ok=True)
 

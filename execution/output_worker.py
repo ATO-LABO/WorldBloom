@@ -110,6 +110,10 @@ def run(control, output_id):
                     except (OSError, ValueError, ConfigError) as error:
                         from execution.provenance import atomic_json
                         atomic_json(sink.folder / "story-validation-error.json", {"code":"validation_error","type":type(error).__name__})
+                if request.get("pipeline") == "facts_v1":
+                    from execution.fact_service import process_fact_output
+                    # A validation infrastructure failure fails the job; received output remains durable.
+                    process_fact_output(store, output_id, cid)
             payload = store.project(output_id)
             counts = {}
             for entry in payload["entries"]:
@@ -142,6 +146,17 @@ def build(root):
         elite["cell"] = cell
         archive["cells"][cid] = elite
         archive["candidate_mapping"][cid] = {"candidate_id": cid, "cell": cell}
+
+        if request.get("pipeline") == "facts_v1":
+            from execution.fact_service import pinned_package
+            from gapengine.fact_contract import build_prompt
+            pinned = {**request, "config_sha256": plan["config_sha256"],
+                      "input_manifest_sha256": plan["input_manifest_sha256"],
+                      "sources": [{"candidate_id": x["candidate_id"], "source_log_sha256": x["source_log_sha256"]}
+                                  for x in plan["candidates"]]}
+            package = pinned_package(root, cid, pinned)
+            prompts[cid] = build_prompt(package, request["kind"])
+            continue
 
         if request.get("pipeline") == "story_v1":
             from execution.story_service import pinned_story
