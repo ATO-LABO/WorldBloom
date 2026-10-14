@@ -8,6 +8,16 @@
   const base = "/api/facts/runs/" + encodeURIComponent(cfg.run_id) + "/" + encodeURIComponent(cfg.candidate_id);
   let dirty = false, busy = false;
   const generation = [...host.querySelectorAll('[data-fact-action="generate"]')];
+  const requestKey = kind => "wb-facts-request:" + JSON.stringify([cfg.run_id, cfg.candidate_id,
+    cfg.revision, cfg.package_sha256, kind]);
+  function retryLabel(button) {
+    button.dataset.originalLabel ??= button.textContent;
+    try {
+      button.textContent = sessionStorage.getItem(requestKey(button.dataset.kind))
+        ? "生成の受付を確認" : button.dataset.originalLabel;
+    } catch (_) { /* Generation itself requires durable request storage below. */ }
+  }
+  generation.forEach(retryLabel);
   function changed() {
     dirty = true;
     generation.forEach(b => b.disabled = true);
@@ -64,14 +74,23 @@
         location.reload();
       } else if (action === "generate") {
         if (dirty || cfg.readonly) throw new Error("編集内容を保存してから生成してください");
+        const key = requestKey(button.dataset.kind);
+        const requestId = sessionStorage.getItem(key) || "req-" + crypto.randomUUID();
+        // Persist before dispatch: a lost response/reload must replay admission,
+        // even when the original job has already finished.
+        sessionStorage.setItem(key, requestId);
         const data = await post("generate", {expected_revision: cfg.revision, package_sha256: cfg.package_sha256,
-          kind: button.dataset.kind, request_id: "req-" + crypto.randomUUID()});
+          kind: button.dataset.kind, request_id: requestId});
+        if (!data.job || typeof data.job.job_id !== "string" || data.url !== "/jobs/" + data.job.job_id)
+          throw new Error("生成の受付を確認できませんでした。もう一度受付を確認してください");
+        sessionStorage.removeItem(key);
         location.href = data.url;
       }
     } catch (error) {
       message.textContent = error.message + "。画面の入力は保持しています。";
     } finally {
       busy = false;
+      if (action === "generate") retryLabel(button);
       if (action !== "generate" || (!dirty && !cfg.source_changed && !cfg.readonly)) button.disabled = false;
     }
   });

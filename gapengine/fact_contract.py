@@ -27,6 +27,14 @@ def entity_identifier(value):
     return value
 
 
+def candidate_matches_choice(candidate, choice):
+    """Bind a concrete selection to the same route/message/work task."""
+    if not isinstance(candidate, dict) or not isinstance(choice, dict) or candidate.get("verb") != choice.get("verb"):
+        return False
+    keys = ("to", "message_id") + (("task_id",) if choice.get("verb") == "work" else ())
+    return all(candidate.get(k) == choice.get(k) for k in keys if k in choice or k in candidate)
+
+
 def _fail(field, message):
     raise ConfigError(field, message)
 
@@ -82,6 +90,11 @@ def validate_records(records):
             if not any(seen[i]["kind"] == previous and seen[i]["actor"] == r["actor"]
                        and seen[i]["content"].get(key) == c[key] for i in deps):
                 _fail("transition", "前段階の記録がありません: " + kind)
+        if kind == "action_selected" and "choice" in c:
+            if not any(seen[i]["kind"] == "action_candidate" and seen[i]["actor"] == r["actor"]
+                       and seen[i]["content"].get("action_id") == c["action_id"]
+                       and candidate_matches_choice(seen[i]["content"].get("candidate"), c["choice"]) for i in deps):
+                _fail("transition", "選択した行動と候補の対象が一致しません")
         if kind == "understanding":
             claims = c.get("claim_ids")
             if (not isinstance(claims, list) or not claims or len(set(claims)) != len(claims)

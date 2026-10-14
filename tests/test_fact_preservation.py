@@ -12,6 +12,18 @@ from fact_fixtures import example, records, raw_log, response
 
 
 class FactContractTests(unittest.TestCase):
+    def test_work_choice_cannot_reference_another_task_candidate(self):
+        values = [
+            {"schema_version": 1, "id": "candidate", "kind": "action_candidate", "actor": "mio", "at": 0,
+             "content": {"action_id": "work", "candidate": {"verb": "work", "task_id": "panel-cards"}}, "depends_on": []},
+            {"schema_version": 1, "id": "selected", "kind": "action_selected", "actor": "mio", "at": 0,
+             "content": {"action_id": "work", "choice": {"verb": "work", "task_id": "panel-headline"}}, "depends_on": ["candidate"]},
+        ]
+        with self.assertRaises(ConfigError):
+            extract_supplement(raw_log(values), {}, {"run_id": "work", "candidate_id": "mio"})
+        values[0]["content"]["candidate"]["task_id"] = "panel-headline"
+        self.assertEqual(len(extract_supplement(raw_log(values), {}, {"run_id": "work", "candidate_id": "mio"})["records"]), 2)
+
     def test_stage_and_belief_dependencies_reject_premature_knowledge(self):
         original = records()
         cases = []

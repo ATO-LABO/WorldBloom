@@ -5,7 +5,7 @@ This module does not choose probabilities, infer intentions or call a model.
 """
 from copy import deepcopy
 from execution.provenance import canonical, sha256, identifier
-from gapengine.fact_contract import entity_identifier, validate_records
+from gapengine.fact_contract import candidate_matches_choice, entity_identifier, validate_records
 
 VERBS = {"send_message", "read_message", "move_and_send", "move_and_read"}
 DOMAINS = {"arrival_prediction", "reason_assessment", "intent_inference", "other"}
@@ -242,8 +242,7 @@ class FactRuntime:
             actor, d, rid, verb = row["subject"], row["details"], row["id"], row["verb"]
             if verb == "decision":
                 choice = d["choice"]; offered = d["candidates"]
-                match = next((i for i, c in enumerate(offered) if c["verb"] == choice["verb"] and
-                              all(c.get(k) == choice.get(k) for k in ("to", "message_id") if k in choice)), None)
+                match = next((i for i, c in enumerate(offered) if candidate_matches_choice(c, choice)), None)
                 for i, c in enumerate(offered):
                     self.record(stable("candidate", rid, i), "action_candidate", actor,
                                 {"action_id": choice["id"], "candidate": c, "feasible": True if c["verb"] in VERBS else None})
@@ -336,6 +335,22 @@ class FactRuntime:
                 if (None if recorded is None else recorded['at']) != s[field]:
                     raise ValueError('Notification state differs from its event history')
         valid_ids = self.command_ids(commands)
+        pending = {}
+        for row in rows:
+            choice = row['details'].get('choice', {})
+            if choice.get('verb') not in {'read_message', 'send_message'}:
+                continue
+            actor = row['subject']
+            if row['verb'] == 'action_started':
+                if actor in pending:
+                    raise ValueError('Overlapping communication execution history')
+                pending[actor] = {**choice, 'start': row['absolute_minute'], 'finish': row['details']['finish_at']}
+            elif row['verb'] == 'action_completed':
+                if actor not in pending or pending[actor]['id'] != choice['id']:
+                    raise ValueError('Communication completion lacks its execution')
+                del pending[actor]
+        if canonical(pending) != canonical(state['communications']):
+            raise ValueError('Pending communications differ from execution history')
         for actor, a in state["communications"].items():
             if (not isinstance(a, dict) or a.get("id") not in valid_ids or a.get("actor") != actor or a.get("verb") not in {"read_message", "send_message"}
                     or a.get("message_id") not in self.definitions or type(a.get("finish")) is not int or a["finish"] <= now):
