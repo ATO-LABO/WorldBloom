@@ -189,8 +189,15 @@ class _WindowsProcessTree:
                 child.stdin.close()
             return child
         except BaseException:
-            child.kill()
-            child.wait(timeout=10)
+            try:
+                child.kill()
+                child.wait(timeout=10)
+            except BaseException as error:
+                raise RuntimeError("owned launch cleanup unconfirmed") from error
+            for stream in (child.stdin,child.stdout,child.stderr):
+                if stream is not None:
+                    stream.close()
+            child._handle.Close()
             raise
 
     def terminate(self):
