@@ -61,16 +61,18 @@ class JobStore:
         self.startup_timeout = startup_timeout
 
     @contextmanager
-    def _lock(self):
+    def _lock(self, *, operation="jobs"):
         contained(self.configs.control, "jobs").mkdir(parents=True, exist_ok=True)
         with ExitStack() as stack:
             deadline = time.monotonic() + 2
             while True:
                 try:
-                    stack.enter_context(directory_lock(self.root))
+                    stack.enter_context(directory_lock(self.root, operation=operation))
                     break
                 except ConfigError as error:
                     if error.code != "conflict" or time.monotonic() >= deadline:
+                        worker.trace_lock(self.root, operation, "timeout",
+                                          wait_seconds=time.monotonic()-(deadline-2))
                         raise
                     time.sleep(0.02)
             yield
@@ -198,7 +200,7 @@ class JobStore:
         identifier(jid, "job_id")
         if not self.root.exists():
             raise ConfigError("job_id", "ジョブがありません", code="not_found")
-        with self._lock():
+        with self._lock(operation="jobs.get"):
             return self.public(self._reconcile(self._read(jid)))
 
     def list(self):

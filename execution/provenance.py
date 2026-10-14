@@ -123,13 +123,16 @@ _locks = {}
 
 
 @contextmanager
-def directory_lock(root: Path):
+def directory_lock(root: Path, *, operation="directory_lock"):
+    from execution.worker import trace_lock
+    started = time.monotonic()
     root = Path(root).absolute()
     contained(root, ".write.lock")
     root.mkdir(parents=True, exist_ok=True)
     with _mutex:
         lock = _locks.setdefault(str(root.resolve()), threading.RLock())
     with lock:
+        trace_lock(root, operation, "thread_acquired", wait_seconds=time.monotonic()-started)
         with (root / ".write.lock").open("a+b") as handle:
             handle.seek(0, os.SEEK_END)
             if handle.tell() == 0:
@@ -144,7 +147,11 @@ def directory_lock(root: Path):
                     import fcntl
                     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError as error:
+                trace_lock(root, operation, "contended", errno=error.errno,
+                           winerror=getattr(error, "winerror", None))
                 raise ConfigError("storage", "別の保存処理が実行中です", code="conflict") from error
+            acquired = time.monotonic()
+            trace_lock(root, operation, "acquired", wait_seconds=acquired-started)
             try:
                 yield
             finally:
@@ -153,6 +160,7 @@ def directory_lock(root: Path):
                     msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
                 else:
                     fcntl.flock(handle, fcntl.LOCK_UN)
+                trace_lock(root, operation, "released", held_seconds=time.monotonic()-acquired)
 
 
 def materialize(root: Path, blobs: dict[str, bytes]):

@@ -533,8 +533,28 @@ def atomic(path, value):
     os.replace(temporary, path)
 
 
+def trace_lock(folder, operation, stage, **values):
+    """Opt-in CI diagnostics; omit paths, requests, settings and credentials."""
+    evidence = os.environ.get("WB_REGRESSION_EVIDENCE_DIR")
+    if not evidence or os.environ.get("WB_REGRESSION_DIAGNOSTICS") != "1":
+        return
+    try:
+        root = Path(evidence) / "storage-locks"
+        root.mkdir(parents=True, exist_ok=True)
+        lock_id = hashlib.sha256(os.path.normcase(os.path.realpath(folder)).encode()).hexdigest()
+        row = dict(time=time.time(), monotonic=time.monotonic(), pid=os.getpid(),
+                   thread=threading.get_ident(), lock_id=lock_id,
+                   operation=operation, stage=stage, **values)
+        with (root / (str(os.getpid()) + ".jsonl")).open("a", encoding="utf-8") as log:
+            log.write(json.dumps(row, sort_keys=True) + "\n")
+    except OSError:
+        # Diagnostic storage must not change the job ledger's outcome.
+        pass
+
+
 @contextmanager
-def lock(folder):
+def lock(folder, *, operation="worker.lock"):
+    started = time.monotonic()
     if os.name == "nt":
         import msvcrt
     else:
@@ -551,8 +571,12 @@ def lock(folder):
                 else:
                     fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
-            except OSError:
+            except OSError as error:
+                trace_lock(folder, operation, "contended", errno=error.errno,
+                           winerror=getattr(error, "winerror", None))
                 time.sleep(0.05)
+        acquired = time.monotonic()
+        trace_lock(folder, operation, "acquired", wait_seconds=acquired-started)
         try:
             yield
         finally:
@@ -561,6 +585,7 @@ def lock(folder):
                 msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(stream, fcntl.LOCK_UN)
+            trace_lock(folder, operation, "released", held_seconds=time.monotonic()-acquired)
 
 
 def record_event(folder, job):
@@ -572,18 +597,24 @@ def record_event(folder, job):
 
 
 def change(jobs, folder, nonce, **updates):
-    with lock(jobs):
+    with lock(jobs, operation="worker.change"):
+        started = time.monotonic()
         job = read(folder / "job.json")
+        trace_lock(jobs, "worker.change", "read", seconds=time.monotonic()-started)
         if job["nonce"] != nonce or job["state"] in TERMINAL:
             return job
         job.update(updates, updated_at=time.time(), revision=job["revision"] + 1)
+        started = time.monotonic()
         atomic(folder / "job.json", job)
+        trace_lock(jobs, "worker.change", "atomic", seconds=time.monotonic()-started)
+        started = time.monotonic()
         record_event(folder, job)
+        trace_lock(jobs, "worker.change", "event", seconds=time.monotonic()-started)
         return job
 
 
 def read_job(jobs, folder):
-    with lock(jobs):
+    with lock(jobs, operation="worker.read_job"):
         return read(folder / "job.json")
 
 
