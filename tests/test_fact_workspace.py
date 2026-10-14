@@ -116,6 +116,44 @@ class FactWorkspaceHTTPTests(WorkspaceFixture, unittest.TestCase):
         self.assertEqual(self.http('GET', '/static/fact-workspace.js')[0], 200)
         self.assertEqual(self.http('GET', '/static/fact-workspace.css')[0], 200)
 
+    def test_lost_acceptance_response_reuses_completed_job_and_explicit_regeneration_is_new(self):
+        import socket
+        self.fx.fixed_transport()
+        saved = self.store.save(self.rid, self.cid, self.body, 0)
+        request = {'expected_revision': 1, 'package_sha256': saved['reference']['package_sha256'],
+                   'kind': 'narrate', 'request_id': 'req-lost-acceptance'}
+        accepted = []
+        original_send = ViewerHandler._send_json
+
+        def lose_first_response(handler, status, data):
+            if handler.path == self.base + '/generate' and not accepted:
+                accepted.append(data)
+                handler.close_connection = True
+                handler.connection.shutdown(socket.SHUT_RDWR)
+                return
+            original_send(handler, status, data)
+
+        with patch('execution.output_requests.generation_availability', return_value={'available': True}):
+            with patch.object(ViewerHandler, '_send_json', lose_first_response):
+                with self.assertRaises(http.client.RemoteDisconnected):
+                    self.http('POST', self.base + '/generate', request)
+            end = self.fx.finish(accepted[0]['job'])
+            self.assertEqual(end['completion_kind'], 'generated', end)
+            status, replay = self.http('POST', self.base + '/generate', request)
+            self.assertEqual(status, 200, replay)
+            self.assertFalse(replay['created'])
+            self.assertEqual(replay['job']['job_id'], accepted[0]['job']['job_id'])
+            outputs = OutputStore(self.fx.configs.control)
+            self.assertEqual(len(read_json(outputs.folder(end['output_id']) / 'quota.json')['started']), 1)
+            self.assertEqual(len(self.fx.jobs.list()), 1)
+            # A new request ID means the author deliberately asks for another result.
+            status, another = self.http('POST', self.base + '/generate', {**request, 'request_id': 'req-intentional-new'})
+            self.assertEqual(status, 200, another)
+            self.assertTrue(another['created'])
+            self.assertNotEqual(another['job']['job_id'], replay['job']['job_id'])
+            self.assertEqual(self.fx.finish(another['job'])['completion_kind'], 'generated')
+            self.assertEqual(len(self.fx.jobs.list()), 2)
+
     def test_actual_simulation_to_http_fixed_response_job_and_historical_output(self):
         self.fx.fixed_transport()
         first = self.store.save(self.rid, self.cid, self.body, 0)

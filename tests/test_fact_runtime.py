@@ -88,6 +88,41 @@ class FactRuntimeTests(unittest.TestCase):
             _, rt = self.execute(str(argument), transform=setting)
             self.assertEqual(rt.facts.state["messages"]["M"]["noticed_at"], notice)
 
+    def test_work_selection_references_the_chosen_task_and_rejects_wrong_candidate(self):
+        from execution.provenance import ConfigError
+        commands = witness_commands() + [{"id": "choose-headline", "actor": "灯", "at": 509,
+            "verb": "work", "task_id": "panel-headline", "minutes": 10}]
+        _, rt = self.execute("work-selection", commands=commands)
+        byid = {r["id"]: r for r in self.typed(rt)}
+        selected = byid[stable("selected", "choose-headline")]
+        execution = byid[stable("execution", "choose-headline")]
+        candidates = [byid[i] for i in selected["depends_on"] if byid[i]["kind"] == "action_candidate"]
+        self.assertEqual(selected["content"]["choice"]["task_id"], "panel-headline")
+        self.assertEqual(execution["content"]["choice"]["task_id"], "panel-headline")
+        self.assertEqual([r["content"]["candidate"]["task_id"] for r in candidates], ["panel-headline"])
+        raw = (rt.store.out / "layers.jsonl").read_bytes()
+        extract_supplement(raw, {}, {"run_id": "work-selection", "candidate_id": "scene"})
+        wrong = next(r for r in byid.values() if r["kind"] == "action_candidate"
+                     and r["content"]["action_id"] == "choose-headline"
+                     and r["content"]["candidate"].get("task_id") == "panel-cards")
+        rows = deepcopy(rt.rows)
+        next(r["details"]["fact_record"] for r in rows if r["verb"] == "fact_record"
+             and r["details"]["fact_record"]["id"] == selected["id"])["depends_on"][0] = wrong["id"]
+        import json
+        tampered = b"\n".join(json.dumps(r, ensure_ascii=False).encode("utf-8") for r in rows)
+        with self.assertRaises(ConfigError):
+            extract_supplement(tampered, {}, {"run_id": "work-selection", "candidate_id": "scene"})
+
+    def test_checkpoint_rejects_missing_inflight_communication_without_changing_state(self):
+        _, split = self.execute("missing-communication", until=505)
+        before = split.export_state()
+        self.assertEqual(before["fact_model"]["communications"]["灯"]["id"], "read-M")
+        bad = deepcopy(before)
+        bad["fact_model"]["communications"] = {}
+        with self.assertRaises(ValueError):
+            split.restore_state(bad)
+        self.assertEqual(split.export_state(), before)
+
     def test_checkpoint_resume_mid_communication_is_byte_exact_and_tamper_rejected(self):
         project = create_project(self.root / "project")
         continuous = run(project, self.root / "continuous", until=520)
