@@ -523,6 +523,47 @@ def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def replace_job_snapshot(source, target):
+    """Publish job.json while shared-delete readers retain the old revision."""
+    if os.name != "nt":
+        os.replace(source, target)
+        return
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = api.CreateFileW
+    create.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p,
+                      wt.DWORD, wt.DWORD, wt.HANDLE]
+    create.restype = wt.HANDLE
+    rename = api.SetFileInformationByHandle
+    rename.argtypes = [wt.HANDLE, ctypes.c_int, ctypes.c_void_p, wt.DWORD]
+    rename.restype = wt.BOOL
+    close = api.CloseHandle
+    close.argtypes = [wt.HANDLE]
+    close.restype = wt.BOOL
+
+    class RenameInfo(ctypes.Structure):
+        _fields_ = [("flags", wt.DWORD), ("root", wt.HANDLE),
+                    ("length", wt.DWORD), ("name", wt.WCHAR * 1)]
+
+    if Path(source).absolute().parent != Path(target).absolute().parent:
+        raise ValueError("Job snapshots must be replaced within the same directory")
+    name = str(Path(target).absolute()).encode("utf-16-le")
+    size = max(ctypes.sizeof(RenameInfo), RenameInfo.name.offset + len(name) + 2)
+    buffer = ctypes.create_string_buffer(size)
+    info = RenameInfo.from_buffer(buffer)
+    info.flags = 3  # REPLACE_IF_EXISTS | POSIX_SEMANTICS; preserve old open handles.
+    info.root = None
+    info.length = len(name)
+    ctypes.memmove(ctypes.addressof(buffer) + RenameInfo.name.offset, name, len(name))
+    handle = create(str(source), 0x10000, 7, None, 3, 0x80, None)  # DELETE, shared access.
+    if handle == wt.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if not rename(handle, 22, buffer, size):  # FileRenameInfoEx
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        close(handle)
+
+
 def atomic(path, value):
     data = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
@@ -530,7 +571,13 @@ def atomic(path, value):
         stream.write(data)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    try:
+        if path.name == "job.json":
+            replace_job_snapshot(temporary, path)
+        else:
+            os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def trace_lock(folder, operation, stage, **values):
