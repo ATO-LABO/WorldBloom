@@ -48,7 +48,9 @@ def trace_workspace(path, stage, **values):
              'workspace_id':hashlib.sha256(os.path.normcase(os.path.realpath(path)).encode()).hexdigest(),**values}
         with (root/(str(os.getpid())+'.jsonl')).open('a',encoding='utf-8') as log:
             log.write(json.dumps(row,sort_keys=True)+'\n')
-    except OSError:
+    except (OSError,TypeError,ValueError):
+        # A test/proxy may expose non-JSON metadata. Diagnostics must not
+        # replace the actual timeout/exit outcome or stringify private objects.
         pass
 
 
@@ -93,7 +95,9 @@ class CLIWorkspace(tempfile.TemporaryDirectory):
 
 def close_cli_handles(child):
     """Called after wait/join; no reader or writer may retain a CLI pipe."""
-    for stream in (child.stdin,child.stdout,child.stderr):
+    # The Linux guardian owns stderr (DEVNULL); its child proxy exposes only
+    # the captured pipes. Closing an absent stream is not part of the protocol.
+    for stream in (child.stdin,child.stdout,getattr(child,'stderr',None)):
         if stream is not None:
             stream.close()
     if os.name=='nt':

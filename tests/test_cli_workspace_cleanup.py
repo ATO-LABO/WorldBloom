@@ -8,12 +8,25 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
+from unittest.mock import Mock
+from types import SimpleNamespace
 
 from execution.generation import transport
 from execution import worker
 from execution.cli_workspace import CLIWorkspace, directory_holders
+from execution.cli_workspace import close_cli_handles
 from execution.generation import ContainmentError
 from execution.generation import BoundaryError
+
+
+class CLIHandleProtocolTests(unittest.TestCase):
+    def test_guardian_proxy_closes_its_captured_pipes_without_a_stderr_attribute(self):
+        stdin,stdout=Mock(),Mock()
+        child=SimpleNamespace(stdin=stdin,stdout=stdout)
+        with patch('execution.cli_workspace.os.name','posix'):
+            close_cli_handles(child)
+        stdin.close.assert_called_once_with()
+        stdout.close.assert_called_once_with()
 
 
 @unittest.skipUnless(os.name=='nt','Windows CWD handle lifecycle')
