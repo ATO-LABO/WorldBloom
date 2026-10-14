@@ -91,6 +91,43 @@ def read_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+@contextmanager
+def open_atomic_read(path):
+    """Read one published inode; on Windows allow its atomic replacement."""
+    if os.name != "nt":
+        with Path(path).open("r", encoding="utf-8") as stream:
+            yield stream
+        return
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = api.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                      ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = api.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    # GENERIC_READ, SHARE_READ|SHARE_WRITE|SHARE_DELETE, OPEN_EXISTING.
+    # No DELETE_ON_CLOSE: the published file remains owned by the writer.
+    handle = create(str(Path(path)), 0x80000000, 7, None, 3, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        descriptor = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+    except BaseException:
+        close(handle)
+        raise
+    with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
+        yield stream
+
+
+def read_atomic_json(path):
+    with open_atomic_read(path) as stream:
+        return json.load(stream)
+
+
 def write_bytes(path: Path, data: bytes):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("xb") as stream:
@@ -108,7 +145,11 @@ def atomic_json(path: Path, value):
         # complete previous file while retrying; persistent denial still fails.
         for attempt in range(6):
             try:
-                os.replace(temporary, path)
+                if path.name == "job.json":
+                    from execution.worker import replace_job_snapshot
+                    replace_job_snapshot(temporary, path)
+                else:
+                    os.replace(temporary, path)
                 break
             except PermissionError as error:
                 if getattr(error, 'winerror', None) not in (5, 32, 33) or attempt == 5:
