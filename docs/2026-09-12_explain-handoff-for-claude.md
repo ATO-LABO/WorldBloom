@@ -1,6 +1,8 @@
 # WB-EXPLAIN-005 独立受入用の引き継ぎ
 
-2026-09-12 / 実装: Astra (Codex) / 対象: `G:\マイドライブ\Projects\WorldBloom_v2`
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
+2026-09-12 / 実装: Astra (Codex) / 対象: WorldBloom リポジトリ
 
 Claude Codeの005第1回受入で差し戻されたF1〜F5を修正し、002〜004を再提出する。**005は受領済み。独立再レビューと合否判定はClaude Code担当**。読者品質の合格や物語の幅の改善を意味しない。コミット・pushは行っていない。
 
@@ -12,7 +14,7 @@ Claude Codeの005第1回受入で差し戻されたF1〜F5を修正し、002〜0
 - 指摘別の修正・再検証: `docs/reviews/2026-09-12_explain-revision-response.md`
 - 第1回レビュー（原文を保持）: `docs/reviews/2026-09-12_explain-implementation-review.md`
 - 着手前計画: `docs/2026-09-12_explain-implementation-plan.md`
-- 最終検証出力: `C:\Projects\WorldBloom-local\runs\wb-explain-revision-20260912-r2`
+- 最終検証出力: `../WorldBloom-data/runs/wb-explain-revision-20260912-r2`
 - 新形式比較: http://127.0.0.1:5323/exp/new-detective/compare?cell=II%7Clow&cell=I%7Chigh
 - 新形式恋愛: http://127.0.0.1:5323/exp/new-romance/cell/II%7Chigh
 
@@ -100,11 +102,10 @@ Claude Codeの005第1回受入で差し戻されたF1〜F5を修正し、002〜0
 PowerShellで対象リポジトリへ移動して実行する。
 
 ```powershell
-Set-Location -LiteralPath 'G:\マイドライブ\Projects\WorldBloom_v2'
 $env:PYTHONUTF8 = '1'
 python -B -m unittest discover -s tests -v
-python -B scripts/verify_explanations.py --runs C:\Projects\WorldBloom-local\runs --out C:\Projects\WorldBloom-local\runs\wb-explain-claude-rereview-20260912
-python -B -m viewer.server --runs C:\Projects\WorldBloom-local\runs\wb-explain-revision-20260912-r2 --port 5323
+python -B scripts/verify_explanations.py --runs ../WorldBloom-data/runs --out ../WorldBloom-data/runs/wb-explain-claude-rereview-20260912
+python -B -m viewer.server --runs ../WorldBloom-data/runs/wb-explain-revision-20260912-r2 --port 5323
 ```
 
 出力先が既に存在したら新しい名前を指定する。検証スクリプトは上書きを拒否する。5323は本セッションで起動済みの場合がある。既存のDev-Launcher登録は5401で同じviewer/server.pyを起動するため、継続利用可能。

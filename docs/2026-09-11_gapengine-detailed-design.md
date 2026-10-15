@@ -1,10 +1,12 @@
 # GapEngine 詳細設計（WorldBloom = StorySim の要素を切り取って再構築する GA 物語エンジン）
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 作成: 2026-09-11 / 設計役 Fable（メイン会話）。Opus の初期レビューと Fable サブエージェントの独立レビュー（実コード・1000シード実測に基づく）を統合し、ユーザー判断（同日）を反映した **改訂版（v2）** / ステータス: **ユーザー承認済み・実装着手可**
 
 正本の構想: Notion「WorldBloom(StorySim×GA)」ページID `3d8e21ef1cac800293b9c7b109d9df8f`（以下「構想」）。本書は構想を機構に落とす詳細設計であり、構想と本書が食い違う場合は **§18 に理由が書かれているものだけ** が意図的な変更である。
 
-リポジトリ: `https://github.com/ATO-LABO/WorldBloom`（private）。ローカルは `G:\マイドライブ\Projects\WorldBloom_v2`。参照元コード: StorySim `G:\マイドライブ\Projects\StorySim`（**変更しない**。読むだけ）。
+リポジトリ: `https://github.com/ATO-LABO/WorldBloom`（private）。パスはリポジトリ直下を基準に記す。参照元コード: StorySim `../StorySim`（**変更しない**。読むだけ）。
 
 ---
 
@@ -437,7 +439,7 @@ target_ending: homecoming
 
 ### 15.1 配置
 ```
-G:\マイドライブ\Projects\WorldBloom_v2\      ← git、origin = github.com/ATO-LABO/WorldBloom (private)
+./      ← git、origin = github.com/ATO-LABO/WorldBloom (private)
   README.md  CLAUDE.md  requirements.txt  .gitignore  .claude\launch.json（Phase 3）
   docs\2026-09-11_gapengine-detailed-design.md   ← 本書
   engine\      subject.py world.py relations.py verbs.py contest.py predicate.py vitality.py effects.py sim.py log.py
@@ -446,7 +448,7 @@ G:\マイドライブ\Projects\WorldBloom_v2\      ← git、origin = github.com
   projects\momotaro\    world.yaml  subjects\*.yaml   （7層の初期状態）
   scripts\     evolve.py analyze.py（JSONL→Parquet/DuckDB）
   tests\       決定論・中立遺伝子・前提違反ゼロ・伏線減点・vitality 遷移
-C:\Projects\WorldBloom-local\runs\<experiment>\g<N>\ind-<i>\seed-<s>\layers.jsonl   ← ラン出力（Drive に置かない）
+../WorldBloom-data/runs/<experiment>/g<N>/ind-<i>/seed-<s>/layers.jsonl   ← ラン出力（Drive に置かない）
 ```
 依存: PyYAML のみ（engine/gapengine）。Parquet/DuckDB は `scripts/analyze.py` に閉じる。
 
@@ -462,7 +464,7 @@ C:\Projects\WorldBloom-local\runs\<experiment>\g<N>\ind-<i>\seed-<s>\layers.json
 | 回帰テストの構成（決定性・死亡後 absent・ミニパイプライン） | | |
 
 ### 15.3 git 運用
-- 初期化: `WorldBloom_v2` で `git init` → `origin` を `ATO-LABO/WorldBloom` に設定 → 本書と README を最初のコミットに。ラン出力はリポジトリ外（`C:\Projects\WorldBloom-local`）。
+- 初期化: リポジトリ直下で `git init` → `origin` を `ATO-LABO/WorldBloom` に設定 → 本書と README を最初のコミットに。ラン出力はリポジトリ外（`../WorldBloom-data`）。
 - コミット・プッシュはグローバル CLAUDE.md の標準（ユーザー指示時に実装役が実行）。
 - 実装の進め方は AB テスト方式（本書＝①設計 → ② Codex GPT-5.6 sol によるテキスト納品 → Claude が適用 → ③ Opus レビュー → Fable 最終確認）。
 
