@@ -24,7 +24,7 @@ class FactWorkspace:
     def current(self, rid, cid, revision=None):
         folder = self.folder(rid, cid)
         try:
-            head = read_json(folder / "current.json")
+            head = read_json(contained(folder, "current.json"))
         except FileNotFoundError:
             if revision is not None:
                 raise ConfigError("revision", "保存済みの版がありません", code="not_found")
@@ -39,7 +39,7 @@ class FactWorkspace:
         # Walk only the sealed published chain; orphaned revision files are not history.
         expected = head["sha256"]
         for number in range(head["revision"], selected-1, -1):
-            doc = json.loads(verified(folder / "revisions" / (str(number) + ".json"), expected))
+            doc = json.loads(verified(contained(folder, "revisions/" + str(number) + ".json"), expected))
             if (type(doc.get("schema_version")) is not int or doc["schema_version"] != 1 or type(doc.get("revision")) is not int
                     or doc["revision"] != number or doc.get("run_id") != rid or doc.get("candidate_id") != cid):
                 raise ConfigError("history", "保存履歴の参照が一致しません")
@@ -105,6 +105,9 @@ class FactWorkspace:
             revision = previous["revision"] if previous else 0
             if revision != expected_revision:
                 raise ConfigError("revision", "別の編集が保存されています。入力を保持して現行版を確認してください", code="conflict")
+            path = contained(folder, "revisions/" + str(revision+1) + ".json")
+            if path.exists():
+                raise ConfigError("history", "未公開の保存記録があります。履歴を保全して確認してください", code="conflict")
             raw, inputs, package = self._draft(rid, cid, body)
             for kind in DEFAULTS:
                 build_prompt(package, kind)
@@ -112,11 +115,8 @@ class FactWorkspace:
             doc = {"schema_version": 1, "run_id": rid, "candidate_id": cid, "config_id": body["config_id"],
                    "revision": revision+1, "parent_sha256": sha256(canonical({k:v for k,v in previous.items() if k not in {"package", "current_revision"}})) if previous else None,
                    "reference": reference, "saved_at": time.time()}
-            path = folder / "revisions" / (str(revision+1) + ".json")
-            if path.exists():
-                raise ConfigError("history", "未公開の保存記録があります。履歴を保全して確認してください", code="conflict")
             write_bytes(path, canonical(doc))
-            atomic_json(folder / "current.json", {"schema_version": 1, "revision": revision+1, "sha256": sha256(canonical(doc))})
+            atomic_json(contained(folder, "current.json"), {"schema_version": 1, "revision": revision+1, "sha256": sha256(canonical(doc))})
         return self.current(rid, cid)
 
     def history(self, rid, cid):
