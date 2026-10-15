@@ -158,7 +158,7 @@ def _find_system_python() -> str | None:
     execution/provenance.py's python_executable()).
 
     A candidate must actually work under -I (isolated mode, which also
-    ignores user-site installs) with PyYAML importable and Python >= 3.11:
+    ignores user-site installs) with PyYAML importable and Python >= 3.12:
     shutil.which() alone would happily accept a Microsoft Store execution
     alias stub (present even with no Python installed at all) or a real but
     too-old/PyYAML-less interpreter, both of which would only surface later
@@ -167,7 +167,7 @@ def _find_system_python() -> str | None:
     import shutil
     import subprocess
 
-    probe = "import sys,yaml; sys.exit(0 if sys.version_info >= (3, 11) else 1)"
+    probe = "import sys,yaml; sys.exit(0 if sys.version_info >= (3, 12) else 1)"
     for name in ("python", "python3", "py"):
         found = shutil.which(name)
         if not found:
@@ -198,7 +198,7 @@ def _setup_studio(root: Path, server_module, data_module):
     system_python = _find_system_python()
     if system_python is None:
         raise RuntimeError(
-            "GA実験の実行にはPython 3.11以上（PyYAML導入済み）が別途必要です。\n\n"
+            "GA実験の実行にはPython 3.12以上（PyYAML導入済み）が別途必要です。\n\n"
             "1. https://www.python.org/downloads/ からインストール\n"
             "   （インストーラーで「Add python.exe to PATH」に必ずチェック）\n"
             "2. インストール後、コマンドプロンプトで次を実行:\n"

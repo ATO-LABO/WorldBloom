@@ -8,7 +8,6 @@ import inspect
 import json
 from pathlib import Path
 import random
-import sys
 import unittest
 from unittest.mock import patch
 
@@ -222,11 +221,9 @@ class MelosChoiceProviderTests(unittest.TestCase):
 APPROVED_SOURCE = 'ad6733142979e48655f7dcaa1d389a7d3a2c9737ea1109f663ecdd6b14a9d324'
 APPROVED_PROJECTIONS = ('ObservablePolicyWorld', 'observed', 'policy_action', 'reweight_observable')
 APPROVED_CFG = '9c6c881ace64a43c7aa29f9e95122b0802ccef7a265db6c6bb8115ab02b38969'
-# Verified against original 24-choice rows on Windows and Ubuntu, both versions.
-# Python 3.12+ sum() changes 25 normalized_weight last bits; selection, raw
-# weights, RNG and history remain identical. Keep exact goldens, no tolerance.
-APPROVED_SEQUENCE = ('7fb33eb112d2a5f37db520adade6831a4f4d2ccd51c5de36e16ca668bcc209d4'
-                     if sys.version_info < (3, 12) else
-                     '6ba6fd25fa55d4d7f5502678323884fb197ab4b8e46c1df90657a16e568b0dbe')
+# The original 24-choice reference comparison remains mandatory on 3.12/3.13.
+# Unsupported 3.11 had 25 different normalized_weight last bits from sum().
+# Preserve the existing 3.12+ exact golden; no tolerance or runtime change.
+APPROVED_SEQUENCE = '6ba6fd25fa55d4d7f5502678323884fb197ab4b8e46c1df90657a16e568b0dbe'
 
 if __name__ == '__main__': unittest.main()

@@ -57,9 +57,10 @@ GPU 調停・進捗表示など運用まわりの機能は、ドキュメント�
 
 **詳しい手順は → [ドキュメントサイト](https://ato-labo.github.io/WorldBloom/docs/)（[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/) / [クイックスタート](https://ato-labo.github.io/WorldBloom/docs/getting-started/quickstart/)）**
 
-- **A. exe で（Windows）**: [WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) を展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます（GA実験の実行には Python 3.11以上＋PyYAML が別途必要）。
+- **A. exe で（Windows）**: [WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) を展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます（GA実験の実行には Python 3.12以上＋PyYAML が別途必要）。
 - **B. ブラウザで見るだけ**: インストール不要の [公開ビューア](https://ato-labo.github.io/WorldBloom/) で、桃太郎・恋愛・探偵の3実験の格子・あらすじ・本文を読めます。
-- **C. ソースから**: `git clone` して `pip install -r requirements.txt`（Python 3.11以上）。同梱の `samples/` をビューアで見る、自分で GA を回すなどの手順はドキュメントサイトの[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)にまとめています。
+- **C. ソースから**: `git clone` して `pip install -r requirements.txt`（Python 3.12以上）。同梱の `samples/` をビューアで見る、自分で GA を回すなどの手順はドキュメントサイトの[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)にまとめています。
+  回帰検査はPython 3.12/3.13とUbuntu/Windowsで行います。
 
 自分で進化を回す・あらすじ/本文を生成し直す・LLM バックエンドの設定・GPU ガードなどの使い方は、ドキュメントサイトの[使い方](https://ato-labo.github.io/WorldBloom/docs/usage/create-world/)を参照してください。コマンドの引数や settings.json の全項目は[リファレンス](https://ato-labo.github.io/WorldBloom/docs/reference/cli/)、困ったときは[トラブルシューティング](https://ato-labo.github.io/WorldBloom/docs/guides/troubleshooting/)へ。開発者向け（回帰テスト・決定論の約束など）は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
