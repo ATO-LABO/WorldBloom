@@ -8,9 +8,11 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import threading
+import time
 import uuid
 
 import yaml
@@ -54,6 +56,17 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def is_link(path: Path) -> bool:
+    """Include Windows junctions on Python 3.11, before Path.is_junction()."""
+    if path.is_symlink():
+        return True
+    try:
+        tag = getattr(path.lstat(), "st_reparse_tag", None)
+    except FileNotFoundError:
+        return False
+    return tag == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
+
+
 # ponytail: the symlink/junction check of a root itself and its ancestors is
 # cached per process; a link planted at the root or above it after the first
 # contained() call for that root goes undetected until the process restarts.
@@ -62,7 +75,7 @@ def sha256(data):
 def _checked_root(root_str: str) -> Path:
     root = Path(root_str)
     for part in (root, *root.parents):
-        if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
+        if is_link(part):
             raise ConfigError("path", "リンクを経由した保存・読取はできません")
     return root.resolve()
 
@@ -79,7 +92,7 @@ def contained(root: Path, relative: str) -> Path:
     for part in (result, *result.parents):
         if part == root:
             break
-        if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
+        if is_link(part):
             raise ConfigError("path", "リンクを経由した保存・読取はできません")
     if not result.resolve().is_relative_to(resolved_root):
         raise ConfigError("path", "保存範囲外のパスです")
@@ -88,6 +101,43 @@ def contained(root: Path, relative: str) -> Path:
 
 def read_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+@contextmanager
+def open_atomic_read(path):
+    """Read one published inode; on Windows allow its atomic replacement."""
+    if os.name != "nt":
+        with Path(path).open("r", encoding="utf-8") as stream:
+            yield stream
+        return
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = api.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                      ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = api.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    # GENERIC_READ, SHARE_READ|SHARE_WRITE|SHARE_DELETE, OPEN_EXISTING.
+    # No DELETE_ON_CLOSE: the published file remains owned by the writer.
+    handle = create(str(Path(path)), 0x80000000, 7, None, 3, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        descriptor = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+    except BaseException:
+        close(handle)
+        raise
+    with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
+        yield stream
+
+
+def read_atomic_json(path):
+    with open_atomic_read(path) as stream:
+        return json.load(stream)
 
 
 def write_bytes(path: Path, data: bytes):
@@ -101,8 +151,24 @@ def write_bytes(path: Path, data: bytes):
 def atomic_json(path: Path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
-    write_bytes(temporary, canonical(value))
-    os.replace(temporary, path)
+    try:
+        write_bytes(temporary, canonical(value))
+        # A concurrent Windows reader can briefly deny replacement. Retain the
+        # complete previous file while retrying; persistent denial still fails.
+        for attempt in range(6):
+            try:
+                if path.name == "job.json":
+                    from execution.worker import replace_job_snapshot
+                    replace_job_snapshot(temporary, path)
+                else:
+                    os.replace(temporary, path)
+                break
+            except PermissionError as error:
+                if getattr(error, 'winerror', None) not in (5, 32, 33) or attempt == 5:
+                    raise
+                time.sleep(0.02 * (attempt + 1))
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 _mutex = threading.Lock()
@@ -110,13 +176,16 @@ _locks = {}
 
 
 @contextmanager
-def directory_lock(root: Path):
+def directory_lock(root: Path, *, operation="directory_lock"):
+    from execution.worker import trace_lock
+    started = time.monotonic()
     root = Path(root).absolute()
     contained(root, ".write.lock")
     root.mkdir(parents=True, exist_ok=True)
     with _mutex:
         lock = _locks.setdefault(str(root.resolve()), threading.RLock())
     with lock:
+        trace_lock(root, operation, "thread_acquired", wait_seconds=time.monotonic()-started)
         with (root / ".write.lock").open("a+b") as handle:
             handle.seek(0, os.SEEK_END)
             if handle.tell() == 0:
@@ -131,7 +200,11 @@ def directory_lock(root: Path):
                     import fcntl
                     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError as error:
+                trace_lock(root, operation, "contended", errno=error.errno,
+                           winerror=getattr(error, "winerror", None))
                 raise ConfigError("storage", "別の保存処理が実行中です", code="conflict") from error
+            acquired = time.monotonic()
+            trace_lock(root, operation, "acquired", wait_seconds=acquired-started)
             try:
                 yield
             finally:
@@ -140,6 +213,7 @@ def directory_lock(root: Path):
                     msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
                 else:
                     fcntl.flock(handle, fcntl.LOCK_UN)
+                trace_lock(root, operation, "released", held_seconds=time.monotonic()-acquired)
 
 
 def materialize(root: Path, blobs: dict[str, bytes]):

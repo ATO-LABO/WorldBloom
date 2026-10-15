@@ -21,18 +21,25 @@ from execution.worker import TERMINAL
 FIELDS = {"schema_version", "request_id", "kind", "config_id", "run_id", "selection_revision",
           "candidate_ids", "backend", "model", "limits", "mode", "synopsis_refs",
           "acknowledge_unknown", "attempt_ids", "pipeline", "story_refs"}
+FACT_FIELDS = FIELDS | {"fact_refs"}
 
 
 def normalize(request):
-    if not isinstance(request, dict) or set(request) - FIELDS:
+    if not isinstance(request, dict):
+        raise ConfigError("request", "未対応の生成要求項目があります")
+    allowed = FACT_FIELDS if request.get("schema_version") == 3 else FIELDS
+    if set(request) - allowed:
         raise ConfigError("request", "未対応の生成要求項目があります")
     version = request.get("schema_version", 1)
-    if type(version) is not int or version not in (1, 2):
+    if type(version) is not int or version not in (1, 2, 3):
         raise ConfigError("schema_version", "未対応の版です")
     if version == 1 and ("pipeline" in request or "story_refs" in request):
         raise ConfigError("pipeline", "新版の本文生成要求が必要です")
     if version == 2 and (request.get("pipeline") != "story_v1" or request.get("kind") != "narrate"):
         raise ConfigError("pipeline", "未対応の生成方式です")
+    if (version != 3 and "fact_refs" in request) or (version == 3 and
+            (request.get("pipeline") != "facts_v1" or "story_refs" in request)):
+        raise ConfigError("pipeline", "事実保持経路の版と入力参照が不正です")
     doc = {"schema_version": version}
     for key in ("request_id", "config_id", "run_id"):
         doc[key] = identifier(request.get(key), key)
@@ -100,6 +107,18 @@ def normalize(request):
                    for k in ("material_sha256","plan_sha256","confirmation_sha256")):
                 raise ConfigError("story_refs", "骨格のSHAが不正です")
         doc.update(pipeline="story_v1", story_refs=deepcopy(refs), synopsis_refs={})
+    if version == 3:
+        import re
+        refs = request.get("fact_refs")
+        if not isinstance(refs, dict) or set(refs) != set(doc["candidate_ids"]) or request.get("synopsis_refs"):
+            raise ConfigError("fact_refs", "固定した生成入力を候補ごとに指定してください")
+        for ref in refs.values():
+            if not isinstance(ref, dict) or set(ref) != {"package_id", "package_sha256"}:
+                raise ConfigError("fact_refs", "生成入力のIDとSHAが必要です")
+            identifier(ref["package_id"])
+            if not isinstance(ref["package_sha256"], str) or not re.fullmatch("[0-9a-f]{64}", ref["package_sha256"]):
+                raise ConfigError("fact_refs", "生成入力のSHAが不正です")
+        doc.update(pipeline="facts_v1", fact_refs=deepcopy(refs), synopsis_refs={})
     return doc
 
 
@@ -116,9 +135,16 @@ def eligible(store, request):
             for cid in set(prior["candidate_ids"]) & set(history):
                 sink = store.sink(folder.name, cid)
                 item = sink.current()
+                if (item is not None and item["status"] in ("ok", "prompt_only")
+                        and prior.get("pipeline") != request.get("pipeline")
+                        and "facts_v1" in (prior.get("pipeline"), request.get("pipeline"))):
+                    continue
                 # A crash before receipt must first be reconciled, never treated as missing.
                 if item is not None and item["status"] in ("ok", "prompt_only") and request.get("pipeline") == "story_v1":
                     if (prior.get("story_refs") or {}).get(cid) != request["story_refs"][cid]:
+                        continue
+                if item is not None and item["status"] in ("ok", "prompt_only") and request.get("pipeline") == "facts_v1":
+                    if (prior.get("fact_refs") or {}).get(cid) != request["fact_refs"][cid]:
                         continue
                 history[cid].append(item or {**sink.identity,
                     "status": "unknown" if sink.started() else "pending",
@@ -171,9 +197,11 @@ def admit(jobs, request, *, settings_path=None):
         by_id = {c["candidate_id"]: c for c in snapshot["candidates"]["candidates"]}
         adopted = {e["candidate_id"] for e in selected["entries"] if e["state"] == "adopted"}
         for cid in request["candidate_ids"]:
-            if cid not in by_id or not by_id[cid]["screenable"]:
+            scene = request.get("pipeline") == "facts_v1"
+            present = cid in by_id and by_id[cid]["log"]["availability"] == "present" and by_id[cid]["source_log_sha256"] is not None
+            if cid not in by_id or not (present if scene else by_id[cid]["screenable"]):
                 raise ConfigError("candidate_ids", "到達済みで原記録が一致する候補だけ生成できます")
-            if request["kind"] == "narrate" and cid not in adopted:
+            if request["kind"] == "narrate" and not scene and cid not in adopted:
                 raise ConfigError("candidate_ids", "上映対象は固定選定版の採用候補だけです")
         if request.get("pipeline") == "story_v1":
             from execution.story_store import StoryStore
@@ -184,6 +212,21 @@ def admit(jobs, request, *, settings_path=None):
                     "source_log_sha256": by_id[cid]["source_log_sha256"],
                     "config_sha256": sha256(canonical(config)),
                     "input_manifest_sha256": config["input_manifest_sha256"]})
+        if request.get("pipeline") == "facts_v1":
+            from execution.fact_store import FactStore
+            facts = FactStore(jobs.configs.control)
+            _, fixed_inputs, _ = jobs.configs._bundle(request["config_id"])
+            input_hashes = {r["path"]: r["sha256"] for r in fixed_inputs["files"]}
+            for cid in request["candidate_ids"]:
+                package = facts.resolve(request["fact_refs"][cid], binding={
+                    "run_id": request["run_id"], "candidate_id": cid,
+                    "source_log_sha256": by_id[cid]["source_log_sha256"],
+                    "config_sha256": sha256(canonical(config)),
+                    "input_manifest_sha256": config["input_manifest_sha256"]})
+                if package["supplement"]["source_binding"]["input_files"] != input_hashes:
+                    raise ConfigError("facts", "生成入力の固定設定が一致しません")
+                from gapengine.fact_contract import build_prompt
+                build_prompt(package, request["kind"])
         accepted = eligible(OutputStore(jobs.configs.control), request)
         selection_doc = {k: v for k, v in selected.items() if k != "sha256"}
         return {"schema_version": 1, "request": deepcopy(request), "candidate_ids": accepted,
@@ -240,8 +283,20 @@ def prepare(configs, job, plan):
             blobs.update({prefix+"materials.json":canonical(material),prefix+"plan.json":canonical(story_plan),
                           prefix+"confirmation.json":canonical(confirmation)})
     store = OutputStore(configs.control)
+    if request.get("pipeline") == "facts_v1":
+        from execution.fact_store import FactStore
+        facts = FactStore(configs.control)
+        for cid in plan["candidate_ids"]:
+            source = next(c for c in plan["candidates"] if c["candidate_id"] == cid)
+            package = facts.resolve(request["fact_refs"][cid], binding={
+                "run_id": request["run_id"], "candidate_id": cid,
+                "source_log_sha256": source["source_log_sha256"], "config_sha256": plan["config_sha256"],
+                "input_manifest_sha256": plan["input_manifest_sha256"]})
+            blobs["inputs/facts/" + cid + "/package.json"] = canonical(package)
+            from gapengine.fact_contract import packet
+            blobs["inputs/facts/" + cid + "/packet.json"] = canonical(packet(package, request["kind"]))
     for cid in plan["candidate_ids"]:
-        if request.get("pipeline") == "story_v1":
+        if request.get("pipeline") in ("story_v1", "facts_v1"):
             continue
         ref = request["synopsis_refs"][cid]
         refs[cid] = ref
@@ -278,6 +333,8 @@ def prepare(configs, job, plan):
         "runtime_manifest_sha256": sha256(canonical(runtime))}
     if output.get("pipeline") == "story_v1":
         output["story_refs"] = {cid:request["story_refs"][cid] for cid in plan["candidate_ids"]}
+    if output.get("pipeline") == "facts_v1":
+        output["fact_refs"] = {cid:request["fact_refs"][cid] for cid in plan["candidate_ids"]}
     store.create(output, prompts, artifacts=blobs)
     return {"schema_version": 1, "output_id": job["output_id"],
             "runtime_manifest_sha256": output["runtime_manifest_sha256"],
