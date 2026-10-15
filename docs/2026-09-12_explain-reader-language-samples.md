@@ -1,5 +1,7 @@
 # 読者確認と自然な日本語の試案
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 2026-09-12 / Astra (Codex)。画面・エンジンは未変更。以下はこの対話でLLMが作った言い換え例。自動文章化機能の実装・外部API呼び出しは行っていない。
 
 ## ユーザーの読者確認
@@ -25,7 +27,7 @@
 
 ## 出典
 
-基点: C:/Projects/WorldBloom-local/runs/wb-explain-revision-20260912-r2
+基点: ../WorldBloom-data/runs/wb-explain-revision-20260912-r2
 
 - new-detective/case-0/True/seed-2/layers.jsonl: L157 再考の前後と参照証拠、L197 告発。SHA256 7169d6293dd42792ea43d4e480d01db4fbfa645705bd5838dd6420d4a3b9d90c
 - new-detective/case-1/True/seed-3/layers.jsonl: L222 再考の前後と参照証拠、L229 告発。SHA256 76ff9d5966d1a7be3049b68a4c39682976aac6f1c2a160ab8eaa3e07135de5aa

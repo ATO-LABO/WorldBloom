@@ -1,5 +1,7 @@
 # Phase 3 実装計画: 共進化・出力段（あらすじ化 → 人間選定 → 本文化）・ビューア
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 作成: 2026-09-11（設計役 Fable）/ 親設計: `docs/2026-09-11_gapengine-detailed-design.md` §13・§14・§16 Phase 3 / 前提: Phase 2（D5/D5b/D6）合格 / ステータス: 実装指示（納品 D7 = 共進化、D8 = 出力段、D9 = ビューア）
 
 ## 0. 狙いと合格条件（設計書 §16 Phase 3）
@@ -44,7 +46,7 @@
 
 ## 3. ビューア — D9
 - `viewer/server.py`（標準ライブラリ `http.server`、依存追加なし、ポート 5401）。エンドポイント: `/`（実験一覧）、`/exp/<name>`（アーカイブ格子: 行 = カテゴリ、列 = volatility 段階、セルに q / reach_rate / 世代）、`/exp/<name>/cell/<key>`（模範ランのターン列と 7 層の推移グラフ（SVG）、あらすじ、本文、選定チェックボックス）、`/exp/<name>/selection`（POST で `selection.json` を更新）。
-- `.claude/launch.json` に `worldbloom-viewer`（`python viewer/server.py --runs C:\Projects\WorldBloom-local\runs`）を登録し、Dev-Launcher に載せる。
+- `.claude/launch.json` に `worldbloom-viewer`（`python viewer/server.py --runs ../WorldBloom-data/runs`）を登録し、Dev-Launcher に載せる。
 - テスト: サーバーを起動 → `/` と格子ページを取得 → 停止（ポート解放まで確認）。
 
 ## 4. 乱数消費

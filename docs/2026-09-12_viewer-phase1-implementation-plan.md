@@ -1,5 +1,7 @@
 # ビューア第 1 段「読める化」実装計画（2026-09-12、設計役 Fable）
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 設計の正本は `docs/2026-09-12_viewer-ux-design.md`（以下「設計」）。本計画は設計 §6 の第 1 段を、Codex GPT-5.6 sol にテキスト納品させるための実装指示として書く。実装役はこの文書だけで作業できることを前提に、参照すべき既存コードの関数名・シグネチャ・データのキーをすべて明記する。
 
 ---
@@ -9,7 +11,7 @@
 - 狙い: 実験一覧に「何の実験か」を出し、格子をジャンルの軸に絞り、エリート詳細を**生ログの表ではなく場面のタイムライン**として読めるようにする。
 - 範囲: `viewer/` の再構成と `tests/` へのテスト追加のみ。**`engine/`・`gapengine/`・`scripts/`・`templates/`・`projects/`・`.claude/launch.json` は変更しない。**
 - 依存: 追加なし（PyYAML は `gapengine.synopsis` 経由で既に必須）。CDN・外部 URL・ビルド工程を持ち込まない。
-- 起動方法は不変: `python viewer/server.py --runs C:\Projects\WorldBloom-local\runs --port 5401`（`.claude/launch.json` の `worldbloom-viewer`）。
+- 起動方法は不変: `python viewer/server.py --runs ../WorldBloom-data/runs --port 5401`（`.claude/launch.json` の `worldbloom-viewer`）。
 
 ## 1. 制約（厳守）
 

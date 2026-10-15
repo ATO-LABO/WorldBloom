@@ -1,5 +1,7 @@
 # WB-EXPLAIN-002/003/004 実装レビュー（005 の独立受入・第1回）
 
+パスは共通の[パス表記](../PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 対象: Astra (Codex) の未コミット差分（基準 HEAD `445fa76`）
 レビュー: Claude Code（レビュー役）/ レビュー日: 2026-09-12
 判定: **差戻し**。F1・F2 を直してから再提出。F3 は 002 か契約のどちらかに寄せる判断が要る。
@@ -39,7 +41,7 @@ if after is None and prior is not None:
 
 `engine/log.py` の `nested_diff` は「`after` にキーが無い＝削除」を `None` として書く（L21〜23）。したがって `delta.actor.resources.assets.X: null` は「持っていたものを失った」ことの**完全な記録**であり、直前値の復元を必要としない。ところが実装は `prior is not None` を条件にしているため、復元側が直前値を持っていないと確定した代償を「不明」に落とす。
 
-再現条件（`C:\Projects\WorldBloom-local\runs\exp7-romance\g3\ind-92\seed-0\layers.jsonl`）:
+再現条件（`../WorldBloom-data/runs/exp7-romance/g3/ind-92/seed-0/layers.jsonl`）:
 
 | 行 | 決定 | 結果 | 理由 |
 |---|---|---|---|

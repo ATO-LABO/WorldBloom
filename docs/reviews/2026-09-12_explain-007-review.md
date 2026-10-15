@@ -1,5 +1,7 @@
 # WB-EXPLAIN-007 独立レビュー（読者向け文章化の試作）
 
+パスは共通の[パス表記](../PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 対象: Astra (Codex) の未コミット差分（基準コミット `762f07e`）
 レビュー: Claude Code（レビュー役）/ レビュー日: 2026-09-12
 判定: **差し戻し（P2 2 件）**。中核の機構・文章の忠実性・呼び出し規律はいずれも健全で、差し戻すのは表示と 1 行のフィルタのみ。
@@ -35,7 +37,7 @@
 
 後続行動の fact は `result` を問わず kind に `executed`（実行済み）を名乗る。`result == "invalid"`（前提不成立で実行前に棄却＝**そもそも起きていない**）でも同じ kind でパケットに載り、LLM には「実行された後続行動」として提示される。
 
-**再現**: `extract_explanation(r"C:\Projects\WorldBloom-local\runs\exp10-detective\g0\ind-1\seed-4\layers.jsonl", experiment="exp10-detective", cell="II|low")` → `build_packet`。facts が 9 件になり、f4〜f7 がすべて `result: "invalid"` の confront（L141/154/160/166）。元行は `"effective": false`, `details.reason = "prerequisite_unsatisfied"` で delta は全空。コーパス走査では confront/invalid が 666 件。
+**再現**: `extract_explanation(r"../WorldBloom-data/runs/exp10-detective/g0/ind-1/seed-4/layers.jsonl", experiment="exp10-detective", cell="II|low")` → `build_packet`。facts が 9 件になり、f4〜f7 がすべて `result: "invalid"` の confront（L141/154/160/166）。元行は `"effective": false`, `details.reason = "prerequisite_unsatisfied"` で delta は全空。コーパス走査では confront/invalid が 666 件。
 
 **なぜ問題か**: プロンプトは探偵編について「誰を疑っていたか→証拠を見直す→疑いの先→告発」を中心に書けと明示的に告発を促す一方、`result: "invalid"` が「起きなかった」を意味することはどこにも書かれていない。モデルが「その後、探偵は丙を告発した」と書けば**起きていない出来事の断定**になり、refs は正当なので `parse_summary` を通過し、ハッシュ拘束もすべて成立する。最後の防波堤が人手の照合だけになる。
 

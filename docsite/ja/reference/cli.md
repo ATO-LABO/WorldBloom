@@ -16,6 +16,8 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 
 すべて `python <スクリプト> ...` の形でリポジトリ直下から実行します。ヘルプ全文は各スクリプトの `--help` から生成しています（`docsite/gen_cli.py`。スクリプト側の引数を変えたら再生成してください）。`jev_*.py`・`rationality_probe.py` は開発用の計測スクリプトなのでここには含めません。
 
+パスの例に使う `../WorldBloom-data/` は、リポジトリと同じ親フォルダに置くデータ保存先です。自分の環境のローカル保存先に置き換えてください。`runs/` と `control/` はリポジトリの外に置きます。
+
 ## scripts/evolve.py — GA 実験を実行する
 
 決定論的な MAP-Elites を1回走らせます。`--project`（世界）・`--template`（ジャンル）・`--out`（出力先）が必須です。
@@ -28,7 +30,7 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 
 ```powershell
 python scripts/evolve.py --project projects/momotaro_plus2 --template templates/momotaro_plus2 `
-  --out C:\WorldBloom-data\runs\my-exp --generations 20 --population 100 --seeds 3
+  --out ../WorldBloom-data/runs/my-exp --generations 20 --population 100 --seeds 3
 ```
 
 出力先はリポジトリの外（ローカル）の `runs/<experiment>/` に置いてください（詳しくは[実行結果のファイル](run-outputs.md)）。
@@ -115,5 +117,5 @@ python scripts/evolve.py --project projects/momotaro_plus2 --template templates/
 例（フル機能で起動）:
 
 ```powershell
-python viewer/server.py --runs C:\WorldBloom-data\runs --control C:\WorldBloom-data\control
+python viewer/server.py --runs ../WorldBloom-data/runs --control ../WorldBloom-data/control
 ```
