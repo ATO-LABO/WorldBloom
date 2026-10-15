@@ -1,5 +1,7 @@
 # WB-EXPLAIN-007 再提出 r2
 
+パスは共通の[パス表記](../PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 2026-09-13 / Codex。Claude CodeレビューのA・Bと記録項目1〜7に対応。独立再レビューとコミットはClaude Code担当。コミット・pushは行っていない。
 
 ## 必須修正
@@ -35,14 +37,14 @@ HTTP実測: 恋愛格子のLLM表記1件／代償1件、探偵格子のLLM表記
 ## 所有ファイルと成果物
 今回修正: gapengine/reader_summary.py、viewer/reader_ui.py、viewer/pages.py、viewer/static/app.css、tests/test_reader_summary.py、docs/2026-09-12_explain-007-reader-pilot.md、docs/reviews/2026-09-12_explain-007-reader-pilot-review.md。この再提出資料を新規作成。前回からあるviewer/data.py/scripts/readable.py等の差分は保持。
 
-実行結果: C:/Projects/WorldBloom-local/runs/wb-explain-reader-007-r2-20260913
+実行結果: ../WorldBloom-data/runs/wb-explain-reader-007-r2-20260913
 - regression.log: 全148件
 - targeted-mutations.json / check_targeted_mutations.py: 意図的な不具合14件の検出結果と再実行スクリプト（実行時cwdはWorldBloom_v2）
 - artifact-checks.json: 実ログ除外・保存3本・元ログSHA
 - http-checks.json / 各HTML / PNG3枚: 表示検証
 - code-provenance.json: 基準コミットと今回対象ファイルのSHA
 
-localhost: port5322、PID46860。入力は C:/Projects/WorldBloom-local/runs/wb-explain-revision-20260912-r2。既存URLで再読み込みできる。
+localhost: port5322、PID46860。入力は ../WorldBloom-data/runs/wb-explain-revision-20260912-r2。既存URLで再読み込みできる。
 
 ## 次の一手と評価の区別
 Claude CodeにA/Bと記録項目の再確認を依頼する。意味の正しさは引き続き人手照合を含む設計で、自動保証へ変えたわけではない。

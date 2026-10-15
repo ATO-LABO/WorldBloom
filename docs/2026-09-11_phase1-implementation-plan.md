@@ -1,5 +1,7 @@
 # Phase 1 実装計画: 認識層の完成・弱体化・三原則
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 作成: 2026-09-11（設計役 Fable）/ 親設計: `docs/2026-09-11_gapengine-detailed-design.md` §16 Phase 1 / 前提: Phase 0（D1・D2）適用済み・合格 / ステータス: 実装指示（納品 D3 = engine 側、D4 = gapengine/テンプレート側）
 
 ## 0. 狙いと合格条件
@@ -116,7 +118,7 @@ Phase 1 で新たに乱数を消費する箇所: **なし**（confront の真偽
 - **B-1**: `bind_subjects` の fact 衝突チェックの重複を削除。
 - テスト: `test_hostile_permission_reduces_give_and_share_weights` は permission を明示注入した world で総量が下がること（と比が permission に一致すること）を検証する形に書き換える。
 
-## 10. Phase 1 本番実験（2026-09-11、D3c＋D4b、`C:\Projects\WorldBloom-local\runs\exp2`）
+## 10. Phase 1 本番実験（2026-09-11、D3c＋D4b、`../WorldBloom-data/runs/exp2`）
 
 | 項目 | 結果 |
 |---|---|

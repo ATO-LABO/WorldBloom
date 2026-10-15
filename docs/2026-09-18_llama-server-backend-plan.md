@@ -1,5 +1,7 @@
 # llama-server バックエンド追加計画（Bonsai 2 27B 採用、2026-09-18）
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 設計: Claude Fable 5.1 ／ 実装: Sonnet ／ レビュー: Opus
 
 ## 背景と決定
@@ -8,7 +10,7 @@ PrismML の Ternary Bonsai 2 27B を文章生成（あらすじ・本文・読�
 Bonsai 2 は独自量子化形式のため Ollama では動かず、PrismML フォーク版 llama.cpp の `llama-server`（OpenAI 互換 API）でのみ動く。
 よって WorldBloom に「ローカル llama-server」バックエンドを 1 つ追加する。Ollama バックエンド（`gapengine/ollama.py`、コミット c650506）と**同じ形・同じ粒度**で足すこと。新しい抽象化は作らない。
 
-試し打ちで確定した動作条件（`C:\Projects\WorldBloom-local\bonsai\trial\`、auto-memory `worldbloom-bonsai2-trial`）:
+試し打ちで確定した動作条件（`../WorldBloom-data/bonsai/trial/`、auto-memory `worldbloom-bonsai2-trial`）:
 
 - サーバー起動: `llama-server.exe -m Ternary-Bonsai-2-27B-PTQ1_0.gguf --alias bonsai2-27b -ngl 99 -np 1 -c 10240 -fa on --port 8089 --host 127.0.0.1 --reasoning-budget 2048 --reasoning-budget-message "思考の上限に達した。ここで思考を終え、直ちに最終回答の本文だけを書く。"`
 - 思考トークン上限は**サーバー起動フラグでしか効かない**（リクエスト側の `reasoning_budget` は無視される）。コード側で上限を送ろうとしないこと。
