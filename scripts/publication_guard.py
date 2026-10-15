@@ -91,6 +91,8 @@ def check_content(name: str, data: bytes) -> None:
     if '\0' in text and suffix in BINARY_SUFFIXES:
         return  # PII/content review is for text; Gitleaks also scans distribution files.
     for match in CREDENTIAL_LITERAL.finditer(text):
+        if match.group(1).lower() == 'authorization' and re.fullmatch(r'(?:Bearer|Basic)\s+', match.group(2), re.I):
+            continue  # A header scheme alone contains no credential.
         if not PLACEHOLDER.fullmatch(match.group(2)):
             reject('credential-literal', name)
     for match in (() if hashlib.sha256(data).hexdigest() in REVIEWED_VENDOR_EMAIL_HASHES else EMAIL.finditer(text)):
