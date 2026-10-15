@@ -15,6 +15,8 @@ def main() -> int:
         command = ([sys.executable, "-B", "tests/regression_partition.py", *sys.argv[1:]]
                    if len(sys.argv) > 1 else
                    [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-v"])
+        if sys.platform == 'win32' and os.environ.get('WB_PHASE_DIAGNOSTICS') == '1':
+            command = [sys.executable, '-B', 'tests/ci_phase_suite.py', *sys.argv[1:]]
         process = subprocess.Popen(
             command,
             cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

@@ -28,6 +28,9 @@ jobs:
       PYTHONIOENCODING: utf-8
       WB_REGRESSION_DIAGNOSTICS: '1'
       WB_REGRESSION_PHASE: full-suite
+      # Instrumentation-only Draft PR: opt in on Windows, retaining the original
+      # full census/gates. Other branches and normal develop/main runs stay off.
+      WB_PHASE_DIAGNOSTICS: ${{ matrix.os == 'windows-latest' && github.event_name == 'pull_request' && github.head_ref == 'codex/ci-phase-diagnostics-20261015' && '1' || '0' }}
       # The full-suite gate uses the original worker/DEVNULL. Before-full probes
       # opt into capture; after-full probes compare the original worker/harness.
       WB_EPOCH_CAPTURE_STDERR: '0'
@@ -44,6 +47,9 @@ jobs:
         run: node --version
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
+      - name: Verify diagnostic privacy and process correlation
+        if: env.WB_PHASE_DIAGNOSTICS == '1' && matrix.python == '3.13' && matrix.shard == 1
+        run: python -B tests/ci_phase_selfcheck.py
       - name: Observe Windows targets before the full suite
         id: before
         if: runner.os == 'Windows' && matrix.shard == 0
@@ -65,6 +71,9 @@ jobs:
         env:
           WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
         run: python -B tests/windows_regression_probe.py --phase original-after-full
+      - name: Summarize opt-in phase evidence
+        if: always() && env.WB_PHASE_DIAGNOSTICS == '1'
+        run: python -B tests/ci_phase_analyze.py "${{ runner.temp }}/worldbloom-regression-evidence"
       - name: Save required step outcomes for the aggregate gate
         if: always()
         env:
