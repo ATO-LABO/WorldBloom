@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import threading
@@ -54,6 +55,17 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def is_link(path: Path) -> bool:
+    """Include Windows junctions on Python 3.11, before Path.is_junction()."""
+    if path.is_symlink():
+        return True
+    try:
+        tag = getattr(path.lstat(), "st_reparse_tag", None)
+    except FileNotFoundError:
+        return False
+    return tag == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
+
+
 # ponytail: the symlink/junction check of a root itself and its ancestors is
 # cached per process; a link planted at the root or above it after the first
 # contained() call for that root goes undetected until the process restarts.
@@ -62,7 +74,7 @@ def sha256(data):
 def _checked_root(root_str: str) -> Path:
     root = Path(root_str)
     for part in (root, *root.parents):
-        if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
+        if is_link(part):
             raise ConfigError("path", "リンクを経由した保存・読取はできません")
     return root.resolve()
 
@@ -79,7 +91,7 @@ def contained(root: Path, relative: str) -> Path:
     for part in (result, *result.parents):
         if part == root:
             break
-        if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
+        if is_link(part):
             raise ConfigError("path", "リンクを経由した保存・読取はできません")
     if not result.resolve().is_relative_to(resolved_root):
         raise ConfigError("path", "保存範囲外のパスです")
