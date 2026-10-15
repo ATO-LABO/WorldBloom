@@ -185,7 +185,6 @@ worker.change(jobs,folder,'fixture-nonce',progress={'completed_individuals':1})
                 worker.atomic(path,{**self.original,'revision':1})
         self.assertEqual(read_atomic_json(path),self.original)
         self.assertEqual(list(self.folder.glob('.job.json-*')),[])
-
     def test_parent_publication_failure_stays_bounded_and_keeps_previous_snapshot(self):
         self.stop_server()
         path=self.folder/'job.json'
@@ -197,4 +196,3 @@ worker.change(jobs,folder,'fixture-nonce',progress={'completed_individuals':1})
         self.assertEqual(publish.call_count,6)
         self.assertEqual(read_atomic_json(path),self.original)
         self.assertEqual(list(self.folder.glob('.job.json-*')),[])
-

@@ -53,9 +53,9 @@ gh pr create --base develop --head main --title "Sync main into develop"
 
 mainは`main-pr-only`、developは`develop-integration`のアクティブなRulesetで保護する。両方でPR、merge commit方式、レビュー会話の解決、最新baseに対する以下のCI成功を必須にし、force pushとブランチ削除を禁止する。管理者を含めてbypass対象は設定しない。
 
-- `regression (ubuntu-latest, 3.11)`
+- `regression (ubuntu-latest, 3.12)`
 - `regression (ubuntu-latest, 3.13)`
-- `regression (windows-latest, 3.11)`
+- `regression (windows-latest, 3.12)`
 - `regression (windows-latest, 3.13)`
 
 Python最低対応は3.12、CIは3.12/3.13へ移行する。上の一覧と `.github/rulesets/` はGETで確認した現在の適用済み状態で、3.11の2チェックを3.12へ置換する案は未適用である。ルール変更は別途確認し、適用後に読み戻してから一覧・保存JSONを更新する。未適用の間はmain/developで3.11必須チェック待ちになるため、マージしない。詳細は[Python対応版の移行](python-support.md)。
