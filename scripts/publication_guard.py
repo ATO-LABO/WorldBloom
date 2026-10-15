@@ -98,7 +98,9 @@ def check_content(name: str, data: bytes) -> None:
     for match in (() if hashlib.sha256(data).hexdigest() in REVIEWED_VENDOR_EMAIL_HASHES else EMAIL.finditer(text)):
         address = match.group().lower()
         domain = address.rsplit('@', 1)[1]
-        if domain not in {'example.com', 'example.org', 'example.net', 'users.noreply.github.com'} and address != 'noreply@github.com':
+        # The extractor can include a leading source-code quote in a local
+        # part. Normalize it only for this already permitted public address.
+        if domain not in {'example.com', 'example.org', 'example.net', 'users.noreply.github.com'} and address.lstrip("'") != 'noreply@github.com':
             reject('email-needs-publication-review', name)
     if suffix in {'.json', '.jsonl'}:
         try:
