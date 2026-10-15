@@ -1,5 +1,7 @@
 # Phase 0 実装計画: コアエンジン再構築＋GA×QD 配管
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 作成: 2026-09-11（設計役 Fable）/ 親設計: `docs/2026-09-11_gapengine-detailed-design.md`（以下「設計書」）/ ステータス: 実装指示（納品 D1 = engine、D2 = gapengine の2回に分ける）
 
 ## 0. Phase 0 の狙いと範囲
@@ -10,7 +12,7 @@
 
 **Phase 0 で意図的に落とすもの**（Phase 1 以降）: valued fact の信念（implies/refutes/伝聞割引/confront）、`mislead`、`neutralize/sabotage/sacrifice/negotiate/concede/pledge/persuade/plant/payoff/disguise/grand_gesture/trial/donate/rethink`、行動グラフの前提エッジと permission、対象開放の verb 総量正規化、修飾ルールの適用（ファイルは空で置く）、共進化、あらすじ化。StorySim の where 型の問い（鬼ヶ島がどの島か）も落とし、鬼ヶ島は 1 つの固定ゾーンにする。
 
-**StorySim からの参照**（読むだけ。パスは `G:\マイドライブ\Projects\StorySim\`）: `engine/world.py`（`reachable_paths`・経路探索・items/recipes 解析）、`engine/agent.py`（`choose_action` の重み式・`change_relation`・`leadership`）、`engine/verbs.py`（`investigate` の採取・`craft`・`give_item`・`share_knowledge`・`fight` の帰結）、`engine/sim.py`（`run` の日/スロット構造・`_record_encounters`・体力回復）、`projects/momotaro/world/momotaro.yaml`・`agents/momotaro/*.yaml`（桃太郎の数値）、`tests/test_regression.py`（テストの流儀）。**設計だけ参考にし、コードはコピーしない**（構造が違う）。
+**StorySim からの参照**（読むだけ。パスは `../StorySim/`）: `engine/world.py`（`reachable_paths`・経路探索・items/recipes 解析）、`engine/agent.py`（`choose_action` の重み式・`change_relation`・`leadership`）、`engine/verbs.py`（`investigate` の採取・`craft`・`give_item`・`share_knowledge`・`fight` の帰結）、`engine/sim.py`（`run` の日/スロット構造・`_record_encounters`・体力回復）、`projects/momotaro/world/momotaro.yaml`・`agents/momotaro/*.yaml`（桃太郎の数値）、`tests/test_regression.py`（テストの流儀）。**設計だけ参考にし、コードはコピーしない**（構造が違う）。
 
 ---
 
@@ -335,7 +337,7 @@ def evolve(cfg) -> Archive
 ### 4.7 `scripts/evolve.py` / `scripts/random_baseline.py`
 
 ```
-python scripts/evolve.py --project projects/momotaro --template templates/momotaro --out C:\Projects\WorldBloom-local\runs\exp1 --generations 20 --population 100 --seeds 3 --ga-seed 1 --processes 8
+python scripts/evolve.py --project projects/momotaro --template templates/momotaro --out ../WorldBloom-data/runs/exp1 --generations 20 --population 100 --seeds 3 --ga-seed 1 --processes 8
 python scripts/random_baseline.py --project ... --out ... --seeds 300      # policy=None を 300 シード。到達率・descriptor 分布・行動系列の相異度を出力
 ```
 多様性の比較指標（合格条件⑥）: 到達ランの主人公の「effective な決定の (category, verb, target_role) 系列」のペアワイズ正規化編集距離の平均。`scripts/random_baseline.py` と `evolve` の `summary.json` の両方に出す。
