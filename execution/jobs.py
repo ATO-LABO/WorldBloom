@@ -15,7 +15,8 @@ import sys
 
 from execution.configs import ConfigStore
 from execution.provenance import (ConfigError, atomic_json, canonical, contained,
-    directory_lock, identifier, publish_directory, python_executable, read_json, sha256, write_bytes)
+    directory_lock, identifier, publish_directory, python_executable, read_json, read_atomic_json,
+    sha256, write_bytes)
 from execution import worker
 
 PUBLIC_FIELDS = frozenset({"schema_version", "job_id", "request_id", "kind", "config_id", "run_id",
@@ -61,16 +62,18 @@ class JobStore:
         self.startup_timeout = startup_timeout
 
     @contextmanager
-    def _lock(self):
+    def _lock(self, *, operation="jobs"):
         contained(self.configs.control, "jobs").mkdir(parents=True, exist_ok=True)
         with ExitStack() as stack:
             deadline = time.monotonic() + 2
             while True:
                 try:
-                    stack.enter_context(directory_lock(self.root))
+                    stack.enter_context(directory_lock(self.root, operation=operation))
                     break
                 except ConfigError as error:
                     if error.code != "conflict" or time.monotonic() >= deadline:
+                        worker.trace_lock(self.root, operation, "timeout",
+                                          wait_seconds=time.monotonic()-(deadline-2))
                         raise
                     time.sleep(0.02)
             yield
@@ -78,10 +81,10 @@ class JobStore:
     def _folder(self, jid):
         return contained(self.root, identifier(jid, "job_id"))
 
-    def _read(self, jid):
+    def _read(self, jid, *, atomic_snapshot=False):
         try:
             folder = self._folder(jid)
-            job = read_json(folder / "job.json")
+            job = (read_atomic_json if atomic_snapshot else read_json)(folder / "job.json")
             if (job["job_id"] != jid or job["entrypoint"] != str((folder / "worker.py").resolve())
                     or sha256((folder / "request.json").read_bytes()) != job["request_hash"]):
                 raise ConfigError("job_id", "保存済み要求の整合性が失われています", code="snapshot_changed")
@@ -149,11 +152,29 @@ class JobStore:
             return "unknown"
         return worker.probe(identity)
 
-    def _reconcile(self, job):
+    def _observation(self, job):
+        """Classify a complete atomic snapshot without changing the ledger."""
         if job["state"] in worker.TERMINAL:
-            return job
+            return "terminal"
         status = self._identity_status(job)
         if status == "dead":
+            return "dead"
+        if status == "unknown":
+            if (job["state"] in ("queued", "stopping") and not job.get("launch_identity") and not job.get("receipt")
+                    and time.time() - job["created_at"] >= self.startup_timeout):
+                return "unconfirmed"
+            return "unknown"
+        if (time.time() - job["created_at"] >= job["wall_seconds"] or
+                (job.get("cancel_requested_at") is not None and
+                 time.time() - job["cancel_requested_at"] >= job["cancel_grace_seconds"])):
+            return "expired"
+        return "alive"
+
+    def _reconcile(self, job):
+        observation = self._observation(job)
+        if observation == "terminal":
+            return job
+        if observation == "dead":
             if sys.platform == "linux":
                 deadline = time.monotonic() + 1
                 while not worker.output_tree_stopped(job) and time.monotonic() < deadline:
@@ -165,17 +186,14 @@ class JobStore:
                 return self._save(job, **{**pending, "finished_at": time.time(), "reconciliation": "confirmed"})
             return self._save(job, state="cancelled" if job.get("cancel_requested_at") is not None else "interrupted", finished_at=time.time(),
                               reconciliation="confirmed", error={"code":"worker_disappeared"})
-        if status == "unknown":
+        if observation in ("unknown", "unconfirmed"):
             # A late supervisor must claim this job under the same lock before
             # doing work, so a never-launched request can safely be interrupted.
-            if (job["state"] in ("queued", "stopping") and not job.get("launch_identity") and not job.get("receipt")
-                    and time.time() - job["created_at"] >= self.startup_timeout):
+            if observation == "unconfirmed":
                 return self._save(job, state="interrupted", finished_at=time.time(),
                                   reconciliation="confirmed", error={"code":"launch_unconfirmed"})
             return {**job, "reconciliation":"unknown"}
-        timed_out = time.time() - job["created_at"] >= job["wall_seconds"]
-        if timed_out or (job.get("cancel_requested_at") is not None
-                and time.time() - job["cancel_requested_at"] >= job["cancel_grace_seconds"]):
+        if observation == "expired":
             identity = (job.get("receipt") or {}).get("identity") or job.get("launch_identity")
             if worker.terminate_verified(identity):
                 return self._save(job, state="cancelled" if job.get("cancel_requested_at") is not None else "failed",
@@ -198,7 +216,25 @@ class JobStore:
         identifier(jid, "job_id")
         if not self.root.exists():
             raise ConfigError("job_id", "ジョブがありません", code="not_found")
-        with self._lock():
+        # Both writers publish job.json with atomic replacement. A progress
+        # read needs no write lock while a durable write flushes its temporary
+        # file or journal. Return one whole revision, never a cached fallback.
+        try:
+            job = self._read(jid, atomic_snapshot=True)
+        except OSError as error:
+            worker.trace_lock(self.root, "jobs.get", "read_error", errno=error.errno,
+                              winerror=getattr(error, "winerror", None))
+            raise
+        observation = self._observation(job)
+        worker.trace_lock(self.root, "jobs.get", "snapshot", observation=observation)
+        if observation == "terminal":
+            return self.public(job)
+        if observation in ("alive", "unknown"):
+            return self.public({**job, "reconciliation":
+                               "confirmed" if observation == "alive" else "unknown"})
+        # Reconciliation can mutate state or stop a verified process. Re-read
+        # under the original write lock so a newer worker revision wins.
+        with self._lock(operation="jobs.get"):
             return self.public(self._reconcile(self._read(jid)))
 
     def list(self):
