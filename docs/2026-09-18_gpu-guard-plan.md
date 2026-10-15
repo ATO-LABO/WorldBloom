@@ -1,5 +1,7 @@
 # GPU ガード計画: サーバー自動起動・GPU 調停・熱ガード（2026-09-18）
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 設計: Claude Fable 5.1 ／ 実装: Sonnet ／ レビュー: Opus
 
 ## 背景
@@ -25,7 +27,7 @@ Bonsai 2 27B（llama-server バックエンド、main bd8812d）を既定にし�
 9. `execution/output_worker.py` の `credentials()` 許可リストは変更しない。`launch`・`gpu_guard` は呼び出しリクエスト（来歴に封印される）に入れず、worker／generate_text が settings から直接読む。
 10. engine/・決定論の対象経路には触れない。`viewer/pages.py` にも触れない（main に他セッションの未コミット変更あり）。UI への「GPU 待ち」表示は今回の範囲外（ジョブ progress にフィールドだけ書く）。
 
-## settings.json の形（この機体での例。git 管理外）
+## settings.json の形（パスは各環境に合わせて変更。git 管理外）
 
 ```json
 {"output": {
@@ -38,7 +40,7 @@ Bonsai 2 27B（llama-server バックエンド、main bd8812d）を既定にし�
   "llama-server": {
     "base_url": "http://127.0.0.1:8089", "model": "bonsai2-27b", "think": true,
     "options": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.0, "max_tokens": 8192},
-    "launch": ["C:/Projects/WorldBloom-local/bonsai/fork/llama-server.exe", "-m", "C:/Projects/WorldBloom-local/bonsai/Ternary-Bonsai-2-27B-PTQ1_0.gguf", "--alias", "bonsai2-27b", "-ngl", "99", "-np", "1", "-c", "10240", "-fa", "on", "--host", "127.0.0.1", "--port", "8089", "--reasoning-budget", "2048", "--reasoning-budget-message", "思考の上限に達した。ここで思考を終え、直ちに最終回答の本文だけを書く。"],
+    "launch": ["C:/path/to/llama-server.exe", "-m", "C:/path/to/Ternary-Bonsai-2-27B-PTQ1_0.gguf", "--alias", "bonsai2-27b", "-ngl", "99", "-np", "1", "-c", "10240", "-fa", "on", "--host", "127.0.0.1", "--port", "8089", "--reasoning-budget", "2048", "--reasoning-budget-message", "思考の上限に達した。ここで思考を終え、直ちに最終回答の本文だけを書く。"],
     "startup_seconds": 180
   }
 }}

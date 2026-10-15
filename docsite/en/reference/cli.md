@@ -1,11 +1,13 @@
 ---
-ja_rev: "d8667c740d30"
+ja_rev: "e674e39fa36b"
 ---
 # CLI
 
 All commands run as `python <script> ...` from the repository root. The full help text is generated from each script's `--help` (`docsite/gen_cli.py`; regenerate it if a script's arguments change). `jev_*.py` and `rationality_probe.py` are dev-only measurement scripts and aren't covered here.
 
 The help text below is printed by the scripts themselves and is partly in Japanese.
+
+The example data directory `../WorldBloom-data/` sits alongside the repository under the same parent directory. Replace it with a local data directory on your computer. Keep `runs/` and `control/` outside the repository.
 
 ## scripts/evolve.py — run a GA experiment
 
@@ -19,7 +21,7 @@ Example:
 
 ```powershell
 python scripts/evolve.py --project projects/momotaro_plus2 --template templates/momotaro_plus2 `
-  --out C:\WorldBloom-data\runs\my-exp --generations 20 --population 100 --seeds 3
+  --out ../WorldBloom-data/runs/my-exp --generations 20 --population 100 --seeds 3
 ```
 
 Point the output directory somewhere outside the repository (local), not inside it (see [Run Outputs](run-outputs.md)).
@@ -106,5 +108,5 @@ Without `--control`, it runs as a read-only viewer where every write API is reje
 Example (starting with full functionality):
 
 ```powershell
-python viewer/server.py --runs C:\WorldBloom-data\runs --control C:\WorldBloom-data\control
+python viewer/server.py --runs ../WorldBloom-data/runs --control ../WorldBloom-data/control
 ```

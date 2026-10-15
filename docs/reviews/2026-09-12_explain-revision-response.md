@@ -1,5 +1,7 @@
 # WB-EXPLAIN 第1回指摘への修正・再提出
 
+パスは共通の[パス表記](../PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 担当: Astra (Codex)。基準 HEAD: 445fa76。Claude Code の第1回レビュー本文は保持する。
 ユーザー指示: 修正1〜4を実施し、5でClaude Codeが再レビューできる状態まで進める。
 
@@ -16,7 +18,7 @@
 
 F1〜F5の修正・自己検証を完了。独立再レビューに提出する。005の合格は未宣言。
 
-最終証拠: `C:\Projects\WorldBloom-local\runs\wb-explain-revision-20260912-r2`。
+最終証拠: `../WorldBloom-data/runs/wb-explain-revision-20260912-r2`。
 r1は途中確認の記録として保持する。最終提出はr2。
 
 | 指摘 | 変更ファイル | 確認できた結果 |
