@@ -6,6 +6,10 @@ Legacy Simulation.run is untouched unless slot_execution is explicitly set.
 """
 from __future__ import annotations
 
+from engine.time_kernel import TimeAxis, TimeActionKernel, BoundaryStage, BoundaryResult
+from engine.action_lifecycle import ActionLifecycle
+from engine import communication_boundary
+
 from collections import defaultdict
 from copy import deepcopy
 import hashlib
@@ -50,6 +54,8 @@ class SlotRuntime:
         self.world = simulation.world
         self.people = simulation.subjects
         self.contract = self.world.slot_contract
+        self.time_kernel = TimeActionKernel(TimeAxis.logical(self.world.days, self.world.slots))
+        self.sim.time_kernel = self.time_kernel
         c = self.contract
         if set(self.people) != set(c["initial_locations"]):
             raise ValueError("Festival subjects must match contract")
@@ -64,6 +70,7 @@ class SlotRuntime:
         self.lead = c["play"]["lead"]
         self.partner = c["play"]["partner"]
         self.pending = []
+        self.lifecycle = ActionLifecycle(self.time_kernel, lambda: self.pending, start_key='start_t', finish_key='due_t')
         self.perceptions = defaultdict(list)
         self.state = {"costume_prepared": {name: False for name in self.people},
             "practice_completed": {name: 0 for name in self.people},
@@ -149,10 +156,15 @@ class SlotRuntime:
         action = Action(action.verb, action.args, {**canonical.meta,
             "reason": action.meta.get("reason"),
             "decision_basis": deepcopy(action.meta.get("decision_basis"))})
+        repeat=communication_boundary.selected(person,action,self.tick)
+        if repeat is not None:
+            action.meta['communication_repeat']=repeat
+            action.meta['original_request_id']=communication_boundary.request_reference(person,repeat,self.state['requests'])
+            action.meta['message_evidence']=communication_boundary.content(person,repeat)
         audience = [n for n, p in self.people.items() if p.zone == person.zone]
         pending = {"actor": person.id, "action": deepcopy(action), "start_t": self.tick,
-                   "due_t": self.tick + 1, "origin": person.zone, "audience": audience}
-        self.pending.append(pending)
+                   "due_t": self.time_kernel.window(1,start=self.tick).finish, "origin": person.zone, "audience": audience}
+        self.lifecycle.start(person.id, pending, 1, start=self.tick)
         details = {"start_t": self.tick, "completes_t": self.tick + 1, "duration_slots": 1,
                    "completion_semantics": "next_boundary"}
         if action.meta["decision_basis"] is not None:
@@ -195,6 +207,7 @@ class SlotRuntime:
             self.state["exhibit_contributions"][actor.id] += 1
         elif action.verb == "dialogue":
             peer, topic, kind, channel = action.args
+            opted=communication_boundary.control(actor) is not None
             # Room speech is audible to the people present during its scene;
             # addressed contact goes only to its recipient when it completes.
             audience = pending["audience"] if channel == "room" else [actor.id, peer]
@@ -202,9 +215,20 @@ class SlotRuntime:
                 result, details = "failed", {"reason": "recipient_not_in_speech_scene"}
             elif topic != "出演" and topic not in actor.knowledge:
                 result, details = "failed", {"reason": "speaker_does_not_know_fact"}
+            elif opted and kind in ('accept','decline') and not any(r['id']==action.meta.get('request_id')
+                    and r['from']==peer and r['to']==actor.id and r['topic']==topic for r in self.state['requests']):
+                result,details='failed',{'reason':'request_identity_mismatch'}
+            elif opted and kind in ('accept','decline') and any(r['request_id']==action.meta.get('request_id') for r in self.state['responses']):
+                result,details='failed',{'reason':'request_already_answered'}
             else:
                 details = {"to": peer, "topic": topic, "intent": kind, "channel": channel,
                            "audience": sorted(audience)}
+                repeat=action.meta.get('communication_repeat')
+                if repeat is not None:
+                    details['communication_repeat']=deepcopy(repeat)
+                    details['message_evidence']=deepcopy(action.meta.get('message_evidence',[]))
+                if opted and kind in ('accept','decline'):
+                    details['request_id']=action.meta['request_id'];details['request_version']='unknown'
                 if topic in self.world.facts:
                     for name in audience:
                         receiver = self.people[name]
@@ -215,8 +239,14 @@ class SlotRuntime:
                 observation = {"kind": "speech", "subject": actor.id, **details}
                 self.perceive(audience, observation)
                 if kind == "request":
-                    self.state["requests"].append({"id": f"{pending['start_t']}:{actor.id}:{peer}:{topic}",
-                        "from": actor.id, "to": peer, "topic": topic, "completed_t": self.tick})
+                    original=action.meta.get('original_request_id')
+                    if original is None:
+                        request={"id": f"{pending['start_t']}:{actor.id}:{peer}:{topic}",
+                            "from": actor.id, "to": peer, "topic": topic, "completed_t": self.tick}
+                        if repeat is not None:request.update(epoch=repeat['epoch'],version='unknown',issue_id=repeat['issue_id'])
+                        self.state['requests'].append(request)
+                    if repeat is not None:
+                        details['canonical_request_id']=original or request['id']
                 elif kind in ("accept", "decline"):
                     request_id = action.meta.get("request_id")
                     if not any(r["id"] == request_id and r["to"] == actor.id for r in self.state["requests"]):
@@ -229,6 +259,11 @@ class SlotRuntime:
         elif action.verb != "wait":
             raise ValueError("Unknown queued action")
         after = self.sim._capture()
+        repeat=action.meta.get('communication_repeat')
+        if repeat is not None:
+            details['communication_repeat']=deepcopy(repeat)
+            self.perceive([actor.id],{'kind':'own_communication_completed','subject':actor.id,'result':result,
+                'communication_repeat':deepcopy(repeat),'canonical_request_id':details.get('canonical_request_id')})
         row = self.sim._event_row(verb="action_completed", subject=actor.id,
             result=result, delta=self.sim._delta(actor.id, before, after), details={
             "action": action.verb, "args": list(action.args), "start_t": pending["start_t"],
@@ -256,8 +291,64 @@ class SlotRuntime:
             "phase": "after_completion_schedule_observation_before_choices"}
         self.emit("opening_check", self.lead, **self.opening)
 
+    def _time_completions(self, frame):
+        sim = self.sim
+        tick, slot = frame.at, frame.label["slot"]
+        writer = self.writer
+        sim.turn, sim.slot = tick + 1, slot
+        for actor, pending in self.lifecycle.complete_due(tick, key=lambda pair: pair[0]):
+            self.complete(pending)
+
+    def _time_schedule_and_recovery(self, frame):
+        sim = self.sim
+        tick, slot = frame.at, frame.label["slot"]
+        writer = self.writer
+        sim._apply_scheduled(writer, slot=slot)
+        sim._recover_stamina()
+        sim._record_encounters(writer)
+
+    def _time_observations(self, frame):
+        sim = self.sim
+        tick, slot = frame.at, frame.label["slot"]
+        writer = self.writer
+        for name, person in self.people.items():
+            self.perceive([name], {"kind": "room_observation", "zone": person.zone,
+                "present": sorted(n for n, p in self.people.items() if p.zone == person.zone)})
+        for name, person in self.people.items():
+            person.slot_context = {
+                "own_zone": person.zone, "own_knowledge": sorted(person.knowledge),
+                "own_requests": deepcopy([r for r in self.state["requests"] if r["to"] == name]),
+                "own_responses": deepcopy([r for r in self.state["responses"] if r["from"] == name]),
+                "own_practice_completed": self.state["practice_completed"][name],
+                "own_costume_prepared": self.state["costume_prepared"][name],
+                "perceptions": deepcopy(self.perceptions[name]),
+            }
+            writer.write({"kind": "knowledge_snapshot", "t": tick, "turn": sim.turn,
+                "slot": slot, "subject": name, "own_zone": person.zone,
+                "knowledge": sorted(person.knowledge),
+                "perceptions": deepcopy(self.perceptions[name])})
+            self.perceptions[name].clear()
+        writer.write({"kind": "activity_snapshot", "t": tick, "turn": sim.turn,
+            "slot": slot, "state": deepcopy(self.state),
+            "positions_inspector_only": {n: p.zone for n, p in self.people.items()}})
+        if slot == self.contract["play"]["start"]:
+            self.opening_check()
+        if tick == len(self.world.slots) - 1:
+            for person in self.people.values():communication_boundary.flush(person,tick)
+            self.emit("observation_finished", self.lead, t=tick, no_next_action=True)
+            return BoundaryResult.HALT
+
+    def _time_choices(self, frame):
+        sim = self.sim
+        tick, slot = frame.at, frame.label["slot"]
+        writer = self.writer
+        for name in sim._action_order():
+            action, probability = sim.choose_action(self.people[name])
+            self.start(self.people[name], action, probability)
+
     def run(self):
         sim = self.sim
+        sim.verify_execution(self.time_kernel.axis)
         path = sim.out_dir / "layers.jsonl"
         with LayersWriter(path, on_write=sim._observe_row) as writer:
             self.writer = sim._writer = writer
@@ -269,40 +360,18 @@ class SlotRuntime:
             writer.write(header)
             sim.day, sim.turn, sim.slot = 1, 1, None
             sim._apply_scheduled(writer, slot=None)
-            for tick, slot in enumerate(self.world.slots):
-                sim.turn, sim.slot = tick + 1, slot
-                for pending in sorted(self.pending, key=lambda p: p["actor"]):
-                    self.complete(pending)
-                self.pending.clear()
-                sim._apply_scheduled(writer, slot=slot)
-                sim._recover_stamina()
-                sim._record_encounters(writer)
-                for name, person in self.people.items():
-                    self.perceive([name], {"kind": "room_observation", "zone": person.zone,
-                        "present": sorted(n for n, p in self.people.items() if p.zone == person.zone)})
-                for name, person in self.people.items():
-                    person.slot_context = {
-                        "own_zone": person.zone, "own_knowledge": sorted(person.knowledge),
-                        "own_requests": deepcopy([r for r in self.state["requests"] if r["to"] == name]),
-                        "own_responses": deepcopy([r for r in self.state["responses"] if r["from"] == name]),
-                        "own_practice_completed": self.state["practice_completed"][name],
-                        "own_costume_prepared": self.state["costume_prepared"][name],
-                        "perceptions": deepcopy(self.perceptions[name]),
-                    }
-                    writer.write({"kind": "knowledge_snapshot", "t": tick, "turn": sim.turn,
-                        "slot": slot, "subject": name, "own_zone": person.zone,
-                        "knowledge": sorted(person.knowledge),
-                        "perceptions": deepcopy(self.perceptions[name])})
-                    self.perceptions[name].clear()
-                writer.write({"kind": "activity_snapshot", "t": tick, "turn": sim.turn,
-                    "slot": slot, "state": deepcopy(self.state),
-                    "positions_inspector_only": {n: p.zone for n, p in self.people.items()}})
-                if slot == self.contract["play"]["start"]:
-                    self.opening_check()
-                if tick == len(self.world.slots) - 1:
-                    self.emit("observation_finished", self.lead, t=tick, no_next_action=True)
-                    break
-                for name in sim._action_order():
-                    action, probability = sim.choose_action(self.people[name])
-                    self.start(self.people[name], action, probability)
+            stages = tuple(BoundaryStage(name, handler) for name, handler in (
+                ('next_boundary_completions', self._time_completions),
+                ('scheduled_and_recovery', self._time_schedule_and_recovery),
+                ('knowledge_and_observations', self._time_observations),
+                ('choices', self._time_choices)))
+            self.time_kernel.run(
+                self.time_kernel.sequence(range(len(self.world.slots))), stages)
+        from engine.run_record import commit_run_record
+        states={name:person.policy.export_state() for name,person in self.people.items()
+                if communication_boundary.control(person) is not None}
+        if states:
+            from execution.provenance import atomic_json
+            atomic_json(sim.out_dir/'communication-state.json',states)
+        commit_run_record(sim)
         return path

@@ -130,11 +130,51 @@ def _growth(spec_growth):
     return {"mode": mode, "epochs": epochs, "auto_retire": auto_retire}
 
 
+def _execution_profile(value):
+    """Only the explicitly reviewed neutral Melos revision is configurable.
+
+    Legacy evolution population/generation/keep defaults remain compatibility
+    metadata; this profile never dispatches GA or applies those filters.
+    """
+    expected = {"id": "melos_approved_ninegene_v1", "version": 1,
+                "genome": Genome.neutral().to_dict()}
+    def matches(actual, target):
+        if type(target) is dict:
+            return (type(actual) is dict and set(actual) == set(target)
+                    and all(matches(actual[k], v) for k, v in target.items()))
+        if type(target) is float:
+            # JSON.stringify serializes 0.0 as 0. Accept that exact numeric
+            # value, never booleans/strings/coercion, and emit canonical floats.
+            return type(actual) in (int, float) and actual == target
+        return type(actual) is type(target) and actual == target
+    valid = matches(value, expected)
+    if not valid:
+        raise ConfigError("execution_profile", "承認済みの中立9遺伝子プロファイルを明示してください")
+    return deepcopy(expected)
+
+
+def _profile_restrictions(values, growth):
+    if growth is not None:
+        raise ConfigError("growth", "このプロファイルは育成を使用しません")
+    disabled = {"coevolve": False, "meta_evolution": False, "personality_growth": False,
+                "world_expansion": "off", "seed_genomes": None, "target_ending": None,
+                "kappa": None, "route_rho": None, "rationality_backend": None,
+                "rationality_method": None, "rationality_model": None,
+                "rationality_num_ctx": None, "rationality_table": None,
+                "rationality_max_calls": None}
+    for key, expected in disabled.items():
+        if values[key] != expected:
+            raise ConfigError("evolution." + key, "承認済みプロファイルではこの変更を使用できません")
+    if values["keep"] == "exemplar":
+        raise ConfigError("evolution.keep", "原作に基づく選別は使用できません")
+
+
 def normalize(spec):
     _keys(spec, {"label", "project_id", "template_id", "evolution",
-                 "execution_limits", "generation", "growth"}, "config")
+                 "execution_limits", "generation", "growth", "execution_profile"}, "config")
     if "generation" in spec:
         raise ConfigError("generation", "文章生成の設定は ⚙ 設定で行います（実行設定には含めません）")
+    profile = _execution_profile(spec["execution_profile"]) if "execution_profile" in spec else None
     growth = _growth(spec.get("growth"))
     result = {"label": spec.get("label", "")}
     if not isinstance(result["label"], str) or not result["label"].strip() or len(result["label"]) > 200:
@@ -229,6 +269,9 @@ def normalize(spec):
         if (type(values["rationality_num_ctx"]) is not int
                 or not (256 <= values["rationality_num_ctx"] <= 131072)):
             raise ConfigError("evolution.rationality_num_ctx", "256〜131072の整数を指定してください")
+    if profile is not None:
+        _profile_restrictions(values, growth)
+        result["execution_profile"] = profile
     result["evolution"] = deepcopy(values)
     limits = spec.get("execution_limits", {})
     _keys(limits, {"wall_seconds"}, "execution_limits")
@@ -337,6 +380,21 @@ def _capture_inputs(repo, spec, runs=None):
     template = contained(repo, "templates/" + spec["template_id"])
     if not project.is_dir() or not template.is_dir():
         raise ConfigError("inputs", "世界またはテンプレートがありません")
+    if "execution_profile" in spec:
+        # Preserve the exact approved project bytes, including scenario.yaml.
+        # Template/genetic guidance is not part of this closed profile input.
+        from execution.melos_factory import approved_catalogs
+        for path in sorted(project.rglob("*")):
+            contained(repo, path.relative_to(repo).as_posix())
+            if path.is_file() and path.suffix in (".yaml", ".yml"):
+                add(path)
+        prefix = project.relative_to(repo).as_posix() + "/"
+        actual = {key.removeprefix(prefix): sha256(data) for key, data in blobs.items()}
+        if actual != approved_catalogs()["inputs"]:
+            raise ConfigError("execution_profile", "プロジェクトYAML一式が承認済み版と一致しません")
+        entries = [{**records[key], "sha256": sha256(data), "bytes": len(data)}
+                   for key, data in sorted(blobs.items())]
+        return blobs, {"schema_version": 1, "files": entries}
     world_key = add(project / "world.yaml")
     declared_world = yaml.safe_load(blobs[world_key])
     calendar_mode = (isinstance(declared_world, dict) and isinstance(declared_world.get('slot_execution'), dict)
@@ -550,7 +608,8 @@ def _describe(root, spec):
         _compile_rules(effective["rules.yaml"])
     except (ValueError, KeyError, TypeError) as error:
         raise ConfigError("inputs.rules.yaml", "ルールのID・対象範囲・条件式・調整値を確認してください") from error
-    load_canon(template / "canon.yaml")
+    if "execution_profile" not in spec:
+        load_canon(template / "canon.yaml")
     for name in ("canon.yaml", "action_graph.antagonist.yaml", "canon.antagonist.yaml"):
         if not (template / name).is_file():
             fallback[name] = {"reason": "missing", "effective":
@@ -566,7 +625,7 @@ def _describe(root, spec):
                 or len(set(qd[key])) != len(qd[key])):
             raise ConfigError("inputs.qd", "QD軸が不正です")
     ev = spec["evolution"]
-    return {"world_name": world.name, "protagonist": world.protagonist,
+    description = {"world_name": world.name, "protagonist": world.protagonist,
             "antagonist": world.antagonist,
             "subjects": [yaml.safe_load(p.read_bytes()) for p in subject_paths],
             "world": yaml.safe_load((project / "world.yaml").read_bytes()),
@@ -581,6 +640,15 @@ def _describe(root, spec):
                 "mutation_probability": inspect.signature(Genome.mutate).parameters["p"].default,
                 "rule_mutation_probability": inspect.signature(Genome.mutate).parameters["rule_p"].default,
                 "editable": False}}
+    if "execution_profile" in spec:
+        description.update(execution_profile=deepcopy(spec["execution_profile"]),
+                           execution_kind="independent_trials", ga_supported=False,
+                           planned_individual_evaluations=None, planned_seed_evaluations=None,
+                           seed_range=None,
+                           fixed_parameters={"source": "execution_profile.genome",
+                                             "genome": deepcopy(spec["execution_profile"]["genome"]),
+                                             "editable": False})
+    return description
 
 
 class ConfigStore:
@@ -623,6 +691,8 @@ class ConfigStore:
                 raise ConfigError("inputs", "必要な入力ファイルがありません") from error
         else:
             prior, manifest, root = self._bundle(parent)
+            if prior.get("execution_profile") != spec.get("execution_profile"):
+                raise ConfigError("parent_config_id", "プロファイル変更時は入力を新規取得してください")
             if any(prior[k] != spec[k] for k in ("project_id", "template_id")):
                 raise ConfigError("parent_config_id", "複製元と異なる入力は新規設定として保存してください")
             prior_expand = prior["evolution"].get("world_expansion", "off") == "expand"
@@ -725,6 +795,8 @@ class ConfigStore:
         # used to lose its growth on duplicate (spec never carried it over)
         # -- carry it forward like every other field; `changes` may still
         # replace or clear it below.
+        if "execution_profile" in original:
+            spec["execution_profile"] = deepcopy(original["execution_profile"])
         if "growth" in original:
             spec["growth"] = original["growth"]
         changes = changes or {}
@@ -734,6 +806,8 @@ class ConfigStore:
                 spec[key] = {**spec[key], **value}
             else:
                 spec[key] = value
+        if changes.get("execution_profile", object()) is None:
+            spec.pop("execution_profile", None)
         # WB-JEV-005 review (MUST): the run-settings form always sends
         # evolution.rationality_backend but never touches
         # evolution.rationality_model (that field has no UI of its own --
@@ -777,13 +851,16 @@ class ConfigStore:
         # incompatible with the parent config's own frozen seed_genomes.json.
         prior_seed = original["evolution"].get("seed_genomes")
         spec_seed = spec["evolution"].get("seed_genomes")
-        parent = config_id if prior_expand == spec_expand and prior_seed == spec_seed else None
+        same_profile = original.get("execution_profile") == spec.get("execution_profile")
+        parent = config_id if prior_expand == spec_expand and prior_seed == spec_seed and same_profile else None
         return self.save(spec, config_id=new_id, parent_config_id=parent)
 
     def prepare_run(self, config_id, *, run_id=None, job_id, processes=None):
         rid = identifier(("run-" + uuid.uuid4().hex) if run_id is None else run_id, "run_id")
         identifier(job_id, "job_id")
         config, inputs, source = self._bundle(config_id)
+        if "execution_profile" in config:
+            raise ConfigError("execution_profile", "このプロファイルは独立試行専用です。GA実行はできません")
         final = contained(self.runs, rid)
         with directory_lock(self.runs):
             if final.exists():

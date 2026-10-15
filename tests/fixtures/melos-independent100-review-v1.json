@@ -1,0 +1,1532 @@
+{
+  "schema": "worldbloom_review_v1",
+  "id": "melos-independent100-20261014-with-plan",
+  "method": "independent_trials",
+  "population": "unselected",
+  "execution_plan_id": "melos-independent100-execution-plan-20261014",
+  "execution_plan_sha256": "68d6d1a6497eecab44d7ef4f21d6e24f9249a61527dbb3f51ed768c151e91b97",
+  "selection": "none",
+  "reference_guided": false,
+  "world": "走れメロス",
+  "world_revision": "8055f1f4e12bf9606586936dd013a3b5a630c413914cae0057ac88ed30b97baa",
+  "policy_revision": "1a2d150c5740a8898ee57dc05794b02c046feec8c4a2aba17f9aeb44f202fd12",
+  "engine_revision": "bae011c8a128554de0b53343aae4a26b7ecdd16f",
+  "settings_version": "melos_independent_100_v1 / plan-sha256:35b62ab87421aadb405ce6f618542f0b197ddbd2e55b68d75e9ef931aeecaddf",
+  "sampling_rule": "For each integer seed 0..99, construct a fresh random.Random(seed), draw 192 uniform uint32 selection quantiles using the existing MelosGenome.random, then Trial(genome, seed, baseline, reference=False). No GA, elite reuse, breeding, fitness selection, replacement, or result-dependent seed choice.",
+  "classification_rule": "First applied action_completed for Melos move to court, using details.arrived_at (physical arrival). <=3960=in_time; >3960=late. Successful return work report and PromiseRegistry fulfillment are separate evidence.\nMelos work_unit_completed for task wedding plus applied action_completed for wedding work. Attendance means completion of the existing 120-minute wedding participation task, not request/consent or village presence.",
+  "observation_stop": "Keep the existing Trial.run behavior: stop at its terminal outcome, attempted action outside horizon, or existing decision limit; never continue or force a different action. Nonreturn means no court arrival observed by this episode stop, not never returning in future life.",
+  "source": "Repository UI compatibility fixture derived from the historical pre-nine-gene baseline. Private evidence links and detailed narratives are omitted.",
+  "seed_plan": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99
+  ],
+  "trials": [
+    {
+      "id": "trial-000",
+      "seed": 0,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-001",
+      "seed": 1,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-002",
+      "seed": 2,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-003",
+      "seed": 3,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-004",
+      "seed": 4,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-005",
+      "seed": 5,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-006",
+      "seed": 6,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-007",
+      "seed": 7,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-008",
+      "seed": 8,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-009",
+      "seed": 9,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-010",
+      "seed": 10,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-011",
+      "seed": 11,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-012",
+      "seed": 12,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-013",
+      "seed": 13,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-014",
+      "seed": 14,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-015",
+      "seed": 15,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-016",
+      "seed": 16,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-017",
+      "seed": 17,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-018",
+      "seed": 18,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-019",
+      "seed": 19,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-020",
+      "seed": 20,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-021",
+      "seed": 21,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-022",
+      "seed": 22,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-023",
+      "seed": 23,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-024",
+      "seed": 24,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-025",
+      "seed": 25,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-026",
+      "seed": 26,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-027",
+      "seed": 27,
+      "return_status": "in_time",
+      "wedding_status": "attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-66",
+        "complete:melos-action-35",
+        "melos:0077",
+        "melos:0078"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-028",
+      "seed": 28,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-029",
+      "seed": 29,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-4",
+        "melos:0015",
+        "melos:0016"
+      ],
+      "story": "第1日 00:00 メロス：すぐに出頭する（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-030",
+      "seed": 30,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-031",
+      "seed": 31,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-032",
+      "seed": 32,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-033",
+      "seed": 33,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-034",
+      "seed": 34,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-4",
+        "melos:0015",
+        "melos:0016"
+      ],
+      "story": "第1日 00:00 メロス：すぐに出頭する（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-035",
+      "seed": 35,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-036",
+      "seed": 36,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-037",
+      "seed": 37,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-038",
+      "seed": 38,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-039",
+      "seed": 39,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-040",
+      "seed": 40,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-041",
+      "seed": 41,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-042",
+      "seed": 42,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-043",
+      "seed": 43,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-044",
+      "seed": 44,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-045",
+      "seed": 45,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-046",
+      "seed": 46,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-4",
+        "melos:0015",
+        "melos:0016"
+      ],
+      "story": "第1日 00:00 メロス：すぐに出頭する（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-047",
+      "seed": 47,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-048",
+      "seed": 48,
+      "return_status": "in_time",
+      "wedding_status": "attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-67",
+        "complete:melos-action-35",
+        "melos:0078",
+        "melos:0079"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-049",
+      "seed": 49,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-050",
+      "seed": 50,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-051",
+      "seed": 51,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-052",
+      "seed": 52,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-053",
+      "seed": 53,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-054",
+      "seed": 54,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-055",
+      "seed": 55,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-056",
+      "seed": 56,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-63",
+        "melos:0074",
+        "melos:0075"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-057",
+      "seed": 57,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-058",
+      "seed": 58,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-059",
+      "seed": 59,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-060",
+      "seed": 60,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-061",
+      "seed": 61,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-062",
+      "seed": 62,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-063",
+      "seed": 63,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-064",
+      "seed": 64,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-065",
+      "seed": 65,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-066",
+      "seed": 66,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-067",
+      "seed": 67,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-068",
+      "seed": 68,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-56",
+        "melos:0067",
+        "melos:0068"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-069",
+      "seed": 69,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-070",
+      "seed": 70,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-071",
+      "seed": 71,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-072",
+      "seed": 72,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-073",
+      "seed": 73,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-48",
+        "melos:0059",
+        "melos:0060"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-074",
+      "seed": 74,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-54",
+        "melos:0065",
+        "melos:0066"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-075",
+      "seed": 75,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-076",
+      "seed": 76,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-077",
+      "seed": 77,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-078",
+      "seed": 78,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-079",
+      "seed": 79,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-080",
+      "seed": 80,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-081",
+      "seed": 81,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-082",
+      "seed": 82,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-083",
+      "seed": 83,
+      "return_status": "in_time",
+      "wedding_status": "attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-61",
+        "complete:melos-action-35",
+        "melos:0072",
+        "melos:0073"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-084",
+      "seed": 84,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-085",
+      "seed": 85,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-63",
+        "melos:0074",
+        "melos:0075"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-086",
+      "seed": 86,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-087",
+      "seed": 87,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-088",
+      "seed": 88,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-089",
+      "seed": 89,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-090",
+      "seed": 90,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-091",
+      "seed": 91,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-092",
+      "seed": 92,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-093",
+      "seed": 93,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-094",
+      "seed": 94,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-095",
+      "seed": 95,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-49",
+        "melos:0060",
+        "melos:0061"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-096",
+      "seed": 96,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-097",
+      "seed": 97,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-51",
+        "melos:0062",
+        "melos:0063"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-098",
+      "seed": 98,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "友を解放し、メロス処刑",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-57",
+        "melos:0068",
+        "melos:0069"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    },
+    {
+      "id": "trial-099",
+      "seed": 99,
+      "return_status": "in_time",
+      "wedding_status": "not_attended",
+      "outcome": "王が赦免し、双方生存",
+      "reason": "Historical classification retained for UI contract testing; detailed decision trace omitted.",
+      "evidence_ids": [
+        "complete:melos-action-43",
+        "melos:0054",
+        "melos:0055"
+      ],
+      "story": "第1日 00:00 メロス：村へ向かう（証拠 melos:0003）\n[UI fixture excerpt; remaining narrative omitted.]"
+    }
+  ],
+  "fixture_only": true,
+  "fixture_origin": {
+    "plan_sha256": "5b936be3eedc08d801f31af1722a456be2e70b25601c68c9b0d3221adad62c00",
+    "receipt_sha256": "d7e54bbc72d258effb3ecbad2392db35bbc94a86ed9f5edda2ce92a33fc984f8",
+    "scope": "Preserve 100 seeds, classifications, outcomes and evidence IDs; truncate story/reason for offline UI tests. This is not a new experiment or a nine-gene comparison."
+  }
+}

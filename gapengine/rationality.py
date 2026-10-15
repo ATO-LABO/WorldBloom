@@ -33,6 +33,11 @@ from typing import Any, Mapping, Sequence
 
 from gapengine import gpu_guard
 from gapengine.knowledge_text import (
+    LEGACY_CONTEXT,
+    ObjectiveKnowledge,
+    PowerKnowledge,
+    TradeKnowledge,
+    validate_context_version,
     context_key,
     describe_candidate_coarse,
     map_line as knowledge_map_line,
@@ -910,8 +915,11 @@ class Rationality:
         describe_trial_grants: bool = False,
         candidate_labels: Mapping[str, str] = {},
         describe_negotiate_offer: bool = False,
+        context_version: str = LEGACY_CONTEXT,
     ) -> None:
         self.kappa = float(kappa)
+        validate_context_version(context_version)
+        self.context_version = context_version
         self.table = table
         self.judge = judge
         self.common_knowledge = list(common_knowledge)
@@ -963,6 +971,8 @@ class Rationality:
             "table_hash_at_start": self._table_hash_at_start,
             "judge_calls": self._judge_calls,
         }
+        if self.context_version != LEGACY_CONTEXT:
+            value["context_version"] = self.context_version
         judge_num_ctx = getattr(self.judge, "num_ctx", None)
         if judge_num_ctx is not None:
             # Only added when set (WB-JEV-003): a run with no override must
@@ -986,6 +996,10 @@ class Rationality:
         world: Any,
         present: Sequence[Any],
         actions: Sequence[Any],
+        *,
+        objective_knowledge: ObjectiveKnowledge | None = None,
+        power_knowledge: PowerKnowledge | None = None,
+        trade_knowledge: Mapping[str, TradeKnowledge] | None = None,
     ) -> tuple[list[float], list[float | None]]:
         """(m_rat per action, p_rat per action). rng-free. Returns
         ``([1.0]*n, [None]*n)`` without rendering or calling the judge when
@@ -1008,10 +1022,14 @@ class Rationality:
                 describe_trial_grants=self.describe_trial_grants,
                 candidate_labels=self.candidate_labels,
                 describe_negotiate_offer=self.describe_negotiate_offer,
+                context_version=self.context_version,
+                trade_knowledge=(trade_knowledge or {}).get(str(action.meta.get("target"))),
             )
             for action in actions
         ]
-        sit = situation(subject, world, present, key_items=self.key_items)
+        sit = situation(subject, world, present, key_items=self.key_items,
+                        context_version=self.context_version, objective_knowledge=objective_knowledge,
+                        power_knowledge=power_knowledge)
         context_text = render_situation(
             sit,
             world,
@@ -1023,12 +1041,13 @@ class Rationality:
         unique_descs = list(dict.fromkeys(descs))
         if self.method == "choice":
             set_key = context_key(
-                context_text + "\n候補集合: " + "|".join(sorted(unique_descs))
+                context_text + "\n候補集合: " + "|".join(sorted(unique_descs)),
+                context_version=self.context_version,
             )
             keys = {desc: f"{set_key}:{desc}" for desc in unique_descs}
         else:
             keys = {
-                desc: context_key(f"{context_text}\n候補: {desc}")
+                desc: context_key(f"{context_text}\n候補: {desc}", context_version=self.context_version)
                 for desc in unique_descs
             }
 
