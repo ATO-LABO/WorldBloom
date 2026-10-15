@@ -1,0 +1,7 @@
+# Request the maintainer's review for publishing and security changes.
+/.github/ @ATO-LABO
+/SECURITY.md @ATO-LABO
+/scripts/publication_guard.py @ATO-LABO
+/scripts/pack_samples.py @ATO-LABO
+/scripts/export_static.py @ATO-LABO
+/viewer/build_exe.cmd @ATO-LABO
