@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 
 from engine.yaml_cache import load_yaml
-from execution.provenance import ConfigError, contained, identifier, directory_lock
+from execution.provenance import ConfigError, contained, identifier, directory_lock, is_link
 
 GENRE_FILES = ("action_graph.yaml", "canon.yaml", "effects.yaml", "qd.yaml", "rules.yaml",
                "action_graph.antagonist.yaml", "canon.antagonist.yaml")
@@ -178,8 +178,12 @@ def _load_yaml_or_none(path):
 
 
 def _reject_symlinks(root):
-    for path in root.rglob("*"):
-        if path.is_symlink():
+    if is_link(root):
+        raise ConfigError("path", "リンクを含む複製元は使用できません", code="bad_request")
+    # Inspect directory entries before descending: os.walk can follow Windows
+    # junctions even with followlinks=False. Reject them before the next step.
+    for directory, folders, files in os.walk(root, followlinks=False):
+        if any(is_link(Path(directory) / name) for name in folders + files):
             raise ConfigError("path", "リンクを含む複製元は使用できません", code="bad_request")
 
 

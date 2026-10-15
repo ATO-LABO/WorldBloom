@@ -315,8 +315,9 @@ def import_patch(project, template, entry_id: str, *, repo_root=None, expect_hea
         active_patches = [p for p, _raw in verified]
         if entry_id in {p["id"] for p in active_patches}:
             raise PatchError("すでにこの世界に適用されています")
-        proposed_dir = project / "patches" / "_proposed"
-        if (proposed_dir / f"{entry_id}.yaml").exists():
+        proposed_dir = contained(project, "patches/_proposed")
+        destination = contained(proposed_dir, f"{entry_id}.yaml")
+        if destination.exists():
             raise PatchError("すでに提案中です")
         if entry_id in {r["patch"]["id"] for r in retired_patches(project)}:
             raise PatchError("この世界ですでに淘汰されています")
@@ -334,13 +335,12 @@ def import_patch(project, template, entry_id: str, *, repo_root=None, expect_hea
         if rewritten.get("id") != entry_id:
             raise PatchError("資産の id が一致しません")
         proposed_dir.mkdir(parents=True, exist_ok=True)
-        destination = proposed_dir / f"{entry_id}.yaml"
         if destination.exists():
             raise PatchError("すでに提案中です")
         # R8 (Opus review): temp -> os.replace, matching export_patch()'s own
         # write and every other writer in this codebase (never a direct
         # write_text into the final path).
-        temporary = destination.with_name("." + destination.name + "-" + uuid.uuid4().hex)
+        temporary = contained(proposed_dir, "." + destination.name + "-" + uuid.uuid4().hex)
         try:
             temporary.write_text(yaml.safe_dump(rewritten, allow_unicode=True, sort_keys=False), encoding="utf-8")
             os.replace(temporary, destination)
