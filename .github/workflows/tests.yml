@@ -37,9 +37,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      - name: Observe the runner's Node runtime
+        run: node --version
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
       - name: Observe Windows targets before the full suite
