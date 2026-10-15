@@ -187,10 +187,6 @@ def directory_lock(root: Path, *, operation="directory_lock"):
     with lock:
         trace_lock(root, operation, "thread_acquired", wait_seconds=time.monotonic()-started)
         with (root / ".write.lock").open("a+b") as handle:
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b"0")
-                handle.flush()
             handle.seek(0)
             try:
                 if os.name == "nt":
@@ -206,6 +202,13 @@ def directory_lock(root: Path, *, operation="directory_lock"):
             acquired = time.monotonic()
             trace_lock(root, operation, "acquired", wait_seconds=acquired-started)
             try:
+                # Windows permits locking beyond EOF. Acquire before the
+                # first write: a competing initial writer may already hold
+                # byte zero while our earlier size observation was empty.
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"0")
+                    handle.flush()
                 yield
             finally:
                 handle.seek(0)
