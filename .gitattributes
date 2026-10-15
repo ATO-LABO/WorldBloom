@@ -1,3 +1,11 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+
+# These approved inputs are verified by their received byte hashes.
+# Preserve their CRLF bytes on every platform instead of normalizing YAML.
+projects/melos-input/*.yaml -text whitespace=cr-at-eol
+projects/melos-input/subjects/*.yaml -text whitespace=cr-at-eol
+
 # Frozen comparisons must remain byte-identical on Windows and Linux.
 tests/fixtures/historical/pre_growth_s3_qd.yaml -text
 tests/fixtures/historical/original_raw_workspace_ui.cjs -text
