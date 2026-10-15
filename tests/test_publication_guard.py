@@ -49,6 +49,11 @@ class PublicationGuardTests(unittest.TestCase):
         with self.assertRaises(guard.PublicationError):
             guard.check_content('settings.json', b'{\0}')
 
+    def test_quoted_public_noreply_does_not_allow_quoted_personal_addresses(self):
+        guard.check_content('app/client.py', b"address = 'noreply@github.com'")
+        with self.assertRaises(guard.PublicationError):
+            guard.check_content('app/client.py', b"address = 'private-writer@gmail.com'")
+
     def test_private_file_and_zip_paths_are_blocked(self):
         for name in ['.env', 'app/credentials.json', 'app/key.pfx', 'control/settings.json', '../outside.txt', 'C:/private.txt']:
             with self.subTest(name=name), self.assertRaises(guard.PublicationError):

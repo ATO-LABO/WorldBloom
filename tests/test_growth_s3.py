@@ -9,7 +9,6 @@ from __future__ import annotations
 import http.client
 import json
 import shutil
-import subprocess
 import tempfile
 import time
 import unittest
@@ -28,6 +27,7 @@ from gapengine.seed_genomes import from_archive as seed_genomes_from_archive
 from test_evolution_execution import EvolutionHttpPersonalityGrowthTests, cleanup_http_fixture
 from test_ga_replay import _genome as _ga_replay_genome, _publish_revision
 from test_output import _write_rows as _write_narrate_rows
+from historical_fixtures import load_historical_fixture
 from viewer import data, ga_replay, run_workspace
 from viewer.data import RunRepository
 
@@ -350,10 +350,7 @@ class MomotaroPlus2ArcAxisTests(unittest.TestCase):
         qd.yaml now permanently has arc_bins) must produce the exact same
         archive/results shape as the pre-S3 template that had no arc_bins
         key at all: 2-element cells, grid_size 18, no arc_thresholds."""
-        old_qd_yaml = subprocess.run(
-            ["git", "show", "83dd57b:templates/momotaro_plus2/qd.yaml"],
-            cwd=ROOT, capture_output=True, check=True, text=True,
-        ).stdout
+        old_qd_yaml = load_historical_fixture("pre_growth_s3_qd.yaml").decode("utf-8")
         self.assertNotIn("arc_bins", old_qd_yaml)
 
         with tempfile.TemporaryDirectory() as temporary:

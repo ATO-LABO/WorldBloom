@@ -59,7 +59,7 @@ class FactStore:
     def resolve(self, ref, *, binding=None):
         from execution.provenance import identifier
         folder = contained(self.root, identifier(ref["package_id"]))
-        seal = read_json(folder / "seal.json")
+        seal = read_json(contained(folder, "seal.json"))
         if seal.get("schema_version") != 1:
             raise ConfigError("facts", "未対応の保存版です")
         blobs = {p: verified(contained(folder, p), h) for p, h in seal["files"].items()}
