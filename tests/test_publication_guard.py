@@ -31,6 +31,11 @@ class PublicationGuardTests(unittest.TestCase):
             guard.check_content('stories/example.md', ('Text ' + value).encode())
         self.assertNotIn(value, str(caught.exception))
 
+    def test_runtime_header_scheme_is_allowed_but_embedded_credentials_are_not(self):
+        guard.check_content('app/client.py', b'headers = {"Authorization": "Bearer " + key}')
+        with self.assertRaises(guard.PublicationError):
+            guard.check_content('app/client.py', b'headers = {"Authorization": "Bearer unpublished-value"}')
+
     def test_personal_email_needs_review_but_examples_and_noreply_are_allowed(self):
         value = 'private-writer' + '@gmail.com'
         with self.assertRaises(guard.PublicationError) as caught:
