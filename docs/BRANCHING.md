@@ -53,9 +53,9 @@ gh pr create --base develop --head main --title "Sync main into develop"
 
 mainは`main-pr-only`、developは`develop-integration`のアクティブなRulesetで保護する。両方でPR、merge commit方式、レビュー会話の解決、最新baseに対する以下のCI成功を必須にし、force pushとブランチ削除を禁止する。管理者を含めてbypass対象は設定しない。
 
-- `regression (ubuntu-latest, 3.11)`
+- `regression (ubuntu-latest, 3.12)`
 - `regression (ubuntu-latest, 3.13)`
-- `regression (windows-latest, 3.11)`
+- `regression (windows-latest, 3.12)`
 - `regression (windows-latest, 3.13)`
 
 チェックの発行元はGitHub Actions（integration ID `15368`）に固定する。パス条件で実行されないことがあるdocsの`build`は全PRの必須チェックには含めず、実行された場合の成否を確認する。回帰CIはPRとmain/developへのpushで動く。
