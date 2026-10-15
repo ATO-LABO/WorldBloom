@@ -86,7 +86,7 @@
     const a=session.active,j=a&&a.job,terminal=j&&TERMINAL.includes(j.state)&&j.termination_confirmed;
     start.disabled=session.pending||!!(a&&(!j||!terminal));retry.disabled=session.pending||!a;
     cancel.disabled=session.pending||!j||terminal;
-    if(j){const p=j.progress||{};status.textContent='ジョブ '+j.job_id+'：'+j.state+' / '+j.phase+'。処理済み '+(p.completed||0)+' / '+(p.requested||a.request.seed_plan.length)+'件。'+(j.cancel_requested_at?'取消要求済み。所有プロセスの終了確認を待っています。':'');}
+    if(j){const p=j.progress||{};status.textContent='ジョブ '+j.job_id+'：'+j.state+' / '+j.phase+'。処理済み '+(p.completed||0)+' / '+(p.requested||a.request.seed_plan.length)+'件。'+(j.cancel_requested_at?(j.termination_confirmed?'取消要求済み。所有プロセスの終了を確認しました。':'取消要求済み。所有プロセスの終了確認を待っています。'):'');}
     plan.textContent=a?JSON.stringify({request:a.request,execution_plan_sha256:j&&j.execution_plan_sha256,termination_confirmed:j&&j.termination_confirmed},null,2):'設定を選ぶと、実行前にseedと入力の版を固定します。';
   }
   async function poll(){
@@ -121,7 +121,9 @@
       const existing=await request('/api/independent/capabilities');caps=existing.configurations.map(validateCapability);
       let selected=caps.find(c=>c.world==='melos-input'&&c.execution_profile&&c.execution_profile.id==='melos_approved_ninegene_v1'&&c.execution_profile.version===1);
       if(!selected){const created=await request('/api/configs',melosProfileSpec());selected=validateCapability(await request('/api/independent/capabilities?config_id='+encodeURIComponent(created.config_id)));caps.push(selected);}
-      if(leaving)return;if(world)world.value=selected.world;render();configurations();config.value=selected.config_id;
+      if(leaving)return;
+      if(world){world.value=selected.world;world.dispatchEvent(new Event('change',{bubbles:true}));}
+      render();configurations();config.value=selected.config_id;
       status.textContent='Melosの固定中立設定を選択しました。事前seedを確認して開始してください。'+(selected.supported?'':(' '+selected.reason));
     }catch(error){status.textContent=error.message+' 保存済み設定を再確認してから選択します。';}
     finally{profilePending=false;profile.disabled=false;}

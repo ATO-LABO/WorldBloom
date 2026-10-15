@@ -26,7 +26,7 @@ node scripts/test_javascript.cjs
 python -B -m unittest discover -s tests -v
 ```
 
-The JavaScript runner executes all 17 checked-in scripts, including the
+The JavaScript runner executes all 18 checked-in scripts, including the
 explicit input argument required by the raw-record workspace test. Its purpose
 workspace fixtures live under `tests/fixtures`; no parent-directory JSON files
 or private Drive access are required.
@@ -62,8 +62,15 @@ not a pass for this source. The PR records new local and CI results separately.
 Internal minute-profile checkpoint resume requires fresh authorization from
 the outer owner. Matching saved ownership alone is insufficient. A public
 resume button/API and full slot/festival episode resume are not connected.
-Browser layout, accessibility, real-model narration, information leakage in
-free prose, reader quality and sensitivity across a population remain
-unverified. Hashes establish consistency, not authenticity against an attacker
+An actual local browser smoke check covers explicit profile saving, duplicate
+seed rejection, CPU trials for seeds 0 and 63, mode changes and reload without
+duplicate execution, saved-result copying, and cancellation with partial
+results retained. The two completed trials report two physical arrivals, two
+completed reports and one completed wedding; these observations are distinct.
+Profile selection now persists the common world input and its creation link,
+and cancellation text distinguishes a pending stop from confirmed termination.
+Comprehensive browser layout and accessibility, real-model narration,
+information leakage in free prose, reader quality and sensitivity across a
+population remain unverified. Hashes establish consistency, not authenticity against an attacker
 who can rewrite all related artifacts. The separate Sites viewer is outside
 this repository change.

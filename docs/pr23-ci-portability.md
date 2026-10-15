@@ -60,6 +60,11 @@ per-test durations are flushed immediately to `test-events.jsonl` so a later
 cancellation cannot erase earlier assertion reports.
 
 The normal local command remains `python -B -m unittest discover -s tests -v`.
+Integration with PRs #21, #22, #24 and #25 discovers 2,801 invocations and
+2,799 distinct IDs, partitioned into 1,378 and 1,423 invocations. Discovery has
+no loader errors. These inventory numbers alone do not establish a suite pass;
+the required aggregate gates verify actual execution against this census.
+
 `tests/regression_suite_capture.py` without arguments retains its original full
 suite behavior. `--shard 0` or `--shard 1` selects the CI partition and requires
 `WB_REGRESSION_EVIDENCE_DIR`. The five harness tests verify missing/extra work,

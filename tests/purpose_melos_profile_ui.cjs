@@ -3,6 +3,8 @@ const {environment}=require('./purpose_dom_ui.cjs');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 (async()=>{
  const e=environment(),C=e.fields.status.constructor,fields={};for(const n of ['config','seeds','start','retry','cancel','status','plan','melos-profile'])fields[n]=new C();
+ e.context.Event=class {constructor(type){this.type=type;}};
+ e.fields.world.dispatchEvent=event=>e.fields.world.fire(event.type);
  Object.defineProperty(fields.config,'options',{get(){return this.children;}});fields.seeds.value='0';
  const root=new C();root.querySelector=s=>fields[s.match(/data-independent-(.*)\]/)[1]];
  e.context.document.querySelector=s=>s==='[data-independent-root]'?root:s==='[data-purpose-world]'?e.fields.world:null;
@@ -20,6 +22,9 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../viewer/static/purpose-independent.js'),'utf8'),e.context);await tick();
  fields['melos-profile'].fire('click');fields['melos-profile'].fire('click');await tick();assert.equal(saveCount,1);assert.equal(fields['melos-profile'].disabled,true);resolveSave();await tick();await tick();
  assert.equal(fields.config.value,'cfg-melos');assert.equal(e.fields.world.value,'melos-input');assert.equal(jobCount,0);assert.equal(fields['melos-profile'].disabled,false);
+ assert.equal(e.stored().world,'melos-input');
+ assert.equal(e.fields.run.href,'/jobs?world=melos-input');
+ const restored=environment({initialSaved:e.stored()});assert.equal(restored.fields.world.value,'melos-input');
  fields['melos-profile'].fire('click');await tick();await tick();assert.equal(saveCount,1);assert.equal(jobCount,0);
  console.log('Melos explicit profile DOM checks passed: neutral spec, CSRF, burst guard, existing configuration reuse, no automatic trial execution. Mock transport only.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
