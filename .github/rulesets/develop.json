@@ -37,7 +37,7 @@
       "parameters": {
         "required_status_checks": [
           {
-            "context": "regression (ubuntu-latest, 3.11)",
+            "context": "regression (ubuntu-latest, 3.12)",
             "integration_id": 15368
           },
           {
@@ -45,7 +45,7 @@
             "integration_id": 15368
           },
           {
-            "context": "regression (windows-latest, 3.11)",
+            "context": "regression (windows-latest, 3.12)",
             "integration_id": 15368
           },
           {
