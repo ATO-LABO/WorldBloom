@@ -58,7 +58,7 @@ mainは`main-pr-only`、developは`develop-integration`のアクティブなRule
 - `regression (windows-latest, 3.12)`
 - `regression (windows-latest, 3.13)`
 
-Python最低対応は3.12、CIは3.12/3.13へ移行する。上の一覧と `.github/rulesets/` はGETで確認した現在の適用済み状態で、3.11の2チェックを3.12へ置換する案は未適用である。ルール変更は別途確認し、適用後に読み戻してから一覧・保存JSONを更新する。未適用の間はmain/developで3.11必須チェック待ちになるため、マージしない。詳細は[Python対応版の移行](python-support.md)。
+Python最低対応は3.12、CIは3.12/3.13とする。2026-10-15にユーザーの許可を受け、main/developの各RulesetでUbuntu・Windowsの3.11必須チェック名を3.12へ2件ずつ置換した。他の項目を維持したことを読み戻して確認し、上の一覧と `.github/rulesets/` も適用済みの状態へ更新した。詳細は[Python対応版の移行](python-support.md)。
 
 チェックの発行元はGitHub Actions（integration ID `15368`）に固定する。パス条件で実行されないことがあるdocsの`build`は全PRの必須チェックには含めず、実行された場合の成否を確認する。回帰CIはPRとmain/developへのpushで動く。
 
