@@ -1,5 +1,5 @@
 ---
-ja_rev: "c9226baf3fc0"
+ja_rev: "cabb4e302efb"
 ---
 
 # Install
@@ -10,7 +10,7 @@ ja_rev: "c9226baf3fc0"
 ## Requirements
 
 - Windows 10/11, WebView2 (already present on most systems)
-- Studio needs **Python 3.11+** on PATH (`pip install pyyaml`); Viewer does not
+- Studio needs **Python 3.12+** on PATH (`pip install pyyaml`); Viewer does not
 - git is optional (without it, some provenance info in run output is simply left blank)
 
 !!! tip "Pick your LLM backend in ⚙ 全体設定 (Global settings) first"
@@ -23,7 +23,7 @@ ja_rev: "c9226baf3fc0"
     - Pick a world, run a GA experiment, do Sifting, and generate synopses/text, all from this app
     - On first launch, `runs/` and `control/` folders are created next to the exe automatically
     - Do not move the `app/` folder inside the extracted directory — it holds the application itself
-    - Without Python 3.11+ on PATH (with `pip install pyyaml` done), Studio shows an error screen and does not start
+    - Without Python 3.12+ on PATH (with `pip install pyyaml` done), Studio shows an error screen and does not start
 
 === "Viewer (read-only)"
 
@@ -37,7 +37,7 @@ ja_rev: "c9226baf3fc0"
 
     Requirements:
 
-    - Python 3.11+ (developed on 3.13)
+    - Python 3.12+ (regression-tested on 3.12/3.13)
     - `pip install -r requirements.txt` (PyYAML only)
 
     ```

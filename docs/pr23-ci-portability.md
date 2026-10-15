@@ -7,15 +7,17 @@ with the provider for six actors and four decisions each, including six
 singleton offers. The original `NineTrial.choose` AST and projections execute
 unchanged, with the scenario constructor replaced by synthetic observable
 inputs. Every calculation field, selected candidate, RNG state, count and
-history agrees under both supported Python versions on both operating systems.
+history agreed under the then-tested Python 3.11/3.13 pair on both operating systems.
 
 Only 25 `normalized_weight` values differ between Python 3.11 and 3.13.
 Each value exactly matches its version's `sum` behavior (left-fold addition
 before 3.12, improved floating-point summation from 3.12). Raw weights,
-selection, RNG and history are unchanged. The test keeps exact version-specific
-hashes and now also compares the full original reference on every execution.
-Runtime formulas, candidate order, CFG and tolerances are unchanged. Python 3.11
-support remains in place.
+selection, RNG and history are unchanged. The test compares the full original
+reference on every execution. The subsequent author decision raises minimum
+support to Python 3.12 and tests 3.12/3.13. Unsupported 3.11-specific golden
+branches were removed; all scenarios, strict supported-version hashes and
+reference comparisons remain. Runtime formulas, candidate order, CFG and
+tolerances are unchanged. See [the migration record](python-support.md).
 
 On hosted Windows, `TemporaryDirectory` returned a `RUNNER~1` path while the
 factory resolved the same directory to `runneradmin`. Factory assertions now
@@ -31,7 +33,7 @@ assertions all remain.
 `1593b7b` repeats only the three bounded target tests, which pass on all four
 environments. These temporary diagnostic runs are not full regression evidence.
 The final workflow restores complete discovery, divided into two isolated
-jobs for each Windows/Linux and Python 3.11/3.13 pair. Neither shard shares a
+jobs for each Windows/Linux and Python 3.12/3.13 pair. Neither shard shares a
 filesystem or process with the other. Placement keeps a test module together,
 uses deterministic weights from the previous Windows timings and preserves
 discovery order within each shard. Newly discovered modules are automatically
@@ -47,12 +49,13 @@ completed. The multiset union of assigned and completed cases must equal full
 discovery exactly. Required JavaScript and observation step outcomes are also
 checked, so a Python-only success cannot hide a failed JavaScript gate.
 
-At implementation time discovery contains 2764 invocations and 2762 distinct
-test IDs: the previous 2759 plus five census/result tests. Two duplicate
+Before the minimum-version migration, discovery contained 2764 invocations and
+2762 distinct test IDs: the previous 2759 plus five census/result tests. Four
+Studio interpreter-boundary tests now bring this to 2768 invocations and 2766
+distinct IDs. Two duplicate
 invocations were already present in the original discovery, from inherited
 `EvolutionHttpPersonalityGrowthTests`; their multiplicity is preserved, not
-silently deduplicated. The current shards contain 1217 and 1547 invocations.
-JSON census artifacts record the actual numbers at each head. Failures and
+silently deduplicated. JSON census artifacts record the actual shard sizes and totals at each head. Failures and
 per-test durations are flushed immediately to `test-events.jsonl` so a later
 cancellation cannot erase earlier assertion reports.
 
