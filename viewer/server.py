@@ -33,6 +33,9 @@ from viewer.data import (
 
 MAX_POST_BYTES = 64 * 1024
 STATIC_FILES = {
+    "purpose-independent.js": "application/javascript; charset=utf-8",
+    "purpose-workspace.js": "application/javascript; charset=utf-8",
+    "purpose-workspace.css": "text/css; charset=utf-8",
     "fact-workspace.css":"text/css; charset=utf-8",
     "fact-workspace.js":"application/javascript; charset=utf-8",
     "story-workspace.css":"text/css; charset=utf-8",
@@ -214,6 +217,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
 
     def _dispatch_get(self) -> None:
         parts = self._parts()
+        from viewer import independent_api
+        if independent_api.dispatch(self, parts, 'GET'):
+            return
         if fact_pages.dispatch(self, parts, "GET"):
             return
         if story_pages.dispatch(self, parts, "GET"):
@@ -231,6 +237,10 @@ class ViewerHandler(BaseHTTPRequestHandler):
         job_store = getattr(self.server, "job_store", None)
         if not parts:
             self._send_html(pages.index_page(self.repository, job_store=job_store))
+            return
+        if parts == ["modes"]:
+            from viewer import purpose_pages
+            self._send_html(purpose_pages.render(self.repository, job_store=job_store))
             return
         if parts == ["version"]:
             from viewer import version
@@ -483,6 +493,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
     def _dispatch_post(self) -> None:
         try:
             parts = self._parts()
+            from viewer import independent_api
+            if independent_api.dispatch(self, parts, 'POST'):
+                return
             if fact_pages.dispatch(self, parts, "POST"):
                 return
             if story_pages.dispatch(self, parts, "POST"):

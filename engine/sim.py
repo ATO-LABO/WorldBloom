@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from engine.time_kernel import TimeAxis, TimeActionKernel, BoundaryStage, BoundaryResult
+from engine.action_lifecycle import ActionLifecycle
+
 import hashlib
 import random
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, is_dataclass, fields
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -76,6 +79,9 @@ class Simulation:
         policies: dict[str, Any] | None = None,
         precedent: Any | None = None,
         record_explanations: bool = False,
+        execution_plan: dict[str, Any] | None = None,
+        decision_provider: Any | None = None,
+        terminal_policy: dict[str, bool] | None = None,
     ) -> None:
         self.seed = int(seed)
         self.world = world
@@ -86,6 +92,23 @@ class Simulation:
         self.out_dir = Path(out_dir)
         self.precedent = precedent
         self.record_explanations = bool(record_explanations)
+        from engine.execution_plan import ExecutionPlan
+        self.execution_plan = (None if execution_plan is None else ExecutionPlan(execution_plan))
+        self.decision_provider = decision_provider
+        if terminal_policy is not None and (set(terminal_policy) != {'target_as_observation', 'death_stops'}
+                or any(type(v) is not bool for v in terminal_policy.values()) or not terminal_policy['death_stops']):
+            raise ValueError('Unsupported terminal policy')
+        self.terminal_policy = terminal_policy
+        if (terminal_policy and terminal_policy['target_as_observation']
+                and (getattr(world,'slot_execution',None) or {}).get('mode')=='calendar_promises_v2'):
+            raise ValueError('Calendar explicit provider does not implement target-as-observation stopping')
+        self._observed_ending_ids = set()
+        self.verified_execution = None
+        self._instant_pending = {}
+        if decision_provider is not None and (
+                not isinstance(getattr(world, 'slot_execution', None), dict)
+                or world.slot_execution.get('mode') != 'calendar_promises_v2'):
+            raise ValueError('Stateful DecisionProvider currently requires explicit calendar choices')
         self._decision_context: dict[str, Any] | None = None
         self.rng = random.Random(self.seed)
         self.turn = 0
@@ -129,6 +152,10 @@ class Simulation:
 
         self.world.resolve_truth(self.seed)
         self.world.bind_subjects(self.subjects)
+        self._initial_subject_specs = {
+            actor: _plain({field.name: getattr(person, field.name)
+                           for field in fields(person) if field.name != 'policy'})
+            for actor, person in self.subjects.items()}
         self.verb_engine = VerbEngine(self.world, self.rng)
         self.slot_runtime = None
         if getattr(self.world, "slot_execution", None) is not None:
@@ -316,11 +343,14 @@ class Simulation:
         meta = getattr(rationality, "meta", None)
         if not isinstance(meta, dict):
             return None
-        return {
+        result = {
             key: meta[key]
             for key in self._RATIONALITY_HEADER_KEYS
             if key in meta
         }
+        version=meta.get('context_version','legacy_v1')
+        if version!='legacy_v1':result['context_version']=version
+        return result
 
     def _route_meta(self) -> dict[str, Any] | None:
         """WB-ROUTE-001 S1 §3: the protagonist policy's route.rho/
@@ -401,14 +431,28 @@ class Simulation:
         }
         if self.record_explanations:
             header["explanation_recording"] = {"version": VERSION, "rule": RULE, "cost_baseline_version": 1}
+        if self.execution_plan is not None:
+            header["execution_plan"] = self.execution_plan.to_dict()
+            header["execution_plan_hash"] = self.execution_plan.sha256
+            header['verified_execution'] = self.verified_execution
+        if self.terminal_policy is not None:
+            header['terminal_policy'] = dict(self.terminal_policy)
         if self.world.drawn_truth:
             header["truth"] = _plain(self.world.drawn_truth)
         rationality_meta = self._rationality_meta()
         if rationality_meta is not None:
             header["rationality"] = rationality_meta
+            if rationality_meta.get('context_version')=='subjective_actor_v2':
+                header['actor_context_scope']='actor_renderer_only_candidate_generation_legacy'
         route_meta = self._route_meta()
         if route_meta is not None:
             header["route"] = route_meta
+        from engine.communication_boundary import control
+        active={name:person.policy for name,person in self.subjects.items() if control(person) is not None}
+        if active:
+            from engine.decision_provider import provider_snapshot
+            header['communication_providers']={name:provider_snapshot(policy)['identity'] for name,policy in sorted(active.items())}
+            header['communication_time_unit']='logical_step_one_slot'
         return header
 
     def _event_row(
@@ -1213,149 +1257,183 @@ class Simulation:
             if markers:
                 self._write_markers(self._writer, markers)
 
+    def _time_day_start(self, frame, writer):
+        self.day = frame.label['day']
+        self.turn = frame.at + 1
+        if frame.label['slot_index'] == 0:
+            self.slot = None
+            self._apply_scheduled(writer, slot=None)
+            self._apply_daily(writer)
+
+    def _time_before_choices(self, frame, writer):
+        self.slot = frame.label['slot']
+        self._apply_scheduled(writer, slot=self.slot)
+        self._record_encounters(writer)
+
+    def _time_choices(self, frame, writer):
+        for subject_id in self._action_order():
+            subject = self.subjects[subject_id]
+            if subject.vitality == "dead":
+                continue
+
+            forced = self._forced.pop(subject.id, None)
+            action, probability = self.choose_action(
+                subject, forced=forced
+            )
+            if self._fallback is not None:
+                fallback = self._fallback
+                self._fallback = None
+                writer.write(
+                    self._event_row(
+                        verb="force_action_fallback",
+                        subject=subject.id,
+                        delta={},
+                        details={
+                            "event_id": fallback["event_id"],
+                            "label": fallback.get("label"),
+                            "verb": fallback["verb"],
+                            "args": fallback["args"],
+                            "reason": fallback["reason"],
+                        },
+                        event_id=str(fallback["event_id"]),
+                    )
+                )
+            capture_ids = self._action_capture_ids(
+                subject,
+                action,
+            )
+            before = self._capture(capture_ids)
+            if self.record_explanations and self._decision_context is not None:
+                # Reuse the execution snapshot, including unlogged passive recovery.
+                # Keep cost accounting separate from the actor's knowledge.
+                actor_before = before[0][subject.id]
+                self._decision_context["cost_baseline"] = {
+                    "version": 1, "timing": "before_execute",
+                    "stamina": actor_before["stamina"],
+                    "resources": _plain(actor_before["resources"]),
+                }
+            result, details, markers = self.lifecycle.instant(subject.id, action, lambda:
+                self.verb_engine.execute(
+                    subject,
+                    action,
+                    turn=self.turn,
+                    day=self.day,
+                ))
+            details.update(
+                self._strength_details(subject)
+            )
+            after = self._capture(capture_ids)
+
+            if (
+                before[2] != after[2]
+                and capture_ids != set(self.subjects)
+            ):
+                after_all = self._capture()
+                before_layers = dict(before[0])
+                missing = (
+                    set(self.subjects)
+                    - set(before_layers)
+                )
+                for missing_id in sorted(missing):
+                    reconstructed = dict(
+                        after_all[0][missing_id]
+                    )
+                    reconstructed["objective"] = dict(
+                        before[2]
+                    )
+                    before_layers[missing_id] = (
+                        reconstructed
+                    )
+                before = (
+                    before_layers,
+                    before[1],
+                    before[2],
+                )
+                after = after_all
+
+            delta = self._delta(
+                subject.id,
+                before,
+                after,
+            )
+            writer.write(
+                self._decision_row(
+                    subject,
+                    action,
+                    result,
+                    details,
+                    probability,
+                    delta,
+                )
+            )
+            self._write_markers(writer, markers)
+
+            if (
+                self.subjects[
+                    self.world.protagonist
+                ].vitality
+                == "dead"
+            ):
+                self._write_aborted(writer)
+                return BoundaryResult.HALT
+
+
+    def _time_after_choices(self, frame, writer):
+        self._forced.clear()
+        self._tick_vitality(writer)
+        self._recover_stamina()
+        self._evaluate_thresholds(writer)
+        self._resolve_auto_effects(writer)
+
+        ending = self._ending()
+        if ending is not None:
+            if self.terminal_policy and self.terminal_policy['target_as_observation']:
+                if ending['id'] not in self._observed_ending_ids:
+                    writer.write(self._event_row(verb='target_observed',subject=self.world.protagonist,
+                        delta={},details={'label':ending.get('label'),'observation_only':True},event_id=str(ending['id'])))
+                    self._observed_ending_ids.add(ending['id'])
+            else:
+                self._write_ending(writer, ending)
+                return BoundaryResult.HALT
+
+
+    def _time_day_end(self, frame, writer):
+        if frame.label['slot_index'] == len(self.world.slots) - 1:
+            self._write_snapshot(writer)
+
+    def run_record(self):
+        from engine.run_record import describe_run
+        return describe_run(self)
+
+    def verify_execution(self, axis):
+        from engine.episode_contract import bind_episode
+        self.verified_execution = bind_episode(self, axis)
+        return self.verified_execution
+
     def run(self) -> Path:
         if self.slot_runtime is not None:
             return self.slot_runtime.run()
+        self.time_kernel = TimeActionKernel(TimeAxis.logical(self.world.days, self.world.slots))
+        self.lifecycle = ActionLifecycle(self.time_kernel, lambda: self._instant_pending)
+        self.verify_execution(self.time_kernel.axis)
         path = self.out_dir / "layers.jsonl"
         with LayersWriter(path, on_write=self._observe_row) as writer:
             self._writer = writer
             writer.write(self._header())
-
-            for day in range(1, self.world.days + 1):
-                self.day = day
-                self.turn += 1
-                self.slot = None
-                self._apply_scheduled(writer, slot=None)
-                self._apply_daily(writer)
-
-                for slot_index, slot in enumerate(self.world.slots):
-                    self.slot = slot
-                    if slot_index > 0:
-                        self.turn += 1
-                    self._apply_scheduled(writer, slot=slot)
-                    self._record_encounters(writer)
-
-                    for subject_id in self._action_order():
-                        subject = self.subjects[subject_id]
-                        if subject.vitality == "dead":
-                            continue
-
-                        forced = self._forced.pop(subject.id, None)
-                        action, probability = self.choose_action(
-                            subject, forced=forced
-                        )
-                        if self._fallback is not None:
-                            fallback = self._fallback
-                            self._fallback = None
-                            writer.write(
-                                self._event_row(
-                                    verb="force_action_fallback",
-                                    subject=subject.id,
-                                    delta={},
-                                    details={
-                                        "event_id": fallback["event_id"],
-                                        "label": fallback.get("label"),
-                                        "verb": fallback["verb"],
-                                        "args": fallback["args"],
-                                        "reason": fallback["reason"],
-                                    },
-                                    event_id=str(fallback["event_id"]),
-                                )
-                            )
-                        capture_ids = self._action_capture_ids(
-                            subject,
-                            action,
-                        )
-                        before = self._capture(capture_ids)
-                        if self.record_explanations and self._decision_context is not None:
-                            # Reuse the execution snapshot, including unlogged passive recovery.
-                            # Keep cost accounting separate from the actor's knowledge.
-                            actor_before = before[0][subject.id]
-                            self._decision_context["cost_baseline"] = {
-                                "version": 1, "timing": "before_execute",
-                                "stamina": actor_before["stamina"],
-                                "resources": _plain(actor_before["resources"]),
-                            }
-                        result, details, markers = (
-                            self.verb_engine.execute(
-                                subject,
-                                action,
-                                turn=self.turn,
-                                day=self.day,
-                            )
-                        )
-                        details.update(
-                            self._strength_details(subject)
-                        )
-                        after = self._capture(capture_ids)
-
-                        if (
-                            before[2] != after[2]
-                            and capture_ids != set(self.subjects)
-                        ):
-                            after_all = self._capture()
-                            before_layers = dict(before[0])
-                            missing = (
-                                set(self.subjects)
-                                - set(before_layers)
-                            )
-                            for missing_id in sorted(missing):
-                                reconstructed = dict(
-                                    after_all[0][missing_id]
-                                )
-                                reconstructed["objective"] = dict(
-                                    before[2]
-                                )
-                                before_layers[missing_id] = (
-                                    reconstructed
-                                )
-                            before = (
-                                before_layers,
-                                before[1],
-                                before[2],
-                            )
-                            after = after_all
-
-                        delta = self._delta(
-                            subject.id,
-                            before,
-                            after,
-                        )
-                        writer.write(
-                            self._decision_row(
-                                subject,
-                                action,
-                                result,
-                                details,
-                                probability,
-                                delta,
-                            )
-                        )
-                        self._write_markers(writer, markers)
-
-                        if (
-                            self.subjects[
-                                self.world.protagonist
-                            ].vitality
-                            == "dead"
-                        ):
-                            self._write_aborted(writer)
-                            return path
-
-                    self._forced.clear()
-                    self._tick_vitality(writer)
-                    self._recover_stamina()
-                    self._evaluate_thresholds(writer)
-                    self._resolve_auto_effects(writer)
-
-                    ending = self._ending()
-                    if ending is not None:
-                        self._write_ending(writer, ending)
-                        return path
-
-                self._write_snapshot(writer)
-
-            if phase2_configured(self.world):
+            stages = tuple(BoundaryStage(name, lambda frame, handler=handler: handler(frame, writer))
+                           for name, handler in (
+                               ('day_start', self._time_day_start),
+                               ('scheduled_and_encounters', self._time_before_choices),
+                               ('serial_choices_and_effects', self._time_choices),
+                               ('recovery_thresholds_and_ending', self._time_after_choices),
+                               ('day_snapshot', self._time_day_end)))
+            halted = self.time_kernel.run(
+                self.time_kernel.sequence(range(self.time_kernel.axis.end + 1)), stages)
+            if not halted and self.terminal_policy and self.terminal_policy['target_as_observation']:
+                writer.write(self._event_row(verb='observation_finished',subject=self.world.protagonist,
+                    delta={},details={'reason':'observation_horizon','observed_through':self.time_kernel.now}))
+            elif not halted and phase2_configured(self.world):
                 self._write_time_limit(writer)
-
+        from engine.run_record import commit_run_record
+        commit_run_record(self)
         return path

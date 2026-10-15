@@ -1,5 +1,5 @@
 ---
-ja_rev: "ea93e6869372"
+ja_rev: "3125b5bebb0d"
 ---
 # Troubleshooting
 
@@ -10,7 +10,7 @@ ja_rev: "ea93e6869372"
 | Windows SmartScreen warns you | The distributed exe is unsigned | Click "More info" then "Run anyway". See [Install](../getting-started/install.md) |
 | `pywebview の読み込みに失敗しました。配布フォルダが壊れている可能性があります。展開し直してください。` (Failed to load pywebview. The distribution folder may be corrupted. Please re-extract it.) | The distributed zip was extracted incompletely | Re-extract the zip |
 | `WorldBloom.exe と同じフォルダに app フォルダが見つかりません。` (No app folder found next to WorldBloom.exe.) (Studio shows `WorldBloom Studio.exe と同じフォルダに...`, "...next to WorldBloom Studio.exe") | Only the exe was moved / distributed on its own | Keep the distribution folder's layout intact (`WorldBloom.exe` / `WorldBloom-Studio.exe` alongside the `app/` folder) and place it together in the same location |
-| Studio shows "GA実験の実行にはPython 3.11以上（PyYAML導入済み）が別途必要です" (Running a GA experiment separately needs Python 3.11+ with PyYAML installed) | On Studio startup, `python`/`python3`/`py` wasn't found on PATH, or what was found is below 3.11 or missing PyYAML | Install from [python.org](https://www.python.org/downloads/), checking "Add python.exe to PATH" in the installer. After installing, run `pip install pyyaml` and restart Studio |
+| Studio shows "GA実験の実行にはPython 3.12以上（PyYAML導入済み）が別途必要です" (Running a GA experiment separately needs Python 3.12+ with PyYAML installed) | On Studio startup, `python`/`python3`/`py` wasn't found on PATH, or what was found is below 3.12 or missing PyYAML | Install from [python.org](https://www.python.org/downloads/), checking "Add python.exe to PATH" in the installer. After installing, run `pip install pyyaml` and restart Studio |
 
 ## While a run is in progress
 

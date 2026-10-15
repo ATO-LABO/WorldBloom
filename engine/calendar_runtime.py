@@ -5,6 +5,11 @@ stories. Display boundaries never scale work or movement. Existing v1 execution
 is dispatched independently and its inputs are never migrated.
 """
 from __future__ import annotations
+
+from engine.time_kernel import TimeAxis, TimeActionKernel, BoundaryStage, BoundaryResult
+from engine.decision_provider import provider_snapshot, staged_provider_restore
+from engine.execution_plan import run_spec_hashes
+from engine.action_lifecycle import ActionLifecycle
 from copy import deepcopy
 from fractions import Fraction
 import hashlib
@@ -153,8 +158,10 @@ class CalendarRuntime:
         for who in self.people:
             if not isinstance(self.contract['roles'][who], list) or not self.contract['roles'][who]:
                 raise ValueError('Actor roles must be explicit')
-        self.now = minute_for(self.calendar, self.calendar['start_date'], self.contract['start_time'])
+        start = minute_for(self.calendar, self.calendar['start_date'], self.contract['start_time'])
         self.end = minute_for(self.calendar, self.calendar['end_date'], self.contract['end_time'])
+        self.time_kernel = TimeActionKernel(TimeAxis('minute', start, self.end))
+        self.sim.time_kernel = self.time_kernel
         if self.end <= self.now:
             raise ValueError('Invalid observation period')
         self.initial = self._people()
@@ -166,6 +173,7 @@ class CalendarRuntime:
                        'materials': deepcopy(self.contract['materials']), 'completion_events': []}
         self.registry = PromiseRegistry(set(self.people), set(self.contract['tasks']), set(self.world.zones))
         self.busy = {}
+        self.lifecycle = ActionLifecycle(self.time_kernel, lambda: self.busy)
         self.processed = set()
         self.observed = {p: set() for p in self.people}
         self.known_terms = {p: {} for p in self.people}
@@ -201,6 +209,15 @@ class CalendarRuntime:
             from engine.fact_runtime import FactRuntime
             self.facts = FactRuntime(self, self.contract['fact_model'])
             self.facts.initialize()
+
+    @property
+    def now(self):
+        return self.time_kernel.now
+
+    @now.setter
+    def now(self, value):
+        # Explicit checkpoint restoration only; no boundary is replayed.
+        self.time_kernel.restore_position(value)
 
     def _people(self):
         return {p: {'zone': s.zone, 'knowledge': sorted(s.knowledge), 'inventory': dict(s.inventory),
@@ -286,6 +303,10 @@ class CalendarRuntime:
     def _configure(self, commands):
         if self.store is not None:
             raise ValueError('Choices are frozen for this run')
+        if getattr(self, '_adapter_journal', None) is not None:
+            if commands != self.commands:
+                raise ValueError('Choices are frozen after enabling the adapter journal')
+            return
         if not isinstance(commands, list) or len(commands) > 10000:
             raise ValueError('Bounded explicit command list required')
         verbs = {'move', 'work', 'offer', 'accept', 'change', 'accept_change', 'cancel',
@@ -347,10 +368,235 @@ class CalendarRuntime:
             if 'version' in command:
                 integer(command['version'], 'promise version', 1, 10000)
         self.commands = deepcopy(sorted(commands, key=lambda c: (c['at'], c.get('priority', 0), c['id'])))
+        provider = self.sim.decision_provider
+        if provider is not None:
+            if canonical(provider.commands) != canonical(self.commands):
+                raise ValueError('Provider commands differ from the frozen runtime choices')
+            provider_snapshot(provider)
         if self.facts is not None:
             expected = len(commands) + 2*sum(c['verb'] in {'move_and_read', 'move_and_send'} for c in commands)
             if len(self.facts.command_ids(commands)) != expected:
                 raise ValueError('Composite component IDs collide with explicit command IDs')
+
+    @staticmethod
+    def _adapter_identity(identity):
+        import re
+        if (not isinstance(identity, dict)
+                or set(identity) != {'adapter', 'schema_version', 'source_hash', 'config_hash'}
+                or type(identity['adapter']) is not str or not identity['adapter']
+                or type(identity['schema_version']) is not int or identity['schema_version'] != 1
+                or any(type(identity[k]) is not str or re.fullmatch('[0-9a-f]{64}', identity[k]) is None
+                       for k in ('source_hash', 'config_hash'))):
+            raise ValueError('Invalid adapter journal identity')
+        return deepcopy(identity)
+
+    def enable_adapter_journal(self, identity):
+        """Opt in before persistence; this does not intercept arbitrary _start calls."""
+        identity = self._adapter_identity(identity)
+        if getattr(self, '_adapter_journal', None) is not None:
+            if self._adapter_journal['identity'] != identity:
+                raise ValueError('Adapter journal identity mismatch')
+            return
+        if self.store is not None or self.busy:
+            raise ValueError('Enable adapter journal before persistence or pending actions')
+        self._adapter_journal = {'identity': identity, 'entries': {},
+                                 'initial_rows': {'count': len(self.rows), 'sha256': digest(self.rows)}}
+
+    def _frozen_command_ids(self):
+        return (self.facts.command_ids(self.commands) if self.facts is not None
+                else {c['id'] for c in self.commands})
+
+    def _adapter_command(self, command, now):
+        if not isinstance(command, dict) or command.get('verb') not in {'move', 'work', 'wait'}:
+            raise ValueError('Unsupported adapter command')
+        fields = {'id', 'actor', 'at', 'verb'} | ({'to'} if command['verb'] == 'move'
+                  else {'minutes', 'task_id'} if command['verb'] == 'work' else {'minutes'})
+        if (set(command) != fields or type(command['id']) is not str or not command['id']
+                or type(command['actor']) is not str or command['actor'] not in self.people):
+            raise ValueError('Invalid adapter command fields/identity')
+        integer(command['at'], 'adapter command minute', self.time_kernel.axis.start, now)
+        if command['verb'] == 'move':
+            if type(command['to']) is not str or command['to'] not in self.world.zones:
+                raise ValueError('Invalid adapter destination')
+        else:
+            integer(command['minutes'], 'adapter action duration', 1, self.end-self.time_kernel.axis.start)
+            if command['verb'] == 'work' and command['task_id'] not in self.contract['tasks']:
+                raise ValueError('Invalid adapter task')
+
+    def admit_adapter_command(self, command, *, proposal_id, candidate_id, effective_duration=None):
+        """Record one explicit adapter admission separately from frozen choices."""
+        journal = getattr(self, '_adapter_journal', None)
+        if journal is None:
+            raise ValueError('Adapter journal is not enabled')
+        self._adapter_command(command, self.now)
+        if any(type(v) is not str or not v for v in (proposal_id, candidate_id)):
+            raise ValueError('Adapter proposal/candidate IDs required')
+        if effective_duration is not None:
+            integer(effective_duration, 'adapter effective duration', 1, self.end-self.time_kernel.axis.start)
+            if command['verb'] != 'move':
+                raise ValueError('Only adjacent moves support duration overrides')
+        old_entry = journal['entries'].get(proposal_id)
+        if old_entry is not None:
+            receipt = old_entry['receipt']
+            if (receipt['command'] != command or receipt['candidate_id'] != candidate_id
+                    or old_entry['requested_duration'] != effective_duration):
+                raise ValueError('Changed adapter proposal collision')
+            return deepcopy(receipt)
+        if command['at'] != self.now:
+            raise ValueError('Adapter admission must be at the current minute')
+        ident = command['id']
+        if (ident in self._frozen_command_ids()
+                or any(e['receipt']['command']['id'] == ident for e in journal['entries'].values())
+                or any(r.get('id') in {'decision:'+ident, 'start:'+ident, 'reject:'+ident,
+                                      'complete:'+ident, 'interrupt:'+ident} for r in self.rows)):
+            raise ValueError('Adapter command identity collision')
+        source = self.people[command['actor']].zone
+        route = self.contract['travel_minutes'].get(source, {})
+        nominal = route.get(command.get('to')) if command['verb'] == 'move' else command['minutes']
+        if effective_duration is not None and nominal is None:
+            raise ValueError('Duration override requires an adjacent route')
+        duration = nominal if effective_duration is None else effective_duration
+        backup = self.export_state()
+        transient = (deepcopy(self._observation_buffer), deepcopy(self._active_at_tick))
+        try:
+            try:
+                if effective_duration is not None:
+                    route[command['to']] = effective_duration
+                self._start(deepcopy(command))
+            finally:
+                if effective_duration is not None:
+                    route[command['to']] = nominal
+            outcome = 'started' if any(r.get('id') == 'start:'+ident for r in self.rows) else 'rejected'
+            if outcome == 'rejected' and not any(r.get('id') == 'reject:'+ident for r in self.rows):
+                raise ValueError('Adapter admission produced no start or rejection')
+            receipt = {'command': deepcopy(command), 'proposal_id': proposal_id,
+                       'candidate_id': candidate_id, 'effective_duration': duration, 'outcome': outcome}
+            journal['entries'][proposal_id] = {'requested_duration': effective_duration, 'source': source, 'receipt': receipt}
+            return deepcopy(receipt)
+        except BaseException:
+            self.restore_state(backup)
+            self._observation_buffer, self._active_at_tick = transient
+            raise
+
+    def _validate_adapter_journal(self, state):
+        """Validate detached journal and cross-references before any live mutation."""
+        journal = state['adapter_journal']
+        if (not isinstance(journal, dict) or set(journal) != {'identity', 'entries', 'initial_rows'}
+                or self._adapter_identity(journal['identity']) != self._adapter_journal['identity']
+                or not isinstance(journal['entries'], dict)
+                or not isinstance(journal['initial_rows'], dict)
+                or type(journal['initial_rows'].get('count')) is not int
+                or journal['initial_rows'] != self._adapter_journal['initial_rows']):
+            raise ValueError('Invalid adapter journal state/identity')
+        vitality = state['actor_vitality']
+        if (not isinstance(vitality, dict) or set(vitality) != set(self.people)
+                or any(type(v) is not str or v not in {'alive', 'downed', 'dead', 'revived'} for v in vitality.values())):
+            raise ValueError('Invalid adapter actor vitality')
+        frozen_ids = self._frozen_command_ids()
+        ids = set(frozen_ids)
+        rows = state['rows']
+        prefix = journal['initial_rows']
+        if (len(rows) < prefix['count'] or digest(rows[:prefix['count']]) != prefix['sha256']):
+            raise ValueError('Adapter initial row prefix mismatch')
+        by_id = {r.get('id'): r for r in rows}
+        commands = {}
+        for proposal, entry in journal['entries'].items():
+            if type(proposal) is not str or not proposal or not isinstance(entry, dict) or set(entry) != {'requested_duration', 'source', 'receipt'}:
+                raise ValueError('Invalid adapter journal entry')
+            receipt = entry['receipt']
+            if (not isinstance(receipt, dict) or set(receipt) != {'command', 'proposal_id', 'candidate_id', 'effective_duration', 'outcome'}
+                    or receipt['proposal_id'] != proposal or type(receipt['candidate_id']) is not str or not receipt['candidate_id']
+                    or receipt['outcome'] not in {'started', 'rejected'}):
+                raise ValueError('Invalid adapter receipt')
+            command = receipt['command']; self._adapter_command(command, state['now'])
+            ident = command['id']
+            if ident in ids:
+                raise ValueError('Duplicate adapter command identity')
+            ids.add(ident); commands[ident] = command
+            requested, duration = entry['requested_duration'], receipt['effective_duration']
+            source = entry['source']
+            if type(source) is not str or source not in set(self.world.zones)|{'移動中'}:
+                raise ValueError('Invalid adapter admission source')
+            nominal = (self.contract['travel_minutes'].get(source, {}).get(command.get('to'))
+                       if command['verb'] == 'move' else command['minutes'])
+            if (requested is not None and nominal is None) or duration != (nominal if requested is None else requested):
+                raise ValueError('Adapter admission duration differs from source/command')
+            if requested is not None:
+                integer(requested, 'journal requested duration', 1, self.end-self.time_kernel.axis.start)
+                if command['verb'] != 'move' or duration != requested:
+                    raise ValueError('Invalid journal duration override')
+            if duration is not None:
+                integer(duration, 'journal effective duration', 1, self.end-self.time_kernel.axis.start)
+            if command['verb'] != 'move' and duration != command['minutes']:
+                raise ValueError('Adapter duration differs from command')
+            decision = by_id.get('decision:'+ident)
+            start, reject = by_id.get('start:'+ident), by_id.get('reject:'+ident)
+            if (decision is None or decision.get('verb') != 'decision' or decision.get('subject') != command['actor']
+                    or decision.get('absolute_minute') != command['at'] or decision.get('details', {}).get('choice') != command):
+                raise ValueError('Adapter decision/journal mismatch')
+            row = start if receipt['outcome'] == 'started' else reject
+            if (row is None or (reject is not None if start is row else start is not None)
+                    or row.get('subject') != command['actor'] or row.get('absolute_minute') != command['at']
+                    or row.get('details', {}).get('choice') != command
+                    or row.get('verb') != ('action_started' if receipt['outcome'] == 'started' else 'action_rejected')):
+                raise ValueError('Adapter outcome/journal mismatch')
+            busy = state['busy'].get(command['actor'])
+            matching_busy = busy is not None and busy.get('id') == ident
+            complete, interrupt = by_id.get('complete:'+ident), by_id.get('interrupt:'+ident)
+            if receipt['outcome'] == 'rejected':
+                if matching_busy or complete is not None or interrupt is not None:
+                    raise ValueError('Rejected adapter command has effects')
+                continue
+            actual = start['details'].get('duration_minutes')
+            integer(actual, 'journal started duration', 1, self.end-self.time_kernel.axis.start)
+            if (duration is None or actual > duration or (command['verb'] != 'work' and actual != duration)
+                    or start['details'].get('finish_at') != command['at']+actual):
+                raise ValueError('Adapter start duration mismatch')
+            if start['details'].get('source') != source:
+                raise ValueError('Adapter admission/start source mismatch')
+            if command['verb'] == 'move':
+                nominal = self.contract['travel_minutes'].get(source, {}).get(command['to'])
+                if nominal is None or (requested is None and duration != nominal):
+                    raise ValueError('Adapter move is not an approved adjacent duration')
+            if sum((matching_busy, complete is not None, interrupt is not None)) != 1:
+                raise ValueError('Adapter command must be pending or terminal exactly once')
+            extra = {'start', 'finish', 'last_progress', 'source', 'work_unit_index'}
+            if not matching_busy:
+                terminal = complete if complete is not None else interrupt
+                action = terminal.get('details', {}).get('choice')
+                if (terminal.get('subject') != command['actor']
+                        or terminal.get('verb') != ('action_completed' if complete is not None else 'work_interrupted')
+                        or not isinstance(action, dict) or set(action) != set(command)|extra
+                        or any(action[k] != v for k,v in command.items())
+                        or action['start'] != command['at'] or action['finish'] != command['at']+actual
+                        or action['source'] != source
+                        or terminal['details'].get('started_at') != command['at']):
+                    raise ValueError('Adapter terminal command mismatch')
+                at = terminal.get('absolute_minute')
+                integer(at, 'adapter terminal minute', command['at'], state['now'])
+                if (terminal['details'].get('duration_minutes') != at-command['at']
+                        or (complete is not None and at != action['finish'])
+                        or (interrupt is not None and (command['verb'] != 'work' or at >= action['finish']))):
+                    raise ValueError('Adapter terminal duration mismatch')
+            if matching_busy:
+                integer(busy.get('work_unit_index'), 'adapter work unit index', 0, 10000)
+                if (set(busy) != set(command)|extra or any(busy[k] != v for k,v in command.items())
+                        or busy['start'] != command['at'] or busy['finish'] != command['at']+actual
+                        or busy['source'] != source):
+                    raise ValueError('Adapter pending command/duration mismatch')
+        # Reverse coverage prevents deleting a completed/rejected admission while
+        # retaining its effects. Initialization rows predate journal ownership.
+        verbs = {'decision', 'action_started', 'action_completed', 'action_rejected', 'work_interrupted'}
+        later_rows = rows[prefix['count']:]
+        for row in later_rows:
+            if row.get('verb') in verbs:
+                choice = row.get('details', {}).get('choice')
+                if not isinstance(choice, dict) or choice.get('id') not in frozen_ids | set(commands):
+                    raise ValueError('Execution row has no frozen or journaled admission')
+        later_ids = {r.get('id') for r in later_rows}
+        if any('decision:'+ident not in later_ids for ident in commands):
+            raise ValueError('Adapter admission predates journal enablement')
+        return deepcopy(journal), deepcopy(vitality), commands
 
     def candidates(self, actor):
         person = self.people[actor]
@@ -452,16 +698,17 @@ class CalendarRuntime:
                 self.emit('reject:'+ident, 'action_rejected', actor, result='rejected', reason='terms_not_received', choice=choice)
                 return
         source = person.zone
-        pending = {**choice, 'start': self.now, 'finish': self.now+duration,
+        window = self.time_kernel.window(duration, unit='minute')
+        pending = {**choice, 'start': window.start, 'finish': window.finish,
                    'last_progress': self.now, 'source': source, 'work_unit_index': 0}
-        self.busy[actor] = pending
+        self.lifecycle.start(actor, pending, duration)
         if verb == 'move':
             person.zone = '移動中'
         self.emit('start:'+ident, 'action_started', actor, choice=choice, duration_minutes=duration,
                   finish_at=pending['finish'], source=source, reserved_resource=(self.contract['tasks'][choice['task_id']]['resource'] if verb == 'work' else None))
 
-    def _accrue(self, at):
-        elapsed = at-self.now
+    def _accrue(self, at, *, elapsed=None):
+        elapsed = at-self.now if elapsed is None else elapsed
         for actor, person in sorted(self.people.items()):
             # Recovery uses elapsed minutes, not number/size of display bands.
             if actor not in self.busy and (self.facts is None or not self.facts.actor_busy(actor)):
@@ -472,7 +719,7 @@ class CalendarRuntime:
             if action['verb'] != 'work':
                 continue
             task_id = action['task_id']; task = self.ledger['tasks'][task_id]; spec = self.contract['tasks'][task_id]
-            minutes = min(at, action['finish'])-action['last_progress']
+            minutes = self.lifecycle.accrued(action, at)
             if minutes <= 0:
                 continue
             before = task['units']
@@ -639,19 +886,45 @@ class CalendarRuntime:
         return [record for entry in state['promises'].values()
                 for record in entry['versions'].values()]
 
+    def _boundary_plan(self):
+        return (
+            BoundaryStage('begin', self._time_begin),
+            BoundaryStage('physical_completion', self._time_physical_completion),
+            BoundaryStage('facility_changes', self._time_facility_changes),
+            BoundaryStage('scheduled_events', self._time_scheduled_events),
+            BoundaryStage('evaluate_before_agreements', self._time_evaluate_before_agreements),
+            BoundaryStage('agreement_completion', self._time_agreement_completion),
+            BoundaryStage('evaluate_after_agreements', self._time_evaluate_after_agreements),
+            BoundaryStage('observers', self._time_observers),
+            BoundaryStage('recognition', self._time_recognition),
+            BoundaryStage('communication', self._time_communication),
+            BoundaryStage('display', self._time_display),
+            BoundaryStage('terminal', self._time_terminal),
+            BoundaryStage('choices', self._time_choices),
+        )
+
     def _tick(self, at):
+        # Kept as a compatibility entry for frozen explicit adapters.
+        return self.time_kernel.dispatch(at, self._boundary_plan())
+
+    def _time_begin(self, frame):
+        at = frame.at
         self._observation_buffer = []
         self._active_at_tick = {p for p, a in self.busy.items() if a['verb'] != 'wait'}
-        self._accrue(at)
-        self.now = at
+        self._accrue(at, elapsed=frame.elapsed)
+
+    def _time_physical_completion(self, frame):
+        at = frame.at
         semantic = []
-        for actor, action in sorted(list(self.busy.items()), key=lambda pair: (pair[1]['verb'] != 'move', pair[1]['verb'] != 'work', pair[1]['id'])):
-            if action['finish'] == at:
-                del self.busy[actor]
-                if action['verb'] in ('offer', 'accept', 'change', 'accept_change', 'cancel', 'depend', 'replan'):
-                    semantic.append((actor, action))
-                else:
-                    self._complete(actor, action)
+        for actor, action in self.lifecycle.complete_due(at, key=lambda pair: (pair[1]['verb'] != 'move', pair[1]['verb'] != 'work', pair[1]['id'])):
+            if action['verb'] in ('offer', 'accept', 'change', 'accept_change', 'cancel', 'depend', 'replan'):
+                semantic.append((actor, action))
+            else:
+                self._complete(actor, action)
+        frame.data['semantic'] = semantic
+
+    def _time_facility_changes(self, frame):
+        at = frame.at
         # Completed work and arrivals are visible before facility/scheduled
         # transitions and deadline/opening reads at the same minute.
         for event in sorted(self._facility_events, key=lambda e: e['id']):
@@ -662,11 +935,14 @@ class CalendarRuntime:
                 if not event['open']:
                     for actor, action in sorted(list(self.busy.items())):
                         if action['verb'] == 'work' and self.contract['tasks'][action['task_id']]['place'] == event['place']:
-                            del self.busy[actor]
+                            self.lifecycle.interrupt(actor)
                             self.emit('interrupt:'+action['id'], 'work_interrupted', actor,
                                       reason='facility_closed', task_id=action['task_id'],
                                       duration_minutes=self.now-action['start'], started_at=action['start'], choice=deepcopy(action),
                                       retained=deepcopy(self.ledger['tasks'][action['task_id']]))
+
+    def _time_scheduled_events(self, frame):
+        at = frame.at
         observers = []
         for event in sorted(self.calendar['events'], key=lambda e: e['id']):
             key = 'scheduled:'+event['id']
@@ -678,14 +954,32 @@ class CalendarRuntime:
                 self.observe(row, list(self.people), 'public_schedule')
                 observers.extend(observer for observer in self.contract.get('observers', [])
                                  if observer['event_id'] == event['id'])
+        frame.data['observers'] = observers
+
+    def _time_evaluate_before_agreements(self, frame):
+        at = frame.at
         self._evaluate()
+
+    def _time_agreement_completion(self, frame):
+        at = frame.at
+        semantic = frame.data['semantic']
         for actor, action in semantic:
             self._complete(actor, action)
+
+    def _time_evaluate_after_agreements(self, frame):
+        at = frame.at
         self._evaluate()
+
+    def _time_observers(self, frame):
+        at = frame.at
+        observers = frame.data['observers']
         for observer in observers:
             value = evaluate_observer(observer, self.people, self.ledger, self.contract['tasks'], at)
             self.observations[observer['id']] = value
             self.emit(observer['id'], observer['verb'], **value)
+
+    def _time_recognition(self, frame):
+        at = frame.at
         buffered = self._observation_buffer
         self._observation_buffer = None
         for row, audience, source, via in buffered:
@@ -701,16 +995,30 @@ class CalendarRuntime:
                 self.observe(item['event'], [item['actor']], 'addressed', via=item.get('via'))
                 self.emit('read:'+item['event']['id']+':'+item['actor'], 'message_read', item['actor'],
                           received_at=item['received_at'], read_at=at, caused_by=[item['event']['id']])
+
+    def _time_communication(self, frame):
+        at = frame.at
         if self.facts is not None:
             self.facts.tick()
+
+    def _time_display(self, frame):
+        at = frame.at
         if at in self.calendar['checkpoints']:
             self.emit('calendar:'+str(at), 'calendar_checkpoint', display_only=True)
+
+    def _time_terminal(self, frame):
+        at = frame.at
         if at == self.end:
             self.done = True
-            return
+            return BoundaryResult.HALT
+
+    def _time_choices(self, frame):
+        at = frame.at
         for command in self.commands:
             if command['at'] == at and command['id'] not in self.processed:
                 self.processed.add(command['id'])
+                if self.sim.decision_provider is not None:
+                    self.sim.decision_provider.record_choice(command)
                 self._start(command)
 
     def export_state(self):
@@ -724,8 +1032,13 @@ class CalendarRuntime:
                 'dependencies': deepcopy(self.dependencies), 'appraisals': deepcopy(self.appraisals),
                 'rows': deepcopy(self.rows), 'observations': deepcopy(self.observations), 'done': self.done,
                 'facilities': deepcopy(self.facilities), 'rng': self.sim.rng.getstate()}
+        if getattr(self, '_adapter_journal', None) is not None:
+            state['adapter_journal'] = deepcopy(self._adapter_journal)
+            state['actor_vitality'] = {p: person.vitality for p, person in self.people.items()}
         if self.facts is not None:
             state['fact_model'] = self.facts.export_state()
+        if self.sim.decision_provider is not None:
+            state['decision_provider'] = provider_snapshot(self.sim.decision_provider)
         return state
 
     def restore_state(self, state):
@@ -738,9 +1051,13 @@ class CalendarRuntime:
         expected = set(self.export_state())
         if not isinstance(state, dict) or set(state) != expected or set(state['people']) != set(self.people):
             raise ValueError('Invalid runtime checkpoint state')
+        staged_provider = (None if self.sim.decision_provider is None else
+                           staged_provider_restore(self.sim.decision_provider, state['decision_provider']))
         integer(state['now'], 'checkpoint minute', minute_for(self.calendar, self.calendar['start_date'], self.contract['start_time']), self.end)
         if state['end'] != self.end or type(state['done']) is not bool:
             raise ValueError('Invalid runtime end/state')
+        if state['done'] and state['now'] != self.end:
+            raise ValueError('Invalid completed checkpoint before runtime end')
         if set(state['energy']) != set(self.people) or set(state['observed']) != set(self.people):
             raise ValueError('Invalid actor checkpoint catalogs')
         for p, value in state['people'].items():
@@ -802,9 +1119,13 @@ class CalendarRuntime:
             raise ValueError('Invalid processed identities')
         if not isinstance(state['pending_read'], list) or not isinstance(ledger['completion_events'], list):
             raise ValueError('Invalid event/read collection')
-        command_ids = {c['id'] for c in self.commands}
+        staged_journal = None
+        adapter_commands = {}
+        if getattr(self, '_adapter_journal', None) is not None:
+            staged_journal, staged_vitality, adapter_commands = self._validate_adapter_journal(state)
+        command_ids = {c['id'] for c in self.commands} | set(adapter_commands)
         if self.facts is not None:
-            command_ids = self.facts.command_ids(self.commands)
+            command_ids = self.facts.command_ids(self.commands) | set(adapter_commands)
         for actor, action in state['busy'].items():
             if not isinstance(action, dict) or action.get('id') not in command_ids or action.get('actor') != actor:
                 raise ValueError('Invalid pending action identity')
@@ -852,6 +1173,12 @@ class CalendarRuntime:
         if self.facts is not None:
             self.facts.state = deepcopy(state['fact_model'])
         self.sim.rng.setstate(rng)
+        if staged_journal is not None:
+            self._adapter_journal = staged_journal
+            for p, vitality in staged_vitality.items():
+                self.people[p].vitality = vitality
+        if staged_provider is not None:
+            self.sim.decision_provider = staged_provider
 
     def inputs(self):
         files = {'world': hashlib.sha256(self.world.source.read_bytes()).hexdigest(),
@@ -860,16 +1187,36 @@ class CalendarRuntime:
             path = self.world.source.parent/name
             if path.exists():
                 files[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-        return {'files': files, 'contract': self.contract, 'calendar': self.calendar, 'seed': self.sim.seed,
+        result = {'files': files, 'contract': self.contract, 'calendar': self.calendar, 'seed': self.sim.seed,
                 'initial_subjects': self.initial, 'personality': {p: self.people[p].traits for p in self.people},
                 'subject_sources': getattr(self.world, 'calendar_subject_sources', None),
                 'input_provenance': getattr(self.world, 'calendar_input_provenance', None),
                 'initial_relations': self.initial_relations}
+        if getattr(self, '_adapter_journal', None) is not None:
+            result['adapter_journal_identity'] = deepcopy(self._adapter_journal['identity'])
+        if self.sim.execution_plan is not None:
+            result['execution_plan'] = self.sim.execution_plan.to_dict()
+            result['execution_plan_hash'] = self.sim.execution_plan.sha256
+            semantic_contract = {k: v for k, v in self.contract.items() if k != 'calendar'}
+            axis = {k: self.calendar[k] for k in ('start_date', 'end_date', 'timezone', 'origin', 'duration_minutes', 'events')}
+            result['time_contract_hashes'] = run_spec_hashes(
+                {'axis': axis, 'actions': semantic_contract, 'choices': self.commands},
+                self.contract['calendar'])
+        if self.sim.decision_provider is not None:
+            result['decision_provider_identity'] = provider_snapshot(self.sim.decision_provider)['identity']
+        return result
 
     def _outputs(self):
         header = {'kind': 'header', 'contract': 'calendar_promises_v2', 'schema_version': 2,
                   'calendar': self.calendar, 'seed': self.sim.seed, 'initial_subjects': self.initial,
                   'assumptions': self.contract['assumptions'], 'api_calls': 0, 'gpu': False}
+        if self.sim.execution_plan is not None:
+            header['execution_plan'] = self.sim.execution_plan.to_dict()
+            header['execution_plan_hash'] = self.sim.execution_plan.sha256
+            header['verified_execution'] = self.sim.verified_execution
+            header['time_contract_hashes'] = self.inputs()['time_contract_hashes']
+        if self.sim.decision_provider is not None:
+            header['decision_provider_identity'] = provider_snapshot(self.sim.decision_provider)['identity']
         data = b''.join(canonical(row)+b'\n' for row in [header]+self.rows)
         atomic_bytes(self.store.out/'layers.jsonl', data)
         usage = {p: {'work': 0, 'move': 0, 'communication': 0, 'wait': 0} for p in self.people}
@@ -891,8 +1238,11 @@ class CalendarRuntime:
         if self.facts is not None:
             summary['fact_model'] = self.facts.export_state()
         atomic_bytes(self.store.out/'summary.json', canonical(summary))
+        from engine.run_record import commit_run_record
+        commit_run_record(self.sim)
 
     def run(self, *, until=None, resume=False):
+        self.sim.verify_execution(self.time_kernel.axis)
         project = self.world.source.parent.resolve()
         output = self.sim.out_dir.resolve()
         if output == project or project in output.parents:
@@ -902,6 +1252,22 @@ class CalendarRuntime:
         self.store = CheckpointStore(self.sim.out_dir, expected)
         with self.store.session():
             return self._run_locked(boundary, resume)
+
+    def _next_boundary(self, now, boundary):
+        points = self._points()
+        future = [x for x in points if x > self.now]
+        current_needed = any(c['at'] == self.now and c['id'] not in self.processed for c in self.commands)
+        current_needed |= any(e['at'] == self.now and e['id'] not in self.processed for e in self._facility_events)
+        current_needed |= any(e['minute'] == self.now and 'scheduled:'+e['id'] not in self.processed for e in self.calendar['events'])
+        if self.facts is not None:
+            current_needed |= self.now in self.facts.points()
+        if current_needed or ('calendar:'+str(self.now) not in {r['id'] for r in self.rows} and self.now in self.calendar['checkpoints']):
+            at = self.now
+        else:
+            at = min(future+[boundary]) if future else boundary
+        if at > boundary:
+            at = boundary
+        return at
 
     def _run_locked(self, boundary, resume):
         if resume:
@@ -914,28 +1280,9 @@ class CalendarRuntime:
         if self.done:
             self._outputs()
             return self.store.out/'layers.jsonl'
-        while self.now <= boundary:
-            points = self._points()
-            future = [x for x in points if x > self.now]
-            current_needed = any(c['at'] == self.now and c['id'] not in self.processed for c in self.commands)
-            current_needed |= any(e['at'] == self.now and e['id'] not in self.processed for e in self._facility_events)
-            current_needed |= any(e['minute'] == self.now and 'scheduled:'+e['id'] not in self.processed for e in self.calendar['events'])
-            if self.facts is not None:
-                current_needed |= self.now in self.facts.points()
-            if current_needed or ('calendar:'+str(self.now) not in {r['id'] for r in self.rows} and self.now in self.calendar['checkpoints']):
-                at = self.now
-            else:
-                at = min(future+[boundary]) if future else boundary
-            if at > boundary:
-                at = boundary
-            backup = self.export_state()
-            try:
-                self._tick(at)
-                self.store.save(self.export_state())
-            except BaseException:
-                self.restore_state(backup)
-                raise
-            if self.done or at == boundary:
-                break
+        self.time_kernel.run(self._next_boundary, self._boundary_plan(), until=boundary,
+                             before_boundary=self.export_state,
+                             after_boundary=lambda: self.store.save(self.export_state()),
+                             on_error=self.restore_state)
         self._outputs()
         return self.store.out/'layers.jsonl'

@@ -15,7 +15,7 @@ reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 | Windows SmartScreen の警告が出る | 配布版 exe は署名されていない | 「詳細情報」→「実行」の順にクリックしてください。詳しくは[インストール](../getting-started/install.md)を参照 |
 | `pywebview の読み込みに失敗しました。配布フォルダが壊れている可能性があります。展開し直してください。` | 配布 zip の展開が不完全 | zip を展開し直してください |
 | `WorldBloom.exe と同じフォルダに app フォルダが見つかりません。`（Studio では `WorldBloom Studio.exe と同じフォルダに...`） | exe だけを移動・単体配布した | 配布フォルダの構成（`WorldBloom.exe`／`WorldBloom-Studio.exe` と `app/` フォルダ）を崩さず、同じ場所に置いてください |
-| Studio が「GA実験の実行にはPython 3.11以上（PyYAML導入済み）が別途必要です」と表示する | Studio 起動時に PATH 上の `python`/`python3`/`py` が見つからない、または見つかったものが 3.11 未満か PyYAML 未導入 | [python.org](https://www.python.org/downloads/) からインストールし、インストーラーで「Add python.exe to PATH」にチェック。インストール後 `pip install pyyaml` を実行し、Studio を再起動してください |
+| Studio が「GA実験の実行にはPython 3.12以上（PyYAML導入済み）が別途必要です」と表示する | Studio 起動時に PATH 上の `python`/`python3`/`py` が見つからない、または見つかったものが 3.12 未満か PyYAML 未導入 | [python.org](https://www.python.org/downloads/) からインストールし、インストーラーで「Add python.exe to PATH」にチェック。インストール後 `pip install pyyaml` を実行し、Studio を再起動してください |
 
 ## 実行中に起きること
 

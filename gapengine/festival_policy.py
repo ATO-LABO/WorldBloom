@@ -11,6 +11,8 @@ from copy import deepcopy
 import hashlib
 import json
 
+from gapengine.communication_repeat import CommunicationRepeat
+
 
 MODEL = "fixed_goals_subjective_policy_v2"
 
@@ -29,7 +31,7 @@ def distance(routes, origin, destination):
 
 
 class FestivalStatePolicy:
-    def __init__(self, *, role, goals, public, fixed_traits):
+    def __init__(self, *, role, goals, public, fixed_traits, communication_config=None):
         self.role, self.goals = role, tuple(goals)
         # Explicit vocabulary for this frozen scenario, not a general-purpose
         # natural-language goal interpreter. These flags participate in scores.
@@ -53,6 +55,8 @@ class FestivalStatePolicy:
         self.sound_observed = False if role == "organizer" else None
         self.audits = []
         self.selection_semantics = "Simulation seeded weighted sampling; no PLANS or forced attendance"
+        self.communication_repeat = (CommunicationRepeat(communication_config)
+                                     if communication_config is not None else None)
 
     def absorb(self, subject, tick):
         if self.last_tick == tick:
@@ -60,9 +64,9 @@ class FestivalStatePolicy:
         for event in getattr(subject, "slot_context", {}).get("perceptions", []):
             if event["kind"] == "speech":
                 key = (event["to"], event["topic"])
-                if event["subject"] == subject.id and event["intent"] in ("consult", "request"):
+                if self.communication_repeat is None and event["subject"] == subject.id and event["intent"] in ("consult", "request"):
                     self.sent[key] = {"intent": event["intent"], "tick": event["t"]}
-                if event["to"] == subject.id and event["intent"] in ("accept", "decline"):
+                if self.communication_repeat is None and event["to"] == subject.id and event["intent"] in ("accept", "decline"):
                     self.responses_received[(event["subject"], event["topic"])] = {
                         "intent": event["intent"], "tick": event["t"]}
                 if event["intent"] == "accept" and event["topic"] == "終盤短縮希望" and (
@@ -87,6 +91,8 @@ class FestivalStatePolicy:
         tick = turn - 1
         self.absorb(subject, tick)
         context = getattr(subject, "slot_context", {})
+        if self.communication_repeat is not None:
+            self.communication_repeat.absorb(subject.id, context, tick)
         practice = context.get("own_practice_completed", 0)
         costume = context.get("own_costume_prepared", False)
         needs_change_rehearsal = self.last_line_agreement > self.last_practice
@@ -139,8 +145,11 @@ class FestivalStatePolicy:
             "opening_slack_slots": remaining}
         scored = []
         eligible = []
+        if self.communication_repeat is not None:
+            view["communication_repeat"] = self.communication_repeat.view()
         for action, _ in weighted:
             terms = {}
+            repeat_assessment = None
             verb, args = action.verb, action.args
             if verb == "wait":
                 terms["pause_possible"] = .65
@@ -175,7 +184,10 @@ class FestivalStatePolicy:
                     response is None or response["tick"] < last["tick"])
                 if intent in ("accept", "decline"):
                     request = next((r for r in incoming if r["id"] == action.meta.get("request_id")
-                                    and r["id"] not in replied), None)
+                                    and r["id"] not in replied and (self.communication_repeat is None or (
+                                        r.get("from") == peer and r.get("to") == subject.id
+                                        and r.get("topic") == topic and r.get("version", "unknown")
+                                        == action.meta.get("request_version", "unknown")))), None)
                     if request:
                         if topic == "出演" and self.role == "lead":
                             concern = (int(not costume) + int(practice < 3) + int(needs_change_rehearsal)) * stubborn
@@ -191,12 +203,12 @@ class FestivalStatePolicy:
                             terms["respond_to_partner_change"] = 2*social if intent == "accept" else .25*stubborn
                         else:
                             terms["respond_to_received_request"] = social if intent == "accept" else .15
-                elif not recently_sent and not has_unanswered_sent:
+                elif self.communication_repeat is not None or (not recently_sent and not has_unanswered_sent):
                     if self.role == "partner" and self.purposes["line_change"] and peer == self.public["lead"] and topic == "終盤短縮希望":
-                        if response is None or response["intent"] != "accept":
+                        if self.communication_repeat is not None or response is None or response["intent"] != "accept":
                             terms["consult_about_own_line_change"] = (3 if intent == "request" else 1)*social
                     elif self.role == "organizer" and peer == self.public["lead"] and topic == "出演":
-                        if response is None or response["intent"] != "accept" or remaining <= 3:
+                        if self.communication_repeat is not None or response is None or response["intent"] != "accept" or remaining <= 3:
                             terms["coordinate_known_opening"] = (.4 + 3/(max(0,remaining)+1))*diligence
                     elif self.role == "exhibitor" and peer == self.public["lead"] and topic == "共同展示未完成":
                         # Respect the known play; this is a soft preference,
@@ -208,13 +220,22 @@ class FestivalStatePolicy:
                         terms["consult_preparation_concern"] = social * (.2 + int(not costume) + int(practice<3) + int(needs_change_rehearsal))
                 if terms and channel == "room":
                     terms = {k: v*1.25 for k,v in terms.items()}
+                if self.communication_repeat is not None and intent in ("consult", "request"):
+                    repeat_assessment = self.communication_repeat.assess(subject.id, action, context, tick)
+                    if not repeat_assessment["allowed"]:
+                        terms = {}
             weight = round(sum(terms.values()), 12)
             score = {"verb": verb, "args": list(args), "weight": weight,
                      "components": {k: round(v,12) for k,v in terms.items()}}
             scored.append(score)
+            if repeat_assessment is not None:
+                score["communication_repeat"] = repeat_assessment
             if weight > 0:
                 eligible.append((action, weight, score))
-        assert eligible
+        # Simulation already handles an empty reweighted set as rest/wait.
+        # Never restore a suppressed dialogue just to keep a candidate alive.
+        if self.communication_repeat is None:
+            assert eligible
         decision = {"model": MODEL, "basis": view, "scores": scored,
             "allowed_count": len(weighted), "positive_count": len(eligible),
             "selection": self.selection_semantics,
@@ -230,10 +251,67 @@ class FestivalStatePolicy:
         return result
 
     def record(self, subject, action):
-        pass
+        if self.communication_repeat is not None:
+            self.communication_repeat.record(subject.id, action)
+
+    def export_communication_state(self):
+        return self.communication_repeat.export_state() if self.communication_repeat is not None else None
+
+    def checkpoint_sources(self):
+        from pathlib import Path
+        from gapengine import communication_repeat
+        return {'communication_repeat':Path(communication_repeat.__file__)}
+
+    def checkpoint_identity(self):
+        from pathlib import Path
+        from engine.decision_provider import digest
+        config={'model':MODEL,'role':self.role,'goals':list(self.goals),'public':self.public,
+                'fixed_traits':self.fixed_traits,'communication':None if self.communication_repeat is None else self.communication_repeat.config,
+                'genome_kind':'none_fixed_personality_heuristics'}
+        return {'adapter':'festival_fixed_personality_v1','schema_version':1,
+                'source_hash':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                'config_hash':digest(config),'table_hash':None,'rng_owner':'simulation'}
+
+    def export_state(self):
+        return {'schema_version':1,'last_tick':self.last_tick,
+            'sent':[[list(k),deepcopy(v)] for k,v in sorted(self.sent.items())],
+            'responses_received':[[list(k),deepcopy(v)] for k,v in sorted(self.responses_received.items())],
+            'contributions':self.contributions,'last_practice':self.last_practice,
+            'last_exhibit_help':self.last_exhibit_help,'last_line_agreement':self.last_line_agreement,
+            'last_exhibit_agreement':self.last_exhibit_agreement,'sound_observed':self.sound_observed,
+            'audits':deepcopy(self.audits),'communication_repeat':self.export_communication_state()}
+
+    def restore_state(self,state):
+        if not isinstance(state,dict) or set(state)!=set(self.export_state()) or state['schema_version']!=1:
+            raise ValueError('Unsupported complete festival policy state')
+        scalar=('last_tick','contributions','last_practice','last_exhibit_help','last_line_agreement','last_exhibit_agreement','sound_observed','audits')
+        if state['last_tick'] is not None and (type(state['last_tick']) is not int or state['last_tick']<0):raise ValueError('Invalid policy time')
+        for field in ('contributions','last_practice','last_exhibit_help','last_line_agreement','last_exhibit_agreement'):
+            if type(state[field]) is not int or state[field]<(0 if field=='contributions' else -1):raise ValueError('Invalid policy counter')
+        if state['sound_observed'] is not None and type(state['sound_observed']) is not bool:raise ValueError('Invalid sound observation')
+        if not isinstance(state['audits'],list) or any(not isinstance(v,dict) for v in state['audits']):raise ValueError('Invalid policy audit history')
+        histories={}
+        for field in ('sent','responses_received'):
+            rows=state[field]
+            if (not isinstance(rows,list) or any(not isinstance(row,list) or len(row)!=2 for row in rows)
+                    or any(not isinstance(k,list) or len(k)!=2 or any(type(part) is not str for part in k) or not isinstance(v,dict) for k,v in rows)
+                    or len({tuple(k) for k,v in rows})!=len(rows)):raise ValueError('Invalid policy history keys')
+            histories[field]={tuple(k):deepcopy(v) for k,v in rows}
+        staged=deepcopy(self.communication_repeat)
+        if self.communication_repeat is None:
+            if state['communication_repeat'] is not None:raise ValueError('Communication configuration mismatch')
+        else:staged.restore_state(deepcopy(state['communication_repeat']))
+        for field in scalar:setattr(self,field,deepcopy(state[field]))
+        for field,value in histories.items():setattr(self,field,value)
+        self.communication_repeat=staged
+
+    def restore_communication_state(self, state):
+        if self.communication_repeat is None:
+            raise ValueError("Communication state requires opt-in configuration")
+        self.communication_repeat.restore_state(state)
 
 
-def build_policies(contract):
+def build_policies(contract, *, communication_config=None):
     lead = contract["play"]["lead"]
     partner = contract["play"]["partner"]
     organizer = contract["actions"]["sound_check"]["actor"]
@@ -245,4 +323,5 @@ def build_policies(contract):
         "organizer": organizer, "exhibitor": exhibitor}
     roles = {lead:"lead",partner:"partner",organizer:"organizer",exhibitor:"exhibitor"}
     return {name: FestivalStatePolicy(role=role, goals=contract["goals"][name],
-            public=public, fixed_traits=contract["personality"][name]) for name,role in roles.items()}
+            public=public, fixed_traits=contract["personality"][name],
+            communication_config=communication_config) for name,role in roles.items()}

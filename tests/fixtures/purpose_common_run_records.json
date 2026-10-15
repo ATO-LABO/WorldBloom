@@ -1,0 +1,302 @@
+{
+  "fixture_only": true,
+  "source_file_hashes": {
+    "execution_plan.py": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+    "decision_provider.py": "6ef2e681dbfbac33066a50e86fa34513d0b502463bc68c858d8bded22044ec29",
+    "run_record.py": "1867407356e1f1d420df5c24e9258595b6afe290f7df01744ceae141d97cad75"
+  },
+  "records": [
+    {
+      "schema_version": 1,
+      "run_id": "contract-fixture-independent_trials",
+      "time_axis": {
+        "unit": "logical_step",
+        "start": 0,
+        "end": 10
+      },
+      "observed_through": 4,
+      "configured_target_ending": "fixture target, not an observed ending",
+      "execution_plan": {
+        "schema_version": 1,
+        "execution_kind": "independent_trials",
+        "sampler": {
+          "id": "fixture_sampler",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "f65df204966cf8f7c78a6f7d69e1c24beb2eefa8ab6f8308288653f2f1fd50cb"
+        },
+        "provider": {
+          "id": "fixture_provider",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "b5569d8760084cad973bfb9ec570074e38bc797cc9066db1209a62129c6ca382"
+        },
+        "predeclared_seeds": [
+          7,
+          8
+        ],
+        "planned_trials": 2,
+        "selection": {
+          "fitness_selection": false,
+          "breeding": false,
+          "keep_filter": false,
+          "canon_feedback": false
+        },
+        "observation": {
+          "unit": "logical_step",
+          "start": 0,
+          "end": 10,
+          "stop_contract_hash": "b0ee8b094b8c298498c081992c61b0d4187dab578518f01397f3f5681d64b19a"
+        },
+        "classification": {
+          "id": "fixture_classifier",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "6e9a7ebbd04fe715e84aafcf18f4d0ea3f6fec0eb3ee14895f19a630aca07397"
+        }
+      },
+      "execution_plan_hash": "fd1ca68fb0cd3a43173d3bc0314181b25a82ac78c753dedec07bc0cb0316e47b",
+      "ledger": {
+        "path": "layers.jsonl",
+        "sha256": "e91b2752dc31145957cd098d74d03f94dee43e9aacfb7713614ee907682b7bb6"
+      },
+      "actual_terminal": null,
+      "stop_reason": "paused",
+      "observations": {
+        "contract_fixture": true,
+        "ready": true
+      },
+      "provider_identity": null,
+      "input_hashes": {
+        "seed": 7,
+        "world": "84a58126765dba59e1e6f05576bd6754bf052791799daaa2930285e1b8109393"
+      },
+      "run_spec_hash": "bee1f070a030261c7fca4860ecda376fbe49f4904d8976c0e0dab72814fff33f",
+      "time_contract_hashes": {
+        "run_spec_hash": "571aff467d2bffc56d9f7e1d507c5d7ed7ed38c8a25d204c3a91baa98aa81b05",
+        "semantic_hash": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+        "presentation_hash": "a6baf9609931d5a865fc11314187c8b643ce438997730231b2bde3429eb293cd"
+      },
+      "engine_hash": "1867407356e1"
+    },
+    {
+      "schema_version": 1,
+      "run_id": "contract-fixture-production_search",
+      "time_axis": {
+        "unit": "logical_step",
+        "start": 0,
+        "end": 10
+      },
+      "observed_through": 4,
+      "configured_target_ending": "fixture target, not an observed ending",
+      "execution_plan": {
+        "schema_version": 1,
+        "execution_kind": "production_search",
+        "sampler": {
+          "id": "fixture_sampler",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "f65df204966cf8f7c78a6f7d69e1c24beb2eefa8ab6f8308288653f2f1fd50cb"
+        },
+        "provider": {
+          "id": "fixture_provider",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "b5569d8760084cad973bfb9ec570074e38bc797cc9066db1209a62129c6ca382"
+        },
+        "predeclared_seeds": [
+          7,
+          8
+        ],
+        "planned_trials": 20,
+        "selection": {
+          "fitness_selection": true,
+          "breeding": true,
+          "keep_filter": true,
+          "canon_feedback": false
+        },
+        "observation": {
+          "unit": "logical_step",
+          "start": 0,
+          "end": 10,
+          "stop_contract_hash": "b0ee8b094b8c298498c081992c61b0d4187dab578518f01397f3f5681d64b19a"
+        },
+        "classification": {
+          "id": "fixture_classifier",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "6e9a7ebbd04fe715e84aafcf18f4d0ea3f6fec0eb3ee14895f19a630aca07397"
+        }
+      },
+      "execution_plan_hash": "b267ca68618ad70659d49016ccdd37b007170af7945a919173198bc8cedf4182",
+      "ledger": {
+        "path": "layers.jsonl",
+        "sha256": "388ccba9b8b1038245ed0f0b190d1ebf2b5a67168c3e82fbbf6f5188299405eb"
+      },
+      "actual_terminal": null,
+      "stop_reason": "paused",
+      "observations": {
+        "contract_fixture": true,
+        "ready": true
+      },
+      "provider_identity": null,
+      "input_hashes": {
+        "seed": 7,
+        "world": "84a58126765dba59e1e6f05576bd6754bf052791799daaa2930285e1b8109393"
+      },
+      "run_spec_hash": "d0d10868c428d2867de87a5c7472a11b8c3eb1044c70f413bd0cdd964e77d6d0",
+      "time_contract_hashes": {
+        "run_spec_hash": "571aff467d2bffc56d9f7e1d507c5d7ed7ed38c8a25d204c3a91baa98aa81b05",
+        "semantic_hash": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+        "presentation_hash": "a6baf9609931d5a865fc11314187c8b643ce438997730231b2bde3429eb293cd"
+      },
+      "engine_hash": "1867407356e1"
+    },
+    {
+      "schema_version": 1,
+      "run_id": "contract-fixture-explicit_witness",
+      "time_axis": {
+        "unit": "logical_step",
+        "start": 0,
+        "end": 10
+      },
+      "observed_through": 4,
+      "configured_target_ending": "fixture target, not an observed ending",
+      "execution_plan": {
+        "schema_version": 1,
+        "execution_kind": "explicit_witness",
+        "sampler": {
+          "id": "fixture_sampler",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "f65df204966cf8f7c78a6f7d69e1c24beb2eefa8ab6f8308288653f2f1fd50cb"
+        },
+        "provider": {
+          "id": "fixture_provider",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "b5569d8760084cad973bfb9ec570074e38bc797cc9066db1209a62129c6ca382"
+        },
+        "predeclared_seeds": [
+          7,
+          8
+        ],
+        "planned_trials": 2,
+        "selection": {
+          "fitness_selection": false,
+          "breeding": false,
+          "keep_filter": false,
+          "canon_feedback": false
+        },
+        "observation": {
+          "unit": "logical_step",
+          "start": 0,
+          "end": 10,
+          "stop_contract_hash": "b0ee8b094b8c298498c081992c61b0d4187dab578518f01397f3f5681d64b19a"
+        },
+        "classification": {
+          "id": "fixture_classifier",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "6e9a7ebbd04fe715e84aafcf18f4d0ea3f6fec0eb3ee14895f19a630aca07397"
+        }
+      },
+      "execution_plan_hash": "e3427879ac29eefee5f678917bb9314297bb5f74c1742faf99caf22d8933b2d2",
+      "ledger": {
+        "path": "layers.jsonl",
+        "sha256": "865954631fd0b25e840e0bd6d4573cb98bd0c3adf69026992c7bdab595657f2c"
+      },
+      "actual_terminal": null,
+      "stop_reason": "paused",
+      "observations": {
+        "contract_fixture": true,
+        "ready": true
+      },
+      "provider_identity": null,
+      "input_hashes": {
+        "seed": 7,
+        "world": "84a58126765dba59e1e6f05576bd6754bf052791799daaa2930285e1b8109393"
+      },
+      "run_spec_hash": "e95f7d7fc54c77230b9bb1bde12dc2892c4da017719953f1c686e7bf9c2696f3",
+      "time_contract_hashes": {
+        "run_spec_hash": "571aff467d2bffc56d9f7e1d507c5d7ed7ed38c8a25d204c3a91baa98aa81b05",
+        "semantic_hash": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+        "presentation_hash": "a6baf9609931d5a865fc11314187c8b643ce438997730231b2bde3429eb293cd"
+      },
+      "engine_hash": "1867407356e1"
+    },
+    {
+      "schema_version": 1,
+      "run_id": "contract-fixture-replay",
+      "time_axis": {
+        "unit": "logical_step",
+        "start": 0,
+        "end": 10
+      },
+      "observed_through": 4,
+      "configured_target_ending": "fixture target, not an observed ending",
+      "execution_plan": {
+        "schema_version": 1,
+        "execution_kind": "replay",
+        "sampler": {
+          "id": "fixture_sampler",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "f65df204966cf8f7c78a6f7d69e1c24beb2eefa8ab6f8308288653f2f1fd50cb"
+        },
+        "provider": {
+          "id": "fixture_provider",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "b5569d8760084cad973bfb9ec570074e38bc797cc9066db1209a62129c6ca382"
+        },
+        "predeclared_seeds": [
+          7,
+          8
+        ],
+        "planned_trials": 2,
+        "selection": {
+          "fitness_selection": false,
+          "breeding": false,
+          "keep_filter": false,
+          "canon_feedback": false
+        },
+        "observation": {
+          "unit": "logical_step",
+          "start": 0,
+          "end": 10,
+          "stop_contract_hash": "b0ee8b094b8c298498c081992c61b0d4187dab578518f01397f3f5681d64b19a"
+        },
+        "classification": {
+          "id": "fixture_classifier",
+          "version": 1,
+          "source_hash": "3bf428d1b61810ca164a51ffd51a29fc3b103e0df3fdccafca51c7cbc8eba5fa",
+          "config_hash": "6e9a7ebbd04fe715e84aafcf18f4d0ea3f6fec0eb3ee14895f19a630aca07397"
+        }
+      },
+      "execution_plan_hash": "9751ef0f418cb4ab815c23f05f6de74d8cd3bdf165fef70ef1c605224a5564a3",
+      "ledger": {
+        "path": "layers.jsonl",
+        "sha256": "44a7ecbfcc5f28551d5a10e0f17a574006a1db31c3fc924e6237faafe965cc39"
+      },
+      "actual_terminal": null,
+      "stop_reason": "paused",
+      "observations": {
+        "contract_fixture": true,
+        "ready": true
+      },
+      "provider_identity": null,
+      "input_hashes": {
+        "seed": 7,
+        "world": "84a58126765dba59e1e6f05576bd6754bf052791799daaa2930285e1b8109393"
+      },
+      "run_spec_hash": "54f8f1a3b5f814b54b6d552b55ed9f96b83fac1c72986e0dfe2ef12e8a7accab",
+      "time_contract_hashes": {
+        "run_spec_hash": "571aff467d2bffc56d9f7e1d507c5d7ed7ed38c8a25d204c3a91baa98aa81b05",
+        "semantic_hash": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+        "presentation_hash": "a6baf9609931d5a865fc11314187c8b643ce438997730231b2bde3429eb293cd"
+      },
+      "engine_hash": "1867407356e1"
+    }
+  ]
+}

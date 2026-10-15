@@ -270,6 +270,36 @@ class CalendarRuntimeTests(unittest.TestCase):
                 rt.restore_state(state)
             self.assertEqual(rt.export_state(), original)
 
+    def test_completed_checkpoint_before_end_is_rejected_without_mutation(self):
+        rt = self.simulation('premature-complete').slot_runtime
+        start = rt.now
+        rt.run(until=start + 1)
+        original = rt.export_state()
+        before = (rt.store.out/'layers.jsonl').read_bytes()
+        invalid = deepcopy(original)
+        invalid['done'] = True
+        self.assertLess(invalid['now'], invalid['end'])
+        with self.assertRaisesRegex(ValueError, 'completed checkpoint'):
+            rt.restore_state(invalid)
+        self.assertEqual(rt.export_state(), original)
+        self.assertEqual((rt.store.out/'layers.jsonl').read_bytes(), before)
+
+    def test_disk_resume_rejects_premature_complete_without_publishing_outputs(self):
+        sim = self.simulation('premature-disk')
+        rt = sim.slot_runtime
+        rt.run(until=rt.now + 1)
+        invalid = rt.export_state()
+        invalid['done'] = True
+        rt.store.save(invalid)
+        before = {p.name: p.read_bytes() for p in rt.store.out.iterdir() if p.is_file()}
+        fresh = self.simulation('premature-disk').slot_runtime
+        original = fresh.export_state()
+        with self.assertRaisesRegex(ValueError, 'completed checkpoint'):
+            fresh.run(resume=True)
+        self.assertEqual(fresh.export_state(), original)
+        after = {p.name: p.read_bytes() for p in rt.store.out.iterdir() if p.is_file()}
+        self.assertEqual(after, before)
+
     def test_unseen_acceptance_cannot_create_dependent_plan(self):
         rt = self.simulation('private').slot_runtime
         terms = {'promise_id': 'remote', 'version': 1, 'proposer': '蒼', 'promisor': '蒼', 'beneficiary': '灯',

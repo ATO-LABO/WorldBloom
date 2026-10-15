@@ -688,6 +688,13 @@ def prepare(args, job, folder):
         elif request["kind"] == "world_patch":
             from execution.world_patch_job import prepare as prepare_patch
             manifest = prepare_patch(configs, job, request)
+        elif request['kind'] == 'independent_trials':
+            from execution.independent_review import prepare_run as prepare_independent
+            raw=(folder/'independent-plan.json').read_bytes()
+            plan=json.loads(raw)['execution_plan']
+            if hashlib.sha256(json.dumps(plan,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()!=job['execution_plan_sha256']:
+                raise ValueError('independent plan changed')
+            manifest=prepare_independent(configs,job,folder)
         else:
             manifest = configs.prepare_run(request["config_id"], run_id=job["run_id"], job_id=args.job,
                                             processes=job.get("processes"))
@@ -791,6 +798,11 @@ def main(argv=None):
             launch_argv = manifest["argv"]
             handler = "world_patch_cli"
             phase = manifest["phase"]
+        elif job.get('kind') == 'independent_trials':
+            run_root=Path(args.runs)/job['run_id']
+            launch_argv=manifest['argv']
+            handler='independent_trials_worker'
+            phase='evaluating_independent'
         else:
             run_root = Path(args.runs) / job["run_id"]
             adapter = run_root / "runtime/execution/evolution_worker.py"

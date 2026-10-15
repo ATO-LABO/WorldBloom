@@ -1,9 +1,11 @@
 ---
-ja_rev: "4d99230e82ed"
+ja_rev: "329d337604f9"
 ---
 # Determinism
 
-WorldBloom's individual evaluation is designed as a pure function. **Given the same `(world, genome, seed, precedent, engine hash)`, the output log `layers.jsonl` matches byte for byte.** This isn't incidental reproducibility — it's a design premise, and it's protected by regression tests.
+WorldBloom's individual evaluation is designed as a pure function. **In the same Python environment, given the same `(world, genome, seed, precedent, engine hash)`, the output log `layers.jsonl` matches byte for byte.** This isn't incidental reproducibility — it's a design premise, and it's protected by regression tests.
+
+The minimum supported version is Python 3.12; regression runs cover 3.12 and 3.13. For byte-exact replay, also match the Python version recorded with the run. Unsupported Python 3.11 can differ in the last bits of normalized probabilities because floating-point `sum()` improved in 3.12. Current tests retain exact expected values without tolerance-based rounding.
 
 ## Why determinism matters
 
