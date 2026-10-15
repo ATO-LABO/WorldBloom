@@ -46,14 +46,48 @@ class PackSamplesTest(unittest.TestCase):
             self.assertTrue((out_dir / "synopses.json").is_file())
             self.assertTrue((out_dir / "selection.json").is_file())
             self.assertTrue((out_dir / "g0" / "population.json").is_file())
-            self.assertTrue((out_dir / "prompts" / "synopsis-I-low.txt").is_file())
+            self.assertFalse((out_dir / "prompts").exists())
             self.assertTrue((out_dir / "stories" / "I-low.md").is_file())
 
             self.assertTrue((out_dir / "g0" / "ind-0" / "seed-1" / "layers.jsonl").is_file())
             self.assertFalse((out_dir / "g0" / "ind-1" / "seed-2" / "layers.jsonl").exists())
 
-            self.assertEqual(files, 8)
+            self.assertEqual(files, 7)
             self.assertGreater(total, 0)
+
+    def test_raw_prompts_require_explicit_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / 'run/prompts/example.txt', 'Reviewed public prompt')
+            files, _ = pack_samples.pack_experiment(root / 'run', root / 'out', include_prompts=True)
+            self.assertEqual(files, 1)
+            self.assertTrue((root / 'out/prompts/example.txt').is_file())
+
+    def test_private_file_is_rejected_before_existing_output_is_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / 'run/stories/.env', 'PRIVATE=1')
+            _write(root / 'out/keep.txt', 'reviewed output')
+            with self.assertRaises(pack_samples.PublicationError):
+                pack_samples.pack_experiment(root / 'run', root / 'out')
+            self.assertEqual((root / 'out/keep.txt').read_text(), 'reviewed output')
+
+    def test_exemplar_cannot_escape_source_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / 'run/archive.json', json.dumps({'cells': {'I|low': {
+                'exemplar': {'layers_path': '../private.jsonl'}}}}))
+            _write(root / 'private.jsonl', '{}')
+            with self.assertRaises(pack_samples.PublicationError):
+                pack_samples.pack_experiment(root / 'run', root / 'out')
+
+    def test_output_cannot_overlap_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / 'run/archive.json', '{}')
+            with self.assertRaises(pack_samples.PublicationError):
+                pack_samples.pack_experiment(root / 'run', root / 'run')
+            self.assertTrue((root / 'run/archive.json').is_file())
 
     def test_replaces_existing_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
