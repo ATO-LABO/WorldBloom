@@ -1,5 +1,4 @@
 name: tests
-# Temporary bounded diagnostic head: these checks do not claim full coverage.
 
 on:
   push:
@@ -10,18 +9,21 @@ permissions:
   contents: read
 
 jobs:
-  regression:
+  regression-shard:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ['3.11', '3.13']
+        shard: [0, 1]
     runs-on: ${{ matrix.os }}
-    # The complete Windows lifecycle suite takes about 29 minutes on hosted
-    # runners; allow setup/runner variance without changing per-job deadlines.
+    # The full census is partitioned into two isolated jobs; product deadlines
+    # and assertions are unchanged. The four aggregate gates verify coverage.
     timeout-minutes: 45
     env:
       # Japanese CLI output must also work on English Windows runners.
+      WB_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      WB_CI_ENVIRONMENT: ${{ matrix.os }}-py${{ matrix.python }}
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
       WB_REGRESSION_DIAGNOSTICS: '1'
@@ -42,15 +44,74 @@ jobs:
         run: node --version
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
-      - name: Bounded PR23 diagnostics only (not the full suite)
+      - name: Observe Windows targets before the full suite
+        id: before
+        if: runner.os == 'Windows' && matrix.shard == 0
         env:
           WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
-        run: python -B tests/pr23_ci_diagnostic.py
+        run: python -B tests/windows_regression_probe.py --phase before-full
+      - name: Run offline regression tests
+        id: python
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
+        run: python -B tests/regression_suite_capture.py --shard ${{ matrix.shard }}
+      - name: Run offline JavaScript contracts
+        id: javascript
+        if: matrix.shard == 0
+        run: node scripts/test_javascript.cjs
+      - name: Compare original Windows targets after the full suite
+        id: after
+        if: always() && runner.os == 'Windows' && matrix.shard == 0
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
+        run: python -B tests/windows_regression_probe.py --phase original-after-full
+      - name: Save required step outcomes for the aggregate gate
+        if: always()
+        env:
+          WB_REGRESSION_EVIDENCE_DIR: ${{ runner.temp }}/worldbloom-regression-evidence
+          WB_PYTHON_OUTCOME: ${{ steps.python.outcome }}
+          WB_JAVASCRIPT_OUTCOME: ${{ steps.javascript.outcome }}
+          WB_BEFORE_OUTCOME: ${{ steps.before.outcome }}
+          WB_AFTER_OUTCOME: ${{ steps.after.outcome }}
+        run: python -B -c "import json,os,pathlib; p=pathlib.Path(os.environ['WB_REGRESSION_EVIDENCE_DIR']); p.mkdir(parents=True,exist_ok=True); (p/'gate-outcomes.json').write_text(json.dumps({k:os.environ['WB_'+k.upper()+'_OUTCOME'] for k in ('python','javascript','before','after')}),encoding='utf-8')"
       - name: Preserve diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: regression-diagnostics-${{ matrix.os }}-py${{ matrix.python }}
+          name: regression-diagnostics-${{ matrix.os }}-py${{ matrix.python }}-part-${{ matrix.shard }}
           path: ${{ runner.temp }}/worldbloom-regression-evidence
           if-no-files-found: ignore
+          retention-days: 7
+
+  regression:
+    # Keep the existing four required check names. A shard success alone is not
+    # a full-suite pass; each gate checks both reports and exact census union.
+    needs: regression-shard
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.13']
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WB_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      WB_CI_ENVIRONMENT: ${{ matrix.os }}-py${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: regression-diagnostics-${{ matrix.os }}-py${{ matrix.python }}-part-*
+          path: regression-evidence
+      - name: Require complete successful census for this environment
+        run: python -B tests/regression_partition.py --aggregate regression-evidence --output census-verification.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: regression-census-${{ matrix.os }}-py${{ matrix.python }}
+          path: census-verification.json
+          if-no-files-found: error
           retention-days: 7
