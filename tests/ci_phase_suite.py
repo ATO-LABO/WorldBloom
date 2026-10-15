@@ -68,12 +68,18 @@ def capture_failure(probe,test,kind):
     probe.flush()
 
 
-def result_class(original,probe):
+def result_class(original,probe,owned_events=None):
     class DiagnosticResult(original):
         def __init__(self,*args,**kwargs):
+            # The census's own tests also instantiate RecordingResult with a
+            # StringIO to exercise an intentional failure. Observe only the
+            # real suite's event stream; leave those nested fixtures original.
+            self.phase_enabled=(owned_events is None or
+                getattr(kwargs.get('events'),'name',None)==str(owned_events))
             super().__init__(*args,**kwargs)
             self.phase_counts=Counter()
         def startTest(self,test):
+            if not self.phase_enabled:return super().startTest(test)
             ident=test.id()
             self.phase_counts[ident]+=1
             os.environ.update(WB_PHASE_TEST=ident,WB_PHASE_OCCURRENCE=str(self.phase_counts[ident]),
@@ -82,16 +88,20 @@ def result_class(original,probe):
             probe.emit('test.begin')
             super().startTest(test)
         def stopTest(self,test):
+            if not self.phase_enabled:return super().stopTest(test)
             probe.emit('test.end',seconds=time.monotonic()-self.phase_started)
             super().stopTest(test)
             os.environ['WB_PHASE_TARGET_ACTIVE']='0'
         def addFailure(self,test,err):
+            if not self.phase_enabled:return super().addFailure(test,err)
             capture_failure(probe,test,'failure')
             super().addFailure(test,err)
         def addError(self,test,err):
+            if not self.phase_enabled:return super().addError(test,err)
             capture_failure(probe,test,'error')
             super().addError(test,err)
         def addSubTest(self,test,subtest,err):
+            if not self.phase_enabled:return super().addSubTest(test,subtest,err)
             if err is not None: capture_failure(probe,test,'subtest_failure')
             super().addSubTest(test,subtest,err)
     return DiagnosticResult
@@ -147,7 +157,8 @@ def main():
     os.chdir(source)
     sys.path[:0]=[str(source/'tests'),str(source)]
     import regression_partition
-    regression_partition.RecordingResult=result_class(regression_partition.RecordingResult,probe)
+    regression_partition.RecordingResult=result_class(regression_partition.RecordingResult,probe,
+        evidence/('local-smoke-events.jsonl' if local_smoke else 'test-events.jsonl'))
     outcome=1
     try:
         if local_smoke:

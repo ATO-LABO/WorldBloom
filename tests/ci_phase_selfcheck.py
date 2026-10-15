@@ -140,6 +140,22 @@ class DiagnosticChecks(unittest.TestCase):
         rows=self.rows()
         self.assertTrue(any(r['event']=='snapshot.unavailable' for r in rows))
         self.assertNotIn(str(ROOT),json.dumps(rows))
+    def test_nested_census_fixture_keeps_original_failure_without_observer_events(self):
+        from regression_partition import RecordingResult
+        class Fails(unittest.TestCase):
+            def runTest(self):self.fail('intentional nested census fixture')
+        events=io.StringIO()
+        before={key:os.environ.get(key) for key in
+                ('WB_PHASE_TEST','WB_PHASE_OCCURRENCE','WB_PHASE_TARGET_ACTIVE')}
+        cls=result_class(RecordingResult,self.probe,owned_events='owned-suite-events.jsonl')
+        runner=unittest.TextTestRunner(stream=io.StringIO(),resultclass=lambda *a,**kw:
+                                      cls(*a,events=events,**kw))
+        result=runner.run(unittest.TestSuite([Fails()]))
+        self.assertEqual(len(result.failures),1)
+        self.assertEqual([json.loads(line)['kind'] for line in events.getvalue().splitlines()],
+                         ['start','failure','stop'])
+        self.assertEqual(self.rows(),[])
+        self.assertEqual(before,{key:os.environ.get(key) for key in before})
 
 
 if __name__=='__main__':unittest.main(verbosity=2)
