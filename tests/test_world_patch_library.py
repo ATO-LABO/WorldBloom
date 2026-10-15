@@ -251,6 +251,26 @@ class FitAndImportTests(LibraryTestBase):
         on_disk = yaml.safe_load(proposed_path.read_text(encoding="utf-8"))
         self.assertEqual(on_disk, rewritten)
 
+    def check_import_rejects_linked_proposals(self, *, junction=False):
+        from test_security_paths import directory_link
+        from execution.provenance import ConfigError
+        target = self.fresh_target()
+        (target / "patches").mkdir()
+        outside = self.root / "outside-proposals"
+        outside.mkdir()
+        (outside / "canary.txt").write_text("fixture-only", encoding="utf-8")
+        directory_link(self, target / "patches" / "_proposed", outside, junction=junction)
+        with self.assertRaises((ConfigError, PatchError)):
+            import_patch(target, self.template, self.pid, repo_root=self.repo)
+        self.assertEqual([p.name for p in outside.iterdir()], ["canary.txt"])
+        self.assertEqual((outside / "canary.txt").read_text(), "fixture-only")
+
+    def test_import_rejects_symlinked_proposals(self):
+        self.check_import_rejects_linked_proposals()
+
+    def test_import_rejects_junction_proposals(self):
+        self.check_import_rejects_linked_proposals(junction=True)
+
     def test_import_rejects_when_already_proposed(self):
         target = self.fresh_target()
         import_patch(target, self.template, self.pid, repo_root=self.repo)
