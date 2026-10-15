@@ -16,6 +16,8 @@ import subprocess
 import sys
 import time
 
+from historical_fixtures import load_historical_fixture
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -58,9 +60,7 @@ def main() -> int:
             bound = 650
             if args.phase == "original-after-full" and index == 0:
                 # Exact original assertion-bearing harness; no added phase I/O.
-                original = subprocess.run(
-                    ["git", "show", "eb2b452be269d9a08bf4b92c65450f40c2e3c97f:tests/raw_workspace_ui.cjs"],
-                    cwd=ROOT, capture_output=True, check=True, timeout=15).stdout
+                original = load_historical_fixture("original_raw_workspace_ui.cjs")
                 script = evidence / "original-raw-workspace-ui.cjs"
                 script.write_bytes(original)
                 script_sha256 = hashlib.sha256(original).hexdigest()

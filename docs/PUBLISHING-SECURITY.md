@@ -6,6 +6,10 @@ Secret scanning、Push protection、Dependabot alerts/security updatesを有効�
 
 Actionsは必要なアクションだけを許可し、ワークフローの参照は完全なコミットSHAに固定する。更新はDependabotのPRで確認する。SHA固定のリポジトリ強制設定は、main/developと進行中PRのワークフローを移行した後に有効化する。検査の導入前に強制して既存CIを止めない。
 
+Dependabotの週次バージョン更新PRはdevelopへ作成する。設定ファイル自体はデフォルトブランチのmainへ反映する。脆弱性に対するセキュリティ更新PRはGitHubの仕様でデフォルトブランチを対象にするため、mainへ直接取り込む前にdevelopで検証・統合する。
+
+過去版との比較に使う入力は`tests/fixtures/historical/`へ固定し、内容SHA-256とGit blob IDを記録する。履歴書き換えで変わるコミットIDをテスト実行時に参照しない。元の比較ファイルとのバイト一致を確認し、改変時は検証を失敗させる。期待値・比較条件・制限時間を緩めてCIを通さない。
+
 `security`ワークフローはGitleaksで到達可能な履歴と作業ツリーを検査する。検出値はログに出さない。Gitleaks本体はバージョンと配布アーカイブのSHA-256を固定して取得する。`security`の導入後、チェックがmain/developの全PRで動くことを確認してから`secrets`を必須チェックに加える。CODEOWNERSは担当者へのレビュー依頼先であり、単独運用で他者承認を強制する設定ではない。
 
 `.env`や秘密鍵、実行用の`settings.json`はコミットしない。すでに追跡しているファイルは`.gitignore`だけでは除外できない。キーが公開された場合は、まず失効・再発行し、続いて履歴・PR・CIログ・成果物・Releaseを調べる。
@@ -37,6 +41,7 @@ MkDocs Material 9.7.7が同梱する3つの外部ライブラリファイルに�
 ## Windows配布とRelease
 
 1. 公開用のチェックアウトとビルド環境を用意し、対象SHA、Python・PyInstaller・pywebview・PyYAMLの実際のバージョンを記録する。
+   `viewer\build_exe.cmd <出力先>`で明示したフォルダへビルドする。実行用Pythonを指定する場合は`WORLDBLOOM_BUILD_PYTHON`を使う。配布exeへ開発機のチェックアウトパスを埋め込まない。データはexeの隣の`app/`へ配置する。
 2. 配布フォルダへ必要なファイルだけを組み立てる。`runs/`・`control/`・`.env`・秘密鍵を入れない。`settings.json`は公開用の既定値から作り、利用中の設定ファイルをコピーしない。
 3. 信頼されたコード署名証明書が用意できた場合にexeへ署名し、`Get-AuthenticodeSignature`が`Valid`であることを確認する。証明書がない場合は未署名であることを明記する。秘密鍵や証明書パスワードを配布物へ含めない。
 4. 完成したフォルダを検査し、各ファイルのハッシュを記録する。ハッシュはコード署名やビルド元の証明の代用にはならない。
