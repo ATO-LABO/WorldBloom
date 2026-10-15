@@ -1,6 +1,7 @@
 # 開発者向けガイド
 
 ブランチ・PR・main反映の手順は[ブランチとリリースの運用](BRANCHING.md)を参照してください。通常の変更はdevelopへPRを作ります。
+機密情報の検査、公開サンプル、Windows配布、メールアドレスの保護は[公開前の情報確認](PUBLISHING-SECURITY.md)を参照してください。
 
 このリポジトリのコードに変更を加える場合の手順です。GA 実験の回し方・LLM バックエンドの設定・CLI の使い方など、利用者向けの手順は[ドキュメントサイト](https://ato-labo.github.io/WorldBloom/docs/)にまとまっています。
 

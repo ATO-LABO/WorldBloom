@@ -93,6 +93,14 @@ class ExportStaticTests(unittest.TestCase):
         index_html = (self.out / "index.html").read_text(encoding="utf-8")
         self.assertIn("未生成", index_html)
 
+    def test_unsafe_story_does_not_replace_existing_output(self):
+        self.out.mkdir()
+        (self.out / 'keep.txt').write_text('reviewed output')
+        (self.runs / 'exp1-momotaro/stories/I-low.md').write_text('writer' + '@gmail.com')
+        with self.assertRaises(es.PublicationError):
+            es.export(self.root, self.runs, self.out, ['exp1-momotaro'])
+        self.assertEqual((self.out / 'keep.txt').read_text(), 'reviewed output')
+
 
 if __name__ == "__main__":
     unittest.main()

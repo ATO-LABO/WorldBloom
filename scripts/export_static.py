@@ -16,9 +16,13 @@ import argparse
 import html
 import json
 import shutil
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if __package__ in (None, ''):
+    sys.path.insert(0, str(ROOT))
+from scripts.publication_guard import PublicationError, check_content, check_name, ensure_output_safe
 
 CATEGORY_LABELS = {
     "I": "力", "II": "情報", "III": "社交",
@@ -302,14 +306,13 @@ def render_story_page(root: Path, exp: Experiment, cell: str) -> str | None:
 
 
 def export(root: Path, runs_dir: Path, out_dir: Path, experiment_names: list[str]) -> dict:
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    stories_dir = out_dir / "stories"
-    stories_dir.mkdir(parents=True)
-
+    ensure_output_safe(out_dir, [runs_dir])
+    if root.resolve().is_relative_to(out_dir.resolve()):
+        raise PublicationError('Publication blocked: output-contains-source-repository')
+    for name in experiment_names:
+        check_name(name)
     experiments = [Experiment(root, runs_dir, name) for name in experiment_names]
-
-    written_stories = []
+    pages = {}
     for exp in experiments:
         if not exp.available:
             continue
@@ -317,13 +320,23 @@ def export(root: Path, runs_dir: Path, out_dir: Path, experiment_names: list[str
             page = render_story_page(root, exp, cell)
             if page is None:
                 continue
-            path = stories_dir / story_filename(exp.genre, cell)
-            path.write_text(page, encoding="utf-8")
-            written_stories.append(path)
+            relative = f'stories/{story_filename(exp.genre, cell)}'
+            check_name(relative)
+            pages[relative] = page
+
+    pages['index.html'] = render_index(experiments)
+    for relative, page in pages.items():
+        check_content(relative, page.encode('utf-8'))
+    # Validate every generated page before replacing the published output.
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    stories_dir = out_dir / 'stories'
+    stories_dir.mkdir(parents=True)
+    for relative, page in pages.items():
+        (out_dir / relative).write_text(page, encoding='utf-8')
 
     index_path = out_dir / "index.html"
-    index_path.write_text(render_index(experiments), encoding="utf-8")
-
+    written_stories = [out_dir / relative for relative in pages if relative != 'index.html']
     return {"index": index_path, "stories": written_stories}
 
 
