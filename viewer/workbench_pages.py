@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 from execution.configs import evolution_defaults, generation_availability, quick_label
 from execution.output_settings import API_KEY_BACKENDS, read_output_settings
-from execution.provenance import ConfigError, contained
+from execution.provenance import ConfigError, contained, identifier
 from execution.worker import TERMINAL
 from gapengine.evolve import _load_yaml, _rationality_backend_cfg
 from gapengine.ollama import DEFAULT_BASE_URL as RATIONALITY_DEFAULT_BASE_URL
@@ -449,7 +449,8 @@ def _rationality_form_context(repo, template_id, settings_path=None):
     verification already happened when the key was saved)."""
     if not template_id:
         return None
-    path = repo / "templates" / template_id / "rationality.yaml"
+    base = contained(repo / "templates", identifier(template_id, "template_id"))
+    path = contained(base, "rationality.yaml")
     if not path.is_file():
         return None
     doc = _load_yaml(path, {}) or {}
@@ -481,7 +482,8 @@ def _route_form_context(repo, template_id):
     same None-means-no-section contract as _rationality_form_context."""
     if not template_id:
         return None
-    path = repo / "templates" / template_id / "route.yaml"
+    base = contained(repo / "templates", identifier(template_id, "template_id"))
+    path = contained(base, "route.yaml")
     return {} if path.is_file() else None
 
 
