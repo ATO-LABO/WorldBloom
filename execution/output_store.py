@@ -14,7 +14,7 @@ from execution.generation import Response, result, validate_response, aggregate
 REQUEST_FIELDS = frozenset({"schema_version", "output_id", "request_id", "job_id", "kind", "run_id", "settings_provenance",
     "config_id", "publication_revision", "candidates_sha256", "selection_revision", "selection_sha256",
     "candidate_ids", "sources", "backend", "model", "limits", "mode", "synopsis_refs",
-    "input_manifest_sha256", "config_sha256", "runtime_manifest_sha256", "acknowledge_unknown", "attempt_ids", "pipeline", "story_refs"})
+    "input_manifest_sha256", "config_sha256", "runtime_manifest_sha256", "acknowledge_unknown", "attempt_ids", "pipeline", "story_refs", "fact_refs"})
 
 
 def verified(path, digest):
@@ -57,10 +57,13 @@ class OutputStore:
             pending.mkdir()
             doc = deepcopy(request)
             version = doc.get("schema_version", 1)
-            if type(version) is not int or version not in (1, 2):
+            if type(version) is not int or version not in (1, 2, 3):
                 raise ConfigError("schema_version", "未対応の生成要求版です")
             if version == 2 and (doc.get("pipeline") != "story_v1" or doc.get("kind") != "narrate"):
                 raise ConfigError("pipeline", "未対応の本文生成方式です")
+            if (version != 3 and "fact_refs" in doc) or (version == 3 and
+                    (doc.get("pipeline") != "facts_v1" or doc.get("kind") not in ("synopsize", "narrate"))):
+                raise ConfigError("pipeline", "未対応の事実保持方式です")
             doc["schema_version"] = version
             atomic_json(pending / "request.json", doc)
             item_hashes = {}

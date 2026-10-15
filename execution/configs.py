@@ -321,12 +321,12 @@ def _capture_inputs(repo, spec, runs=None):
     # constructor. Keep the same checked, canonical boundary at this entry too.
     repo = contained(repo, ".").resolve()
     blobs, records = {}, {}
-    def add(path):
+    def add(path, *, calendar_manifest=False):
         relative = path.relative_to(repo).as_posix()
         path = contained(repo, relative)
         if not any(path.is_relative_to(repo / area) for area in ("projects", "templates")):
             raise ConfigError("inputs", "入力参照はprojects/templates内に限定します")
-        if path.suffix not in (".yaml", ".yml"):
+        if path.suffix not in (".yaml", ".yml") and not (calendar_manifest and path.name == "execution-version.json"):
             raise ConfigError("inputs", "入力参照はYAMLファイルに限定します")
         data = path.read_bytes()
         blobs[relative] = data
@@ -338,7 +338,18 @@ def _capture_inputs(repo, spec, runs=None):
     if not project.is_dir() or not template.is_dir():
         raise ConfigError("inputs", "世界またはテンプレートがありません")
     world_key = add(project / "world.yaml")
-    subjects = sorted((project / "subjects").glob("*.yaml"))
+    declared_world = yaml.safe_load(blobs[world_key])
+    calendar_mode = (isinstance(declared_world, dict) and isinstance(declared_world.get('slot_execution'), dict)
+                     and declared_world['slot_execution'].get('mode') == 'calendar_promises_v2')
+    if calendar_mode:
+        from engine.calendar_inputs import validate_execution_config, safe_project_path, load_project
+        load_project(project / 'world.yaml')
+        roster = validate_execution_config(declared_world['slot_execution'])['subjects']
+        subjects = [safe_project_path(project / 'world.yaml', r['path']) for r in roster]
+        if (project / 'execution-version.json').is_file():
+            add(project / 'execution-version.json', calendar_manifest=True)
+    else:
+        subjects = sorted((project / "subjects").glob("*.yaml"))
     if not subjects:
         raise ConfigError("inputs.subjects", "登場人物の入力がありません")
     for p in subjects:
@@ -499,11 +510,20 @@ def _describe(root, spec):
     project = root / "projects" / spec["project_id"]
     template = root / "templates" / spec["template_id"]
     graph = template / "action_graph.yaml"
-    world = World.from_yaml(project / "world.yaml",
-                            action_graph_path=graph if graph.is_file() else None)
+    definition = yaml.safe_load((project / 'world.yaml').read_bytes())
+    calendar_mode = (isinstance(definition.get('slot_execution'), dict)
+                     and definition['slot_execution'].get('mode') == 'calendar_promises_v2')
+    if calendar_mode:
+        from engine.calendar_inputs import load_project
+        world, subjects = load_project(project / 'world.yaml')
+        people = list(subjects.values())
+        subject_paths = [project / r['path'] for r in definition['slot_execution']['subjects']]
+    else:
+        world = World.from_yaml(project / "world.yaml", action_graph_path=graph if graph.is_file() else None)
+        subject_paths = sorted((project / 'subjects').glob('*.yaml'))
+        people = [Subject.from_yaml(p) for p in subject_paths]
     if spec["evolution"]["target_ending"] is not None:
         world.set_target_ending(spec["evolution"]["target_ending"])
-    people = [Subject.from_yaml(p) for p in sorted((project / "subjects").glob("*.yaml"))]
     if len({p.id for p in people}) != len(people):
         raise ConfigError("inputs.subjects", "人物IDが重複しています")
     subjects = {p.id: p for p in people}
@@ -548,7 +568,7 @@ def _describe(root, spec):
     ev = spec["evolution"]
     return {"world_name": world.name, "protagonist": world.protagonist,
             "antagonist": world.antagonist,
-            "subjects": [yaml.safe_load(p.read_bytes()) for p in sorted((project / "subjects").glob("*.yaml"))],
+            "subjects": [yaml.safe_load(p.read_bytes()) for p in subject_paths],
             "world": yaml.safe_load((project / "world.yaml").read_bytes()),
             "target_endings": [e["id"] for e in world.target_endings()],
             "max_turns": world.days * len(world.slots), "qd": qd,

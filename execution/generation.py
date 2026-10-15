@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 
 from execution.provenance import python_executable
+from execution.cli_workspace import CLIWorkspace, close_cli_handles, trace_workspace
 from gapengine import llama_server, ollama
 from gapengine.synopsis import BACKENDS, _validate_response
 
@@ -98,11 +99,16 @@ def transport(request, command):
         except OSError as error:
             raise BoundaryError("launch_failed", error) from error
         try:
-            with tempfile.TemporaryDirectory(prefix="wb-generation-cli-") as cwd:
+            workspace=CLIWorkspace()
+            with workspace as cwd:
                 bridge = Path(__file__).with_name("cli_bridge.py")
                 try:
+                    workspace.processes_stopped=False
                     child = tree.launch([python_executable(), "-I", "-B", str(bridge), *command], cwd, capture=True)
                 except OSError as error:
+                    workspace.cleanup_deadline=time.monotonic()+10
+                    tree.finish()
+                    workspace.processes_stopped=True
                     raise BoundaryError("launch_failed", error) from error
                 data, errors = bytearray(), []
                 def receive():
@@ -134,13 +140,20 @@ def transport(request, command):
                 except subprocess.TimeoutExpired as error:
                     raise BoundaryError("transport_timeout", error) from error
                 finally:
+                    # Share the existing ten-second termination budget with
+                    # directory release; do not extend model/teardown deadlines.
+                    workspace.cleanup_deadline=time.monotonic()+10
                     try:
                         tree.finish()
                     except OSError as error:
                         raise ContainmentError("process containment unconfirmed") from error
                     child.wait(timeout=10)
                     reader.join(timeout=10); writer.join(timeout=10)
-                    child.stdout.close()
+                    if reader.is_alive() or writer.is_alive():
+                        raise ContainmentError("CLI stream shutdown unconfirmed")
+                    close_cli_handles(child)
+                    workspace.processes_stopped=True
+                    trace_workspace(cwd,'handles_released',child_pid=child.pid,returncode=child.returncode)
                 if child.returncode in (124, 125):
                     raise BoundaryError("launch_failed")
                 if child.returncode:

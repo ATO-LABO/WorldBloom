@@ -77,6 +77,7 @@ def _workspace(handler,rid,cid):
         if not current: raise
         config=None
     body=f'<h1>素材・骨格を整理する</h1><p><a href="/selected?run={U(rid)}">採用候補へ戻る</a></p><p data-story-message role="status"></p>'
+    body+='<p><a href="/facts/'+U(rid)+'/'+U(cid)+('?config='+U(config) if config else '')+'">場面の入力と文章化プロンプトを編集する →</a></p>'
     initial={"run_id":rid,"candidate_id":cid,"config_id":config}
     if not current:
         body+='<p>素材はまだありません。ログと設定から事実と構成案を整理します。</p>'
