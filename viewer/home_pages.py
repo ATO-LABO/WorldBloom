@@ -9,7 +9,7 @@ import yaml
 
 from execution.library import LibraryStore
 from execution.provenance import contained, identifier, read_json
-from viewer import data, pages
+from viewer import data, pages, purpose_pages
 
 def E(value):
     return html.escape(str(value if value is not None else ""), quote=True)
@@ -140,7 +140,7 @@ def render(repository, *, job_store=None):
     new_genre = '<a class="hl-open hl-new-genre" href="/genres/new">＋ 新しいジャンルを作る</a>' if job_store else ""
     cards = "".join(world_card(store, w, genre_map) for w in worlds)
     genre_cards = "".join(genre_card(g, world_map, job_store is not None) for g in genres)
-    body = ('<div class="hl-shell" data-home-library><header class="hl-heading"><div><h1>世界を選ぶ</h1>'
+    body = purpose_pages.choices() + ('<div class="hl-shell" data-home-library><header class="hl-heading"><div><h1>世界を選ぶ</h1>'
             '<p>世界を開いて、人物や場所、物語の始まりを確かめましょう。</p></div>' + create + '</header>'
             + notice + recent_execution(job_store)
             + '<div class="hl-toolbar"><div class="hl-tabs" role="tablist" aria-label="ライブラリー">'

@@ -22,7 +22,7 @@ from execution import worker
 PUBLIC_FIELDS = frozenset({"schema_version", "job_id", "request_id", "kind", "config_id", "run_id",
     "state", "phase", "revision", "created_at", "updated_at", "started_at", "finished_at", "heartbeat",
     "cancel_requested_at", "error", "exit_code", "progress", "reconciliation", "publication_revision",
-    "output_id", "completion_kind", "counts"})
+    "output_id", "completion_kind", "counts", "accepted_request", "execution_plan_sha256", "knowledge_scope"})
 
 _ENTRY_DIGESTS: dict[tuple[str, int, int], str] = {}
 
@@ -202,9 +202,17 @@ class JobStore:
             return {**job, "reconciliation":"unknown"}
         return {**job, "reconciliation":"confirmed"}
 
-    @staticmethod
-    def public(job):
-        return deepcopy({k: v for k, v in job.items() if k in PUBLIC_FIELDS})
+    def public(self, job):
+        result = deepcopy({k: v for k, v in job.items() if k in PUBLIC_FIELDS})
+        if job.get('kind') == 'independent_trials':
+            stopped = self._identity_status(job) == 'dead'
+            never_launched = (not job.get('launch_identity') and not job.get('receipt')
+                              and (job.get('error') or {}).get('code') == 'launch_failed')
+            result['termination_confirmed'] = stopped or never_launched
+            if job['state'] in worker.TERMINAL and not result['termination_confirmed']:
+                result['state'] = 'stopping' if job.get('cancel_requested_at') else 'finishing'
+                result['reconciliation'] = 'unknown' if self._identity_status(job) == 'unknown' else 'confirmed'
+        return result
 
     def _all(self):
         if not self.root.exists():
@@ -249,7 +257,12 @@ class JobStore:
         kind = request.get("kind")
         generating = kind in ("synopsize", "narrate")
         patching = kind == "world_patch"
-        if generating:
+        reviewing = kind == 'independent_trials'
+        if reviewing:
+            from execution.independent_review import normalize as normalize_review
+            request = normalize_review(request)
+            rid, cid = request['request_id'], request['config_id']
+        elif generating:
             from execution.output_requests import normalize
             request = normalize(request)
             rid, cid = request["request_id"], request["config_id"]
@@ -285,6 +298,10 @@ class JobStore:
                 from execution.output_requests import admit
                 plan = admit(self, request, settings_path=settings_path)
             patch_admission = None
+            review_admission = None
+            if reviewing:
+                from execution.independent_review import admit as admit_review
+                review_admission = admit_review(self.configs, request)
             if patching:
                 from execution.world_patch_job import admit as admit_patch
                 patch_admission = admit_patch(self, request, settings_path=settings_path)
@@ -326,6 +343,11 @@ class JobStore:
                     wall_seconds=request["limits"]["wall_seconds"],
                     progress={"completed": 0, "total": len(plan["candidate_ids"]), "counts": {}})
                 atomic_json(pending / "output-plan.json", plan)
+            if reviewing:
+                job.update(execution_plan_sha256=review_admission['execution_plan_sha256'],
+                           accepted_request=deepcopy(request),knowledge_scope=review_admission['capability']['knowledge_scope'],
+                           progress={'requested':len(request['seed_plan']),'completed':0,'failed':0,'phase':'queued'})
+                atomic_json(pending / 'independent-plan.json', review_admission)
             if patching:
                 # No output_id: a world_patch job never owns an OutputStore
                 # entry, so every output_id-gated branch elsewhere in this
@@ -358,6 +380,10 @@ class JobStore:
             job = self._reconcile(self._read(jid))
             if job["state"] in worker.TERMINAL:
                 return self.public(job)
+            if job.get('kind') == 'independent_trials':
+                if job.get('cancel_requested_at') is None:
+                    job = self._save(job, state='stopping', cancel_requested_at=time.time())
+                return self.public(job)
             if job["state"] == "queued":
                 now = time.time()
                 saved = self._save(job, state="cancelled", cancel_requested_at=now, finished_at=now)
@@ -370,6 +396,21 @@ class JobStore:
                 # the cancel request races its initial acknowledgement.
                 job = self._save(job, state="stopping", cancel_requested_at=time.time())
             return self.public(job)
+
+    def independent_result(self, jid):
+        job = self.get(jid)
+        if job.get('kind') != 'independent_trials':
+            raise ConfigError('job_id','独立試行のジョブではありません',code='bad_request')
+        if job.get('state') not in worker.TERMINAL or not job.get('termination_confirmed'):
+            raise ConfigError('job_id','実行の終了確認を待ってください',code='conflict')
+        root=contained(self.configs.runs,job['run_id'])
+        name='review-result.json' if job['state']=='succeeded' else 'partial-review.json'
+        path=contained(root,name)
+        if not path.is_file():raise ConfigError('result','保存済み結果はありません',code='not_found')
+        result=read_json(path)
+        if result.get('id')!=jid or result.get('execution_plan_sha256')!=job.get('execution_plan_sha256'):
+            raise ConfigError('result','結果と実行計画の版が違います',code='snapshot_changed')
+        return result
 
     def output(self, output_id, *, recover=False):
         from execution.output_store import OutputStore

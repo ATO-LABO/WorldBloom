@@ -1,0 +1,70 @@
+name: 走れメロス：分岐実験
+time:
+  days: 3
+  slots:
+  - 00:01
+protagonist: Melos
+antagonist: King
+zones:
+- name: outskirts
+- name: court
+- name: pass
+- name: west_bank
+- name: east_bank
+- name: village
+- name: spring
+routes:
+  outskirts:
+  - to: court
+    cost: 1
+  - to: pass
+    cost: 1
+  court:
+  - to: outskirts
+    cost: 1
+  pass:
+  - to: outskirts
+    cost: 1
+  - to: west_bank
+    cost: 1
+  - to: spring
+    cost: 1
+  west_bank:
+  - to: pass
+    cost: 1
+  - to: east_bank
+    cost: 1
+  east_bank:
+  - to: west_bank
+    cost: 1
+  - to: village
+    cost: 1
+  village:
+  - to: east_bank
+    cost: 1
+  spring:
+  - to: pass
+    cost: 1
+  - to: outskirts
+    cost: 1
+ending:
+- id: observation
+  when: 'False'
+  label: 観測終了。成功結末の固定なし
+target_ending: observation
+slot_execution:
+  mode: calendar_promises_v2
+  contract: contract.yaml
+  subjects:
+  - id: Melos
+    path: subjects/Melos.yaml
+  - id: King
+    path: subjects/King.yaml
+  - id: Selinuntius
+    path: subjects/Selinuntius.yaml
+  - id: Sister
+    path: subjects/Sister.yaml
+  - id: Groom
+    path: subjects/Groom.yaml
+  - id: Philostratus
+    path: subjects/Philostratus.yaml

@@ -19,6 +19,8 @@ antagonist's real strength; never renders a decimal number.
 from __future__ import annotations
 
 import hashlib
+import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence, TYPE_CHECKING
 
@@ -32,11 +34,78 @@ if TYPE_CHECKING:
     from engine.world import World
 
 
-def context_key(text: str) -> str:
+LEGACY_CONTEXT = "legacy_v1"
+SUBJECTIVE_CONTEXT = "subjective_objective_v1"
+ACTOR_CONTEXT = "subjective_actor_v2"
+
+
+def validate_context_version(version: str) -> None:
+    if version not in (LEGACY_CONTEXT, SUBJECTIVE_CONTEXT, ACTOR_CONTEXT):
+        raise ValueError(f"Unknown knowledge context version: {version}")
+
+
+@dataclass(frozen=True)
+class ObjectiveKnowledge:
+    """Caller-projected actor evidence, never an objective world snapshot.
+
+    The producer must resolve roles from the actor's knowledge and only pass
+    evidence accessible to that actor. No holder id or peer inventory is read
+    here. Missing/stale evidence should be represented by omitting the view.
+    This contract records a belief; it does not certify objective ownership.
+    """
+
+    actor_id: str
+    target_id: str
+    holder_state: str
+    evidence_refs: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.holder_state not in ("none", "ally", "hostile", "other"):
+            raise ValueError("Non-self objective knowledge requires a holder state")
+        if not self.evidence_refs or any(not isinstance(ref, str) or not ref for ref in self.evidence_refs):
+            raise ValueError("Objective knowledge requires actor-accessible evidence references")
+
+
+@dataclass(frozen=True)
+class PowerKnowledge:
+    """An actor's coarse estimate or observed absence, not objective state."""
+
+    actor_id: str
+    target_id: str
+    state: str
+    evidence_refs: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.state not in ("劣る", "互角", "優る", "敵役なし"):
+            raise ValueError("Unknown actor power state")
+        if not self.evidence_refs or any(not isinstance(ref, str) or not ref for ref in self.evidence_refs):
+            raise ValueError("Power knowledge requires actor-accessible evidence references")
+
+
+@dataclass(frozen=True)
+class TradeKnowledge:
+    """Items the actor believes the peer owns, from actor-accessible evidence."""
+
+    actor_id: str
+    target_id: str
+    owned_items: tuple[str, ...]
+    evidence_refs: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if any(not isinstance(item, str) or not item for item in self.owned_items):
+            raise ValueError("Invalid actor-known trade item")
+        if not self.evidence_refs or any(not isinstance(ref, str) or not ref for ref in self.evidence_refs):
+            raise ValueError("Trade knowledge requires actor-accessible evidence references")
+
+
+def context_key(text: str, *, context_version: str = LEGACY_CONTEXT) -> str:
     """First 16 hex digits of the text's sha256 -- a short, deterministic key
     for "is this the same rendered situation (or situation+candidate) as
     before"."""
 
+    validate_context_version(context_version)
+    if context_version != LEGACY_CONTEXT:
+        text = f"{context_version}\n{text}"
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
@@ -215,7 +284,26 @@ def map_line(world: World) -> str:
     return f"知っている地図: {'、'.join(pieces) or 'なし'}"
 
 
-def _objective_state(subject: Subject, world: World) -> str:
+def _objective_state(subject: Subject, *, objective_knowledge: ObjectiveKnowledge | None = None) -> str:
+    """Project only own inventory or explicit actor evidence; otherwise unknown.
+
+    A goal-less actor remains ``none`` for compatibility. Not owning a goal
+    item is not evidence that nobody owns it. Co-location is not evidence of
+    another person's inventory, and world.holder is deliberately unavailable.
+    """
+    target = subject.goal.target
+    if target is None:
+        return "none"
+    if subject.inventory.get(target, 0) > 0:
+        return "self"
+    if objective_knowledge is None:
+        return "unknown"
+    if objective_knowledge.actor_id != subject.id or objective_knowledge.target_id != target:
+        raise ValueError("Objective knowledge belongs to a different actor or target")
+    return objective_knowledge.holder_state
+
+
+def _legacy_objective_state(subject: Subject, world: World) -> str:
     """none/self/ally/hostile/other -- identical to
     gapengine.precedent.ctx_key's objective_state derivation."""
 
@@ -254,16 +342,27 @@ def situation(
     present: Sequence[Any],
     *,
     key_items: Sequence[str] = (),
+    context_version: str = LEGACY_CONTEXT,
+    objective_knowledge: ObjectiveKnowledge | None = None,
+    power_knowledge: PowerKnowledge | None = None,
 ) -> dict[str, Any]:
     """The coarse situation class for ``subject`` right now. Consumes no
     randomness. Every field is either a small enum, a bool, or a sorted
     tuple of fact ids -- never a name, a count, or a confidence number."""
 
+    validate_context_version(context_version)
+    if context_version == LEGACY_CONTEXT and objective_knowledge is not None:
+        raise ValueError("Actor objective evidence requires the subjective context version")
+    if power_knowledge is not None and context_version != ACTOR_CONTEXT:
+        raise ValueError("Actor power evidence requires the actor context version")
     threshold_ids = {str(threshold["id"]) for threshold in world.thresholds}
     phases = tuple(sorted(phase for phase in subject.phase if phase in threshold_ids))
     pledged = any(phase.startswith("誓約:") for phase in subject.phase)
 
-    peers = [peer for peer in present if peer.id != subject.id and peer.vitality != "dead"]
+    # v2 accepts the producer's actor-observed roster. Re-filtering it by the
+    # peer's current objective vitality would revise an unobserved belief.
+    peers = [peer for peer in present if peer.id != subject.id
+             and (context_version == ACTOR_CONTEXT or peer.vitality != "dead")]
     roles = {world.target_role(subject, peer) for peer in peers}
     ally_present = "ally" in roles
     hostile_present = "hostile" in roles
@@ -286,14 +385,23 @@ def situation(
 
     key_item_state = {item: subject.inventory.get(item, 0) > 0 for item in key_items}
 
-    antagonist = world.subjects.get(world.antagonist)
-    if antagonist is None or antagonist.vitality == "dead":
-        power = "敵役なし"
+    if context_version == ACTOR_CONTEXT:
+        # target.all_modifiers and target.vitality are objective state too.
+        # The producer must supply the actor's estimate from its own evidence.
+        power = "分からない"
+        if power_knowledge is not None:
+            if power_knowledge.actor_id != subject.id or power_knowledge.target_id != world.antagonist:
+                raise ValueError("Power knowledge belongs to another actor or target")
+            power = power_knowledge.state
     else:
-        mine = strength(subject, world, list(present))
-        theirs = believed_strength(subject, antagonist, world, list(present))
-        ratio = mine / theirs if theirs else float("inf")
-        power = _power_bucket(ratio)
+        antagonist = world.subjects.get(world.antagonist)
+        if antagonist is None or antagonist.vitality == "dead":
+            power = "敵役なし"
+        else:
+            mine = strength(subject, world, list(present))
+            theirs = believed_strength(subject, antagonist, world, list(present))
+            ratio = mine / theirs if theirs else float("inf")
+            power = _power_bucket(ratio)
 
     known_valued = tuple(sorted(subject.beliefs))
     # Rendered here (not in render_situation, which only sees the situation
@@ -312,7 +420,8 @@ def situation(
         "ally_present": ally_present,
         "neutral_present": neutral_present,
         "hostile_present": hostile_present,
-        "objective": _objective_state(subject, world),
+        "objective": (_legacy_objective_state(subject, world) if context_version == LEGACY_CONTEXT
+                      else _objective_state(subject, objective_knowledge=objective_knowledge)),
         "recipes": recipes,
         "key_items": key_item_state,
         "power": power,
@@ -324,6 +433,7 @@ def situation(
 
 
 _OBJECTIVE_TEXT = {
+    "unknown": "所持者は分からない",
     "none": "誰も持っていない",
     "self": "自分が持っている",
     "ally": "味方が持っている",
@@ -402,6 +512,8 @@ def describe_candidate_coarse(
     describe_trial_grants: bool = False,
     candidate_labels: Mapping[str, str] = {},
     describe_negotiate_offer: bool = False,
+    context_version: str = LEGACY_CONTEXT,
+    trade_knowledge: TradeKnowledge | None = None,
 ) -> str:
     """Like describe_candidate, but every companion name becomes a role
     (味方/中立/敵対) and every decimal is dropped (e.g. mislead's fabricated
@@ -434,6 +546,24 @@ def describe_candidate_coarse(
     it is lootable, it carries a modifier, and the antagonist doesn't
     already have it."""
 
+    validate_context_version(context_version)
+    if trade_knowledge is not None and context_version != ACTOR_CONTEXT:
+        raise ValueError("Actor trade evidence requires the actor context version")
+    if action.verb == "dialogue":
+        meta = (action.meta.get("decision_basis") or {}).get("selected", {}).get("communication_repeat")
+        if meta is not None and "communication_identity" in meta:
+            from gapengine.communication_repeat import decision_identity
+            from dataclasses import asdict
+            identity = decision_identity(meta, subject.id)
+            if list(action.args) != [meta[k] for k in ("to", "topic", "intent", "channel")]:
+                raise ValueError("Communication candidate action mismatch")
+            # Exact actor-known IDs deliberately avoid coarse-role collisions.
+            # The schema prefix isolates old Jev/cache scores without changing
+            # any legacy candidate description or context hash.
+            payload = json.dumps(asdict(identity), sort_keys=True, ensure_ascii=False,
+                                 separators=(",", ":"))
+            return f"{describe_candidate(action)} [actor-known communication: {payload}]"
+
     label_key: str | None = None
     if action.verb in ("craft", "buy") and action.args:
         label_key = f"{action.verb}:{action.args[0]}"
@@ -451,17 +581,24 @@ def describe_candidate_coarse(
             (peer for peer in present if peer.id == target_id),
             None,
         )
+        if trade_knowledge is not None and (
+                trade_knowledge.actor_id != subject.id or trade_knowledge.target_id != target_id):
+            raise ValueError("Trade knowledge belongs to another actor or target")
+        known_owned = set(trade_knowledge.owned_items) if trade_knowledge is not None else set()
         offerable = sorted(
             item
             for item, count in subject.inventory.items()
             if count > 0
             and bool(world.items.get(item, {}).get("lootable", False))
             and bool(world.items.get(item, {}).get("modifier"))
-            and (target is None or not target.has_item(item))
+            and (item not in known_owned if context_version == ACTOR_CONTEXT
+                 else target is None or not target.has_item(item))
         )
         offer_text = (
             f"差し出せる品: {'、'.join(offerable)}" if offerable else "差し出せる品なし"
         )
+        if context_version == ACTOR_CONTEXT:
+            offer_text += "、相手が応じるかは分からない"
         return f"宝を譲るよう交渉した（{target_text}、{offer_text}）"
 
     label = VERB_LABELS.get(action.verb, action.verb)

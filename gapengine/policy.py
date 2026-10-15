@@ -328,11 +328,21 @@ class Policy:
             and self.rationality.enabled
             and not annotation_only
         ):
+            judge_present=present;actor_kwargs={}
+            evidence=getattr(subject,'decision_evidence',None)
+            if evidence is not None:
+                from engine.actor_decision_evidence import ActorDecisionEvidence
+                from gapengine.knowledge_text import ACTOR_CONTEXT
+                if not isinstance(evidence,ActorDecisionEvidence) or self.rationality.context_version!=ACTOR_CONTEXT:
+                    raise ValueError('Immutable actor evidence requires subjective_actor_v2')
+                judge_present,actor_kwargs=evidence.for_actor(subject,turn-1)
+                self.last_actor_evidence_sha256=evidence.sha256
             m_rats, p_rats = self.rationality.multipliers(
                 subject,
                 world,
-                present,
+                judge_present,
                 [action for action, _, _ in classified],
+                **actor_kwargs,
             )
         else:
             m_rats = [1.0] * len(classified)

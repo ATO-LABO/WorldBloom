@@ -1,2 +1,7 @@
 * text=auto eol=lf
 *.cmd text eol=crlf
+
+# These approved inputs are verified by their received byte hashes.
+# Preserve their CRLF bytes on every platform instead of normalizing YAML.
+projects/melos-input/*.yaml -text whitespace=cr-at-eol
+projects/melos-input/subjects/*.yaml -text whitespace=cr-at-eol
