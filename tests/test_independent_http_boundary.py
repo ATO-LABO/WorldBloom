@@ -18,11 +18,17 @@ class IndependentHttpBoundaryTests(unittest.TestCase):
                  'seed_plan':[0],'method':'independent_trials','population':'unselected','selection':'none','reference_guided':False}
         status,body=fixture.http(server,'POST','/api/independent/jobs',request,{'Origin':'https://evil.example'})
         self.assertEqual(status,403,body)
-        from execution.provenance import code_snapshot
-        frozen_source=code_snapshot(fixture.repo)
+        from execution.provenance import code_snapshot, canonical, sha256
+        # ConfigStore canonicalizes its repo. Snapshot metadata includes source
+        # paths, so a Windows 8.3 alias would spuriously change the revision.
+        frozen_source=code_snapshot(fixture.configs.repo)
+        self.assertEqual(sha256(canonical(frozen_source[1])),cap['engine_revision'])
         with patch('execution.independent_review.code_snapshot',return_value=frozen_source),patch('execution.jobs.worker.ProcessTree'),patch('execution.jobs.subprocess.Popen'),\
              patch('execution.jobs.worker.process_identity',return_value={'pid':999,'created':1,'image':'fixture'}),\
              patch('execution.jobs.worker.probe',return_value='alive'):
+            status,current_cap=fixture.http(server,'GET','/api/independent/capabilities?config_id=cfg-test')
+            self.assertEqual(status,200,current_cap)
+            self.assertEqual(current_cap,cap)
             status,job=fixture.http(server,'POST','/api/independent/jobs',request)
             self.assertEqual(status,202,job)
             status,retry=fixture.http(server,'POST','/api/independent/jobs',request)

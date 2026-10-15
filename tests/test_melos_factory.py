@@ -30,7 +30,9 @@ class TransformTests(unittest.TestCase):
 class FactoryTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # Hosted Windows TEMP may use RUNNER~1 for the same physical directory.
+        # Compare canonical roots, as the factory does; keep strict isolation.
+        self.root = Path(self.temp.name).resolve()
         self.catalogs = approved_catalogs()
 
     def copy(self, name):
