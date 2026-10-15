@@ -23,25 +23,27 @@ Both 3.12 and 3.13 run the complete discovered suite on Ubuntu and Windows.
 For historical byte-exact replay, also match the Python version recorded in
 the original run; unsupported 3.11 had different floating-point summation bits.
 
-## Required status checks: proposal only, not applied
+## Required status checks: authorized migration applied
 
-GET confirmed active repository rulesets on 2026-10-15:
+The owner authorized the two replacements per ruleset on 2026-10-15. Both
+active rulesets were updated and read back before PR #21 was merged:
 
-| Branch | Ruleset | Proposed replacement |
+| Branch | Ruleset | Applied replacement |
 | --- | --- | --- |
 | main | main-pr-only, ID 24912881 | `regression (ubuntu-latest, 3.11)` -> `regression (ubuntu-latest, 3.12)`; same replacement for windows-latest |
 | develop | develop-integration, ID 24965531 | `regression (ubuntu-latest, 3.11)` -> `regression (ubuntu-latest, 3.12)`; same replacement for windows-latest |
 
-The two 3.13 checks remain. Preserve GitHub Actions integration ID 15368,
+The two 3.13 checks remain. Readback preserved GitHub Actions integration ID 15368,
 `strict_required_status_checks_policy=true`, `do_not_enforce_on_create=false`,
 all PR/review/merge requirements, deletion/force-push protections and empty
-bypass lists. The tag ruleset `release-tags-no-rewrite` (ID 25127354) is outside
-the proposal. Classic branch-protection GETs returned 404; repository rulesets
+bypass lists. The tag ruleset `release-tags-no-rewrite` (ID 25127354) was outside
+this migration. Classic branch-protection GETs returned 404; repository rulesets
 are the active protection mechanism, not an unprotected-branch conclusion.
 
-No permissions or rules were written. The checked-in `.github/rulesets/` JSON
-and the current-check list in BRANCHING.md remain snapshots of applied 3.11
-rules. The parent task must confirm the proposed replacement before applying it.
-Until then, main/develop still require the old 3.11 contexts and migration is
-not merge-ready. After authorized application, read the rules back and update
-both snapshots and documentation. No merge or deployment is part of this work.
+Only the Ubuntu/Windows 3.11 context names changed to 3.12: two entries per
+ruleset, with all other fields preserved apart from GitHub's update timestamp.
+PR #21 also updated the checked-in `.github/rulesets/` JSON snapshots and the
+current-check list in BRANCHING.md. This integration retains those applied
+settings. New merges require Ubuntu/Windows on both Python 3.12 and 3.13,
+with strict base freshness and no bypass. Main promotion remains subject to
+the separate user review described in BRANCHING.md.
