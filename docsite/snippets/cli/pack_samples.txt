@@ -1,4 +1,5 @@
 usage: pack_samples.py [-h] --runs RUNS --out OUT --experiments EXPERIMENTS [EXPERIMENTS ...]
+                       [--include-prompts]
 
 Copy minimal viewer-readable samples out of experiment runs.
 
@@ -7,3 +8,4 @@ options:
   --runs RUNS
   --out OUT
   --experiments EXPERIMENTS [EXPERIMENTS ...]
+  --include-prompts     Include raw prompts only after reviewing their publication content.
