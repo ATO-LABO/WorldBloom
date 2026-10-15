@@ -600,7 +600,7 @@ def _output_detail(handler, output_id):
     # it into a 500 with code="storage_error".
 
     request = output["request"]
-    if request["kind"] == "narrate" and _query(handler).get("view") != ["record"]:
+    if request["kind"] == "narrate" and request.get("pipeline") != "facts_v1" and _query(handler).get("view") != ["record"]:
         from viewer.screening_pages import render
         return render(handler, output_id)
     job_state = output.get("job_state")
@@ -668,7 +668,11 @@ def _output_detail(handler, output_id):
 
     regenerate_targets = sorted(request.get("candidate_ids") or [])
     ops = []
-    if terminal and job_state is None:
+    if request.get("pipeline") == "facts_v1":
+        for cid in regenerate_targets:
+            href = f"/facts/{_url(run_id)}/{_url(cid)}?config={_url(request['config_id'])}"
+            ops.append(f'<a href="{_escape(href)}">書き方と入力を編集する</a>')
+    elif terminal and job_state is None:
         if regenerate_targets:
             href = f"/runs/{_url(run_id)}/generate?kind={kind}&mode=regenerate&from_output={_url(output_id)}"
             for c in regenerate_targets:
@@ -794,6 +798,11 @@ def _entry_article(entry, candidates_by_id, store, output_id, run_id, synopsis_r
                 result = read_story_output(store,output_id,cid)
                 text = result["text"] if result else None
                 parts.append(f'<p><a href="/stories/outputs/{_url(output_id)}/{_url(cid)}">本文と骨格・検査を比較 →</a></p>')
+            if store.request(output_id).get("pipeline") == "facts_v1":
+                from execution.fact_service import process_fact_output
+                checked = process_fact_output(store, output_id, cid)
+                text = checked["text"] if checked else None
+                parts.append(f'<p><a href="/facts/outputs/{_url(output_id)}/{_url(cid)}">文章と使用した入力・プロンプト・確認状況 →</a></p>')
         except (ConfigError, OSError, UnicodeDecodeError):
             text = None
         if text is None:
@@ -834,6 +843,12 @@ def _entry_text(handler, output_id, candidate_id):
         result = read_story_output(store,output_id,candidate_id)
         if not result or result["text"] is None:
             raise ConfigError("story","本文の形式を確認できません",code="conflict")
+        raw = result["text"].encode("utf-8")
+    if store.request(output_id).get("pipeline") == "facts_v1":
+        from execution.fact_service import process_fact_output
+        result = process_fact_output(store, output_id, candidate_id)
+        if not result or result["text"] is None:
+            raise ConfigError("facts", "本文の形式を確認できません", code="conflict")
         raw = result["text"].encode("utf-8")
     handler._send_bytes(HTTPStatus.OK, "text/plain; charset=utf-8", raw)
 
