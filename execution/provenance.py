@@ -67,12 +67,7 @@ def is_link(path: Path) -> bool:
     return tag == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 
 
-# ponytail: the symlink/junction check of a root itself and its ancestors is
-# cached per process; a link planted at the root or above it after the first
-# contained() call for that root goes undetected until the process restarts.
-# Paths below the root are still checked on every call. Bounded by maxsize=64.
-@lru_cache(maxsize=64)
-def _checked_root(root_str: str) -> Path:
+def _check_root(root_str: str) -> Path:
     root = Path(root_str)
     for part in (root, *root.parents):
         if is_link(part):
@@ -80,23 +75,34 @@ def _checked_root(root_str: str) -> Path:
     return root.resolve()
 
 
+# Root/ancestor checks remain cached on the normal success path. A link planted
+# there after the first call can still go undetected on that path. A failed
+# containment comparison below always rechecks them without this cache.
+@lru_cache(maxsize=64)
+def _checked_root(root_str: str) -> Path:
+    return _check_root(root_str)
+
+
 def contained(root: Path, relative: str) -> Path:
     root = Path(root).absolute()
     rel = Path(relative)
     if rel.is_absolute() or rel.drive or ".." in rel.parts or "\\" in relative:
         raise ConfigError("path", "保存範囲外のパスです")
-    resolved_root = _checked_root(str(root))
     result = root / rel
-    # Reject symlinks/junctions strictly below root; root and its ancestors
-    # were already checked (and cached) by _checked_root above.
-    for part in (result, *result.parents):
-        if part == root:
-            break
-        if is_link(part):
-            raise ConfigError("path", "リンクを経由した保存・読取はできません")
-    if not result.resolve().is_relative_to(resolved_root):
-        raise ConfigError("path", "保存範囲外のパスです")
-    return result
+    for attempt in range(2):
+        resolved_root = (_checked_root(str(root)) if attempt == 0
+                         else _check_root(str(root)))
+        for part in (result, *result.parents):
+            if part == root:
+                break
+            if is_link(part):
+                raise ConfigError("path", "リンクを経由した保存・読取はできません")
+        if result.resolve().is_relative_to(resolved_root):
+            return result
+        # On Windows, creating a missing parent during realpath can leave the
+        # child in extended form while the earlier root used ordinary form.
+        # Retry full validation once; never strip prefixes or accept a link.
+    raise ConfigError("path", "保存範囲外のパスです")
 
 
 def read_json(path):
