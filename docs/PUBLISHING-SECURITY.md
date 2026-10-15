@@ -4,6 +4,8 @@
 
 Secret scanning、Push protection、Dependabot alerts/security updatesを有効にする。CodeQLはPython・JavaScript/TypeScript・Actionsを対象とする。通常の変更はdevelopへPRを作り、main反映は[既存の確認手順](BRANCHING.md)に従う。
 
+CodeQLは`.github/workflows/codeql.yml`のSHA固定済みadvanced setupで実行する。default setupと同じ3言語・標準クエリ・言語別categoryを維持し、PR・main/developへのpush・週次実行を対象とする。advanced setupへの移行時はGitHub側のdefault setupを停止し、解析結果のアップロードと既存アラートの対応関係を確認する。警告を消すためのクエリ除外や無条件の検証関数モデルは追加しない。
+
 Actionsは必要なアクションだけを許可し、ワークフローの参照は完全なコミットSHAに固定する。更新はDependabotのPRで確認する。SHA固定のリポジトリ強制設定は、main/developと進行中PRのワークフローを移行した後に有効化する。検査の導入前に強制して既存CIを止めない。
 
 Dependabotの週次バージョン更新PRはdevelopへ作成する。設定ファイル自体はデフォルトブランチのmainへ反映する。脆弱性に対するセキュリティ更新PRはGitHubの仕様でデフォルトブランチを対象にするため、mainへ直接取り込む前にdevelopで検証・統合する。
