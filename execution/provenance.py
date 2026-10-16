@@ -67,6 +67,32 @@ def is_link(path: Path) -> bool:
     return tag == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 
 
+def _root_name(root: Path) -> Path:
+    """Expand Windows short names without following links to another root."""
+    root = Path(os.path.abspath(root))
+    if os.name != "nt":
+        return root
+    import ctypes
+    api = ctypes.WinDLL("kernel32", use_last_error=True).GetLongPathNameW
+    api.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+    api.restype = ctypes.c_uint
+    buffer = ctypes.create_unicode_buffer(32768)
+    missing = []
+    while True:
+        size = api(str(root), buffer, len(buffer))
+        if size:
+            if size >= len(buffer):
+                raise OSError("root path name exceeds the Windows buffer")
+            return Path(buffer.value).joinpath(*reversed(missing))
+        error = ctypes.get_last_error()
+        if error not in (2, 3) or root == root.parent:
+            raise ctypes.WinError(error)
+        # A new data root can be absent. Expand its existing ancestor only;
+        # append missing names lexically and retain permission/other errors.
+        missing.append(root.name)
+        root = root.parent
+
+
 def _check_root(root_str: str) -> Path:
     root = Path(root_str)
     for part in (root, *root.parents):
@@ -75,7 +101,7 @@ def _check_root(root_str: str) -> Path:
     # Keep the comparison anchored to the configured path. Following a link
     # planted after inspection must not move both the root and the candidate.
     # The candidate is resolved separately by contained() below.
-    return Path(os.path.abspath(root))
+    return _root_name(root)
 
 
 # Root/ancestor checks remain cached on the normal success path. A link planted

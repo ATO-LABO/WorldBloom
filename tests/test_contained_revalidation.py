@@ -78,6 +78,33 @@ class ContainmentRevalidationTests(unittest.TestCase):
                 p.contained(self.root, "legacy")
         self.assertEqual(resolve.call_count, 1)
 
+    def check_short_name_root(self, *, exists):
+        import ctypes
+        api = ctypes.WinDLL("kernel32", use_last_error=True).GetShortPathNameW
+        api.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+        api.restype = ctypes.c_uint
+        buffer = ctypes.create_unicode_buffer(32768)
+        size = api(str(self.base), buffer, len(buffer))
+        self.assertTrue(0 < size < len(buffer))
+        short_base = Path(buffer.value)
+        if short_base == self.base.resolve():
+            self.skipTest("filesystem has no short-name aliases for the fixture")
+        root = short_base / "parent" / "control"
+        if exists:
+            self.root.mkdir(parents=True)
+        self.assertEqual(p.contained(root, ".boundary"), root / ".boundary")
+        self.assertEqual(self.root.exists(), exists)
+        self.assertFalse((self.root / ".boundary").exists())
+        self.assert_canary_unchanged()
+
+    @unittest.skipUnless(os.name == "nt", "Windows short-name aliases")
+    def test_existing_root_with_real_short_names_is_accepted(self):
+        self.check_short_name_root(exists=True)
+
+    @unittest.skipUnless(os.name == "nt", "Windows short-name aliases")
+    def test_missing_root_with_real_short_names_is_accepted(self):
+        self.check_short_name_root(exists=False)
+
     def check_root_anchor_after_inspection(self, location, *, junction=False):
         self.root.mkdir(parents=True)
         (self.root / "canary.txt").write_bytes(b"inside-fixture")
