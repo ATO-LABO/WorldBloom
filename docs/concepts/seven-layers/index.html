@@ -1835,7 +1835,7 @@
 </tr>
 </tbody>
 </table>
-<p>これに加えて<strong>生命状態（vitality）</strong>を持ちます。<code>alive</code>（生きている）→ <code>downed</code>（倒れた）→ <code>revived</code>（蘇生した）／<code>dead</code>（死亡）と遷移し、倒れても味方の救出や自力回復で <code>revived</code> に戻れます。死亡するのは、勝者側の行為や道具が <code>lethal</code> を持つときに限られます。これにより「疑似的な死と再生」が物語の一部として自然に現れます。</p>
+<p>これに加えて**生命状態（vitality）**を持ちます。<code>alive</code>（生きている）→ <code>downed</code>（倒れた）→ <code>revived</code>（蘇生した）／<code>dead</code>（死亡）と遷移し、倒れても味方の救出や自力回復で <code>revived</code> に戻れます。死亡するのは、勝者側の行為や道具が <code>lethal</code> を持つときに限られます。これにより「疑似的な死と再生」が物語の一部として自然に現れます。</p>
 <h2 id="identity-layer">身分層（identity）<a class="headerlink" href="#identity-layer" title="Permanent link">&para;</a></h2>
 <p><code>identity_true</code>（本当の身分）と <code>identity_displayed</code>（見せている身分）を分けて持ちます。<code>disguise</code> 行動でこの2つが乖離すると変装になり、<code>observe</code> の積み重ねや <code>confront</code> によって <code>identity_seen</code>（露見済み）が立つまでは、他の登場人物はこの人物を <code>identity_displayed</code> の名前でしか扱えません。関係行列・敵対判定・行動候補の役割プライアは、露見済みなら真の身分、そうでなければ見せている身分で引かれます（<code>perceived_name</code>）。露見の瞬間、相手からの stance は真の身分に対する値へ切り替わるため、正体を明かす場面が物語上の転換点として機能します。世界のテンプレートは、変装中の身分に対する初期関係（例: 「旅の商人」への affinity）をあらかじめ書けます。</p>
 <h2 id="phase-layer">フェーズ層（phase）<a class="headerlink" href="#phase-layer" title="Permanent link">&para;</a></h2>

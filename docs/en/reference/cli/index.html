@@ -1812,6 +1812,7 @@
 <h1 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
 <p>All commands run as <code>python &lt;script&gt; ...</code> from the repository root. The full help text is generated from each script's <code>--help</code> (<code>docsite/gen_cli.py</code>; regenerate it if a script's arguments change). <code>jev_*.py</code> and <code>rationality_probe.py</code> are dev-only measurement scripts and aren't covered here.</p>
 <p>The help text below is printed by the scripts themselves and is partly in Japanese.</p>
+<p>The example data directory <code>../WorldBloom-data/</code> sits alongside the repository under the same parent directory. Replace it with a local data directory on your computer. Keep <code>runs/</code> and <code>control/</code> outside the repository.</p>
 <h2 id="scriptsevolvepy-run-a-ga-experiment">scripts/evolve.py — run a GA experiment<a class="headerlink" href="#scriptsevolvepy-run-a-ga-experiment" title="Permanent link">&para;</a></h2>
 <p>Runs one deterministic MAP-Elites experiment. <code>--project</code> (world), <code>--template</code> (genre), and <code>--out</code> (output dir) are required.</p>
 <div class="highlight"><pre><span></span><code>usage: evolve.py [-h] --project PROJECT --template TEMPLATE --out OUT [--generations GENERATIONS]
@@ -1893,7 +1894,7 @@ options:
 </code></pre></div>
 <p>Example:</p>
 <div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">scripts</span><span class="p">/</span><span class="n">evolve</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-project</span> <span class="n">projects</span><span class="p">/</span><span class="n">momotaro_plus2</span> <span class="p">-</span><span class="n">-template</span> <span class="n">templates</span><span class="p">/</span><span class="n">momotaro_plus2</span> <span class="p">`</span>
-  <span class="p">-</span><span class="n">-out</span> <span class="n">C</span><span class="p">:\</span><span class="n">WorldBloom-data</span><span class="p">\</span><span class="n">runs</span><span class="p">\</span><span class="n">my-exp</span> <span class="p">-</span><span class="n">-generations</span> <span class="n">20</span> <span class="p">-</span><span class="n">-population</span> <span class="n">100</span> <span class="p">-</span><span class="n">-seeds</span> <span class="n">3</span>
+  <span class="p">-</span><span class="n">-out</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">runs</span><span class="p">/</span><span class="n">my-exp</span> <span class="p">-</span><span class="n">-generations</span> <span class="n">20</span> <span class="p">-</span><span class="n">-population</span> <span class="n">100</span> <span class="p">-</span><span class="n">-seeds</span> <span class="n">3</span>
 </code></pre></div>
 <p>Point the output directory somewhere outside the repository (local), not inside it (see <a href="../run-outputs/">Run Outputs</a>).</p>
 <h2 id="scriptssynopsizepy-generate-synopses">scripts/synopsize.py — generate synopses<a class="headerlink" href="#scriptssynopsizepy-generate-synopses" title="Permanent link">&para;</a></h2>
@@ -2031,6 +2032,7 @@ options:
 <h2 id="scriptspack_samplespy-extract-viewer-samples">scripts/pack_samples.py — extract viewer samples<a class="headerlink" href="#scriptspack_samplespy-extract-viewer-samples" title="Permanent link">&para;</a></h2>
 <p>Copies just the minimal set of files the distributed viewer (Viewer exe) needs to read, from a run's output, into a separate folder.</p>
 <div class="highlight"><pre><span></span><code>usage: pack_samples.py [-h] --runs RUNS --out OUT --experiments EXPERIMENTS [EXPERIMENTS ...]
+                       [--include-prompts]
 
 Copy minimal viewer-readable samples out of experiment runs.
 
@@ -2039,6 +2041,7 @@ options:
   --runs RUNS
   --out OUT
   --experiments EXPERIMENTS [EXPERIMENTS ...]
+  --include-prompts     Include raw prompts only after reviewing their publication content.
 </code></pre></div>
 <h2 id="viewerserverpy-start-the-screens">viewer/server.py — start the screens<a class="headerlink" href="#viewerserverpy-start-the-screens" title="Permanent link">&para;</a></h2>
 <p>Without <code>--control</code>, it runs as a read-only viewer where every write API is rejected (see <a href="../http-api/">HTTP API</a>).</p>
@@ -2055,7 +2058,7 @@ options:
   --repo REPO
 </code></pre></div>
 <p>Example (starting with full functionality):</p>
-<div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">viewer</span><span class="p">/</span><span class="n">server</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-runs</span> <span class="n">C</span><span class="p">:\</span><span class="n">WorldBloom-data</span><span class="p">\</span><span class="n">runs</span> <span class="p">-</span><span class="n">-control</span> <span class="n">C</span><span class="p">:\</span><span class="n">WorldBloom-data</span><span class="p">\</span><span class="n">control</span>
+<div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">viewer</span><span class="p">/</span><span class="n">server</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-runs</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">runs</span> <span class="p">-</span><span class="n">-control</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">control</span>
 </code></pre></div>
 
 

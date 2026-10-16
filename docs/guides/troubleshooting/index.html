@@ -1704,8 +1704,8 @@
 <td>配布フォルダの構成（<code>WorldBloom.exe</code>／<code>WorldBloom-Studio.exe</code> と <code>app/</code> フォルダ）を崩さず、同じ場所に置いてください</td>
 </tr>
 <tr>
-<td>Studio が「GA実験の実行にはPython 3.11以上（PyYAML導入済み）が別途必要です」と表示する</td>
-<td>Studio 起動時に PATH 上の <code>python</code>/<code>python3</code>/<code>py</code> が見つからない、または見つかったものが 3.11 未満か PyYAML 未導入</td>
+<td>Studio が「GA実験の実行にはPython 3.12以上（PyYAML導入済み）が別途必要です」と表示する</td>
+<td>Studio 起動時に PATH 上の <code>python</code>/<code>python3</code>/<code>py</code> が見つからない、または見つかったものが 3.12 未満か PyYAML 未導入</td>
 <td><a href="https://www.python.org/downloads/">python.org</a> からインストールし、インストーラーで「Add python.exe to PATH」にチェック。インストール後 <code>pip install pyyaml</code> を実行し、Studio を再起動してください</td>
 </tr>
 </tbody>
@@ -1738,7 +1738,7 @@
 </tbody>
 </table>
 <h2 id="viewer-403">Viewer（閲覧専用ビルド）で操作すると 403 になる<a class="headerlink" href="#viewer-403" title="Permanent link">&para;</a></h2>
-<p>WorldBloom.exe（閲覧専用ビルド）は、採用・選定チェックボックスなど画面上の操作要素は表示されますが、書き込み系の操作（POST）はすべてサーバー側で <code>403 read-only build</code> として拒否します。<strong>これは仕様どおりの挙動です。</strong>編集・実行するには WorldBloom-Studio.exe を使ってください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照してください。</p>
+<p>WorldBloom.exe（閲覧専用ビルド）は、採用・選定チェックボックスなど画面上の操作要素は表示されますが、書き込み系の操作（POST）はすべてサーバー側で <code>403 read-only build</code> として拒否します。**これは仕様どおりの挙動です。**編集・実行するには WorldBloom-Studio.exe を使ってください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照してください。</p>
 <h2 id="llm">LLM 生成が失敗する<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

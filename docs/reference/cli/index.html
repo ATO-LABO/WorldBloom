@@ -1811,6 +1811,7 @@
 
 <h1 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
 <p>すべて <code>python &lt;スクリプト&gt; ...</code> の形でリポジトリ直下から実行します。ヘルプ全文は各スクリプトの <code>--help</code> から生成しています（<code>docsite/gen_cli.py</code>。スクリプト側の引数を変えたら再生成してください）。<code>jev_*.py</code>・<code>rationality_probe.py</code> は開発用の計測スクリプトなのでここには含めません。</p>
+<p>パスの例に使う <code>../WorldBloom-data/</code> は、リポジトリと同じ親フォルダに置くデータ保存先です。自分の環境のローカル保存先に置き換えてください。<code>runs/</code> と <code>control/</code> はリポジトリの外に置きます。</p>
 <h2 id="scriptsevolvepy-ga">scripts/evolve.py — GA 実験を実行する<a class="headerlink" href="#scriptsevolvepy-ga" title="Permanent link">&para;</a></h2>
 <p>決定論的な MAP-Elites を1回走らせます。<code>--project</code>（世界）・<code>--template</code>（ジャンル）・<code>--out</code>（出力先）が必須です。</p>
 <div class="highlight"><pre><span></span><code>usage: evolve.py [-h] --project PROJECT --template TEMPLATE --out OUT [--generations GENERATIONS]
@@ -1892,7 +1893,7 @@ options:
 </code></pre></div>
 <p>例:</p>
 <div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">scripts</span><span class="p">/</span><span class="n">evolve</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-project</span> <span class="n">projects</span><span class="p">/</span><span class="n">momotaro_plus2</span> <span class="p">-</span><span class="n">-template</span> <span class="n">templates</span><span class="p">/</span><span class="n">momotaro_plus2</span> <span class="p">`</span>
-  <span class="p">-</span><span class="n">-out</span> <span class="n">C</span><span class="p">:\</span><span class="n">WorldBloom-data</span><span class="p">\</span><span class="n">runs</span><span class="p">\</span><span class="n">my-exp</span> <span class="p">-</span><span class="n">-generations</span> <span class="n">20</span> <span class="p">-</span><span class="n">-population</span> <span class="n">100</span> <span class="p">-</span><span class="n">-seeds</span> <span class="n">3</span>
+  <span class="p">-</span><span class="n">-out</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">runs</span><span class="p">/</span><span class="n">my-exp</span> <span class="p">-</span><span class="n">-generations</span> <span class="n">20</span> <span class="p">-</span><span class="n">-population</span> <span class="n">100</span> <span class="p">-</span><span class="n">-seeds</span> <span class="n">3</span>
 </code></pre></div>
 <p>出力先はリポジトリの外（ローカル）の <code>runs/&lt;experiment&gt;/</code> に置いてください（詳しくは<a href="../run-outputs/">実行結果のファイル</a>）。</p>
 <h2 id="scriptssynopsizepy">scripts/synopsize.py — あらすじを生成する<a class="headerlink" href="#scriptssynopsizepy" title="Permanent link">&para;</a></h2>
@@ -2030,6 +2031,7 @@ options:
 <h2 id="scriptspack_samplespy">scripts/pack_samples.py — ビューア用サンプルの抽出<a class="headerlink" href="#scriptspack_samplespy" title="Permanent link">&para;</a></h2>
 <p>実験の実行結果から、配布版ビューア（Viewer exe）が読める最小限のサンプル一式だけを別フォルダへコピーします。</p>
 <div class="highlight"><pre><span></span><code>usage: pack_samples.py [-h] --runs RUNS --out OUT --experiments EXPERIMENTS [EXPERIMENTS ...]
+                       [--include-prompts]
 
 Copy minimal viewer-readable samples out of experiment runs.
 
@@ -2038,6 +2040,7 @@ options:
   --runs RUNS
   --out OUT
   --experiments EXPERIMENTS [EXPERIMENTS ...]
+  --include-prompts     Include raw prompts only after reviewing their publication content.
 </code></pre></div>
 <h2 id="viewerserverpy">viewer/server.py — 画面を起動する<a class="headerlink" href="#viewerserverpy" title="Permanent link">&para;</a></h2>
 <p><code>--control</code> を付けない既定状態では、書き込み系のAPIはすべて拒否される閲覧専用として動きます（詳しくは<a href="../http-api/">HTTP API</a>）。</p>
@@ -2054,7 +2057,7 @@ options:
   --repo REPO
 </code></pre></div>
 <p>例（フル機能で起動）:</p>
-<div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">viewer</span><span class="p">/</span><span class="n">server</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-runs</span> <span class="n">C</span><span class="p">:\</span><span class="n">WorldBloom-data</span><span class="p">\</span><span class="n">runs</span> <span class="p">-</span><span class="n">-control</span> <span class="n">C</span><span class="p">:\</span><span class="n">WorldBloom-data</span><span class="p">\</span><span class="n">control</span>
+<div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">viewer</span><span class="p">/</span><span class="n">server</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-runs</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">runs</span> <span class="p">-</span><span class="n">-control</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">control</span>
 </code></pre></div>
 
 
