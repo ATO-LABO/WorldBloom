@@ -1,0 +1,187 @@
+schema: melos_branch_v1
+source_commit: bae011c8a128554de0b53343aae4a26b7ecdd16f
+scope: 離城・人質成立から三日目の夜まで。逮捕前の政治・買物は初期背景。
+sources:
+  text: https://www.aozora.gr.jp/cards/000035/files/1567_14913.html
+  card: https://www.aozora.gr.jp/cards/000035/card1567.html
+evidence:
+- id: S1
+  anchor: メロスは村の牧人である
+  type: narrator
+  facts:
+  - 牧人
+  - 妹16歳
+  - 妹の婚約者は牧人
+  - 友は石工
+  - シラクスから村まで十里
+- id: S2
+  anchor: 三日目には日没までに帰って来い
+  type: King_speech
+  facts:
+  - 人質セリヌンティウス
+  - 期限日没
+  - 遅刻なら友処刑
+  - 遅刻ならメロス放免という王の発言
+- id: S3
+  anchor: メロスは、友に一切の事情を語った
+  type: narrator
+  facts:
+  - 友は事情を知り承諾
+  - 出発は深夜
+- id: S4
+  anchor: 市に用事を残して来た
+  type: Melos_speech
+  facts:
+  - 妹へ市の用事と説明
+  - 死刑と人質を妹へ明かしていない
+- id: S5
+  anchor: 葡萄の季節まで待ってくれ
+  type: Groom_speech
+  facts:
+  - 婿は準備不足を理由に婚礼前倒しへ抵抗
+- id: S6
+  anchor: 結婚式は、真昼に行われた
+  type: narrator
+  facts:
+  - 第2日真昼婚礼
+  - 豪雨
+  - 宴
+  - 眠り
+  - 第3日薄明出発
+- id: S7
+  anchor: 繋舟は残らず浪に浚われて影なく
+  type: narrator
+  facts:
+  - 橋破壊
+  - 舟流失
+  - 渡守り不在
+  - 激流を泳いで渡る
+- id: S8
+  anchor: さては、王の命令で
+  type: Melos_suspicion
+  facts:
+  - 王の差し金という疑いのみ。山賊と王の関係は世界事実にしない
+- id: S9
+  anchor: その、いのちが欲しいのだ
+  type: Bandit_speech
+  facts:
+  - 山賊は命を要求
+  - メロスは棍棒を奪い三人を倒す
+- id: S10
+  anchor: 岩の裂目
+  type: narrator
+  facts:
+  - 疲労で倒れる
+  - 泉を聞き水を飲む
+  - 再び走る
+- id: S11
+  anchor: フィロストラトスでございます
+  type: reported
+  facts:
+  - 弟子が刑場情報を伝える
+  - まだ陽が沈まないというメロスの判断
+- id: S12
+  anchor: まさに最後の一片の残光も
+  type: narrator
+  facts:
+  - 原作では間に合う
+  - 友解放
+  - 互いに一度疑ったと告白
+  - 王が信実を認める
+parameters:
+  deadline: 3960
+  rain_at: 2160
+  bridge_destroyed_at: 3180
+  wedding_at: 2160
+  dawn: 3210
+  bandits_active_at: 3180
+  execution_preparation_at: 3840
+  swim_minutes: 60
+  swim_cost: 40
+  swim_min_energy: 35
+  fight_minutes: 30
+  fight_cost: 28
+  fight_min_energy: 20
+  spring_recovery: 35
+  rest_per_hour: 12
+  detour_enabled: false
+  detour_minutes: 600
+  flood_subsides_before_horizon: false
+assumptions:
+- id: A1
+  text: 時刻・各地点の分割・移動分数・体力100点は計算用の仮定。原作の測定値ではない。
+- id: A2
+  text: 洪水と山賊は固定環境条件。メロスが遭遇前に未来の洪水・山賊を知ることはない。
+- id: A3
+  text: 泳力閾値35、泳ぎ40点、戦闘閾値20、戦闘28点、水35点回復は仮定。成功を保証しない。
+- id: A4
+  text: 渡河を待っても観測期間中に水位は下がらない仮定。舟・馬・通信機・超自然救済は追加しない。
+- id: A5
+  text: 退却は既知の来た道を逆行する。600分の浅瀬迂回は設定変更群にだけ置く未確認の地形。
+- id: A6
+  text: 初期の人質合意は原作の既成事実として注入。帰還申出は2分作業で表し約束台帳が実完了を判定する。
+- id: A7
+  text: 王は帰還時に人質を解放しメロスへ刑を移す、期限を超えると友を処刑する仮定。赦免は別選択。
+- id: A8
+  text: 婚礼参加は双方の承諾＋第2日真昼開始の120分作業へ抽象化。儀式内の詳細は生成しない。
+- id: A9
+  text: 王・友・妹・婿の選択重みは原作からの解釈を数値化した仮説。実人間の確率ではない。
+- id: A10
+  text: 初期政治動機、妹の生活、王の後の統治、処刑後の村の反応は観測外。成功・不成功を補完しない。
+- id: A11
+  text: 最後の群衆は刑の準備開始後の王前へだけ存在する仮定。弟子は城で見た準備を30分歩いて伝える。
+- id: A12
+  text: geneは人物別の判断順序32枠。枝の有無で枠の意味は変わる。人格と世界値はGAで変異させない。
+goals:
+  Melos:
+    friend: 5
+    family: 8
+    self: 2
+    honor: 3
+  King:
+    control: 5
+    recognize: 2
+  Selinuntius:
+    trust: 5
+    honesty: 3
+  Sister:
+    marry: 4
+    care: 3
+  Groom:
+    prepared: 4
+    care: 3
+initial_information:
+  Melos:
+    deadline: 3960
+    hostage: Selinuntius
+    death_sentence: true
+    royal_late_offer: reported
+    sister_engaged: true
+    road_map: nominal travel times assumed known
+    flood: unknown
+    bandits: unknown
+    pardon: unknown
+  King:
+    deadline: 3960
+    hostage: Selinuntius
+    Melos_request: sister wedding
+    Melos_future: unknown
+  Selinuntius:
+    deadline: 3960
+    hostage: true
+    Melos_request: sister wedding
+    Melos_future: unknown
+    own_doubt: false
+  Sister:
+    engaged: true
+    hostage: unknown
+    deadline: unknown
+  Groom:
+    engaged: true
+    unprepared: true
+    hostage: unknown
+    deadline: unknown
+  Philostratus:
+    teacher_imprisoned: true
+    Melos_location: unknown
+    execution_status: unknown

@@ -189,8 +189,15 @@ class _WindowsProcessTree:
                 child.stdin.close()
             return child
         except BaseException:
-            child.kill()
-            child.wait(timeout=10)
+            try:
+                child.kill()
+                child.wait(timeout=10)
+            except BaseException as error:
+                raise RuntimeError("owned launch cleanup unconfirmed") from error
+            for stream in (child.stdin,child.stdout,child.stderr):
+                if stream is not None:
+                    stream.close()
+            child._handle.Close()
             raise
 
     def terminate(self):
@@ -523,6 +530,47 @@ def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def replace_job_snapshot(source, target):
+    """Publish job.json while shared-delete readers retain the old revision."""
+    if os.name != "nt":
+        os.replace(source, target)
+        return
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = api.CreateFileW
+    create.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p,
+                      wt.DWORD, wt.DWORD, wt.HANDLE]
+    create.restype = wt.HANDLE
+    rename = api.SetFileInformationByHandle
+    rename.argtypes = [wt.HANDLE, ctypes.c_int, ctypes.c_void_p, wt.DWORD]
+    rename.restype = wt.BOOL
+    close = api.CloseHandle
+    close.argtypes = [wt.HANDLE]
+    close.restype = wt.BOOL
+
+    class RenameInfo(ctypes.Structure):
+        _fields_ = [("flags", wt.DWORD), ("root", wt.HANDLE),
+                    ("length", wt.DWORD), ("name", wt.WCHAR * 1)]
+
+    if Path(source).absolute().parent != Path(target).absolute().parent:
+        raise ValueError("Job snapshots must be replaced within the same directory")
+    name = str(Path(target).absolute()).encode("utf-16-le")
+    size = max(ctypes.sizeof(RenameInfo), RenameInfo.name.offset + len(name) + 2)
+    buffer = ctypes.create_string_buffer(size)
+    info = RenameInfo.from_buffer(buffer)
+    info.flags = 3  # REPLACE_IF_EXISTS | POSIX_SEMANTICS; preserve old open handles.
+    info.root = None
+    info.length = len(name)
+    ctypes.memmove(ctypes.addressof(buffer) + RenameInfo.name.offset, name, len(name))
+    handle = create(str(source), 0x10000, 7, None, 3, 0x80, None)  # DELETE, shared access.
+    if handle == wt.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if not rename(handle, 22, buffer, size):  # FileRenameInfoEx
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        close(handle)
+
+
 def atomic(path, value):
     data = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     temporary = path.with_name("." + path.name + "-" + uuid.uuid4().hex)
@@ -530,11 +578,37 @@ def atomic(path, value):
         stream.write(data)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    try:
+        if path.name == "job.json":
+            replace_job_snapshot(temporary, path)
+        else:
+            os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def trace_lock(folder, operation, stage, **values):
+    """Opt-in CI diagnostics; omit paths, requests, settings and credentials."""
+    evidence = os.environ.get("WB_REGRESSION_EVIDENCE_DIR")
+    if not evidence or os.environ.get("WB_REGRESSION_DIAGNOSTICS") != "1":
+        return
+    try:
+        root = Path(evidence) / "storage-locks"
+        root.mkdir(parents=True, exist_ok=True)
+        lock_id = hashlib.sha256(os.path.normcase(os.path.realpath(folder)).encode()).hexdigest()
+        row = dict(time=time.time(), monotonic=time.monotonic(), pid=os.getpid(),
+                   thread=threading.get_ident(), lock_id=lock_id,
+                   operation=operation, stage=stage, **values)
+        with (root / (str(os.getpid()) + ".jsonl")).open("a", encoding="utf-8") as log:
+            log.write(json.dumps(row, sort_keys=True) + "\n")
+    except OSError:
+        # Diagnostic storage must not change the job ledger's outcome.
+        pass
 
 
 @contextmanager
-def lock(folder):
+def lock(folder, *, operation="worker.lock"):
+    started = time.monotonic()
     if os.name == "nt":
         import msvcrt
     else:
@@ -551,8 +625,12 @@ def lock(folder):
                 else:
                     fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
-            except OSError:
+            except OSError as error:
+                trace_lock(folder, operation, "contended", errno=error.errno,
+                           winerror=getattr(error, "winerror", None))
                 time.sleep(0.05)
+        acquired = time.monotonic()
+        trace_lock(folder, operation, "acquired", wait_seconds=acquired-started)
         try:
             yield
         finally:
@@ -561,6 +639,7 @@ def lock(folder):
                 msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(stream, fcntl.LOCK_UN)
+            trace_lock(folder, operation, "released", held_seconds=time.monotonic()-acquired)
 
 
 def record_event(folder, job):
@@ -572,18 +651,24 @@ def record_event(folder, job):
 
 
 def change(jobs, folder, nonce, **updates):
-    with lock(jobs):
+    with lock(jobs, operation="worker.change"):
+        started = time.monotonic()
         job = read(folder / "job.json")
+        trace_lock(jobs, "worker.change", "read", seconds=time.monotonic()-started)
         if job["nonce"] != nonce or job["state"] in TERMINAL:
             return job
         job.update(updates, updated_at=time.time(), revision=job["revision"] + 1)
+        started = time.monotonic()
         atomic(folder / "job.json", job)
+        trace_lock(jobs, "worker.change", "atomic", seconds=time.monotonic()-started)
+        started = time.monotonic()
         record_event(folder, job)
+        trace_lock(jobs, "worker.change", "event", seconds=time.monotonic()-started)
         return job
 
 
 def read_job(jobs, folder):
-    with lock(jobs):
+    with lock(jobs, operation="worker.read_job"):
         return read(folder / "job.json")
 
 
@@ -603,6 +688,13 @@ def prepare(args, job, folder):
         elif request["kind"] == "world_patch":
             from execution.world_patch_job import prepare as prepare_patch
             manifest = prepare_patch(configs, job, request)
+        elif request['kind'] == 'independent_trials':
+            from execution.independent_review import prepare_run as prepare_independent
+            raw=(folder/'independent-plan.json').read_bytes()
+            plan=json.loads(raw)['execution_plan']
+            if hashlib.sha256(json.dumps(plan,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()!=job['execution_plan_sha256']:
+                raise ValueError('independent plan changed')
+            manifest=prepare_independent(configs,job,folder)
         else:
             manifest = configs.prepare_run(request["config_id"], run_id=job["run_id"], job_id=args.job,
                                             processes=job.get("processes"))
@@ -706,6 +798,11 @@ def main(argv=None):
             launch_argv = manifest["argv"]
             handler = "world_patch_cli"
             phase = manifest["phase"]
+        elif job.get('kind') == 'independent_trials':
+            run_root=Path(args.runs)/job['run_id']
+            launch_argv=manifest['argv']
+            handler='independent_trials_worker'
+            phase='evaluating_independent'
         else:
             run_root = Path(args.runs) / job["run_id"]
             adapter = run_root / "runtime/execution/evolution_worker.py"

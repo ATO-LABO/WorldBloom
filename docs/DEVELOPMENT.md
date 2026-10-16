@@ -1,6 +1,7 @@
 # 開発者向けガイド
 
 ブランチ・PR・main反映の手順は[ブランチとリリースの運用](BRANCHING.md)を参照してください。通常の変更はdevelopへPRを作ります。
+機密情報の検査、公開サンプル、Windows配布、メールアドレスの保護は[公開前の情報確認](PUBLISHING-SECURITY.md)を参照してください。
 
 このリポジトリのコードに変更を加える場合の手順です。GA 実験の回し方・LLM バックエンドの設定・CLI の使い方など、利用者向けの手順は[ドキュメントサイト](https://ato-labo.github.io/WorldBloom/docs/)にまとまっています。
 
@@ -15,7 +16,7 @@
 
 同じ Python バージョンと `(world, genome, seed, precedent, engine hash)` の組で、`layers.jsonl` はバイト単位で一致します。乱数は単一の `random.Random(seed)`（GA側は `random.Random(ga_seed)` と分離）、候補生成と Policy（遺伝子の変調）は乱数を消費せず、同点のタイブレークは名前順です。**この前提を崩す変更（乱数の消費順序が変わる変更など）は、設計書にその旨を明記してください。**
 
-Python 3.12では浮動小数点の `sum()` の精度が改善され、3.11と比べて行動確率の記録の末尾ビットが変わる場合があります。今回確認した固定seedでは行動・結果・状態は一致しました。厳密な比較では来歴に記録されたPython版も固定してください。回帰テストは許容誤差で丸めず、3.11と3.12以降それぞれの厳密な期待ハッシュを検証します（[Python公式説明](https://docs.python.org/3.12/library/functions.html#sum)）。
+最低対応はPython 3.12、全回帰の対象は3.12と3.13です。Python 3.12で浮動小数点の `sum()` の精度が改善されたため、対応外となった3.11のログとは行動確率の末尾ビットが異なる場合があります。過去ログを厳密に再現するときは、保存されたPythonの版も固定してください。現在の回帰テストは3.12/3.13の厳密な期待ハッシュを検証し、3.11専用の期待値は保守しません。許容誤差による丸めや乱数・重み計算の変更は行っていません（[Python公式説明](https://docs.python.org/3.12/library/functions.html#sum)）。
 
 ## 回帰テスト
 
@@ -26,6 +27,8 @@ python -m unittest discover -s tests -v
 決定論・中立遺伝子の無変調・前提違反ゼロ・伏線の減点・vitality の遷移などを確認します。対象は `engine/` `gapengine/`（GA・分類器・前例表・7層のロジック）を変更したときで、`viewer/`（表示のみ）や一回きりの `scripts/` 実行など決定論に影響しない変更では省略してかまいません。
 
 ## 開発時の起動
+
+文書中のパスは[ドキュメントのパス表記](PATHS.md)に従います。実験データの保存先は自分の環境に合わせて指定してください。
 
 ソースからビューアを起動する場合は、リポジトリ直下で次を実行します（`runs`・`control` はリポジトリの外に置いてください）。
 
@@ -38,7 +41,7 @@ python viewer/server.py --runs <runsの場所> --control <controlの場所> --po
 ## Linux でのジョブ管理
 
 ソース版の `--control` 付きビューアは Windows と Linux で利用できます。Linux は
-Python 3.11 以上と PyYAML に加え、Linux 5.3 以上の `pidfd`、子プロセスを引き受ける
+Python 3.12 以上と PyYAML に加え、Linux 5.3 以上の `pidfd`、子プロセスを引き受ける
 `PR_SET_CHILD_SUBREAPER`、同じ PID 名前空間の `/proc` が必要です。これらが利用できない
 環境ではジョブを受け付けません。追加パッケージや管理者権限は不要です。
 

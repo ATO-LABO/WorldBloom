@@ -1,0 +1,12 @@
+{
+  "pre_growth_s3_qd.yaml": {
+    "sha256": "bc03a9ab3c4856f461ce79f044aabe80b3c1cd147cfdb069979c3aac15734c07",
+    "git_blob": "fc0fa23ae6654523c606eb1d390833b4a5371128",
+    "purpose": "pre-growth template baseline"
+  },
+  "original_raw_workspace_ui.cjs": {
+    "sha256": "ce4460364b9af1dc3a977cd8e4b182e17fe7c198dfeba353d50344f32ea38219",
+    "git_blob": "50c1833def7b94c9fb6daa754a62395cf0f28ff5",
+    "purpose": "original assertion-bearing clipboard harness"
+  }
+}

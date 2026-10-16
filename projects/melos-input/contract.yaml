@@ -1,0 +1,97 @@
+version: 3
+calendar:
+  schema_version: 1
+  period:
+    start_date: '2000-06-01'
+    end_date: '2000-06-03'
+  normal:
+    bands:
+    - id: day
+      name: 表示のみ
+      start: 00:00
+      end: '23:59'
+      overnight: false
+      interval_minutes: 120
+    weekdays: {}
+    holidays: []
+  specials: []
+timezone: UTC
+start_time: 00:00
+end_time: '20:00'
+travel_minutes:
+  outskirts:
+    court: 30
+    pass: 150
+  court:
+    outskirts: 30
+  pass:
+    outskirts: 150
+    west_bank: 150
+    spring: 60
+  west_bank:
+    pass: 90
+    east_bank: 30
+  east_bank:
+    west_bank: 30
+    village: 330
+  village:
+    east_bank: 330
+  spring:
+    pass: 60
+    outskirts: 118
+roles:
+  Melos:
+  - brother
+  King:
+  - resident
+  Selinuntius:
+  - resident
+  Sister:
+  - resident
+  Groom:
+  - resident
+  Philostratus:
+  - resident
+tasks:
+  wedding:
+    label: 合意済みの婚礼への参加
+    place: village
+    units: 1
+    minutes_per_unit: 120
+    dependencies: []
+    resource: ceremony
+    roles:
+    - brother
+    materials_per_unit: {}
+    operation: work
+  return:
+    label: 王前で帰還を申し出る
+    place: court
+    units: 1
+    minutes_per_unit: 2
+    dependencies: []
+    resource: court-hearing
+    roles:
+    - brother
+    materials_per_unit: {}
+    operation: work
+materials: {}
+facility_hours: {}
+appraisal:
+  fulfilled: 0.05
+  unexplained_breach: -0.05
+assumptions:
+- 日付は表示用。原作は初夏だが西暦と月日は未指定。
+- 離城直後を第1日00:00、期限を第3日18:00と仮置き。原作の深夜・日没の厳密時刻ではない。
+- 移動分数、体力、危険閾値、意思決定効用は実験上の仮定。十里を現代距離や実測速度へ換算していない。
+- 王が早期帰還者を赦すかは原作で未観測。明示した価値判断による仮説。
+- このcontractの標準明示コマンドrunnerにメロス専用選択adapterを接続する。Jevなし。
+initial_task_knowledge:
+  Melos:
+  - return
+  - wedding
+  King: []
+  Selinuntius: []
+  Sister: []
+  Groom: []
+  Philostratus: []

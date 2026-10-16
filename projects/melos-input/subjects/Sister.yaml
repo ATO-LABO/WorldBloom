@@ -1,0 +1,32 @@
+id: Sister
+traits:
+  social: 0.5
+  stubbornness: 0.5
+  curiosity: 0.5
+  diligence: 0.5
+  temper: 0.2
+base: 50
+knowledge: []
+inventory: {}
+verbs:
+- move
+- rest
+- share_knowledge
+stamina:
+  max: 100
+  current: 100
+  recover_per_slot: 1
+range:
+  zones:
+  - outskirts
+  - court
+  - pass
+  - west_bank
+  - east_bank
+  - village
+  - spring
+  entry: village
+relations: {}
+goal:
+  outcome: observation_finished
+objective_claimant: false

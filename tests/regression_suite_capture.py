@@ -12,8 +12,11 @@ def main() -> int:
     evidence = Path(os.environ["WB_REGRESSION_EVIDENCE_DIR"])
     evidence.mkdir(parents=True, exist_ok=True)
     with (evidence / "full-suite.log").open("wb") as log:
+        command = ([sys.executable, "-B", "tests/regression_partition.py", *sys.argv[1:]]
+                   if len(sys.argv) > 1 else
+                   [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-v"])
         process = subprocess.Popen(
-            [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-v"],
+            command,
             cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         assert process.stdout is not None
         for line in process.stdout:

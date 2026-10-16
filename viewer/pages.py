@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from viewer import explanation_ui
 from viewer import reader_ui
+from viewer import purpose_pages
 
 import html
 import json
@@ -152,6 +153,7 @@ def _header_pickers(
     return (
         '<div class="header-pickers">'
         + leftmost
+        + purpose_pages.selector()
         + "".join(pickers)
         + '<span class="header-links">'
         f'<a href="/version" class="header-version" title="バージョン情報・最新版の確認">{_escape(version.label())}</a>'
@@ -228,8 +230,10 @@ def document(
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{_escape(title)} | WorldBloom</title>"
         '<link rel="stylesheet" href="/static/app.css">'
+        '<link rel="stylesheet" href="/static/purpose-workspace.css">'
         '<script src="/static/app.js" defer></script><script src="/static/local-status.js" defer></script>'
         '<script src="/static/workbench.js" defer></script>'
+        '<script src="/static/purpose-workspace.js" defer></script>'
         f"</head><body{body_class}>"
         '<div class="app-shell">'
         '<header class="site-header">'

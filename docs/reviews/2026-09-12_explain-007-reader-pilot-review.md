@@ -1,5 +1,7 @@
 # WB-EXPLAIN-007 実装レビュー依頼
 
+パスは共通の[パス表記](../PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 2026-09-12 / 実装・編集・原ログ照合: Codex / 独立レビュー・コミット: Claude Code（未実施）
 基準コミット: 762f07e44e2ba1ce134215747d6875184f477e48
 
@@ -67,16 +69,16 @@ codex-cli / gpt-5.6-sol、実呼び出し3回（22.980秒、20.850秒、22.425�
 - git diff --check成功。3本の原ログSHA-256が入力時と一致。
 
 ## 成果物と再開
-成果物ルート: C:/Projects/WorldBloom-local/runs/wb-explain-reader-007-20260912
+成果物ルート: ../WorldBloom-data/runs/wb-explain-reader-007-20260912
 pilot-manifest.json は原応答・編集版・表示用ファイル・元ログSHA・照合理由の索引。code-provenance.jsonに基準コミットと変更コードSHA。
-表示用サイドカー: C:/Projects/WorldBloom-local/runs/wb-explain-revision-20260912-r2/{new-detective,new-romance}/reader-summaries
+表示用サイドカー: ../WorldBloom-data/runs/wb-explain-revision-20260912-r2/{new-detective,new-romance}/reader-summaries
 既存archiveやlayers.jsonlは上書きしていない。
 
 localhostサーバー PID37420、port5322、入力runsは既存r2。起動コマンド:
 
 ```powershell
 $env:PYTHONUTF8='1'
-python -B -m viewer.server --runs C:/Projects/WorldBloom-local/runs/wb-explain-revision-20260912-r2 --host 127.0.0.1 --port 5322
+python -B -m viewer.server --runs ../WorldBloom-data/runs/wb-explain-revision-20260912-r2 --host 127.0.0.1 --port 5322
 ```
 
 生成CLIは generate --runs ... --experiment ... --cell ... --out ... --backend codex-cli --timeout 180。今回のoutで再実行するとrequestの排他的作成で止まる。新たな呼び出しは今回の予算外。approve artifact --expected-sha256 ... --reviewer ... --note ... は照合後にだけ使う。元応答と必要なら edited_response/editor_note を含む派生物の全体を照合し、artifactと.review.jsonの両方を表示用reader-summariesへ配置する。

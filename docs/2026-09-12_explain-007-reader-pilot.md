@@ -1,5 +1,7 @@
 # WB-EXPLAIN-007 読者向け文章化の試作
 
+パスは共通の[パス表記](PATHS.md)に従う。検証記録の成果物名は当時のもの。
+
 担当: Codex。レビューとコミット: Claude Code。ユーザーが試作を承認済み。
 
 ## 範囲と受入
@@ -10,8 +12,8 @@
 ## 呼び出し上限（実行前に固定）
 既存 settings.json の codex-cli / gpt-5.6-sol。計3候補、各1回、合計最大3回。1回180秒、CLI待ち時間最大540秒。自動再試行なし。入力16000字以下、応答6000字以下（応答受信後の検証）。生成本文は150〜320字が目安。CLI契約枠を使用し、APIキー経由の新規課金呼び出しは行わない。訂正（2026-09-13）: generate_textの戻り値には使用量を含めていないが、CLIのrolloutにはtoken_countがある。Claude Codeの独立レビューで、保存プロンプトと一致する3件の合計64,620トークン（うち出力1,961）を確認済み。円建て費用は未算出。これは事後計上であり、事前のトークン上限を設定していたという意味ではない。トークンのハード上限とは主張しない。最初の応答に未記録の意味追加があれば、追加生成を止めてローカルで原因を修正する。
 
-入力: C:/Projects/WorldBloom-local/runs/wb-explain-revision-20260912-r2
-出力: C:/Projects/WorldBloom-local/runs/wb-explain-reader-007-20260912
+入力: ../WorldBloom-data/runs/wb-explain-revision-20260912-r2
+出力: ../WorldBloom-data/runs/wb-explain-reader-007-20260912
 照合済み要約だけ入力実験内の新規 reader-summaries ディレクトリへ配置する。既存ログ・archiveを上書きしない。
 
 ## 実装と検証

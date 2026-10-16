@@ -7,7 +7,7 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 ## 必要環境
 
 - Windows 10/11、WebView2（多くの環境に標準搭載済み）
-- Studio には **Python 3.11 以上**が PATH に必要（`pip install pyyaml`）。Viewer は不要
+- Studio には **Python 3.12 以上**が PATH に必要（`pip install pyyaml`）。Viewer は不要
 - git は無くても動く（無い場合、実行の来歴に一部情報が記録されないだけ）
 
 !!! tip "文章生成（LLM）は最初に ⚙ 設定で選ぶ"
@@ -20,7 +20,7 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
     - 世界を選んで GA 実験を実行、Sifting（吟味・選定）、あらすじ・本文の生成まで、この画面から行えます
     - 初回起動時に、exe と同じフォルダに `runs/`・`control/` フォルダが自動生成されます
     - 展開したフォルダの `app/` フォルダは動かさないでください（アプリ本体が入っています）
-    - Python 3.11 以上（`pip install pyyaml` 済み）が PATH に無いと、Studio はエラー画面を出して起動しません
+    - Python 3.12 以上（`pip install pyyaml` 済み）が PATH に無いと、Studio はエラー画面を出して起動しません
 
 === "Viewer（閲覧のみ）"
 
@@ -34,7 +34,7 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 
     必要なもの:
 
-    - Python 3.11 以上（開発は 3.13）
+    - Python 3.12 以上（開発は 3.13）
     - `pip install -r requirements.txt`（PyYAML のみ）
 
     ```

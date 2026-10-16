@@ -53,10 +53,15 @@ gh pr create --base develop --head main --title "Sync main into develop"
 
 mainは`main-pr-only`、developは`develop-integration`のアクティブなRulesetで保護する。両方でPR、merge commit方式、レビュー会話の解決、最新baseに対する以下のCI成功を必須にし、force pushとブランチ削除を禁止する。管理者を含めてbypass対象は設定しない。
 
-- `regression (ubuntu-latest, 3.11)`
+- `regression (ubuntu-latest, 3.12)`
 - `regression (ubuntu-latest, 3.13)`
-- `regression (windows-latest, 3.11)`
+- `regression (windows-latest, 3.12)`
 - `regression (windows-latest, 3.13)`
+- `secrets`（Gitleaksと公開サンプルの検査）
+
+CodeQLは3言語の解析結果を要求し、security severityがhigh以上、または通常severityがerrorの新規指摘をマージ前に解決する。誤検知は対象SHA・経路・再現試験を確認して個別に理由付きで処理する。未修正の指摘をCI通過のためにdismissしない。これらの追加保護はSHA固定したワークフローがmain/developの両方へ導入され、結果が取得できることを確認してからAPIへ適用する。
+
+Python最低対応は3.12、CIは3.12/3.13とする。2026-10-15にユーザーの許可を受け、main/developの各RulesetでUbuntu・Windowsの3.11必須チェック名を3.12へ2件ずつ置換した。他の項目を維持したことを読み戻して確認し、上の一覧と `.github/rulesets/` も適用済みの状態へ更新した。詳細は[Python対応版の移行](python-support.md)。
 
 チェックの発行元はGitHub Actions（integration ID `15368`）に固定する。パス条件で実行されないことがあるdocsの`build`は全PRの必須チェックには含めず、実行された場合の成否を確認する。回帰CIはPRとmain/developへのpushで動く。
 

@@ -39,7 +39,13 @@
  async function loadPlan(url){if(busy)return;reset();source=url;busy=true;button('対象を確認中…',true);$('message').textContent='生成対象を確認しています。';const token=version;
   try{const u=new URL(url,location.origin);u.pathname=u.pathname.replace('/runs/','/api/runs/').replace('/generate','/generation-plan');const reviewed=await api(u.pathname+u.search);if(token!==version)return;plan=reviewed;request=plan.request;renderPlan();}catch(e){error(e.message);button('内容を再確認');}finally{busy=false;syncActivity();}
  }
- async function watch(jid){const token=version;let readFailed=false;clearTimeout(pollTimer);try{const latest=await api(`/api/jobs/${encodeURIComponent(jid)}`);if(token!==version)return;job=latest;uncertain=false;persist();const projected=job.output_id?await api(`/api/outputs/${encodeURIComponent(job.output_id)}`):null;if(token!==version)return;output=projected;
+ async function watch(jid){const token=version;let readFailed=false;clearTimeout(pollTimer);try{const latest=await api(`/api/jobs/${encodeURIComponent(jid)}`);if(token!==version)return;job=latest;uncertain=false;persist();let projected=null;
+   if(job.output_id){try{projected=await api(`/api/outputs/${encodeURIComponent(job.output_id)}`);}catch(e){
+    // The ledger assigns output_id before preparation publishes OutputStore.
+    // Keep watching this job; all errors beyond that boundary remain visible.
+    if(e.status!==404||job.phase!=='preparing'||terminal.has(job.state))throw e;
+   }}
+   if(token!==version)return;output=projected;
    for(const entry of output?.entries||[]){if(entry.status!=='ok'||!entry.text_sha256)continue;const identity=`${output.output_id}:${entry.candidate_id}:${entry.text_sha256}`;if(texts.has(identity))continue;
     const response=await fetch(`/outputs/${encodeURIComponent(output.output_id)}/entries/${encodeURIComponent(entry.candidate_id)}/text`);if(!response.ok)throw Error('生成された文章の整合性を確認できません。詳細の記録を確認してください。');const text=await response.text();if(token!==version)return;texts.set(identity,text);
     if(job.kind==='synopsize'&&!applied.has(identity)){applied.add(identity);window.dispatchEvent(new CustomEvent('wb-generation-entry',{detail:{run_id:job.run_id,candidate_id:entry.candidate_id,text,output_id:output.output_id,text_sha256:entry.text_sha256}}));}
@@ -64,7 +70,7 @@
   $('entries').parentElement.scrollTop=scroll;
   $('primary').hidden=true;
   if(stopConfirm){button('停止する',busy);$('secondary').textContent='生成を続ける';}
-  else if(terminal.has(job.state)){const anyOk=output?.entries?.some(e=>e.status==='ok');if(job.kind==='narrate'&&anyOk){$('result').href=`/outputs/${encodeURIComponent(job.output_id)}`;$('result').textContent='上映で本文を読む →';$('result').hidden=false;}else{button(job.kind==='synopsize'?'候補選びに戻る':'結果を確認');}if(job.error)error(job.error.message||'生成を完了できませんでした。詳細の記録を確認してください。');}
+  else if(terminal.has(job.state)){const anyOk=output?.entries?.some(e=>e.status==='ok');if(output?.request?.pipeline==='facts_v1'&&anyOk){const entry=output.entries.find(e=>e.status==='ok');$('result').href=`/facts/outputs/${encodeURIComponent(job.output_id)}/${encodeURIComponent(entry.candidate_id)}`;$('result').textContent=job.kind==='synopsize'?'あらすじと使用した入力を確認 →':'本文と使用した入力を確認 →';$('result').hidden=false;}else if(job.kind==='narrate'&&anyOk){$('result').href=`/outputs/${encodeURIComponent(job.output_id)}`;$('result').textContent='上映で本文を読む →';$('result').hidden=false;}else{button(job.kind==='synopsize'?'候補選びに戻る':'結果を確認');}if(job.error)error(job.error.message||'生成を完了できませんでした。詳細の記録を確認してください。');}
  }
  async function submit(){if(busy||!request)return;if(request.acknowledge_unknown&&!$('ack').checked){error('結果不明の再生成について確認してください。');return;}busy=true;uncertain=true;persist();base();button('受付を確認中…',true);$('message').textContent='生成を受け付けています。';error('');
   try{job=await api('/api/jobs',request);if(!job.job_id)throw Error('受付結果を確認できません');uncertain=false;persist();await watch(job.job_id);}

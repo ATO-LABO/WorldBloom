@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import random
-import sys
 import tempfile
 import unittest
 import yaml
@@ -362,10 +361,9 @@ class EngineTests(unittest.TestCase):
                         # Re-pinned: believed-strength advantage now scales
                         # the fight group's mass for NPCs and GA alike.
                         # Python 3.12 improved float sum(). The action/state
-                        # trajectory is identical; choice_prob's last bits differ.
-                        ("ca531c10e950bccccb1ea9b300372ddb9de2025729ec80ecb2e0b35146df73c7"
-                         if sys.version_info < (3, 12) else
-                         "7313b313d2757a0ff24775c41f399cb770ad5837c357ce8d8e78de5d2a565cb5"),
+                        # trajectory is identical; choice_prob's last bits differed
+                        # on unsupported 3.11. Both supported versions use this golden.
+                        "7313b313d2757a0ff24775c41f399cb770ad5837c357ce8d8e78de5d2a565cb5",
                     )
 
     def test_phase0_opt_in_removal_restores_old_seed_hash(
@@ -460,9 +458,7 @@ class EngineTests(unittest.TestCase):
                 # WB-TIMEEVENT-001: updated again because departure_day now uses
                 # force_action (verb-consuming, single-decision move) instead of
                 # move_to (instant teleport that did not consume a decision).
-                ("cd115a06c2dbcfc22ca7687c6248079ceb0d498cfb78007d32d8b186595cb412"
-                 if sys.version_info < (3, 12) else
-                 "25e0640004f4e2838d1c1c80a2ab84a780526cb04e32d1eb85dc0c2a9e65c7c2"),
+                "25e0640004f4e2838d1c1c80a2ab84a780526cb04e32d1eb85dc0c2a9e65c7c2",
             )
 
     def _force_event_world(

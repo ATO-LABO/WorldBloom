@@ -37,24 +37,28 @@
       "parameters": {
         "required_status_checks": [
           {
-            "context": "regression (ubuntu-latest, 3.11)",
+            "context": "ci-policy",
             "integration_id": 15368
           },
           {
-            "context": "regression (ubuntu-latest, 3.13)",
-            "integration_id": 15368
-          },
-          {
-            "context": "regression (windows-latest, 3.11)",
-            "integration_id": 15368
-          },
-          {
-            "context": "regression (windows-latest, 3.13)",
+            "context": "secrets",
             "integration_id": 15368
           }
         ],
         "strict_required_status_checks_policy": true,
         "do_not_enforce_on_create": false
+      }
+    },
+    {
+      "type": "code_scanning",
+      "parameters": {
+        "code_scanning_tools": [
+          {
+            "tool": "CodeQL",
+            "alerts_threshold": "errors",
+            "security_alerts_threshold": "high_or_higher"
+          }
+        ]
       }
     }
   ]
