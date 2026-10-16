@@ -91,6 +91,7 @@ class ClassificationTests(unittest.TestCase):
     def test_push_can_be_short_only_with_proof_and_main_PR_never_reuses(self):
         proof={'merged_sha':'c'*40,'tested_tree':'d'*40}
         self.assertEqual(make_plan(inputs('push'),docs(),cfg(),lambda name:None,receipt=proof)['effective_tier'],'postmerge')
+        self.assertEqual(make_plan(inputs('push'),[],cfg(),lambda name:None,receipt=proof,diff_error='truncated-diff')['effective_tier'],'full')
         self.assertEqual(make_plan(inputs(target='main'),docs(),cfg(),lambda name:None,receipt=proof)['effective_tier'],'full')
 
 class GateTests(unittest.TestCase):

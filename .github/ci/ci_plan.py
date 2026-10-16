@@ -124,7 +124,9 @@ def make_plan(inputs, rows, cfg, load_pair, *, diff_error=None, receipt=None):
         requested,reasons='full',[{'reason':'diff-fallback','error':diff_error}]
     else:requested,reasons=classify_changes(rows,load_pair)
     effective=requested
-    if target not in ('main','develop'):
+    if diff_error:
+        effective='full';reasons.append({'reason':'incomplete-diff-overrides-receipt-optimization'})
+    elif target not in ('main','develop'):
         effective='full';reasons.append({'reason':'other-PR-target-preserves-full-regression-and-secrets'})
     elif inputs['event']=='pull_request' and target=='main':
         effective='full';reasons.append({'reason':'main-PR-always-full'})
