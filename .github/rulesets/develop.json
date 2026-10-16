@@ -37,19 +37,7 @@
       "parameters": {
         "required_status_checks": [
           {
-            "context": "regression (ubuntu-latest, 3.12)",
-            "integration_id": 15368
-          },
-          {
-            "context": "regression (ubuntu-latest, 3.13)",
-            "integration_id": 15368
-          },
-          {
-            "context": "regression (windows-latest, 3.12)",
-            "integration_id": 15368
-          },
-          {
-            "context": "regression (windows-latest, 3.13)",
+            "context": "ci-policy",
             "integration_id": 15368
           },
           {

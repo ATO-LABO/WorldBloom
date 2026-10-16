@@ -52,6 +52,8 @@ developの切替先候補は`ci-policy`（GitHub Actions integration ID 15368）
 secretsは既存`security.yml`の検査を同じ`secrets` jobとして`tests.yml`へ移し、最終gateと4環境gateの依存にする。
 Gitleaksの履歴/working tree検査と公開sample検査は削除しない。CodeQLの3言語PR/push/週次解析は既存workflowのまま維持する。
 設定控えJSONを配置するだけではGitHub設定は変わらない。実GETを基準にしたbefore/intermediate/after候補を別途レビューする。
+`.github/rulesets/develop.json`の将来用控えも新gate名へ整合させた。この控えには以前から未適用のsecrets/CodeQL保護案が含まれる。
+実GETの4gateだけを基にしたCI切替候補と、追加のsecurity保護を混同して一括適用しない。後者はmainへのsecurity/CodeQL workflow導入を確認して別途承認する。
 
 ## PR/pushの重複
 
