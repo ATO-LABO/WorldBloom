@@ -78,6 +78,72 @@ class ContainmentRevalidationTests(unittest.TestCase):
                 p.contained(self.root, "legacy")
         self.assertEqual(resolve.call_count, 1)
 
+    def check_short_name_root(self, *, exists):
+        import ctypes
+        api = ctypes.WinDLL("kernel32", use_last_error=True).GetShortPathNameW
+        api.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+        api.restype = ctypes.c_uint
+        buffer = ctypes.create_unicode_buffer(32768)
+        size = api(str(self.base), buffer, len(buffer))
+        self.assertTrue(0 < size < len(buffer))
+        short_base = Path(buffer.value)
+        if short_base == self.base.resolve():
+            self.skipTest("filesystem has no short-name aliases for the fixture")
+        root = short_base / "parent" / "control"
+        if exists:
+            self.root.mkdir(parents=True)
+        self.assertEqual(p.contained(root, ".boundary"), root / ".boundary")
+        self.assertEqual(self.root.exists(), exists)
+        self.assertFalse((self.root / ".boundary").exists())
+        self.assert_canary_unchanged()
+
+    @unittest.skipUnless(os.name == "nt", "Windows short-name aliases")
+    def test_existing_root_with_real_short_names_is_accepted(self):
+        self.check_short_name_root(exists=True)
+
+    @unittest.skipUnless(os.name == "nt", "Windows short-name aliases")
+    def test_missing_root_with_real_short_names_is_accepted(self):
+        self.check_short_name_root(exists=False)
+
+    def check_root_anchor_after_inspection(self, location, *, junction=False):
+        self.root.mkdir(parents=True)
+        (self.root / "canary.txt").write_bytes(b"inside-fixture")
+        link = self.root if location == "root" else self.root.parent
+        if location == "ancestor":
+            (self.outside / "control").mkdir()
+            (self.outside / "control" / "canary.txt").write_bytes(b"fixture-only")
+        original = link.with_name(link.name + "-original")
+        self.assertTrue(link.resolve().is_relative_to(self.base.resolve()))
+        self.assertTrue(original.resolve().is_relative_to(self.base.resolve()))
+        last_ancestor = self.root.parents[-1]
+        real_is_link = p.is_link
+        changed = []
+
+        def inspected(path):
+            answer = real_is_link(path)
+            if path == last_ancestor and not changed:
+                changed.append(True)
+                link.rename(original)
+                directory_link(self, link, self.outside, junction=junction)
+            return answer
+
+        with patch.object(p, "is_link", inspected), self.assertRaises(p.ConfigError):
+            p.contained(self.root, "canary.txt").read_bytes()
+        self.assertEqual(changed, [True])
+        self.assertEqual(self.canary.read_bytes(), b"fixture-only")
+
+    def test_symlink_root_does_not_change_checked_anchor(self):
+        self.check_root_anchor_after_inspection("root")
+
+    def test_symlink_ancestor_does_not_change_checked_anchor(self):
+        self.check_root_anchor_after_inspection("ancestor")
+
+    def test_junction_root_does_not_change_checked_anchor(self):
+        self.check_root_anchor_after_inspection("root", junction=True)
+
+    def test_junction_ancestor_does_not_change_checked_anchor(self):
+        self.check_root_anchor_after_inspection("ancestor", junction=True)
+
     def check_link_added_during_revalidation(self, location, *, junction=False):
         self.root.mkdir(parents=True)
         # Prime the normal-path cache before planting the link. The retry must
