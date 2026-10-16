@@ -72,7 +72,10 @@ def _check_root(root_str: str) -> Path:
     for part in (root, *root.parents):
         if is_link(part):
             raise ConfigError("path", "リンクを経由した保存・読取はできません")
-    return root.resolve()
+    # Keep the comparison anchored to the configured path. Following a link
+    # planted after inspection must not move both the root and the candidate.
+    # The candidate is resolved separately by contained() below.
+    return Path(os.path.abspath(root))
 
 
 # Root/ancestor checks remain cached on the normal success path. A link planted
