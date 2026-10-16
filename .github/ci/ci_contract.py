@@ -26,7 +26,7 @@ def workflow(path):
 
 def validate(value):
     assert set(value['on'])=={'pull_request','push'}
-    assert value['on']['pull_request'] is None
+    assert value['on']['pull_request']=={'types':['opened','synchronize','reopened','edited']}
     assert value['on']['push']['branches']==['main','develop']
     assert value['permissions']=={'contents':'read'}
     jobs=value['jobs']
@@ -76,6 +76,7 @@ def main():
     codeql=workflow(ROOT/'.github/workflows/codeql.yml')
     assert codeql['jobs']['analyze']['strategy']['matrix']['language']==['actions','javascript-typescript','python']
     assert set(codeql['on'])=={'push','pull_request','schedule','workflow_dispatch'}
+    assert codeql['on']['pull_request']=={'branches':['main','develop'],'types':['opened','synchronize','reopened','edited']}
     assert not (ROOT/'.github/workflows/security.yml').exists(), 'secrets moved intact into tests workflow'
     print(json.dumps({'python_sources_compiled':count,'policy_mode':cfg['develop_mode'],**data}))
 

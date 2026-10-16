@@ -160,6 +160,8 @@ class GateTests(unittest.TestCase):
         value=workflow(ROOT/'.github/workflows/tests.yml')
         value['jobs']['regression']['if']="always() && needs.classify.outputs.full == 'true'"
         with self.assertRaises(AssertionError):validate(value)
+        value=workflow(ROOT/'.github/workflows/tests.yml');value['on']['pull_request']=None
+        with self.assertRaises(AssertionError):validate(value)
 
 class ReceiptTests(unittest.TestCase):
     def fixture(self):
