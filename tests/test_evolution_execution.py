@@ -23,6 +23,7 @@ from gapengine.qd import Archive
 from test_gapengine import make_reaching_project, ROOT, TEMPLATE
 from viewer.data import RunRepository
 from viewer.server import ViewerServer, ViewerHandler
+from http_failure_diagnostics import record_http_timeout
 
 
 def files(root, pattern="*"):
@@ -466,6 +467,9 @@ class EvolutionHttpTests(unittest.TestCase):
                 break
             time.sleep(0.05)
         else:
+            record_http_timeout(evidence=os.environ.get("WB_REGRESSION_EVIDENCE_DIR"),
+                job_folder=self.jobs.root / job["job_id"], run_root=self.configs.runs / job["run_id"],
+                last_http=locals().get("value"), http_status=status, probe=worker.probe)
             self.fail("real GA did not reach terminal state")
         return job, value, snapshots, preserved
 
