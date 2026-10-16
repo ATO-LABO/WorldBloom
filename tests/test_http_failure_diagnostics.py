@@ -33,21 +33,50 @@ class HttpFailureDiagnosticTests(unittest.TestCase):
         job = {"state": "running", "phase": "evaluating", "revision": 4, "nonce": secret,
                "receipt": {"identity": {"pid": 1, "image": secret}}, "child_identity": {"pid": 2},
                "progress": {"completed_seeds": 3, "metrics": {"secret": secret}, "phase": "evaluating"}}
-        (self.job / "job.json").write_text(json.dumps(job), encoding="utf-8")
-        (self.run / "evaluation/progress.json").write_text(json.dumps({"completed_seeds": 4, "phase": "publishing", "api_key": secret}), encoding="utf-8")
-        (self.job / "events.jsonl").write_text("\n".join(json.dumps({"revision": n, "state": "running", "phase": "evaluating", "secret": secret}) for n in range(1000)), encoding="utf-8")
-        before = {p: p.read_bytes() for p in [self.job / "job.json", self.job / "events.jsonl", self.run / "evaluation/progress.json"]}
-        probe = Mock(return_value="alive"); result, output = self.record(probe=probe)
+        # Sensitive test values exercise the real JSON parser and allowlist in
+        # memory; they are never written to a job, progress or event file.
+        memory_files = {
+            self.job / "job.json": json.dumps(job).encode(),
+            self.run / "evaluation/progress.json": json.dumps({"completed_seeds": 4, "phase": "publishing", "api_key": secret}).encode(),
+            self.job / "events.jsonl": "\n".join(json.dumps({"revision": n, "state": "running", "phase": "evaluating", "secret": secret}) for n in range(1000)).encode(),
+        }
+
+        def memory_read(path):
+            return io.TextIOWrapper(io.BytesIO(memory_files[Path(path)]), encoding="utf-8")
+
+        probe = Mock(return_value="alive")
+        with patch.object(d, "open_atomic_read", side_effect=memory_read) as reader:
+            result, output = self.record(probe=probe)
+        self.assertEqual(reader.call_count, 3)
+        self.assertEqual({call.args[0] for call in reader.call_args_list}, set(memory_files))
+        self.assertTrue(all(not path.exists() for path in memory_files))
         self.assertEqual(result["disk_job"]["revision"], 4)
         self.assertEqual(result["ga_progress"]["completed_seeds"], 4)
         self.assertEqual(result["recent_events"][-1]["revision"], 999)
         self.assertLessEqual(len(result["recent_events"]), 16)
         self.assertEqual(probe.call_count, 2)
         self.assertNotIn(secret, output)
-        self.assertEqual(before, {p: p.read_bytes() for p in before})
         artifact = next((self.root / "evidence/http-timeouts").glob("*.json"))
         self.assertEqual(json.loads(artifact.read_text(encoding="utf-8")), result)
+        self.assertNotIn(secret, artifact.read_text(encoding="utf-8"))
         self.assertLessEqual(artifact.stat().st_size, d.OUTPUT_LIMIT + 1)
+
+        # Independently exercise actual file reads and byte preservation with
+        # ordinary state/counter data, without persisting sensitive markers.
+        plain_job = {"state": "running", "phase": "evaluating", "revision": 4,
+                     "receipt": {"identity": {"pid": 1}}, "child_identity": {"pid": 2},
+                     "progress": {"completed_seeds": 3, "phase": "evaluating"}}
+        (self.job / "job.json").write_text(json.dumps(plain_job), encoding="utf-8")
+        (self.run / "evaluation/progress.json").write_text(json.dumps({"completed_seeds": 4, "phase": "publishing"}), encoding="utf-8")
+        (self.job / "events.jsonl").write_text("\n".join(json.dumps({"revision": n, "state": "running", "phase": "evaluating"}) for n in range(1000)), encoding="utf-8")
+        before = {path: path.read_bytes() for path in memory_files}
+        plain_result, _ = self.record()
+        self.assertEqual(plain_result["read_status"], {"job": "read", "ga": "read", "events": "bounded_tail"})
+        self.assertEqual(plain_result["disk_job"]["revision"], 4)
+        self.assertEqual(plain_result["ga_progress"]["completed_seeds"], 4)
+        self.assertEqual(plain_result["recent_events"][-1]["revision"], 999)
+        self.assertLessEqual(len(plain_result["recent_events"]), 16)
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
 
     def test_oversized_missing_and_malformed_files_do_not_escape_into_output(self):
         (self.job / "job.json").write_bytes(b"x" * (d.JSON_LIMIT + 1))
