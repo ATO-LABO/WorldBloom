@@ -13,6 +13,7 @@ PR #28（計測追加）と#29（パス検証の最小修正）は含めない�
 | 共有処理・試験・CI・依存定義・テンプレート・プロジェクトデータ・未知ファイル | 基本検査＋Ubuntu/Windows × Python 3.12/3.13の全件 |
 | 追加、削除、rename、copy、ファイル型変更、差分の取得失敗・上限超過・不完全入力 | 全4環境・全件 |
 | main向けPR（develop→mainを含む） | 全4環境・全件を常に実行 |
+| main/develop以外へのPR | 従来どおり全4環境・全件とsecretsを維持 |
 | main/developへのpush | 検証済みPR receiptとmerge commitの親・treeが一致した場合は基本確認。証明できなければ全4環境・全件 |
 
 初版の縮小対象は意図的に狭い。依存関係が未監査の機能変更を短い検査だけに振り分けない。
@@ -49,7 +50,7 @@ mainの4つのrequired context名は維持する。
 - `regression (windows-latest, 3.13)`
 
 developの切替先候補は`ci-policy`（GitHub Actions integration ID 15368）。strict、PR必須、merge方式、レビュー会話解決、force/delete禁止、bypassなしは維持する。
-secretsは既存`security.yml`の検査を同じ`secrets` jobとして`tests.yml`へ移し、最終gateと4環境gateの依存にする。
+secretsは既存`security.yml`の検査を同じ`secrets` jobとして`tests.yml`へ移し、最終gateと4環境gateの依存にする。pull_requestの対象branchは制限せず、他branch向けPRの検査も削除しない。
 Gitleaksの履歴/working tree検査と公開sample検査は削除しない。CodeQLの3言語PR/push/週次解析は既存workflowのまま維持する。
 設定控えJSONを配置するだけではGitHub設定は変わらない。実GETを基準にしたbefore/intermediate/after候補を別途レビューする。
 `.github/rulesets/develop.json`の将来用控えも新gate名へ整合させた。この控えには以前から未適用のsecrets/CodeQL保護案が含まれる。

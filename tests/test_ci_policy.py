@@ -83,7 +83,7 @@ class ClassificationTests(unittest.TestCase):
             self.assertFalse(windows_only(old,new))
 
     def test_main_transition_errors_and_push_without_receipt_are_full(self):
-        for inp,config,error in ((inputs(target='main'),cfg(),None),
+        for inp,config,error in ((inputs(target='main'),cfg(),None),(inputs(target='feature/work'),cfg(),None),
             (inputs(),cfg('transition-full'),None),(inputs(),cfg(),'diff-error'),
             (inputs('push'),cfg(),None)):
             self.assertEqual(make_plan(inp,docs(),config,lambda name:None,diff_error=error)['effective_tier'],'full')

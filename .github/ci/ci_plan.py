@@ -119,12 +119,14 @@ def classify_changes(rows, load_pair):
 
 def make_plan(inputs, rows, cfg, load_pair, *, diff_error=None, receipt=None):
     target=inputs['target']
-    if target not in ('main','develop'):raise ValueError('unsupported-target')
+    if not isinstance(target,str) or not target:raise ValueError('invalid-target')
     if diff_error:
         requested,reasons='full',[{'reason':'diff-fallback','error':diff_error}]
     else:requested,reasons=classify_changes(rows,load_pair)
     effective=requested
-    if inputs['event']=='pull_request' and target=='main':
+    if target not in ('main','develop'):
+        effective='full';reasons.append({'reason':'other-PR-target-preserves-full-regression-and-secrets'})
+    elif inputs['event']=='pull_request' and target=='main':
         effective='full';reasons.append({'reason':'main-PR-always-full'})
     elif cfg['develop_mode']=='transition-full':
         effective='full';reasons.append({'reason':'transition-preserves-old-four-gates'})

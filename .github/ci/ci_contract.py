@@ -26,7 +26,7 @@ def workflow(path):
 
 def validate(value):
     assert set(value['on'])=={'pull_request','push'}
-    assert value['on']['pull_request']['branches']==['main','develop']
+    assert value['on']['pull_request'] is None
     assert value['on']['push']['branches']==['main','develop']
     assert value['permissions']=={'contents':'read'}
     jobs=value['jobs']
@@ -57,7 +57,8 @@ def validate(value):
     return {'required_main_contexts':['regression ('+os+', '+py+')' for os,py in itertools.product(full['os'],full['python'])],
             'new_develop_context':'ci-policy',
             'tests_workflow_jobs':{'basic_or_proven_postmerge':4,'windows':6,'full_or_transition':16},
-            'codeql_jobs_always_add':3,'docs_jobs_path_dependent':{'PR':1,'main_push':2},
+            'codeql_jobs_main_or_develop':3,'other_target_PR_full_jobs':16,
+            'docs_jobs_path_dependent':{'PR':1,'main_push':2},
             'concurrency_cancellation_added':False}
 
 def main():
