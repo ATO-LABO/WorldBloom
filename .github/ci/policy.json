@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "develop_mode": "transition-full",
+  "max_diff_files": 5000,
+  "max_diff_bytes": 2097152,
+  "basic_modules": [
+    "test_ci_policy", "test_regression_partition", "test_execution_plan",
+    "test_evolution_settings", "test_publication_guard", "test_security_html",
+    "test_action_catalog", "test_episode_contract"
+  ],
+  "windows_modules": [
+    "test_directory_lock", "test_security_paths", "test_job_storage_reads",
+    "test_execution_configs", "test_execution_jobs", "test_evolution_execution",
+    "test_epoch_chain", "test_output_boundaries", "test_output_jobs",
+    "test_fact_security_paths", "test_independent_http_boundary", "test_cli_workspace_cleanup"
+  ]
+}
