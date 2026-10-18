@@ -55,6 +55,19 @@ def log_observation(root, relative_path, source_hash, pruned_paths):
             "observed_sha256": observed}
 
 
+def _read_progress_event(path):
+    """Retry only bounded Windows read contention; never accept unread data."""
+    for attempt in range(6):
+        try:
+            return read_json(path)
+        except PermissionError as error:
+            if (os.name != "nt" or error.errno != 13
+                    or getattr(error, "winerror", None) not in (None, 5, 32, 33)
+                    or attempt == 5):
+                raise
+            time.sleep(0.02 * (attempt + 1))
+
+
 class EvolutionObserver:
     """File events cross spawn boundaries; a thread polls even inside one seed.
 
@@ -124,7 +137,7 @@ class EvolutionObserver:
         for name in sorted(set(os.listdir(self.events)) - self.seen):
             if not name.endswith(".json"):
                 continue
-            event = read_json(self.events / name)
+            event = _read_progress_event(self.events / name)
             target = self.completed if event["kind"] == "completed" else self.seed_starts
             target[event["event_id"]] = event
             self.seen.add(name)
