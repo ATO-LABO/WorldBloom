@@ -1,5 +1,7 @@
 # 開発者向けガイド
 
+採点内訳APIと対応ログの意味は[Quality scoring log contract](quality-log-contract.md)を参照してください。
+
 ブランチ・PR・main反映の手順は[ブランチとリリースの運用](BRANCHING.md)を参照してください。通常の変更はdevelopへPRを作ります。
 機密情報の検査、公開サンプル、Windows配布、メールアドレスの保護は[公開前の情報確認](PUBLISHING-SECURITY.md)を参照してください。
 
