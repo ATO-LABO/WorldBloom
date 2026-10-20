@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from gapengine.qd import quality
+from gapengine.qd import quality, quality_breakdown
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -343,8 +343,17 @@ class QualityCharacterizationTests(unittest.TestCase):
         before = copy.deepcopy((rows, meta))
         expected = _legacy_quality(rows, meta)
         actual = quality(rows, meta)
+        breakdown = quality_breakdown(rows, meta)
         self.assertIs(type(actual), float)
         self.assertEqual(actual, expected)
+        self.assertEqual(breakdown.total, expected)
+        score = breakdown.aggregate
+        score -= breakdown.penalties.repetition
+        if breakdown.counts.protagonist_decisions:
+            score -= breakdown.penalties.stalls
+        score -= breakdown.penalties.dangling_effects
+        self.assertEqual(breakdown.penalized_total, score)
+        self.assertEqual(breakdown.total, round(min(1.0, max(0.0, score)), 12))
         self.assertEqual((rows, meta), before)
 
     def test_empty_and_missing_values(self):
@@ -423,3 +432,76 @@ class QualityCharacterizationTests(unittest.TestCase):
         for index, (rows, meta) in enumerate(synthetic_cases()):
             with self.subTest(case=index):
                 self.assert_compatible(rows, meta)
+
+
+class QualityBreakdownTests(unittest.TestCase):
+    def test_named_metrics_below_saturation(self):
+        cases = (
+            ("objective_changes", [{"delta": {"objective": {"x": None}}}], 0.5),
+            ("affinity_change", [{"delta": {"relations": [
+                {"observer": "A", "affinity": -0.75}]}}], 0.25),
+            ("revived", [event("revived")], 0.5),
+            ("strength_reversals", [{"details": {"strength_diff": n}}
+                                    for n in (1, 0, -1)], 0.5),
+            ("learning", [event("learn_fact")], 1 / 3.0),
+            ("dramatic_turns", [event("exposure", subject="B")], 0.5),
+            ("completed_chains", [decision("negotiate"),
+                decision("concede", target="A", subject="B")], 0.5),
+        )
+        for name, tail, expected in cases:
+            with self.subTest(metric=name):
+                result = quality_breakdown([
+                    {"kind": "header", "protagonist": "A"}, *tail], {})
+                self.assertEqual(getattr(result.metrics, name), expected)
+                self.assertEqual(sum(result.metrics), expected)
+
+    def test_named_raw_metrics_and_penalties(self):
+        rows = saturated_rows() + [decision("rest")] * 5 + [
+            {"dangling_effects": 2, "details": {"dangling_effects": 1}}]
+        result = quality_breakdown(rows, {})
+        self.assertEqual(result.counts.objective_changes, 3)
+        self.assertEqual(result.counts.affinity_change, 4.0)
+        self.assertEqual(result.counts.revived, 3)
+        self.assertEqual(result.counts.strength_reversals, 3)
+        self.assertEqual(result.counts.learning, 4)
+        self.assertEqual(result.counts.dramatic_turns, 4)
+        self.assertEqual(result.counts.completed_chains, 3)
+        self.assertEqual(result.counts.repetition_runs, 1)
+        self.assertEqual(result.counts.protagonist_decisions, 9)
+        self.assertEqual(result.counts.stalls, 5)
+        self.assertEqual(result.counts.dangling_effects, 1)
+        self.assertEqual(tuple(result.metrics), (1.0,) * 7)
+        self.assertEqual(result.aggregate, 1.0)
+        self.assertEqual(result.penalties.repetition, 0.05)
+        self.assertEqual(result.penalties.stalls, (5 / 9) * 0.3)
+        self.assertEqual(result.penalties.dangling_effects, 0.05)
+        self.assertEqual(result.total, _legacy_quality(rows, {}))
+
+    def test_empty_breakdown_is_read_only_at_every_level(self):
+        result = quality_breakdown([], {})
+        self.assertEqual(tuple(result.metrics), (0.0,) * 7)
+        self.assertEqual(tuple(result.penalties), (0.0,) * 3)
+        self.assertEqual(result.aggregate, 0.0)
+        for value in (result, result.counts, result.metrics, result.penalties):
+            with self.assertRaises(AttributeError):
+                setattr(value, value._fields[0], 99)
+            with self.assertRaises(TypeError):
+                value[0] = 99
+
+    def test_filtering_differences_remain_visible(self):
+        rows = [{"kind": "header", "protagonist": "A"},
+                decision("observe", result="invalid", effective=False),
+                decision("neutralize", effective=False),
+                decision("concede", subject="B", details={"mode": "goodwill"}),
+                event("rethink", details={"before": {"x": {"value": False}},
+                                          "after": {"x": {"value": True}}})]
+        result = quality_breakdown(rows, {})
+        self.assertEqual(result.counts.learning, 1)
+        self.assertEqual(result.counts.completed_chains, 0)
+        self.assertEqual(result.counts.dramatic_turns, 2)
+        # The chain helper takes the first header, independently of world_meta.
+        rows[1].pop("result")
+        result = quality_breakdown(rows, {"protagonist": "B"})
+        self.assertEqual(result.counts.learning, 0)
+        self.assertEqual(result.counts.completed_chains, 1)
+        self.assertEqual(result.counts.protagonist_decisions, 1)
