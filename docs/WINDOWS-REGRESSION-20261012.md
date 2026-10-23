@@ -69,3 +69,28 @@ DEVNULLへ破棄されており、直接の例外原因は不明。時間超過�
 区別する。捕捉ありの成功だけでは、元の失敗の解消や原因の確定とは扱わない。
 baseは最新develop `e2f0ecc5cf62577d8bdc93a00da572e68083b2f2`。
 CodeQL更新だけのPR #42 / #43 / #44には依存しない独立した診断変更とする。
+
+## 2026-10-23: 評価イベントの Windows 共有読取
+
+診断PR #45 head `f2bff9d0fe98ac6eb0320550fe01d48b3d6f8454` の tests run
+`39890929629` でも Windows / Python 3.12.10 / shard 0 が1件失敗した。
+捕捉した子stderrでは、epoch 0 の評価中に `EvolutionObserver._drain()` が
+`evaluation/events/0-protagonist-4-32-completed.json` を通常の `read_json()` で
+開き、`PermissionError: [Errno 13] Permission denied` が伝播していた。
+driver は約5.969秒・exit 0で、失敗したchainを既存assertionが拒否した。
+前段の捕捉probeは成功、全回帰の捕捉実行と後段の元workerは失敗した。
+PR #44 の epoch 1 と失敗段階が異なるため、PR #44 の直接例外まで同一とは
+断定しない。実CIでアクセスを拒否したプロセス・OS条件も未特定のままとする。
+
+本人承認後、イベント読取だけを既存の `read_atomic_json()` に切り替える。
+このhelperはWindowsで READ/WRITE/DELETE の共有を許可して開く。ACLやOS設定を
+変更せず、読取拒否・不正JSONを握りつぶさず、retryや待機時間の延長も追加しない。
+GA、採点、乱数、イベント形式、既存assertions、timeout、テスト集合は維持する。
+
+局所試験では、実producerで公開した完了イベントにDELETEアクセスの共有ハンドルを
+保持すると、元の通常読取は同じPermissionErrorを起こすことを確認した。helperの
+切替後は同じ条件で一度だけ取り込める。これは共有条件の再現であり、CIのロック元を
+特定したものではない。実producerをfsync後・rename前で停止した場合は未公開の
+一時ファイルを読まず、公開後の完全なJSONだけを取り込むことも確認する。
+共有を許可しないハンドルによる読取拒否と不正JSONは、イベントを消費せず失敗へ
+伝播することを検証する。元の診断PRと保存証拠は別に保持する。

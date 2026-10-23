@@ -1,5 +1,6 @@
 """UI004: deterministic observation, publication integrity and safe boundaries."""
 from copy import deepcopy
+from contextlib import contextmanager
 import http.client
 import json
 import os
@@ -24,6 +25,116 @@ from test_gapengine import make_reaching_project, ROOT, TEMPLATE
 from viewer.data import RunRepository
 from viewer.server import ViewerServer, ViewerHandler
 from http_failure_diagnostics import record_http_timeout
+
+
+@contextmanager
+def windows_event_handle(path, *, access, share):
+    """Hold an owned fixture handle; do not change permissions or delete it."""
+    import ctypes
+    from ctypes import wintypes
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = api.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                      ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = api.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    handle = create(str(path), access, share, None, 3, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        yield
+    finally:
+        if not close(handle):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+
+class EvaluationEventReadTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="wb-evaluation-event-read-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "run"
+        self.observer = EvolutionObserver(self.root, "run-events",
+            {"generations": 1, "population": 5, "seeds": 1})
+        self.job = {"index": 4, "observation": {"generation": 0,
+            "role": "protagonist", "events": str(self.observer.events)}}
+        self.path = self.observer.events / "0-protagonist-4-32-completed.json"
+
+    def publish(self):
+        from gapengine.evolve import _seed_event
+        _seed_event(self.job, 32, "completed")
+
+    @unittest.skipUnless(os.name == "nt", "Windows file sharing")
+    def test_drain_reads_published_event_while_delete_access_handle_is_open(self):
+        self.publish()
+        original = self.path.read_bytes()
+        expected = json.loads(original)
+        # A publisher-side DELETE handle is compatible with a shared reader,
+        # but Python's ordinary read_text does not share DELETE on Windows.
+        # This recreates a sharing condition, not proof of the CI lock owner.
+        with windows_event_handle(self.path, access=0x10000, share=7):
+            with self.assertRaises(PermissionError):
+                read_json(self.path)
+            self.observer.poll()
+            self.observer.poll()
+        self.assertEqual(self.observer.completed, {expected["event_id"]: expected})
+        self.assertEqual(self.observer.seen, {self.path.name})
+        self.assertEqual(self.observer.progress()["completed_seeds"], 1)
+        self.assertEqual(self.path.read_bytes(), original)
+
+    @unittest.skipUnless(os.name == "nt", "Windows file sharing")
+    def test_drain_propagates_exclusive_read_denial_without_consuming_event(self):
+        self.publish()
+        with windows_event_handle(self.path, access=0x80000000, share=0):
+            with self.assertRaises(PermissionError):
+                self.observer.poll()
+            self.assertEqual(self.observer.completed, {})
+            self.assertEqual(self.observer.seen, set())
+        self.observer.poll()
+        self.assertEqual(len(self.observer.completed), 1)
+
+    def test_drain_ignores_unpublished_event_until_writer_fsync_completes(self):
+        ready, release = threading.Event(), threading.Event()
+        errors = []
+        original_fsync = os.fsync
+        def paused_fsync(fd):
+            original_fsync(fd)
+            if threading.current_thread() is writer:
+                ready.set()
+                if not release.wait(5):
+                    raise TimeoutError("event writer was not released")
+        def publish():
+            try:
+                self.publish()
+            except BaseException as error:
+                errors.append(error)
+        writer = threading.Thread(target=publish)
+        with patch("gapengine.evolve.os.fsync", side_effect=paused_fsync):
+            writer.start()
+            try:
+                self.assertTrue(ready.wait(5), "event writer did not reach fsync")
+                self.assertFalse(self.path.exists())
+                self.observer.poll()
+                self.assertEqual(self.observer.completed, {})
+                self.assertEqual(self.observer.seen, set())
+            finally:
+                release.set()
+                writer.join(5)
+        self.assertFalse(writer.is_alive())
+        self.assertEqual(errors, [])
+        expected = read_json(self.path)
+        self.observer.poll()
+        self.observer.poll()
+        self.assertEqual(self.observer.completed, {expected["event_id"]: expected})
+        self.assertEqual(self.observer.seen, {self.path.name})
+
+    def test_drain_propagates_malformed_event_without_consuming_it(self):
+        self.path.write_text('{"kind":', encoding="utf-8")
+        with self.assertRaises(json.JSONDecodeError):
+            self.observer.poll()
+        self.assertEqual(self.observer.completed, {})
+        self.assertEqual(self.observer.seen, set())
 
 
 def files(root, pattern="*"):
@@ -253,7 +364,7 @@ class EvolutionExecutionTests(unittest.TestCase):
         (observer.events / "not-an-event.txt").write_text("ignore me", encoding="utf-8")
         import execution.evolution_worker as module
         from unittest.mock import patch
-        with patch.object(module, "read_json", wraps=module.read_json) as reads:
+        with patch.object(module, "read_atomic_json", wraps=module.read_atomic_json) as reads:
             observer.poll()
             self.assertEqual(len(observer.completed), 2)
             self.assertEqual(len(observer.seen), 2)

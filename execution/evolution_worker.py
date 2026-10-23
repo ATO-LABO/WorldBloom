@@ -19,7 +19,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from execution.provenance import (ConfigError, atomic_json, canonical, contained,
-    directory_lock, identifier, publish_directory, read_json, sha256, write_bytes)
+    directory_lock, identifier, publish_directory, read_atomic_json, read_json, sha256, write_bytes)
 from execution.rationality_settings import read_jev_api_key
 from gapengine.evolve import (EvolutionCancelled, _cell_for_run, evolve,
     rationality_cfg_override, route_cfg_override)
@@ -124,7 +124,7 @@ class EvolutionObserver:
         for name in sorted(set(os.listdir(self.events)) - self.seen):
             if not name.endswith(".json"):
                 continue
-            event = read_json(self.events / name)
+            event = read_atomic_json(self.events / name)
             target = self.completed if event["kind"] == "completed" else self.seed_starts
             target[event["event_id"]] = event
             self.seen.add(name)
