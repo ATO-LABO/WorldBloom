@@ -47,3 +47,25 @@ Windowsでは全回帰の前に対象2件を各1回、後に元の対象2件を�
 GPU・有料サービス・認証/権限変更・外部LLMは使わない。epoch-chainの
 LLM生成は従来のテストと同じコピー内stubを使用する。Choice GUI全体、
 新しいfitness/engine、30日モデルへの拡張はこの変更に含めない。
+
+## 2026-10-23: 全回帰で失敗した呼び出しの stderr 保存
+
+PR #44 head `3d61d251466e85337604d04db333502d1932d7e2` の tests run
+`39884210071` では、Windows / Python 3.12 / shard 0 の
+`HeavyRealChainEndToEndTest.test_two_epoch_auto_chain_with_real_ga_and_real_approval`
+が epoch 1 の evolve `process_failed` / exit 1 で失敗した。前段probeは成功、
+全回帰と後段original probeは失敗したが、失敗した呼び出しの子stderrは
+DEVNULLへ破棄されており、直接の例外原因は不明。時間超過や偶発性とは断定しない。
+
+全回帰の `WB_EPOCH_CAPTURE_STDERR` を `1` にし、既存のコピーworker診断を
+有効にする。コピーを入力・runtime固定前に変更する手順、ファイルへの捕捉、
+一時ディレクトリ削除前の保存、失敗時のログ抜粋、always artifactは既存のものを
+使用する。本番 `execution/worker.py`、GA設定、assertions、550/580秒の上限、
+テスト集合、合否判定は変更しない。前段probeは従来どおり捕捉コピー、後段
+`original-after-full` は従来どおり元worker/DEVNULLを使う。
+
+捕捉はstderrの出力先とコピーworkerのbytes/runtime hashを変え、I/Oによる
+影響もあり得る。`worker-observation.json` のmodeとbefore/after SHA256で
+区別する。捕捉ありの成功だけでは、元の失敗の解消や原因の確定とは扱わない。
+baseは最新develop `e2f0ecc5cf62577d8bdc93a00da572e68083b2f2`。
+CodeQL更新だけのPR #42 / #43 / #44には依存しない独立した診断変更とする。
