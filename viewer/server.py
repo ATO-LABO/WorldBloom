@@ -46,6 +46,9 @@ STATIC_FILES = {
     "home-workspace.css": "text/css; charset=utf-8",
     "home-workspace.js": "application/javascript; charset=utf-8",
     "world-create.css": "text/css; charset=utf-8",
+    "world-draft.css": "text/css; charset=utf-8",
+    "world-draft.js": "application/javascript; charset=utf-8",
+    "draft-goal-editor.js": "application/javascript; charset=utf-8",
     "genre-workspace.css": "text/css; charset=utf-8",
     "genre-workspace.js": "application/javascript; charset=utf-8",
     "world-create.js": "application/javascript; charset=utf-8",
@@ -56,6 +59,8 @@ STATIC_FILES = {
     "screening-workspace.css": "text/css; charset=utf-8",
     "screening-workspace.js": "application/javascript; charset=utf-8",
     "app.css": "text/css; charset=utf-8",
+    "ui-tokens.css": "text/css; charset=utf-8",
+    "ui.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
     "local-status.js": "application/javascript; charset=utf-8",
     "workbench.js": "text/javascript; charset=utf-8",
@@ -236,7 +241,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return
         job_store = getattr(self.server, "job_store", None)
         if not parts:
-            self._send_html(pages.index_page(self.repository, job_store=job_store))
+            from viewer import purpose_pages
+            self._send_html(purpose_pages.landing(job_store))
             return
         if parts == ["modes"]:
             from viewer import purpose_pages
@@ -265,7 +271,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
             from viewer import lineage_river
             query = parse_qs(urlsplit(self.path).query)
             html = lineage_river.river_page(self.repository, parts[1], selected_cell=query.get("cell", [None])[0] or None, job_store=job_store)
-            self._send_html(html.replace("</head>", '<link rel="stylesheet" href="/static/run-workspace.css"></head>'))
+            self._send_html(html)
             return
         if len(parts) == 3 and parts[0] == "exp" and parts[2] == "compare":
             query = parse_qs(urlsplit(self.path).query)
@@ -596,6 +602,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--control", type=Path, help="Enable persistent configuration/job APIs at this control root.")
     parser.add_argument("--repo", type=Path, default=ROOT)
+    drafts = parser.add_mutually_exclusive_group()
+    drafts.add_argument("--world-draft-mock", action="store_true", help="Use an explicitly labelled fixed mock for new-world proposals; never call an LLM.")
+    drafts.add_argument("--world-draft-live", action="store_true", help="Opt in to real generation using existing output settings. Requires prior approval for provider/model/cost.")
     return parser
 
 
@@ -616,6 +625,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("execution API requires a loopback host")
         server.job_store = JobStore(ConfigStore(args.repo, args.control, args.runs))
         server.settings_path = args.repo / "settings.json"
+        from execution.world_drafts import DraftStore, existing_provider, mock_response
+        mode = "mock" if args.world_draft_mock else "live" if args.world_draft_live else "waiting"
+        server.job_store.world_draft_mode = mode
+        provider = mock_response if mode == "mock" else existing_provider(server.settings_path) if mode == "live" else None
+        server.world_drafts = DraftStore(args.repo, args.control, provider, mode)
         server.repository = RunRepository(args.runs, control_root=args.control, jobs=server.job_store)
 
     host, port = server.server_address[:2]

@@ -1,0 +1,26 @@
+/* AI draft content; headings, fields, buttons and footer come from ui.css. */
+.wd-scroll{flex:1}
+.wd-steps{display:flex;flex-wrap:wrap;gap:var(--ws-space-6);padding:var(--ws-space-3) var(--ws-space-5);margin:var(--ws-space-4) 0;background:var(--ws-panel-bg)}
+.wd form{margin:0}
+.wd-actions{display:flex;gap:var(--ws-space-3);flex-wrap:wrap;margin:var(--ws-space-4) 0}
+.wd-review{margin-top:var(--ws-section-gap)}
+.wd [data-wd-summary]>section{margin-top:var(--ws-section-gap)}
+.wd-copy{white-space:pre-wrap;overflow-wrap:anywhere}
+.wd-person h4{font-size:var(--ws-fs-h3);margin:var(--ws-space-4) 0 var(--ws-space-2)}
+.wd-relation-row{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ws-space-3);padding:var(--ws-space-3) 0;border-bottom:1px solid var(--ws-line);flex-wrap:wrap}
+.wd-relation-row>div{min-width:0;max-width:100%}
+.wd-relation-row h4{font-size:var(--ws-fs-h3);margin:0}
+.wd-relation-actions{display:flex;gap:var(--ws-space-2);flex-wrap:wrap}
+.wd table{margin:var(--ws-space-2) 0 var(--ws-space-5)}
+.wd-confirm{display:flex;align-items:flex-start;gap:var(--ws-space-2);margin:var(--ws-space-4) 0}
+.wd-confirm input{margin-top:var(--ws-space-1)}
+.wd [data-wd-json]{font-family:var(--font-mono);font-size:var(--ws-fs-sm);white-space:pre;tab-size:2}
+.wd details{margin:var(--ws-space-4) 0}
+.wd details>.ui-field{margin-top:var(--ws-space-3)}
+@media(max-width:760px){
+ .wd-steps{display:block}.wd-steps li{margin:var(--ws-space-2) 0}
+ .wd table,.wd tbody,.wd tr,.wd th,.wd td{display:block}.wd thead{display:none}
+ .wd tr{margin:var(--ws-space-3) 0;border:1px solid var(--ws-line)}
+ .wd td:before{content:attr(data-label)"：";font-weight:600}
+ .wd-actions{flex-direction:column;align-items:stretch}
+}

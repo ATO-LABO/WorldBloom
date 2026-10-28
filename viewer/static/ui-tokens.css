@@ -1,0 +1,66 @@
+/* Single source for shared workspace appearance, based on the world detail view. */
+:root {
+  --ws-font: "BIZ UDPGothic","Yu Gothic UI","Yu Gothic","Hiragino Sans","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+  --ws-text: #24302a;
+  --ws-muted: #66716d;
+  --ws-line: #d7dcd8;
+  --ws-control-line: #a8b3ad;
+  --ws-surface: #ffffff;
+  --ws-canvas: #faf9f6;
+  --ws-advance: #b64b22;
+  --ws-advance-ink: #91411f;
+  --ws-confirm: #245c48;
+  --ws-confirm-soft: #e6efe8;
+  --ws-select-bg: #eeece6;
+  --ws-panel-bg: #f0f5f1;
+  --ws-danger: #8c3030;
+  --ws-danger-soft: #f8e3e3;
+  --ws-warning-bg: #fff3d9;
+  --ws-disabled-bg: #e9ece9;
+  --ws-focus: #357361;
+  --ws-fs-xs: 12px;
+  --ws-fs-sm: 14px;
+  --ws-fs-control: 15px;
+  --ws-fs-md: 16px;
+  --ws-fs-h3: 17px;
+  --ws-fs-h2: 20px;
+  --ws-fs-h1: 24px;
+  --ws-fs-display: 32px;
+  --ws-fs-display-xl: 48px;
+  --ws-fs-brand: 28px;
+  --ws-fs-brand-sm: 21px;
+  --ws-header-bg: #1d4a36;
+  --ws-header-line: #c9a24a;
+  --ws-fs-code: 14px;
+  --ws-prose-line-height: 1.85;
+  --ws-line-height: 1.6;
+  --ws-heading-line-height: 1.4;
+  --ws-side-w: 180px;
+  --ws-aside-w: 300px;
+  --ws-side-w-narrow: 145px;
+  --ws-aside-w-narrow: 240px;
+  --ws-gutter: 24px;
+  --ws-control-h: 44px;
+  --ws-control-h-sm: 34px;
+  --ws-radius: 6px;
+  --ws-bar-h: 58px;
+  --ws-space-1: 4px;
+  --ws-space-2: 8px;
+  --ws-space-3: 12px;
+  --ws-space-4: 16px;
+  --ws-space-5: 24px;
+  --ws-space-6: 32px;
+  --ws-content-x: 28px;
+  --ws-content-y: 16px;
+  --ws-section-gap: 14px;
+  --ws-dialog-width: 660px;
+  --ws-dialog-text-height: 84px;
+  --ws-dialog-shadow: 0 22px 90px #142a2540;
+  --ws-dialog-backdrop: #142a2559;
+  --ws-nav-x: 22px;
+  --ws-control-x: 12px;
+  --ws-control-y: 8px;
+}
+@media (max-width:760px) {
+  :root { --ws-content-x:18px; --ws-content-y:24px; }
+}

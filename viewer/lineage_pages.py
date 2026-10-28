@@ -205,8 +205,8 @@ def render_model(model, experiment_name, cell_key, *, turning_index=None, point=
         body += '</div></section></div>'
         footer_text = f'第{node["generation"]}世代の' + ("転機" if turning else "地点") + "を表示中"
     body += '<footer class="lw-footer"><div><strong>' + E(footer_text) + '</strong><span>採用・メモは候補画面で行えます</span></div><a class="lw-primary" href="' + base + '">この候補に戻る →</a></footer><noscript>地点のリンクはそのまま利用できます。表示切り替えにはJavaScriptが必要です。</noscript></div>'
-    doc = pages.document(title, body, phase="sifting", run=experiment_name, output_run=(phases or {}).get("catalog_run_id"), phases=phases, job_store=job_store, page_class="run-observer")
-    return doc.replace("</head>", '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/lineage-workspace.css"><script src="/static/lineage-workspace.js" defer></script></head>')
+    doc = pages.document(title, body, phase="sifting", run=experiment_name, output_run=(phases or {}).get("catalog_run_id"), phases=phases, job_store=job_store, page_class="run-observer", stylesheets=('run-workspace.css','lineage-workspace.css'), scripts=('lineage-workspace.js',))
+    return doc
 
 
 def render(repository, experiment_name, cell_key, *, job_store=None, **options):

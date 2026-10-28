@@ -495,8 +495,13 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('href="/genres/new"', body)
         self.assertIn('class="world-card"', body)
 
-    def test_home_is_worlds_hub(self):
+    def test_home_selects_purpose_before_worlds_hub(self):
         status, body = self.get("/")
+        self.assertEqual(status, 200, body)
+        self.assertIn('href="/worlds?mode=create"', body)
+        self.assertIn('href="/worlds?mode=review"', body)
+        self.assertNotIn('class="world-card"', body)
+        status, body = self.get("/worlds?mode=create")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
         self.assertIn('role="tablist" aria-label="ライブラリー"', body)
@@ -513,7 +518,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
     def test_genres_live_on_settings_page(self):
         # ⚙ 設定 (/configs) remains the genre editing surface; WB-UI-023
         # additionally surfaces a read/browse copy on the home hub's ジャンル
-        # tab (test_home_is_worlds_hub), so this only pins /configs itself.
+        # tab after choosing a purpose, so this only pins /configs itself.
         status, body = self.get("/configs")
         self.assertEqual(status, 200, body)
         self.assertIn('id="genres"', body)
