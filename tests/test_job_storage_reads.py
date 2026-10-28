@@ -94,23 +94,34 @@ worker.change(jobs,folder,'fixture-nonce',progress={'completed_individuals':1})
             str(self.folder),str(gate),str(release),str(fsync_number)], cwd=ROOT,
             env={**os.environ, 'PYTHONPATH':str(ROOT)},
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        gate_failure = None
+        started = time.monotonic()
         try:
-            deadline=time.monotonic()+5
+            deadline=started+5
             while not gate.exists():
-                if child.poll() is not None or time.monotonic()>=deadline:
-                    self.fail('writer did not reach the fsync gate')
+                if child.poll() is not None:
+                    gate_failure = 'writer exited before the fsync gate'
+                    break
+                if time.monotonic()>=deadline:
+                    gate_failure = 'writer timed out before the fsync gate'
+                    break
                 time.sleep(.01)
-            status, value = self.get()
-            self.assertEqual(status,200,value)
-            self.assertFalse(release.exists(), 'GET must complete while the writer still holds its lock')
-            self.assertEqual(value['state'],'running')
-            self.assertEqual(value['reconciliation'],'confirmed')
-            expected_revision=0 if fsync_number==1 else 1
-            self.assertEqual(value['revision'],expected_revision)
-            self.assertEqual(value['progress']['completed_individuals'],expected_revision)
+            gate_elapsed = time.monotonic()-started
+            if gate_failure is None:
+                status, value = self.get()
+                self.assertEqual(status,200,value)
+                self.assertFalse(release.exists(), 'GET must complete while the writer still holds its lock')
+                self.assertEqual(value['state'],'running')
+                self.assertEqual(value['reconciliation'],'confirmed')
+                expected_revision=0 if fsync_number==1 else 1
+                self.assertEqual(value['revision'],expected_revision)
+                self.assertEqual(value['progress']['completed_individuals'],expected_revision)
         finally:
             release.touch()
             stdout,stderr=child.communicate(timeout=5)
+        if gate_failure is not None:
+            self.fail(f'{gate_failure}; elapsed={gate_elapsed:.3f}s; '
+                      f'returncode={child.returncode}; stdout={stdout!r}; stderr={stderr!r}')
         self.assertEqual(child.returncode,0,(stdout,stderr))
         status,value=self.get()
         self.assertEqual(status,200,value)
@@ -124,6 +135,85 @@ worker.change(jobs,folder,'fixture-nonce',progress={'completed_individuals':1})
 
     def test_get_reads_published_complete_snapshot_while_event_fsync_is_paused(self):
         self.paused_write(2)
+
+    def test_writer_early_exit_reports_the_child_error(self):
+        popen = subprocess.Popen
+
+        def exited_writer(argv, **kwargs):
+            return popen([sys.executable, '-c',
+                "import sys; sys.stderr.write('fixture writer crash'); sys.exit(73)"], **kwargs)
+
+        with patch.object(subprocess, 'Popen', side_effect=exited_writer):
+            with self.assertRaisesRegex(AssertionError,
+                    r'writer exited before.*elapsed=.*returncode=73;.*fixture writer crash'):
+                self.paused_write(1)
+
+    def test_writer_missing_gate_reports_timeout_separately(self):
+        popen = subprocess.Popen
+
+        def writer_without_gate(argv, **kwargs):
+            code = ('from pathlib import Path\nimport time\n'
+                    f'release=Path({str(argv[-2])!r})\n'
+                    'while not release.exists(): time.sleep(.01)\n')
+            return popen([sys.executable, '-c', code], **kwargs)
+
+        with patch.object(subprocess, 'Popen', side_effect=writer_without_gate):
+            with self.assertRaisesRegex(AssertionError,
+                    r'writer timed out before.*elapsed=.*returncode=0;'):
+                self.paused_write(2)
+
+    def test_worker_waits_for_the_owner_of_an_empty_lock_before_initializing_it(self):
+        root = self.base / 'empty-lock'
+        root.mkdir()
+        contended, acquired = self.base / 'lock-contended', self.base / 'lock-acquired'
+        code = '''from pathlib import Path
+import sys
+from execution import worker
+root,contended,acquired=map(Path,sys.argv[1:])
+trace=worker.trace_lock
+def observed(folder,operation,stage,**values):
+    if stage=='contended': contended.touch()
+    trace(folder,operation,stage,**values)
+worker.trace_lock=observed
+with worker.lock(root): acquired.touch()
+'''
+        with (root / '.write.lock').open('a+b') as owner:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(owner.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            child = None
+            wait_failed = False
+            try:
+                child = subprocess.Popen([sys.executable, '-B', '-c', code,
+                    str(root), str(contended), str(acquired)], cwd=ROOT,
+                    env={**os.environ, 'PYTHONPATH':str(ROOT)},
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                deadline = time.monotonic()+5
+                while not contended.exists():
+                    if child.poll() is not None or time.monotonic() >= deadline:
+                        wait_failed = True
+                        break
+                    time.sleep(.01)
+                if not wait_failed:
+                    self.assertEqual((root / '.write.lock').stat().st_size, 0)
+                    self.assertFalse(acquired.exists())
+            finally:
+                owner.seek(0)
+                if os.name == 'nt':
+                    msvcrt.locking(owner.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(owner, fcntl.LOCK_UN)
+                if child is not None:
+                    stdout, stderr = child.communicate(timeout=5)
+        if wait_failed:
+            self.fail(f'writer did not wait for the empty lock: '
+                      f'returncode={child.returncode}; {stdout!r}; {stderr!r}')
+        self.assertEqual(child.returncode, 0, (stdout, stderr))
+        self.assertTrue(acquired.is_file())
+        self.assertEqual((root / '.write.lock').read_bytes(), b'0')
 
     def test_reconciliation_rereads_a_late_worker_claim_under_the_write_lock(self):
         self.stop_server()  # Isolate direct storage calls from server maintenance.
