@@ -147,9 +147,9 @@ jobs:
       PYTHONIOENCODING: utf-8
       WB_REGRESSION_DIAGNOSTICS: '1'
       WB_REGRESSION_PHASE: full-suite
-      # The full-suite gate uses the original worker/DEVNULL. Before-full probes
-      # opt into capture; after-full probes compare the original worker/harness.
-      WB_EPOCH_CAPTURE_STDERR: '0'
+      # Preserve child stderr from the failing full-suite invocation. Capture
+      # changes only its test copy; after-full probes retain the original worker.
+      WB_EPOCH_CAPTURE_STDERR: '1'
       MELOS_APPROVED_ADAPTER_DIR: ${{ github.workspace }}/execution/approved_melos_sources
       MELOS_INPUT_DIR: ${{ github.workspace }}/projects/melos-input
     steps:

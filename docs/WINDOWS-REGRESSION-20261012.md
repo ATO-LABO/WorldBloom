@@ -47,3 +47,50 @@ Windowsでは全回帰の前に対象2件を各1回、後に元の対象2件を�
 GPU・有料サービス・認証/権限変更・外部LLMは使わない。epoch-chainの
 LLM生成は従来のテストと同じコピー内stubを使用する。Choice GUI全体、
 新しいfitness/engine、30日モデルへの拡張はこの変更に含めない。
+
+## 2026-10-23: 全回帰で失敗した呼び出しの stderr 保存
+
+PR #44 head `3d61d251466e85337604d04db333502d1932d7e2` の tests run
+`39884210071` では、Windows / Python 3.12 / shard 0 の
+`HeavyRealChainEndToEndTest.test_two_epoch_auto_chain_with_real_ga_and_real_approval`
+が epoch 1 の evolve `process_failed` / exit 1 で失敗した。前段probeは成功、
+全回帰と後段original probeは失敗したが、失敗した呼び出しの子stderrは
+DEVNULLへ破棄されており、直接の例外原因は不明。時間超過や偶発性とは断定しない。
+
+全回帰の `WB_EPOCH_CAPTURE_STDERR` を `1` にし、既存のコピーworker診断を
+有効にする。コピーを入力・runtime固定前に変更する手順、ファイルへの捕捉、
+一時ディレクトリ削除前の保存、失敗時のログ抜粋、always artifactは既存のものを
+使用する。本番 `execution/worker.py`、GA設定、assertions、550/580秒の上限、
+テスト集合、合否判定は変更しない。前段probeは従来どおり捕捉コピー、後段
+`original-after-full` は従来どおり元worker/DEVNULLを使う。
+
+捕捉はstderrの出力先とコピーworkerのbytes/runtime hashを変え、I/Oによる
+影響もあり得る。`worker-observation.json` のmodeとbefore/after SHA256で
+区別する。捕捉ありの成功だけでは、元の失敗の解消や原因の確定とは扱わない。
+baseは最新develop `e2f0ecc5cf62577d8bdc93a00da572e68083b2f2`。
+CodeQL更新だけのPR #42 / #43 / #44には依存しない独立した診断変更とする。
+
+## 2026-10-23: 評価イベントの Windows 共有読取
+
+診断PR #45 head `f2bff9d0fe98ac6eb0320550fe01d48b3d6f8454` の tests run
+`39890929629` でも Windows / Python 3.12.10 / shard 0 が1件失敗した。
+捕捉した子stderrでは、epoch 0 の評価中に `EvolutionObserver._drain()` が
+`evaluation/events/0-protagonist-4-32-completed.json` を通常の `read_json()` で
+開き、`PermissionError: [Errno 13] Permission denied` が伝播していた。
+driver は約5.969秒・exit 0で、失敗したchainを既存assertionが拒否した。
+前段の捕捉probeは成功、全回帰の捕捉実行と後段の元workerは失敗した。
+PR #44 の epoch 1 と失敗段階が異なるため、PR #44 の直接例外まで同一とは
+断定しない。実CIでアクセスを拒否したプロセス・OS条件も未特定のままとする。
+
+本人承認後、イベント読取だけを既存の `read_atomic_json()` に切り替える。
+このhelperはWindowsで READ/WRITE/DELETE の共有を許可して開く。ACLやOS設定を
+変更せず、読取拒否・不正JSONを握りつぶさず、retryや待機時間の延長も追加しない。
+GA、採点、乱数、イベント形式、既存assertions、timeout、テスト集合は維持する。
+
+局所試験では、実producerで公開した完了イベントにDELETEアクセスの共有ハンドルを
+保持すると、元の通常読取は同じPermissionErrorを起こすことを確認した。helperの
+切替後は同じ条件で一度だけ取り込める。これは共有条件の再現であり、CIのロック元を
+特定したものではない。実producerをfsync後・rename前で停止した場合は未公開の
+一時ファイルを読まず、公開後の完全なJSONだけを取り込むことも確認する。
+共有を許可しないハンドルによる読取拒否と不正JSONは、イベントを消費せず失敗へ
+伝播することを検証する。元の診断PRと保存証拠は別に保持する。
