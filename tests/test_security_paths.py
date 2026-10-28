@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from execution import genre_editor
 from execution.library import LibraryStore
@@ -114,6 +115,28 @@ class StorageBoundaryTests(unittest.TestCase):
         repository = RunRepository(self.repo)
         with self.assertRaises(ForbiddenPath):
             repository.safe_path(self.repo, "../outside/canary.txt")
+
+    def test_contained_accepts_the_configured_root_itself(self):
+        for relative in ("", "."):
+            with self.subTest(relative=relative):
+                self.assertEqual(contained(self.repo, relative), self.repo)
+
+    def test_contained_lexical_check_rejects_a_prefix_sibling_before_io(self):
+        sibling = self.repo.with_name(self.repo.name + "-other") / "canary.txt"
+        original = os.path.abspath
+        def normalize(path):
+            return str(sibling) if Path(path) == self.repo / "world.yaml" else original(path)
+        with patch("execution.provenance.os.path.abspath", side_effect=normalize), \
+             patch("execution.provenance._checked_root") as check_root:
+            with self.assertRaises(ConfigError):
+                contained(self.repo, "world.yaml")
+            check_root.assert_not_called()
+        self.assertEqual((self.outside / "canary.txt").read_text(), "fixture-only")
+
+    def test_contained_accepts_a_configured_root_with_lexical_parent_segments(self):
+        (self.repo / "nested").mkdir()
+        root = self.repo / "nested" / ".."
+        self.assertEqual(contained(root, "world.yaml"), self.repo / "world.yaml")
 
     def test_static_allowlist_blocks_external_names(self):
         from viewer.data import MissingResource

@@ -117,7 +117,16 @@ def contained(root: Path, relative: str) -> Path:
     rel = Path(relative)
     if rel.is_absolute() or rel.drive or ".." in rel.parts or "\\" in relative:
         raise ConfigError("path", "保存範囲外のパスです")
-    result = root / rel
+    # Check a normalized lexical path before any filesystem access. Include
+    # the separator so a sibling such as "repo-other" cannot match "repo".
+    normalized_root = os.path.abspath(root)
+    normalized = os.path.abspath(root / rel)
+    if normalized == normalized_root:
+        result = root
+    elif normalized.startswith(os.path.join(normalized_root, "")):
+        result = Path(normalized)
+    else:
+        raise ConfigError("path", "保存範囲外のパスです")
     for attempt in range(2):
         resolved_root = (_checked_root(str(root)) if attempt == 0
                          else _check_root(str(root)))
