@@ -274,24 +274,32 @@
       notice.textContent=storageOK?'':'再訪時の目的保持が使えません';
   }
   function renderMode() {
-    for (const el of document.querySelectorAll('[data-purpose]')) el.value=state.mode;
+    for (const el of document.querySelectorAll('[data-purpose-label]')) el.textContent=state.mode==='review'?'既存物語レビュー':'物語制作';
     for (const panel of document.querySelectorAll('[data-purpose-panel]')) panel.hidden=panel.dataset.purposePanel!==state.mode;
     document.documentElement.dataset.purposeMode=state.mode;
+    for(const el of document.querySelectorAll('[data-purpose-current]')) el.textContent='目的：'+(state.mode==='review'?'既存物語レビュー':'物語制作');
+    for(const el of document.querySelectorAll('[data-purpose-carry]')) {
+      const url=new URL(el.getAttribute('href'),location.href);url.searchParams.set('mode',state.mode);
+      el.setAttribute('href',url.pathname+url.search+url.hash);
+    }
   }
-  function setMode(mode) {state.switchMode(mode);persist();renderMode();}
-  for (const el of document.querySelectorAll('[data-purpose]')) el.addEventListener('change',()=>setMode(el.value));
+  function setMode(mode) {
+    state.switchMode(mode);
+    if(!root&&location.href){const url=new URL(location.href);if(url.pathname!=='/'){
+      url.searchParams.set('mode',state.mode);global.history.replaceState(global.history.state,'',url.pathname+url.search+url.hash);
+    }}
+    persist();renderMode();
+  }
+  // Only the initial choice links start a purpose; the header is read-only.
   for (const el of document.querySelectorAll('[data-purpose-link]')) el.addEventListener('click',()=>setMode(el.dataset.purposeLink));
   const requested=new URLSearchParams(location.search).get('mode');
-  if(root&&MODES.includes(requested)) {
+  if(MODES.includes(requested)) {
     state.switchMode(requested);
-    const url=new URL(location.href);url.searchParams.delete('mode');
-    global.history.replaceState(global.history.state,'',url.pathname+url.search+url.hash);
   }
   renderMode();persist();
   global.addEventListener('pageshow',event=>{
     if(!event.persisted)return;
-    try {const fresh=JSON.parse(sessionStorage.getItem(KEY)||'{}')||{};state.switchMode(fresh.mode);renderMode();}
-    catch(_){storageOK=false;}
+    renderMode();
   });
   if (!root) return;
   const world=q('[data-purpose-world]'), note=q('[data-purpose-note]'), run=q('[data-purpose-run]');
@@ -438,7 +446,6 @@
     if(event.persisted){
       try {
         const fresh=new State(JSON.parse(sessionStorage.getItem(KEY)||'{}'));
-        state.switchMode(fresh.mode);
         for(const receipt of fresh.history) if(!state.history.some(r=>r.id===receipt.id))state.history.push(receipt);
         renderMode();renderResult();copyUI();
       }catch(_){storageOK=false;}

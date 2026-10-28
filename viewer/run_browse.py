@@ -51,12 +51,11 @@ def _document(handler, title, active, body, *, world=None, config=None, footer="
                + chain_strip + '<div class="rb-content">' + body + '</div>' + summary
                + ('<footer class="rw-footer rb-footer">' + footer + '</footer>' if footer else '') + '</div></div>')
     doc = pages.document(title, content, phase="run", world=world, job_store=store,
-                         pin=data.pinned_target(store), page_class="run-observer")
+                         pin=data.pinned_target(store), page_class="run-observer", stylesheets=('run-workspace.css',), scripts=('epoch-chain.js',) if chain_strip else ())
     # WB-WORLDGROW-001 段階5c-2: the script is only ever needed when the
     # strip is actually present -- keeps every page with no active chain
     # byte-identical to before this stage.
-    epoch_script = '<script src="/static/epoch-chain.js" defer></script>' if chain_strip else ""
-    doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">' + epoch_script + '</head>')
+
     handler._send_html(doc)
 
 

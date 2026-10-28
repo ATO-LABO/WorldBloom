@@ -5,12 +5,11 @@ from hashlib import sha256
 from viewer import pages, data, reader_ui, explanation_ui
 
 E, U = pages._escape, pages._url_segment
-ASSETS = '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/review-workspace.css"><script src="/static/review-workspace.js" defer></script>'
 
 
-def doc(title, body, name=None, *, job_store=None, world=None, output_run=None, phase="sifting", phases=None):
+def doc(title, body, name=None, *, job_store=None, world=None, output_run=None, phase="sifting", phases=None, stylesheets=(), scripts=()):
     return pages.document(title, body, run=name, world=world, output_run=output_run,
-        phase=phase, phases=phases, job_store=job_store, page_class="run-observer").replace('</head>',ASSETS+'</head>')
+        phase=phase, phases=phases, job_store=job_store, page_class="run-observer", stylesheets=('run-workspace.css','review-workspace.css') + tuple(stylesheets), scripts=('review-workspace.js',) + tuple(scripts))
 
 
 def link(href, label, cls=""):

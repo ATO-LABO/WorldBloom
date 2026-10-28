@@ -163,7 +163,7 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
     back = f'/worlds/{U(selected)}' if selected else '/'
     body = ('<div class="rw-shell rs-shell">' + run_browse.navigation("settings", world=world, config=parent, store=store)
         + f'<form class="rs-form" data-run-settings data-wb="config-form"{parent_attr} data-worlds="{E(json.dumps(metadata, ensure_ascii=False))}">'
-        '<div class="rs-editor"><header class="rs-heading"><h1>実行設定</h1><p>探索する条件を決める</p></header>'
+        '<div class="ui-split rs-body"><div class="rs-editor"><header class="rs-heading"><h1>実行設定</h1><p>探索する条件を決める</p></header>'
         '<div class="rs-name">' + name + f'<label class="rs-picker">保存済みの条件<select data-saved-config>{picker_options}</select></label></div>'
         '<p class="form-error" data-form-error role="alert" tabindex="-1"></p>'
         '<section><h2>01. 世界と結末</h2><div class="rs-world">' + world_field
@@ -173,11 +173,9 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         '<section><h2>03. 保存と進化</h2>' + keep + expansion + growth + seed_genomes + '<div class="rs-toggles">' + toggles + '</div></section>'
         + rationality_section + route_section + advanced + '</div>'
         + run_summary.render({k.removeprefix("evolution."): v for k, v in values.items() if k.startswith("evolution.")}, editable=True)
-        +
-        '<footer class="rw-footer rs-footer">'
+        + '</div><footer class="rw-footer rs-footer">'
         f'<a data-world-back href="{E(back)}">← 世界設定へ戻る</a>'
         '<span>新しい条件として保存します。実行は次の画面で開始します。</span>'
         '<button type="submit">保存して実行条件へ →</button></footer></form></div>')
-    doc = pages.document("実行設定", body, phase="run", world=world, job_store=store, page_class="run-observer")
-    handler._send_html(doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">'
-        '<link rel="stylesheet" href="/static/run-settings.css"><script src="/static/run-settings.js" defer></script></head>'))
+    doc = pages.document("実行設定", body, phase="run", world=world, job_store=store, page_class="run-observer", stylesheets=('run-workspace.css','run-settings.css'), scripts=('run-settings.js',))
+    handler._send_html(doc)

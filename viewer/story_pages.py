@@ -19,10 +19,10 @@ def _context(handler):
 def _doc(handler,title,body,initial=None):
     body=body.replace("<h1>","<h2>").replace("</h1>","</h2>")
     doc=pages.document(title,'<section class="story-workspace">'+body+'</section>',
-        phase="sifting",job_store=wb._job_store(handler))
+        phase="sifting",job_store=wb._job_store(handler), stylesheets=('story-workspace.css',), scripts=('story-workspace.js',))
     data=E(json.dumps(initial or {},ensure_ascii=False))
     doc=doc.replace('<section class="story-workspace">','<section class="story-workspace" data-story="'+data+'">')
-    handler._send_html(doc.replace("</head>",'<link rel="stylesheet" href="/static/story-workspace.css"><script src="/static/story-workspace.js" defer></script></head>'))
+    handler._send_html(doc)
 
 def _config(handler,rid,query):
     root,legacy=handler.repository.catalog.resolve(rid)

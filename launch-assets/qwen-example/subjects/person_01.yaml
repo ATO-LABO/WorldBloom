@@ -1,0 +1,32 @@
+id: カズキ
+description: 海辺の町で働く配達人
+personality: 勤勉
+traits:
+  social: 0.5
+  stubbornness: 0.5
+  curiosity: 0.5
+  diligence: 0.5
+  temper: 0.5
+base: 50
+range:
+  zones:
+  - 丘の灯台
+  - 港
+  entry: 港
+inventory: {}
+goal:
+  deliver_to: 丘の灯台
+  target: 古い手紙
+relations:
+  サトシ:
+    affinity: 0.3
+    awareness: 1
+    label: 依頼人
+verbs:
+- move
+- investigate
+- observe
+- give_item
+- persuade
+- fight
+- rest

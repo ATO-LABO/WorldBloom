@@ -1,0 +1,27 @@
+id: サトシ
+description: 丘の灯台に住む灯台守
+personality: 慎重
+traits:
+  social: 0.5
+  stubbornness: 0.5
+  curiosity: 0.5
+  diligence: 0.5
+  temper: 0.5
+base: 50
+range:
+  zones:
+  - 丘の灯台
+  - 港
+  entry: 丘の灯台
+inventory:
+  古い手紙: 1
+goal: {}
+relations: {}
+verbs:
+- move
+- investigate
+- observe
+- give_item
+- persuade
+- fight
+- rest

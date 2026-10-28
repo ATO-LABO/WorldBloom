@@ -40,8 +40,8 @@ def shell(handler, title, content, *, query, history, active="reader", world=Non
             '<div class="sc-update" role="status" data-sc-update hidden><span></span><button type="button" data-sc-refresh>表示を更新</button></div>'
             + content + '</div></div>')
     doc = pages.document(title, body, phase="stage", world=world, run=run.get("experiment_name"), output_run=rid,
-                         job_store=wb._job_store(handler), page_class="run-observer")
-    handler._send_html(doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/screening-workspace.css"><script src="/static/screening-workspace.js" defer></script></head>'))
+                         job_store=wb._job_store(handler), page_class="run-observer", stylesheets=('run-workspace.css','screening-workspace.css'), scripts=('screening-workspace.js',))
+    handler._send_html(doc)
 
 
 def render(handler, output_id=None):

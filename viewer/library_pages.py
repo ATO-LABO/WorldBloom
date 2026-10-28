@@ -558,8 +558,11 @@ def _worlds_new(handler):
         source = next((w for w in worlds if w["id"] == from_id), None)
         genre_id = source["genre"] if source and source["genre"] in genre_ids else None
     from viewer import world_create
+    method = query.get("method", [None])[0]
+    if method not in (None, "manual", "ai"):
+        raise ConfigError("method", "作成方法を選んでください", code="bad_request")
     handler._send_html(world_create.render(store, job_store, from_id=from_id,
-        genre_id=genre_id, copy_mode="from" in query))
+        genre_id=genre_id, copy_mode="from" in query, method=method))
 
 
 def _world_experiments(repository, world_name):
@@ -818,6 +821,37 @@ def _file_body(body):
     if not isinstance(content, str):
         raise ConfigError("content", "文字列を指定してください", code="bad_request")
     return path, content
+
+
+def _draft_store(handler):
+    jobs = _require_job_store(handler)
+    store = getattr(handler.server, "world_drafts", None)
+    if store is None:
+        from execution.world_drafts import DraftStore
+        store = DraftStore(jobs.configs.repo, jobs.configs.control)
+    return store
+
+
+def _world_draft_get(handler, token):
+    handler._send_json(HTTPStatus.OK, _draft_store(handler).get(token))
+
+
+def _world_draft_post(handler, token=None, action=None):
+    body = _boundary_body(handler)
+    expected = {"request_id", "name", "overview"} if token is None else {
+        "cancel": set(), "validate": {"revision", "draft"}, "adopt": {"revision"}}[action]
+    if not isinstance(body, dict) or set(body) != expected:
+        raise ConfigError("request", "下案への入力項目を確認してください", code="bad_request")
+    store = _draft_store(handler)
+    if token is None:
+        result = store.create(body["request_id"], body["name"], body["overview"])
+    elif action == "cancel":
+        result = store.cancel(token)
+    elif action == "validate":
+        result = store.update(token, body["revision"], body["draft"])
+    else:
+        result = store.adopt(token, body["revision"])
+    handler._send_json(HTTPStatus.OK, result)
 
 
 def _create_world(handler):
@@ -1252,6 +1286,10 @@ def _import_patch_action(handler, world_id):
 
 def _resolve(parts, method):
     if method == "POST":
+        if parts == ["api", "world-drafts"]:
+            return _world_draft_post, ()
+        if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("cancel", "validate", "adopt"):
+            return _world_draft_post, (parts[2], parts[3])
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings":
             return _time_settings_post, (parts[2], "save")
         if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings" and parts[4] in ("validate", "archive_design", "finalize"):
@@ -1293,6 +1331,8 @@ def _resolve(parts, method):
     if method != "GET" or not parts:
         return None
     head = parts[0]
+    if head == "api" and len(parts) == 3 and parts[1] == "world-drafts":
+        return _world_draft_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "time-settings":
         return _time_settings_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "route-goal":

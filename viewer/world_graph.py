@@ -224,7 +224,7 @@ def character_table(
             f"<td>{html.escape(subject_id)}</td>"
             f"<td>{html.escape(role)}</td>"
             f"<td>{identity_text}</td>"
-            f"<td>{_esc(goal.get('target'))}</td>"
+            f"<td>{_esc(goal.get('description') or goal.get('target'))}</td>"
             f"<td>{_esc(_mapping(subject.get('range')).get('entry'))}</td>"
             f"<td>{html.escape('、'.join(companions)) if companions else '—'}</td>"
             "</tr>"
@@ -242,6 +242,8 @@ def _goal_text(subject: Mapping[str, Any] | None) -> str:
     if subject is None:
         return "—"
     goal = _mapping(subject.get("goal"))
+    if goal.get("description"):
+        return str(goal["description"])
     target = goal.get("target")
     if not target:
         return "—"

@@ -55,6 +55,7 @@ class Goal:
     deliver_to: str | None = None
     obstacles: list[str] = field(default_factory=list)
     outcome: str | None = None
+    description: str = ""
 
 
 @dataclass
@@ -239,6 +240,7 @@ class Subject:
                 for value in raw_goal.get("obstacles", [])
             ),
             outcome=raw_goal.get("outcome"),
+            description=str(raw_goal.get("description", "")),
         )
 
         raw_identity = raw.get("identity", {}) or {}
