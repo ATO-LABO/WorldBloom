@@ -986,9 +986,9 @@ class WorldLibraryPageTests(unittest.TestCase):
         self.assertNotIn("<script>alert(1)</script>", html)
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
 
-    def test_home_genre_card_shows_asset_count(self):
+    def test_worlds_hub_genre_card_shows_asset_count(self):
         _write_library_asset(self.template_dir, _FIT_ADD)
-        status, body = self.get("/")
+        status, body = self.get("/worlds?mode=create")
         html = body.decode("utf-8")
         self.assertEqual(status, 200)
         self.assertIn("資産 1件", html)

@@ -126,8 +126,16 @@ def contained(root: Path, relative: str) -> Path:
                 break
             if is_link(part):
                 raise ConfigError("path", "リンクを経由した保存・読取はできません")
-        if result.resolve().is_relative_to(resolved_root):
-            return result
+        normalized = str(result.resolve())
+        prefix = str(resolved_root).rstrip(os.sep) + os.sep
+        if Path(normalized).is_relative_to(resolved_root):
+            if normalized == str(resolved_root):
+                return root
+            if normalized.startswith(prefix):
+                # Build the returned path from the normalized, checked value,
+                # not the original input. Keep the configured root spelling
+                # (including supported Windows short-name aliases).
+                return root / Path(normalized).relative_to(resolved_root)
         # On Windows, creating a missing parent during realpath can leave the
         # child in extended form while the earlier root used ordinary form.
         # Retry full validation once; never strip prefixes or accept a link.
