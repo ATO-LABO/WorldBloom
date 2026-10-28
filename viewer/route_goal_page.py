@@ -25,4 +25,4 @@ def render(world, initial, *, job_store=None):
     <p data-goal-status role="status"></p><section aria-label="目標の探索結果" data-goal-result></section>
     <p>世界専用の設定はジャンル設定全体より優先します。保存では目標以外の経路設定を保ちます。従来の配送目標へ戻しても人物やジャンル設定は変わりません。</p>'''
     body += f'<p><a href="/worlds/{wid}">保存後の経路画面へ →</a></p><script type="application/json" id="goal-data">{payload}</script></div>'
-    return ui.doc('経路の目標入力', body, world=world, phase='world', job_store=job_store).replace('</head>', '<link rel="stylesheet" href="/static/route-goal.css"><script src="/static/route-goal.js" defer></script></head>')
+    return ui.doc('経路の目標入力', body, world=world, phase='world', job_store=job_store, stylesheets=('route-goal.css',), scripts=('route-goal.js',))

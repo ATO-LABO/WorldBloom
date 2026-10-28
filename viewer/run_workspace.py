@@ -567,12 +567,8 @@ def render(handler, view):
     )
     doc = pages.document(title, body, phase="run", world=world, run=view.get("run_name"),
                          output_run=job.get("run_id"), job_store=getattr(handler.server, "job_store", None),
-                         page_class="run-observer")
-    epoch_script = '<script src="/static/epoch-chain.js" defer></script>' if chain_strip else ""
-    doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">'
-                      '<script src="/static/ga_replay.js" defer></script>'
-                      '<script src="/static/run-workspace.js" defer></script>'
-                      '<script src="/static/world-expansion.js" defer></script>' + epoch_script + '</head>')
+                         page_class="run-observer", stylesheets=('run-workspace.css',), scripts=('ga_replay.js','run-workspace.js','world-expansion.js') + (('epoch-chain.js',) if chain_strip else ()))
+
     handler._send_html(doc)
 
 

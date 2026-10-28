@@ -156,7 +156,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   const items = p => Object.entries(p.inventory || {}).map(([k,v])=>`${k} × ${v}`).join('、') || 'なし';
   const knows = p => (p.knowledge || []).join('、') || 'なし';
   const entry = p => p.range?.entry || '未設定';
-  const goal = p => (p?.goal?.target ? `${p.goal.target}${p.goal.deliver_to ? `を${p.goal.deliver_to}へ届ける` : 'を求める'}` : '未入力');
+  const goal = p => p?.goal?.description || (p?.goal?.target ? `${p.goal.target}${p.goal.deliver_to ? `を${p.goal.deliver_to}へ届ける` : 'を求める'}` : '未入力');
   const role = p => p.id === w.protagonist ? '主人公' : p.id === w.antagonist ? '敵役' : '';
   const genreName = id => model.genres.find(g=>g.id===id)?.name || id;
   const edit = (key,label='編集') => model.editable ? `<button type="button" data-edit="${key}">✎ ${label}</button>` : '';

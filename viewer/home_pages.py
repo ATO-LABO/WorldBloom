@@ -107,7 +107,7 @@ def world_card(store, world, genres):
             f'<p class="hl-description">{E(description)}</p>'
             f'<p class="hl-facts">人物 {E(world["subjects"])}人 <span>・</span> 場所 {places}か所 <span>・</span> {E(period)}</p>'
             f'<p class="hl-roles">主人公 <strong>{E(protagonist)}</strong><span>／</span>敵役 <strong>{E(antagonist)}</strong></p>'
-            f'<a class="hl-open" href="/worlds/{U(wid)}" aria-label="{E(name)}の世界を開く">世界を開く →</a></article>')
+            f'<a class="hl-open" data-purpose-carry href="/worlds/{U(wid)}" aria-label="{E(name)}の世界を開く">世界を開く →</a></article>')
 
 
 def genre_card(genre, worlds, editable):
@@ -136,11 +136,11 @@ def render(repository, *, job_store=None):
     world_map = {w["id"]: w.get("name") or w["id"] for w in worlds}
     options = {w.get("genre") or "": genre_map.get(w.get("genre"), {}).get("name") or w.get("genre") or "ジャンル未設定" for w in worlds}
     select = "".join(f'<option value="{E(key or "__unset__")}">{E(value)}</option>' for key, value in sorted(options.items()))
-    create = '<a class="hl-primary" href="/worlds/new">＋ 新しい世界を作る</a>' if job_store else '<span class="hl-readonly">閲覧専用</span>'
+    create = '<a class="hl-primary" data-purpose-carry href="/worlds/new">＋ 新しい世界を作る</a>' if job_store else '<span class="hl-readonly">閲覧専用</span>'
     new_genre = '<a class="hl-open hl-new-genre" href="/genres/new">＋ 新しいジャンルを作る</a>' if job_store else ""
     cards = "".join(world_card(store, w, genre_map) for w in worlds)
     genre_cards = "".join(genre_card(g, world_map, job_store is not None) for g in genres)
-    body = purpose_pages.choices() + ('<div class="hl-shell" data-home-library><header class="hl-heading"><div><h1>世界を選ぶ</h1>'
+    body = ('<div class="hl-shell" data-home-library><nav class="hl-purpose"><a href="/">← 目的を選び直す</a><span data-purpose-current>目的：物語制作</span></nav><header class="hl-heading"><div><h1>世界を選ぶ</h1>'
             '<p>世界を開いて、人物や場所、物語の始まりを確かめましょう。</p></div>' + create + '</header>'
             + notice + recent_execution(job_store)
             + '<div class="hl-toolbar"><div class="hl-tabs" role="tablist" aria-label="ライブラリー">'
@@ -160,5 +160,5 @@ def render(repository, *, job_store=None):
             '<p>検索する言葉やジャンルを変えてみてください。</p><button type="button" data-home-reset>絞り込みを解除</button></div></div>'
             '<footer class="hl-footer">世界の設定を編集しても、保存済みの実行結果は変わりません。</footer></div>')
     doc = pages.document("世界を選ぶ", body, phase="world", job_store=job_store,
-                         show_phase_band=False, is_home=True, page_class="home-library")
-    return doc.replace("</head>", '<link rel="stylesheet" href="/static/home-workspace.css"><script src="/static/home-workspace.js" defer></script></head>')
+                         show_phase_band=False, is_home=True, page_class="home-library", stylesheets=('home-workspace.css',), scripts=('home-workspace.js',))
+    return doc
