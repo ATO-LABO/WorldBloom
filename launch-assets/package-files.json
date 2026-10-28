@@ -123,7 +123,7 @@
   "gapengine/ollama.py": "d8e06df5f0b69d5f6d2ebf1a6529264fcde09afe5a38323c684a1b98a42d3f54",
   "gapengine/policy.py": "5042b783d9f1199573441fb5d881b2119c2f6c87a5096173c98137f5f6d037da",
   "gapengine/precedent.py": "288fd23d30d871c8c592734e6e4beaa86ba2431a0064d362ef1b309fef32fe80",
-  "gapengine/qd.py": "9171d8c856ca99d3046e9de453ebc219c613d4fa0a2dcb9f08d8e0e5097ac1f2",
+  "gapengine/qd.py": "4c25047a3005be9e59790a6fc18167120b27261a23dec93f1a168366dcc33e3a",
   "gapengine/rationality.py": "2ae68483636b09caff7c2b1398e1623f25329c10cd5a7ec93790c6ed0e4447a1",
   "gapengine/reader_summary.py": "d222645b44facac5ade22684fef1a316aec36a3be96ae623bb12e36ac5d8ecbb",
   "gapengine/route.py": "ac6439dbd8b647782b1e364a28e7beb3fa0bad635e7565de2a264aee54fc13b7",
