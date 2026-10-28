@@ -124,7 +124,9 @@ def contained(root: Path, relative: str) -> Path:
     if normalized == normalized_root:
         result = root
     elif normalized.startswith(os.path.join(normalized_root, "")):
-        result = Path(normalized)
+        # Preserve the configured root spelling for relative_to(root) callers
+        # and Windows short-name aliases, using only the checked suffix.
+        result = root / Path(normalized).relative_to(normalized_root)
     else:
         raise ConfigError("path", "保存範囲外のパスです")
     for attempt in range(2):

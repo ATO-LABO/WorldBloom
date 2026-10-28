@@ -136,7 +136,31 @@ class StorageBoundaryTests(unittest.TestCase):
     def test_contained_accepts_a_configured_root_with_lexical_parent_segments(self):
         (self.repo / "nested").mkdir()
         root = self.repo / "nested" / ".."
-        self.assertEqual(contained(root, "world.yaml"), self.repo / "world.yaml")
+        result = contained(root, "world.yaml")
+        self.assertEqual(result, root / "world.yaml")
+        self.assertEqual(result.relative_to(root), Path("world.yaml"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows case-insensitive paths")
+    def test_contained_preserves_windows_root_case(self):
+        root = self.repo / "MiXeDRoot"
+        root.mkdir()
+        for spelling in (root, Path(str(root).swapcase())):
+            with self.subTest(root=spelling):
+                result = contained(spelling, "CaSe.yaml")
+                self.assertEqual(str(result.parent), str(spelling))
+                result.write_text("fixture-only", encoding="utf-8")
+                self.assertEqual((root / "CaSe.yaml").read_text(), "fixture-only")
+
+    @unittest.skipUnless(os.name == "nt", "Windows drives and UNC paths")
+    def test_contained_rejects_other_drive_and_unc_before_io(self):
+        other = "Z:" if self.repo.drive.upper() != "Z:" else "Y:"
+        values = (other + "canary.txt", other + "/canary.txt", "//host/share/canary.txt",
+                  "\\canary.txt", "\\\\?\\" + other + "\\canary.txt")
+        with patch("execution.provenance._checked_root") as check_root:
+            for relative in values:
+                with self.subTest(relative=relative), self.assertRaises(ConfigError):
+                    contained(self.repo, relative)
+            check_root.assert_not_called()
 
     def test_static_allowlist_blocks_external_names(self):
         from viewer.data import MissingResource
