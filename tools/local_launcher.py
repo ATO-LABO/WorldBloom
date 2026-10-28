@@ -161,8 +161,8 @@ def prepare(source,state):
         path=Path(name)
         if path.is_absolute() or '..' in path.parts:raise RuntimeError('パッケージ内のパスが不正です')
         raw=(source/path).read_bytes()
-        # Git checks CMD files out with CRLF on Windows, while its source ZIP
-        # contains LF blobs. Accept that one declared checkout transformation;
+        # Git stores CMD blobs as LF but checks them out with CRLF on Windows.
+        # Accept that one declared checkout transformation;
         # keep every other byte and all other file types under the exact hash.
         matches=hashlib.sha256(raw).hexdigest()==expected
         if not matches and Path(name).suffix.lower()=='.cmd':
