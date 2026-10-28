@@ -3,13 +3,33 @@ import tempfile, unittest
 from viewer import data, pages, purpose_pages, server
 
 class PurposePagesTests(unittest.TestCase):
-    def test_shared_selector_keeps_existing_navigation(self):
+    def test_shared_purpose_context_is_read_only_and_keeps_navigation(self):
         html=pages.document('テスト','<input name="draft">',show_phase_band=False)
-        self.assertIn('data-purpose',html)
+        self.assertIn('data-purpose-label',html)
+        self.assertNotIn('<select data-purpose ',html)
+        self.assertNotIn('class="purpose-picker"',html)
         self.assertIn('<input name="draft">',html)
         self.assertIn('/static/purpose-workspace.js',html)
         self.assertIn('/static/purpose-workspace.css',html)
         self.assertIn('href="/history"',html)
+        self.assertNotIn('目的の作業画面',html)
+        self.assertNotIn('href="/modes',html)
+        self.assertNotIn('class="purpose-workspace"',html)
+
+    def test_only_initial_landing_offers_purpose_choices(self):
+        landing=purpose_pages.landing()
+        self.assertIn('未選択',landing)
+        self.assertIn('data-purpose-link="create"',landing)
+        self.assertIn('data-purpose-link="review"',landing)
+        self.assertNotIn('data-purpose-label',landing)
+        self.assertNotIn('class="purpose-workspace"',landing)
+        self.assertIn('/worlds?mode=create',landing)
+        self.assertIn('/worlds?mode=review',landing)
+        self.assertNotIn('/modes',purpose_pages.choices())
+        with tempfile.TemporaryDirectory() as temp:
+            work=purpose_pages.render(data.RunRepository(Path(temp)))
+        self.assertNotIn('data-purpose-link=',work)
+        self.assertNotIn('目的を切り替えても',work)
 
     def test_read_only_page_does_not_claim_execution(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -64,7 +64,7 @@ class WorldCreateTests(unittest.TestCase):
     def test_original_needs_no_source_worlds(self):
         store=LibraryStore(self.repo)
         with patch.object(LibraryStore,'worlds',return_value=[]):
-            status,markup=self.get('/worlds/new')
+            status,markup=self.get('/worlds/new?method=manual')
             self.assertEqual(status,200)
             self.assertIn('作成元の世界がまだありません',markup)
             self.assertEqual(self.create()[0],201)
@@ -74,9 +74,9 @@ class WorldCreateTests(unittest.TestCase):
         world = yaml.safe_load(store.read('world', 'momotaro', 'world.yaml'))
         world.update(time=3, zones=5)
         store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True))
-        self.assertEqual(self.get('/worlds/new')[0], 200)
+        self.assertEqual(self.get('/worlds/new?method=manual')[0], 200)
         with patch.object(LibraryStore, 'read', side_effect=ConfigError('world_id', 'missing', code='not_found')):
-            self.assertEqual(self.get('/worlds/new')[0], 200)
+            self.assertEqual(self.get('/worlds/new?method=manual')[0], 200)
         self.assertEqual(self.create()[0], 201)
 
     def test_legacy_and_explicit_copy_preserve_source(self):
@@ -126,7 +126,7 @@ class WorldCreateTests(unittest.TestCase):
         self.assertIn('name="mode" value="copy" checked',markup)
         self.assertNotIn('<img src=x',markup)
         self.assertNotIn('<script>alert(1)',markup)
-        status,markup=self.get('/worlds/new')
+        status,markup=self.get('/worlds/new?method=manual')
         self.assertIn('name="mode" value="new" checked',markup)
         for asset in ('world-create.js','world-create.css'):
             self.assertEqual(self.get('/static/'+asset)[0],200)
@@ -205,7 +205,7 @@ class WorldImportTests(unittest.TestCase):
         self.assertFalse((self.repo / 'projects/imported').exists())
 
     def test_new_form_offers_import_mode(self):
-        status, markup = self.get('/worlds/new')
+        status, markup = self.get('/worlds/new?method=manual')
         self.assertEqual(status, 200, markup)
         self.assertIn('name="mode" value="import"', markup)
         self.assertIn('data-zip-input', markup)

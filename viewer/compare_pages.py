@@ -217,6 +217,6 @@ def render(handler, experiment_name, query):
     body += '</div><footer><span role="status" data-cp-picked></span><button type="button" class="cp-primary" data-cp-apply>選んだ候補を比較</button></footer></dialog><noscript>比較の切り替え・判定の保存にはJavaScriptが必要です。</noscript></div>'
     body += generation_pages.surface(modal=True)
     doc = pages.document("候補を比べる", body, phase="sifting", world=v["world"], run=v["name"], output_run=rid,
-                         job_store=wb._job_store(handler), page_class="run-observer")
-    assets = generation_pages.ASSETS + '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/comparison.css"><script src="/static/comparison.js" defer></script>'
-    handler._send_html(doc.replace("</head>", assets + "</head>"))
+                         job_store=wb._job_store(handler), page_class="run-observer", stylesheets=('run-workspace.css','generation.css','comparison.css'), scripts=('generation.js','comparison.js'))
+
+    handler._send_html(doc)

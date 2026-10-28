@@ -614,9 +614,6 @@ def lock(folder, *, operation="worker.lock"):
     else:
         import fcntl
     with (folder / ".write.lock").open("a+b") as stream:
-        stream.seek(0, 2)
-        if not stream.tell():
-            stream.write(b"0"); stream.flush()
         while True:
             stream.seek(0)
             try:
@@ -632,6 +629,13 @@ def lock(folder, *, operation="worker.lock"):
         acquired = time.monotonic()
         trace_lock(folder, operation, "acquired", wait_seconds=acquired-started)
         try:
+            # Match directory_lock: Windows can lock byte zero beyond EOF.
+            # A competing owner may hold the empty file, so initialize only
+            # after acquiring the lock, never before entering the retry loop.
+            stream.seek(0, 2)
+            if not stream.tell():
+                stream.write(b"0")
+                stream.flush()
             yield
         finally:
             stream.seek(0)

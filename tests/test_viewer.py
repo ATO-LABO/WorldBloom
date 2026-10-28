@@ -375,7 +375,10 @@ class ViewerServerTests(unittest.TestCase):
             )
 
             try:
-                index = _wait_for_page(base_url + "/")
+                landing = _wait_for_page(base_url + "/")
+                self.assertIn('data-purpose-link="create"', landing)
+                self.assertIn('data-purpose-link="review"', landing)
+                index = _wait_for_page(base_url + "/worlds?mode=create")
                 self.assertIn("世界を選ぶ", index)
                 self.assertIn("桃太郎", index)
 

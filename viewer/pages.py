@@ -8,6 +8,7 @@ from viewer import purpose_pages
 
 import html
 import json
+import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime
@@ -133,6 +134,7 @@ def _header_pickers(
     worlds: Sequence[Mapping[str, Any]],
     *,
     is_home: bool,
+    choosing_purpose: bool = False,
 ) -> str:
     # Home already shows the full world/genre hub in the body, so the header
     # picker (world + run) would just be a redundant, pinned-elsewhere guess.
@@ -153,7 +155,7 @@ def _header_pickers(
     return (
         '<div class="header-pickers">'
         + leftmost
-        + purpose_pages.selector()
+        + purpose_pages.context(choosing=choosing_purpose)
         + "".join(pickers)
         + '<span class="header-links">'
         f'<a href="/version" class="header-version" title="バージョン情報・最新版の確認">{_escape(version.label())}</a>'
@@ -185,8 +187,16 @@ def document(
     pin: Mapping[str, Any] | None = None,
     show_phase_band: bool = True,
     is_home: bool = False,
+    choosing_purpose: bool = False,
     page_class: str | None = None,
+    stylesheets: Sequence[str] = (),
+    scripts: Sequence[str] = (),
 ) -> str:
+    for names, suffix in ((stylesheets, "css"), (scripts, "js")):
+        if any(not re.fullmatch(r"[a-z0-9_-]+\." + suffix, name) for name in names):
+            raise ValueError("Page assets must be local static filenames")
+    page_assets = ''.join(f'<link rel="stylesheet" href="/static/{name}">' for name in dict.fromkeys(stylesheets))
+    page_scripts = ''.join(f'<script src="/static/{name}" defer></script>' for name in dict.fromkeys(scripts))
     # pin (data.pinned_target()) fills in world/run/output_run for callers
     # that don't already know their own (Home, /configs, /jobs): the run is
     # only borrowed when the header world *is* the pinned world, so a page
@@ -219,7 +229,7 @@ def document(
     safe_page_class = _escape(page_class or "standard-workspace")
     body_class = f' class="layout-{safe_page_class}"'
     main_html = (
-        f'<main class="page-shell {safe_page_class}">'
+        f'<main class="page-shell {safe_page_class} ui-screen">'
         f'<header class="page-heading"><h1>{_escape(title)}</h1>{lead_html}</header>'
         f'<div class="page-content">{body}</div></main>'
     )
@@ -229,16 +239,20 @@ def document(
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{_escape(title)} | WorldBloom</title>"
+        '<link rel="stylesheet" href="/static/ui-tokens.css">'
         '<link rel="stylesheet" href="/static/app.css">'
         '<link rel="stylesheet" href="/static/purpose-workspace.css">'
+        + page_assets + '<link rel="stylesheet" href="/static/ui.css">'
+        +
         '<script src="/static/app.js" defer></script><script src="/static/local-status.js" defer></script>'
         '<script src="/static/workbench.js" defer></script>'
         '<script src="/static/purpose-workspace.js" defer></script>'
+        + page_scripts +
         f"</head><body{body_class}>"
         '<div class="app-shell">'
         '<header class="site-header">'
         + _header_pickers(
-            world, run, () if is_home else _library_worlds(job_store), is_home=is_home,
+            world, run, () if is_home else _library_worlds(job_store), is_home=is_home, choosing_purpose=choosing_purpose,
         )
         + (_phase_band(phase=phase, phases=phases, world=world, run=run, output_run=output_run)
            if show_phase_band else "")

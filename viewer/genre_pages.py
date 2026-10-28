@@ -15,8 +15,8 @@ SECTIONS = [("basic", "基本情報", [editor.META]), ("actions", "行動", ["ac
 
 def document(handler, title, body):
     jobs = handler.server.job_store
-    doc = pages.document(title, body, phase="world", job_store=jobs, pin=data.pinned_target(jobs), page_class="run-observer")
-    handler._send_html(doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/genre-workspace.css"><script src="/static/genre-workspace.js" defer></script></head>'))
+    doc = pages.document(title, body, phase="world", job_store=jobs, pin=data.pinned_target(jobs), page_class="run-observer", stylesheets=('run-workspace.css','genre-workspace.css'), scripts=('genre-workspace.js',))
+    handler._send_html(doc)
 
 
 def new(handler):

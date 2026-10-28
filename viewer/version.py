@@ -31,7 +31,9 @@ def _git(*args):
 @lru_cache(maxsize=1)  # the running code doesn't change until the server restarts
 def current():
     """{"sha", "date", "source"}; sha/date are None when nothing tells us."""
-    line = _git("log", "-1", "--format=%H %cs")
+    # A restored ZIP has no Git metadata. Do not search parent checkouts or
+    # spawn git while the interactive Windows launcher is reading stdin.
+    line = _git("log", "-1", "--format=%H %cs") if (ROOT / ".git").exists() else None
     source = "git"
     if not line:
         try:
