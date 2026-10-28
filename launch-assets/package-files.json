@@ -14,7 +14,7 @@
   ".github/rulesets/main.json": "16a53e098518c179e585bbfcbfbecf42b67959bfa89d117951c819881078304f",
   ".github/rulesets/releases.json": "779a2a092a39e0f6fad7e73d4a27397e42060733ad907f52b0e5746a5a4869b5",
   ".github/scripts/install-gitleaks.sh": "83a8ff0cf3226cb7f38532bc8cfa76e6211396d8008fd7a6da1a3c59d9063c05",
-  ".github/workflows/codeql.yml": "3ee191df336ee3342dbf4b345da93a6c84e24f2c4b5518aa1065faa688453590",
+  ".github/workflows/codeql.yml": "109169c20ebc4feca4965724eb87f1eba9fa79d64f272c47889fa35a994e7de4",
   ".github/workflows/docs.yml": "2979c0cf623d5b7e4b559b433182002c12bacf6515f284121e34cbd64b48d01f",
   ".github/workflows/tests.yml": "31b491907ea17e433f33195b6d7409b9f7df1d59ccb8d98e52fb22fb754b274d",
   ".gitignore": "96f073ad24e85e00536f67d849a51a5e346ae651acfdb43446e1ef2970d2f221",
