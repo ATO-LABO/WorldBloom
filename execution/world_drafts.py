@@ -13,6 +13,7 @@ import re
 import shutil
 import tempfile
 import time
+from uuid import UUID
 
 import yaml
 
@@ -372,7 +373,10 @@ class DraftStore:
     def _path(self, token):
         if not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{32}", token):
             _bad("request_id", "下案IDを確認してください")
-        return contained(self.root, token + ".json")
+        # Serialize a parsed identifier rather than putting request text into
+        # a filesystem path. Keep the strict public token syntax above.
+        filename = UUID(hex=token).hex + ".json"
+        return contained(self.root, filename)
 
     def get(self, token):
         try:

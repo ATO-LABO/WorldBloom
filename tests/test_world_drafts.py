@@ -40,6 +40,13 @@ class DraftTests(unittest.TestCase):
     def create(self):
         return self.store.create(self.token, "灯の町", "森から光を取り戻す物語")
 
+    def test_storage_filename_is_a_canonical_uuid_under_drafts_root(self):
+        self.assertEqual(self.store._path(self.token), self.store.root / (self.token + ".json"))
+        for token in ("../" + self.token, self.token + "/other", self.token + "\x00",
+                      self.token.upper(), "{" + self.token + "}", "f" * 31, "g" * 32):
+            with self.subTest(token=token), self.assertRaises(ConfigError):
+                self.store._path(token)
+
     def test_generate_check_adopt_is_new_only_and_idempotent(self):
         r = self.create()
         self.assertEqual(r["state"], "review")
