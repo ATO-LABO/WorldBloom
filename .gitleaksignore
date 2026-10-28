@@ -1,0 +1,18 @@
+# Seven historical false positives approved on 2026-10-28.
+# For each entry, the manifest value was verified as the SHA256 of the file
+# named by that JSON key, using the Git blob from the same commit.
+# These entries are exact commit/path/rule/line fingerprints.
+# Line 349: tests/test_independent_api.py
+36a04db4aa3a9abf8a0ee64ef5efbedfd308af02:launch-assets/package-files.json:generic-api-key:349
+# Line 368: tests/test_local_status_api.py
+36a04db4aa3a9abf8a0ee64ef5efbedfd308af02:launch-assets/package-files.json:generic-api-key:368
+# Line 443: tests/test_world_expansion_api.py
+36a04db4aa3a9abf8a0ee64ef5efbedfd308af02:launch-assets/package-files.json:generic-api-key:443
+# Line 479: viewer/independent_api.py
+36a04db4aa3a9abf8a0ee64ef5efbedfd308af02:launch-assets/package-files.json:generic-api-key:479
+# Line 480: viewer/job_api.py
+36a04db4aa3a9abf8a0ee64ef5efbedfd308af02:launch-assets/package-files.json:generic-api-key:480
+# Line 547: viewer/static/ui-tokens.css
+36a04db4aa3a9abf8a0ee64ef5efbedfd308af02:launch-assets/package-files.json:generic-api-key:547
+# Updated line 443: tests/test_world_expansion_api.py in the newer commit.
+896df09068b4c7d568d1730831d321886f4b2696:launch-assets/package-files.json:generic-api-key:443
