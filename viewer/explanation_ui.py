@@ -12,7 +12,9 @@ VERBS = {"rethink":"再考", "confront":"告発", "neutralize":"無効化", "pay
          "concede":"譲歩", "craft":"作成", "disguise":"変装", "donate":"寄付",
          "guard":"守り", "negotiate":"交渉", "plant":"伏線設置", "rescue":"救助",
          "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退",
-         "labor":"労働", "buy":"購入"}
+         "labor":"労働", "buy":"購入",
+         "submit_proposal":"原案提示", "present_proposal":"案の説明", "review_proposal":"賛否の表明",
+         "amend_proposal":"案の修正", "request_decision":"判断の依頼", "decide_proposal":"案への判断"}
 
 
 def e(value):
@@ -148,6 +150,24 @@ def panel(explanation, item=None, *, details=True):
     body += entry("即時の代償", cost, cost["text"])
     body += entry("転機", turning, turning_text(turning), turning=True)
     body += '</dl><p class="muted">知識の一覧は記録された範囲に限ります。知識があったことと心理的な動機は区別します。遅延した代償は未確認。</p>'
+    event=(item.get('outcome',{}).get('details') or {}).get('deliberation_event',{})
+    basis=event.get('choice_basis',{})
+    valuation=event.get('concern_assessment')
+    if not valuation and basis.get('current_concerns'):
+        selected=next((o for o in basis.get('options',[]) if o['verb']==basis['chosen']['verb'] and o['args']==basis['chosen']['args']),{})
+        valuation=selected.get('own_assessment',{}).get('concern_assessment') or basis['current_concerns']
+    if valuation:
+        body+='<details open><summary>この案で守れそうなこと（本人の認識）</summary><ul>'
+        labels={'true':'条件を満たす予測','false':'条件を満たさない予測','unknown':'判断する情報が不足'}
+        for entry in valuation['entries']:
+            body+=f'<li>{e(entry["label"])}：{e(labels[entry["state"]])}・優先順位 {int(entry["priority"])}'+('・譲れない条件' if entry['required'] else '')+'</li>'
+        body+='</ul><p class="ui-hint">案を実施した場合の見込みです。承認や現実の達成を意味しません。</p></details>'
+    if event.get('world_concerns'):
+        body+='<details><summary>記録時点の実際の状態</summary><ul>'
+        labels={'maintained':'維持できている','breached':'維持できていない','achieved':'実現している','pending':'まだ実現していない','unknown':'不明'}
+        for entry in event['world_concerns']:
+            body+=f'<li>{e(entry["label"])}：{e(labels[entry["progress"]])}</li>'
+        body+='</ul><p class="ui-hint">作者向けの記録です。本人がこの情報を知っているとは限りません。</p></details>'
     body += '<p>' + source_link(base, item["source"], "選択・結果")
     for src in grounds.get("sources", []):
         body += ' · ' + source_link(base, src, "知識")

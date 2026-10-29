@@ -28,6 +28,8 @@ PREDICATE_NAMES = frozenset(
         "believed_strength",
         "hostile_present",
         "confront_success",
+        "proposal_decided",
+        "proposal_state",
         "turn",
         "day",
         "phase",

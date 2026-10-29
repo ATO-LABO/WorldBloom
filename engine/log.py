@@ -120,6 +120,7 @@ def delta_effective(delta: dict[str, Any]) -> bool:
         delta.get("actor")
         or delta.get("targets")
         or delta.get("objective")
+        or delta.get("deliberation")
     )
 
 

@@ -44,6 +44,54 @@ categories:
     order: 99
 
 verbs:
+  submit_proposal:
+    design: {category: III, slot: "III-3"}
+    kinds:
+      - id: default
+        label: 提案を持ち込む
+        precondition: 明示した提案者が会議場所におり、手続きの開始条件を満たす。
+        target: 登録された提案と原案。
+        effect: 原案を第1版として提示し、その場にいる参加者が内容を知る。
+  present_proposal:
+    design: {category: II, slot: "II-1"}
+    kinds:
+      - id: default
+        label: 現在の案を説明する
+        precondition: 提案者と対象者が会議場所におり、対象者が現在の版を知らない。
+        target: 登録された提案と参加者。
+        effect: 対象者が現在の版を知る。賛否や親しさは変えない。
+  review_proposal:
+    design: {category: II, slot: "II-1"}
+    kinds:
+      - id: default
+        label: 案への賛否を示す
+        precondition: 審査者が現在の版を知り、判断権者と会議場所にいる。
+        target: 登録された提案の現在の版。
+        effect: 本人の明示した条件・評価・知識に基づく賛成、反対、未判断を記録する。
+  amend_proposal:
+    design: {category: III, slot: "III-3"}
+    kinds:
+      - id: default
+        label: 案を修正する
+        precondition: 提案者が反対または未判断の意見を聞き、本人の条件に合う未使用の案がある。
+        target: 登録された提案と修正案。
+        effect: 新しい版を提示する。旧版への賛否は履歴に残し、現在の版へ流用しない。
+  decide_proposal:
+    design: {category: VI, slot: "VI-1"}
+    kinds:
+      - id: default
+        label: 最初の判断を下す
+        precondition: 提案者がこの版の判断を求め、判断権者が会議場所におり、全審査者の新しい判断がある。
+        target: 登録された提案の現在の版。
+        effect: 必要な賛成・人数・未判断に応じて承認、却下、保留を確定し、設定した状態だけを変える。
+  request_decision:
+    design: {category: III, slot: "III-3"}
+    kinds:
+      - id: default
+        label: この版の判断を求める
+        precondition: 提案者が現在の版に対する全審査者の意見を聞いている。
+        target: 登録された提案の現在の版。
+        effect: 提案を判断待ちにし、以後の修正を止める。判断結果はまだ確定しない。
   train:
     design: {category: I, slot: "I-1"}
     kinds:

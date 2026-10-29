@@ -439,6 +439,10 @@ class Simulation:
             header['terminal_policy'] = dict(self.terminal_policy)
         if self.world.drawn_truth:
             header["truth"] = _plain(self.world.drawn_truth)
+        if self.world.deliberation is not None:
+            from engine.deliberation import digest
+            header["deliberation"] = {"version": 1, "config_hash": digest(self.world.deliberation.config),
+                                       "mechanism": "finite_authored_profiles", "time_unit": "logical_step"}
         rationality_meta = self._rationality_meta()
         if rationality_meta is not None:
             header["rationality"] = rationality_meta
@@ -862,6 +866,8 @@ class Simulation:
         probability: float | None,
         delta: dict[str, Any],
     ) -> dict[str, Any]:
+        if "deliberation" in details:
+            delta["deliberation"] = _plain(details["deliberation"])
         policy_meta = action.meta.get("policy")
         classification = action.meta.get("classification")
         row = {
@@ -1222,6 +1228,8 @@ class Simulation:
                 "vector": vector,
                 "layers": layers,
                 "relations": self.world.relations.flat_rows(),
+                **({"deliberation": self.world.deliberation.snapshot()}
+                   if self.world.deliberation is not None else {}),
             }
         )
         self._previous_snapshot_layers = layers
