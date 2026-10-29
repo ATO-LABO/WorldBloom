@@ -200,6 +200,8 @@ class Concerns:
 
     def _read(self,world,coordinate,actor=None):
         kind,*args=coordinate
+        native = getattr(world,'native_planning',None)
+        if native is not None and native.handles(coordinate): return native.read(coordinate,actor)
         if kind in {'task','promise'}:
             domain = getattr(world, 'planning_domain', None)
             return None if domain is None else domain.read(coordinate, actor)
@@ -214,6 +216,8 @@ class Concerns:
         return world.relations.stance(*args)
 
     def _visible(self,world,actor,coordinate,public):
+        native = getattr(world,'native_planning',None)
+        if native is not None and native.handles(coordinate): return native.read(coordinate,actor) is not None
         if coordinate[0] in {'task','promise'}:
             domain = getattr(world, 'planning_domain', None)
             return domain is not None and domain.read(coordinate, actor) is not None

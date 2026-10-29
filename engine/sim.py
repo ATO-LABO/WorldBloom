@@ -1258,6 +1258,7 @@ class Simulation:
                 **({'responses': self.world.responses.snapshot()} if self.world.responses is not None else {}),
                 **({'goal_rules': self.world.goal_rules.snapshot(self.world)} if self.world.goal_rules is not None else {}),
                 **({'planning': self.world.planner.snapshot()} if self.world.planner is not None else {}),
+                **({'native_planning':self.world.native_planning.snapshot()} if self.world.native_planning is not None else {}),
                 **({'action_timing': self.world.action_timing.snapshot()} if self.world.action_timing is not None else {}),
                 **({'social_planning': self.world.social_planner.snapshot()} if self.world.social_planner is not None else {}),
             }
