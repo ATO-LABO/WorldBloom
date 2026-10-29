@@ -86,7 +86,7 @@ def migrate(source):
         if path.exists() and path.read_text(encoding='utf8')!=text:
             raise FileExistsError('Existing edition differs; preserve it and choose a new destination: '+str(path))
     for path,text in generated.items():
-        if not path.exists():path.write_text(text,encoding='utf8')
+        if not path.exists():path.write_text(text,encoding='utf8',newline='\n')
     return manifest
 
 if __name__=='__main__':

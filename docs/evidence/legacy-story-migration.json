@@ -1,0 +1,1187 @@
+{
+  "scope": "protagonist migration; full casts retained, supporting decisions legacy",
+  "mode": "fixed definitions, seeds 0-3, ordinary simulations, no GA, no narration/API",
+  "runs": [
+    {
+      "project": "momotaro",
+      "edition": "original",
+      "seed": 0,
+      "cast_size": 7,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro",
+      "edition": "original",
+      "seed": 1,
+      "cast_size": 7,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro",
+      "edition": "original",
+      "seed": 2,
+      "cast_size": 7,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro",
+      "edition": "original",
+      "seed": 3,
+      "cast_size": 7,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro",
+      "edition": "shared",
+      "seed": 0,
+      "cast_size": 7,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 29,
+          "label": "鬼に勝利し、宝を村へ持ち帰った"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "achieved",
+          "decided_at": 29,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "momotaro",
+      "edition": "shared",
+      "seed": 1,
+      "cast_size": 7,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 64,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro",
+      "edition": "shared",
+      "seed": 2,
+      "cast_size": 7,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 32,
+          "label": "鬼に勝利し、宝を村へ持ち帰った"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "achieved",
+          "decided_at": 32,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "momotaro",
+      "edition": "shared",
+      "seed": 3,
+      "cast_size": 7,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 25,
+          "label": "鬼に勝利し、宝を村へ持ち帰った"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "achieved",
+          "decided_at": 25,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus",
+      "edition": "original",
+      "seed": 0,
+      "cast_size": 8,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus",
+      "edition": "original",
+      "seed": 1,
+      "cast_size": 8,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus",
+      "edition": "original",
+      "seed": 2,
+      "cast_size": 8,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus",
+      "edition": "original",
+      "seed": 3,
+      "cast_size": 8,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus",
+      "edition": "shared",
+      "seed": 0,
+      "cast_size": 8,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 28,
+          "label": "鬼に勝利し、宝を村へ持ち帰った"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "achieved",
+          "decided_at": 28,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus",
+      "edition": "shared",
+      "seed": 1,
+      "cast_size": 8,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 27,
+          "label": "鬼に勝利し、宝を村へ持ち帰った"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "achieved",
+          "decided_at": 27,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus",
+      "edition": "shared",
+      "seed": 2,
+      "cast_size": 8,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 64,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus",
+      "edition": "shared",
+      "seed": 3,
+      "cast_size": 8,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 64,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 64,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus2",
+      "edition": "original",
+      "seed": 0,
+      "cast_size": 8,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus2",
+      "edition": "original",
+      "seed": 1,
+      "cast_size": 8,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus2",
+      "edition": "original",
+      "seed": 2,
+      "cast_size": 8,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus2",
+      "edition": "original",
+      "seed": 3,
+      "cast_size": 8,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus2",
+      "edition": "shared",
+      "seed": 0,
+      "cast_size": 8,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 28,
+          "label": "鬼に勝利し、宝を村へ持ち帰った"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "achieved",
+          "decided_at": 28,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus2",
+      "edition": "shared",
+      "seed": 1,
+      "cast_size": 8,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 80,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus2",
+      "edition": "shared",
+      "seed": 2,
+      "cast_size": 8,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 80,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus2",
+      "edition": "shared",
+      "seed": 3,
+      "cast_size": 8,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 80,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus3",
+      "edition": "original",
+      "seed": 0,
+      "cast_size": 15,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus3",
+      "edition": "original",
+      "seed": 1,
+      "cast_size": 15,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus3",
+      "edition": "original",
+      "seed": 2,
+      "cast_size": 15,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus3",
+      "edition": "original",
+      "seed": 3,
+      "cast_size": 15,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "momotaro_plus3",
+      "edition": "shared",
+      "seed": 0,
+      "cast_size": 15,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 80,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus3",
+      "edition": "shared",
+      "seed": 1,
+      "cast_size": 15,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 80,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus3",
+      "edition": "shared",
+      "seed": 2,
+      "cast_size": 15,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 80,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "failed",
+          "decided_at": 80,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "momotaro_plus3",
+      "edition": "shared",
+      "seed": 3,
+      "cast_size": 15,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 38,
+          "label": "鬼に勝利し、宝を村へ持ち帰った"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "journey_return",
+          "status": "achieved",
+          "decided_at": 38,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "romance",
+      "edition": "original",
+      "seed": 0,
+      "cast_size": 5,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 40,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "romance",
+      "edition": "original",
+      "seed": 1,
+      "cast_size": 5,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 40,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "romance",
+      "edition": "original",
+      "seed": 2,
+      "cast_size": 5,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 40,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "romance",
+      "edition": "original",
+      "seed": 3,
+      "cast_size": 5,
+      "planning_actors": [],
+      "endings": [
+        {
+          "id": "time_limit",
+          "turn": 40,
+          "label": "time_limit"
+        }
+      ],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "romance",
+      "edition": "shared",
+      "seed": 0,
+      "cast_size": 5,
+      "planning_actors": [
+        "A"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 16,
+          "label": "AとBは互いの本心を受け止め、同じ気持ちを確かめた"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "relationship_mutual",
+          "status": "achieved",
+          "decided_at": 16,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "romance",
+      "edition": "shared",
+      "seed": 1,
+      "cast_size": 5,
+      "planning_actors": [
+        "A"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 18,
+          "label": "AとBは互いの本心を受け止め、同じ気持ちを確かめた"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "relationship_mutual",
+          "status": "achieved",
+          "decided_at": 18,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "romance",
+      "edition": "shared",
+      "seed": 2,
+      "cast_size": 5,
+      "planning_actors": [
+        "A"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 13,
+          "label": "AとBは互いの本心を受け止め、同じ気持ちを確かめた"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "relationship_mutual",
+          "status": "achieved",
+          "decided_at": 13,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "romance",
+      "edition": "shared",
+      "seed": 3,
+      "cast_size": 5,
+      "planning_actors": [
+        "A"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 13,
+          "label": "AとBは互いの本心を受け止め、同じ気持ちを確かめた"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "relationship_mutual",
+          "status": "achieved",
+          "decided_at": 13,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "detective",
+      "edition": "original",
+      "seed": 0,
+      "cast_size": 6,
+      "planning_actors": [],
+      "endings": [],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "detective",
+      "edition": "original",
+      "seed": 1,
+      "cast_size": 6,
+      "planning_actors": [],
+      "endings": [],
+      "invalid": 3,
+      "objective": null
+    },
+    {
+      "project": "detective",
+      "edition": "original",
+      "seed": 2,
+      "cast_size": 6,
+      "planning_actors": [],
+      "endings": [],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "detective",
+      "edition": "original",
+      "seed": 3,
+      "cast_size": 6,
+      "planning_actors": [],
+      "endings": [],
+      "invalid": 3,
+      "objective": null
+    },
+    {
+      "project": "detective",
+      "edition": "shared",
+      "seed": 0,
+      "cast_size": 6,
+      "planning_actors": [
+        "探偵"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 18,
+          "label": "探偵は証拠を組み直し、白椿館の真犯人を指摘した"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "inquiry_solved",
+          "status": "achieved",
+          "decided_at": 18,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "detective",
+      "edition": "shared",
+      "seed": 1,
+      "cast_size": 6,
+      "planning_actors": [
+        "探偵"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 18,
+          "label": "探偵は証拠を組み直し、白椿館の真犯人を指摘した"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "inquiry_solved",
+          "status": "achieved",
+          "decided_at": 18,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "detective",
+      "edition": "shared",
+      "seed": 2,
+      "cast_size": 6,
+      "planning_actors": [
+        "探偵"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 17,
+          "label": "探偵は証拠を組み直し、白椿館の真犯人を指摘した"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "inquiry_solved",
+          "status": "achieved",
+          "decided_at": 17,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "detective",
+      "edition": "shared",
+      "seed": 3,
+      "cast_size": 6,
+      "planning_actors": [
+        "探偵"
+      ],
+      "endings": [
+        {
+          "id": "shared_goal",
+          "turn": 13,
+          "label": "探偵は証拠を組み直し、白椿館の真犯人を指摘した"
+        }
+      ],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "inquiry_solved",
+          "status": "achieved",
+          "decided_at": 13,
+          "reason": "achievement_condition"
+        }
+      ]
+    },
+    {
+      "project": "romance-x-detective",
+      "edition": "original",
+      "seed": 0,
+      "cast_size": 5,
+      "planning_actors": [],
+      "endings": [],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "romance-x-detective",
+      "edition": "original",
+      "seed": 1,
+      "cast_size": 5,
+      "planning_actors": [],
+      "endings": [],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "romance-x-detective",
+      "edition": "original",
+      "seed": 2,
+      "cast_size": 5,
+      "planning_actors": [],
+      "endings": [],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "romance-x-detective",
+      "edition": "original",
+      "seed": 3,
+      "cast_size": 5,
+      "planning_actors": [],
+      "endings": [],
+      "invalid": 0,
+      "objective": null
+    },
+    {
+      "project": "romance-x-detective",
+      "edition": "shared",
+      "seed": 0,
+      "cast_size": 5,
+      "planning_actors": [
+        "A"
+      ],
+      "endings": [],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "relationship_mutual",
+          "status": "failed",
+          "decided_at": 40,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "romance-x-detective",
+      "edition": "shared",
+      "seed": 1,
+      "cast_size": 5,
+      "planning_actors": [
+        "A"
+      ],
+      "endings": [],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "relationship_mutual",
+          "status": "failed",
+          "decided_at": 40,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "romance-x-detective",
+      "edition": "shared",
+      "seed": 2,
+      "cast_size": 5,
+      "planning_actors": [
+        "A"
+      ],
+      "endings": [],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "relationship_mutual",
+          "status": "failed",
+          "decided_at": 40,
+          "reason": "deadline_unmet"
+        }
+      ]
+    },
+    {
+      "project": "romance-x-detective",
+      "edition": "shared",
+      "seed": 3,
+      "cast_size": 5,
+      "planning_actors": [
+        "A"
+      ],
+      "endings": [],
+      "invalid": 0,
+      "objective": [
+        {
+          "condition": "relationship_mutual",
+          "status": "failed",
+          "decided_at": 40,
+          "reason": "deadline_unmet"
+        }
+      ]
+    }
+  ],
+  "compatibility": {
+    "ignored_fields": [
+      "header.engine_hash"
+    ],
+    "checks": [
+      {
+        "project": "momotaro",
+        "seed": 0,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "momotaro",
+        "seed": 1,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "momotaro_plus",
+        "seed": 0,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "momotaro_plus",
+        "seed": 1,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "momotaro_plus2",
+        "seed": 0,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "momotaro_plus2",
+        "seed": 1,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "momotaro_plus3",
+        "seed": 0,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "momotaro_plus3",
+        "seed": 1,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "romance",
+        "seed": 0,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "romance",
+        "seed": 1,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "detective",
+        "seed": 0,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "detective",
+        "seed": 1,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "romance-x-detective",
+        "seed": 0,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      },
+      {
+        "project": "romance-x-detective",
+        "seed": 1,
+        "same_row_count": true,
+        "same_except_engine_hash": true,
+        "different_lines": []
+      }
+    ]
+  }
+}

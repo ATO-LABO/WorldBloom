@@ -82,7 +82,8 @@ def model(explanation):
             reference = (previous or {}).get('plan')
             if reference and reference.get('status') == 'awaiting_consent': reference = group.get('offer_plan') or reference
             expected = deepcopy((reference or {}).get('steps', []))
-            if previous and previous['result'] in {'moved', 'responded', 'rested', 'delivered', 'waited'} and expected: expected = expected[1:]
+            if previous and previous['result'] in {'moved', 'responded', 'rested', 'delivered', 'waited',
+                    'crafted','investigated','observed','neutralized','given','persuaded','won','rethought','unchanged','exposed'} and expected: expected = expected[1:]
             elif previous and group.get('reply') == 'accepted' and expected and expected[0]['verb'] == 'negotiate': expected = expected[1:]
             changed = previous is not None and [step_key(s) for s in current_steps] != [step_key(s) for s in expected]
             result = item['outcome'].get('result')
@@ -90,7 +91,7 @@ def model(explanation):
             response = detail.get('response') or {}
             kind = 'routine'
             if previous is None: kind = 'initial'
-            if result in {'failed', 'invalid'}: kind = 'failure'
+            if result in {'failed', 'invalid','lost','misjudged'}: kind = 'failure'
             elif item['verb'] == 'negotiate' and result == 'offered': kind = 'offer'
             elif status in {'no_known_plan', 'search_limit'} and (not previous or status != previous['plan'].get('status')): kind = 'pause'
             elif status == 'seeking_information' and (not previous or previous['plan'].get('observation_site') != plan.get('observation_site')): kind = 'observe'
@@ -280,7 +281,9 @@ def render(explanation, *, instance='planning'):
                 body += '<p class="ui-notice ui-notice--warning">見直しのきっかけ：時点 ' + e(cause['turn']) + 'で「' + e(cause['action'])
                 body += ('」を断られた。' if cause.get('kind') == 'refused' else '」に失敗した。') + '</p>'
             elif event['kind'] == 'failure':
-                body += '<p class="ui-notice ui-notice--warning">「' + e(event['action']) + '」を実行できなかった。最終目的の判定とは分けて確認します。</p>'
+                text=('戦闘に敗れました。' if event['result']=='lost' else '告発は誤りでした。' if event['result']=='misjudged'
+                      else '「'+event['action']+'」を実行できなかった。')
+                body += '<p class="ui-notice ui-notice--warning">' + e(text) + '最終目的の判定とは分けて確認します。</p>'
             elif event['kind'] in {'accepted', 'refused'}:
                 body += '<p class="ui-notice">' + e(event['action']) + '：' + ('交換が成立し、品物が移りました。' if event['kind'] == 'accepted' else '交換は成立せず、品物は移りませんでした。') + '</p>'
             elif event['kind'] in {'achieved', 'failed'}:
@@ -291,18 +294,21 @@ def render(explanation, *, instance='planning'):
                 text = '探索の上限に達しました。' if plan['status'] == 'search_limit' else '今の情報と使える手段では、実行する手順が見つかっていません。'
                 body += '<p>' + e(text) + ' これだけで最終目的を失敗確定にはしません。</p>'
             if plan.get('status') == 'awaiting_consent': body += '<p>相手の返答を待っています。申し入れだけで品物を得た扱いにはしません。</p>'
-            if plan.get('status') == 'seeking_information': body += '<p>次の手順を決めるため、観測場所へ向かいます。</p>'
+            if plan.get('status') == 'seeking_information': body += '<p>次の手順を決めるため、情報を確かめます。</p>'
             if plan:
                 result_label = {'moved': '移動完了', 'working': '作業中', 'responded': '作業完了',
                     'offered': '申し入れ済み', 'rested': '待機・休息', 'failed': '実行できなかった', 'invalid': '実行されなかった',
-                    'started':'開始・未完了', 'ongoing':'開始済みの行動を継続中', 'interrupted':'中断', 'unfinished':'未完了'}
+                    'started':'開始・未完了', 'ongoing':'開始済みの行動を継続中', 'interrupted':'中断', 'unfinished':'未完了',
+                    'crafted':'製作完了','investigated':'調査完了','observed':'観察完了','neutralized':'制約を無力化',
+                    'given':'品物を渡した','persuaded':'説得を実行','won':'戦闘に勝利','lost':'戦闘に敗北',
+                    'rethought':'証拠を再検討','unchanged':'再検討で変更なし','exposed':'告発が正しかった','misjudged':'告発が誤りだった'}
                 body += '<p class="pw-action">この場面の行動：' + e(event['action']) + ' ／ ' + e(result_label.get(event['result'], '結果は原記録で確認')) + '</p>'
             if event['kind'] == 'replan' and event.get('before'):
                 body += '<div class="pw-comparison">' + _tasks(event['before'], failure=event.get('cause'), title='見直し前')
                 body += _tasks(plan, old=event['before'], title='組み直した計画') + '</div>'
             elif plan.get('steps'): body += _tasks(plan, failure=event.get('cause') or ({'action': event['action']} if event['kind'] == 'failure' else None))
             if plan.get('assumptions'):
-                body += '<p class="pw-caption pw-caution">未確認の条件や相手の承諾を含む見込みです。結果は確定していません。</p>'
+                body += '<p class="pw-caption pw-caution">未確認の条件、相手の承諾や勝敗などを含む見込みです。結果は確定していません。</p>'
             actual = event['actual']
             body += '<p class="pw-at-point">この時点の目的の判定（世界の実態）：<strong>' + e(STATUS.get(actual.get('status'), '不明')) + '</strong></p>'
             if plan.get('steps'):

@@ -1,0 +1,47 @@
+{
+  "source": "momotaro_plus3",
+  "target": "momotaro_plus3_shared_planning",
+  "family": "journey",
+  "planning_actors": [
+    "桃太郎"
+  ],
+  "legacy_supporting_actors": [
+    "おじいさん",
+    "おばあさん",
+    "犬",
+    "猿",
+    "キジ",
+    "鬼",
+    "鬼の弟",
+    "漁師",
+    "蜂",
+    "蟹",
+    "馬",
+    "牛",
+    "豚",
+    "用心棒"
+  ],
+  "changes": [
+    "removed protagonist force_action: departure_day",
+    "added explicit actual victory requirement; old item-only ending retained in source edition",
+    "authored initial enemy location and treasure possession beliefs; subsequent movement is not public"
+  ],
+  "source_sha256": {
+    "world.yaml": "6c6fecc041d43686c5573ec1591a3b26978c46600cb23dd38032314567d9c430",
+    "subjects\\01_ojiisan.yaml": "e0538423b96ee6aa509eb590142f1d77f866245a02cf8c19bdd04494f56462b0",
+    "subjects\\02_obaasan.yaml": "8419471ae09faf19756a8c38020f17f4591c2cb52718a77ad90e12bde0aab729",
+    "subjects\\03_momotaro.yaml": "8f2e80987990be7a48cb337804420c950c50091daccd2e221f333b407e7dfa82",
+    "subjects\\04_inu.yaml": "3692f1e0f7e0bd4f96bd2a462e6912539acb8ea6561393dd775862edaca5c30f",
+    "subjects\\05_saru.yaml": "2d1cd27cfab1ebda79d3db59f2d4c39c802ca04f6573328014d2e5a8423d2ab6",
+    "subjects\\06_kiji.yaml": "001fb40260c904d20d19700498ac4a3dcb540748eacd5e0d48b45a28c9c3b020",
+    "subjects\\07_oni.yaml": "f3691bcc9b605e188baec4b90e6062ef2661d06caab12a6942bef0463426525c",
+    "subjects\\08_oni_no_otouto.yaml": "85db2ccb12c386200dfa2edab4977841a4c4b951dd6eb530a8a26a05569659a2",
+    "subjects\\09_ryoshi.yaml": "4b98771a544e1a8be26266aed8c20f7725bc6726adbe59396b31e801345a5434",
+    "subjects\\10_hachi.yaml": "2d0933a55843eb5c308387192a1041474fac340326c3f4b0fc6663d41be33c76",
+    "subjects\\11_kani.yaml": "45d10bbb95841ca95d951aca877de9539014fa407bb86b7774ce0a60730a2e50",
+    "subjects\\12_uma.yaml": "047b546511a7fbc3beb5fb11c56d297057c14a3f0123ff5ea68731ef67848096",
+    "subjects\\13_ushi.yaml": "b31332a56b5398dd6f34ea52bf05dadd57629b5eed64b366ac806eb5d1b51585",
+    "subjects\\14_buta.yaml": "8dd4efa1fbe5f2ad28c9cefa66f7c00114473fdcd65d9960be25605c8492b88a",
+    "subjects\\15_yojinbo.yaml": "6829df46d8791dd5966141773bf38fc6a04e135c9b279e3beaa084db0f35b548"
+  }
+}

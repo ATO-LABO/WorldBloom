@@ -1,0 +1,26 @@
+{
+  "source": "romance-x-detective",
+  "target": "romance-x-detective_shared_planning",
+  "family": "relationship",
+  "planning_actors": [
+    "A"
+  ],
+  "legacy_supporting_actors": [
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "changes": [
+    "both relationship scores declared public in this edition, as a reviewable simplification",
+    "thresholds preserve legacy ending; no new consent protocol is inferred"
+  ],
+  "source_sha256": {
+    "world.yaml": "bafbba902991fa7440da0468c7b31aaf2c849f5a9eab5289132458514bdc5f75",
+    "subjects\\01_A.yaml": "137abe5ff8e205445d22e6dcf971ff71221a6f8f40040f524deb9a8e3db74d20",
+    "subjects\\02_B.yaml": "a14c291e1a678737d769ff300c1416a9fcf049eca81a83ab0e17ed1cc0355b38",
+    "subjects\\03_C.yaml": "a8eab54b4ef2f97e4036eb1df26463db31e7e4b0b9f87336acf11e6b2eb94021",
+    "subjects\\04_D.yaml": "b3a95f6797224b065819e2bf2cf1974d1c52d608c8df4a03910237a7ebc45bfe",
+    "subjects\\05_E.yaml": "e066e9c1573f93ffe476bb869e8782ff505b2547e196efbf1929a5f9c7601fa4"
+  }
+}
