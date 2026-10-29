@@ -154,7 +154,8 @@ class Simulation:
         self.world.bind_subjects(self.subjects)
         self._initial_subject_specs = {
             actor: _plain({field.name: getattr(person, field.name)
-                           for field in fields(person) if field.name != 'policy'})
+                           for field in fields(person) if field.name != 'policy'
+                           and not (field.name == 'commitments' and person.commitments is None)})
             for actor, person in self.subjects.items()}
         self.verb_engine = VerbEngine(self.world, self.rng)
         self.slot_runtime = None
@@ -445,9 +446,13 @@ class Simulation:
             from engine.deliberation import digest
             header["deliberation"] = {"version": 1, "config_hash": digest(self.world.deliberation.config),
                                        "mechanism": "finite_authored_profiles", "time_unit": "logical_step"}
+        if self.world.goal_rules is not None:
+            from engine.deliberation import digest
+            header['goal_rules'] = {'version': 1, 'config_hash': digest(self.world.goal_rules.config),
+                                    'config': _plain(self.world.goal_rules.config)}
         if self.world.responses is not None:
             from engine.deliberation import digest
-            header['responses'] = {'version': 1, 'config_hash': digest(self.world.responses.config),
+            header['responses'] = {'version': self.world.responses.config['version'], 'config_hash': digest(self.world.responses.config),
                                    'mechanism': 'bounded_authored_operators', 'time_unit': 'logical_step'}
         rationality_meta = self._rationality_meta()
         if rationality_meta is not None:
@@ -1239,6 +1244,7 @@ class Simulation:
                 **({"deliberation": self.world.deliberation.snapshot()}
                    if self.world.deliberation is not None else {}),
                 **({'responses': self.world.responses.snapshot()} if self.world.responses is not None else {}),
+                **({'goal_rules': self.world.goal_rules.snapshot(self.world)} if self.world.goal_rules is not None else {}),
             }
         )
         self._previous_snapshot_layers = layers
@@ -1287,6 +1293,8 @@ class Simulation:
         self._apply_scheduled(writer, slot=self.slot)
         if self.world.responses is not None:
             self._write_markers(writer, self.world.responses.tick(self.world, self.turn))
+        if self.world.goal_rules is not None:
+            self._write_markers(writer, self.world.goal_rules.record(self.world, self.turn))
         self._record_encounters(writer)
 
     def _time_choices(self, frame, writer):
@@ -1405,6 +1413,8 @@ class Simulation:
         self._resolve_auto_effects(writer)
         if self.world.responses is not None:
             self.world.responses.record(self.world, self.turn)
+        if self.world.goal_rules is not None:
+            self._write_markers(writer, self.world.goal_rules.record(self.world, self.turn, close=True))
 
         ending = self._ending()
         if ending is not None:

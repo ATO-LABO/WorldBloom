@@ -8,8 +8,9 @@ explicitly rejects slot/calendar execution rather than silently skipping it.
 ## Authored contract
 
 See `projects/village_response/world.yaml`, `ship_response` and `reform_response`
-for complete editable examples. All blocks use version 1 and reject unknown
-fields. State values are strings. Each response state coordinate has an explicit
+for complete editable examples. The `responses` block uses version 1 and rejects unknown
+fields. Shared `concerns` definitions use version 2; each person YAML stores
+its own `commitments` (see `protected-concerns.md`). State values are strings. Each response state coordinate has an explicit
 observation location; it does not share keys with proposal state.
 
 Signals map existing valued facts to a condition and a state coordinate.

@@ -1,0 +1,232 @@
+{
+  "name": "救難通信と危険な電源の停止",
+  "overview": "通信士は救難信号を送ろうとし、機関士は過電流を止めるために電源を停止しようとする。",
+  "initial_story": "通信士は機関室から通信室へ向かう。機関士は危険な電源の停止を始めようとしている。どちらも自分の目的に沿って判断する。",
+  "time": {
+    "days": 2,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6"
+    ]
+  },
+  "protagonist": "通信士",
+  "antagonist": "機関士",
+  "zones": [
+    {
+      "name": "機関室"
+    },
+    {
+      "name": "通路"
+    },
+    {
+      "name": "通信室"
+    }
+  ],
+  "routes": {
+    "機関室": [
+      {
+        "to": "通路",
+        "cost": 1
+      }
+    ],
+    "通路": [
+      {
+        "to": "機関室",
+        "cost": 1
+      },
+      {
+        "to": "通信室",
+        "cost": 1
+      }
+    ],
+    "通信室": [
+      {
+        "to": "通路",
+        "cost": 1
+      }
+    ]
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "items": [
+    {
+      "name": "予備電池"
+    }
+  ],
+  "facts": [],
+  "truth": {},
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "beacon_sent",
+        "label": "救難信号を送る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "beacon",
+          "equals": "sent"
+        }
+      },
+      {
+        "id": "power_lost",
+        "label": "危険な電源を停止する",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "power",
+          "equals": "offline"
+        }
+      },
+      {
+        "id": "engineer_alive",
+        "label": "機関士が生きている",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "vitality",
+          "actor": "機関士",
+          "allowed": [
+            "alive",
+            "revived",
+            "downed"
+          ]
+        }
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "beacon_sent",
+        "success": {
+          "condition": "beacon_sent"
+        },
+        "failure": {
+          "all": [
+            {
+              "condition": "power_lost"
+            },
+            {
+              "not": {
+                "condition": "beacon_sent"
+              }
+            }
+          ]
+        },
+        "period": {
+          "start": 1,
+          "end": 10
+        }
+      },
+      {
+        "condition": "power_lost",
+        "success": {
+          "condition": "power_lost"
+        },
+        "failure": {
+          "not": {
+            "condition": "engineer_alive"
+          }
+        },
+        "period": {
+          "start": 1,
+          "end": 10
+        }
+      }
+    ]
+  },
+  "responses": {
+    "version": 2,
+    "state": {
+      "beacon": "unsent",
+      "power": "online"
+    },
+    "locations": {
+      "beacon": "通信室",
+      "power": [
+        "機関室",
+        "通信室"
+      ]
+    },
+    "signals": [],
+    "actions": [
+      {
+        "id": "transmit",
+        "label": "予備電池を使って救難信号を送る",
+        "condition": "beacon_sent",
+        "signal": null,
+        "zone": "通信室",
+        "actors": [
+          "通信士"
+        ],
+        "requires": [],
+        "items": {
+          "予備電池": 1
+        },
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "power": "online",
+          "beacon": "unsent"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "beacon",
+            "value": "sent"
+          },
+          {
+            "kind": "inventory",
+            "actor": "通信士",
+            "item": "予備電池",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "id": "cut_power",
+        "label": "過電流を防ぐため電源を停止する",
+        "condition": "power_lost",
+        "signal": null,
+        "zone": "機関室",
+        "actors": [
+          "機関士"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 4,
+        "preconditions": {
+          "power": "online"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "power",
+            "value": "offline"
+          }
+        ]
+      }
+    ],
+    "channels": [],
+    "events": [],
+    "windows": []
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 12",
+      "label": "通信の観測終了"
+    }
+  ],
+  "target_ending": "observation_complete"
+}

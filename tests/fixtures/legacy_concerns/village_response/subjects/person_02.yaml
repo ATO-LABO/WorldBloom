@@ -1,0 +1,48 @@
+{
+  "id": "犬",
+  "description": "犬",
+  "personality": "犬",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "旅先",
+      "峠",
+      "村"
+    ],
+    "entry": "旅先"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "inspect_response",
+    "answer_response",
+    "share_knowledge"
+  ],
+  "beliefs": {},
+  "goal": {
+    "description": "村が被害を受けない"
+  },
+  "relations": {
+    "桃太郎": {
+      "affinity": 0.6,
+      "awareness": 1
+    },
+    "知らせ人": {
+      "affinity": 0.6,
+      "awareness": 1
+    }
+  },
+  "stamina": {
+    "max": 10,
+    "current": 10,
+    "recover_per_slot": 1
+  }
+}

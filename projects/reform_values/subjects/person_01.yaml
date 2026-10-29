@@ -27,5 +27,17 @@
   "goal": {
     "description": "真壁は生活制度局の官僚。婚姻を国家が権利配分の資格として使う制度を廃止し、婚姻の有無にかかわらず保障を受けられる改革案を省内へ持ち込む。恋愛や共同生活の禁止は提案していない。"
   },
-  "relations": {}
+  "relations": {},
+  "commitments": [
+    {
+      "condition": "equal_eligibility",
+      "priority": 3,
+      "required": true
+    },
+    {
+      "condition": "transition_guarantee",
+      "priority": 2,
+      "required": false
+    }
+  ]
 }

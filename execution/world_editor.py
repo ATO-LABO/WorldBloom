@@ -7,6 +7,7 @@ import yaml
 
 from engine.actions import FORCE_ARG_KINDS
 from execution.library import LibraryStore, _validate_rel
+from execution import person_values
 from execution.provenance import ConfigError, canonical, contained, directory_lock, identifier, sha256
 
 
@@ -63,8 +64,17 @@ def _model(ident, files, revision):
 
 
 def snapshot(store, ident):
-    files, revision = _read(store, ident)
-    return _model(ident, files, revision)
+    # A page view neither migrates nor repairs files. Retry a concurrent write,
+    # and refuse an interrupted transaction rather than expose a partial world.
+    base = _base(store, ident)
+    for _ in range(3):
+        if contained(base, person_values.JOURNAL).exists():
+            raise ConfigError("commitments", "保存が中断されています。設定を再保存する前に復旧が必要です", code="conflict")
+        files, revision = _read(store, ident)
+        _, confirmed = _read(store, ident)
+        if revision == confirmed and not contained(base, person_values.JOURNAL).exists():
+            return _model(ident, files, revision)
+    raise ConfigError("revision", "設定の保存中です。少し待って再読み込みしてください", code="conflict")
 
 
 def save(store, ident, body):
@@ -84,8 +94,11 @@ def save(store, ident, body):
         "add-event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "remove-event": set(),
+        "person-commitments": {"commitments"},
         "concerns": {"definition"},
         "concerns-check": {"definition"},
+        "goal-rules": {"definition"},
+        "goal-rules-check": {"definition"},
         "responses": {"definition"},
         "responses-check": {"definition"},
     }
@@ -95,6 +108,7 @@ def save(store, ident, body):
     if not allowed[operation] <= set(values) or not set(values) <= allowed[operation] | optional:
         _bad("values", "編集項目を確認してください")
     with directory_lock(_base(store, ident)):
+        person_values.recover(_base(store, ident))
         files, revision = _read(store, ident)
         if not isinstance(body["revision"], str) or body["revision"] != revision:
             raise ConfigError("revision", "別の画面で設定が更新されています。再読み込みして確認してください", code="conflict")
@@ -103,24 +117,57 @@ def save(store, ident, body):
         names = [z if isinstance(z, str) else z["name"] for z in zones]
         people = [(rel, p) for rel, p in files.items() if rel != "world.yaml"]
         rel, updated = "world.yaml", deepcopy(world)
-        if operation in {"concerns","concerns-check","responses","responses-check"}:
+        if operation in {"person-commitments","concerns","concerns-check","responses","responses-check","goal-rules","goal-rules-check"}:
             from engine.world import World
             from engine.subject import Subject
-            definition = values['definition']
-            section = 'responses' if operation.startswith('responses') else 'concerns'
-            if definition is None:
-                updated.pop(section,None)
-            else:
-                updated[section] = deepcopy(definition)
             try:
-                runtime=World(updated,_base(store,ident)/'world.yaml')
-                runtime.bind_subjects({p['id']:Subject.from_definition(p) for _,p in people})
-            except (ValueError,KeyError,TypeError) as error:
-                _bad(section,'条件・対処・人物の設定を確認してください。'+str(error))
+                candidate = person_values.canonicalize(files) if operation.startswith('concerns') or operation == 'person-commitments' else deepcopy(files)
+                if operation == 'person-commitments':
+                    matches = [p for r,p in candidate.items() if r != 'world.yaml' and isinstance(target,str) and p.get('id') == target]
+                    if len(matches) != 1:
+                        _bad('target', '人物を一意に特定できません')
+                    from engine.concerns import validate_commitments
+                    matches[0]['commitments'] = validate_commitments(values['commitments'])
+                    section = 'commitments'
+                else:
+                    section = 'goal_rules' if operation.startswith('goal-rules') else 'responses' if operation.startswith('responses') else 'concerns'
+                    definition = values['definition']
+                    if definition is None:
+                        candidate['world.yaml'].pop(section, None)
+                    else:
+                        candidate['world.yaml'][section] = deepcopy(definition)
+                    if section == 'concerns':
+                        candidate = person_values.canonicalize(candidate)
+                if section in ('concerns','commitments'):
+                    definitions = (candidate['world.yaml'].get('concerns') or {}).get('conditions', [])
+                    known = {c['id'] for c in definitions}
+                    for r, p in candidate.items():
+                        if r == 'world.yaml':continue
+                        for value in p.get('commitments', []):
+                            if value['condition'] not in known:
+                                _bad(section, f"人物「{p['id']}」が参照する条件「{value['condition']}」がありません。先に人物設定からその条件を外すか、世界の条件定義を残してください")
+                runtime = World(candidate['world.yaml'], _base(store,ident)/'world.yaml')
+                persons = [p for r,p in candidate.items() if r != 'world.yaml']
+                ids = [p['id'] for p in persons]
+                if len(set(ids)) != len(ids):
+                    raise ValueError('Duplicate person id')
+                runtime.bind_subjects({p['id']:Subject.from_definition(p) for p in persons})
+            except (ValueError,KeyError,TypeError,AttributeError) as error:
+                if operation.startswith('goal-rules'):
+                    if 'period' in str(error):
+                        _bad('goal_rules', '判定期間は開始から終了の順に、世界の時間の範囲内で指定してください')
+                    if 'condition reference' in str(error):
+                        _bad('goal_rules', '参照する条件を「状態・条件の定義」で確認してください')
+                _bad('commitments' if operation == 'person-commitments' else operation.split('-')[0], '条件・対処・人物の設定を確認してください。'+str(error))
             if operation.endswith('-check'):
+                if section == 'goal_rules':
+                    return {'valid':True,'definitions':len(runtime.goal_rules.definitions) if runtime.goal_rules else 0}
                 if section == 'responses':
                     return {'valid':True,'actions':len(runtime.responses.actions) if runtime.responses else 0}
                 return {'valid':True,'conditions':len(runtime.concerns.conditions) if runtime.concerns else 0}
+            person_values.write_changes(store, ident, files, candidate)
+            saved, revision = _read(store, ident)
+            return _model(ident, saved, revision)
         elif operation == "file":
             if not isinstance(target, str) or target not in files:
                 _bad("target", "登録された世界・人物ファイルを指定してください")
@@ -406,6 +453,14 @@ def save(store, ident, body):
                     events[target] = base_event
                 updated["scheduled_events"] = events
         _validate_rel("world", rel)
+        if operation == 'time' and world.get('goal_rules') is not None:
+            from engine.world import World
+            from engine.subject import Subject
+            try:
+                runtime = World(updated, _base(store, ident)/'world.yaml')
+                runtime.bind_subjects({p['id']:Subject.from_definition(p) for _,p in people})
+            except (ValueError,KeyError,TypeError) as error:
+                _bad('time', '達成・失敗の判定期間を含めて時間の範囲を確認してください。'+str(error))
         # One atomic file replacement per operation; the rest of the world is untouched.
         store._write_file("world", ident, rel, yaml.safe_dump(updated, allow_unicode=True, sort_keys=False))
         return snapshot(store, ident)

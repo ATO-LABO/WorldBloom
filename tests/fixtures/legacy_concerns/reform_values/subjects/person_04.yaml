@@ -1,0 +1,33 @@
+{
+  "id": "瀬尾",
+  "description": "瀬尾は当事者団体の代表。以前の対応で真壁を嫌っているが、婚姻を条件にしない保障を支持している。",
+  "personality": "瀬尾は当事者団体の代表。以前の対応で真壁を嫌っているが、婚姻を条件にしない保障を支持している。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.5,
+    "curiosity": 0.5,
+    "diligence": 0.5,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "生活制度局の会議室"
+    ],
+    "entry": "生活制度局の会議室"
+  },
+  "verbs": [
+    "rest",
+    "review_proposal"
+  ],
+  "knowledge": [],
+  "goal": {
+    "description": "瀬尾は当事者団体の代表。以前の対応で真壁を嫌っているが、婚姻を条件にしない保障を支持している。"
+  },
+  "relations": {
+    "真壁": {
+      "affinity": -0.6,
+      "awareness": 1
+    }
+  }
+}

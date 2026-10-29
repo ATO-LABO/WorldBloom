@@ -30,5 +30,17 @@
       "affinity": 0.8,
       "awareness": 1
     }
-  }
+  },
+  "commitments": [
+    {
+      "condition": "crew_alive",
+      "priority": 3,
+      "required": true
+    },
+    {
+      "condition": "survivors_helped",
+      "priority": 2,
+      "required": false
+    }
+  ]
 }

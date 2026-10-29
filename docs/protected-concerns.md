@@ -1,4 +1,4 @@
-# Protected conditions, version 1
+# Protected conditions and character-owned values, version 2
 
 ## Contract fixed before implementation
 
@@ -8,14 +8,23 @@ Neither is a new gene. Existing temperament and the nine-gene Policy remain
 separate. Conditions use registered runtime state, never an opaque concept name.
 
 ```json
-{"version":1,"conditions":[
+{"version":2,"conditions":[
  {"id":"equal_eligibility","label":"Equal benefit eligibility","mode":"achieve","visibility":"public",
   "test":{"kind":"state","key":"eligibility","equals":"individual"}},
  {"id":"crew_alive","label":"Crew survival","mode":"maintain","visibility":"observed",
   "test":{"kind":"vitality","actor":"engineer","allowed":["alive","revived","downed"]}},
  {"id":"secret_kept","label":"No outsider knows the secret","mode":"maintain","visibility":"observed",
   "test":{"kind":"knowledge","fact":"secret","actors":["outsider"],"rule":"none"}}
-],"commitments":{"proposer":[{"condition":"equal_eligibility","priority":2,"required":true}]}}
+]}
+```
+
+In `subjects/proposer.yaml` (alongside identity, traits and other person fields):
+
+```yaml
+commitments:
+  - condition: equal_eligibility
+    priority: 2
+    required: true
 ```
 
 Expected initial results: unequal eligibility => raw `false`, progress `pending`;
@@ -91,12 +100,43 @@ ordinal model, not empirical psychology. It does not count repeated references
 to the same commitment, inspect private peer values, or infer implementation
 from authorization. Exponentiation/clamping is the same as choice policy v1.
 
-The shared advanced-world editor supports all six condition types and separate
-person commitments. Save and unsaved check use the existing revision-checked
-world endpoint, validate the whole world with its actual people, and replace
-only world.yaml atomically. Save reloads the workspace to prevent a stale file
-editor from silently restoring old data. Explanations distinguish recorded actor
-predictions from the author's actual-world report and escape authored labels.
+The world editor defines shared state predicates in “状態・条件の定義”.
+“登場人物 → 大切にしていること” selects those condition IDs for one person,
+sets priorities (integers 1–10), and sets required/unacceptable violations.
+Shared response action preconditions/effects and state remain in the world.
+A condition's maintain/achieve mode and visibility belong to the shared predicate;
+characters share that meaning but can value it differently. No new genes are added.
+
+The engine accepts frozen version-1 world-owned maps without mutating inputs.
+An absent person `commitments` field falls back to its legacy map; an explicit
+empty list means no commitments. Conflicting dual definitions are rejected
+(identical duplicates are accepted), never silently merged or overwritten.
+Unknown conditions, duplicate IDs, invalid priorities/booleans and removing a
+referenced world condition are errors. Version 2 definitions may exist before
+any person values them. Proposal projection participants must have explicitly
+declared values, which may be empty for an intentionally indifferent person.
+
+Save and unsaved check use the revision-checked world endpoint and validate the
+whole world with its actual people. Reading and checking do not write/migrate.
+Saving character values or shared conditions migrates an old map to the
+corresponding person files and writes a definitions-only world block. Other
+settings and people without changes retain their original bytes. Later personal
+edits touch only that person's file. Response edits do not trigger migration.
+
+A multi-file migration keeps exact before/after bytes in a durable local journal,
+rolls back a failed prepared save, and completes a committed save after interruption.
+Recovery runs under the directory lock before a subsequent save checks revisions.
+A pending journal prevents the editor from displaying a partial world; ordinary
+reads never repair or migrate a saved library. If no outstanding save request is
+available after a process restart, recover explicitly under the same lock with
+`execution.person_values.recover(world_directory)`, then reload the page. Recovery
+refuses to overwrite files edited outside that interrupted transaction. The
+journal is removed only after completion; retain it for investigation if recovery
+fails. Each file replacement is atomic; the journal and read guard provide
+multi-file recovery, not a filesystem-wide atomic transaction for external tools.
+
+Explanations distinguish recorded actor predictions from the author's actual-world
+report and escape authored labels. Saving a world does not rewrite past runs.
 
 Review and choice records retain actor assessments and public objections. Author
 reports retain a separate world evaluation. Older worlds and old saved records

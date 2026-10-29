@@ -1,0 +1,335 @@
+{
+  "name": "食料を狙う鬼と村を守る桃太郎",
+  "overview": "鬼は食料袋を奪う目的で侵攻し、桃太郎は村の被害を防ごうとする。",
+  "initial_story": "旅先の桃太郎に、鬼が村の食料を狙っているという知らせが届く。鬼もまだ村には到着していない。",
+  "time": {
+    "days": 2,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6",
+      "時点7",
+      "時点8"
+    ]
+  },
+  "protagonist": "桃太郎",
+  "antagonist": "鬼",
+  "zones": [
+    {
+      "name": "旅先"
+    },
+    {
+      "name": "峠"
+    },
+    {
+      "name": "村"
+    },
+    {
+      "name": "山道"
+    },
+    {
+      "name": "鬼の陣"
+    }
+  ],
+  "routes": {
+    "旅先": [
+      {
+        "to": "峠",
+        "cost": 1
+      }
+    ],
+    "峠": [
+      {
+        "to": "旅先",
+        "cost": 1
+      },
+      {
+        "to": "村",
+        "cost": 1
+      }
+    ],
+    "村": [
+      {
+        "to": "峠",
+        "cost": 1
+      },
+      {
+        "to": "山道",
+        "cost": 1
+      }
+    ],
+    "山道": [
+      {
+        "to": "村",
+        "cost": 1
+      },
+      {
+        "to": "鬼の陣",
+        "cost": 1
+      }
+    ],
+    "鬼の陣": [
+      {
+        "to": "山道",
+        "cost": 1
+      }
+    ]
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "items": [
+    {
+      "name": "食料袋"
+    }
+  ],
+  "facts": [
+    {
+      "id": "raid_notice",
+      "values": [
+        "ongoing",
+        "repelled",
+        "completed"
+      ],
+      "sources": []
+    }
+  ],
+  "truth": {
+    "raid_notice": "ongoing"
+  },
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "village_safe",
+        "label": "襲撃期間中に村が被害を受けない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "damage",
+          "equals": "no"
+        }
+      },
+      {
+        "id": "food_taken",
+        "label": "鬼が食料袋を手に入れる",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "鬼",
+          "item": "食料袋",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "raid_repelled",
+        "label": "襲撃が阻止された",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "raid",
+          "equals": "repelled"
+        }
+      },
+      {
+        "id": "raid_completed",
+        "label": "襲撃が終了した",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "raid",
+          "equals": "completed"
+        }
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "village_safe",
+        "success": {
+          "condition": "village_safe"
+        },
+        "failure": {
+          "not": {
+            "condition": "village_safe"
+          }
+        },
+        "period": {
+          "start": 1,
+          "end": 12
+        }
+      },
+      {
+        "condition": "food_taken",
+        "success": {
+          "condition": "food_taken"
+        },
+        "failure": {
+          "all": [
+            {
+              "any": [
+                {
+                  "condition": "raid_repelled"
+                },
+                {
+                  "condition": "raid_completed"
+                }
+              ]
+            },
+            {
+              "not": {
+                "condition": "food_taken"
+              }
+            }
+          ]
+        },
+        "period": {
+          "start": 1,
+          "end": 12
+        }
+      }
+    ]
+  },
+  "responses": {
+    "version": 2,
+    "state": {
+      "raid": "ongoing",
+      "damage": "no",
+      "store": "stocked"
+    },
+    "locations": {
+      "raid": "村",
+      "damage": "村",
+      "store": "村"
+    },
+    "signals": [
+      {
+        "fact": "raid_notice",
+        "condition": "village_safe",
+        "key": "raid",
+        "danger_values": [
+          "ongoing"
+        ],
+        "max_age": 30,
+        "threshold": 0.4,
+        "deadline": 12
+      }
+    ],
+    "actions": [
+      {
+        "id": "defend",
+        "label": "村の入口を固めて侵攻を防ぐ",
+        "condition": "village_safe",
+        "signal": "raid_notice",
+        "zone": "村",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "raid": "ongoing"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "raid",
+            "value": "repelled"
+          },
+          {
+            "kind": "state",
+            "key": "damage",
+            "value": "no"
+          }
+        ]
+      },
+      {
+        "id": "raid_store",
+        "label": "村に攻め入り食料袋を奪う",
+        "condition": "food_taken",
+        "signal": null,
+        "zone": "村",
+        "actors": [
+          "鬼"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "raid": "ongoing",
+          "store": "stocked"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "raid",
+            "value": "completed"
+          },
+          {
+            "kind": "state",
+            "key": "damage",
+            "value": "yes"
+          },
+          {
+            "kind": "state",
+            "key": "store",
+            "value": "empty"
+          },
+          {
+            "kind": "inventory",
+            "actor": "倉番",
+            "item": "食料袋",
+            "value": 0
+          },
+          {
+            "kind": "inventory",
+            "actor": "鬼",
+            "item": "食料袋",
+            "value": 1
+          }
+        ]
+      }
+    ],
+    "channels": [],
+    "events": [],
+    "windows": []
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 16",
+      "label": "襲撃をめぐる観測の終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": [
+    {
+      "id": "warning",
+      "label": "知らせ人が桃太郎に伝える",
+      "day": 1,
+      "slot": "時点1",
+      "targets": [
+        "知らせ人"
+      ],
+      "force_action": {
+        "verb": "share_knowledge",
+        "args": [
+          "桃太郎",
+          "raid_notice"
+        ]
+      }
+    }
+  ]
+}

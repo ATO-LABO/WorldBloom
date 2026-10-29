@@ -69,7 +69,7 @@
     "danger_report": "active"
   },
   "concerns": {
-    "version": 1,
+    "version": 2,
     "conditions": [
       {
         "id": "crew_safe",
@@ -82,23 +82,7 @@
           "equals": "yes"
         }
       }
-    ],
-    "commitments": {
-      "航海士": [
-        {
-          "condition": "crew_safe",
-          "priority": 10,
-          "required": true
-        }
-      ],
-      "機関士": [
-        {
-          "condition": "crew_safe",
-          "priority": 8,
-          "required": true
-        }
-      ]
-    }
+    ]
   },
   "responses": {
     "version": 1,

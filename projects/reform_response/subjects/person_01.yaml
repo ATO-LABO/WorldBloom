@@ -44,5 +44,12 @@
     "max": 10,
     "current": 10,
     "recover_per_slot": 1
-  }
+  },
+  "commitments": [
+    {
+      "condition": "eligibility_safe",
+      "priority": 10,
+      "required": true
+    }
+  ]
 }

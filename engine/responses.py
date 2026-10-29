@@ -11,7 +11,8 @@ from engine.concerns import coordinates, effect_coordinate, finite, identifier, 
 
 VERBS = frozenset({'respond', 'inspect_response', 'request_response', 'answer_response'})
 REQUEST_BLOCKERS = frozenset({'required_condition_conflict', 'higher_priority_harm',
-                              'protection_not_justified', 'authorization_pending', 'known_precondition_failed'})
+                              'protection_not_justified', 'authorization_pending', 'known_precondition_failed',
+                              'objective_terminal', 'objective_not_started', 'objective_too_late', 'objective_not_justified'})
 
 
 def bounded_list(value, maximum=32):
@@ -28,7 +29,7 @@ def integer(value, low, high):
 class Responses:
     def __init__(self, raw):
         shape(raw, {'version', 'state', 'locations', 'signals', 'actions', 'channels', 'events', 'windows'})
-        if type(raw['version']) is not int or raw['version'] != 1:
+        if type(raw['version']) is not int or raw['version'] not in (1, 2):
             raise ValueError('Unsupported responses version')
         self.config = deepcopy(raw)
         self.state = deepcopy(raw['state'])
@@ -39,7 +40,13 @@ class Responses:
         self.locations = raw['locations']
         if not isinstance(self.locations, dict) or set(self.locations) != set(self.state):
             raise ValueError('Every response state key needs an observation location')
-        for zone in self.locations.values(): identifier(zone)
+        for value in self.locations.values():
+            if self.config['version'] == 2 and isinstance(value, list):
+                if not 1 <= len(value) <= 8 or len(set(value)) != len(value):
+                    raise ValueError('Bounded distinct observation zones required')
+                for zone in value: identifier(zone)
+            else:
+                identifier(value)
         self.signals = {}
         for signal in bounded_list(self.config['signals']):
             shape(signal, {'fact', 'condition', 'key', 'danger_values', 'max_age', 'threshold', 'deadline'})
@@ -61,7 +68,9 @@ class Responses:
                 shape(spec['authorization'], {'proposal', 'status'})
                 identifier(spec['authorization']['proposal'])
                 if spec['authorization']['status'] != 'approved': raise ValueError('Implementation requires approval')
-            for key in ('id', 'label', 'condition', 'signal', 'zone'): identifier(spec[key])
+            for key in ('id', 'label', 'condition', 'zone'): identifier(spec[key])
+            if raw['version'] == 1 or spec['signal'] is not None:
+                identifier(spec['signal'])
             if spec['id'] in self.actions: raise ValueError('Duplicate response action')
             for key in ('actors', 'requires'):
                 bounded_list(spec[key], 40)
@@ -116,7 +125,8 @@ class Responses:
             raise ValueError('Responses v1 supports ordinary instant execution only')
         if world.deliberation and set(self.state) & set(world.deliberation.state):
             raise ValueError('Response and proposal state keys must be disjoint')
-        if not set(self.locations.values()) <= set(world.zones): raise ValueError('Unknown observation zone')
+        if any(not set(self.observation_zones(key)) <= set(world.zones) for key in self.locations):
+            raise ValueError('Unknown observation zone')
         people = set(world.subjects)
         for (sender, receiver) in self.channels:
             if {sender, receiver} - people: raise ValueError('Unknown communication participant')
@@ -136,13 +146,19 @@ class Responses:
             authorization = spec.get('authorization')
             if authorization and (world.deliberation is None or authorization['proposal'] not in world.deliberation.specs):
                 raise ValueError('Unknown implementation authorization')
-            if (spec['signal'] not in self.signals or spec['condition'] not in world.concerns.conditions
-                    or spec['condition'] != self.signals[spec['signal']]['condition']
+            proactive = self.config['version'] == 2 and spec['signal'] is None
+            if proactive and (world.goal_rules is None or spec['condition'] not in world.goal_rules.definitions):
+                raise ValueError('Proactive actions require an explicit objective contract')
+            if ((not proactive and (spec['signal'] not in self.signals
+                    or spec['condition'] != self.signals[spec['signal']]['condition']))
+                    or spec['condition'] not in world.concerns.conditions
                     or spec['zone'] not in world.zones or not set(spec['actors']) <= people):
                 raise ValueError('Invalid response action references')
             if not set(spec['items']) <= set(world.items): raise ValueError('Unknown response item')
             if not set(spec['preconditions']) <= set(self.state): raise ValueError('Unknown response precondition')
             self._validate_effects(world, spec['effects'], spec['requires'], authorized=bool(authorization))
+            if proactive:
+                continue
             signal = self.signals[spec['signal']]
             clear = next((e['value'] for e in spec['effects']
                           if e['kind'] == 'state' and e['key'] == signal['key']), None)
@@ -173,6 +189,13 @@ class Responses:
         if belief is None: return
         self.observations[(actor.id, fact)] = {'value': belief.value, 'confidence': belief.confidence,
             'observed_at': turn if observed_at is None else observed_at, 'received_at': turn, 'source': source}
+
+    def observation_zones(self, key):
+        value = self.locations[key]
+        return value if isinstance(value, list) else [value]
+
+    def can_observe(self, actor, key):
+        return actor.zone in self.observation_zones(key)
 
     def view(self, world, actor, fact, turn):
         signal = self.signals[fact]
@@ -251,14 +274,14 @@ class Responses:
         for actor in world.subjects.values():
             if actor.vitality not in {'alive', 'revived'}: continue
             for fact, signal in self.signals.items():
-                if actor.zone == self.locations[signal['key']]:
+                if self.can_observe(actor, signal['key']):
                     value = self.state[signal['key']]
                     actor.beliefs[fact] = Belief(value, 1.0)
                     self._observe(actor, fact, turn, 'direct')
         for aid, plan in list(self.active.items()):
             spec = self.actions[plan['action']]
-            view = self.view(world, world.subjects[aid], spec['signal'], turn)
-            if view['status'] != 'danger' or world.subjects[aid].vitality not in {'alive', 'revived'}:
+            view = self._motivation(world, world.subjects[aid], spec, turn)
+            if view['status'] not in {'danger', 'objective'} or world.subjects[aid].vitality not in {'alive', 'revived'}:
                 self.active.pop(aid); self.progress.pop((aid, spec['id']), None)
                 markers.append({'verb': 'response_plan_cancelled', 'subject': aid,
                                 'details': {'action': spec['id'], 'reason': view['status']}})
@@ -284,17 +307,24 @@ class Responses:
         if not self.history or self.history[-1] != sample: self.history.append(sample)
 
     def _commitment(self, world, actor, cid):
-        return next((c for c in world.concerns.config['commitments'].get(actor.id, [])
+        return next((c for c in world.concerns.commitments_for(world, actor.id)
                      if c['condition'] == cid), None)
+
+    def _motivation(self, world, actor, spec, turn):
+        if spec['signal'] is not None:
+            return self.view(world, actor, spec['signal'], turn)
+        own = world.goal_rules.actor_view(world, actor.id, spec['condition'], turn)
+        status = 'objective' if own['status'] not in {'achieved', 'failed'} else 'objective_terminal'
+        return {'status': status, 'confidence': 1.0, 'source': 'own_commitment', 'objective': own}
 
     def _option(self, world, actor, spec, turn, day=1):
         """Pure actor-scoped forecast. Actual preconditions are checked at execution."""
-        view = self.view(world, actor, spec['signal'], turn)
+        view = self._motivation(world, actor, spec, turn)
         commitment = self._commitment(world, actor, spec['condition'])
         result = {'action': spec['id'], 'condition': spec['condition'], 'signal': view, 'excluded': []}
         fail = result['excluded'].append
         if not commitment: fail('no_commitment')
-        if view['status'] != 'danger': fail(view['status'])
+        if view['status'] not in {'danger', 'objective'}: fail(view['status'])
         if actor.id not in spec['actors']: fail('capability_unavailable')
         authorization = spec.get('authorization')
         if authorization and not world.deliberation.decided(authorization['proposal'], authorization['status']):
@@ -312,14 +342,26 @@ class Responses:
             path = world.reachable_paths(actor).get(spec['zone'])
             if path is None or 'move' not in allowed or not world.genre_allows('move'): fail('unreachable')
         hops = len(path.route)-1 if path else 0
-        deadline = self.signals[spec['signal']]['deadline']
+        deadline = self.signals[spec['signal']]['deadline'] if spec['signal'] is not None else None
         if deadline is not None and turn + hops + remaining - 1 > deadline: fail('too_late')
+        objective = world.goal_rules
+        if objective is not None and spec['condition'] in objective.definitions:
+            own = objective.actor_view(world, actor.id, spec['condition'], turn)
+            result['objective_view'] = own
+            if own['status'] in {'achieved', 'failed'}: fail('objective_terminal')
+            if turn < own['period']['start']: fail('objective_not_started')
+            if turn + hops + remaining - 1 > own['period']['end']: fail('objective_too_late')
         projection = {'effects': spec['effects']}
         forecast = world.concerns.assessment(world, actor.id, projection=projection)
         own_result = next((c for c in forecast['entries'] if c['condition'] == spec['condition']), None)
         if own_result is not None and own_result['state'] != 'true': fail('protection_not_justified')
+        if objective is not None and spec['condition'] in objective.definitions:
+            predicted = objective.predict(world, spec['condition'], actor=actor.id, projection=projection)
+            result['objective_forecast'] = predicted
+            if predicted['success']['state'] != 'true' or predicted['failure']['state'] != 'false':
+                fail('objective_not_justified')
         known_failed = [key for key, value in spec['preconditions'].items()
-                        if actor.zone == self.locations[key] and self.state[key] != value]
+                        if self.can_observe(actor, key) and self.state[key] != value]
         if known_failed: fail('known_precondition_failed')
         affected = {effect_coordinate(e) for e in spec['effects']}
         harms = [c for c in forecast['entries'] if c['required'] and c['state'] != 'true'
@@ -329,6 +371,16 @@ class Responses:
                       and affected & set(coordinates(world.concerns.conditions[c['condition']]['test']))]
         if commitment and any(c['priority'] >= commitment['priority'] for c in soft_harms):
             fail('higher_priority_harm')
+        if objective is not None:
+            for value in forecast['entries']:
+                cid = value['condition']
+                if cid not in objective.definitions or not affected & objective.affected_coordinates(world, cid):
+                    continue
+                prediction = objective.predict(world, cid, actor=actor.id, projection=projection)
+                if value['required'] and prediction['failure']['state'] != 'false':
+                    fail('required_condition_conflict')
+                elif commitment and prediction['failure']['state'] == 'true' and value['priority'] >= commitment['priority']:
+                    fail('higher_priority_harm')
         result.update(forecast=forecast, eta=hops+remaining, priority=commitment['priority'] if commitment else 0,
                       required=commitment['required'] if commitment else False)
         if not result['excluded']:
@@ -364,13 +416,15 @@ class Responses:
                 meta = {'dest': args[0], 'cost': path.cost, 'hops': path.hops, 'route': list(path.route)}
             else:
                 verb, args, meta = 'respond', (spec['id'],), {}
+            if 'objective_view' in option:
+                reason.update(objective_view=option['objective_view'], objective_forecast=option['objective_forecast'])
             meta.update(response_plan=spec['id'], response_reason=reason)
             if verb in allowed and world.genre_allows(verb):
                 weighted.append((Action(verb, args, meta), option['weight']))
         # Inspection is local, and refreshes stale beliefs without inventing remote knowledge.
         if 'inspect_response' in allowed:
             for fact, signal in self.signals.items():
-                if actor.zone == self.locations[signal['key']] and self._commitment(world, actor, signal['condition']):
+                if self.can_observe(actor, signal['key']) and self._commitment(world, actor, signal['condition']):
                     weighted.append((Action('inspect_response', (fact,)), .2))
         for rid, request in sorted(self.requests.items()):
             if request['to'] == actor.id and request['status'] == 'delivered' and 'answer_response' in allowed:
@@ -381,6 +435,7 @@ class Responses:
         if 'request_response' in allowed:
             for option in options:
                 spec = self.actions[option['action']]
+                if spec['signal'] is None: continue  # v2 proactive delegation is not an implicit testimony channel.
                 if not self._commitment(world, actor, spec['condition']) or option['signal']['status'] != 'danger': continue
                 if REQUEST_BLOCKERS.intersection(option['excluded']): continue
                 for (sender, target), delay in sorted(self.channels.items()):
@@ -404,7 +459,7 @@ class Responses:
         if action.verb == 'inspect_response':
             if len(action.args) != 1 or action.args[0] not in self.signals: return invalid('unknown_signal')
             fact = action.args[0]; signal = self.signals[fact]
-            if actor.zone != self.locations[signal['key']]: return invalid('not_at_observation_site')
+            if not self.can_observe(actor, signal['key']): return invalid('not_at_observation_site')
             actor.beliefs[fact] = Belief(self.state[signal['key']], 1)
             self._observe(actor, fact, turn, 'direct')
             return 'inspected', {'response': {'observation': self.view(world, actor, fact, turn)}}, []
@@ -412,7 +467,9 @@ class Responses:
             if len(action.args) != 2: return invalid('invalid_request')
             target, sid = action.args
             if (actor.id, target) not in self.channels or sid not in self.actions: return invalid('channel_or_action_unavailable')
-            spec = self.actions[sid]; view = self.view(world, actor, spec['signal'], turn)
+            spec = self.actions[sid]
+            if spec['signal'] is None: return invalid('proactive_request_requires_explicit_message')
+            view = self.view(world, actor, spec['signal'], turn)
             assessment = self._option(world, actor, spec, turn, day)
             if REQUEST_BLOCKERS.intersection(assessment['excluded']): return invalid('request_conflicts_with_own_conditions')
             key = (actor.id, target, sid, view.get('observed_at'))
@@ -457,8 +514,8 @@ class Responses:
                    'assessment': option, 'effects': []}
         if progress < spec['steps']: return 'working', {'response': details}, []
         self._apply(world, spec['effects'], turn)
-        signal = self.signals[spec['signal']]
-        if actor.zone == self.locations[signal['key']]:
+        signal = self.signals.get(spec['signal'])
+        if signal is not None and self.can_observe(actor, signal['key']):
             actor.beliefs[spec['signal']] = Belief(self.state[signal['key']], 1)
             self._observe(actor, spec['signal'], turn, 'direct_execution')
         self.active.pop(actor.id, None); self.progress.pop(key, None)
@@ -492,7 +549,7 @@ class Responses:
             details.setdefault('response', {})['world_report'] = world.concerns.world_report(world)
 
     def snapshot(self):
-        return {'version': 1, 'state': deepcopy(self.state), 'active': deepcopy(self.active),
+        return {'version': self.config['version'], 'state': deepcopy(self.state), 'active': deepcopy(self.active),
                 'requests': deepcopy(self.requests), 'mail': deepcopy(self.mail),
                 'temporal': deepcopy(self.temporal), 'history': deepcopy(self.history),
                 'observations': [{'actor': a, 'fact': f, **deepcopy(v)}

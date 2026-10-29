@@ -27,5 +27,17 @@
   "goal": {
     "description": "航法士ナギは帰還中の船で救難信号を受け、予定航路を外れて救助する案を持ち込む。"
   },
-  "relations": {}
+  "relations": {},
+  "commitments": [
+    {
+      "condition": "crew_alive",
+      "priority": 3,
+      "required": true
+    },
+    {
+      "condition": "survivors_helped",
+      "priority": 2,
+      "required": false
+    }
+  ]
 }

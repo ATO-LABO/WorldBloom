@@ -235,7 +235,7 @@
     ]
   },
   "concerns": {
-    "version": 1,
+    "version": 2,
     "conditions": [
       {
         "id": "crew_alive",
@@ -263,56 +263,6 @@
           "equals": "救助済"
         }
       }
-    ],
-    "commitments": {
-      "ナギ": [
-        {
-          "condition": "crew_alive",
-          "priority": 3,
-          "required": true
-        },
-        {
-          "condition": "survivors_helped",
-          "priority": 2,
-          "required": false
-        }
-      ],
-      "イサ": [
-        {
-          "condition": "crew_alive",
-          "priority": 3,
-          "required": true
-        },
-        {
-          "condition": "survivors_helped",
-          "priority": 2,
-          "required": false
-        }
-      ],
-      "レム": [
-        {
-          "condition": "crew_alive",
-          "priority": 3,
-          "required": true
-        },
-        {
-          "condition": "survivors_helped",
-          "priority": 2,
-          "required": false
-        }
-      ],
-      "トワ": [
-        {
-          "condition": "crew_alive",
-          "priority": 3,
-          "required": true
-        },
-        {
-          "condition": "survivors_helped",
-          "priority": 2,
-          "required": false
-        }
-      ]
-    }
+    ]
   }
 }

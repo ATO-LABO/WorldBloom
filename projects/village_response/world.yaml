@@ -69,7 +69,7 @@
     "danger_report": "active"
   },
   "concerns": {
-    "version": 1,
+    "version": 2,
     "conditions": [
       {
         "id": "village_safe",
@@ -82,23 +82,7 @@
           "equals": "yes"
         }
       }
-    ],
-    "commitments": {
-      "桃太郎": [
-        {
-          "condition": "village_safe",
-          "priority": 10,
-          "required": true
-        }
-      ],
-      "犬": [
-        {
-          "condition": "village_safe",
-          "priority": 8,
-          "required": true
-        }
-      ]
-    }
+    ]
   },
   "responses": {
     "version": 1,
