@@ -49,6 +49,8 @@ def verb_label(verb):
 def objective_choice_panel(choice):
     """Personal forecasts remain visibly separate from actual adjudication."""
     body = '<details open><summary>目的に沿った手段の比較</summary>'
+    if choice.get('plan', {}).get('steps'):
+        body += '<p class="ui-hint">後続の行動も完了した場合の予測です。</p>'
     if choice.get('consent_required'):
         body += '<p class="ui-notice">相手が同意した場合の見込みです。申し入れだけでは品物は移らず、目的も達成しません。</p>'
     if choice.get('answer') == 'refuse' or choice.get('refusal_basis'):
@@ -77,6 +79,32 @@ def objective_choice_panel(choice):
             body += '<li>' + e(verb_label(option['verb'])) + ' ' + e(label) + '：' + e(why) + '</li>'
         body += '</ul>'
     return body + '<p class="ui-hint">本人の情報と価値観に基づく予測です。相手の承諾や実際の達成とは区別します。</p></details>'
+
+
+def planning_panel(plan):
+    statuses = {'planned': '実行する手順が見つかった', 'conditional': '未確認の条件を含む計画',
+                'awaiting_consent': '交換の返答を待っている', 'seeking_information': '情報を確かめに向かう',
+                'no_known_plan': '今の情報では手順が見つからない', 'search_limit': '探索の上限まで調べた',
+                'condition_met': '現在の達成条件は満たしている', 'inactive': 'この目的の計画は現在進めていない'}
+    reasons = {'initial_plan': '最初の計画', 'previous_action_failed': '直前の行動が失敗したため再計画',
+               'new_information': '認識した情報を更新', 'reply_received': '交換への返答を受けて見直し',
+               'continuing': '現在の状況から残りの手順を確認'}
+    body = '<details><summary>目的の分解と再計画（この行の詳細）</summary>'
+    body += '<p>最終目的：' + e(plan.get('goal_label', '選んだ目的')) + '</p>'
+    body += '<p>' + e(statuses.get(plan.get('status'), '計画の記録')) + ' ／ ' + e(reasons.get(plan.get('reason'), '')) + '</p>'
+    if plan.get('assumptions'):
+        body += '<p class="ui-notice">未確認の成立条件や相手の承諾を含みます。予定した結果が実現した記録ではありません。</p>'
+    if plan.get('steps'):
+        body += '<ol>'
+        for step in plan['steps']:
+            label = step.get('label', '')
+            if step['verb'] == 'move': label = str(step['args'][0]) + 'へ移動する'
+            elif step['verb'] == 'negotiate': label = str(step['args'][0]) + 'に' + str(step.get('meta', {}).get('objective', '品物')) + 'の交換を申し入れる'
+            body += '<li>' + e(label) + ' ／ 必要な時点数 ' + e(step['duration']) + '</li>'
+        body += '</ol>'
+    if plan.get('status') in {'no_known_plan', 'search_limit'}:
+        body += '<p>手順が見つからないことと、目的の失敗確定は分けて扱います。</p>'
+    return body + '<p class="ui-hint">中間目標は人物の価値観として追加されません。これまでの出来事と資源の変化を残して計画を見直します。</p></details>'
 
 
 # WB-ROUTE-001 S4 §1.1: reason badges for a policy.route record (or a
@@ -251,6 +279,8 @@ def panel(explanation, item=None, *, details=True):
     detail=item.get('outcome',{}).get('details') or {}
     if detail.get('objective_choice'):
         body += objective_choice_panel(detail['objective_choice'])
+    if detail.get('planning'):
+        body += planning_panel(detail['planning'])
     outcomes=detail.get('objective_outcomes') or ([detail['objective_outcome']] if detail.get('objective_outcome') else [])
     if outcomes:body+=objective_outcomes(outcomes)
     event=detail.get('deliberation_event',{})

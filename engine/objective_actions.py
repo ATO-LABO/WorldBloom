@@ -27,6 +27,8 @@ def item_goal(world, actor, cid, turn):
 
 
 def offer_valid(world, claimant, offer, turn):
+    if offer.get('planning_root') is not None:
+        return world.planner is not None and world.planner.offer_valid(world, claimant, offer, turn)
     cid = offer.get('objective_goal')
     return (offer.get('status', 'pending') == 'pending' and turn <= offer['turn'] + 1
             and item_goal(world, claimant, cid, turn) == offer.get('objective') if cid is not None
@@ -159,6 +161,10 @@ def transaction(world, actor, action, turn):
 
 
 def review_transaction(world, actor, action, turn):
+    if action.verb == 'negotiate' and (action.meta.get('goal_plan') or action.meta.get('planning_root')):
+        if world.planner is None or not action.meta.get('goal_plan') or not action.meta.get('planning_root'):
+            return {'excluded': ['planning_binding_required']}
+        return world.planner.validate(world, actor, action, turn)
     if not enabled(world, actor):
         return None
     if actor.vitality not in {'alive', 'revived'}:

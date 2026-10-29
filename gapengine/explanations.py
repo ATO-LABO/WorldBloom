@@ -344,7 +344,14 @@ def explain_rows(rows, *, layers_path="", sha256="", experiment="", cell=""):
         return (-len(links), -(d["turn"] or 0), fact, d["line"])
     representative = min(pool, key=rank) if pool else None
     signature = [(d["subject"], d["verb"], d["args"], d["outcome"]["result"]) for d in eligible]
-    return {"version": VERSION, "source": {"layers_path": layers_path, "sha256": sha256, "experiment": experiment, "cell": cell},
+    result = {"version": VERSION, "source": {"layers_path": layers_path, "sha256": sha256, "experiment": experiment, "cell": cell},
             "representative": representative, "decisions": decisions,
             "trajectory_signature": hashlib.sha256(json.dumps(signature, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
             "limitations": ["重みを介した転機は判定未対応", "遅延した代償は未確認", "未記録の初期状態・同席者は不明", "結末述語の反転は未記録なら不明"]}
+    if any(d['outcome']['details'].get('planning') for d in decisions):
+        result['planning_outcomes'] = [
+            {'turn': row.get('turn'), 'source': source(line), 'outcome': copy.deepcopy(row['details']['objective_outcome'])}
+            for line, row in enumerate(rows, 1)
+            if row.get('kind') == 'event' and row.get('verb') == 'objective_outcome'
+            and isinstance(row.get('details', {}).get('objective_outcome'), dict)]
+    return result

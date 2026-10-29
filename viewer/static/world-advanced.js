@@ -2,13 +2,13 @@
  'use strict';const root=document.querySelector('[data-world-advanced]');if(!root)return;
  const initial=JSON.parse(root.dataset.initial),$=s=>root.querySelector(s),list=$('[data-advanced-list]'),detail=$('[data-advanced-detail]'),status=$('[data-advanced-status]');
  const clone=v=>JSON.parse(JSON.stringify(v)),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- let world=initial.world,genre=initial.genre,files=initial.files,section=['#concerns','#responses','#objectives'].includes(location.hash)?location.hash.slice(1):'canon',index=0,variant='canon.yaml',file='world.yaml',dirty=false,busy=false,blocked=false;
+ let world=initial.world,genre=initial.genre,files=initial.files,section=['#concerns','#responses','#objectives','#planning'].includes(location.hash)?location.hash.slice(1):'canon',index=0,variant='canon.yaml',file='world.yaml',dirty=false,busy=false,blocked=false;
  let draft=null;
  const labels={phase:'段階',hostile_present:'敵対者がいる',objective:'目的の品',vitality:'生存状態',stance:'態度',category:'カテゴリ',verb:'行動',role:'相手との関係',n:'重み'};
  const terms={hostile:'敵対',self:'自分',neutral:'中立',alive:'生存',dead:'死亡',none:'指定なし',friendly:'友好',give_item:'品物を渡す',craft:'作る',fight:'戦う',move:'移動する',rest:'休む',observe:'調べる',persuade:'説得する',cooperate:'協力する',ally:'仲間',ground:'地面',unknown:'不明',downed:'倒れている'};
  const text=v=>Array.isArray(v)?(v.length?v.join('・'):'指定なし'):v===null?'指定なし':v===true?'はい':v===false?'いいえ':terms[v]||String(v??'未設定');
  const entries=()=>Array.isArray(draft?.entries)?draft.entries:[];
- function loaded(){draft=section==='objectives'?clone(world.world.goal_rules??window.WorldBloomObjectives.empty()):section==='responses'?clone(world.world.responses??window.WorldBloomResponses.empty()):section==='concerns'?{version:2,conditions:clone(world.world.concerns?.conditions??[])}:section==='canon'?clone(genre?.files[variant]?.value??{entries:[]}):section==='roles'?{protagonist:world.world.protagonist||'',antagonist:world.world.antagonist||'',target_ending:Array.isArray(world.world.target_ending)?clone(world.world.target_ending):world.world.target_ending?[world.world.target_ending]:[]}:files[file]??'';dirty=false;}
+ function loaded(){draft=section==='planning'?clone(world.world.planning??window.WorldBloomPlanning.empty()):section==='objectives'?clone(world.world.goal_rules??window.WorldBloomObjectives.empty()):section==='responses'?clone(world.world.responses??window.WorldBloomResponses.empty()):section==='concerns'?{version:2,conditions:clone(world.world.concerns?.conditions??[])}:section==='canon'?clone(genre?.files[variant]?.value??{entries:[]}):section==='roles'?{protagonist:world.world.protagonist||'',antagonist:world.world.antagonist||'',target_ending:Array.isArray(world.world.target_ending)?clone(world.world.target_ending):world.world.target_ending?[world.world.target_ending]:[]}:files[file]??'';dirty=false;}
  function refresh(){const can=initial.editable&&section!=='actions'&&(section!=='canon'||!!genre);$('[data-advanced-save]').disabled=!can||!dirty||busy||blocked;$('[data-advanced-check]').disabled=!can||busy||blocked;$('[data-advanced-reset]').disabled=!dirty||busy;root.querySelectorAll('[data-advanced-section]').forEach(b=>b.setAttribute('aria-current',b.dataset.advancedSection===section?'page':'false'));}
  function change(){dirty=true;status.textContent='未保存の変更があります';refresh();}
  function ruleText(row){return Object.entries(row?.ctx||{}).map(([k,v])=>`${labels[k]||k}：${k==='objective'?({hostile:'敵が持っている',self:'自分が持っている',ally:'仲間が持っている',ground:'地面にある'}[v]||text(v)):text(v)}`).join(' ／ ')||'条件の指定なし';}
@@ -32,6 +32,8 @@
    const canon=document.createElement('details');canon.innerHTML='<summary>定石の早見表を確認</summary>';canon.append($('[data-advanced-canon]').content.cloneNode(true));detail.append(canon);if(genre)detail.insertAdjacentHTML('beforeend','<a href="/genres/'+encodeURIComponent(genre.id)+'">ジャンル全体を編集 →</a>');
   }else if(section==='objectives'){
    window.WorldBloomObjectives.render(detail,draft,world,initial.editable,()=>{change();window.WorldBloomObjectives.summary(list,draft,detail,world);});window.WorldBloomObjectives.summary(list,draft,detail,world);
+  }else if(section==='planning'){
+   window.WorldBloomPlanning.render(detail,draft,world,initial.editable,change);
   }else if(section==='responses'){
    window.WorldBloomResponses.render(detail,draft,world,initial.editable,change);
   }else if(section==='concerns'){
@@ -57,6 +59,7 @@
   }else if(section==='roles'){list.innerHTML='<h2>物語の役割</h2><p>主人公・敵役・目標の結末を設定します。</p><p class="ux-note">初期物語の導入文は、通常の世界設定にあります。</p>';}
   else if(section==='files'){list.innerHTML='<h2>設定ファイル</h2>';Object.keys(files).forEach(p=>{const b=document.createElement('button');b.type='button';b.className='ux-rule';b.textContent=p;b.setAttribute('aria-pressed',String(p===file));b.addEventListener('click',()=>{if(dirty||busy){status.textContent='先に変更を保存するか、変更を戻してください。';return;}file=p;loaded();render();});list.append(b);});}
   else if(section==='objectives'){list.textContent='達成条件・失敗確定条件・判定期間を一組として定義します。各人物は対応する条件を人物設定で選べます。';}
+  else if(section==='planning'){list.textContent='最終目的から準備を組み立て、失敗や新しい情報に応じて手順を見直します。';}
   else if(section==='responses'){list.textContent='知らせ、現場での対処、連絡手段、条件を守る期間を設定します。';}
   else if(section==='concerns'){list.textContent='世界で共有する条件を定義します。重視する条件・優先順位・譲れない条件は、登場人物から編集できます。';}
   else list.append($('[data-advanced-actions]').content.cloneNode(true));
@@ -65,9 +68,9 @@
  async function api(url,body){const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-WorldBloom-Client':'1'},body:JSON.stringify(body)});const result=await response.json();if(!response.ok){const error=Error(result.message||'保存内容を確認してください');error.status=response.status;throw error;}return result;}
  async function action(check){if(busy||blocked||!initial.editable)return;for(const el of detail.querySelectorAll('input,textarea,select'))if(!el.reportValidity())return;
   busy=true;root.querySelectorAll('input,textarea,select,button').forEach(e=>{e.dataset.disabled=String(e.disabled);e.disabled=true;});status.textContent=check?'設定を確認中…':'保存中…';
-  try{if(['concerns','responses','objectives'].includes(section)){
-    const result=await api('/api/worlds/'+encodeURIComponent(world.id)+'/edit',{revision:world.revision,operation:check?(section==='objectives'?'goal-rules':section)+'-check':section==='objectives'?'goal-rules':section,target:null,values:{definition:section==='objectives'?(draft.definitions.length?draft:null):section==='responses'?(Object.keys(draft.state).length?draft:null):(draft.conditions.length?draft:null)}});
-    if(check){status.textContent=section==='objectives'?'未保存の達成・失敗・期間の定義を確認しました。':section==='responses'?'未保存の対処設定を確認しました。':'未保存の条件を確認しました。';}else{world=result;dirty=busy=false;location.hash=section;location.reload();return;}
+  try{if(['concerns','responses','objectives','planning'].includes(section)){
+    const result=await api('/api/worlds/'+encodeURIComponent(world.id)+'/edit',{revision:world.revision,operation:check?(section==='objectives'?'goal-rules':section)+'-check':section==='objectives'?'goal-rules':section,target:null,values:{definition:section==='planning'?window.WorldBloomPlanning.definition(draft):section==='objectives'?(draft.definitions.length?draft:null):section==='responses'?(Object.keys(draft.state).length?draft:null):(draft.conditions.length?draft:null)}});
+    if(check){status.textContent=section==='planning'?'未保存の再計画設定を確認しました。':section==='objectives'?'未保存の達成・失敗・期間の定義を確認しました。':section==='responses'?'未保存の対処設定を確認しました。':'未保存の条件を確認しました。';}else{world=result;dirty=busy=false;location.hash=section;location.reload();return;}
    }else if(section==='canon'){
     const content=JSON.stringify(draft,null,2),prefix='/api/genres/'+encodeURIComponent(genre.id)+'/';
     if(check){const result=await api(prefix+'check',{world_id:world.id,files:{[variant]:content},revision:genre.revision});status.textContent='設定の組み合わせを確認しました。'+(result.world_name||'')+(result.subjects!=null?'・登場人物 '+result.subjects+'人':'');}

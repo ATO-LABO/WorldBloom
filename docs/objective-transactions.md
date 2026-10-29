@@ -1,5 +1,9 @@
 # Connecting character purposes to existing item transactions
 
+The optional [goal planner](goal-planning.md) additionally derives intermediate
+item acquisitions from a final purpose and can use these same real transactions.
+The standalone adapter described below retains its original scope and defaults.
+
 `engine/objective_actions.py` adapts the existing `negotiate`, `concede` and
 `give_item` verbs to character-owned `commitments` and world-owned `goal_rules`.
 There are no additional personality genes, story IDs or saved configuration

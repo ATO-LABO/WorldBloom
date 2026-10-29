@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const context={window:{}};
+vm.runInNewContext(fs.readFileSync('viewer/static/planning-editor.js','utf8'),context);
+const api=context.window.WorldBloomPlanning;
+const empty=api.empty();
+assert.equal(api.definition(empty),null);
+empty.actors.push('通信士');
+const saved=api.definition(empty);
+saved.actors.push('補給係');
+assert.equal(empty.actors.length,1,'serialized draft must not retain mutable actor list');
+assert.equal(saved.version,1);
+assert.equal(saved.max_depth,8);
+assert.equal(saved.max_nodes,256);
+assert.equal(api.empty().actors.length,0,'independent worlds must not share enabled actors');
+console.log('planning-editor: opt-out and isolated drafts verified');
