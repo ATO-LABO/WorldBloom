@@ -19,9 +19,10 @@
 # Six working-tree fingerprints approved on 2026-10-28.
 # Each value was rechecked against the current Git file's SHA256.
 # The source files are identified beside the historical entries above.
-launch-assets/package-files.json:generic-api-key:349
-launch-assets/package-files.json:generic-api-key:368
-launch-assets/package-files.json:generic-api-key:443
-launch-assets/package-files.json:generic-api-key:479
-launch-assets/package-files.json:generic-api-key:480
-launch-assets/package-files.json:generic-api-key:547
+# Positions updated for the same six approved file checksums; scope unchanged.
+launch-assets/package-files.json:generic-api-key:491
+launch-assets/package-files.json:generic-api-key:510
+launch-assets/package-files.json:generic-api-key:585
+launch-assets/package-files.json:generic-api-key:623
+launch-assets/package-files.json:generic-api-key:624
+launch-assets/package-files.json:generic-api-key:699
