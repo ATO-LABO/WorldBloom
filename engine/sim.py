@@ -458,6 +458,10 @@ class Simulation:
             from engine.deliberation import digest
             header['planning'] = {'config': _plain(self.world.planner.config),
                                   'config_hash': digest(self.world.planner.config)}
+        if self.world.action_timing is not None:
+            from engine.deliberation import digest
+            header['action_timing'] = {'config': _plain(self.world.action_timing.config),
+                                      'config_hash': digest(self.world.action_timing.config)}
         rationality_meta = self._rationality_meta()
         if rationality_meta is not None:
             header["rationality"] = rationality_meta
@@ -990,6 +994,8 @@ class Simulation:
                 )
 
     def _recover_stamina(self) -> None:
+        if self.world.action_timing is not None and 'rest' in self.world.action_timing.rules:
+            return  # Recovery is the timed rest effect, not an extra free slot effect.
         for subject_id in sorted(self.subjects):
             subject = self.subjects[subject_id]
             if subject.vitality == "dead":
@@ -1250,6 +1256,7 @@ class Simulation:
                 **({'responses': self.world.responses.snapshot()} if self.world.responses is not None else {}),
                 **({'goal_rules': self.world.goal_rules.snapshot(self.world)} if self.world.goal_rules is not None else {}),
                 **({'planning': self.world.planner.snapshot()} if self.world.planner is not None else {}),
+                **({'action_timing': self.world.action_timing.snapshot()} if self.world.action_timing is not None else {}),
             }
         )
         self._previous_snapshot_layers = layers
@@ -1298,6 +1305,8 @@ class Simulation:
         self._apply_scheduled(writer, slot=self.slot)
         if self.world.responses is not None:
             self._write_markers(writer, self.world.responses.tick(self.world, self.turn))
+        if self.world.action_timing is not None:
+            self.world.action_timing.advance(writer)
         if self.world.goal_rules is not None:
             self._write_markers(writer, self.world.goal_rules.record(self.world, self.turn))
         self._record_encounters(writer)
@@ -1307,6 +1316,11 @@ class Simulation:
             subject = self.subjects[subject_id]
             if subject.vitality == "dead":
                 continue
+
+            if self.world.action_timing is not None:
+                self.world.action_timing.reconsider(subject, writer)
+                if subject.id in self.world.action_timing.pending:
+                    continue
 
             forced = self._forced.pop(subject.id, None)
             action, probability = self.choose_action(
@@ -1344,13 +1358,11 @@ class Simulation:
                     "stamina": actor_before["stamina"],
                     "resources": _plain(actor_before["resources"]),
                 }
-            result, details, markers = self.lifecycle.instant(subject.id, action, lambda:
-                self.verb_engine.execute(
-                    subject,
-                    action,
-                    turn=self.turn,
-                    day=self.day,
-                ))
+            if self.world.action_timing is not None and action.verb in self.world.action_timing.rules:
+                result, details, markers = self.world.action_timing.start(subject, action)
+            else:
+                result, details, markers = self.lifecycle.instant(subject.id, action, lambda:
+                    self.verb_engine.execute(subject, action, turn=self.turn, day=self.day))
             details.update(
                 self._strength_details(subject)
             )
@@ -1400,6 +1412,10 @@ class Simulation:
             )
             self._write_markers(writer, markers)
 
+            if details.get('activity', {}).get('phase') == 'started':
+                self._write_activity(writer, subject, action, result,
+                    {'activity': details['activity']}, [], self._capture())
+
             if (
                 self.subjects[
                     self.world.protagonist
@@ -1409,6 +1425,13 @@ class Simulation:
                 self._write_aborted(writer)
                 return BoundaryResult.HALT
 
+
+    def _write_activity(self, writer, subject, action, result, details, markers, before):
+        details['activity_result'] = result
+        writer.write(self._event_row(verb='activity_' + details['activity']['phase'], subject=subject.id,
+            delta=self._delta(subject.id, before, self._capture()), details=_plain(details),
+            event_id=details['activity']['id'] + ':' + str(self.turn) + ':' + details['activity']['phase']))
+        self._write_markers(writer, markers)
 
     def _time_after_choices(self, frame, writer):
         self._forced.clear()
@@ -1451,6 +1474,8 @@ class Simulation:
             return self.slot_runtime.run()
         self.time_kernel = TimeActionKernel(TimeAxis.logical(self.world.days, self.world.slots))
         self.lifecycle = ActionLifecycle(self.time_kernel, lambda: self._instant_pending)
+        if self.world.action_timing is not None:
+            self.world.action_timing.attach(self)
         self.verify_execution(self.time_kernel.axis)
         path = self.out_dir / "layers.jsonl"
         with LayersWriter(path, on_write=self._observe_row) as writer:
@@ -1465,6 +1490,8 @@ class Simulation:
                                ('day_snapshot', self._time_day_end)))
             halted = self.time_kernel.run(
                 self.time_kernel.sequence(range(self.time_kernel.axis.end + 1)), stages)
+            if self.world.action_timing is not None:
+                self.world.action_timing.stop(writer)
             if not halted and self.terminal_policy and self.terminal_policy['target_as_observation']:
                 writer.write(self._event_row(verb='observation_finished',subject=self.world.protagonist,
                     delta={},details={'reason':'observation_horizon','observed_through':self.time_kernel.now}))

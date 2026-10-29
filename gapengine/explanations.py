@@ -149,6 +149,13 @@ def explain_rows(rows, *, layers_path="", sha256="", experiment="", cell=""):
     # Updates between decisions are retained so invalidations cannot be skipped.
     transitions = []
     for line, row in enumerate(rows, 1):
+        if (row.get('kind') == 'event' and row.get('verb') == 'decision'
+                and row.get('details', {}).get('selection_mechanism') == 'bounded_goal_search'
+                and row.get('details', {}).get('activity', {}).get('phase') == 'started'):
+            # Native calendar wire records call choices "event/decision".
+            # Keep their original source line/kind; normalize only this view.
+            activity = row['details']['activity']
+            row = {**row,'kind':'decision','verb':activity['verb'],'args':activity['args'],'result':'started'}
         actor = row.get("subject")
         if not actor:
             continue
@@ -348,10 +355,48 @@ def explain_rows(rows, *, layers_path="", sha256="", experiment="", cell=""):
             "representative": representative, "decisions": decisions,
             "trajectory_signature": hashlib.sha256(json.dumps(signature, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
             "limitations": ["重みを介した転機は判定未対応", "遅延した代償は未確認", "未記録の初期状態・同席者は不明", "結末述語の反転は未記録なら不明"]}
-    if any(d['outcome']['details'].get('planning') for d in decisions):
+    if header.get('planning', {}).get('domain') == 'native_calendar_tasks':
+        result['calendar'] = copy.deepcopy(header['calendar'])
+        result['planning_assessments'] = [{'subject':row['subject'],'turn':row['turn'],'line':line,'source':source(line),
+            'source_kind':'assessment','verb':'planning_assessment','args':[],
+            'outcome':{'result':'no_action','details':copy.deepcopy(row['details'])}}
+            for line,row in enumerate(rows,1) if row.get('verb')=='planning_assessment'
+            and row.get('details',{}).get('selection_mechanism')=='bounded_goal_assessment'
+            and row.get('details',{}).get('action_started') is False]
+    if any(d['outcome']['details'].get('planning') for d in decisions) or result.get('planning_assessments'):
         result['planning_outcomes'] = [
             {'turn': row.get('turn'), 'source': source(line), 'outcome': copy.deepcopy(row['details']['objective_outcome'])}
             for line, row in enumerate(rows, 1)
             if row.get('kind') == 'event' and row.get('verb') == 'objective_outcome'
             and isinstance(row.get('details', {}).get('objective_outcome'), dict)]
+    selected_activities = {d['outcome']['details']['activity']['id']: d
+                           for d in decisions if isinstance(d['outcome']['details'].get('activity'), dict)
+                           and isinstance(d['outcome']['details']['activity'].get('id'), str)}
+    if selected_activities:
+        result['activity_records'] = []
+        for line, row in enumerate(rows, 1):
+            details = row.get('details') or {}
+            activity = details.get('activity')
+            if row.get('kind') != 'event' or not isinstance(activity, dict) or activity.get('phase') not in {
+                    'progress','completed','failed','interrupted','unfinished'}: continue
+            native_calendar = (header.get('planning', {}).get('domain') == 'native_calendar_tasks'
+                               and row.get('verb') == 'action_completed')
+            if (not isinstance(activity.get('id'), str) or not (row.get('verb') == 'activity_' + activity['phase'] or native_calendar)
+                    or activity.get('actor') != row.get('subject')): continue
+            selected = selected_activities.get(activity.get('id'))
+            if (selected is None or selected['subject'] != row.get('subject') or selected['verb'] != activity.get('verb')
+                    or selected['args'] != activity.get('args')): continue
+            detail = copy.deepcopy(details)
+            selected_plan = selected['outcome']['details'].get('planning')
+            if 'planning' not in detail and selected_plan:
+                detail['planning'] = copy.deepcopy(selected_plan)
+            result['activity_records'].append({'subject': row.get('subject'), 'turn': row.get('turn'),
+                'line': line, 'source': source(line), 'source_kind': 'execution',
+                'verb': activity.get('verb'), 'args': copy.deepcopy(activity.get('args', [])),
+                'outcome': {'result': details.get('activity_result'), 'details': detail}})
+        execution_signature = [(r['subject'], r['verb'], r['args'], r['outcome']['result'], r['turn'])
+                               for r in result['activity_records'] if r['subject'] == hero
+                               and r['outcome']['details']['activity']['phase'] != 'progress']
+        result['trajectory_signature'] = hashlib.sha256(json.dumps([signature, execution_signature],
+            ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     return result

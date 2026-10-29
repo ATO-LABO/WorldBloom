@@ -4,6 +4,10 @@ from engine.execution_plan import digest
 from engine.decision_provider import provider_snapshot
 import hashlib
 
+def native_profile(world):
+    field = world.get if isinstance(world, dict) else lambda key: getattr(world, key, None)
+    return 'next_boundary' if field('slot_execution') is not None else 'timed_logical_v1' if field('action_timing') is not None else 'legacy_instant'
+
 def factory_identities(operation_profile,*,engine_files=None,commands=None,provider=None):
     if engine_files is None:
         root=Path(__file__).resolve().parent
@@ -33,7 +37,7 @@ def bind_episode(simulation,axis):
     if explicit and value['execution_kind'] not in ('explicit_witness','replay'):
         raise ValueError('Explicit witness is not an independent sampler or production search')
     if any(p.policy is not None for p in simulation.subjects.values()):raise ValueError('Policy adapter requires verified binding')
-    profile='explicit_calendar' if explicit else 'next_boundary' if runtime is not None else 'legacy_instant'
+    profile='explicit_calendar' if explicit else native_profile(simulation.world)
     sampler,provider=factory_identities(profile,commands=runtime.commands if explicit else None,provider=simulation.decision_provider)
     if value['sampler']!=sampler:raise ValueError('Execution plan sampler identity differs')
     if value['provider']!=provider:raise ValueError('Execution plan provider identity differs')

@@ -1,0 +1,75 @@
+version: 3
+calendar:
+  schema_version: 1
+  period:
+    start_date: '2026-11-01'
+    end_date: '2026-11-01'
+  normal:
+    bands:
+    - id: day
+      name: Day
+      start: 08:00
+      end: '10:00'
+      overnight: false
+      interval_minutes: 17
+    weekdays: {}
+    holidays: []
+  specials: []
+timezone: UTC
+start_time: 08:00
+end_time: '10:00'
+travel_minutes:
+  操舵室:
+    補給区画: 10
+  補給区画:
+    操舵室: 10
+roles:
+  整備士:
+  - 整備担当
+  通信員:
+  - 通信担当
+tasks:
+  電源部品の準備:
+    label: 電源部品の準備
+    place: 補給区画
+    units: 2
+    minutes_per_unit: 8
+    dependencies: []
+    resource: 整備工具
+    roles:
+    - 整備担当
+    materials_per_unit:
+      予備セル: 1
+    operation: work
+  復旧資材の引渡:
+    label: 復旧資材の引渡
+    place: 操舵室
+    units: 1
+    minutes_per_unit: 2
+    dependencies:
+    - 電源部品の準備
+    resource: 搬入口
+    roles:
+    - 整備担当
+    materials_per_unit: {}
+    operation: deliver
+materials:
+  予備セル: 2
+facility_hours: {}
+appraisal:
+  fulfilled: 0.05
+  unexplained_breach: -0.05
+assumptions:
+- Initial offer and both acceptances are explicit situation setup; later physical
+  choices use the shared goal planner.
+- The planner sees only received agreement terms and observed work.
+initial_task_knowledge:
+  整備士:
+  - 電源部品の準備
+  - 復旧資材の引渡
+  通信員: []
+energy:
+  move_per_minute: 0.2
+  work_per_minute: 0.2
+  rest_per_minute: 0.4
+  rest_minutes: 10
