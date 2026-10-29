@@ -32,7 +32,7 @@ _ROLE_LABELS = {"hostile": "敵", "neutral": "中立", "ally": "味方"}
 # (an item, an effect id, a display name, ...), so no role/permission ever
 # applies to them and the permission line would be a meaningless "allow" x3.
 _TARGETLESS_VERBS = frozenset({
-    "respond", "inspect_response", "answer_response",
+    "respond", "inspect_response", "answer_response", "await_response",
     "submit_proposal", "present_proposal", "review_proposal", "amend_proposal", "request_decision", "decide_proposal",
     "train", "rest", "withdraw", "craft", "guard", "rethink",
     "plant", "payoff", "disguise", "donate", "labor", "buy",

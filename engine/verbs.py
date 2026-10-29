@@ -62,6 +62,7 @@ HANDLED_VERBS = DELIBERATION_VERBS | RESPONSE_VERBS | frozenset(
         "donate",
         "labor",
         "buy",
+        "await_response",
     }
 )
 
@@ -81,6 +82,7 @@ class VerbEngine:
         *,
         turn: int,
         day: int,
+        notify: bool = True,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         handler = (
             getattr(self, "_" + action.verb)
@@ -89,7 +91,7 @@ class VerbEngine:
         )
         if handler is None:
             return "invalid", {"reason": "unknown_verb"}, []
-        if self.world.planner is not None:
+        if notify and self.world.planner is not None:
             self.world.planner.before_action(self.world, actor)
 
         if (self.world.action_graph_enabled and action.args
@@ -157,11 +159,13 @@ class VerbEngine:
                 details['objective_choice']['answer'] = 'refuse'
         elif action.meta.get('objective_choice'):
             details['objective_choice'] = action.meta['objective_choice']
-        if self.world.responses is not None:
+        if getattr(self.world,'social_planner',None) is not None:
+            self.world.social_planner.after_action(self.world,actor,action,result,details,turn)
+        if notify and self.world.responses is not None:
             self.world.responses.after_action(self.world, actor, action, result, details, turn)
-        if self.world.planner is not None:
+        if notify and self.world.planner is not None:
             self.world.planner.after_action(self.world, actor, action, result, details, turn)
-        if self.world.goal_rules is not None:
+        if notify and self.world.goal_rules is not None:
             markers.extend(self.world.goal_rules.record(self.world, turn))
             details['objective_outcomes'] = self.world.goal_rules.report(self.world)
             if 'world_report' in details.get('response', {}):
@@ -185,6 +189,10 @@ class VerbEngine:
             return "invalid", {"reason": "deliberation_genre_not_allowed"}, []
         if action.verb not in available_verbs(self.world, actor, turn=turn, day=day):
             return "invalid", {"reason": "deliberation_verb_not_available"}, []
+        social=self.world.social_planner
+        if social is not None and action.args and action.args[0] in social.proposals and action.verb in {'submit_proposal','amend_proposal'}:
+            if any(self.world.concerns.evaluate(self.world,cid)['state']!='true' for cid in social.proposals[action.args[0]]['requires']):
+                return 'failed',{'reason':'proposal_prerequisite_not_met'},[]
         return self.world.deliberation.execute(self.world, actor.id, action.verb, action.args, turn=turn)
 
     _submit_proposal = _deliberation_action
@@ -195,6 +203,11 @@ class VerbEngine:
     _decide_proposal = _deliberation_action
 
     def _response_action(self, actor, action, *, turn, day):
+        social=getattr(self.world,'social_planner',None)
+        if social is not None and (action.verb=='await_response' or
+                action.verb=='request_response' and social.request_binding(actor.id,action.args) is not None or
+                action.verb=='answer_response' and action.args and action.args[0] in social.requests):
+            return social.execute(self.world,actor,action,turn,day)
         if self.world.responses is None:
             return 'invalid', {'reason': 'responses_not_configured'}, []
         return self.world.responses.execute(self.world, actor, action, turn, day)
@@ -203,6 +216,7 @@ class VerbEngine:
     _inspect_response = _response_action
     _request_response = _response_action
     _answer_response = _response_action
+    _await_response = _response_action
 
     def _present(self, actor: Subject) -> list[Subject]:
         return self.world.present_subjects(actor.zone)
@@ -300,7 +314,22 @@ class VerbEngine:
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         destination = str(action.args[0])
-        path = self.world.reachable_paths(actor).get(destination)
+        traveler=actor
+        if self.world.action_timing is not None and self.world.action_timing.prepaid(actor,action):
+            from copy import copy
+            traveler=copy(actor);traveler.stamina+=self.world.action_timing.completing['cost']
+        path = self.world.reachable_paths(traveler,actual=True).get(destination)
+        if traveler is not actor:
+            from engine.world import PathInfo
+            route=self.world.action_timing.completing['route'];edges=[]
+            if any(z not in actor.range_zones or z in self.world._excluded_zones(actor) for z in route[1:]):
+                return 'invalid',{'reason':'route_conditions_changed','dest':destination},[]
+            for origin,target in zip(route,route[1:]):
+                edge=next((r for r in self.world.routes[origin] if r.destination==target),None)
+                if edge is None or not self.world._route_allowed(traveler,edge,actual=True):
+                    return 'invalid',{'reason':'route_conditions_changed','dest':destination},[]
+                edges.append(edge)
+            path=PathInfo(destination,sum(r.cost for r in edges),len(edges),tuple(route))
         if path is None:
             return "invalid", {"reason": "unreachable", "dest": destination}, []
 
@@ -1612,6 +1641,9 @@ class VerbEngine:
             "objective": objective,
             "assets": assets,
         }
+        timing=self.world.action_timing
+        if timing is not None and 'concede' in timing.rules:
+            self.world.offers[(actor.id,holder.id)]['expires_at']=turn+timing.rules['concede']['duration']+1
         if cid is not None:
             self.world.offers[(actor.id, holder.id)].update(objective_goal=cid, status='pending')
         if action.meta.get('planning_root'):

@@ -76,3 +76,8 @@ not fictitious rests or new physical choices. They remain readable together with
 actual world verdicts even if no action could start. Maintaining a location is
 checked again after departures at that same minute, before closing its period.
 The old frozen Melos workflow and deliberation planning remain separate tasks.
+
+Optional dated task windows and wait/slack planning are described in
+`festival-purpose-migration.md`. The separate `cultural_festival_shared_planning`
+project connects six people's purposes to actual work and accepted promises;
+the old cultural festival inputs and authored witnesses are preserved.

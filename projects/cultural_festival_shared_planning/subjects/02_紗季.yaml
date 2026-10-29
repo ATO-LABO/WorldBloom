@@ -1,0 +1,69 @@
+id: 紗季
+traits:
+  social: 0.7
+  stubbornness: 0.7
+  curiosity: 0.4
+  diligence: 0.9
+  temper: 0.2
+base: 50
+modifiers: []
+beliefs_about: {}
+beliefs: {}
+knowledge:
+- 共通予定
+- 音響手順
+inventory: {}
+reputation: 0
+phase: []
+verbs:
+- move
+- rest
+- share_knowledge
+- respond
+identity:
+  'true': 紗季
+  displayed: 紗季
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: observation_finished
+relations:
+  蒼:
+    affinity: 0.45
+    awareness: 0.8
+  蓮:
+    affinity: 0.45
+    awareness: 0.8
+  灯:
+    affinity: 0.45
+    awareness: 0.8
+stamina:
+  max: 100
+  recover_per_slot: 1
+range:
+  zones:
+  - 自宅
+  - 校門
+  - 部室
+  - 体育館
+  - 展示室
+  - 教室
+  - 実行委員室
+  - 放送室
+  entry: 部室
+companions: []
+ally_value: 0
+objective_claimant: false
+cultural_festival:
+  goals:
+  - 開演時刻を守る
+  - 演劇準備を整える
+  notes: 旧目的の説明は保持。実行時はcommitmentsと世界のgoal_rulesで評価する。優先順位・準備の定義は仮設定。
+commitments:
+- condition: 進行-紗季
+  priority: 9
+  required: false
+- condition: 音響を整える
+  priority: 10
+  required: false

@@ -14,7 +14,7 @@ VERBS = {"rethink":"再考", "confront":"告発", "neutralize":"無効化", "pay
          "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退",
          "labor":"労働", "buy":"購入",
          "respond":"現場での対処", "inspect_response":"現場の状況確認",
-         "request_response":"対処の依頼", "answer_response":"依頼への返答",
+         "request_response":"対処の依頼", "answer_response":"依頼への返答", "await_response":"返事を待つ",
          "submit_proposal":"原案提示", "present_proposal":"案の説明", "review_proposal":"賛否の表明",
          "amend_proposal":"案の修正", "request_decision":"判断の依頼", "decide_proposal":"案への判断"}
 
@@ -85,10 +85,13 @@ def planning_panel(plan):
     statuses = {'planned': '実行する手順が見つかった', 'conditional': '未確認の条件を含む計画',
                 'awaiting_consent': '交換の返答を待っている', 'seeking_information': '情報を確かめに向かう',
                 'no_known_plan': '今の情報では手順が見つからない', 'search_limit': '探索の上限まで調べた',
-                'condition_met': '現在の達成条件は満たしている', 'inactive': 'この目的の計画は現在進めていない'}
+                'condition_met': '現在の達成条件は満たしている', 'seeking_judgment':'承認を決めつけず正式な判断を求める', 'inactive': 'この目的の計画は現在進めていない'}
     reasons = {'initial_plan': '最初の計画', 'previous_action_failed': '直前の行動が失敗したため再計画',
                'new_information': '認識した情報を更新', 'reply_received': '交換への返答を受けて見直し',
-               'continuing': '現在の状況から残りの手順を確認'}
+               'continuing': '現在の状況から残りの手順を確認','cooperation_refused':'協力の拒否を受けて見直し',
+               'cooperation_failed':'依頼した作業の失敗を受けて見直し','cooperation_accepted':'協力の承諾を確認',
+               'cooperation_completed':'依頼した作業の完了を確認','review_received':'実際の審査を受けて見直し',
+               'judgment_received':'実際の裁定を確認','information_shared':'情報を伝えた後の手順を確認','action_completed':'開始した行動の結果'}
     body = '<details><summary>目的の分解と再計画（この行の詳細）</summary>'
     body += '<p>最終目的：' + e(plan.get('goal_label', '選んだ目的')) + '</p>'
     body += '<p>' + e(statuses.get(plan.get('status'), '計画の記録')) + ' ／ ' + e(reasons.get(plan.get('reason'), '')) + '</p>'

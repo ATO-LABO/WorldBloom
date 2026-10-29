@@ -179,6 +179,7 @@ class Route:
     destination: str
     cost: float = 1.0
     requires_item: str | None = None
+    requires_conditions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -232,6 +233,9 @@ class World:
                 raise ValueError(f"Unknown route origin: {origin}")
             routes: list[Route] = []
             for raw_route in definition["routes"][origin] or []:
+                guards=raw_route.get('requires_conditions',[])
+                if (not isinstance(guards,list) or len(guards)>12 or any(not isinstance(c,str) for c in guards)
+                        or len(set(guards))!=len(guards)): raise ValueError('Invalid route conditions')
                 destination = str(raw_route["to"])
                 if destination not in self.zones:
                     raise ValueError(
@@ -252,6 +256,7 @@ class World:
                         requires_item=raw_route.get(
                             "requires_item"
                         ),
+                        requires_conditions=tuple(guards),
                     )
                 )
             self.routes[str(origin)] = tuple(
@@ -761,6 +766,10 @@ class World:
         if "concerns" in definition:
             from engine.concerns import Concerns
             self.concerns = Concerns(definition["concerns"])
+        for routes in self.routes.values():
+            for route in routes:
+                if route.requires_conditions and (self.concerns is None or not set(route.requires_conditions)<=set(self.concerns.conditions)):
+                    raise ValueError('Unknown route condition')
         self.responses = None
         if "responses" in definition:
             from engine.responses import Responses
@@ -777,6 +786,10 @@ class World:
         if 'action_timing' in definition:
             from engine.action_timing import ActionTiming
             self.action_timing = ActionTiming(definition['action_timing'])
+        self.social_planner = None
+        if 'social_planning' in definition:
+            from engine.social_planning import SocialPlanning
+            self.social_planner = SocialPlanning(definition['social_planning'])
 
     @classmethod
     def from_yaml(
@@ -1575,6 +1588,8 @@ class World:
             self.planner.bind(self)
         if self.action_timing is not None:
             self.action_timing.bind(self)
+        if self.social_planner is not None:
+            self.social_planner.bind(self)
 
         from engine.subject import Belief
 
@@ -1948,7 +1963,9 @@ class World:
             and event.get("slot") == slot
         ]
 
-    def _route_allowed(self, subject: Subject, route: Route) -> bool:
+    def _route_allowed(self, subject: Subject, route: Route, *, projection=None, actual=False) -> bool:
+        if any(self.concerns.evaluate(self,cid,actor=None if actual else subject.id,projection=projection)['state']!='true'
+               for cid in route.requires_conditions): return False
         item = route.requires_item
         if item is None:
             return True
@@ -1976,7 +1993,7 @@ class World:
         excluded.discard(subject.zone)
         return excluded
 
-    def reachable_paths(self, subject: Subject) -> dict[str, PathInfo]:
+    def reachable_paths(self, subject: Subject, *, projection=None, actual=False) -> dict[str, PathInfo]:
         excluded = self._excluded_zones(subject)
         allowed_zones = subject.range_zones - excluded
         allowed_zones.add(subject.zone)
@@ -1995,7 +2012,7 @@ class World:
                 destination = route.destination
                 if destination not in allowed_zones:
                     continue
-                if not self._route_allowed(subject, route):
+                if not self._route_allowed(subject, route, projection=projection, actual=actual):
                     continue
                 next_cost = round(cost + route.cost, 4)
                 if next_cost > subject.stamina:

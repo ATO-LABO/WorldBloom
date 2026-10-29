@@ -1,0 +1,55 @@
+id: 実
+traits:
+  social: 0.6
+  stubbornness: 0.5
+  curiosity: 0.5
+  diligence: 0.8
+  temper: 0.2
+base: 50
+modifiers: []
+beliefs_about: {}
+beliefs: {}
+knowledge:
+- 共通予定
+inventory: {}
+reputation: 0
+phase: []
+verbs:
+- move
+- rest
+- share_knowledge
+- respond
+identity:
+  'true': 実
+  displayed: 実
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: observation_finished
+relations: {}
+stamina:
+  max: 100
+  recover_per_slot: 1
+range:
+  zones:
+  - 自宅
+  - 校門
+  - 部室
+  - 体育館
+  - 展示室
+  - 教室
+  - 実行委員室
+  - 放送室
+  entry: 部室
+companions: []
+ally_value: 0
+objective_claimant: false
+cultural_festival:
+  goals:
+  - 案内放送を準備する
+  notes: 旧目的の説明は保持。実行時はcommitmentsと世界のgoal_rulesで評価する。優先順位・準備の定義は仮設定。
+commitments:
+- condition: 放送準備
+  priority: 9
+  required: false

@@ -462,6 +462,8 @@ class Simulation:
             from engine.deliberation import digest
             header['action_timing'] = {'config': _plain(self.world.action_timing.config),
                                       'config_hash': digest(self.world.action_timing.config)}
+        if self.world.social_planner is not None:
+            header['social_planning'] = {'config':_plain(self.world.social_planner.config),'config_hash':digest(self.world.social_planner.config)}
         rationality_meta = self._rationality_meta()
         if rationality_meta is not None:
             header["rationality"] = rationality_meta
@@ -1257,6 +1259,7 @@ class Simulation:
                 **({'goal_rules': self.world.goal_rules.snapshot(self.world)} if self.world.goal_rules is not None else {}),
                 **({'planning': self.world.planner.snapshot()} if self.world.planner is not None else {}),
                 **({'action_timing': self.world.action_timing.snapshot()} if self.world.action_timing is not None else {}),
+                **({'social_planning': self.world.social_planner.snapshot()} if self.world.social_planner is not None else {}),
             }
         )
         self._previous_snapshot_layers = layers

@@ -15,7 +15,7 @@
    label.append(input,document.createTextNode(person.id));
   }
   node('p','人物を選ばない場合は、この機能を無効にします。中間目標は人物の価値観として追加されません。').className='ui-hint';
-  for(const [key,labelText,min,max] of [['max_depth','一つの計画に含める行動数の上限',1,12],['max_nodes','一度に調べる候補数の上限',16,2048]]){
+  for(const [key,labelText,min,max] of [['max_depth','一つの計画に含める行動数の上限',1,24],['max_nodes','一度に調べる候補数の上限',16,8192]]){
    const label=node('label','');label.className='ui-field';node('span',labelText,label);
    const input=document.createElement('input');input.type='number';input.min=String(min);input.max=String(max);input.step='1';input.required=true;input.value=String(draft[key]);input.disabled=!editable;
    input.addEventListener('input',()=>{draft[key]=Number(input.value);change();});label.append(input);

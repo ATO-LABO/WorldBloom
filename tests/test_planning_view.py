@@ -27,6 +27,13 @@ def explanation(items):
 
 
 class PlanningViewTests(unittest.TestCase):
+    def test_completed_scheduled_wait_is_progress_not_a_replan(self):
+        path = [step('opening', 'wait'), step('scheduled work')]
+        rows = [decision(1,path,result='waited',verb='wait'),
+                decision(2,path[1:],result='working',verb='respond')]
+        group, = planning_view.model(explanation(rows))
+        self.assertNotEqual(group['events'][1]['kind'],'replan')
+
     def test_ordinary_progress_is_not_a_replan_even_when_reason_is_new_information(self):
         path = [step('store', 'move'), step('fetch'), step('home', 'move'), step('send')]
         rows = [decision(1, path), decision(2, path[1:], result='working', verb='respond'),

@@ -399,4 +399,27 @@ def explain_rows(rows, *, layers_path="", sha256="", experiment="", cell=""):
                                and r['outcome']['details']['activity']['phase'] != 'progress']
         result['trajectory_signature'] = hashlib.sha256(json.dumps([signature, execution_signature],
             ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    social=[];receipts={}
+    observations={row['details']['planning_observation']['id']:source(line) for line,row in enumerate(rows,1)
+                  if row.get('details',{}).get('planning_observation')}
+    for line,row in enumerate(rows,1):
+        detail=row.get('details',{});event=detail.get('social_event')
+        if not isinstance(event,dict) or not event.get('receipt_id'): continue
+        if event['receipt_id'] in receipts: continue
+        receipts[event['receipt_id']]=source(line)
+        social.append({'subject':row.get('subject'),'turn':row.get('turn'),'line':line,'source':source(line),
+            'source_kind':'social','verb':event.get('verb',detail.get('activity',{}).get('verb') or detail.get('choice',{}).get('verb') or row.get('verb')),
+            'args':[],'outcome':{'result':detail.get('activity_result',row.get('result')),'details':{'social_event':copy.deepcopy(event)}}})
+    if social:
+        result['social_records']=social
+        for item in [*decisions,*result.get('activity_records',[]),*result.get('planning_assessments',[])]:
+            plan=item['outcome']['details'].get('planning')
+            if plan is not None:
+                plan['causes']=[{'receipt_id':e['receipt_id'],'source':copy.deepcopy(receipts[e['receipt_id']])}
+                    for e in plan.get('received_events',[]) if e['receipt_id'] in receipts and
+                    receipts[e['receipt_id']]['line']<=item['line'] and item['subject'] in e.get('received_by',[])]
+                plan['causes'] += [{'observation_id':ident,'source':copy.deepcopy(observations[ident])}
+                    for ident in plan.get('observation_causes',[]) if ident in observations and
+                    observations[ident]['line']<=item['line'] and
+                    rows[observations[ident]['line']-1]['details']['planning_observation']['actor']==item['subject']]
     return result

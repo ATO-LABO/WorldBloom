@@ -290,7 +290,7 @@ class GoalPlannerTests(unittest.TestCase):
         self.assertEqual(len(p['桃太郎'].commitments), 3)
 
     def test_configuration_bounds_and_unknown_actors_are_rejected(self):
-        for key, value in [('version', 2), ('version', True), ('max_nodes', 0), ('max_depth', 20), ('actors', [])]:
+        for key, value in [('version', 2), ('version', True), ('max_nodes', 0), ('max_depth', 25), ('actors', [])]:
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 raw = {'version': 1, 'actors': ['A'], 'max_depth': 6, 'max_nodes': 128}; raw[key] = value
                 GoalPlanner(raw)

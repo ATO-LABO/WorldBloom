@@ -276,6 +276,18 @@ class Concerns:
             if objective is not None and result['condition'] in objective.definitions:
                 prediction = objective.predict(world, result['condition'], actor=actor, projection=projection, justified=justified)
                 result['objective_prediction'] = prediction
+                # A valued objective can be a conjunction/disjunction of
+                # predicates. Its anchor predicate alone is not the goal.
+                success = prediction['success']['state']
+                if result['state'] != success:
+                    result['predicate_state'] = result['state']
+                    result['state'] = success
+                    result['confidence'] = prediction['success']['confidence']
+                    result['sources'] = deepcopy(prediction['success']['sources'])
+                    result['progress'] = ('unknown' if success == 'unknown' else
+                        ('maintained' if success == 'true' else 'breached') if result['mode'] == 'maintain'
+                        else ('achieved' if success == 'true' else 'pending'))
+                score = 1 if success == 'true' else -1 if success == 'false' else 0
                 predicted_failure = prediction['failure']['state']
                 if predicted_failure == 'true': score = -1
             tiers[result['priority']]=tiers.get(result['priority'],0)+score

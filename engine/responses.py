@@ -335,6 +335,9 @@ class Responses:
         authorization = spec.get('authorization')
         if authorization and not world.deliberation.decided(authorization['proposal'], authorization['status']):
             fail('authorization_pending')
+        elif authorization and world.social_planner is not None and authorization['proposal'] in world.social_planner.proposals:
+            known=world.social_planner.known(world,actor.id,authorization['proposal'])
+            if known is None or known['status']!=authorization['status']: fail('authorization_pending')
         if 'respond' not in actor.verbs: fail('response_verb_unavailable')
         from engine.phase2 import available_verbs
         allowed = available_verbs(world, actor, turn=turn, day=day)
@@ -419,6 +422,8 @@ class Responses:
         for option in feasible:
             if option['priority'] != best: continue
             spec = self.actions[option['action']]
+            social=getattr(world,'social_planner',None)
+            if social is not None and not social.can_work(actor.id,spec['id']): continue
             reason = {'condition': option['condition'], 'priority': best, 'signal': option['signal'],
                       'forecast': option['forecast'], 'eta': option['eta'],
                       'alternatives': [{'action': o['action'], 'excluded': o['excluded']} for o in options]}
@@ -513,6 +518,8 @@ class Responses:
         if action.verb != 'respond' or len(action.args) != 1 or action.args[0] not in self.actions:
             return invalid('unknown_response_action')
         spec = self.actions[action.args[0]]
+        if getattr(world,'social_planner',None) is not None and not world.social_planner.can_work(actor.id,spec['id']):
+            return invalid('cooperation_not_accepted')
         option = (world.planner.validate(world, actor, action, turn)
                   if world.planner is not None and action.meta.get('goal_plan')
                   else self._option(world, actor, spec, turn, day))

@@ -44,6 +44,14 @@ categories:
     order: 99
 
 verbs:
+  await_response:
+    design: {category: none, slot: ""}
+    kinds:
+      - id: default
+        label: 相手の返事を待つ
+        precondition: 共通計画に登録した提案や協力依頼を待っている。
+        target: 提案の版、または協力依頼。
+        effect: 待機時間が経過する。承諾や承認は相手の実際の判断で確定し、待機だけでは状態や資源を変えない。
   respond:
     design: {category: none, slot: ""}
     kinds:
