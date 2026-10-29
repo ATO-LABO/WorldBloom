@@ -761,6 +761,10 @@ class World:
         if "concerns" in definition:
             from engine.concerns import Concerns
             self.concerns = Concerns(definition["concerns"])
+        self.responses = None
+        if "responses" in definition:
+            from engine.responses import Responses
+            self.responses = Responses(definition["responses"])
 
     @classmethod
     def from_yaml(
@@ -1548,6 +1552,9 @@ class World:
             subject_id: subjects[subject_id]
             for subject_id in sorted(subjects)
         }
+
+        if self.responses is not None:
+            self.responses.bind(self)
 
         from engine.subject import Belief
 

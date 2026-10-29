@@ -44,6 +44,7 @@ STATIC_FILES = {
     "review-workspace.js": "application/javascript; charset=utf-8",
     "world-advanced.js": "application/javascript; charset=utf-8",
     "concerns-editor.js": "application/javascript; charset=utf-8",
+    "responses-editor.js": "application/javascript; charset=utf-8",
     "home-workspace.css": "text/css; charset=utf-8",
     "home-workspace.js": "application/javascript; charset=utf-8",
     "world-create.css": "text/css; charset=utf-8",

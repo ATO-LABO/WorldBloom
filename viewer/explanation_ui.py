@@ -13,6 +13,8 @@ VERBS = {"rethink":"再考", "confront":"告発", "neutralize":"無効化", "pay
          "guard":"守り", "negotiate":"交渉", "plant":"伏線設置", "rescue":"救助",
          "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退",
          "labor":"労働", "buy":"購入",
+         "respond":"現場での対処", "inspect_response":"現場の状況確認",
+         "request_response":"対処の依頼", "answer_response":"依頼への返答",
          "submit_proposal":"原案提示", "present_proposal":"案の説明", "review_proposal":"賛否の表明",
          "amend_proposal":"案の修正", "request_decision":"判断の依頼", "decide_proposal":"案への判断"}
 
@@ -150,6 +152,42 @@ def panel(explanation, item=None, *, details=True):
     body += entry("即時の代償", cost, cost["text"])
     body += entry("転機", turning, turning_text(turning), turning=True)
     body += '</dl><p class="muted">知識の一覧は記録された範囲に限ります。知識があったことと心理的な動機は区別します。遅延した代償は未確認。</p>'
+    response=(item.get('outcome',{}).get('details') or {}).get('response')
+    if response:
+        decision=response.get('choice_basis') or response.get('assessment') or {}
+        signal=decision.get('signal') or response.get('signal') or response.get('observation') or {}
+        states={'danger':'危険の知らせを信じている','clear':'危険は解消したと認識している',
+                'unknown':'知らせを持っていない','stale':'知らせが古い','uncertain':'確信が足りない'}
+        body+='<details open><summary>守りたい条件に基づく行動</summary>'
+        if decision.get('condition'): body+='<p>対象の条件：'+e(decision['condition'])+'</p>'
+        if signal:
+            body+='<p>'+e(states.get(signal.get('status'),signal.get('status','不明')))
+            if signal.get('source') is not None: body+='・情報源 '+e(signal['source'])
+            if signal.get('observed_at') is not None: body+='・観測時点 '+e(signal['observed_at'])
+            body+='</p>'
+        if decision.get('eta') is not None: body+='<p>移動と残りの作業に必要な時点数：'+e(decision['eta'])+'</p>'
+        if response.get('progress') is not None:
+            body+='<p>現場での作業：'+e(response['progress'])+' / '+e(response['steps'])+'</p>'
+        if response.get('answer'): body+='<p>依頼への返答：'+e({'accept':'受諾','refuse':'拒否'}.get(response['answer'],response['answer']))+'</p>'
+        reasons={'no_commitment':'本人が重視する条件に含まれない','unknown':'知らせがない','stale':'知らせが古い',
+                 'uncertain':'情報への確信が不足','clear':'危険は解消したという認識','unreachable':'現場への経路がない',
+                 'too_late':'期限に間に合わない','missing_resources':'所持品が不足','missing_evidence':'根拠の情報が不足',
+                 'insufficient_stamina':'体力が不足','capability_unavailable':'実行できる役割ではない',
+                 'response_verb_unavailable':'対処行動が使えない','response_phase_unavailable':'この時点では対処できない',
+                 'required_condition_conflict':'別の譲れない条件に反する','protection_not_justified':'保護できる予測がない',
+                 'known_precondition_failed':'知っている実行条件を満たさない'}
+        excluded=[o for o in decision.get('alternatives',[]) if o.get('excluded')]
+        if excluded:
+            body+='<ul>'
+            for option in excluded:
+                body+='<li>'+e(option['action'])+'：'+e('・'.join(reasons.get(v,v) for v in option['excluded']))+'</li>'
+            body+='</ul>'
+        body+='<p class="ui-hint">帰還、依頼、受諾、実行完了を区別した記録です。</p></details>'
+        if response.get('world_report'):
+            body+='<details><summary>行動後の実際の条件</summary><ul>'
+            for value in response['world_report']:
+                body+='<li>'+e(value['label'])+'：'+e({'true':'満たしている','false':'満たしていない','unknown':'不明'}[value['state']])+'</li>'
+            body+='</ul><p class="ui-hint">作者向けの実態です。本人の認識と異なる場合があります。</p></details>'
     event=(item.get('outcome',{}).get('details') or {}).get('deliberation_event',{})
     basis=event.get('choice_basis',{})
     valuation=event.get('concern_assessment')

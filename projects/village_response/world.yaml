@@ -1,0 +1,221 @@
+{
+  "name": "村への帰還と防衛",
+  "overview": "村が被害を受けない",
+  "initial_story": "村が被害を受けない",
+  "time": {
+    "days": 2,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6",
+      "時点7",
+      "時点8"
+    ]
+  },
+  "protagonist": "桃太郎",
+  "antagonist": "知らせ人",
+  "zones": [
+    {
+      "name": "旅先"
+    },
+    {
+      "name": "峠"
+    },
+    {
+      "name": "村"
+    }
+  ],
+  "routes": {
+    "旅先": [
+      {
+        "to": "峠",
+        "cost": 1
+      }
+    ],
+    "峠": [
+      {
+        "to": "旅先",
+        "cost": 1
+      },
+      {
+        "to": "村",
+        "cost": 1
+      }
+    ],
+    "村": [
+      {
+        "to": "峠",
+        "cost": 1
+      }
+    ]
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "facts": [
+    {
+      "id": "danger_report",
+      "values": [
+        "active",
+        "resolved"
+      ],
+      "sources": []
+    }
+  ],
+  "truth": {
+    "danger_report": "active"
+  },
+  "concerns": {
+    "version": 1,
+    "conditions": [
+      {
+        "id": "village_safe",
+        "label": "村が被害を受けない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "protected",
+          "equals": "yes"
+        }
+      }
+    ],
+    "commitments": {
+      "桃太郎": [
+        {
+          "condition": "village_safe",
+          "priority": 10,
+          "required": true
+        }
+      ],
+      "犬": [
+        {
+          "condition": "village_safe",
+          "priority": 8,
+          "required": true
+        }
+      ]
+    }
+  },
+  "responses": {
+    "version": 1,
+    "state": {
+      "danger": "active",
+      "protected": "yes"
+    },
+    "locations": {
+      "danger": "村",
+      "protected": "村"
+    },
+    "signals": [
+      {
+        "fact": "danger_report",
+        "condition": "village_safe",
+        "key": "danger",
+        "danger_values": [
+          "active"
+        ],
+        "max_age": 30,
+        "threshold": 0.4,
+        "deadline": 12
+      }
+    ],
+    "actions": [
+      {
+        "id": "secure",
+        "label": "村の防衛を整える",
+        "condition": "village_safe",
+        "signal": "danger_report",
+        "zone": "村",
+        "actors": [
+          "桃太郎",
+          "犬"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "danger": "active"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "danger",
+            "value": "resolved"
+          },
+          {
+            "kind": "state",
+            "key": "protected",
+            "value": "yes"
+          }
+        ]
+      }
+    ],
+    "channels": [
+      {
+        "from": "桃太郎",
+        "to": "犬",
+        "delay": 2
+      },
+      {
+        "from": "犬",
+        "to": "桃太郎",
+        "delay": 2
+      }
+    ],
+    "events": [
+      {
+        "id": "damage",
+        "turn": 13,
+        "unless": {
+          "danger": "resolved"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "protected",
+            "value": "no"
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "condition": "village_safe",
+        "start": 1,
+        "end": 16,
+        "mode": "continuous"
+      }
+    ]
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 16",
+      "label": "観測期間の終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": [
+    {
+      "id": "first_report",
+      "label": "危険の知らせが届く",
+      "day": 1,
+      "slot": "時点1",
+      "targets": [
+        "知らせ人"
+      ],
+      "force_action": {
+        "verb": "share_knowledge",
+        "args": [
+          "桃太郎",
+          "danger_report"
+        ]
+      }
+    }
+  ]
+}

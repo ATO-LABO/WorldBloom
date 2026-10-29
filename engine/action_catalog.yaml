@@ -44,6 +44,38 @@ categories:
     order: 99
 
 verbs:
+  respond:
+    design: {category: none, slot: ""}
+    kinds:
+      - id: default
+        label: 現場で対処する
+        precondition: 本人が危険や未達を認識し、現場にいて、能力・根拠・資源・承認などの実行条件を満たす。
+        target: 世界に登録した対処。
+        effect: 必要な作業を進め、完了したときだけ定義した状態を変える。予測と実際の結果は別に記録する。
+  inspect_response:
+    design: {category: II, slot: "II-1"}
+    kinds:
+      - id: default
+        label: 現場の状況を確認する
+        precondition: その知らせに対応する状態を観測できる場所にいる。
+        target: 登録した危険や未達の知らせ。
+        effect: 本人の信念を実際に観測した状態で更新し、情報源と観測時点を記録する。
+  request_response:
+    design: {category: III, slot: "III-3"}
+    kinds:
+      - id: default
+        label: 仲間に対処を頼む
+        precondition: 対処が必要な知らせを信じ、相手への連絡手段があり、依頼内容が本人の譲れない条件に反しない。
+        target: 対処できる役割を持つ相手。
+        effect: 依頼と本人が知る知らせを送る。設定した時間が経過して届いた後、受け手が受諾・拒否を判断する。
+  answer_response:
+    design: {category: III, slot: "III-3"}
+    kinds:
+      - id: default
+        label: 依頼に返答する
+        precondition: 本人宛ての依頼が届き、まだ返答していない。受諾には本人の条件と能力を満たす必要がある。
+        target: 届いた対処の依頼。
+        effect: 受諾か拒否を記録する。受諾だけでは移動や対処は完了せず、連絡手段があれば返答にも到着までの時間がかかる。
   submit_proposal:
     design: {category: III, slot: "III-3"}
     kinds:

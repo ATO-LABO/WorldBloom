@@ -218,6 +218,8 @@ class Simulation:
         """Return subjects whose layer snapshots can change synchronously."""
 
         all_subjects = set(self.subjects)
+        if self.world.responses is not None:
+            return all_subjects
         if action.verb == "fight" or action.meta.get("betrayal", False):
             # Fight loot/vitality and betrayal witnesses can change globally.
             return all_subjects
@@ -443,6 +445,10 @@ class Simulation:
             from engine.deliberation import digest
             header["deliberation"] = {"version": 1, "config_hash": digest(self.world.deliberation.config),
                                        "mechanism": "finite_authored_profiles", "time_unit": "logical_step"}
+        if self.world.responses is not None:
+            from engine.deliberation import digest
+            header['responses'] = {'version': 1, 'config_hash': digest(self.world.responses.config),
+                                   'mechanism': 'bounded_authored_operators', 'time_unit': 'logical_step'}
         rationality_meta = self._rationality_meta()
         if rationality_meta is not None:
             header["rationality"] = rationality_meta
@@ -868,6 +874,8 @@ class Simulation:
     ) -> dict[str, Any]:
         if "deliberation" in details:
             delta["deliberation"] = _plain(details["deliberation"])
+        if details.get('response', {}).get('effects'):
+            delta['response_effects'] = _plain(details['response']['effects'])
         policy_meta = action.meta.get("policy")
         classification = action.meta.get("classification")
         row = {
@@ -1230,6 +1238,7 @@ class Simulation:
                 "relations": self.world.relations.flat_rows(),
                 **({"deliberation": self.world.deliberation.snapshot()}
                    if self.world.deliberation is not None else {}),
+                **({'responses': self.world.responses.snapshot()} if self.world.responses is not None else {}),
             }
         )
         self._previous_snapshot_layers = layers
@@ -1276,6 +1285,8 @@ class Simulation:
     def _time_before_choices(self, frame, writer):
         self.slot = frame.label['slot']
         self._apply_scheduled(writer, slot=self.slot)
+        if self.world.responses is not None:
+            self._write_markers(writer, self.world.responses.tick(self.world, self.turn))
         self._record_encounters(writer)
 
     def _time_choices(self, frame, writer):
@@ -1392,6 +1403,8 @@ class Simulation:
         self._recover_stamina()
         self._evaluate_thresholds(writer)
         self._resolve_auto_effects(writer)
+        if self.world.responses is not None:
+            self.world.responses.record(self.world, self.turn)
 
         ending = self._ending()
         if ending is not None:

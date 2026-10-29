@@ -86,6 +86,8 @@ def save(store, ident, body):
         "remove-event": set(),
         "concerns": {"definition"},
         "concerns-check": {"definition"},
+        "responses": {"definition"},
+        "responses-check": {"definition"},
     }
     if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict):
         _bad("values", "編集項目を確認してください")
@@ -101,20 +103,23 @@ def save(store, ident, body):
         names = [z if isinstance(z, str) else z["name"] for z in zones]
         people = [(rel, p) for rel, p in files.items() if rel != "world.yaml"]
         rel, updated = "world.yaml", deepcopy(world)
-        if operation in {"concerns","concerns-check"}:
+        if operation in {"concerns","concerns-check","responses","responses-check"}:
             from engine.world import World
             from engine.subject import Subject
             definition = values['definition']
+            section = 'responses' if operation.startswith('responses') else 'concerns'
             if definition is None:
-                updated.pop('concerns',None)
+                updated.pop(section,None)
             else:
-                updated['concerns'] = deepcopy(definition)
+                updated[section] = deepcopy(definition)
             try:
                 runtime=World(updated,_base(store,ident)/'world.yaml')
                 runtime.bind_subjects({p['id']:Subject.from_definition(p) for _,p in people})
             except (ValueError,KeyError,TypeError) as error:
-                _bad('concerns','条件の対象・判定方法・人物の設定を確認してください。'+str(error))
-            if operation=='concerns-check':
+                _bad(section,'条件・対処・人物の設定を確認してください。'+str(error))
+            if operation.endswith('-check'):
+                if section == 'responses':
+                    return {'valid':True,'actions':len(runtime.responses.actions) if runtime.responses else 0}
                 return {'valid':True,'conditions':len(runtime.concerns.conditions) if runtime.concerns else 0}
         elif operation == "file":
             if not isinstance(target, str) or target not in files:
