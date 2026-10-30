@@ -11,6 +11,15 @@ from execution.library import LibraryStore
 from execution.provenance import contained, identifier, read_json
 from viewer import data, pages, purpose_pages
 
+# The catalogue parses every saved world and subject. Use the same safe
+# constructors through LibYAML when available; retain the Python safe fallback.
+_SAFE_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def _saved_yaml(text):
+    return yaml.load(text, Loader=_SAFE_YAML_LOADER)
+
+
 def E(value):
     return html.escape(str(value if value is not None else ""), quote=True)
 
@@ -20,7 +29,7 @@ U = pages._url_segment
 def world_details(store, world):
     """Do not infer stories or overwrite a deliberately blank overview."""
     try:
-        value = yaml.safe_load(store.read("world", world["id"], "world.yaml"))
+        value = _saved_yaml(store.read("world", world["id"], "world.yaml"))
         value = value if isinstance(value, dict) else {}
     except (ValueError, OSError, yaml.YAMLError):
         value = {}
@@ -85,7 +94,7 @@ def world_people(store, world_id):
         if not rel.startswith("subjects/"):
             continue
         try:
-            subject = yaml.safe_load(store.read("world", world_id, rel))
+            subject = _saved_yaml(store.read("world", world_id, rel))
             if isinstance(subject, dict) and subject.get("id"):
                 names.append(str(subject["id"]))
         except (ValueError, OSError, yaml.YAMLError):

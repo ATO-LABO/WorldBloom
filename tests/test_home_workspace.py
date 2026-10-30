@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 import json
+import os
 import tempfile
 import unittest
 import yaml
@@ -11,6 +12,21 @@ from viewer import data, pages, home_pages, server
 
 
 class HomeWorkspaceTests(unittest.TestCase):
+    def test_catalogue_parser_preserves_all_shipped_world_and_subject_values(self):
+        root = Path(__file__).resolve().parents[1] / "projects"
+        paths = sorted(root.glob("*/world.yaml")) + sorted(root.glob("*/subjects/*.yaml"))
+        self.assertTrue(paths)
+        for path in paths:
+            with self.subTest(path=path.relative_to(root).as_posix()):
+                text = path.read_text(encoding="utf-8")
+                self.assertEqual(home_pages._saved_yaml(text), yaml.safe_load(text))
+
+    def test_catalogue_parser_rejects_python_object_tags_in_both_backends(self):
+        for loader in {yaml.SafeLoader, getattr(yaml, "CSafeLoader", yaml.SafeLoader)}:
+            with self.subTest(loader=loader.__name__), patch.object(home_pages, "_SAFE_YAML_LOADER", loader):
+                with self.assertRaises(yaml.constructor.ConstructorError):
+                    home_pages._saved_yaml("!!python/object/apply:builtins.str [unsafe]")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -56,6 +72,15 @@ class HomeWorkspaceTests(unittest.TestCase):
         self.assertEqual(period, "期間 未設定")
         self.file.write_text('zones: [{name: 村}]\ntime: {days: 9}', encoding="utf-8")
         self.assertEqual(home_pages.world_details(self.store, world), ("舞台：村。", 1, "9日間"))
+
+    def test_catalogue_rereads_same_size_edit_even_with_preserved_mtime(self):
+        self.file.write_text('overview: first\n', encoding="utf-8")
+        world = self.store.worlds()[0]
+        stamp = self.file.stat()
+        self.assertEqual(home_pages.world_details(self.store, world)[0], "first")
+        self.file.write_text('overview: other\n', encoding="utf-8")
+        os.utime(self.file, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        self.assertEqual(home_pages.world_details(self.store, world)[0], "other")
 
     def test_same_names_keep_distinct_world_identity(self):
         other = self.root / "projects" / "second"
