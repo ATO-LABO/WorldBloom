@@ -84,6 +84,16 @@ class VerbEngine:
         day: int,
         notify: bool = True,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        joint = getattr(self.world,'joint_activities',None)
+        if joint is not None and joint.sim is not None:
+            if action.verb=='leave_activity': return joint.planning.execute(actor,action)
+            if action.verb in {'join_activity','decline_activity','leave_activity','await_activity'}:
+                if notify and self.world.planner is not None:self.world.planner.before_action(self.world,actor)
+                result,details,markers=joint.planning.execute(actor,action)
+                if notify and self.world.planner is not None:self.world.planner.after_action(self.world,actor,action,result,details,turn)
+                return result,details,markers
+            if joint.bookings.is_busy(actor.id,joint.kernel.now):
+                return 'invalid',{'reason':'actor_in_joint_activity'},[]
         handler = (
             getattr(self, "_" + action.verb)
             if action.verb in HANDLED_VERBS

@@ -203,11 +203,56 @@ def _source(explanation, event):
     return '<a href="' + e(href) + '">この場面の原記録 L' + e(event['source']['line']) + '</a>'
 
 
+def joint_sections(explanation):
+    groups={}
+    for item in explanation.get('joint_records',[]):
+        groups.setdefault(item['activity']['id'],[]).append(item)
+    if not groups: return ''
+    labels={'proposed':'返答待ち','agreed':'合意済み','reserved':'開始待ち','running':'実行中',
+            'completed':'完了','canceled':'開始前に中止','interrupted':'途中で中断'}
+    phases={'proposed':'提案を提示','consent':'返答を記録','reserved':'開始時点を確保','started':'開始',
+            'completed':'完了','canceled':'中止','interrupted':'中断','reservation_failed':'開始条件を再確認'}
+    reasons={'booking_conflict':'人または道具を使う時間が重なっています',
+             'Role or actor unavailable':'参加条件（知識や行動権限）を満たしていません',
+             'Work dependency incomplete':'前の工程がまだ終わっていません',
+             'Insufficient participant stamina':'参加者の体力が足りません',
+             'Reserved resource lost':'確保していた道具や材料が失われました',
+             'participant_prefers_other_activity':'参加者が別の予定を優先しています',
+             'start_expired':'開始できる期間を過ぎました','participant_declined':'参加者が断りました'}
+    def amount(value):
+        return format(value[0]/value[1],'.6g') if isinstance(value,list) and len(value)==2 and value[1] else str(value)
+    body='<section data-joint-activities><h2>共同行動と共同作業</h2>'
+    for ident,records in groups.items():
+        last=records[-1]['activity']
+        body+='<details class="ui-notice" data-joint-segment="'+e(ident)+'"><summary>'+e(last.get('label',last['definition_id']))
+        body+=' ／ '+e(labels.get(last['status'],last['status']))+'</summary>'
+        body+='<p>開始 '+e(activity_time(last,'start'))+' → 完了予定 '+e(activity_time(last,'finish'))+'</p>'
+        body+='<p>参加者と体力の消費</p><ul>'
+        for role,actors in last['roles'].items():
+            for actor in actors:
+                body+='<li>'+e(actor)+' ／ '+e(last.get('role_labels',{}).get(role,role))+' ／ '+e(amount(last['spent'].get(actor,[0,1])))+'</li>'
+        body+='</ul>'
+        if last.get('awaiting'): body+='<p>未回答：'+e('、'.join(last['awaiting']))+'</p>'
+        if last.get('progress'):
+            body+='<p>作業の完成数 '+e(last['progress']['units'])+' ／ 残る作業量 '+e(amount(last['remaining']))+'</p>'
+        if last.get('reason'): body+='<p>停止・競合の理由：'+e(reasons.get(last['reason'],'設定や継続条件の確認が必要です'))+'</p>'
+        body+='<p>作業の完了と、各人物の目的の達成は別に判定します。</p><details><summary>経過と原記録</summary><ol>'
+        for record in records:
+            event=record['activity']
+            body+='<li>'+e(labels.get(event['status'],event['status']))+' ／ '+e(phases.get(event['phase'],'経過を記録'))+' ／ '+_source(explanation,record)
+            body+=' ／ 受信者 '+e('、'.join(event.get('audience',[])))+'</li>'
+        body+='</ol></details></details>'
+    return body+'</section>'
+
+
 def render(explanation, *, instance='planning'):
     groups = model(explanation)
-    if not groups: return ''
+    joint=joint_sections(explanation)
+    if not groups and not joint: return ''
     prefix = 'pw-' + sha256(instance.encode()).hexdigest()[:8]
     body = '<section class="ui-workspace pw-workspace" data-planning-workspace>'
+    body += joint
+    if not groups: return body+'</section>'
     body += '<div class="pw-toolbar"><h2>目的と計画の変化</h2>'
     options = ''.join(f'<option value="{i}">{e(g["actor"])} ／ {e(g["label"])}</option>' for i, g in enumerate(groups))
     body += ui.field('人物と目的', '<select data-plan-group>' + options + '</select>') + '</div>'

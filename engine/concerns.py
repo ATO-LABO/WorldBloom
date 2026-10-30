@@ -145,6 +145,9 @@ class Concerns:
         if test['kind']=='co_location' and test['actor']==test['target']:
             raise ValueError('Co-location requires two different people')
         if test['kind'] in {'task','promise'}:
+            joint = getattr(world, 'joint_activities', None)
+            if test['kind']=='task' and joint is not None and test['task'] in joint.work.specs:
+                return
             if (world.slot_execution or {}).get('mode') != 'calendar_promises_v2':
                 raise ValueError('Task/promise conditions require calendar execution')
             if test['kind']=='task' and test['task'] not in world.slot_contract['tasks']:
@@ -207,6 +210,10 @@ class Concerns:
         native = getattr(world,'native_planning',None)
         if native is not None and native.handles(coordinate): return native.read(coordinate,actor)
         if kind in {'task','promise'}:
+            joint = getattr(world, 'joint_activities', None)
+            if kind=='task' and joint is not None and args[0] in joint.work.specs:
+                return (joint.work.read(args[0])['units'] if actor is None else
+                        joint.planning.visible(world.subjects[actor]).get(coordinate) if joint.sim else None)
             domain = getattr(world, 'planning_domain', None)
             return None if domain is None else domain.read(coordinate, actor)
         if kind=='state':
@@ -223,6 +230,9 @@ class Concerns:
         native = getattr(world,'native_planning',None)
         if native is not None and native.handles(coordinate): return native.read(coordinate,actor) is not None
         if coordinate[0] in {'task','promise'}:
+            joint = getattr(world, 'joint_activities', None)
+            if coordinate[0]=='task' and joint is not None and coordinate[1] in joint.work.specs:
+                return joint.sim is not None and self._read(world,coordinate,actor) is not None
             domain = getattr(world, 'planning_domain', None)
             return domain is not None and domain.read(coordinate, actor) is not None
         if public:return True
@@ -251,6 +261,11 @@ class Concerns:
             else:values.append(None);sources.append('unobserved')
         if test['kind']=='co_location':
             raw=None if any(v is None for v in values) else values[0]==values[1]
+            joint=getattr(world,'joint_activities',None)
+            if joint is not None and joint.sim is not None and not any(k in overlay for k in keys):
+                if actor is None or (joint.co_present(actor,test['actor']) and joint.co_present(actor,test['target'])):
+                    raw=joint.co_present(test['actor'],test['target']); sources=['shared_location']
+                else: raw=None; sources=['unobserved_shared_location']
         elif test['kind']=='knowledge':
             wanted=False if test['rule']=='none' else True
             raw=False if any(v is not None and v!=wanted for v in values) else None if any(v is None for v in values) else True

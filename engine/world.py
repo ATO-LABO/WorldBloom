@@ -794,6 +794,14 @@ class World:
         if 'social_planning' in definition:
             from engine.social_planning import SocialPlanning
             self.social_planner = SocialPlanning(definition['social_planning'])
+        self.joint_activities = None
+        if 'joint_activities' in definition:
+            from engine.joint_activities import JointActivities, digest
+            self.joint_source_hash=digest(definition)
+            try:
+                self.joint_activities = JointActivities(definition['joint_activities'])
+            except (KeyError,TypeError,IndexError,OverflowError) as exc:
+                raise ValueError('Malformed joint activities contract') from exc
 
     @classmethod
     def from_yaml(
@@ -1269,6 +1277,8 @@ class World:
             )
 
         subject_ids = set(subjects)
+        if self.joint_activities is not None:
+            self.joint_activities.world = self
         if self.concerns is not None:
             self.concerns.bind(self, subjects)
         elif any(person.commitments for person in subjects.values()):
@@ -1590,6 +1600,8 @@ class World:
             self.goal_rules.bind(self)
         if self.planner is not None:
             self.planner.bind(self)
+        if self.joint_activities is not None:
+            self.joint_activities.bind(self)
         if self.action_timing is not None:
             self.action_timing.bind(self)
         if self.social_planner is not None:

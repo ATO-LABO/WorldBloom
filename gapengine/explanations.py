@@ -422,4 +422,10 @@ def explain_rows(rows, *, layers_path="", sha256="", experiment="", cell=""):
                     for ident in plan.get('observation_causes',[]) if ident in observations and
                     observations[ident]['line']<=item['line'] and
                     rows[observations[ident]['line']-1]['details']['planning_observation']['actor']==item['subject']]
+    joint_records=[]
+    for line,row in enumerate(rows,1):
+        activity=row.get('details',{}).get('joint_activity')
+        if row.get('kind')=='event' and isinstance(activity,dict) and row.get('verb')=='joint_'+str(activity.get('phase')):
+            joint_records.append({'source':source(line),'activity':copy.deepcopy(activity)})
+    if joint_records: result['joint_records']=joint_records
     return result

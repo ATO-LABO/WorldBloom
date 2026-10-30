@@ -464,6 +464,10 @@ class Simulation:
                                       'config_hash': digest(self.world.action_timing.config)}
         if self.world.social_planner is not None:
             header['social_planning'] = {'config':_plain(self.world.social_planner.config),'config_hash':digest(self.world.social_planner.config)}
+        if self.world.joint_activities is not None:
+            from engine.joint_activities import digest
+            header['joint_activities']={'version':1,'config':_plain(self.world.joint_activities.config),
+                                       'config_hash':digest(self.world.joint_activities.config)}
         rationality_meta = self._rationality_meta()
         if rationality_meta is not None:
             header["rationality"] = rationality_meta
@@ -1002,6 +1006,8 @@ class Simulation:
             subject = self.subjects[subject_id]
             if subject.vitality == "dead":
                 continue
+            if self.world.joint_activities is not None and self.world.joint_activities.bookings.is_busy(subject.id,self.time_kernel.now):
+                continue
             subject.change_stamina(subject.stamina_recover)
             threshold = (
                 subject.stamina_max
@@ -1299,21 +1305,33 @@ class Simulation:
     def _time_day_start(self, frame, writer):
         self.day = frame.label['day']
         self.turn = frame.at + 1
-        if frame.label['slot_index'] == 0:
+        if frame.label['slot_index'] == 0 and self.world.joint_activities is None:
             self.slot = None
             self._apply_scheduled(writer, slot=None)
             self._apply_daily(writer)
 
     def _time_before_choices(self, frame, writer):
         self.slot = frame.label['slot']
+        joint=self.world.joint_activities
+        if joint is not None:
+            # Opt-in ordering: physical completion precedes authored changes.
+            joint.advance()
+            if self.world.action_timing is not None: self.world.action_timing.advance(writer)
+            if frame.label['slot_index']==0:
+                self.slot=None; self._apply_scheduled(writer,slot=None); self._apply_daily(writer)
+                self.slot=frame.label['slot']
         self._apply_scheduled(writer, slot=self.slot)
         if self.world.responses is not None:
             self._write_markers(writer, self.world.responses.tick(self.world, self.turn))
-        if self.world.action_timing is not None:
+        if self.world.action_timing is not None and joint is None:
             self.world.action_timing.advance(writer)
+        if joint is not None:
+            joint.recheck_running()
         if self.world.goal_rules is not None:
             self._write_markers(writer, self.world.goal_rules.record(self.world, self.turn))
         self._record_encounters(writer)
+        if joint is not None:
+            joint.start_due(); joint.flush(writer)
 
     def _time_choices(self, frame, writer):
         for subject_id in self._action_order():
@@ -1321,6 +1339,8 @@ class Simulation:
             if subject.vitality == "dead":
                 continue
 
+            if self.world.joint_activities is not None and self.world.joint_activities.bookings.is_busy(subject.id,frame.at):
+                continue
             if self.world.action_timing is not None:
                 self.world.action_timing.reconsider(subject, writer)
                 if subject.id in self.world.action_timing.pending:
@@ -1438,6 +1458,11 @@ class Simulation:
         self._write_markers(writer, markers)
 
     def _time_after_choices(self, frame, writer):
+        joint=self.world.joint_activities
+        if joint is not None:
+            for ident,inst in sorted(joint.instances.items()):
+                if inst['status']=='agreed': joint.reserve(ident)
+            joint.flush(writer)
         self._forced.clear()
         self._tick_vitality(writer)
         self._recover_stamina()
@@ -1480,6 +1505,8 @@ class Simulation:
         self.lifecycle = ActionLifecycle(self.time_kernel, lambda: self._instant_pending)
         if self.world.action_timing is not None:
             self.world.action_timing.attach(self)
+        if self.world.joint_activities is not None:
+            self.world.joint_activities.attach(self)
         self.verify_execution(self.time_kernel.axis)
         path = self.out_dir / "layers.jsonl"
         with LayersWriter(path, on_write=self._observe_row) as writer:
