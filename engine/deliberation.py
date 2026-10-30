@@ -168,7 +168,7 @@ class Deliberation:
                 world.concerns.validate_projections(world, spec)
                 if not all(world.concerns.has_owner(world, actor) for actor in spec['profiles']):
                     raise ValueError("Concern projections require each participant's commitments")
-        if world.slot_execution is not None:
+        if world.slot_execution is not None and getattr(world,'social_planner',None) is None:
             raise ValueError("Deliberation v1 supports logical-slot execution only")
         self.reset()
 
@@ -184,9 +184,14 @@ class Deliberation:
     def _audience(self, world, place):
         return sorted(p.id for p in world.present_subjects(place) if p.vitality in {"alive", "revived"})
 
-    def _assessment(self, world, spec, actor, terms):
+    def _assessment(self, world, spec, actor, terms, *, projection=None):
         profile = spec["profiles"][actor]
-        missing = sorted(set(profile["requires"]) - world.subjects[actor].knowledge)
+        knowledge=set(world.subjects[actor].knowledge)
+        for value in (projection or {}).get('effects',[]):
+            if value['kind']=='knowledge' and value['actor']==actor:
+                if value['value']: knowledge.add(value['fact'])
+                else: knowledge.discard(value['fact'])
+        missing = sorted(set(profile["requires"]) - knowledge)
         score = sum(weights.get(terms[key], 0) for key, weights in profile["weights"].items())
         blockers = [{"term": key, "actual": terms[key], "allowed": values}
                     for key, values in sorted(profile["constraints"].items()) if terms[key] not in values]
@@ -194,13 +199,16 @@ class Deliberation:
         line = profile[{"undecided": "unknown_line", "support": "support_line", "oppose": "oppose_line"}[stance]]
         result = {"stance": stance, "score": score, "minimum": profile["minimum"],
                 "blockers": blockers, "missing_knowledge": missing,
-                "known_evidence": sorted(set(profile["requires"]) & world.subjects[actor].knowledge),
+                "known_evidence": sorted(set(profile["requires"]) & knowledge),
                 "statement": line}
         if 'concern_projections' in spec:
             alternative = next(a for a in spec['alternatives'] if a['terms'] == terms)
-            projection = spec['concern_projections'][alternative['id']]
+            declared = spec['concern_projections'][alternative['id']]
+            projection = {**declared,'effects':[*((projection or {}).get('effects',[])),*declared['effects']]}
             from engine.deliberation_choice import evidence_sources
             sources = evidence_sources(world, spec, self.records[spec['id']], actor)
+            for fact in knowledge:
+                sources.setdefault(fact,{'fact':fact,'source':'planned_firsthand','actor':actor,'confidence':1.0})
             justified = set(projection['requires']) <= set(sources)
             valuation = world.concerns.assessment(world, actor, projection=projection, justified=justified)
             if stance != 'oppose' or not blockers:
@@ -237,7 +245,16 @@ class Deliberation:
                 result.append((verb, tuple(args), weight))
         for pid, spec in sorted(self.specs.items()):
             record = self.records[pid]
-            if person.zone != spec["place"] or actor not in spec["profiles"] or record["status"] in STATUSES:
+            if person.zone != spec["place"] or actor not in spec["profiles"]:
+                continue
+            if record['status'] in STATUSES:
+                social=getattr(world,'social_planner',None)
+                if (social is not None and pid in social.proposals and social.proposals[pid]['reopen']
+                        and actor==spec['proposer'] and record['status']!='approved'):
+                    used={v['alternative'] for v in record['versions']}
+                    for alternative in spec['alternatives']:
+                        if alternative['id'] not in used and self._assessment(world,spec,actor,alternative['terms'])['stance']=='support':
+                            offer('amend_proposal',[pid,alternative['id'],str(record['revision'])],4)
                 continue
             revision = str(record["revision"])
             audience = self._audience(world, spec["place"])
@@ -296,7 +313,7 @@ class Deliberation:
                        "terms": deepcopy(alternative["terms"]), "label": alternative["label"],
                        "terms_hash": digest({"proposal": pid, "revision": record["revision"], "terms": alternative["terms"]}),
                        "actor": actor, "turn": turn, "statement": alternative["statement"]}
-            record.update(status="open", alternative=alternative["id"], terms_hash=version["terms_hash"], reviews={})
+            record.update(status="open", alternative=alternative["id"], terms_hash=version["terms_hash"], reviews={},decision=None)
             record["versions"].append(version)
             for who in audience:
                 if who in spec["profiles"]:

@@ -1,0 +1,81 @@
+id: 蒼
+traits:
+  social: 0.65
+  stubbornness: 0.6
+  curiosity: 0.5
+  diligence: 0.8
+  temper: 0.2
+base: 50
+modifiers: []
+beliefs_about: {}
+beliefs: {}
+knowledge:
+- 共通予定
+- 台詞骨子習得
+- 共同展示未完成
+inventory:
+  台本: 1
+reputation: 0
+phase: []
+verbs:
+- move
+- rest
+- share_knowledge
+- respond
+- submit_proposal
+- present_proposal
+- review_proposal
+- request_decision
+- decide_proposal
+- await_response
+identity:
+  'true': 蒼
+  displayed: 蒼
+goal:
+  target: null
+  deliver_to: null
+  obstacles: []
+  outcome: observation_finished
+relations:
+  紗季:
+    affinity: 0.45
+    awareness: 0.8
+  蓮:
+    affinity: 0.45
+    awareness: 0.8
+  灯:
+    affinity: 0.55
+    awareness: 0.8
+stamina:
+  max: 100
+  recover_per_slot: 1
+range:
+  zones:
+  - 自宅
+  - 校門
+  - 部室
+  - 体育館
+  - 展示室
+  - 教室
+  - 実行委員室
+  - 放送室
+  entry: 自宅
+companions: []
+ally_value: 0
+objective_claimant: false
+cultural_festival:
+  goals:
+  - 出演の約束を守る
+  - 共同展示への責任を果たす
+  - 不十分な出来を見せたくない
+  notes: 旧目的の説明は保持。実行時はcommitmentsと世界のgoal_rulesで評価する。優先順位・準備の定義は仮設定。
+commitments:
+- condition: 出演-蒼
+  priority: 9
+  required: false
+- condition: 展示-写真
+  priority: 8
+  required: false
+- condition: 準備不足を避ける
+  priority: 10
+  required: true

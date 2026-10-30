@@ -1,0 +1,46 @@
+{
+  "id": "補給係",
+  "description": "補給係",
+  "personality": "補給係",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "操舵室"
+    ],
+    "entry": "操舵室"
+  },
+  "verbs": [
+    "rest",
+    "respond",
+    "answer_response"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {
+    "修理工具": 1
+  },
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "battery_owned",
+      "priority": 10,
+      "required": false
+    },
+    {
+      "condition": "helper_tool",
+      "priority": 3,
+      "required": false
+    }
+  ]
+}

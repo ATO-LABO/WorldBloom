@@ -32,6 +32,7 @@ class Action:
 # and drive scheduled_events.force_action (world.py load-time check,
 # world_editor.py save-time check, and the world-prototype.js form).
 FORCE_ARG_KINDS: dict[str, tuple[str, ...]] = {
+    "await_response": ("text", "text", "text", "text"),
     "respond": ("text",),
     "inspect_response": ("fact",),
     "request_response": ("subject", "text"),
@@ -800,6 +801,7 @@ def _mislead_candidates(
             )
 
         for fact_id, belief in sorted(subject.beliefs.items()):
+            if fact_id not in world.facts: continue  # A concern belief is not a transmissible fact.
             definition = world.facts.get(fact_id, {})
             values = [
                 str(value)
@@ -1027,6 +1029,7 @@ def _share_candidates(
 
         for fact_id, belief in sorted(subject.beliefs.items()):
             target_belief = target.beliefs.get(fact_id)
+            if fact_id not in world.facts: continue  # A concern belief is not a transmissible fact.
             if (
                 target_belief is not None
                 and target_belief.value == belief.value
@@ -1920,8 +1923,11 @@ def candidates(
     if world.deliberation is not None:
         weighted.extend(
             (Action(verb, args), weight)
-            for verb, args, weight in world.deliberation.candidates(world, subject.id, turn=sim.turn)
+            for verb, args, weight in (world.social_planner.deliberation_candidates(world,subject,sim.turn)
+                if getattr(world,'social_planner',None) else world.deliberation.candidates(world, subject.id, turn=sim.turn))
         )
+    if getattr(world,'social_planner',None) is not None:
+        weighted.extend(world.social_planner.peer_candidates(world,subject,int(sim.turn),int(sim.day)))
 
     from engine.objective_actions import augment_and_rank
     weighted = augment_and_rank(world, subject,

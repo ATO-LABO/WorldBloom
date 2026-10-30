@@ -134,7 +134,7 @@ class TimedActionTests(unittest.TestCase):
     def test_invalid_and_unsupported_rules_are_rejected(self):
         for rule in [dict(verb='move',duration=True,interruptible=False),
                      dict(verb='move',duration=2,interruptible=True),
-                     dict(verb='negotiate',duration=2,interruptible=False),
+                     dict(verb='unregistered_action',duration=2,interruptible=False),
                      dict(verb='rest',duration='work_steps',interruptible=True)]:
             with self.subTest(rule=rule),self.assertRaises(ValueError): ActionTiming({'version':1,'rules':[rule]})
 

@@ -1,0 +1,46 @@
+{
+  "id": "片瀬",
+  "description": "片瀬は局長。真壁の仕事を高く評価している。正式な検討会へ案を進める権限があるが、法律を成立させる権限はない。現行制度に依存する人への移行保障を必須とする。",
+  "personality": "片瀬は局長。真壁の仕事を高く評価している。正式な検討会へ案を進める権限があるが、法律を成立させる権限はない。現行制度に依存する人への移行保障を必須とする。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.5,
+    "curiosity": 0.5,
+    "diligence": 0.5,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "生活制度局の会議室"
+    ],
+    "entry": "生活制度局の会議室"
+  },
+  "verbs": [
+    "rest",
+    "review_proposal",
+    "decide_proposal"
+  ],
+  "knowledge": [],
+  "goal": {
+    "description": "片瀬は局長。真壁の仕事を高く評価している。正式な検討会へ案を進める権限があるが、法律を成立させる権限はない。現行制度に依存する人への移行保障を必須とする。"
+  },
+  "relations": {
+    "真壁": {
+      "affinity": 0.8,
+      "awareness": 1
+    }
+  },
+  "commitments": [
+    {
+      "condition": "transition_guarantee",
+      "priority": 2,
+      "required": true
+    }
+  ],
+  "stamina": {
+    "max": 50,
+    "current": 50,
+    "recover_per_slot": 1
+  }
+}

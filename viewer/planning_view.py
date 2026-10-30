@@ -27,6 +27,7 @@ KINDS = {'initial': '最初の計画', 'failure': '手段の失敗', 'replan': '
          'pause': '手順を探し直す', 'achieved': '目的を達成', 'failed': '目的の失敗確定', 'routine': '行動の記録'}
 KINDS.update(arrived='目的地に到着', interrupted='行動を中断', unfinished='観測終了時も継続中')
 KINDS.update(recovered='休息で回復')
+KINDS.update(social='相手とのやり取り')
 
 
 def point_label(explanation, point):
@@ -49,10 +50,26 @@ def step_label(step):
     return str(step.get('label') or '記録された作業')
 
 
+def event_label(event):
+    social=event.get('social')
+    if not social: return KINDS[event['kind']]
+    who=social.get('actor') or social.get('from') or '相手'
+    if social['kind']=='cooperation':
+        return who+'：'+{None:'協力を依頼','accept':'協力を承諾','refuse':'協力を拒否',
+                        'completed':'依頼作業を完了','failed':'依頼作業に失敗'}.get(social.get('answer'),'返答')
+    if social['kind']=='disclosure': return who+'→'+social['to']+'：情報共有'
+    verb=social.get('verb');revision='（第'+str(social.get('revision','?'))+'版）'
+    action=({'support':'賛成','oppose':'反対','undecided':'判断材料が不足'}.get(social.get('stance'),'審査')
+            if verb=='review_proposal' else {'approved':'承認','rejected':'却下','deferred':'保留'}.get(social.get('status'),'裁定')
+            if verb=='decide_proposal' else {'submit_proposal':'提案を提出','amend_proposal':'提案を修正',
+            'request_decision':'判断を依頼','present_proposal':'提案を説明'}.get(verb,'審議'))
+    return who+'：'+action+revision
+
+
 def model(explanation):
     groups = {}; pending_offers = {}
     records = sorted([*explanation.get('decisions', []), *explanation.get('activity_records', []),
-                      *explanation.get('planning_assessments', [])], key=lambda r:r['line'])
+                      *explanation.get('planning_assessments', []),*explanation.get('social_records',[])], key=lambda r:r['line'])
     for item in records:
         detail = item.get('outcome', {}).get('details') or {}
         plan = detail.get('planning')
@@ -65,7 +82,7 @@ def model(explanation):
             reference = (previous or {}).get('plan')
             if reference and reference.get('status') == 'awaiting_consent': reference = group.get('offer_plan') or reference
             expected = deepcopy((reference or {}).get('steps', []))
-            if previous and previous['result'] in {'moved', 'responded', 'rested', 'delivered'} and expected: expected = expected[1:]
+            if previous and previous['result'] in {'moved', 'responded', 'rested', 'delivered', 'waited'} and expected: expected = expected[1:]
             elif previous and group.get('reply') == 'accepted' and expected and expected[0]['verb'] == 'negotiate': expected = expected[1:]
             changed = previous is not None and [step_key(s) for s in current_steps] != [step_key(s) for s in expected]
             result = item['outcome'].get('result')
@@ -77,7 +94,9 @@ def model(explanation):
             elif item['verb'] == 'negotiate' and result == 'offered': kind = 'offer'
             elif status in {'no_known_plan', 'search_limit'} and (not previous or status != previous['plan'].get('status')): kind = 'pause'
             elif status == 'seeking_information' and (not previous or previous['plan'].get('observation_site') != plan.get('observation_site')): kind = 'observe'
-            elif changed and current_steps and previous is not None: kind = 'replan'
+            elif changed and current_steps and previous is not None and ('received_events' not in plan or
+                    plan.get('reason') in {'previous_action_failed','action_interrupted','new_information',
+                    'cooperation_refused','cooperation_failed','cooperation_accepted','cooperation_completed','review_received','judgment_received','information_shared'}): kind = 'replan'
             elif previous is not None and result == 'responded':
                 kind = ('information' if any(v.get('kind') == 'knowledge' and v.get('actor') == item['subject']
                         and v.get('value') is True for v in response.get('effects', [])) else 'complete')
@@ -104,6 +123,18 @@ def model(explanation):
                 group['offer_plan'] = deepcopy(plan)
             if status != 'awaiting_consent': group.pop('reply', None)
             group['previous'] = event
+        social=detail.get('social_event')
+        binding=(social or {}).get('binding')
+        if binding and (binding['actor'],binding['root']) in groups:
+            group=groups[binding['actor'],binding['root']]
+            event=next((v for v in group['events'] if v['line']==item['line']),None)
+            if event is None:
+                event={'turn':item['turn'],'line':item['line'],'source':item['source'],'kind':'social',
+                    'plan':None,'result':item['outcome'].get('result'),'action':'実際に届いたやり取り',
+                    'before':None,'cause':None,'outcome':None,'progress':None,'total':None}
+                group['events'].append(event)
+            event['social']=deepcopy(social)
+            if event['kind']=='routine': event['kind']='social'
         if item.get('verb') == 'concede':
             claimant = detail.get('claimant') or (item.get('args') or [''])[0]
             group = pending_offers.pop((claimant, item['subject'], detail.get('objective')), None)
@@ -194,14 +225,14 @@ def render(explanation, *, instance='planning'):
             idx = event['index']; active = idx == group['default']; key = f'{gi}-{idx}'
             body += f'<button type="button" class="pw-event ui-button" data-plan-event="{idx}" aria-controls="{prefix}-{key}" aria-pressed="{str(active).lower()}"'
             body += (' data-plan-routine hidden' if event['kind'] == 'routine' else '') + '>'
-            body += '<span class="pw-caption">' + e(point_label(explanation,event['turn'])) + '</span><strong>' + e(KINDS[event['kind']]) + '</strong></button>'
+            body += '<span class="pw-caption">' + e(point_label(explanation,event['turn'])) + '</span><strong>' + e(event_label(event)) + '</strong></button>'
         body += '</div></aside><div class="pw-details">'
         for event in group['events']:
             idx = event['index']; key = f'{gi}-{idx}'; plan = event.get('plan') or {}
             body += f'<article id="{prefix}-{key}" data-plan-detail="{idx}"' + ('' if idx == group['default'] else ' hidden') + '>'
             caption = '開始済みの行動の経過と結果' if event.get('source_kind') == 'execution' else 'この場面の判断と結果'
             if event.get('source_kind') == 'assessment': caption = '手順の検討結果（行動は開始していません）'
-            body += '<header class="pw-scene"><p class="pw-caption">' + caption + '</p><h3>' + e(point_label(explanation,event['turn'])) + ' ／ ' + e(KINDS[event['kind']]) + '</h3></header>'
+            body += '<header class="pw-scene"><p class="pw-caption">' + caption + '</p><h3>' + e(point_label(explanation,event['turn'])) + ' ／ ' + e(event_label(event)) + '</h3></header>'
             if event.get('activity'):
                 a = event['activity']
                 phases = {'started':'開始（まだ完了していません）', 'progress':'継続中', 'completed':'完了',
@@ -211,6 +242,39 @@ def render(explanation, *, instance='planning'):
                 body += ' ／ 消耗した体力 ' + e(a.get('spent'))
                 if 'recovered' in a: body += ' ／ 回復した体力 ' + e(a['recovered'])
                 body += '</p>'
+            if event.get('social'):
+                social=event['social']
+                captions={'submit_proposal':'提案を提出','amend_proposal':'提案を修正','review_proposal':'自分の条件で審査',
+                    'request_decision':'正式な判断を依頼','decide_proposal':'実際の裁定','present_proposal':'提案を説明'}
+                answer={'accept':'協力を承諾（作業は別に実行）','refuse':'協力を拒否','failed':'依頼された作業に失敗','completed':'依頼された作業を完了',None:'協力を依頼（返事は未確定）'}
+                label=('情報を共有' if social['kind']=='disclosure' else answer.get(social.get('answer'),'返事の記録')
+                       if social['kind']=='cooperation' else captions.get(social.get('verb'),'審議の記録'))
+                body+='<section class="ui-notice" data-social-receipt><h4>'+e(label)+'</h4>'
+                if social.get('revision') is not None: body+='<p>提案の版：'+e(social['revision'])+'</p>'
+                if social.get('stance'): body+='<p>審査の立場：'+e({'support':'賛成','oppose':'反対','undecided':'判断材料が不足'}.get(social['stance'],social['stance']))+'</p>'
+                if social.get('status'): body+='<p>裁定：'+e({'approved':'承認','rejected':'却下','deferred':'保留'}.get(social['status'],social['status']))+'</p>'
+                if social.get('statement'): body+='<p>'+e(social['statement'])+'</p>'
+                if social.get('fact'): body+='<p>伝えた情報：'+e(social['fact'])+'</p>'
+                if social.get('missing_knowledge'): body+='<p>相手が伝えた不足情報：'+e('、'.join(social['missing_knowledge']))+'</p>'
+                if social.get('blockers'):
+                    body+='<p>相手が示した受け入れ条件</p><ul>'
+                    for blocker in social['blockers']:
+                        body+='<li>'+e(blocker['term'])+'：現在は'+e(blocker['actual'])+' ／ 受け入れる値は'+e('、'.join(blocker['allowed']))+'</li>'
+                    body+='</ul>'
+                assessment=social.get('assessment') if social['kind']=='cooperation' else None
+                if assessment:
+                    body+='<p>返答した人物の判断（作者向け）</p><ul>'
+                    impacted=[v for v in assessment.get('forecast',{}).get('entries',[]) if v['state']!='true']
+                    for value in impacted:
+                        body+='<li>'+e(value['label'])+'：'+('譲れない条件' if value['required'] else '優先度 '+e(value['priority']))
+                        body+=' ／ '+('満たせない見込み' if value['state']=='false' else '満たせるか未確認')+'</li>'
+                    if not impacted: body+='<li>条件・能力・時間など、その時点の実行可否を確認しています。</li>'
+                    body+='</ul><p class="ui-hint">この評価の内容を、依頼した人物も知っているとは限りません。</p>'
+                body+='<p>このやり取りを実際に受け取った人物：'+e('、'.join(social.get('received_by',[])))+'</p></section>'
+            if plan.get('causes'):
+                body+='<div class="pw-route"><p>計画を見直す際に受け取っていた記録</p><ul>'
+                for cause in plan['causes']: body+='<li>'+_source(explanation,cause)+'</li>'
+                body+='</ul></div>'
             if event.get('cause'):
                 cause = event['cause']
                 body += '<p class="ui-notice ui-notice--warning">見直しのきっかけ：' + e(point_label(explanation,cause['turn'])) + 'で「' + e(cause['action'])

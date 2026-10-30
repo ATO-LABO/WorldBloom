@@ -18,9 +18,9 @@ class GoalPlanner:
         if type(raw['version']) is not int or raw['version'] != 1:
             raise ValueError('Unsupported planning version')
         distinct(raw['actors'])
-        if not raw['actors'] or type(raw['max_depth']) is not int or not 1 <= raw['max_depth'] <= 12:
+        if not raw['actors'] or type(raw['max_depth']) is not int or not 1 <= raw['max_depth'] <= 24:
             raise ValueError('Bounded planning actors/depth required')
-        if type(raw['max_nodes']) is not int or not 16 <= raw['max_nodes'] <= 2048:
+        if type(raw['max_nodes']) is not int or not 16 <= raw['max_nodes'] <= 8192:
             raise ValueError('Bounded planning search required')
         self.config = deepcopy(raw)
         self.memory = {}
@@ -75,6 +75,8 @@ class GoalPlanner:
                 if world.concerns._visible(world, actor.id, coord, definition['visibility'] == 'public'):
                     value = world.concerns._read(world, coord)
                     if value is not None: values[tuple(coord)] = value
+        if getattr(world,'social_planner',None) is not None:
+            values.update(world.social_planner.visible(world,actor))
         return values
 
     def view(self, world, actor):
@@ -135,6 +137,11 @@ class GoalPlanner:
         operators = set()
         while True:
             before = len(operators), len(needed)
+            if getattr(world,'social_planner',None) is not None: world.social_planner.expand(world,actor,needed)
+            for routes in world.routes.values():
+                for route in routes:
+                    for cid in route.requires_conditions:
+                        needed.update(coordinates(world.concerns.conditions[cid]['test']))
             for spec in world.responses.actions.values():
                 if actor.id not in spec['actors'] or not needed.intersection(map(effect_coordinate, spec['effects'])):
                     continue
@@ -142,6 +149,9 @@ class GoalPlanner:
                 needed.update(('inventory', actor.id, item) for item in spec['items'])
                 needed.update(('knowledge', actor.id, fact) for fact in spec['requires'])
                 needed.update(('state', key) for key in spec['preconditions'])
+                if spec.get('authorization') and getattr(world,'social_planner',None) is not None:
+                    auth=spec['authorization']
+                    needed.update(('state',k) for k in world.deliberation.specs[auth['proposal']]['outcomes'][auth['status']])
             if before == (len(operators), len(needed)):
                 return operators, needed
 
@@ -179,6 +189,8 @@ class GoalPlanner:
             if test['kind'] == 'state' and belief and belief.value == 'false' and belief.confidence > 0:
                 negatives.add((('state', test['key']), test['equals']))
         relevant, needed = self._relevant(world, actor, root)
+        social=getattr(world,'social_planner',None)
+        if social is not None: yield from social.steps(world,actor,root,state,turn,elapsed,spent)
         timing = world.action_timing
         if timing is not None and 'rest' in timing.rules and 'rest' in allowed and world.genre_allows('rest'):
             recovery = min(actor.stamina_max - shadow.stamina, actor.stamina_recover)
@@ -189,8 +201,9 @@ class GoalPlanner:
                        'effects': [], 'assumptions': [], 'meta': {}}
         if 'move' in allowed and world.genre_allows('move'):
             excluded = world._excluded_zones(shadow)
-            actual_paths = world.reachable_paths(shadow) if world.action_timing is not None else None
+            actual_paths = world.reachable_paths(shadow,projection={'effects':self.effects(state)}) if world.action_timing is not None else None
             for route in world.routes.get(shadow.zone, ()):
+                if not world._route_allowed(shadow,route,projection={'effects':self.effects(state)}): continue
                 path = actual_paths.get(route.destination) if actual_paths is not None else None
                 if actual_paths is not None and path is None: continue
                 raw_cost = path.cost if path is not None else route.cost
@@ -210,14 +223,18 @@ class GoalPlanner:
             for spec in world.responses.actions.values():
                 if spec['id'] not in relevant or shadow.zone != spec['zone']:
                     continue
+                if social is not None and not social.can_work(actor.id,spec['id']): continue
                 guard_view = tuple((k, state.get(('state', k))) for k in sorted(spec['preconditions']))
                 if (spec['id'], guard_view) in self.memory.get(actor.id, {}).get('blocked', set()):
                     continue
                 if any(not shadow.has_item(i, n) for i, n in spec['items'].items()) or set(spec['requires']) - shadow.knowledge:
                     continue
                 auth = spec.get('authorization')
-                if auth and not world.deliberation.decided(auth['proposal'], auth['status']):
-                    continue
+                if auth:
+                    from engine.social_planning import key as protocol_key
+                    granted=(state.get(protocol_key(auth['proposal'],'phase'))==auth['status'] if social is not None
+                             else world.deliberation.decided(auth['proposal'],auth['status']))
+                    if not granted: continue
                 assumptions = []
                 for key, wanted in spec['preconditions'].items():
                     coord = ('state', key)
@@ -249,7 +266,7 @@ class GoalPlanner:
                 offer = world.offers.get((actor.id, holder.id))
                 assets = offered_assets(world, shadow, item)
                 if (offer and offer.get('objective') == item
-                        and (offer.get('status') == 'refused' or turn > offer['turn'] + 1)
+                        and (offer.get('status') == 'refused' or turn > offer.get('expires_at',offer['turn'] + 1))
                         and offer.get('assets') == assets and offer.get('planning_stock') == stock):
                     continue
                 if offer and offer.get('objective') == item and point <= offer['turn'] + 4:
@@ -259,8 +276,13 @@ class GoalPlanner:
                 effects = [{'kind': 'inventory', 'actor': actor.id, 'item': item, 'value': shadow.inventory[item] + 1}]
                 effects.append({'kind': 'inventory', 'actor': holder.id, 'item': item, 'value': stock - 1})
                 effects += [{'kind': 'inventory', 'actor': actor.id, 'item': name, 'value': 0} for name in assets]
+                duration=2;completion=1
+                if world.action_timing is not None:
+                    own,_,own_finish=step_timing(world,actor,'negotiate',(holder.id,),1,0,turn=turn,elapsed=elapsed)
+                    reply,_,_=step_timing(world,holder,'concede',(actor.id,),1,0,turn=turn+elapsed+own)
+                    duration=own+reply+1;completion=own_finish+reply+1
                 yield {'verb': 'negotiate', 'args': [holder.id], 'label': 'negotiate ' + item,
-                       'duration': 2, 'cost': 0, 'effects': effects,
+                       'duration': duration, 'completion_delay':completion, 'cost': 0, 'effects': effects,
                        'assumptions': [{'consent': holder.id}],
                        'meta': {'target': holder.id, 'objective': item, 'objective_goal': root, 'planning_root': root}}
 
@@ -345,7 +367,9 @@ class GoalPlanner:
 
     def _information(self, world, actor, root, turn, day=1):
         """Travel to declared observation sites without reading their contents."""
-        if getattr(world, 'planning_domain', None) is not None: return None
+        domain = getattr(world, 'planning_domain', None)
+        if domain is not None:
+            return domain.information(actor, root, turn) if hasattr(domain, 'information') else None
         from engine.phase2 import available_verbs
         if 'move' not in available_verbs(world, actor, turn=turn, day=day) or not world.genre_allows('move'):
             return None
@@ -369,6 +393,36 @@ class GoalPlanner:
                     'next_zone': route.route[1], 'eta': duration, 'cost': edge.cost}
         return None
 
+    def _fill_wait(self, world, actor, plans, turn):
+        """Use scheduled slack only if every displaced higher goal stays feasible.
+
+        No future cooperation is promised. Presence-guarded handoff is allowed:
+        its time is bounded and actual delivery still checks the recipient.
+        Resource costs and recovery are projected before rechecking.
+        """
+        feasible = [p for p in plans if p['steps']]
+        if not feasible: return None
+        priority = max(p['priority'] for p in feasible)
+        highest = [p for p in feasible if p['priority'] == priority]
+        slack = min(sum(s['duration'] for s in p['steps'] if s['verb']=='wait') for p in highest)
+        if not slack: return None
+        for lower in sorted(feasible, key=lambda p: (-p['priority'], p.get('eta', 0), p['root'])):
+            if (lower['priority'] >= priority or lower.get('eta',slack+1) > slack
+                    or any(not a.get('requires_presence') for a in lower.get('assumptions',[]))): continue
+            future = self.view(world, actor); shadow = copy(actor)
+            for step in lower['steps']:
+                future.update({effect_coordinate(e):e['value'] for e in step['effects']})
+                shadow.stamina = min(actor.stamina_max, shadow.stamina-step['cost']+step.get('recovery',0))
+            displaced = [p for p in feasible if p['priority'] > lower['priority']]
+            safe = True
+            for higher in displaced:
+                later = self.search(world, shadow, higher['root'], turn+lower['eta'], initial=future)
+                if not later.get('steps') and later['status'] != 'condition_met': safe = False; break
+            if safe:
+                lower['uses_waiting_slack'] = [p['root'] for p in displaced]
+                return lower
+        return None
+
     def candidates(self, world, actor, turn, day):
         from engine.actions import Action
         from engine.phase2 import available_verbs
@@ -381,10 +435,13 @@ class GoalPlanner:
             plan = ({'status': 'awaiting_consent', 'root': root, 'steps': [], 'holder': holder}
                     if holder else self.search(world, actor, root, turn))
             if plan['status'] in {'no_known_plan', 'search_limit'}:
-                plan = self._information(world, actor, root, turn, day) or plan
+                social=getattr(world,'social_planner',None)
+                plan = (social.fallback(world,actor,root,turn) if social else None) or self._information(world, actor, root, turn, day) or plan
             plan['goal_label'] = world.concerns.conditions[root]['label']
             plan['priority'] = value['priority']; plans.append(plan)
         if not plans: return []
+        gap_plan = self._fill_wait(world, actor, plans, turn)
+        if gap_plan is not None: plans = [gap_plan]
         feasible = [p for p in plans if p['steps'] or p['status'] in {'awaiting_consent', 'seeking_information'}]
         best = max(p['priority'] for p in feasible or plans)
         result = []
@@ -404,6 +461,21 @@ class GoalPlanner:
 
     def validate(self, world, actor, action, turn):
         root = action.meta.get('goal_plan', {}).get('root')
+        if world.action_timing is not None and world.action_timing.prepaid(actor,action):
+            # Work already paid for is checked for current safety, not selected
+            # again as if its full cost and duration were still outstanding.
+            effects=(world.responses.actions[action.args[0]]['effects'] if action.verb=='respond' else
+                     [{'kind':'zone','actor':actor.id,'value':action.args[0]}] if action.verb=='move' else [])
+            state=self.view(world,actor);state.update({effect_coordinate(e):e['value'] for e in effects})
+            assessment=self._safe(world,actor,root,state,{effect_coordinate(e) for e in effects})
+            valid=self.active_goal(world,actor,root,turn) and assessment is not None
+            return {'excluded':[] if valid else ['completion_no_longer_safe'],'forecast':assessment,
+                    'condition':root,'plan':action.meta['goal_plan']}
+        if action.meta.get('goal_plan',{}).get('status')=='seeking_judgment' and getattr(world,'social_planner',None):
+            plan=world.social_planner.fallback(world,actor,root,turn)
+            valid=bool(plan and self.active_goal(world,actor,root,turn) and
+                       (plan['steps'][0]['verb'],tuple(plan['steps'][0]['args']))==(action.verb,action.args))
+            return {'excluded':[] if valid else ['judgment_request_changed'],'plan':plan}
         if action.meta.get('goal_plan', {}).get('status') == 'seeking_information':
             info = self._information(world, actor, root, turn, (turn - 1) // len(world.slots) + 1)
             valid = self.active_goal(world, actor, root, turn) and info and action.verb == 'move' and action.args == (info['next_zone'],)
@@ -418,7 +490,7 @@ class GoalPlanner:
                 'consent_required': action.verb == 'negotiate'}
 
     def offer_valid(self, world, actor, offer, turn):
-        return (offer.get('status', 'pending') == 'pending' and turn <= offer['turn'] + 1
+        return (offer.get('status', 'pending') == 'pending' and turn <= offer.get('expires_at',offer['turn'] + 1)
                 and self.active_goal(world, actor, offer['planning_root'], turn)
                 and actor.inventory.get(offer['objective'], 0) < self._item_needs(world, actor, offer['planning_root']).get(offer['objective'], 0))
 
@@ -470,12 +542,48 @@ class GoalPlanner:
             reason = ('initial_plan' if previous is None else 'action_interrupted' if previous.get('interrupted') else 'previous_action_failed' if previous['failed']
                       else 'reply_received' if memory.get('reply') else
                       'new_information' if before != memory['known'] else 'continuing')
+            receipts=[];social=getattr(world,'social_planner',None)
+            selected=result=='started' or world.action_timing is None or action.verb not in world.action_timing.rules
+            observations=list((previous or {}).get('observations',[]))
+            if social is not None and not selected:
+                own_effects=({effect_coordinate(e) for e in world.responses.actions[action.args[0]]['effects']}
+                             if action.verb=='respond' and world.responses is not None else set())
+                changes=[{'coordinate':list(k),'before':before.get(k),'after':v} for k,v in visible.items()
+                    if before.get(k)!=v and k not in own_effects and
+                    not (k[0]=='state' and k[1].startswith('@protocol:')) and
+                    not (k[0] in {'zone','inventory','vitality'} and k[1]==actor.id)]
+                if changes:
+                    ident='observation:'+actor.id+':'+str(turn)
+                    details['planning_observation']={'id':ident,'actor':actor.id,'turn':turn,'changes':changes}
+                    observations.append(ident)
+            if social is not None and selected and previous is not None and observations: reason='new_information'
+            if social is not None and selected:
+                cursor=(previous or {}).get('social_cursor',0)
+                receipts=[deepcopy(e) for e in social.history[cursor:] if actor.id in e['received_by']
+                          and e.get('binding')=={'actor':actor.id,'root':plan['root']}]
+                if previous is not None and receipts:
+                    last=receipts[-1]
+                    reason=('cooperation_refused' if last.get('answer')=='refuse' else
+                            'cooperation_failed' if last.get('answer')=='failed' else
+                            'cooperation_accepted' if last.get('answer')=='accept' else
+                            'cooperation_completed' if last.get('answer')=='completed' else
+                            'review_received' if last['verb']=='review_proposal' else
+                            'judgment_received' if last['verb']=='decide_proposal' else
+                            'information_shared' if last['kind']=='disclosure' else 'protocol_progress')
+            elif social is not None and not failed: reason='action_completed'
             record = {'turn': turn, 'actor': actor.id, 'reason': reason, 'result': result, **plan}
+            if social is not None:
+                record['received_events']=[{'receipt_id':e['receipt_id'],'turn':e['turn'],'kind':e['kind'],
+                    'verb':e['verb'],'received_by':e['received_by']} for e in receipts]
+                record['observation_causes']=observations if selected else []
             self.history.append(record)
             details['planning'] = record
             if plan['status'] == 'seeking_information' and actor.zone == plan['observation_site']:
                 memory.setdefault('inspected', set()).add((plan['root'], actor.zone, memory.get('failures', 0)))
             memory['last'] = {'failed': failed, 'root': plan['root']}
+            if social is not None:
+                memory['last']['social_cursor']=len(social.history) if selected else (previous or {}).get('social_cursor',0)
+                memory['last']['observations']=[] if selected else observations
             if world.action_timing is not None: memory['last']['interrupted'] = result == 'interrupted'
             memory.pop('reply', None)
 

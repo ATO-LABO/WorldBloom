@@ -13,6 +13,7 @@ from engine.concerns import coordinates, effect_coordinate
 from engine.calendar_checkpoint import digest
 from engine.calendar_v2 import time_label
 from engine.promises_v2 import TERMINAL
+from engine.task_windows import permits
 
 
 def aux(*parts):
@@ -88,6 +89,8 @@ class CalendarPlanning:
     def visible(self, actor):
         rt = self.runtime
         state = {('zone', actor.id): actor.zone}
+        if self.world.social_planner is not None:
+            state.update({('knowledge',actor.id,f):f in actor.knowledge for f in self.world.facts})
         for who, person in rt.people.items():
             if person.zone == actor.zone and person.zone != '移動中': state[('zone', who)] = person.zone
             elif (actor.zone != '移動中' and self.planner.memory.get(actor.id, {}).get('known', {}).get(('zone', who)) == actor.zone):
@@ -111,12 +114,22 @@ class CalendarPlanning:
                 elif self.world.concerns._visible(self.world, actor.id, coord, definition['visibility'] == 'public'):
                     value = self.world.concerns._read(self.world, coord, actor.id)
                     if value is not None: state[coord] = value
+        if self.world.social_planner is not None: state.update(self.world.social_planner.visible(self.world,actor))
         return state
 
     def _relevant(self, actor, root):
         from engine.objectives import references
         tasks = set()
-        for cid in references(self.world.goal_rules.definitions[root]['success']):
+        refs=set(references(self.world.goal_rules.definitions[root]['success']))
+        refs.update(cid for routes in self.world.routes.values() for route in routes for cid in route.requires_conditions)
+        social=self.world.social_planner
+        if social is not None:
+            needed=set(self.world.goal_rules.affected_coordinates(self.world,root))
+            for pid,binding in social.proposals.items():
+                spec=self.world.deliberation.specs[pid]
+                if spec['proposer']==actor.id and any({('state',k) for k in v}&needed for v in spec['outcomes'].values()):
+                    refs.update(binding['requires'])
+        for cid in refs:
             test = self.world.concerns.conditions[cid]['test']
             if test['kind'] == 'task': tasks.add(test['task'])
             if test['kind'] == 'promise':
@@ -156,6 +169,8 @@ class CalendarPlanning:
         from engine.phase2 import available_verbs
         rt = self.runtime; point = turn + elapsed
         allowed = available_verbs(self.world, actor, turn=point, day=point//1440+1)
+        if self.world.social_planner is not None:
+            yield from self.world.social_planner.steps(self.world,actor,root,state,turn,elapsed,spent)
         zone = state[('zone', actor.id)]
         energy = rt.energy_rules
         stamina = min(actor.stamina_max, actor.stamina-spent)
@@ -167,6 +182,8 @@ class CalendarPlanning:
                    'effects': effects+extra, 'assumptions': assumptions or [], 'meta': meta}
         if 'move' in allowed and self.world.genre_allows('move'):
             for dest, minutes in sorted(rt.contract['travel_minutes'].get(zone, {}).items()):
+                route=next((r for r in self.world.routes.get(zone,()) if r.destination==dest),None)
+                if route is None or not self.world._route_allowed(actor,route,projection={'effects':self.planner.effects(state)}): continue
                 if dest not in actor.range_zones or dest in self.world._excluded_zones(actor): continue
                 # Predict only authored facility hours, never future hidden events.
                 if not self._open(dest, point+minutes): continue
@@ -179,7 +196,15 @@ class CalendarPlanning:
                                 {'minutes': energy['rest_minutes']}, recovery=recovery)
         # Native task roles authorize work; the character still controls whether it works.
         if 'respond' not in allowed or not self.world.genre_allows('respond'): return
-        for task in sorted(self._relevant(actor, root)):
+        relevant = sorted(self._relevant(actor, root))
+        openings = {start for task in relevant for start, _ in rt.task_windows.get(task, ()) if start > point}
+        # The marker is search-local. It distinguishes waiting across a known
+        # temporal boundary without applying any physical or epistemic effect.
+        if openings:
+            until = min(openings)
+            yield from step('wait', [], '作業できる時刻まで待つ', until-point, 0,
+                            [assignment(aux('wait_boundary'), until)], {'minutes': until-point})
+        for task in relevant:
             spec = rt.contract['tasks'][task]
             if (spec['place'] != zone or not set(spec['roles']) & set(rt.contract['roles'][actor.id])
                     or ('task', task) not in state): continue
@@ -187,6 +212,7 @@ class CalendarPlanning:
             remaining = spec['units']*spec['minutes_per_unit']-state.get(aux('effort', task), 0)
             if remaining <= 0: continue
             if spec['operation'] == 'deliver':
+                if not permits(rt.task_windows, task, point, point+spec['minutes_per_unit']): continue
                 targets = sorted(who for who in rt.people if who != actor.id and state.get(('zone', who)) == zone)
                 for target in targets:
                     effects = [assignment(('task', task), state[('task', task)]+1),
@@ -197,6 +223,7 @@ class CalendarPlanning:
                 continue
             # Work one unit at a time: other tasks and recovery may be interleaved.
             duration = min(remaining, spec['minutes_per_unit']-state.get(aux('effort', task), 0)%spec['minutes_per_unit'])
+            if not permits(rt.task_windows, task, point, point+duration): continue
             if not self._open(zone, point, point+duration): continue
             reserve = max(0, state[('task', task)]+1-state.get(aux('reserved', task),0))
             if any(state.get(aux('material', item), 0) < reserve*n for item,n in spec['materials_per_unit'].items()): continue
@@ -208,6 +235,47 @@ class CalendarPlanning:
             yield from step('work', [task], spec['label'], duration, duration*energy['work_per_minute'], effects,
                             {'task_id': task, 'minutes': duration})
 
+    def information(self, actor, root, turn):
+        """Visit declared dependency sites; never read their remote progress."""
+        import heapq
+        from engine.phase2 import available_verbs
+        rt = self.runtime
+        if ('move' not in available_verbs(self.world, actor, turn=turn, day=turn//1440+1)
+                or not self.world.genre_allows('move')): return None
+        state = self.visible(actor)
+        sites = {rt.contract['tasks'][task]['place'] for task in self._relevant(actor, root)
+                 if state.get(('task', task), -1) < rt.contract['tasks'][task]['units']
+                 and (('task', task) not in state or not set(rt.contract['tasks'][task]['roles']) & set(rt.contract['roles'][actor.id]))}
+        sites.update(rt.contract['tasks'][task]['place'] for task in self._relevant(actor, root)
+                     if rt.contract['tasks'][task]['operation'] == 'deliver'
+                     and state.get(('task',task),0) < rt.contract['tasks'][task]['units'])
+        # Once on site, existing local observation supplies the actual quantity.
+        sites.discard(actor.zone)
+        queue = [(0, actor.zone, ())]; seen = set()
+        deadline = self.world.goal_rules.definitions[root]['period']['end']
+        while queue:
+            elapsed, zone, path = heapq.heappop(queue)
+            if zone in seen: continue
+            seen.add(zone)
+            if zone in sites and path:
+                dest = path[0]; minutes = rt.contract['travel_minutes'][actor.zone][dest]
+                effects = [assignment(('zone', actor.id), dest)]
+                if self.planner._safe(self.world, actor, root, {**state, ('zone',actor.id):dest}, {('zone',actor.id)}) is None:
+                    continue
+                cost = minutes*rt.energy_rules['move_per_minute']
+                if cost > actor.stamina: continue
+                step = {'verb':'move','args':[dest],'label':dest+'で進捗を確認する', 'duration':minutes,
+                        'completion_delay':minutes,'cost':cost,'effects':effects,'assumptions':[], 'meta':{'to':dest}}
+                return {'status':'seeking_information','root':root,'steps':[step], 'eta':elapsed,
+                        'observation_site':zone,'assumptions':[], 'next_zone':dest, 'cost':cost}
+            for route in self.world.routes.get(zone, ()):
+                dest = route.destination; duration = rt.contract['travel_minutes'][zone][dest]
+                if (dest not in actor.range_zones or dest in self.world._excluded_zones(actor)
+                        or not self.world._route_allowed(actor, route)
+                        or not self._open(dest, turn+elapsed+duration) or turn+elapsed+duration > deadline): continue
+                heapq.heappush(queue, (elapsed+duration, dest, (*path,dest)))
+        return None
+
     def _open(self, zone, at, finish=None):
         hours = self.runtime.contract['facility_hours'].get(zone)
         if hours is None: return True
@@ -216,11 +284,26 @@ class CalendarPlanning:
         return finish is None or (finish//1440 == at//1440 and time_label(self.runtime.calendar, finish)['time'] <= hours['closes'])
 
     def choose(self):
+        from engine.social_planning import VERBS as SOCIAL_VERBS
         rt = self.runtime
-        for who in sorted(self.planner.config['actors']):
+        for who in sorted(rt.people if self.world.social_planner is not None else self.planner.config['actors']):
             actor = rt.people[who]
             if who in rt.busy or self.last_choice.get(who) == rt.now or actor.vitality not in {'alive','revived'}: continue
             self.last_choice[who] = rt.now
+            social=self.world.social_planner
+            peers=[]
+            if social is not None:
+                peers += social.peer_candidates(self.world,actor,rt.now,rt.now//1440+1)
+                peers += [(Action(v,args),weight) for v,args,weight in social.deliberation_candidates(self.world,actor,rt.now)] if self.world.deliberation else []
+            if peers:
+                action,_=max(peers,key=lambda entry:entry[1])
+                ident=f'peer:{who}:{rt.now}'
+                command={'id':ident,'actor':who,'at':rt.now,'verb':action.verb,'args':list(action.args)}
+                rt.admit_adapter_command(command,proposal_id=ident,candidate_id=digest(command))
+                decision=next(r for r in rt.rows if r['id']=='decision:'+ident)
+                decision['details']['selection_mechanism']='independent_protocol_response'
+                continue
+            if not self.planner.owns(actor): continue
             choices = self.planner.candidates(self.world, actor, rt.now, rt.now//1440+1)
             feasible = [(action, weight) for action,weight in choices if action.meta['goal_plan']['steps']]
             if not feasible:
@@ -242,6 +325,8 @@ class CalendarPlanning:
             plan = action.meta['goal_plan']; first = plan['steps'][0]
             ident = f'planned:{who}:{rt.now}'
             command = {'id': ident, 'actor': who, 'at': rt.now, 'verb': first['verb'], **first['meta']}
+            if social is not None and first['verb'] in SOCIAL_VERBS:
+                command['args']=list(first['args'])
             rt.admit_adapter_command(command, proposal_id=ident, candidate_id=digest(plan))
             decision = next(row for row in rt.rows if row['id'] == 'decision:'+ident)
             detail = decision['details']
@@ -274,13 +359,14 @@ class CalendarPlanning:
         details['planning'] = deepcopy(plan)
         details['activity'] = self.activity(action,step,phase,action['start'],action['finish'])
         if action['verb']=='rest' and phase=='completed': details['activity']['recovered'] = details['stamina_delta']
-        details['activity_result'] = ('failed' if phase=='failed' else 'responded' if action['verb']=='work'
-                                      else 'moved' if action['verb']=='move' else 'rested' if action['verb']=='rest' else 'delivered')
+        details['activity_result'] = ('failed' if phase=='failed' else details['action_result'] if 'action_result' in details else 'responded' if action['verb']=='work'
+                                      else 'moved' if action['verb']=='move' else 'rested' if action['verb']=='rest'
+                                      else 'waited' if action['verb']=='wait' else 'delivered')
 
     def validate_snapshot(self, state, rows, now):
         if not isinstance(state,dict) or set(state) != {'last_choice','last_assessment','planner','objectives'}:
             raise ValueError('Invalid calendar planning checkpoint')
-        if (not set(state['last_choice']) <= set(self.planner.config['actors'])
+        if (not set(state['last_choice']) <= set(self.runtime.people if self.world.social_planner is not None else self.planner.config['actors'])
                 or any(type(v) is not int or not self.runtime.time_kernel.axis.start <= v <= now for v in state['last_choice'].values())):
             raise ValueError('Invalid calendar choice checkpoint')
         decisions = [r for r in rows if r['details'].get('selection_mechanism') in {'bounded_goal_search','bounded_goal_assessment'}]

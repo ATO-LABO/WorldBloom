@@ -30,7 +30,7 @@ def offer_valid(world, claimant, offer, turn):
     if offer.get('planning_root') is not None:
         return world.planner is not None and world.planner.offer_valid(world, claimant, offer, turn)
     cid = offer.get('objective_goal')
-    return (offer.get('status', 'pending') == 'pending' and turn <= offer['turn'] + 1
+    return (offer.get('status', 'pending') == 'pending' and turn <= offer.get('expires_at',offer['turn'] + 1)
             and item_goal(world, claimant, cid, turn) == offer.get('objective') if cid is not None
             else claimant.goal.target == offer.get('objective'))
 

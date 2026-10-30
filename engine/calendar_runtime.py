@@ -24,6 +24,7 @@ from engine.calendar_inputs import validate_execution_config, validate_fixed_ver
 from engine.calendar_observers import validate_observers, evaluate_observer, validate_observation_state
 from engine.log import LayersWriter
 from engine.promises_v2 import PromiseRegistry
+from engine.task_windows import compile_windows, permits
 from engine.relations import Relations
 from execution.provenance import canonical
 
@@ -91,7 +92,8 @@ def _load_contract(world, config):
     if not isinstance(tasks, dict) or not tasks or len(tasks) > 100:
         raise ValueError('Tasks must be a bounded nonempty mapping')
     for task, spec in tasks.items():
-        if not isinstance(task, str) or not task or not isinstance(spec, dict) or set(spec) != {'label', 'place', 'units', 'minutes_per_unit', 'dependencies', 'resource', 'roles', 'materials_per_unit', 'operation'}:
+        fields = {'label', 'place', 'units', 'minutes_per_unit', 'dependencies', 'resource', 'roles', 'materials_per_unit', 'operation'}
+        if not isinstance(task, str) or not task or not isinstance(spec, dict) or not fields <= set(spec) or set(spec)-fields-{'windows'}:
             raise ValueError('Unsupported task definition')
         if (not isinstance(spec['roles'], list) or not spec['roles'] or any(not isinstance(x, str) or not x for x in spec['roles'])
                 or not isinstance(spec['dependencies'], list) or any(not isinstance(x, str) for x in spec['dependencies'])
@@ -129,6 +131,7 @@ def _load_contract(world, config):
             raise ValueError('Facility must open and close within a day')
         minute_for(calendar, calendar['start_date'], hours['opens'])
         minute_for(calendar, calendar['start_date'], hours['closes'])
+    compile_windows(tasks, calendar)
     validate_observers(value.get('observers', []), calendar, set(value['roles']), set(world.zones), set(tasks))
     if 'fact_model' in value:
         from engine.fact_runtime import validate_model
@@ -155,6 +158,7 @@ class CalendarRuntime:
                     raise ValueError('Project input changed after loading')
         self.calendar = compile_calendar(self.contract['calendar'], timezone=self.contract['timezone'],
                                          scheduled_events=list(self.world.scheduled_events))
+        self.task_windows = compile_windows(self.contract['tasks'], self.calendar)
         if set(self.people) != set(self.contract['roles']):
             raise ValueError('Every actor needs a fixed reviewed role')
         if any(actor not in self.people for actor in self.contract['initial_task_knowledge']):
@@ -422,16 +426,20 @@ class CalendarRuntime:
                 else {c['id'] for c in self.commands})
 
     def _adapter_command(self, command, now):
-        if not isinstance(command, dict) or command.get('verb') not in {'move', 'work', 'wait', 'rest', 'deliver'}:
+        from engine.social_planning import VERBS as SOCIAL_VERBS
+        extra=SOCIAL_VERBS if self.world.social_planner is not None else set()
+        if not isinstance(command, dict) or command.get('verb') not in {'move', 'work', 'wait', 'rest', 'deliver'} | extra:
             raise ValueError('Unsupported adapter command')
-        fields = {'id', 'actor', 'at', 'verb'} | ({'to'} if command['verb'] == 'move'
+        fields = {'id', 'actor', 'at', 'verb'} | ({'args'} if command['verb'] in extra else {'to'} if command['verb'] == 'move'
                   else {'minutes', 'task_id'} if command['verb'] == 'work'
                   else {'task_id','target'} if command['verb'] == 'deliver' else {'minutes'})
         if (set(command) != fields or type(command['id']) is not str or not command['id']
                 or type(command['actor']) is not str or command['actor'] not in self.people):
             raise ValueError('Invalid adapter command fields/identity')
         integer(command['at'], 'adapter command minute', self.time_kernel.axis.start, now)
-        if command['verb'] == 'move':
+        if command['verb'] in extra:
+            if not isinstance(command['args'],list) or any(not isinstance(x,str) for x in command['args']): raise ValueError('Invalid social command arguments')
+        elif command['verb'] == 'move':
             if type(command['to']) is not str or command['to'] not in self.world.zones:
                 raise ValueError('Invalid adapter destination')
         elif command['verb'] == 'deliver':
@@ -637,6 +645,11 @@ class CalendarRuntime:
         return self.facts.candidates(actor, result) if self.facts is not None else result
 
     def _command_duration(self, source, command):
+        if 'args' in command:
+            from engine.action_timing import step_timing
+            verb=command['verb']; args=tuple(command['args'])
+            raw=self.world.social_planner.wait_duration(self.world,args) if verb=='await_response' else 1
+            return step_timing(self.world,self.people[command['actor']],verb,args,raw,0,turn=self.now)[0]
         if command['verb'] == 'move': return self.contract['travel_minutes'].get(source, {}).get(command.get('to'))
         if command['verb'] == 'deliver': return self.contract['tasks'][command['task_id']]['minutes_per_unit']
         return command['minutes']
@@ -667,7 +680,7 @@ class CalendarRuntime:
                   known_promises=deepcopy(self.known_terms[actor]))
         reason = None
         verb = choice['verb']
-        duration = choice['minutes'] if verb in ('work', 'wait', 'rest') else 2
+        duration = self._command_duration(person.zone,choice) if 'args' in choice else choice['minutes'] if verb in ('work', 'wait', 'rest') else 2
         if actor in self.busy:
             reason = 'actor_busy'
         elif self.facts is not None and not self.facts.can_overlap(actor, verb):
@@ -676,6 +689,9 @@ class CalendarRuntime:
             duration = self.contract['travel_minutes'].get(person.zone, {}).get(choice.get('to'))
             if duration is None:
                 reason = 'not_adjacent'
+            else:
+                route=next((r for r in self.world.routes.get(person.zone,()) if r.destination==choice['to']),None)
+                if route is None or not self.world._route_allowed(person,route,actual=True): reason='route_conditions_changed'
         elif verb == 'work':
             spec = self.contract['tasks'].get(choice.get('task_id'))
             if spec is None or spec['operation'] != 'work' or spec['place'] != person.zone or not (set(spec['roles']) & set(self.contract['roles'][actor])):
@@ -699,6 +715,8 @@ class CalendarRuntime:
                     reserve = (task['effort_minutes']+duration+spec['minutes_per_unit']-1)//spec['minutes_per_unit']-task['reserved_units']
                     if self.now+duration > self.end:
                         reason = 'outside_observation'
+                    elif not permits(self.task_windows, choice['task_id'], self.now, self.now+duration):
+                        reason = 'outside_task_window'
                     elif any(self.ledger['materials'][item] < reserve*qty for item, qty in spec['materials_per_unit'].items()):
                         reason = 'materials_unavailable'
                     else:
@@ -712,6 +730,8 @@ class CalendarRuntime:
                 reason = 'task_place_or_role'
             else:
                 duration = spec['minutes_per_unit']
+                if not permits(self.task_windows, choice['task_id'], self.now, self.now+duration):
+                    reason = 'outside_task_window'
         if reason:
             self.emit('reject:'+ident, 'action_rejected', actor, result='rejected', reason=reason, choice=choice)
             return
@@ -789,9 +809,20 @@ class CalendarRuntime:
         details = {'choice': deepcopy(action), 'started_at': action['start'], 'duration_minutes': self.now-action['start']}
         audience = [actor]
         try:
-            if verb == 'move':
+            if 'args' in action:
+                from engine.actions import Action
+                selected=next((r for r in self.rows if r['id']=='decision:'+ident),None)
+                meta={'goal_plan':selected['details']['planning']} if selected and 'planning' in selected['details'] else {}
+                outcome,extra,markers=self.sim.verb_engine.execute(person,Action(verb,tuple(action['args']),meta=meta),turn=self.now,day=self.now//1440+1,notify=False)
+                details.update(extra); details['action_result']=outcome
+                audience=extra.get('social_event',{}).get('received_by',audience)
+                if outcome in {'invalid','failed'}: details['failure_reason']=extra.get('reason',outcome)
+            elif verb == 'move':
                 target = action['to']
-                if target in self.facilities and not self.facilities[target]:
+                route=next((r for r in self.world.routes.get(action['source'],()) if r.destination==target),None)
+                if route is None or not self.world._route_allowed(person,route,actual=True):
+                    person.zone=action['source'];details['failure_reason']='route_conditions_changed'
+                elif target in self.facilities and not self.facilities[target]:
                     person.zone = action['source']; details['failure_reason'] = 'destination_closed'
                 else:
                     person.zone = target
@@ -904,6 +935,7 @@ class CalendarRuntime:
         points = {self.end}
         if self.planning is not None:
             points.update(p for spec in self.world.goal_rules.definitions.values() for p in spec['period'].values())
+        points.update(p for intervals in self.task_windows.values() for pair in intervals for p in pair)
         if self.facts is not None:
             points.update(self.facts.points())
         points.update(c['at'] for c in self.commands if c['id'] not in self.processed)
@@ -1097,6 +1129,9 @@ class CalendarRuntime:
         if self.sim.decision_provider is not None:
             state['decision_provider'] = provider_snapshot(self.sim.decision_provider)
         if self.planning is not None: state['goal_planning'] = self.planning.snapshot()
+        if self.world.social_planner is not None:
+            state['social_planning']=self.world.social_planner.snapshot()
+            state['deliberation']=self.world.deliberation.snapshot() if self.world.deliberation else None
         return state
 
     def restore_state(self, state):
@@ -1216,6 +1251,20 @@ class CalendarRuntime:
         if self.facts is not None:
             self.facts.validate_state(state['fact_model'], state['rows'], state['now'], self.commands)
         if self.planning is not None: self.planning.validate_snapshot(state['goal_planning'],state['rows'],state['now'])
+        if self.world.social_planner is not None:
+            self.world.social_planner.validate_snapshot(self.world,state['social_planning'])
+            latest_social=next((r['details']['social_state'] for r in reversed(state['rows'])
+                               if 'social_state' in r.get('details',{})),None)
+            empty_social={'version':1,'views':{},'messages':{},'history':[],'links':{}}
+            if state['social_planning']!=(latest_social or empty_social): raise ValueError('Social checkpoint differs from received events')
+            if self.world.deliberation is not None:
+                latest=next((r['details']['deliberation']['after'] for r in reversed(state['rows'])
+                             if 'deliberation' in r.get('details',{})),None)
+                initial={'version':1,'state':self.world.deliberation.config['state'],
+                    'proposals':{pid:{'revision':0,'status':'draft','alternative':None,'terms_hash':None,'known_by':{},
+                                      'reviews':{},'versions':[],'review_history':[],'decision':None}
+                                 for pid in self.world.deliberation.specs}}
+                if state['deliberation'] != (latest or initial): raise ValueError('Deliberation checkpoint differs from actual events')
         # Apply to the existing real subjects only after every validation passed.
         self._observation_buffer = None
         for p, value in state['people'].items():
@@ -1239,6 +1288,11 @@ class CalendarRuntime:
         if staged_provider is not None:
             self.sim.decision_provider = staged_provider
         if self.planning is not None: self.planning.restore(state['goal_planning'])
+        if self.world.social_planner is not None:
+            self.world.social_planner.restore(state['social_planning'])
+            if self.world.deliberation is not None:
+                self.world.deliberation.state=deepcopy(state['deliberation']['state'])
+                self.world.deliberation.records=deepcopy(state['deliberation']['proposals'])
 
     def inputs(self):
         files = {'world': hashlib.sha256(self.world.source.read_bytes()).hexdigest(),
@@ -1273,6 +1327,8 @@ class CalendarRuntime:
         if self.planning is not None:
             header.update(protagonist=self.world.protagonist, planning={'config':self.world.planner.config,
                           'domain':'native_calendar_tasks','selection_mechanism':'bounded_goal_search'})
+        if self.world.social_planner is not None:
+            header['social_planning']={'config':deepcopy(self.world.social_planner.config),'config_hash':digest(self.world.social_planner.config)}
         if self.sim.execution_plan is not None:
             header['execution_plan'] = self.sim.execution_plan.to_dict()
             header['execution_plan_hash'] = self.sim.execution_plan.sha256

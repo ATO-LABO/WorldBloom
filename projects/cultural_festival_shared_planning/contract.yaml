@@ -1,0 +1,419 @@
+version: 3
+calendar:
+  schema_version: 1
+  period:
+    start_date: '2026-10-15'
+    end_date: '2026-10-15'
+  normal:
+    bands:
+    - id: day
+      name: 文化祭
+      start: 08:00
+      end: '17:00'
+      overnight: false
+      interval_minutes: 60
+    weekdays: {}
+    holidays: []
+  specials: []
+timezone: Asia/Tokyo
+start_time: 08:00
+end_time: '17:00'
+travel_minutes:
+  自宅:
+    校門: 10
+  校門:
+    自宅: 10
+    部室: 10
+    教室: 10
+  部室:
+    校門: 10
+    体育館: 10
+    展示室: 10
+    教室: 10
+    実行委員室: 10
+  体育館:
+    部室: 10
+    展示室: 10
+    放送室: 10
+  展示室:
+    部室: 10
+    体育館: 10
+    教室: 10
+  教室:
+    部室: 10
+    展示室: 10
+    校門: 10
+  実行委員室:
+    部室: 10
+  放送室:
+    体育館: 10
+roles:
+  蒼:
+  - 演劇主役
+  - 展示制作
+  - student:蒼
+  紗季:
+  - 演劇進行
+  - student:紗季
+  蓮:
+  - 演劇相手役
+  - student:蓮
+  灯:
+  - 展示制作
+  - 展示受付
+  - student:灯
+  悠:
+  - 実行委員
+  - student:悠
+  実:
+  - 放送
+  - student:実
+tasks:
+  panel-headline:
+    label: P1の見出し取付1枚
+    place: 展示室
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 展示制作
+    dependencies: []
+    resource: panel-table
+    materials_per_unit: {}
+    operation: work
+  panel-cards:
+    label: P1の説明カード4枚取付
+    place: 展示室
+    units: 4
+    minutes_per_unit: 10
+    roles:
+    - 展示制作
+    dependencies: []
+    resource: panel-table
+    materials_per_unit:
+      説明カード: 1
+    operation: work
+  panel-photo:
+    label: 完成P1確認写真1枚
+    place: 展示室
+    units: 1
+    minutes_per_unit: 2
+    roles:
+    - 展示制作
+    dependencies:
+    - panel-headline
+    - panel-cards
+    resource: panel-photo
+    materials_per_unit: {}
+    operation: work
+  photo-handoff:
+    label: 灯へ完成写真1枚手渡し
+    place: 展示室
+    units: 1
+    minutes_per_unit: 2
+    roles:
+    - 展示制作
+    dependencies:
+    - panel-photo
+    resource: photo-handoff
+    materials_per_unit: {}
+    operation: deliver
+  reception-signs:
+    label: 展示受付札3枚
+    place: 展示室
+    units: 3
+    minutes_per_unit: 10
+    roles:
+    - 展示受付
+    dependencies: []
+    resource: reception-signs
+    materials_per_unit:
+      受付札用紙: 1
+    operation: work
+  costume-ready:
+    label: 衣装準備
+    place: 部室
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 演劇主役
+    dependencies: []
+    resource: costume-ready
+    materials_per_unit: {}
+    operation: work
+  practice-ready:
+    label: 骨子習得済み台詞の稽古
+    place: 部室
+    units: 1
+    minutes_per_unit: 30
+    roles:
+    - 演劇主役
+    dependencies: []
+    resource: practice-ready
+    materials_per_unit: {}
+    operation: work
+  sound-ready:
+    label: 音響確認
+    place: 体育館
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 演劇進行
+    dependencies: []
+    resource: sound-ready
+    materials_per_unit: {}
+    operation: work
+  venue-ready:
+    label: 会場利用と案内確認
+    place: 実行委員室
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 実行委員
+    dependencies: []
+    resource: venue-ready
+    materials_per_unit: {}
+    operation: work
+  broadcast-ready:
+    label: 放送案内準備
+    place: 放送室
+    units: 1
+    minutes_per_unit: 20
+    roles:
+    - 放送
+    dependencies:
+    - venue-ready
+    resource: broadcast-ready
+    materials_per_unit: {}
+    operation: work
+  partner-practice-ready:
+    label: 相手役の台詞の稽古
+    place: 部室
+    units: 1
+    minutes_per_unit: 30
+    roles:
+    - 演劇相手役
+    dependencies: []
+    resource: partner-practice
+    materials_per_unit: {}
+    operation: work
+  stage-ao:
+    label: 蒼が開演時刻から待機する（演技内容は模擬しない）
+    place: 体育館
+    units: 1
+    minutes_per_unit: 15
+    roles:
+    - 演劇主役
+    dependencies:
+    - costume-ready
+    - practice-ready
+    resource: stage-ao
+    materials_per_unit: {}
+    operation: work
+    windows:
+    - start:
+        date: '2026-10-15'
+        time: '15:00'
+      end:
+        date: '2026-10-15'
+        time: '15:15'
+  stage-ren:
+    label: 蓮が開演時刻から待機する（演技内容は模擬しない）
+    place: 体育館
+    units: 1
+    minutes_per_unit: 15
+    roles:
+    - 演劇相手役
+    dependencies:
+    - partner-practice-ready
+    resource: stage-ren
+    materials_per_unit: {}
+    operation: work
+    windows:
+    - start:
+        date: '2026-10-15'
+        time: '15:00'
+      end:
+        date: '2026-10-15'
+        time: '15:15'
+  stage-saki:
+    label: 紗季が開演時刻から待機する（演技内容は模擬しない）
+    place: 体育館
+    units: 1
+    minutes_per_unit: 15
+    roles:
+    - 演劇進行
+    dependencies:
+    - sound-ready
+    resource: stage-saki
+    materials_per_unit: {}
+    operation: work
+    windows:
+    - start:
+        date: '2026-10-15'
+        time: '15:00'
+      end:
+        date: '2026-10-15'
+        time: '15:15'
+materials:
+  説明カード: 4
+  受付札用紙: 3
+facility_hours:
+  校門:
+    opens: 08:00
+    closes: '18:00'
+  部室:
+    opens: 08:00
+    closes: '18:00'
+  体育館:
+    opens: 08:00
+    closes: '18:00'
+  展示室:
+    opens: 08:00
+    closes: '18:00'
+  教室:
+    opens: 08:00
+    closes: '18:00'
+  実行委員室:
+    opens: 08:00
+    closes: '18:00'
+  放送室:
+    opens: 08:00
+    closes: '18:00'
+observers:
+- id: play-opening-observation
+  event_id: schedule-3
+  verb: play_opening_observation
+  fields:
+    primary_present:
+      check: at
+      actor: 蒼
+      place: 体育館
+    partner_present:
+      check: at
+      actor: 蓮
+      place: 体育館
+    preparation:
+      group:
+        costume-ready:
+          check: task_complete
+          task_id: costume-ready
+        practice-ready:
+          check: task_complete
+          task_id: practice-ready
+        sound-ready:
+          check: task_complete
+          task_id: sound-ready
+    consent:
+      literal: not_inferred_from_presence
+    performance_started:
+      literal: false
+    performance_internals:
+      literal: unsupported
+appraisal:
+  fulfilled: 0.05
+  unexplained_breach: -0.05
+initial_task_knowledge:
+  蒼:
+  - panel-headline
+  - panel-cards
+  - panel-photo
+  - photo-handoff
+  - reception-signs
+  - costume-ready
+  - practice-ready
+  - sound-ready
+  - venue-ready
+  - broadcast-ready
+  - partner-practice-ready
+  - stage-ao
+  - stage-ren
+  - stage-saki
+  紗季:
+  - panel-headline
+  - panel-cards
+  - panel-photo
+  - photo-handoff
+  - reception-signs
+  - costume-ready
+  - practice-ready
+  - sound-ready
+  - venue-ready
+  - broadcast-ready
+  - partner-practice-ready
+  - stage-ao
+  - stage-ren
+  - stage-saki
+  蓮:
+  - panel-headline
+  - panel-cards
+  - panel-photo
+  - photo-handoff
+  - reception-signs
+  - costume-ready
+  - practice-ready
+  - sound-ready
+  - venue-ready
+  - broadcast-ready
+  - partner-practice-ready
+  - stage-ao
+  - stage-ren
+  - stage-saki
+  灯:
+  - panel-headline
+  - panel-cards
+  - panel-photo
+  - photo-handoff
+  - reception-signs
+  - costume-ready
+  - practice-ready
+  - sound-ready
+  - venue-ready
+  - broadcast-ready
+  - partner-practice-ready
+  - stage-ao
+  - stage-ren
+  - stage-saki
+  悠:
+  - panel-headline
+  - panel-cards
+  - panel-photo
+  - photo-handoff
+  - reception-signs
+  - costume-ready
+  - practice-ready
+  - sound-ready
+  - venue-ready
+  - broadcast-ready
+  - partner-practice-ready
+  - stage-ao
+  - stage-ren
+  - stage-saki
+  実:
+  - panel-headline
+  - panel-cards
+  - panel-photo
+  - photo-handoff
+  - reception-signs
+  - costume-ready
+  - practice-ready
+  - sound-ready
+  - venue-ready
+  - broadcast-ready
+  - partner-practice-ready
+  - stage-ao
+  - stage-ren
+  - stage-saki
+assumptions:
+- 文化祭当日の朝だけを扱う新しい入力。旧3日版と授業の行動列は保存し、この版へ自動移行しない。
+- 人物の性格・初期位置・所持品・初期知識は元の六人を保持。目的の優先順位と操作的定義は仮設定。
+- 初期の約束の提案と双方の了承だけをchoices.jsonで明示。08:45以後の移動・制作・納品・相談・待機は共通計画が選ぶ。
+- 初期の作業進捗0は全員に公開済みという追加仮定。以後の遠隔の作業完了を自動共有しない。
+- 出演の約束の判定対象は準備を整えて15時から15分待機したこと。演技内容や上演成功は判定しない。
+- 灯の「演劇を潰す意図はない」は他者を妨害する目的へ変えず、人物説明として保持。
+- 台詞短縮の相談は共通審議プロトコルで相手から実際の返答を受けることとして定義。承認だけを相談の成功条件にしない。
+- この版の準備担当は衣装・主役稽古=蒼、相手役稽古=蓮、音響=紗季。共同作業の速度合成や作業への協力依頼は追加しない。
+energy:
+  move_per_minute: 0.05
+  work_per_minute: 0.05
+  rest_per_minute: 0.5
+  rest_minutes: 10

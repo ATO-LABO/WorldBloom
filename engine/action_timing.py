@@ -19,16 +19,18 @@ class ActionTiming:
         shape(raw, {'version', 'rules'})
         if type(raw['version']) is not int or raw['version'] != 1:
             raise ValueError('Unsupported action timing version')
-        if not isinstance(raw['rules'], list) or not 1 <= len(raw['rules']) <= 3:
+        if not isinstance(raw['rules'], list) or not 1 <= len(raw['rules']) <= 32:
             raise ValueError('Bounded action timing rules required')
         self.config = deepcopy(raw)
         self.rules = {}
         for rule in raw['rules']:
             shape(rule, {'verb', 'duration', 'interruptible'})
             verb, duration = rule['verb'], rule['duration']
-            if not isinstance(verb, str) or verb not in {'move', 'respond', 'rest'} or verb in self.rules:
+            from engine.social_planning import VERBS as SOCIAL_VERBS
+            if not isinstance(verb, str) or verb not in {'move', 'respond', 'rest'} | SOCIAL_VERBS or verb in self.rules:
                 raise ValueError('Unknown or duplicate timed action provider')
-            if not (type(duration) is int and 1 <= duration <= 32 or verb == 'respond' and duration == 'work_steps'):
+            if not (type(duration) is int and 1 <= duration <= 32 or verb == 'respond' and duration == 'work_steps'
+                    or verb=='await_response' and duration=='protocol_steps'):
                 raise ValueError('Invalid action duration')
             if type(rule['interruptible']) is not bool or verb == 'move' and rule['interruptible']:
                 raise ValueError('Movement needs an intermediate-location model before interruption')
@@ -39,10 +41,13 @@ class ActionTiming:
         self.sequence = 0
 
     def bind(self, world):
-        if world.slot_execution is not None:
+        if world.slot_execution is not None and (getattr(world,'social_planner',None) is None or
+                any(v in {'move','respond','rest'} for v in self.rules)):
             raise ValueError('Action timing rules currently integrate ordinary logical execution only')
         if 'respond' in self.rules and world.responses is None:
             raise ValueError('Timed response provider needs response definitions')
+        if 'await_response' in self.rules and world.social_planner is None:
+            raise ValueError('Reply waits require an explicit social protocol')
 
     def attach(self, simulation):
         self.sim = simulation
@@ -55,7 +60,7 @@ class ActionTiming:
         if not elapsed and pending and (pending['action'].verb, pending['action'].args) == (verb, tuple(args)):
             remaining = max(0, pending['finish'] - (turn - 1))
             return remaining, max(0, pending['cost'] - pending['spent']), remaining
-        duration = duration if rule['duration'] == 'work_steps' else rule['duration'] * (hops if verb == 'move' else 1)
+        duration = duration if rule['duration'] in {'work_steps','protocol_steps'} else rule['duration'] * (hops if verb == 'move' else 1)
         return duration, cost, duration
 
     def prepaid(self, actor, action):
@@ -81,12 +86,18 @@ class ActionTiming:
                 raise ValueError('response_requirements_unavailable')
             duration, cost, _ = self.plan_step(actor, 'respond', action.args, spec['steps'], spec['cost'] * spec['steps'], turn=turn)
             label = spec['label']
-        else:
+        elif action.verb=='rest':
             if action.args: raise ValueError('invalid_rest')
             duration, cost, _ = self.plan_step(actor, 'rest', (), 1, 0, turn=turn)
             label = '休息する'
+        else:
+            social=getattr(world,'social_planner',None)
+            raw=social.wait_duration(world,action.args) if action.verb=='await_response' else 1
+            duration,cost,_=self.plan_step(actor,action.verb,action.args,raw,0,turn=turn)
+            label=(action.meta.get('goal_plan',{}).get('steps') or [{}])[0].get('label',action.verb)
         if actor.stamina < cost: raise ValueError('insufficient_stamina')
-        return {'duration': duration, 'cost': cost, 'label': label, 'interruptible': rule['interruptible']}
+        return {'duration': duration, 'cost': cost, 'label': label, 'interruptible': rule['interruptible'],
+                **({'route':list(path.route)} if action.verb=='move' else {})}
 
     def _reason(self, world, actor, pending):
         action = pending['action']
@@ -131,9 +142,11 @@ class ActionTiming:
         pending = {'id': 'activity-' + str(self.sequence), 'actor': actor.id, 'action': action,
             'origin': actor.zone, 'start': window.start, 'finish': window.finish, 'cursor': window.start,
             'cost': spec['cost'], 'spent': 0.0, 'label': spec['label'], 'interruptible': spec['interruptible']}
+        if 'route' in spec: pending['route']=spec['route']
         reason = self._reason(world, actor, pending)
         if reason:
             details = {'response': {'action': action.args[0], 'reason': reason}} if action.verb == 'respond' else {'reason': reason}
+            if world.social_planner is not None: world.social_planner.after_action(world,actor,action,'failed',details,turn)
             if world.planner is not None: world.planner.after_action(world, actor, action, 'failed', details, turn)
             return 'failed', details, []
         self.lifecycle.start(actor.id, pending, spec['duration'])
@@ -166,9 +179,11 @@ class ActionTiming:
                 try: result, details, markers = sim.verb_engine.execute(actor, action, turn=sim.turn, day=sim.day)
                 finally: self.completing = None
                 sim.verb_engine._update_exhausted(actor)
-                phase = 'completed' if result in {'moved', 'responded', 'rested'} else 'failed'
+                phase = 'failed' if result in {'invalid','failed'} else 'completed'
             if phase != 'progress':
                 self.lifecycle.interrupt(aid); actor.in_transit = False
+                if phase=='failed' and 'social_event' not in details and world.social_planner is not None:
+                    world.social_planner.after_action(world,actor,action,result,details,sim.turn)
                 if phase == 'failed' and world.planner is not None and 'planning' not in details:
                     world.planner.after_action(world, actor, action, result, details, sim.turn)
             details['activity'] = self.record(pending, phase, reason=reason)
