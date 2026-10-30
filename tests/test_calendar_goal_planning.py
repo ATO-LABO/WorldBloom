@@ -157,6 +157,9 @@ class CalendarGoalPlanningTests(unittest.TestCase):
         self.assertTrue(any(r['kind']=='recovered' for group in groups for r in group['events']))
         html=render(explanation)
         self.assertIn('回復した体力',html); self.assertIn('2026-11-01',html)
+        self.assertIn('所要見込み 10分',html)
+        self.assertIn('所要見込み 2分',html)
+        self.assertNotIn('所要見込み 10時点',html)
 
     def test_personal_priority_selects_work_for_own_purpose_over_other_task(self):
         self.world['concerns']['conditions'].append({'id':'other_done','label':'別の仕事を終える','mode':'achieve','visibility':'observed',
