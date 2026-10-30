@@ -277,7 +277,7 @@ def render(explanation, *, instance='planning'):
                 body+='</ul></div>'
             if event.get('cause'):
                 cause = event['cause']
-                body += '<p class="ui-notice ui-notice--warning">見直しのきっかけ：時点 ' + e(cause['turn']) + 'で「' + e(cause['action'])
+                body += '<p class="ui-notice ui-notice--warning">見直しのきっかけ：' + e(point_label(explanation,cause['turn'])) + 'で「' + e(cause['action'])
                 body += ('」を断られた。' if cause.get('kind') == 'refused' else '」に失敗した。') + '</p>'
             elif event['kind'] == 'failure':
                 body += '<p class="ui-notice ui-notice--warning">「' + e(event['action']) + '」を実行できなかった。最終目的の判定とは分けて確認します。</p>'
@@ -307,8 +307,9 @@ def render(explanation, *, instance='planning'):
             body += '<p class="pw-at-point">この時点の目的の判定（世界の実態）：<strong>' + e(STATUS.get(actual.get('status'), '不明')) + '</strong></p>'
             if plan.get('steps'):
                 body += '<details class="pw-route"><summary>移動を含む全手順を確認（' + e(len(plan['steps'])) + '段階）</summary><ol>'
+                duration_unit = '分' if explanation.get('calendar') or plan.get('time_unit') == 'minute' else '時点'
                 for step in plan['steps']:
-                    body += '<li>' + e(step_label(step)) + ' ／ 所要見込み ' + e(step.get('duration', '?')) + ('分' if explanation.get('calendar') else '時点')+'</li>'
+                    body += '<li>' + e(step_label(step)) + ' ／ 所要見込み ' + e(step.get('duration', '?')) + duration_unit + '</li>'
                 body += '</ol></details>'
             body += '<p class="pw-caption">計画は行動を選んだ時点の見込みです。最後の判定と、この場面で本人が知っていた情報は異なる場合があります。</p>'
             body += _source(explanation, event) + '</article>'
