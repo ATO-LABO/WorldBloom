@@ -782,6 +782,10 @@ class World:
         if 'planning' in definition:
             from engine.goal_planner import GoalPlanner
             self.planner = GoalPlanner(definition['planning'])
+        self.native_planning = None
+        if 'native_planning' in definition:
+            from engine.native_planning import NativePlanning
+            self.native_planning = NativePlanning(definition['native_planning'])
         self.action_timing = None
         if 'action_timing' in definition:
             from engine.action_timing import ActionTiming
@@ -1590,6 +1594,8 @@ class World:
             self.action_timing.bind(self)
         if self.social_planner is not None:
             self.social_planner.bind(self)
+        if self.native_planning is not None:
+            self.native_planning.bind(self)
 
         from engine.subject import Belief
 
@@ -2150,6 +2156,10 @@ class World:
                 "confront_success": (
                     lambda actor, fact: (actor, fact)
                     in self.confront_successes
+                ),
+                "objective_achieved": lambda condition: (
+                    self.goal_rules is not None
+                    and self.goal_rules.world_records.get(condition, {}).get('status') == 'achieved'
                 ),
                 "proposal_decided": lambda proposal, status: (
                     self.deliberation is not None

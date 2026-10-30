@@ -60,6 +60,9 @@ class GoalPlanner:
     def _visible(self, world, actor):
         if getattr(world, 'planning_domain', None) is not None:
             return world.planning_domain.visible(actor)
+        return self._ordinary_visible(world,actor)
+
+    def _ordinary_visible(self, world, actor):
         values = {('zone', actor.id): actor.zone}
         for person in ([] if getattr(actor, 'in_transit', False) else world.present_subjects(actor.zone, include_downed=False)):
             values[('zone', person.id)] = person.zone
@@ -169,9 +172,10 @@ class GoalPlanner:
         return needs
 
     def _steps(self, world, actor, root, state, turn, elapsed, spent):
+        native=getattr(world,'native_planning',None)
         if getattr(world, 'planning_domain', None) is not None:
             yield from world.planning_domain.steps(actor, root, state, turn, elapsed, spent)
-            return
+            if native is None:return
         from engine.phase2 import available_verbs
         from engine.objective_actions import offered_assets
         shadow = copy(actor)
@@ -180,6 +184,7 @@ class GoalPlanner:
         shadow.zone = state[('zone', actor.id)]
         shadow.stamina = max(0, actor.stamina - spent)
         point = turn + elapsed
+        if native is not None:shadow=native._shadow(actor,state,spent,point)
         day = (max(1, point) - 1) // len(world.slots) + 1
         allowed = available_verbs(world, shadow, turn=point, day=day)
         negatives = self.memory.get(actor.id, {}).get('negative', set())
@@ -192,14 +197,14 @@ class GoalPlanner:
         social=getattr(world,'social_planner',None)
         if social is not None: yield from social.steps(world,actor,root,state,turn,elapsed,spent)
         timing = world.action_timing
-        if timing is not None and 'rest' in timing.rules and 'rest' in allowed and world.genre_allows('rest'):
+        if native is None and timing is not None and 'rest' in timing.rules and 'rest' in allowed and world.genre_allows('rest'):
             recovery = min(actor.stamina_max - shadow.stamina, actor.stamina_recover)
             if recovery > 1e-9:
                 duration, _, completion = step_timing(world, actor, 'rest', (), 1, 0, turn=turn, elapsed=elapsed)
                 yield {'verb': 'rest', 'args': [], 'label': '休息する', 'duration': duration,
                        'completion_delay': completion, 'cost': 0, 'recovery': recovery,
                        'effects': [], 'assumptions': [], 'meta': {}}
-        if 'move' in allowed and world.genre_allows('move'):
+        if native is None and 'move' in allowed and world.genre_allows('move'):
             excluded = world._excluded_zones(shadow)
             actual_paths = world.reachable_paths(shadow,projection={'effects':self.effects(state)}) if world.action_timing is not None else None
             for route in world.routes.get(shadow.zone, ()):
@@ -299,6 +304,7 @@ class GoalPlanner:
         commitments = world.concerns.commitments_for(world, actor.id)
         ceiling = tuple(sum(c['priority'] == p for c in commitments) for p in range(10, 0, -1))
         best_plan = None; best_rank = None
+        information_plan = None
         serial = itertools.count()
         queue = [(0, next(serial), 0, 0.0, start, [], [])]
         visited = {}; expanded = 0; queued = 1; truncated = False
@@ -310,6 +316,12 @@ class GoalPlanner:
             if any(all(a <= b for a, b in zip(old, budget)) for old in previous): continue
             previous[:] = [old for old in previous if not all(a <= b for a, b in zip(budget, old))]
             previous.append(budget); expanded += 1
+            if (getattr(world,'native_planning',None) is not None and steps
+                    and steps[-1]['meta'].get('native_information') and information_plan is None):
+                information_plan = {'status':'seeking_information','root':root,'steps':steps,'eta':elapsed,
+                    'assumptions':assumptions,'observation_site':steps[-1]['meta']['observation_site'],
+                    'intermediate_tasks':[s['label'] for s in steps[:-1]], 'expanded':expanded,
+                    'max_nodes':self.config['max_nodes']}
             if steps:
                 forecast = world.goal_rules.predict(world, root, actor=actor.id, projection={'effects': self.effects(state)})
                 if forecast['success']['state'] == 'true' and forecast['failure']['state'] == 'false':
@@ -326,6 +338,8 @@ class GoalPlanner:
                         if best_rank is None or rank > best_rank:
                             best_plan, best_rank = candidate, rank
                         if vector == ceiling and not assumptions:
+                            return candidate
+                        if getattr(world,'native_planning',None) is not None and vector == ceiling:
                             return candidate
                     continue
             if len(steps) >= self.config['max_depth']:
@@ -349,17 +363,22 @@ class GoalPlanner:
                 if queued >= self.config['max_nodes']:
                     truncated = True
                     continue
-                heapq.heappush(queue, (elapsed + duration + 3 * len(pending), next(serial),
+                domain=getattr(world,'native_planning',None)
+                estimate=0 if domain is None else 3*domain.heuristic(actor,root,future)
+                heapq.heappush(queue, (elapsed + duration + 3 * len(pending) + estimate, next(serial),
                     elapsed + duration, spent + step['cost'] - step.get('recovery', 0), future, [*steps, step], pending))
                 queued += 1
         if best_plan is not None:
             best_plan.update(expanded=expanded, search_truncated=bool(queue or truncated))
             return best_plan
+        if information_plan is not None:
+            information_plan.update(expanded=expanded,search_truncated=bool(queue or truncated))
+            return information_plan
         return {'status': 'search_limit' if queue or truncated else 'no_known_plan', 'root': root, 'steps': [],
                 'expanded': expanded, 'max_nodes': self.config['max_nodes']}
 
     def _pending(self, world, actor, root, turn):
-        if getattr(world, 'planning_domain', None) is not None: return None
+        if getattr(world, 'planning_domain', None) is not None and getattr(world,'native_planning',None) is None:return None
         for (claimant, holder), offer in sorted(world.offers.items()):
             if claimant == actor.id and offer.get('planning_root') == root and self.offer_valid(world, actor, offer, turn):
                 return holder
@@ -368,13 +387,14 @@ class GoalPlanner:
     def _information(self, world, actor, root, turn, day=1):
         """Travel to declared observation sites without reading their contents."""
         domain = getattr(world, 'planning_domain', None)
-        if domain is not None:
+        if domain is not None and getattr(world,'native_planning',None) is None:
             return domain.information(actor, root, turn) if hasattr(domain, 'information') else None
         from engine.phase2 import available_verbs
         if 'move' not in available_verbs(world, actor, turn=turn, day=day) or not world.genre_allows('move'):
             return None
         _, needed = self._relevant(world, actor, root)
         zones = {zone for kind, *args in needed if kind == 'state' and args[0] in world.responses.locations
+                 and not (getattr(world,'native_planning',None) and world.native_planning.handles(('state',args[0])))
                  for zone in world.responses.observation_zones(args[0])}
         memory = self.memory.get(actor.id, {})
         epoch = memory.get('failures', 0)
@@ -476,7 +496,7 @@ class GoalPlanner:
             valid=bool(plan and self.active_goal(world,actor,root,turn) and
                        (plan['steps'][0]['verb'],tuple(plan['steps'][0]['args']))==(action.verb,action.args))
             return {'excluded':[] if valid else ['judgment_request_changed'],'plan':plan}
-        if action.meta.get('goal_plan', {}).get('status') == 'seeking_information':
+        if action.meta.get('goal_plan', {}).get('status') == 'seeking_information' and not action.meta['goal_plan'].get('steps'):
             info = self._information(world, actor, root, turn, (turn - 1) // len(world.slots) + 1)
             valid = self.active_goal(world, actor, root, turn) and info and action.verb == 'move' and action.args == (info['next_zone'],)
             return {'excluded': [] if valid else ['observation_route_changed'], 'plan': info}
@@ -486,7 +506,7 @@ class GoalPlanner:
         if action.verb == 'negotiate' and any(action.meta.get(k) != plan['steps'][0]['meta'][k]
                                              for k in ('objective', 'objective_goal', 'planning_root')):
             return {'excluded': ['acquisition_binding_mismatch'], 'plan': plan}
-        return {'excluded': [], 'plan': plan, 'forecast': plan['forecast'], 'condition': root,
+        return {'excluded': [], 'plan': plan, 'forecast': plan.get('forecast'), 'condition': root,
                 'consent_required': action.verb == 'negotiate'}
 
     def offer_valid(self, world, actor, offer, turn):
@@ -516,7 +536,7 @@ class GoalPlanner:
         memory['known'].update(visible)
         for coord in visible:
             memory['negative'] = {n for n in memory['negative'] if n[0] != coord}
-        failed = result in {'failed', 'invalid', 'refused'}
+        failed = result in {'failed', 'invalid', 'refused', 'lost', 'misjudged'}
         if failed:
             memory['failures'] = memory.get('failures', 0) + 1
         if failed and action.verb == 'respond' and action.args[0] in world.responses.actions:
