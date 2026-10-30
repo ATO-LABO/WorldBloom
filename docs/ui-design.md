@@ -127,3 +127,12 @@ for hierarchy, footer clipping and overflow. Exercise submit/review/cancel/adopt
 with fixed responses, manual creation in a temporary repository, settings tabs
 and save/reset using fake local services. Never generate with a real provider or
 edit production credentials just to verify design.
+
+Recorded planning uses a dedicated, optional candidate tab. Its content-specific
+layout has an actor/objective selector, author-facing final verdict, milestone
+list and selected historical scene. Desktop comparisons use two task columns;
+narrow layouts stack them and keep timeline scrolling local. Candidate metrics
+are hidden while this full-width tab is active. This is an information-layout
+choice, not another style/token owner. Old per-decision planning disclosures
+start collapsed. Selection and route expansion survive tab switches; switching
+actor/objective retains that group's selected scene independently.

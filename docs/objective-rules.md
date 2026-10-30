@@ -2,6 +2,8 @@
 
 For existing negotiation and transfer verbs, see
 [objective transactions](objective-transactions.md).
+For opt-in automatic prerequisite discovery and replanning, see
+[goal planning](goal-planning.md).
 
 Character YAML continues to own `commitments` (condition ID, priority and
 requiredness). World YAML owns instantaneous `concerns` predicates, causal

@@ -769,6 +769,10 @@ class World:
         if "goal_rules" in definition:
             from engine.objectives import Objectives
             self.goal_rules = Objectives(definition["goal_rules"])
+        self.planner = None
+        if 'planning' in definition:
+            from engine.goal_planner import GoalPlanner
+            self.planner = GoalPlanner(definition['planning'])
 
     @classmethod
     def from_yaml(
@@ -1563,6 +1567,8 @@ class World:
             self.responses.bind(self)
         if self.goal_rules is not None:
             self.goal_rules.bind(self)
+        if self.planner is not None:
+            self.planner.bind(self)
 
         from engine.subject import Belief
 

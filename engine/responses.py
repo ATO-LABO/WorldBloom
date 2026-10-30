@@ -147,7 +147,7 @@ class Responses:
             if authorization and (world.deliberation is None or authorization['proposal'] not in world.deliberation.specs):
                 raise ValueError('Unknown implementation authorization')
             proactive = self.config['version'] == 2 and spec['signal'] is None
-            if proactive and (world.goal_rules is None or spec['condition'] not in world.goal_rules.definitions):
+            if proactive and world.planner is None and (world.goal_rules is None or spec['condition'] not in world.goal_rules.definitions):
                 raise ValueError('Proactive actions require an explicit objective contract')
             if ((not proactive and (spec['signal'] not in self.signals
                     or spec['condition'] != self.signals[spec['signal']]['condition']))
@@ -280,7 +280,11 @@ class Responses:
                     self._observe(actor, fact, turn, 'direct')
         for aid, plan in list(self.active.items()):
             spec = self.actions[plan['action']]
-            view = self._motivation(world, world.subjects[aid], spec, turn)
+            if plan.get('planning_root') and world.planner is not None:
+                view = {'status': 'objective' if world.planner.active_goal(world, world.subjects[aid], plan['planning_root'], turn)
+                        else 'objective_terminal'}
+            else:
+                view = self._motivation(world, world.subjects[aid], spec, turn)
             if view['status'] not in {'danger', 'objective'} or world.subjects[aid].vitality not in {'alive', 'revived'}:
                 self.active.pop(aid); self.progress.pop((aid, spec['id']), None)
                 markers.append({'verb': 'response_plan_cancelled', 'subject': aid,
@@ -313,6 +317,8 @@ class Responses:
     def _motivation(self, world, actor, spec, turn):
         if spec['signal'] is not None:
             return self.view(world, actor, spec['signal'], turn)
+        if world.goal_rules is None or spec['condition'] not in world.goal_rules.definitions:
+            return {'status': 'no_objective', 'confidence': 0}
         own = world.goal_rules.actor_view(world, actor.id, spec['condition'], turn)
         status = 'objective' if own['status'] not in {'achieved', 'failed'} else 'objective_terminal'
         return {'status': status, 'confidence': 1.0, 'source': 'own_commitment', 'objective': own}
@@ -399,6 +405,7 @@ class Responses:
         from engine.phase2 import available_verbs
         allowed = available_verbs(world, actor, turn=turn, day=day)
         if actor.vitality not in {'alive', 'revived'}: return []
+        if world.planner is not None and world.planner.owns(actor): return []
         options = self.options(world, actor, turn, day)
         feasible = [o for o in options if not o['excluded']]
         best = max((o['priority'] for o in feasible), default=0)
@@ -499,17 +506,24 @@ class Responses:
             return 'answered', {'response': {'request': rid, 'answer': answer, 'assessment': option}}, []
         if action.verb != 'respond' or len(action.args) != 1 or action.args[0] not in self.actions:
             return invalid('unknown_response_action')
-        spec = self.actions[action.args[0]]; option = self._option(world, actor, spec, turn, day)
+        spec = self.actions[action.args[0]]
+        option = (world.planner.validate(world, actor, action, turn)
+                  if world.planner is not None and action.meta.get('goal_plan')
+                  else self._option(world, actor, spec, turn, day))
         if option['excluded']: return invalid(','.join(option['excluded']))
         if actor.zone != spec['zone']: return invalid('not_at_response_site')
         if any(self.state[k] != v for k, v in spec['preconditions'].items()):
             self.progress.pop((actor.id, spec['id']), None)
+            if action.meta.get('goal_plan'):
+                self.active.pop(actor.id, None)
             return 'failed', {'response': {'action': spec['id'], 'reason': 'actual_preconditions_changed', 'assessment': option}}, []
         actor.change_stamina(-spec['cost'])
         key = (actor.id, spec['id'])
         progress = self.progress.get(key, 0) + 1
         self.progress[key] = progress
         self.active[actor.id] = {'action': spec['id'], 'since': turn}
+        if action.meta.get('goal_plan'):
+            self.active[actor.id]['planning_root'] = action.meta['goal_plan']['root']
         details = {'action': spec['id'], 'label': spec['label'], 'progress': progress, 'steps': spec['steps'],
                    'assessment': option, 'effects': []}
         if progress < spec['steps']: return 'working', {'response': details}, []

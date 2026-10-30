@@ -2,7 +2,7 @@
 import json
 from types import SimpleNamespace
 from hashlib import sha256
-from viewer import pages, data, reader_ui, explanation_ui
+from viewer import pages, data, reader_ui, explanation_ui, planning_view
 
 E, U = pages._escape, pages._url_segment
 
@@ -20,10 +20,13 @@ def heading(title, back, actions="", badge=""):
     return f'<header class="ux-heading"><div>{back}<h1>{E(title)} {badge}</h1></div><nav>{actions}</nav></header>'
 
 
-def tabs():
+def tabs(*, planning=False):
+    entries = [("story", "物語"), ("reason", "選択と根拠")]
+    if planning: entries.append(("plan", "目的と計画"))
+    entries.append(("data", "実験データ"))
     return '<nav class="ux-tabs" role="tablist" aria-label="表示する情報">'+''.join(
         f'<button type="button" role="tab" id="ux-tab-{key}" data-ux-tab="{key}" aria-controls="ux-panel-{key}" aria-selected="{str(key=="story").lower()}" tabindex="{0 if key=="story" else -1}">{label}</button>'
-        for key,label in (("story","物語"),("reason","選択と根拠"),("data","実験データ")))+'</nav>'
+        for key,label in entries)+'</nav>'
 
 
 def panel(key, body):
@@ -53,6 +56,7 @@ def metrics(model, cell):
 
 
 def candidate(repo, name, cell, model, story, reason, technical, nav_links, *, job_store=None):
+    planning = planning_view.render(model.get('explanation') or {}, instance=name + '/' + cell)
     base=f'/exp/{U(name)}/cell/{U(cell)}'; grid=f'/exp/{U(name)}'
     title, prose, label = summary(model,cell)
     binding=None; item=None; rid=None
@@ -91,11 +95,12 @@ def candidate(repo, name, cell, model, story, reason, technical, nav_links, *, j
         decision='<p class="ux-muted">閲覧専用：保存された物語と記録を表示しています。</p>'
     body='<div class="ux-shell ux-candidate" data-reading'+(f' data-candidate-binding="{E(json.dumps(binding))}"' if binding else '')+'>'
     body+=heading('候補の物語を読む',link(grid,'← 候補一覧へ'),' '.join(nav_links))
-    body+='<div class="ux-columns"><article class="ux-reading"><h2>'+E(title)+'</h2>'+tabs()+'<div class="ux-scroll">'
-    body+=panel('story',synopsis+flow)+panel('reason',reason)+panel('data',technical)+'</div>'+decision+'</article>'
+    body+='<div class="ux-columns"><article class="ux-reading"><h2>'+E(title)+'</h2>'+tabs(planning=bool(planning))+'<div class="ux-scroll">'
+    body+=panel('story',synopsis+flow)+panel('reason',reason)+(panel('plan',planning) if planning else '')+panel('data',technical)+'</div>'+decision+'</article>'
     body+='<aside class="ux-aside ux-scroll"><h2>この候補の記録</h2>'+metrics(model,cell)+'<p class="ux-muted">品質は実験の評価値です。物語の読みやすさとは別に確認してください。</p><div class="ux-links">'+link(base+'/lineage','転機と系譜を見る →')+link(raw,'原記録を確認 →')+'</div></aside></div>'
     body+=('<footer class="ux-footer"><span>保存された候補を表示しています</span>'+link('/selected?run='+U(rid),'採用候補を確認 →','ux-primary')) if binding else ('<footer class="ux-footer"><span>閲覧専用</span>'+link(grid,'格子に戻る →'))
-    return doc('候補の物語を読む',body+'</footer></div>',name,job_store=job_store,output_run=rid,phases=data.phase_status(repo,name,job_store=job_store))
+    return doc('候補の物語を読む',body+'</footer></div>',name,job_store=job_store,output_run=rid,phases=data.phase_status(repo,name,job_store=job_store),
+        stylesheets=('planning-workspace.css',) if planning else (), scripts=('planning-workspace.js',) if planning else ())
 
 
 def grid(repo, name, *, job_store=None):

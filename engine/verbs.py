@@ -89,6 +89,8 @@ class VerbEngine:
         )
         if handler is None:
             return "invalid", {"reason": "unknown_verb"}, []
+        if self.world.planner is not None:
+            self.world.planner.before_action(self.world, actor)
 
         if (self.world.action_graph_enabled and action.args
                 and action.verb not in DELIBERATION_VERBS | (RESPONSE_VERBS - {'request_response'})):
@@ -128,6 +130,10 @@ class VerbEngine:
 
         from engine.objective_actions import review_transaction, enabled as objective_actions_enabled
         objective_choice = None
+        if action.verb == 'move' and action.meta.get('goal_plan') and self.world.planner is not None:
+            validation = self.world.planner.validate(self.world, actor, action, turn)
+            if validation['excluded']:
+                return 'invalid', {'reason': 'plan_no_longer_justified', 'planning_validation': validation}, []
         if action.verb in {'negotiate', 'concede', 'give_item'}:
             if objective_actions_enabled(self.world, actor) and (
                     action.verb not in available_verbs(self.world, actor, turn=turn, day=day)
@@ -153,6 +159,8 @@ class VerbEngine:
             details['objective_choice'] = action.meta['objective_choice']
         if self.world.responses is not None:
             self.world.responses.after_action(self.world, actor, action, result, details, turn)
+        if self.world.planner is not None:
+            self.world.planner.after_action(self.world, actor, action, result, details, turn)
         if self.world.goal_rules is not None:
             markers.extend(self.world.goal_rules.record(self.world, turn))
             details['objective_outcomes'] = self.world.goal_rules.report(self.world)
@@ -1581,7 +1589,10 @@ class VerbEngine:
         holder = self._target(actor, action)
         from engine.objective_actions import item_goal, offered_assets
         cid = action.meta.get('objective_goal')
-        objective = item_goal(self.world, actor, cid, turn) if cid is not None else actor.goal.target
+        if self.world.planner is not None and action.meta.get('planning_root'):
+            objective = action.meta.get('objective')
+        else:
+            objective = item_goal(self.world, actor, cid, turn) if cid is not None else actor.goal.target
         if holder is None:
             return "invalid", {"reason": "target_not_present"}, []
         if (
@@ -1599,6 +1610,9 @@ class VerbEngine:
         }
         if cid is not None:
             self.world.offers[(actor.id, holder.id)].update(objective_goal=cid, status='pending')
+        if action.meta.get('planning_root'):
+            self.world.offers[(actor.id, holder.id)]['planning_root'] = action.meta['planning_root']
+            self.world.offers[(actor.id, holder.id)]['planning_stock'] = self.world.planner.view(self.world, actor).get(('inventory', holder.id, objective))
         self.world.relations.change(
             holder.id,
             actor.id,
@@ -1676,7 +1690,9 @@ class VerbEngine:
             from engine.objective_actions import settlement_effects, assess
             payment = dict(raw_assets) if mode == 'trade' else {}
             effects = settlement_effects(self.world, claimant, claimant, actor, objective, payment)
-            consent = assess(self.world, claimant, effects, turn, condition=offer['objective_goal'])
+            consent = (self.world.planner.consent(self.world, claimant, offer, effects, turn)
+                       if offer.get('planning_root') and self.world.planner is not None else
+                       assess(self.world, claimant, effects, turn, condition=offer['objective_goal']))
             if consent['excluded']:
                 offer['status'] = 'refused'
                 return 'refused', {'claimant': claimant.id, 'objective': objective,

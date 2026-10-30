@@ -1927,6 +1927,8 @@ def candidates(
     weighted = augment_and_rank(world, subject,
         [(a, w) for a, w in weighted if a.verb in allowed_verbs and world.genre_allows(a.verb)],
         present, int(sim.turn), allowed_verbs, int(sim.day))
+    if world.planner is not None and world.planner.owns(subject):
+        weighted.extend(world.planner.candidates(world, subject, int(sim.turn), int(sim.day)))
 
     return sorted(
         (

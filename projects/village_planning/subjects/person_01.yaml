@@ -1,0 +1,64 @@
+{
+  "id": "桃太郎",
+  "description": "防柵の完成を目指す桃太郎",
+  "personality": "住民の安全を重視し、準備を欠かさない",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "村",
+      "山の貯木場",
+      "川辺",
+      "下流",
+      "商店"
+    ],
+    "entry": "村"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "negotiate"
+  ],
+  "beliefs": {
+    "battery_stored": {
+      "value": "true",
+      "confidence": 1
+    }
+  },
+  "goal": {},
+  "inventory": {
+    "彫り物": 1
+  },
+  "stamina": {
+    "max": 50,
+    "current": 50,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "beacon_sent",
+      "priority": 10,
+      "required": true
+    },
+    {
+      "condition": "ship_safe",
+      "priority": 9,
+      "required": true
+    },
+    {
+      "condition": "tool_retained",
+      "priority": 3,
+      "required": false
+    }
+  ],
+  "knowledge": [
+    "flight_manual"
+  ]
+}

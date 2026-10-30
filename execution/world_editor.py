@@ -101,6 +101,8 @@ def save(store, ident, body):
         "goal-rules-check": {"definition"},
         "responses": {"definition"},
         "responses-check": {"definition"},
+        "planning": {"definition"},
+        "planning-check": {"definition"},
     }
     if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict):
         _bad("values", "編集項目を確認してください")
@@ -117,7 +119,7 @@ def save(store, ident, body):
         names = [z if isinstance(z, str) else z["name"] for z in zones]
         people = [(rel, p) for rel, p in files.items() if rel != "world.yaml"]
         rel, updated = "world.yaml", deepcopy(world)
-        if operation in {"person-commitments","concerns","concerns-check","responses","responses-check","goal-rules","goal-rules-check"}:
+        if operation in {"person-commitments","concerns","concerns-check","responses","responses-check","goal-rules","goal-rules-check","planning","planning-check"}:
             from engine.world import World
             from engine.subject import Subject
             try:
@@ -130,7 +132,8 @@ def save(store, ident, body):
                     matches[0]['commitments'] = validate_commitments(values['commitments'])
                     section = 'commitments'
                 else:
-                    section = 'goal_rules' if operation.startswith('goal-rules') else 'responses' if operation.startswith('responses') else 'concerns'
+                    section = ('goal_rules' if operation.startswith('goal-rules') else 'responses' if operation.startswith('responses')
+                               else 'planning' if operation.startswith('planning') else 'concerns')
                     definition = values['definition']
                     if definition is None:
                         candidate['world.yaml'].pop(section, None)
@@ -160,6 +163,8 @@ def save(store, ident, body):
                         _bad('goal_rules', '参照する条件を「状態・条件の定義」で確認してください')
                 _bad('commitments' if operation == 'person-commitments' else operation.split('-')[0], '条件・対処・人物の設定を確認してください。'+str(error))
             if operation.endswith('-check'):
+                if section == 'planning':
+                    return {'valid':True,'actors':len(runtime.planner.config['actors']) if runtime.planner else 0}
                 if section == 'goal_rules':
                     return {'valid':True,'definitions':len(runtime.goal_rules.definitions) if runtime.goal_rules else 0}
                 if section == 'responses':

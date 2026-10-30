@@ -1,0 +1,428 @@
+{
+  "name": "失われた電池と救難信号の再計画",
+  "overview": "通信士は救難信号を送ることだけを目的に、必要な電池の回収手順を組み立てる。途中で電池が流出し、本人が回収の失敗を知った後に手段を探し直す。",
+  "initial_story": "通信士は操舵室にいる。保管庫の電池を回収できると考えているが、途中で流出事故が起こる。",
+  "time": {
+    "days": 3,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6",
+      "時点7",
+      "時点8"
+    ]
+  },
+  "protagonist": "通信士",
+  "antagonist": "補給係",
+  "zones": [
+    {
+      "name": "操舵室"
+    },
+    {
+      "name": "保管庫"
+    },
+    {
+      "name": "観測室"
+    },
+    {
+      "name": "船外"
+    },
+    {
+      "name": "補給室"
+    },
+    {
+      "name": "航行管制"
+    }
+  ],
+  "routes": {
+    "操舵室": [
+      {
+        "to": "保管庫",
+        "cost": 1
+      }
+    ],
+    "保管庫": [
+      {
+        "to": "操舵室",
+        "cost": 1
+      },
+      {
+        "to": "観測室",
+        "cost": 1
+      },
+      {
+        "to": "補給室",
+        "cost": 1
+      }
+    ],
+    "観測室": [
+      {
+        "to": "保管庫",
+        "cost": 1
+      },
+      {
+        "to": "船外",
+        "cost": 1
+      }
+    ],
+    "船外": [
+      {
+        "to": "観測室",
+        "cost": 1
+      }
+    ],
+    "補給室": [
+      {
+        "to": "保管庫",
+        "cost": 1
+      }
+    ],
+    "航行管制": []
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "items": [
+    {
+      "name": "予備電池"
+    },
+    {
+      "name": "修理工具",
+      "lootable": true,
+      "modifier": {
+        "id": "craft_value",
+        "base": 2
+      }
+    },
+    {
+      "name": "繋留索"
+    }
+  ],
+  "facts": [
+    {
+      "id": "flight_manual",
+      "sources": []
+    },
+    {
+      "id": "battery_location",
+      "sources": []
+    }
+  ],
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "beacon_sent",
+        "label": "救難信号を送る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "beacon",
+          "equals": "sent"
+        }
+      },
+      {
+        "id": "battery_owned",
+        "label": "送信用の電池を持つ",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "通信士",
+          "item": "予備電池",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "battery_stored",
+        "label": "電池は保管庫にある",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "battery",
+          "equals": "stored"
+        }
+      },
+      {
+        "id": "ship_safe",
+        "label": "船の安全を損なわない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "safety",
+          "equals": "safe"
+        }
+      },
+      {
+        "id": "stock_battery",
+        "label": "補給係が予備電池を持つ",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "inventory",
+          "actor": "補給係",
+          "item": "予備電池",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "keeper_paid",
+        "label": "補給係が修理工具を得る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "補給係",
+          "item": "修理工具",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "supply_station",
+        "label": "補給係が補給室にいる",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "zone",
+          "actor": "補給係",
+          "equals": "補給室"
+        }
+      },
+      {
+        "id": "tool_retained",
+        "label": "通信士が修理工具を保つ",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "通信士",
+          "item": "修理工具",
+          "minimum": 1
+        }
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "beacon_sent",
+        "success": {
+          "condition": "beacon_sent"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 20
+        }
+      },
+      {
+        "condition": "keeper_paid",
+        "success": {
+          "condition": "keeper_paid"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 20
+        }
+      }
+    ]
+  },
+  "responses": {
+    "version": 2,
+    "state": {
+      "battery": "stored",
+      "beacon": "unsent",
+      "safety": "safe"
+    },
+    "locations": {
+      "battery": "航行管制",
+      "beacon": "操舵室",
+      "safety": [
+        "操舵室",
+        "保管庫",
+        "観測室",
+        "船外",
+        "補給室",
+        "航行管制"
+      ]
+    },
+    "signals": [],
+    "actions": [
+      {
+        "id": "retrieve_store",
+        "label": "保管庫で電池を回収する",
+        "condition": "battery_owned",
+        "signal": null,
+        "zone": "保管庫",
+        "actors": [
+          "通信士"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 3,
+        "preconditions": {
+          "battery": "stored"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "通信士",
+            "item": "予備電池",
+            "value": 1
+          },
+          {
+            "kind": "state",
+            "key": "battery",
+            "value": "recovered"
+          }
+        ]
+      },
+      {
+        "id": "scan_debris",
+        "label": "流出した電池の位置を捜索する",
+        "condition": "battery_stored",
+        "signal": null,
+        "zone": "観測室",
+        "actors": [
+          "通信士"
+        ],
+        "requires": [
+          "flight_manual"
+        ],
+        "items": {},
+        "cost": 2,
+        "steps": 2,
+        "preconditions": {
+          "battery": "adrift"
+        },
+        "effects": [
+          {
+            "kind": "knowledge",
+            "actor": "通信士",
+            "fact": "battery_location",
+            "value": true
+          },
+          {
+            "kind": "state",
+            "key": "battery",
+            "value": "located"
+          }
+        ]
+      },
+      {
+        "id": "recover_space",
+        "label": "位置の判明した電池を船外で回収する",
+        "condition": "battery_owned",
+        "signal": null,
+        "zone": "船外",
+        "actors": [
+          "通信士"
+        ],
+        "requires": [
+          "battery_location"
+        ],
+        "items": {
+          "繋留索": 1
+        },
+        "cost": 2,
+        "steps": 2,
+        "preconditions": {
+          "battery": "located"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "通信士",
+            "item": "予備電池",
+            "value": 1
+          },
+          {
+            "kind": "state",
+            "key": "battery",
+            "value": "recovered"
+          }
+        ]
+      },
+      {
+        "id": "send_beacon",
+        "label": "電池を消費して救難信号を送る",
+        "condition": "beacon_sent",
+        "signal": null,
+        "zone": "操舵室",
+        "actors": [
+          "通信士"
+        ],
+        "requires": [],
+        "items": {
+          "予備電池": 1
+        },
+        "cost": 1,
+        "steps": 1,
+        "preconditions": {
+          "beacon": "unsent"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "通信士",
+            "item": "予備電池",
+            "value": 0
+          },
+          {
+            "kind": "state",
+            "key": "beacon",
+            "value": "sent"
+          }
+        ]
+      }
+    ],
+    "channels": [],
+    "events": [
+      {
+        "id": "battery_accident",
+        "turn": 3,
+        "unless": {
+          "battery": "recovered"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "battery",
+            "value": "adrift"
+          }
+        ]
+      }
+    ],
+    "windows": []
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 24",
+      "label": "再計画の観測終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": [],
+  "planning": {
+    "version": 1,
+    "actors": [
+      "通信士"
+    ],
+    "max_depth": 10,
+    "max_nodes": 512
+  }
+}
