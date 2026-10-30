@@ -1,0 +1,2165 @@
+{
+  "ordinary_runs": 18,
+  "ga": false,
+  "external_calls": 0,
+  "narration": false,
+  "scope": "Mobile declared companions only; other supporting actors retain legacy decisions.",
+  "results": [
+    {
+      "source": "momotaro",
+      "edition": "protagonist",
+      "seed": 0,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 29,
+          "planned": 0,
+          "verbs": [
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 29,
+          "planned": 0,
+          "verbs": [
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 29,
+          "planned": 17,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "犬": {
+          "actions": 29,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "猿": {
+          "actions": 29,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "キジ": {
+          "actions": 29,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "鬼": {
+          "actions": 29,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        }
+      },
+      "target_reached": true,
+      "log": "unchanged_initial/momotaro/protagonist/0/layers.jsonl",
+      "sha256": "89367f021772847103b9d60a3c01b26f68763eab2cdad30f7d471b6a69370d8b",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro",
+      "edition": "protagonist",
+      "seed": 1,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 64,
+          "planned": 28,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "猿": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "鬼": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        }
+      },
+      "target_reached": false,
+      "log": "unchanged_initial/momotaro/protagonist/1/layers.jsonl",
+      "sha256": "08917518746586d98de011303efb5c977207b216a417e185f9838231dcc36c2a",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro",
+      "edition": "companions",
+      "seed": 0,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 64,
+          "planned": 24,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        }
+      },
+      "target_reached": false,
+      "log": "unchanged_initial/momotaro/companions/0/layers.jsonl",
+      "sha256": "b16af79912d46691afd0426b1d8cbd810829f25c1d192a6064b653a2e00f3d58",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro",
+      "edition": "companions",
+      "seed": 1,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 64,
+          "planned": 24,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        }
+      },
+      "target_reached": false,
+      "log": "unchanged_initial/momotaro/companions/1/layers.jsonl",
+      "sha256": "42ce07b280bdd7bbbda1eedf61220bda663c94e580062308701c207ef37207ba",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus",
+      "edition": "protagonist",
+      "seed": 0,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 28,
+          "planned": 16,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "犬": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 25,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        }
+      },
+      "target_reached": true,
+      "log": "unchanged_initial/momotaro_plus/protagonist/0/layers.jsonl",
+      "sha256": "034e89e4c9a4ab61afdcdca43161d26258f886882bf6f56a90bf7e6cfd6e8841",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus",
+      "edition": "protagonist",
+      "seed": 1,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 27,
+          "planned": 15,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "犬": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "猿": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "キジ": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "鬼": {
+          "actions": 24,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        }
+      },
+      "target_reached": true,
+      "log": "unchanged_initial/momotaro_plus/protagonist/1/layers.jsonl",
+      "sha256": "fc2a224e0a9b92ba9672fec19f089922599d74e752a6cd40d6afb08324c54713",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus",
+      "edition": "companions",
+      "seed": 0,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 28,
+          "planned": 16,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "犬": {
+          "actions": 28,
+          "planned": 28,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 28,
+          "planned": 28,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 28,
+          "planned": 28,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 25,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        }
+      },
+      "target_reached": true,
+      "log": "unchanged_initial/momotaro_plus/companions/0/layers.jsonl",
+      "sha256": "176c3cecae1de9647ac20f98cbbf0b410b5e04177cdf8d00681e6d09c1794ce3",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus",
+      "edition": "companions",
+      "seed": 1,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 27,
+          "planned": 15,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "犬": {
+          "actions": 27,
+          "planned": 27,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 27,
+          "planned": 27,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 27,
+          "planned": 27,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 24,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        }
+      },
+      "target_reached": true,
+      "log": "unchanged_initial/momotaro_plus/companions/1/layers.jsonl",
+      "sha256": "63c8333d68951c8f2471878d0ec8635a03d1239f460c9b2ac2d99c1cfe1d7aba",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus2",
+      "edition": "protagonist",
+      "seed": 0,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 28,
+          "planned": 16,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "犬": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "キジ": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 25,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        }
+      },
+      "target_reached": true,
+      "log": "unchanged_initial/momotaro_plus2/protagonist/0/layers.jsonl",
+      "sha256": "74657cefb289713acab470e19614c23b37d098913d646cd7c4201a2176a5aae4",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus2",
+      "edition": "protagonist",
+      "seed": 1,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 80,
+          "planned": 28,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        }
+      },
+      "target_reached": false,
+      "log": "unchanged_initial/momotaro_plus2/protagonist/1/layers.jsonl",
+      "sha256": "5d0febdc6d500d32b4468505cf4f56c56530c537bc4cbc860eb9d4297da5291f",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus2",
+      "edition": "companions",
+      "seed": 0,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 28,
+          "planned": 16,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "犬": {
+          "actions": 28,
+          "planned": 28,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 28,
+          "planned": 28,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 28,
+          "planned": 28,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 25,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 28,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        }
+      },
+      "target_reached": true,
+      "log": "unchanged_initial/momotaro_plus2/companions/0/layers.jsonl",
+      "sha256": "20b9a8277583631818956a4363891bde3590ddebfd0b1700bd408f1396e2ed9f",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus2",
+      "edition": "companions",
+      "seed": 1,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 27,
+          "planned": 15,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "犬": {
+          "actions": 27,
+          "planned": 27,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 27,
+          "planned": 27,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 27,
+          "planned": 27,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 24,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 27,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        }
+      },
+      "target_reached": true,
+      "log": "unchanged_initial/momotaro_plus2/companions/1/layers.jsonl",
+      "sha256": "b8f87524eafb470a4ce6f8aa8e7e54aaa3ef46578ff3bddcdb16b9fadc1acadc",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus3",
+      "edition": "protagonist",
+      "seed": 0,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 80,
+          "planned": 26,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "猿": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "キジ": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "plant",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "漁師": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "蜂": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "蟹": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "rescue",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "馬": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "牛": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "豚": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "investigate",
+            "move",
+            "rescue",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "用心棒": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        }
+      },
+      "target_reached": false,
+      "log": "unchanged_initial/momotaro_plus3/protagonist/0/layers.jsonl",
+      "sha256": "c9a3e2422aa3f52a7aa4ef1646532925feac9d90c0b26a90e5c9d82f4f2fc102",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus3",
+      "edition": "protagonist",
+      "seed": 1,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 80,
+          "planned": 28,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "猿": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "鬼": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "plant",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "漁師": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "蜂": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "蟹": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "馬": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "give_item",
+            "investigate",
+            "move",
+            "rescue",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "牛": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "豚": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "investigate",
+            "move",
+            "rest",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "用心棒": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "investigate",
+            "move",
+            "share_knowledge",
+            "withdraw"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        }
+      },
+      "target_reached": false,
+      "log": "unchanged_initial/momotaro_plus3/protagonist/1/layers.jsonl",
+      "sha256": "8168245dc3654f9dec4029441026a1b59154ed9cb444fe76af0c2ee7bde8ae5b",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus3",
+      "edition": "companions",
+      "seed": 0,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ",
+        "蜂",
+        "蟹",
+        "馬",
+        "牛",
+        "豚",
+        "用心棒"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 80,
+          "planned": 24,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "plant",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "漁師": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "蜂": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "蟹": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "馬": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "牛": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "豚": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "用心棒": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        }
+      },
+      "target_reached": false,
+      "log": "unchanged_initial/momotaro_plus3/companions/0/layers.jsonl",
+      "sha256": "4b00c71412636159bd39092c296f9202658136b5137f2033855f52fa4a382251",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro_plus3",
+      "edition": "companions",
+      "seed": 1,
+      "initial_assumption": null,
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ",
+        "蜂",
+        "蟹",
+        "馬",
+        "牛",
+        "豚",
+        "用心棒"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 80,
+          "planned": 28,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "猿": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "キジ": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "鬼": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "鬼の弟": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "investigate",
+            "plant",
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "漁師": {
+          "actions": 80,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "蜂": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "森"
+        },
+        "蟹": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "馬": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "牛": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        },
+        "豚": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "道中"
+        },
+        "用心棒": {
+          "actions": 80,
+          "planned": 80,
+          "verbs": [
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "街"
+        }
+      },
+      "target_reached": false,
+      "log": "unchanged_initial/momotaro_plus3/companions/1/layers.jsonl",
+      "sha256": "482156a68865cf4be569191c586f45efa25b949991ce1326e19dba6bb241ca08",
+      "initial_case": "unchanged_initial"
+    },
+    {
+      "source": "momotaro",
+      "edition": "companions",
+      "seed": 0,
+      "initial_assumption": "Mobile companions already accepted the journey and are with the protagonist at the initial location.",
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 64,
+          "planned": 24,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "move",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "猿": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "move",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "キジ": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "move",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "鬼": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        }
+      },
+      "target_reached": false,
+      "log": "accepted_initial/momotaro/companions/0/layers.jsonl",
+      "sha256": "5889f4e4320e7655af2593f30a70cab62df20507ec7f2e40cee2345a9db28b39",
+      "initial_case": "accepted_initial"
+    },
+    {
+      "source": "momotaro",
+      "edition": "companions",
+      "seed": 1,
+      "initial_assumption": "Mobile companions already accepted the journey and are with the protagonist at the initial location.",
+      "planning_actors": [
+        "桃太郎",
+        "犬",
+        "猿",
+        "キジ"
+      ],
+      "actors": {
+        "おじいさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "おばあさん": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "rest",
+            "share_knowledge"
+          ],
+          "invalid": 0,
+          "final_zone": "村"
+        },
+        "桃太郎": {
+          "actions": 64,
+          "planned": 24,
+          "verbs": [
+            "craft",
+            "fight",
+            "investigate",
+            "move",
+            "neutralize",
+            "observe",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        },
+        "犬": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "move",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "猿": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "move",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "キジ": {
+          "actions": 64,
+          "planned": 64,
+          "verbs": [
+            "move",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "海"
+        },
+        "鬼": {
+          "actions": 64,
+          "planned": 0,
+          "verbs": [
+            "fight",
+            "guard",
+            "rest"
+          ],
+          "invalid": 0,
+          "final_zone": "鬼ヶ島"
+        }
+      },
+      "target_reached": false,
+      "log": "accepted_initial/momotaro/companions/1/layers.jsonl",
+      "sha256": "d5b4bb40c7966889d4d673fffa3420c36fc3960be5f8f203012a05fb994c1aa8",
+      "initial_case": "accepted_initial"
+    }
+  ]
+}

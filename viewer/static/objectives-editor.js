@@ -39,7 +39,8 @@
    const group=node('fieldset',null,root);group.className='ui-content';group.dataset.objectiveIndex=String(i);
    const condition=conditions.find(c=>c.id===spec.condition);node('legend',condition?.label||spec.condition||'判定 '+(i+1),group);
    field(group,'重視する条件との対応',spec.condition,v=>{const old=spec.condition;spec.condition=v;if(spec.success?.condition===old)spec.success.condition=v;redraw();},refs);
-   node('p',condition?.mode==='maintain'?'維持する条件です。期間中に達成条件が崩れると失敗し、終了まで守り続けると達成します。':'実現する条件です。期間中に達成すれば結果を確定します。同時に失敗条件も成立した場合は失敗を優先します。',group).className='ui-hint';
+   if(condition?.mode!=='maintain')field(group,'達成を確定する時点',spec.completion||'first_success',v=>{if(v==='first_success')delete spec.completion;else spec.completion=v;redraw();},[['first_success','初めて達成したとき'],['period_end','期間の終了時点']]);
+   node('p',condition?.mode==='maintain'?'維持する条件です。期間中に達成条件が崩れると失敗し、終了まで守り続けると達成します。':spec.completion==='period_end'?'終了時点の状態で達成を判定します。途中で条件が崩れても立て直せます。失敗確定条件が成立した場合は、その時点で失敗します。':'実現する条件です。期間中に達成すれば結果を確定します。同時に失敗条件も成立した場合は失敗を優先します。',group).className='ui-hint';
    fold(group,'達成条件',spec.success,v=>spec.success=v,i+'-success');fold(group,'失敗確定条件',spec.failure,v=>spec.failure=v,i+'-failure');
    if(!spec.period||typeof spec.period!=='object'){node('p','判定期間の形式を確認してください。',group).className='ui-error';return;}
    const period=node('fieldset',null,group);node('legend','判定期間',period);

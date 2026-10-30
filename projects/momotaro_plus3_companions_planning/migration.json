@@ -1,0 +1,48 @@
+{
+  "source": "momotaro_plus3_shared_planning",
+  "target": "momotaro_plus3_companions_planning",
+  "planning_actors": [
+    "桃太郎",
+    "犬",
+    "猿",
+    "キジ",
+    "蜂",
+    "蟹",
+    "馬",
+    "牛",
+    "豚",
+    "用心棒"
+  ],
+  "legacy_supporting_actors": [
+    "おじいさん",
+    "おばあさん",
+    "鬼",
+    "鬼の弟",
+    "漁師"
+  ],
+  "authored_assumptions": [
+    "Mobile declared companions prioritize accompaniment and rescue when their own affinity reaches the existing companionship threshold.",
+    "This is an authored purpose, not inferred from the old treasure goal or personality.",
+    "Below that threshold they wait; no acceptance or gift is forced.",
+    "Temporary separation and downing can be repaired; death is terminal once observed.",
+    "Existing routes, boat ownership, range and rescue permissions remain binding; no automatic group transport is added."
+  ],
+  "source_sha256": {
+    "world.yaml": "e062480dca812758af3a540c0517cd2f5d18bfa9fc0712986081189f8ac43f89",
+    "subjects/01_ojiisan.yaml": "d57e1e7044349876f1d776643d72da4d58928357df33c39774fc3199ae666337",
+    "subjects/02_obaasan.yaml": "56ff6c2bbb0042bd5ff28ceb0b0d16991462232af7d73c5f02c4234fd715d8b3",
+    "subjects/03_momotaro.yaml": "9045bdb68a8d2fab5a5ad6328150cf22fb68d36a5bce72d83607f343eba7f09a",
+    "subjects/04_inu.yaml": "2c4bed3e5160ae0c4b28022471a756b06a47bcd141ef6bf6b888069eadb1b4a5",
+    "subjects/05_saru.yaml": "ff422f44d9af4d717391c0037267c651994bc99910f4ca8b8bc6597a00b19e1b",
+    "subjects/06_kiji.yaml": "6dcd7df15d68dbc867ce579a46a79bab89df517d984b8b8f813449253c68302c",
+    "subjects/07_oni.yaml": "8607c532471ea657bd6bd80528cd809899ad3a1cb45ade11cedea540f867c0b3",
+    "subjects/08_oni_no_otouto.yaml": "e92e9173d0928ed7282e830b21ff718d78f7f2cc1acc700d089b931b21cbbfa8",
+    "subjects/09_ryoshi.yaml": "eb2ac2b319768289eed814ed970d8e448235c811a0edc034a43ed69a6b513ae6",
+    "subjects/10_hachi.yaml": "d8f882b2a1d0617e18fdf3228594dc78bf31ae5000edcbb5651def9a71357aa7",
+    "subjects/11_kani.yaml": "aea2c4a309096dc2e140fdd90735e5e4f18341a3699b2f0e8451bbad49f6f9c9",
+    "subjects/12_uma.yaml": "d53c9ca75d30a685b8556c5e4eb7f78707223f846a0874227b54c7a01cfafcb7",
+    "subjects/13_ushi.yaml": "d8677f0058d5485c547c97c9d9336176ccdd38ce757ddf6ca07a4001c7075287",
+    "subjects/14_buta.yaml": "7617b1395be2a2ce6f7b822ac24ec8dbadf55b3a9ffa79d073a24de5b4a016b7",
+    "subjects/15_yojinbo.yaml": "e7ad5660653657cec4239ab7f7df5459e04cf36c4ee86e5e13e9492c2ff866e1"
+  }
+}

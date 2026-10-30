@@ -83,7 +83,7 @@ def model(explanation):
             if reference and reference.get('status') == 'awaiting_consent': reference = group.get('offer_plan') or reference
             expected = deepcopy((reference or {}).get('steps', []))
             if previous and previous['result'] in {'moved', 'responded', 'rested', 'delivered', 'waited',
-                    'crafted','investigated','observed','neutralized','given','persuaded','won','rethought','unchanged','exposed'} and expected: expected = expected[1:]
+                    'crafted','investigated','observed','neutralized','given','persuaded','won','rethought','unchanged','exposed','rescued'} and expected: expected = expected[1:]
             elif previous and group.get('reply') == 'accepted' and expected and expected[0]['verb'] == 'negotiate': expected = expected[1:]
             changed = previous is not None and [step_key(s) for s in current_steps] != [step_key(s) for s in expected]
             result = item['outcome'].get('result')
@@ -300,7 +300,7 @@ def render(explanation, *, instance='planning'):
                     'offered': '申し入れ済み', 'rested': '待機・休息', 'failed': '実行できなかった', 'invalid': '実行されなかった',
                     'started':'開始・未完了', 'ongoing':'開始済みの行動を継続中', 'interrupted':'中断', 'unfinished':'未完了',
                     'crafted':'製作完了','investigated':'調査完了','observed':'観察完了','neutralized':'制約を無力化',
-                    'given':'品物を渡した','persuaded':'説得を実行','won':'戦闘に勝利','lost':'戦闘に敗北',
+                    'given':'品物を渡した','rescued':'救助した','persuaded':'説得を実行','won':'戦闘に勝利','lost':'戦闘に敗北',
                     'rethought':'証拠を再検討','unchanged':'再検討で変更なし','exposed':'告発が正しかった','misjudged':'告発が誤りだった'}
                 body += '<p class="pw-action">この場面の行動：' + e(event['action']) + ' ／ ' + e(result_label.get(event['result'], '結果は原記録で確認')) + '</p>'
             if event['kind'] == 'replan' and event.get('before'):

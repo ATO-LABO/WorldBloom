@@ -97,6 +97,14 @@ class NativePlanning:
             if world.subjects[peer].zone==actor.zone:
                 state[('zone',peer)]=actor.zone
                 state[('vitality',peer)]=world.subjects[peer].vitality
+                # A present owner's usable vehicle is visible to its permitted
+                # borrowers. Other possessions are not made public.
+                for item,spec in world.items.items():
+                    access=spec.get('access') or {}
+                    if (spec.get('vehicle') and access.get('mode')=='owner'
+                            and 'companions' in access.get('allow',[])
+                            and actor.id in (world.subjects[peer].companions or [])):
+                        state[('inventory',peer,item)]=world.subjects[peer].inventory.get(item,0)
                 from engine.contest import believed_strength
                 state[aux('rival',actor.id,peer)]=believed_strength(actor,world.subjects[peer],world,world.present_subjects(actor.zone))
                 belief=actor.beliefs_about.get(peer)
@@ -204,6 +212,12 @@ class NativePlanning:
             for edge in world.routes.get(origin,()):
                 if edge.destination not in distances:
                     distances[edge.destination]=distances[origin]+1;pending.append(edge.destination)
+        anchor=world.concerns.conditions[root]['test']
+        if anchor['kind']=='co_location' and actor.id in {anchor['actor'],anchor['target']}:
+            peer=anchor['target'] if anchor['actor']==actor.id else anchor['actor']
+            destination=state.get(('zone',peer))
+            if destination is not None:
+                return distances.get(destination,50)+(state.get(('vitality',peer))=='downed')
         needed=self._needs(actor,root)
         # Resolve transport recipes before heading toward a blocked crossing.
         for item,recipe in sorted(world.recipes.items()):
@@ -252,6 +266,7 @@ class NativePlanning:
         if shadow.stamina < actor.stamina_max:
             yield from step('rest',[],'休息する',[],recovery=min(actor.stamina_max-shadow.stamina,actor.stamina_recover))
         sought={c[1] for c in needed if c[0]=='relation' and c[1]!=actor.id} | {c[2] for c in needed if c[0]=='relation' and c[2]!=actor.id}
+        sought.update(c[1] for c in needed if c[0]=='zone' and c[1]!=actor.id)
         unknown_people=any(state.get(('zone',who)) is None for who in sought)
         routes=sorted(world.routes.get(shadow.zone,()),key=lambda r:(state.get(aux('visits',actor.id,r.destination),0),r.destination))
         for route in routes:
@@ -317,6 +332,10 @@ class NativePlanning:
         present=[p for p in world.subjects.values() if p.id!=actor.id and state.get(('zone',p.id))==shadow.zone]
         for peer in present:
             target=peer.id
+            if (('vitality',target) in needed and state.get(('vitality',target))=='downed'
+                    and state.get(('relation',actor.id,target),-1)>=.3):
+                yield from step('rescue',[target],target+'を救助する',[
+                    assign(('vitality',target),'revived')])
             relation_needed = ('relation',target,actor.id) in needed or ('relation',actor.id,target) in needed
             blocked_relation=state.get(aux('blocked_relation',target,actor.id),False)
             known=actor.beliefs_about.get(target)
@@ -414,6 +433,16 @@ class NativePlanning:
         return None  # Partial information paths are found by the same search.
 
     def after_action(self, world, actor, action, result, details, turn):
+        if action.verb=='move' and result=='moved':
+            # A witnessed single-edge departure supplies a last-seen direction,
+            # not a remote live location feed or a multi-hop destination.
+            route=details.get('route',[]);origin=details.get('origin')
+            for witness in world.subjects.values():
+                if witness.id==actor.id or not world.planner.owns(witness):continue
+                if witness.zone not in {origin,actor.zone}:continue
+                memory=world.planner.memory.setdefault(witness.id,{'known':{},'negative':set(),'blocked':set(),'last':None})
+                memory['known'][('zone',actor.id)]=actor.zone if witness.zone==actor.zone or len(route)==2 else None
+                memory['known'][('vitality',actor.id)]=actor.vitality
         if action.verb=='neutralize' and result=='neutralized':
             self.blocked_relations={v for v in self.blocked_relations if v[:2]!=(actor.id,str(action.args[0]))}
         if action.verb=='rethink' and result in {'rethought','unchanged'}:

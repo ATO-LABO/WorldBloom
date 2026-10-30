@@ -40,7 +40,10 @@ class Objectives:
         self.config = deepcopy(raw)
         self.definitions = {}
         for spec in self.config['definitions']:
-            shape(spec, {'condition', 'success', 'failure', 'period'})
+            shape(spec, {'condition', 'success', 'failure', 'period'} | ({'completion'} if 'completion' in spec else set()))
+            if (not isinstance(spec.get('completion','first_success'),str)
+                    or spec.get('completion','first_success') not in {'first_success','period_end'}):
+                raise ValueError('Unknown objective completion policy')
             cid = identifier(spec['condition'])
             if cid in self.definitions:
                 raise ValueError('Duplicate objective condition')
@@ -121,6 +124,7 @@ class Objectives:
     def predict(self, world, cid, *, actor=None, projection=None, justified=True):
         spec = self.definitions[cid]
         return {'condition': cid, 'mode': world.concerns.conditions[cid]['mode'], 'period': deepcopy(spec['period']),
+                **({'completion':spec['completion']} if 'completion' in spec else {}),
                 **{key: self.expression(world, spec[key], actor=actor, projection=projection, justified=justified)
                    for key in ('success', 'failure')}}
 
@@ -168,7 +172,8 @@ class Objectives:
             status, reason, confidence = 'failed', 'failure_condition', failure['confidence']
         elif prediction['mode'] == 'maintain' and success['state'] == 'false':
             status, reason, confidence = 'failed', 'maintenance_breach', success['confidence']
-        elif prediction['mode'] == 'achieve' and success['state'] == 'true' and failure['state'] == 'false':
+        elif (prediction['mode'] == 'achieve' and prediction.get('completion','first_success')=='first_success'
+              and success['state'] == 'true' and failure['state'] == 'false'):
             status, reason, confidence = 'achieved', 'achievement_condition', min(success['confidence'], failure['confidence'])
         elif close and turn == end:
             if record['observation_gap']:

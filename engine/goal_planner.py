@@ -501,6 +501,8 @@ class GoalPlanner:
             valid = self.active_goal(world, actor, root, turn) and info and action.verb == 'move' and action.args == (info['next_zone'],)
             return {'excluded': [] if valid else ['observation_route_changed'], 'plan': info}
         plan = self.search(world, actor, root, turn)
+        if plan['status']=='condition_met' and not plan['steps'] and action.verb=='rest':
+            return {'excluded':[],'plan':plan,'forecast':plan.get('forecast'),'condition':root}
         if not plan['steps'] or (plan['steps'][0]['verb'], tuple(plan['steps'][0]['args'])) != (action.verb, action.args):
             return {'excluded': ['plan_no_longer_justified'], 'plan': plan}
         if action.verb == 'negotiate' and any(action.meta.get(k) != plan['steps'][0]['meta'][k]
