@@ -77,7 +77,7 @@ def migrate(source):
     target.mkdir(exist_ok=True);(target/'subjects').mkdir(exist_ok=True)
     manifest=dict(source=source,target=target.name,family=family,planning_actors=[hero],
                   legacy_supporting_actors=[p['id'] for _,p in people if p['id']!=hero],changes=changes,
-                  source_sha256={str(p.relative_to(folder)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [folder/'world.yaml',*sorted((folder/'subjects').glob('*.yaml'))]})
+                  source_sha256={p.relative_to(folder).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in [folder/'world.yaml',*sorted((folder/'subjects').glob('*.yaml'))]})
     generated={target/'world.yaml':yaml.safe_dump(raw,allow_unicode=True,sort_keys=False),
                **{target/'subjects'/name:yaml.safe_dump(person,allow_unicode=True,sort_keys=False) for name,person in people},
                target/'migration.json':json.dumps(manifest,ensure_ascii=False,indent=2)+'\n'}
@@ -86,7 +86,7 @@ def migrate(source):
         if path.exists() and path.read_text(encoding='utf8')!=text:
             raise FileExistsError('Existing edition differs; preserve it and choose a new destination: '+str(path))
     for path,text in generated.items():
-        if not path.exists():path.write_text(text,encoding='utf8')
+        if not path.exists():path.write_text(text,encoding='utf8',newline='\n')
     return manifest
 
 if __name__=='__main__':
