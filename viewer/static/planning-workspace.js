@@ -2,6 +2,7 @@
  'use strict';
  function init(root){
   const picker=root.querySelector('[data-plan-group]'),groups=[...root.querySelectorAll('[data-plan-group-panel]')];
+  if(!picker)return;
   const find=(group,index)=>group.querySelector(`[data-plan-detail="${index}"]`);
   function reveal(group,button){
    const track=group.querySelector('.pw-events');

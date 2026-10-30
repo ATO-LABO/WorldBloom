@@ -121,7 +121,11 @@ class Responses:
 
     def bind(self, world):
         if world.concerns is None: raise ValueError('Responses require explicit concerns')
-        if world.slot_execution is not None:
+        state_only_joint=(getattr(world,'joint_activities',None) is not None
+                         and (world.slot_execution or {}).get('mode')=='calendar_promises_v2'
+                         and self.config['version']==2 and not self.actions and not self.signals and not self.channels
+                         and not self.config.get('events') and not self.config.get('windows'))
+        if world.slot_execution is not None and not state_only_joint:
             raise ValueError('Responses v1 supports ordinary instant execution only')
         if world.deliberation and set(self.state) & set(world.deliberation.state):
             raise ValueError('Response and proposal state keys must be disjoint')

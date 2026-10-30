@@ -84,6 +84,16 @@ class VerbEngine:
         day: int,
         notify: bool = True,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        joint = getattr(self.world,'joint_activities',None)
+        if joint is not None and joint.sim is not None:
+            if action.verb=='leave_activity': return joint.planning.execute(actor,action)
+            if action.verb in {'join_activity','decline_activity','leave_activity','await_activity'}:
+                if notify and self.world.planner is not None:self.world.planner.before_action(self.world,actor)
+                result,details,markers=joint.planning.execute(actor,action)
+                if notify and self.world.planner is not None:self.world.planner.after_action(self.world,actor,action,result,details,turn)
+                return result,details,markers
+            if joint.bookings.is_busy(actor.id,joint.kernel.now):
+                return 'invalid',{'reason':'actor_in_joint_activity'},[]
         handler = (
             getattr(self, "_" + action.verb)
             if action.verb in HANDLED_VERBS
@@ -223,7 +233,7 @@ class VerbEngine:
     _await_response = _response_action
 
     def _present(self, actor: Subject) -> list[Subject]:
-        return self.world.present_subjects(actor.zone)
+        return self.world.present_subjects(actor.zone,**({'observer':actor} if self.world.joint_activities is not None else {}))
 
     def _target(
         self,
@@ -238,6 +248,8 @@ class VerbEngine:
         if (target is None or target.id == actor.id or target.zone != actor.zone
                 or getattr(actor, 'in_transit', False) or getattr(target, 'in_transit', False)):
             return None
+        joint=getattr(self.world,'joint_activities',None)
+        if joint is not None and not joint.co_present(actor.id,target.id): return None
         allowed = {"alive", "revived", "downed"} if allow_downed else {
             "alive",
             "revived",
@@ -339,6 +351,7 @@ class VerbEngine:
 
         origin = actor.zone
         actor.zone = destination
+        if self.world.joint_activities is not None: actor.shared_container=None
         if self.world.action_timing is not None:
             actor.in_transit = False
         if self.world.action_timing is None or not self.world.action_timing.prepaid(actor, action):
@@ -492,7 +505,7 @@ class VerbEngine:
         markers: list[dict[str, Any]] = []
         present_ids = {
             subject.id
-            for subject in self.world.present_subjects(actor.zone)
+            for subject in self._present(actor)
         }
         for fact, definition in sorted(self.world.facts.items()):
             if definition.get("values") is not None:

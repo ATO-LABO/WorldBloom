@@ -131,6 +131,9 @@ class ActionTiming:
         try:
             spec = self._spec(world, actor, action, turn)
             window = self.sim.time_kernel.window(spec['duration'])
+            joint=getattr(world,'joint_activities',None)
+            if joint is not None and joint.bookings.conflicts('actor:'+actor.id,window.start,window.finish):
+                raise ValueError('actor_reserved_for_joint_activity')
             if world.planner is not None and action.meta.get('goal_plan'):
                 if world.planner.validate(world, actor, action, turn)['excluded']: raise ValueError('plan_no_longer_justified')
             elif action.verb == 'respond':
@@ -151,6 +154,7 @@ class ActionTiming:
             return 'failed', details, []
         self.lifecycle.start(actor.id, pending, spec['duration'])
         actor.in_transit = action.verb == 'move'
+        if action.verb=='move' and world.joint_activities is not None: actor.shared_container=None
         details = {'activity': self.record(pending, 'started')}
         if world.planner is not None: world.planner.after_action(world, actor, action, 'started', details, turn)
         pending['view'] = self._view(world, actor)

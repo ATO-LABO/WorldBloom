@@ -28,7 +28,8 @@ class GoalPlanner:
 
     def bind(self, world):
         if (world.slot_execution or {}).get('mode') == 'calendar_promises_v2':
-            if world.goal_rules is None or world.goal_rules.config['version'] != 2 or world.responses is not None:
+            if (world.goal_rules is None or world.goal_rules.config['version'] != 2
+                    or world.responses is not None and (getattr(world,'joint_activities',None) is None or world.responses.actions)):
                 raise ValueError('Calendar planning requires calendar objectives and native task operators')
             if not set(self.config['actors']) <= set(world.subjects):
                 raise ValueError('Unknown planning actor')
@@ -58,13 +59,20 @@ class GoalPlanner:
         return view['status'] not in {'achieved', 'failed'} and view['period']['start'] <= turn <= view['period']['end']
 
     def _visible(self, world, actor):
+        joint = getattr(world, 'joint_activities', None)
+        if joint is not None and joint.sim is not None:
+            values = (world.planning_domain.visible(actor) if getattr(world,'planning_domain',None) is not None
+                      else self._ordinary_visible(world,actor))
+            values.update(joint.planning.visible(actor))
+            return values
         if getattr(world, 'planning_domain', None) is not None:
             return world.planning_domain.visible(actor)
         return self._ordinary_visible(world,actor)
 
     def _ordinary_visible(self, world, actor):
         values = {('zone', actor.id): actor.zone}
-        for person in ([] if getattr(actor, 'in_transit', False) else world.present_subjects(actor.zone, include_downed=False)):
+        for person in ([] if getattr(actor, 'in_transit', False) else world.present_subjects(actor.zone, include_downed=False,
+                          **({'observer':actor} if getattr(world,'joint_activities',None) is not None else {}))):
             values[('zone', person.id)] = person.zone
         for item in world.items:
             values[('inventory', actor.id, item)] = actor.inventory.get(item, 0)
@@ -180,6 +188,9 @@ class GoalPlanner:
         return needs
 
     def _steps(self, world, actor, root, state, turn, elapsed, spent):
+        joint = getattr(world,'joint_activities',None)
+        if joint is not None and joint.sim is not None:
+            yield from joint.planning.steps(world,actor,root,state,turn,elapsed,spent)
         native=getattr(world,'native_planning',None)
         if getattr(world, 'planning_domain', None) is not None:
             yield from world.planning_domain.steps(actor, root, state, turn, elapsed, spent)

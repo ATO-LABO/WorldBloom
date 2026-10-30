@@ -82,7 +82,7 @@ def _action_key(candidate: tuple[Action, float]) -> tuple[str, tuple[str, ...]]:
 
 
 def _present(subject: Subject, world: World) -> list[Subject]:
-    return world.present_subjects(subject.zone)
+    return world.present_subjects(subject.zone,**({'observer':subject} if getattr(world,'joint_activities',None) is not None else {}))
 
 
 def _is_hostile(actor: Subject, target: Subject, world: World) -> bool:
@@ -724,7 +724,7 @@ def _sacrifice_candidates(
 
     allies = [
         target
-        for target in world.present_subjects(subject.zone)
+        for target in _present(subject,world)
         if target.id != subject.id
         and target.vitality in {"alive", "revived"}
         and world.relations.stance(target.id, subject.id)
@@ -1937,6 +1937,8 @@ def candidates(
         planned = world.planner.candidates(world, subject, int(sim.turn), int(sim.day))
         if getattr(world,'native_planning',None) is not None:
             weighted = [] # Explicit native migration: do not mix an unrelated legacy choice.
+        if getattr(world,'joint_activities',None) is not None and planned:
+            weighted = []  # Explicit joint worlds use the same purpose-led search, including individual operators.
         weighted.extend(planned)
 
     return sorted(
@@ -1944,8 +1946,9 @@ def candidates(
             (action, float(weight))
             for action, weight in weighted
             if weight > 0.0
-            and action.verb in allowed_verbs
-            and world.genre_allows(action.verb)
+            and ((action.verb in allowed_verbs and world.genre_allows(action.verb))
+                 or getattr(world,'joint_activities',None) is not None
+                 and action.verb in {'join_activity','await_activity'} and action.meta.get('joint_segment'))
         ),
         key=_action_key,
     )

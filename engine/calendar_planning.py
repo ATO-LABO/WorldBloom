@@ -92,14 +92,17 @@ class CalendarPlanning:
         if self.world.social_planner is not None:
             state.update({('knowledge',actor.id,f):f in actor.knowledge for f in self.world.facts})
         for who, person in rt.people.items():
-            if person.zone == actor.zone and person.zone != '移動中': state[('zone', who)] = person.zone
+            if (person.zone == actor.zone and person.zone != '移動中'
+                    and (rt.joint is None or rt.joint.co_present(actor.id,who))): state[('zone', who)] = person.zone
             elif (actor.zone != '移動中' and self.planner.memory.get(actor.id, {}).get('known', {}).get(('zone', who)) == actor.zone):
                 state[('zone', who)] = None  # Observed absence does not reveal a remote destination.
         known_tasks = {**rt.known_tasks[actor.id], **{task:entry for task,entry in rt.ledger['tasks'].items()
                       if actor.zone == rt.contract['tasks'][task]['place']}}
         for task, entry in known_tasks.items():
             state[('task', task)] = entry['units']
-            state[aux('effort', task)] = entry['effort_minutes']
+            from engine.work_registry import rational
+            state[aux('effort', task)] = (float(rational(entry['effort_minutes']))
+                                        if rt.joint is not None and task in rt.joint.work.specs else entry['effort_minutes'])
             state[aux('reserved', task)] = entry['reserved_units']
         # Materials are a declared shared stock. They are checked again at admission.
         for item, count in rt.ledger['materials'].items(): state[aux('material', item)] = count
@@ -206,6 +209,7 @@ class CalendarPlanning:
                             [assignment(aux('wait_boundary'), until)], {'minutes': until-point})
         for task in relevant:
             spec = rt.contract['tasks'][task]
+            if rt.joint is not None and task in rt.joint.work.specs: continue
             if (spec['place'] != zone or not set(spec['roles']) & set(rt.contract['roles'][actor.id])
                     or ('task', task) not in state): continue
             if any(state.get(('task', dep), -1) < rt.contract['tasks'][dep]['units'] for dep in spec['dependencies']): continue
@@ -288,7 +292,8 @@ class CalendarPlanning:
         rt = self.runtime
         for who in sorted(rt.people if self.world.social_planner is not None else self.planner.config['actors']):
             actor = rt.people[who]
-            if who in rt.busy or self.last_choice.get(who) == rt.now or actor.vitality not in {'alive','revived'}: continue
+            if (who in rt.busy or self.last_choice.get(who) == rt.now or actor.vitality not in {'alive','revived'}
+                    or rt.joint is not None and rt.joint.bookings.is_busy(who,rt.now)): continue
             self.last_choice[who] = rt.now
             social=self.world.social_planner
             peers=[]
@@ -327,6 +332,9 @@ class CalendarPlanning:
             command = {'id': ident, 'actor': who, 'at': rt.now, 'verb': first['verb'], **first['meta']}
             if social is not None and first['verb'] in SOCIAL_VERBS:
                 command['args']=list(first['args'])
+            joint_action=rt.joint is not None and first['verb'] in {'join_activity','await_activity'}
+            if joint_action:
+                command.pop('joint_segment',None);command['args']=list(first['args'])
             rt.admit_adapter_command(command, proposal_id=ident, candidate_id=digest(plan))
             decision = next(row for row in rt.rows if row['id'] == 'decision:'+ident)
             detail = decision['details']
@@ -336,7 +344,7 @@ class CalendarPlanning:
             detail['planning']['time_unit'] = 'minute'
             detail['planning']['deadline_label'] = time_label(rt.calendar, self.world.goal_rules.definitions[plan['root']]['period']['end'])
             detail['planning_memory'] = self.planner.snapshot()['actors'][who]
-            detail['activity'] = self.activity(command, first, 'started', rt.now, rt.now+first['duration'])
+            detail['activity'] = self.activity(command, first, 'started', rt.now, rt.now+(1 if joint_action else first['duration']))
             detail['activity_result'] = 'started'
 
     def activity(self, command, step, phase, start, finish):
@@ -345,10 +353,11 @@ class CalendarPlanning:
             value = time_label(rt.calendar, at)
             return {'day':at//1440+1, 'slot':value['date']+' '+value['time']}
         duration = max(1, finish-start)
+        cost=0 if step['verb'] in {'join_activity','await_activity'} else step['cost']
         return {'id':command['id'], 'actor':command['actor'], 'verb':step['verb'], 'args':deepcopy(step['args']),
                 'phase':phase, 'unit':'minute', 'start':start, 'finish':finish,
-                'start_label':label(start),'finish_label':label(finish), 'cost':step['cost'],
-                'spent':step['cost']*min(1,max(0,rt.now-start)/duration)}
+                'start_label':label(start),'finish_label':label(finish), 'cost':cost,
+                'spent':cost*min(1,max(0,rt.now-start)/duration)}
 
     def completed(self, action, details):
         selected = next((r for r in self.runtime.rows if r['id']=='decision:'+action['id']

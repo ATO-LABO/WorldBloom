@@ -2,8 +2,11 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import socket
+import subprocess
+import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -14,6 +17,18 @@ spec=importlib.util.spec_from_file_location('local_launcher',ROOT/'tools/local_l
 launcher=importlib.util.module_from_spec(spec);spec.loader.exec_module(launcher)
 
 class LauncherTests(unittest.TestCase):
+    def test_real_packaged_copy_imports_joint_runtime_without_source_checkout(self):
+        with tempfile.TemporaryDirectory() as d:
+            workspace=launcher.prepare(ROOT,Path(d)/'state')
+            environment=dict(os.environ,PYTHONPATH=str(workspace),PYTHONNOUSERSITE='1')
+            checked=subprocess.run([sys.executable,'-B','-c',
+                'import viewer.server; import engine.joint_activities; '
+                'import engine.activity_bookings; import engine.joint_planning; '
+                'import engine.work_registry; from engine.world import World; '
+                'World.from_yaml("projects/momotaro/world.yaml")'],
+                cwd=workspace,env=environment,capture_output=True,text=True,timeout=30)
+            self.assertEqual(checked.returncode,0,checked.stdout+checked.stderr)
+
     def test_current_ollama_runner_is_recognized_by_install_path(self):
         with patch.dict(launcher.os.environ,{'LOCALAPPDATA':r'C:\Users\example\AppData\Local'}):
             launcher.check_gpu([['17',r'C:\Users\example\AppData\Local\Programs\Ollama\lib\ollama\llama-server.exe','C']])
