@@ -5,11 +5,11 @@
  function render(root,draft,snapshot,editable,change){
   root.replaceChildren();
   const people=snapshot.people.map(p=>p.id),world=snapshot.world,states=[...Object.keys(world.deliberation?.state||{}),...Object.keys(world.responses?.state||{})],facts=Array.isArray(world.facts)?world.facts.filter(f=>typeof f==='string'||f.values==null).map(f=>typeof f==='string'?f:f.id):Object.entries(world.facts||{}).filter(([,f])=>f?.values==null).map(([id])=>id),items=names(world.items),zones=names(world.zones);
-  const title=document.createElement('h2');title.textContent='大切にしていること';root.append(title);
-  if(!Array.isArray(draft.conditions)||!draft.commitments||typeof draft.commitments!=='object'||Array.isArray(draft.commitments)||draft.conditions.some(c=>!c||typeof c!=='object'||!c.test||!kinds[c.test.kind]||(c.test.kind==='knowledge'&&!Array.isArray(c.test.actors))||(c.test.kind==='vitality'&&!Array.isArray(c.test.allowed)))||Object.values(draft.commitments).some(v=>!Array.isArray(v))){
+  const title=document.createElement('h2');title.textContent='状態・条件の定義';root.append(title);
+  if(!Array.isArray(draft.conditions)||draft.conditions.some(c=>!c||typeof c!=='object'||!c.test||!kinds[c.test.kind]||(c.test.kind==='knowledge'&&!Array.isArray(c.test.actors))||(c.test.kind==='vitality'&&!Array.isArray(c.test.allowed)))){
    const error=document.createElement('p');error.className='ui-error';error.textContent='この設定はフォームで扱えない形式です。設定ファイルから対象と条件を確認してください。';root.append(error);return;
   }
-  const note=document.createElement('p');note.className='ui-hint';note.textContent='対象の名前に加えて、守られたと判断する条件を設定します。人物の優先順位は、大きい数を先に比べます。';root.append(note);
+  const note=document.createElement('p');note.className='ui-hint';note.textContent='どの状態なら条件を満たすかを定義します。誰が何を重視するかは、登場人物の「大切にしていること」で設定できます。';root.append(note);
   function field(parent,label,value,options,update,{number=false,min,max,step,required=false}={}){
    const wrapper=document.createElement('label');wrapper.className='ui-field';const caption=document.createElement('span');caption.textContent=label;wrapper.append(caption);
    const input=document.createElement(options?'select':'input');input.disabled=!editable;
@@ -29,7 +29,7 @@
   }
   for(const [index,condition] of draft.conditions.entries()){
    const section=document.createElement('fieldset');section.className='ui-content';section.dataset.concernIndex=String(index);const legend=document.createElement('legend');legend.textContent=condition.label||`条件 ${index+1}`;section.append(legend);root.append(section);
-   field(section,'何を大切にするか',condition.label,null,v=>{condition.label=v;legend.textContent=v||`条件 ${index+1}`;},{required:true});
+   field(section,'条件の名前',condition.label,null,v=>{condition.label=v;legend.textContent=v||`条件 ${index+1}`;},{required:true});
    field(section,'望むこと',condition.mode,[['maintain','今の状態を維持したい'],['achieve','その状態を実現したい']],v=>condition.mode=v);
    field(section,'状態を確認できる範囲',condition.visibility,[['observed','本人が見聞きした範囲'],['public','誰でも確認できる公開情報']],v=>condition.visibility=v);
    const choices=Object.entries(kinds).filter(([k])=>!(k==='state'&&!states.length)&&!(k==='knowledge'&&!facts.length)&&!(k==='inventory'&&!items.length));
@@ -51,27 +51,19 @@
     field(section,'必要な物',test.item,items,v=>test.item=v,{required:true});field(section,'必要な個数',test.minimum,null,v=>test.minimum=v,{number:true,min:0,max:100000});
    }else if(test.kind==='zone')field(section,'いてほしい場所',test.equals,zones,v=>test.equals=v,{required:true});
    else if(test.kind==='relation')field(section,'必要な親しさ（-1から1）',test.minimum,null,v=>test.minimum=v,{number:true,min:-1,max:1,step:.05});
-   const members=document.createElement('fieldset'),cap=document.createElement('legend');cap.textContent='この条件を大切にする人物';members.append(cap);
-   for(const who of people){
-    const row=document.createElement('div'),label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.disabled=!editable;
-    let value=(draft.commitments[who]||[]).find(v=>v.condition===condition.id);check.checked=!!value;label.append(check,document.createTextNode(who));row.append(label);
-    check.addEventListener('change',()=>{if(check.checked){(draft.commitments[who]??=[]).push({condition:condition.id,priority:2,required:false});}else{draft.commitments[who]=(draft.commitments[who]||[]).filter(v=>v.condition!==condition.id);if(!draft.commitments[who].length)delete draft.commitments[who];}change();redraw();});
-    if(value){field(row,'優先順位（大きい数を優先）',value.priority,null,v=>value.priority=v,{number:true,min:1,max:10});field(row,'条件を満たさない案への態度',String(value.required),[['false','他の価値と比較して判断する'],['true','譲れない条件にする']],v=>value.required=v==='true');}
-    members.append(row);
-   }section.append(members);
-   button(section,'この条件を外す',()=>{draft.conditions=draft.conditions.filter(v=>v!==condition);for(const who of Object.keys(draft.commitments)){draft.commitments[who]=draft.commitments[who].filter(v=>v.condition!==condition.id);if(!draft.commitments[who].length)delete draft.commitments[who];}change();redraw();});
+   button(section,'この条件を外す',()=>{draft.conditions=draft.conditions.filter(v=>v!==condition);change();redraw();});
   }
   button(root,'条件を追加',()=>{const reserved=new Set([...draft.conditions.map(v=>v.id),...people,...names(world.facts),...items,...zones]);let i=1;while(reserved.has(`concern_${i}`))i++;draft.conditions.push({id:`concern_${i}`,label:'',mode:'maintain',visibility:'observed',test:defaultTest('vitality')});change();redraw();const fields=root.querySelectorAll('input[type=text]');fields[fields.length-1]?.focus();});
  }
  function summary(root,draft,detail){
   root.replaceChildren();const heading=document.createElement('h2');heading.textContent='条件の一覧';root.append(heading);
   const note=document.createElement('p');note.className='ui-hint';note.textContent='選ぶと編集箇所へ移動します。案への予測と現実の達成は別に扱います。';root.append(note);
-  if(!Array.isArray(draft.conditions)||!draft.commitments||Object.values(draft.commitments).some(v=>!Array.isArray(v)))return;
+  if(!Array.isArray(draft.conditions))return;
   for(const [index,condition] of draft.conditions.entries()){
    if(!condition||typeof condition!=='object')continue;
    const button=document.createElement('button');button.type='button';button.className='ui-button ui-button--secondary';button.textContent=condition.label||`条件 ${index+1}`;
    button.addEventListener('click',()=>{const section=detail.querySelector(`[data-concern-index="${index}"]`);section?.scrollIntoView({block:'start'});section?.querySelector('input,select')?.focus();});root.append(button);
-   const members=document.createElement('p');members.className='ui-hint';members.textContent=Object.entries(draft.commitments).filter(([,vs])=>vs.some(v=>v.condition===condition.id)).map(([who])=>who).join('・')||'重視する人物は未設定';root.append(members);
+   const note=document.createElement('p');note.className='ui-hint';note.textContent=(condition.mode==='maintain'?'維持する状態':'実現する状態')+' ／ '+(condition.visibility==='public'?'公開情報':'本人が見聞きした範囲');root.append(note);
   }
  }
  window.WorldBloomConcerns={render,summary};

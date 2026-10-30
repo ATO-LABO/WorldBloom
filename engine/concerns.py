@@ -34,6 +34,21 @@ def distinct(values, maximum=40):
     if len(set(values))!=len(values): raise ValueError('Duplicate concern reference')
 
 
+def validate_commitments(values, conditions=None, *, allow_empty=True):
+    if not isinstance(values, list) or not (0 if allow_empty else 1) <= len(values) <= 32:
+        raise ValueError('Bounded person commitments required')
+    seen = set()
+    for value in values:
+        shape(value, {'condition','priority','required'})
+        cid = identifier(value['condition'])
+        if cid in seen or (conditions is not None and cid not in conditions):
+            raise ValueError('Unknown/duplicate person commitment')
+        seen.add(cid)
+        if type(value['priority']) is not int or not 1 <= value['priority'] <= 10 or type(value['required']) is not bool:
+            raise ValueError('Invalid person commitment priority/requirement')
+    return deepcopy(values)
+
+
 def coordinates(test):
     kind=test['kind']
     if kind in {'vitality','zone'}: return [(kind,test['actor'])]
@@ -54,9 +69,9 @@ def effect_coordinate(effect):
 
 class Concerns:
     def __init__(self,raw):
-        shape(raw,{'version','conditions','commitments'})
-        if type(raw['version']) is not int or raw['version']!=1:
+        if not isinstance(raw, dict) or type(raw.get('version')) is not int or raw['version'] not in (1,2):
             raise ValueError('Unsupported concerns version')
+        shape(raw, {'version','conditions','commitments'} if raw['version']==1 else {'version','conditions'})
         if not isinstance(raw['conditions'],list) or not 1<=len(raw['conditions'])<=32:
             raise ValueError('Bounded concern conditions required')
         self.config=deepcopy(raw);self.conditions={}
@@ -83,25 +98,33 @@ class Concerns:
                 raise ValueError('Invalid inventory minimum')
             if test['kind']=='relation' and not finite(test['minimum'],-1,1):raise ValueError('Invalid relation minimum')
             self.conditions[cid]=definition
-        commitments=self.config['commitments']
-        if not isinstance(commitments,dict) or not 1<=len(commitments)<=40:raise ValueError('Explicit commitments required')
+        commitments=self.config.get('commitments', {})
+        if raw['version']==1 and (not isinstance(commitments,dict) or not 1<=len(commitments)<=40):
+            raise ValueError('Explicit legacy commitments required')
         for actor,values in commitments.items():
             identifier(actor)
-            if not isinstance(values,list) or not 1<=len(values)<=32:raise ValueError('Bounded actor commitments required')
-            seen=set()
-            for value in values:
-                shape(value,{'condition','priority','required'})
-                cid=value['condition']
-                if not isinstance(cid,str) or cid not in self.conditions or cid in seen:raise ValueError('Unknown/duplicate commitment')
-                seen.add(cid)
-                if type(value['priority']) is not int or not 1<=value['priority']<=10 or type(value['required']) is not bool:
-                    raise ValueError('Invalid concern priority/requirement')
+            validate_commitments(values, self.conditions, allow_empty=False)
 
     def bind(self,world,people):
         collisions=set(self.conditions)&(set(world.facts)|set(world.items)|set(world.zones)|set(people))
         if collisions:raise ValueError('Concern ids collide with existing references')
-        if not set(self.config['commitments'])<=set(people):raise ValueError('Unknown concern owner')
+        legacy = self.config.get('commitments', {})
+        if not set(legacy)<=set(people):raise ValueError('Unknown concern owner')
+        for actor, person in people.items():
+            personal = person.commitments
+            if personal is not None:
+                validate_commitments(personal, self.conditions)
+                if actor in legacy and personal != legacy[actor]:
+                    raise ValueError('Conflicting world and person commitments: '+actor)
         for definition in self.conditions.values():self._validate_refs(world,people,definition['test'])
+
+    def commitments_for(self, world, actor):
+        personal = world.subjects[actor].commitments
+        return personal if personal is not None else self.config.get('commitments', {}).get(actor, [])
+
+    def has_owner(self, world, actor):
+        return (world.subjects[actor].commitments is not None
+                or actor in self.config.get('commitments', {}))
 
     def _validate_refs(self,world,people,test):
         for key in ('actor','observer','target'):
@@ -172,7 +195,7 @@ class Concerns:
         if kind=='state':
             responses = getattr(world, 'responses', None)
             return (responses is not None and args[0] in responses.locations
-                    and world.subjects[actor].zone == responses.locations[args[0]])
+                    and responses.can_observe(world.subjects[actor], args[0]))
         if kind in {'vitality','zone'}:
             return args[0]==actor or world.subjects[args[0]].zone==world.subjects[actor].zone
         if kind in {'inventory','knowledge','relation'}:return args[0]==actor
@@ -210,14 +233,21 @@ class Concerns:
 
     def assessment(self,world,actor,*,projection=None,justified=True):
         entries=[];tiers={};blocked=[];unknown=[]
-        for commitment in self.config['commitments'].get(actor,[]):
+        for commitment in self.commitments_for(world, actor):
             result=self.evaluate(world,commitment['condition'],actor=actor,projection=projection,justified=justified)
             result.update(priority=commitment['priority'],required=commitment['required']);entries.append(result)
             score=1 if result['state']=='true' else -1 if result['state']=='false' else 0
+            objective = getattr(world, 'goal_rules', None)
+            predicted_failure = 'false'
+            if objective is not None and result['condition'] in objective.definitions:
+                prediction = objective.predict(world, result['condition'], actor=actor, projection=projection, justified=justified)
+                result['objective_prediction'] = prediction
+                predicted_failure = prediction['failure']['state']
+                if predicted_failure == 'true': score = -1
             tiers[result['priority']]=tiers.get(result['priority'],0)+score
             if result['required']:
-                if result['state']=='false':blocked.append(result['condition'])
-                if result['state']=='unknown':unknown.append(result['condition'])
+                if result['state']=='false' or predicted_failure=='true':blocked.append(result['condition'])
+                if result['state']=='unknown' or predicted_failure=='unknown':unknown.append(result['condition'])
         vector=[{'priority':p,'score':tiers[p]} for p in sorted(tiers,reverse=True)]
         leading=next((tier['score'] for tier in vector if tier['score']),0)
         stance='undecided' if unknown or (entries and all(e['state']=='unknown' for e in entries)) else 'oppose' if blocked or leading<0 else 'support'
@@ -233,7 +263,13 @@ class Concerns:
         return {'priority':None,'delta':0,'normalized':0.0}
 
     def world_report(self,world):
-        return [self.evaluate(world,cid) for cid in sorted(self.conditions)]
+        rows = [self.evaluate(world,cid) for cid in sorted(self.conditions)]
+        objective = getattr(world, 'goal_rules', None)
+        if objective is not None:
+            reports = {entry['condition']: entry for entry in objective.report(world)}
+            for row in rows:
+                if row['condition'] in reports: row['objective_outcome'] = reports[row['condition']]
+        return rows
 
     def observe_disclosure(self,world,speaker,recipient,fact):
         """Only participants know a successful transfer; no omniscient broadcast."""

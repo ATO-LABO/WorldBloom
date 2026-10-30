@@ -1336,8 +1336,8 @@ def _concede_candidates(
         objective = str(offer.get("objective", ""))
         if (
             not objective
-            or world.holder(objective) != subject.id
-            or claimant.goal.target != objective
+            or (not subject.has_item(objective) if offer.get('objective_goal') is not None else world.holder(objective) != subject.id)
+            or not _offer_matches_goal(world, claimant, offer)
         ):
             continue
 
@@ -1923,6 +1923,11 @@ def candidates(
             for verb, args, weight in world.deliberation.candidates(world, subject.id, turn=sim.turn)
         )
 
+    from engine.objective_actions import augment_and_rank
+    weighted = augment_and_rank(world, subject,
+        [(a, w) for a, w in weighted if a.verb in allowed_verbs and world.genre_allows(a.verb)],
+        present, int(sim.turn), allowed_verbs, int(sim.day))
+
     return sorted(
         (
             (action, float(weight))
@@ -1933,3 +1938,11 @@ def candidates(
         ),
         key=_action_key,
     )
+
+
+def _offer_matches_goal(world, claimant, offer):
+    # Legacy offers retain their old lifetime; new offers are checked with the
+    # current clock by the shared transaction adapter and at execution.
+    if offer.get('objective_goal') is None:
+        return claimant.goal.target == offer.get('objective')
+    return offer.get('status', 'pending') == 'pending'

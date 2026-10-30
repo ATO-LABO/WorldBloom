@@ -34,5 +34,17 @@
       "value": "true",
       "confidence": 1.0
     }
-  }
+  },
+  "commitments": [
+    {
+      "condition": "secret_kept",
+      "priority": 3,
+      "required": true
+    },
+    {
+      "condition": "help_received",
+      "priority": 2,
+      "required": false
+    }
+  ]
 }

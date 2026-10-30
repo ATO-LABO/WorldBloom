@@ -69,7 +69,7 @@
     "danger_report": "active"
   },
   "concerns": {
-    "version": 1,
+    "version": 2,
     "conditions": [
       {
         "id": "eligibility_safe",
@@ -82,23 +82,7 @@
           "equals": "individual"
         }
       }
-    ],
-    "commitments": {
-      "改革官": [
-        {
-          "condition": "eligibility_safe",
-          "priority": 10,
-          "required": true
-        }
-      ],
-      "担当官": [
-        {
-          "condition": "eligibility_safe",
-          "priority": 8,
-          "required": true
-        }
-      ]
-    }
+    ]
   },
   "responses": {
     "version": 1,

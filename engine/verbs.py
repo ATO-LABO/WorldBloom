@@ -126,14 +126,38 @@ class VerbEngine:
                         [],
                     )
 
+        from engine.objective_actions import review_transaction, enabled as objective_actions_enabled
+        objective_choice = None
+        if action.verb in {'negotiate', 'concede', 'give_item'}:
+            if objective_actions_enabled(self.world, actor) and (
+                    action.verb not in available_verbs(self.world, actor, turn=turn, day=day)
+                    or not self.world.genre_allows(action.verb)):
+                return 'invalid', {'reason': 'transaction_verb_unavailable'}, []
+            objective_choice = review_transaction(self.world, actor, action, turn)
+            if objective_choice and objective_choice['excluded'] and not (
+                    action.verb == 'concede' and action.args and self.world.offers.get((action.args[0], actor.id), {}).get('objective_goal')):
+                return 'invalid', {'reason': 'own_objective_conflict', 'objective_choice': objective_choice}, []
+
         result, details, markers = handler(
             actor,
             action,
             turn=turn,
             day=day,
         )
+        if objective_choice is not None:
+            details['objective_choice'] = {**objective_choice,
+                'alternatives': action.meta.get('objective_choice', {}).get('alternatives', [])}
+            if result == 'refused':
+                details['objective_choice']['answer'] = 'refuse'
+        elif action.meta.get('objective_choice'):
+            details['objective_choice'] = action.meta['objective_choice']
         if self.world.responses is not None:
             self.world.responses.after_action(self.world, actor, action, result, details, turn)
+        if self.world.goal_rules is not None:
+            markers.extend(self.world.goal_rules.record(self.world, turn))
+            details['objective_outcomes'] = self.world.goal_rules.report(self.world)
+            if 'world_report' in details.get('response', {}):
+                details['response']['world_report'] = self.world.concerns.world_report(self.world)
         markers.extend(
             plant_from_action(
                 self.world,
@@ -1555,28 +1579,26 @@ class VerbEngine:
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         holder = self._target(actor, action)
-        objective = actor.goal.target
+        from engine.objective_actions import item_goal, offered_assets
+        cid = action.meta.get('objective_goal')
+        objective = item_goal(self.world, actor, cid, turn) if cid is not None else actor.goal.target
         if holder is None:
             return "invalid", {"reason": "target_not_present"}, []
         if (
             objective is None
             or not actor.objective_claimant
-            or self.world.holder(objective) != holder.id
+            or (not holder.has_item(objective) if cid is not None else self.world.holder(objective) != holder.id)
         ):
             return "invalid", {"reason": "objective_unavailable"}, []
 
-        assets = {
-            item: count
-            for item, count in sorted(actor.inventory.items())
-            if count > 0
-            and item != objective
-            and self.world.items[item].get("lootable", False)
-        }
+        assets = offered_assets(self.world, actor, objective)
         self.world.offers[(actor.id, holder.id)] = {
             "turn": turn,
             "objective": objective,
             "assets": assets,
         }
+        if cid is not None:
+            self.world.offers[(actor.id, holder.id)].update(objective_goal=cid, status='pending')
         self.world.relations.change(
             holder.id,
             actor.id,
@@ -1610,10 +1632,23 @@ class VerbEngine:
         if offer is None:
             return "invalid", {"reason": "offer_unavailable"}, []
         objective = str(offer.get("objective", ""))
+        from engine.objective_actions import offer_valid, review_transaction
+        if offer.get('objective_goal') is not None:
+            if not offer_valid(self.world, claimant, offer, turn):
+                return 'invalid', {'reason': 'offer_expired_or_objective_unavailable'}, []
+            if any(claimant.inventory.get(i, 0) < n for i, n in offer.get('assets', {}).items()):
+                offer['status'] = 'refused'
+                return 'refused', {'claimant': claimant.id, 'objective': objective,
+                                   'reason': 'original_payment_unavailable'}, []
+            review = review_transaction(self.world, actor, action, turn)
+            if review and review['excluded']:
+                offer['status'] = 'refused'
+                return 'refused', {'claimant': claimant.id, 'objective': objective,
+                                   'reason': 'own_conditions_or_resources', 'objective_choice': review}, []
         if (
             not objective
-            or self.world.holder(objective) != actor.id
-            or claimant.goal.target != objective
+            or (not actor.has_item(objective) if offer.get('objective_goal') is not None else self.world.holder(objective) != actor.id)
+            or not offer_valid(self.world, claimant, offer, turn)
         ):
             return "invalid", {"reason": "objective_unavailable"}, []
 
@@ -1631,9 +1666,21 @@ class VerbEngine:
             claimant.id,
         )
         if stance < self.world.negotiate_threshold and not attractive:
+            if offer.get('objective_goal') is not None:
+                offer['status'] = 'refused'
+                return 'refused', {'claimant': claimant.id, 'objective': objective, 'reason': 'offer_insufficient'}, []
             return "invalid", {"reason": "offer_insufficient"}, []
 
         mode = "trade" if attractive else "goodwill"
+        if offer.get('objective_goal') is not None:
+            from engine.objective_actions import settlement_effects, assess
+            payment = dict(raw_assets) if mode == 'trade' else {}
+            effects = settlement_effects(self.world, claimant, claimant, actor, objective, payment)
+            consent = assess(self.world, claimant, effects, turn, condition=offer['objective_goal'])
+            if consent['excluded']:
+                offer['status'] = 'refused'
+                return 'refused', {'claimant': claimant.id, 'objective': objective,
+                                   'reason': 'claimant_consent_no_longer_valid'}, []
         if not actor.remove_item(objective, 1):
             return "invalid", {"reason": "objective_unavailable"}, []
         claimant.add_item(objective, 1)

@@ -35,5 +35,17 @@
       "value": "pending",
       "confidence": 1
     }
-  }
+  },
+  "commitments": [
+    {
+      "condition": "equal_eligibility",
+      "priority": 3,
+      "required": true
+    },
+    {
+      "condition": "transition_guarantee",
+      "priority": 2,
+      "required": false
+    }
+  ]
 }

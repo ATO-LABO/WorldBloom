@@ -44,5 +44,12 @@
     "max": 10,
     "current": 10,
     "recover_per_slot": 1
-  }
+  },
+  "commitments": [
+    {
+      "condition": "crew_safe",
+      "priority": 8,
+      "required": true
+    }
+  ]
 }

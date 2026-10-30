@@ -298,7 +298,7 @@
     ]
   },
   "concerns": {
-    "version": 1,
+    "version": 2,
     "conditions": [
       {
         "id": "equal_eligibility",
@@ -333,42 +333,7 @@
           "equals": "追加財源"
         }
       }
-    ],
-    "commitments": {
-      "真壁": [
-        {
-          "condition": "equal_eligibility",
-          "priority": 3,
-          "required": true
-        },
-        {
-          "condition": "transition_guarantee",
-          "priority": 2,
-          "required": false
-        }
-      ],
-      "片瀬": [
-        {
-          "condition": "transition_guarantee",
-          "priority": 2,
-          "required": true
-        }
-      ],
-      "有村": [
-        {
-          "condition": "budget_secured",
-          "priority": 2,
-          "required": true
-        }
-      ],
-      "瀬尾": [
-        {
-          "condition": "equal_eligibility",
-          "priority": 2,
-          "required": true
-        }
-      ]
-    }
+    ]
   },
   "truth": {
     "implementation_report": "pending"

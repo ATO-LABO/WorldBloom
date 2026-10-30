@@ -23,9 +23,60 @@ def e(value):
     return escape(str(value), quote=True)
 
 
+def objective_outcomes(values):
+    statuses = {'not_started':'判定前','pending':'未達成・継続中','achieved':'達成確定',
+                'failed':'失敗確定','unknown':'観測不足で判定できない'}
+    reasons = {'failure_condition':'失敗確定条件が成立','maintenance_breach':'維持する条件が崩れた',
+               'achievement_condition':'達成条件が成立','period_maintained':'期間の終了まで維持',
+               'deadline_unmet':'期限までに達成しなかった','incomplete_observation':'期間中の観測が不足',
+               'period_not_observed':'判定期間を観測していない'}
+    body = '<details open><summary>達成・失敗の判定（世界の実態）</summary><ul>'
+    for value in values:
+        period = value.get('period', {})
+        body += '<li>'+e(value.get('label',value.get('condition','')))+'：'+e(statuses.get(value.get('status'),'不明'))
+        body += ' ／ 判定期間 '+e(period.get('start','?'))+'〜'+e(period.get('end','?'))
+        if value.get('reason'):body += ' ／ '+e(reasons.get(value['reason'],value['reason']))
+        if value.get('decided_at') is not None:body += '（時点 '+e(value['decided_at'])+'）'
+        body += '</li>'
+    return body+'</ul><p class="ui-hint">人物がこの結果を知っているとは限りません。未達成と失敗確定を分けた記録です。</p></details>'
+
+
 def verb_label(verb):
     # Short UI labels are intentionally separate from scenes.py prose templates.
     return VERBS.get(verb, f"未対応の行動（{verb}）")
+
+
+def objective_choice_panel(choice):
+    """Personal forecasts remain visibly separate from actual adjudication."""
+    body = '<details open><summary>目的に沿った手段の比較</summary>'
+    if choice.get('consent_required'):
+        body += '<p class="ui-notice">相手が同意した場合の見込みです。申し入れだけでは品物は移らず、目的も達成しません。</p>'
+    if choice.get('answer') == 'refuse' or choice.get('refusal_basis'):
+        body += '<p>申し入れへの返答は拒否です。品物は移りません。</p>'
+    labels = {'true': '満たす見込み', 'false': '満たさない見込み', 'unknown': '情報が不足'}
+    body += '<ul>'
+    for value in choice.get('forecast', {}).get('entries', []):
+        body += '<li>' + e(value['label']) + '：' + e(labels.get(value['state'], '不明'))
+        body += ' ／ 優先順位 ' + e(value['priority']) + (' ／ 譲れない条件' if value['required'] else '') + '</li>'
+    body += '</ul>'
+    reasons = {'required_condition_conflict': '譲れない条件に反する',
+               'higher_priority_harm': 'より優先する条件を損なう',
+               'objective_time_or_terminal': '判定期間や確定した結果に合わない',
+               'objective_failure_not_excluded': '失敗する条件を避けられる根拠がない',
+               'transaction_unavailable': '取引の条件がそろわない',
+               'objective_terminal': '本人は結果が確定したと認識している'}
+    alternatives = [o for o in choice.get('alternatives', [])
+                    if (o.get('excluded') or o.get('ranked_out'))
+                    and not {'no_commitment', 'capability_unavailable'}.intersection(o.get('excluded', []))]
+    if alternatives:
+        body += '<p>選ばなかった手段</p><ul>'
+        for option in alternatives:
+            why = ('本人の優先順位で別の手段を選んだ' if option.get('ranked_out') else
+                   '・'.join(dict.fromkeys(reasons.get(v.split(':')[0], '実行条件を満たさない') for v in option.get('excluded', []))))
+            label = option.get('label') or ' / '.join(map(str, option.get('args', [])))
+            body += '<li>' + e(verb_label(option['verb'])) + ' ' + e(label) + '：' + e(why) + '</li>'
+        body += '</ul>'
+    return body + '<p class="ui-hint">本人の情報と価値観に基づく予測です。相手の承諾や実際の達成とは区別します。</p></details>'
 
 
 # WB-ROUTE-001 S4 §1.1: reason badges for a policy.route record (or a
@@ -157,9 +208,15 @@ def panel(explanation, item=None, *, details=True):
         decision=response.get('choice_basis') or response.get('assessment') or {}
         signal=decision.get('signal') or response.get('signal') or response.get('observation') or {}
         states={'danger':'危険の知らせを信じている','clear':'危険は解消したと認識している',
-                'unknown':'知らせを持っていない','stale':'知らせが古い','uncertain':'確信が足りない'}
+                'unknown':'知らせを持っていない','stale':'知らせが古い','uncertain':'確信が足りない',
+                'objective':'本人が重視する目的から行動している','objective_terminal':'本人は結果が確定したと認識している'}
         body+='<details open><summary>守りたい条件に基づく行動</summary>'
         if decision.get('condition'): body+='<p>対象の条件：'+e(decision['condition'])+'</p>'
+        if response.get('label'):body+='<p>行動：'+e(response['label'])+'</p>'
+        if decision.get('objective_forecast'):
+            forecast=decision['objective_forecast']
+            labels={'true':'成立する予測','false':'成立しない予測','unknown':'判断する情報が不足'}
+            body+='<p>本人の見込み：達成条件は'+e(labels[forecast['success']['state']])+' ／ 失敗確定条件は'+e(labels[forecast['failure']['state']])+'</p>'
         if signal:
             body+='<p>'+e(states.get(signal.get('status'),signal.get('status','不明')))
             if signal.get('source') is not None: body+='・情報源 '+e(signal['source'])
@@ -175,7 +232,10 @@ def panel(explanation, item=None, *, details=True):
                  'insufficient_stamina':'体力が不足','capability_unavailable':'実行できる役割ではない',
                  'response_verb_unavailable':'対処行動が使えない','response_phase_unavailable':'この時点では対処できない',
                  'required_condition_conflict':'別の譲れない条件に反する','protection_not_justified':'保護できる予測がない',
-                 'known_precondition_failed':'知っている実行条件を満たさない'}
+                 'known_precondition_failed':'知っている実行条件を満たさない',
+                 'objective_terminal':'本人の認識では目的の結果が確定している',
+                 'objective_not_started':'判定期間が始まっていない','objective_too_late':'判定期間に間に合わない',
+                 'objective_not_justified':'達成と失敗回避の見込みを確認できない'}
         excluded=[o for o in decision.get('alternatives',[]) if o.get('excluded')]
         if excluded:
             body+='<ul>'
@@ -188,7 +248,12 @@ def panel(explanation, item=None, *, details=True):
             for value in response['world_report']:
                 body+='<li>'+e(value['label'])+'：'+e({'true':'満たしている','false':'満たしていない','unknown':'不明'}[value['state']])+'</li>'
             body+='</ul><p class="ui-hint">作者向けの実態です。本人の認識と異なる場合があります。</p></details>'
-    event=(item.get('outcome',{}).get('details') or {}).get('deliberation_event',{})
+    detail=item.get('outcome',{}).get('details') or {}
+    if detail.get('objective_choice'):
+        body += objective_choice_panel(detail['objective_choice'])
+    outcomes=detail.get('objective_outcomes') or ([detail['objective_outcome']] if detail.get('objective_outcome') else [])
+    if outcomes:body+=objective_outcomes(outcomes)
+    event=detail.get('deliberation_event',{})
     basis=event.get('choice_basis',{})
     valuation=event.get('concern_assessment')
     if not valuation and basis.get('current_concerns'):

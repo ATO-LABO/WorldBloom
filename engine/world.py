@@ -765,6 +765,10 @@ class World:
         if "responses" in definition:
             from engine.responses import Responses
             self.responses = Responses(definition["responses"])
+        self.goal_rules = None
+        if "goal_rules" in definition:
+            from engine.objectives import Objectives
+            self.goal_rules = Objectives(definition["goal_rules"])
 
     @classmethod
     def from_yaml(
@@ -1242,6 +1246,8 @@ class World:
         subject_ids = set(subjects)
         if self.concerns is not None:
             self.concerns.bind(self, subjects)
+        elif any(person.commitments for person in subjects.values()):
+            raise ValueError('Personal commitments require world condition definitions')
         for drift_entry in self.companionship["drift"]:
             unknown_drift = (
                 set(drift_entry["between"]) - subject_ids
@@ -1555,6 +1561,8 @@ class World:
 
         if self.responses is not None:
             self.responses.bind(self)
+        if self.goal_rules is not None:
+            self.goal_rules.bind(self)
 
         from engine.subject import Belief
 

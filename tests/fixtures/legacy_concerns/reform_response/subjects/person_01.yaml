@@ -1,0 +1,48 @@
+{
+  "id": "改革官",
+  "description": "改革官",
+  "personality": "改革官",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "出張先",
+      "中継庁舎",
+      "窓口"
+    ],
+    "entry": "出張先"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "inspect_response",
+    "request_response",
+    "answer_response"
+  ],
+  "beliefs": {},
+  "goal": {
+    "description": "制度移行で資格を失わない"
+  },
+  "relations": {
+    "担当官": {
+      "affinity": 0.6,
+      "awareness": 1
+    },
+    "相談員": {
+      "affinity": 0.6,
+      "awareness": 1
+    }
+  },
+  "stamina": {
+    "max": 10,
+    "current": 10,
+    "recover_per_slot": 1
+  }
+}

@@ -166,7 +166,7 @@ class Deliberation:
                 if world.concerns is None:
                     raise ValueError("Concern projections require registered conditions")
                 world.concerns.validate_projections(world, spec)
-                if not set(spec['profiles']) <= set(world.concerns.config['commitments']):
+                if not all(world.concerns.has_owner(world, actor) for actor in spec['profiles']):
                     raise ValueError("Concern projections require each participant's commitments")
         if world.slot_execution is not None:
             raise ValueError("Deliberation v1 supports logical-slot execution only")

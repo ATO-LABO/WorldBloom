@@ -1,0 +1,37 @@
+{
+  "id": "知らせ人",
+  "description": "知らせ人",
+  "personality": "知らせ人",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "旅先"
+    ],
+    "entry": "旅先"
+  },
+  "verbs": [
+    "rest",
+    "share_knowledge"
+  ],
+  "beliefs": {
+    "raid_notice": {
+      "value": "ongoing",
+      "confidence": 1
+    }
+  },
+  "goal": {},
+  "inventory": {},
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": []
+}

@@ -1,0 +1,44 @@
+{
+  "id": "鬼",
+  "description": "鬼",
+  "personality": "鬼",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "旅先",
+      "峠",
+      "村",
+      "山道",
+      "鬼の陣"
+    ],
+    "entry": "鬼の陣"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "inspect_response"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {},
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "food_taken",
+      "priority": 10,
+      "required": true
+    }
+  ]
+}

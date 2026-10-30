@@ -93,6 +93,9 @@ class Subject:
     policy: Any | None = None
     initial_relations: dict[str, dict[str, float]] = field(default_factory=dict)
     tags: list[str] = field(default_factory=list)
+    # None means unspecified (legacy world-owned values may still apply).
+    # An explicit [] is a personal decision to value none of the registered conditions.
+    commitments: list[dict[str, Any]] | None = None
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> Subject:
@@ -286,6 +289,9 @@ class Subject:
                 f"Subject {subject_id} has a negative inventory count"
             )
 
+        from engine.concerns import validate_commitments
+        commitments = validate_commitments(raw['commitments']) if 'commitments' in raw else None
+
         return cls(
             id=subject_id,
             traits=traits,
@@ -352,6 +358,7 @@ class Subject:
                 str(value)
                 for value in raw.get("tags", []) or []
             ],
+            commitments=commitments,
         )
 
     def update_belief(

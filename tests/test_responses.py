@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def inputs(project='village_response'):
-    folder = ROOT / 'projects' / project
+    folder = ROOT / 'tests/fixtures/legacy_concerns' / project
     return (json.loads((folder/'world.yaml').read_text(encoding='utf8')),
             [json.loads(p.read_text(encoding='utf8')) for p in sorted((folder/'subjects').glob('*.yaml'))])
 
@@ -245,7 +245,7 @@ class ResponseTests(unittest.TestCase):
     def test_proposal_approval_does_not_implement_but_can_authorize_local_work(self):
         from gapengine.deliberation_episode import load_episode
         from engine.responses import Responses
-        w,p=load_episode(ROOT/'projects/reform_values/world.yaml')
+        w,p=load_episode(ROOT/'tests/fixtures/legacy_concerns/reform_values/world.yaml')
         raw,_=inputs();config=deepcopy(raw['responses'])
         hero=w.protagonist;site=p[hero].zone
         config['locations']={k:site for k in config['state']}

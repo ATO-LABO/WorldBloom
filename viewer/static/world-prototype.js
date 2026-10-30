@@ -149,6 +149,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   let peopleView = 'list', placeView = 'map', storyView = 'intro', query = '';
   let graphMode='all', relationScope='all', relationGroup='', relationKind='all', relationInspector=true, relationExpanded=false;
   let relationZoom=1, relationPan={x:0,y:0}, relationDrag=null;
+  let commitmentDraft = null;
   let applyEdit = null, opener = null, changed = false, busy = false, blocked = false;
   const scrolls = {};
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -208,7 +209,10 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const p = people[person];
     if (!p) return '<p>人物を追加すると、ここに詳細が表示されます。</p>';
     const relations = Object.entries(p.relations||{}).map(([name,r])=>`<span>${esc(name)} <small class="wp-muted">${r?.label?esc(r.label):r?.affinity>0?'好意がある':r?.affinity<0?'反感がある':'中立・未設定'}</small></span>`).join('') || '関係は未設定です。';
-    return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目的',esc(goal(p)))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl><details open><summary>性格・能力の数値</summary>${statBars(p)}</details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
+    const commitments=window.WorldBloomPersonValues.effective(p,w);
+    const values=commitments.map(v=>{const condition=w.concerns?.conditions?.find(c=>c.id===v.condition);return `<li>${esc(condition?.label||v.condition)} ／ 優先順位 ${esc(v.priority)} ／ ${v.required?'譲れない条件':'他の価値と比較して判断'}</li>`;}).join('');
+    const personal=`<section class="wp-section">${head('大切にしていること',edit('person-commitments','価値観を編集'))}${values?`<ul>${values}</ul>`:'<p>重視する条件は未設定です。</p>'}<p class="wp-muted">優先順位は大きい数を先に比べます。<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#concerns">状態・条件の定義を確認</a> ／ <a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#objectives">達成・失敗・期間の定義を確認</a></p></section>`;
+    return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目的',esc(goal(p)))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl>${personal}<details open><summary>性格・能力の数値</summary>${statBars(p)}</details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
   }
   function personButton(p,i){
     const anchor=WorldRelations.affiliation(people.find(q=>q.id===w.protagonist)||{});
@@ -428,7 +432,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   }
   function openEditor(key,trigger){
     if (!model.editable || blocked) return;
-    opener=trigger; changed=false;
+    opener=trigger; changed=false; commitmentDraft=null;
     let name='',fields=[];
     const field=(key,label,value,type='textarea',options=null,required=false)=>({key,label,value,type,options,required});
     if(key==='overview'||key==='intro'){
@@ -441,6 +445,12 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     }else if(key==='time'){
       name='時間の範囲を編集';fields=[field('days','日数',w.time?.days||16,'number'),field('slots','時間帯（読点で区切る）',(w.time?.slots||[]).join('、'),'text')];
       applyEdit=v=>({operation:'time',target:null,values:{days:Number(v.days),slots:split(v.slots)}});
+    }else if(key==='person-commitments'){
+      const p=people[person];if(!p)return;
+      name=`${p.id}が大切にしていること`;
+      commitmentDraft=window.WorldBloomPersonValues.effective(p,w).map(v=>({...v}));
+      fields=[{html:'<div data-person-commitments-editor></div>'}];
+      applyEdit=()=>({operation:'person-commitments',target:p.id,values:{commitments:commitmentDraft}});
     }else if(key==='person'){
       const p=people[person];if(!p)return;
       name=`${p.id}を編集`;fields=[field('affiliation','所属（空欄なら開始時の居場所から表示）',p.affiliation||'','text'),field('description','人物の紹介',p.description||p.identity?.true||''),field('target','目標（手に入れたいものなど）',p.goal?.target||'','text'),field('deliver_to','届け先',p.goal?.deliver_to||'','select',zoneOptions(p.goal?.deliver_to)),field('personality','人物像',p.personality||'')];
@@ -505,10 +515,11 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const isRemove=key.startsWith('remove-event:');
     document.getElementById('wp-dialog-desc').textContent=isRemove
       ?'削除すると元に戻せません。過去の実行結果は変わりません。'
-      :'保存すると世界設定を更新します。過去の実行結果は変わりません。';
+      :key==='person-commitments'?'保存すると、この人物が重視する条件を更新します。過去の実行結果は変わりません。':'保存すると世界設定を更新します。過去の実行結果は変わりません。';
     document.getElementById('wp-dialog-submit').textContent=isRemove?'削除する':'保存する';
     document.getElementById('wp-dialog-title').textContent=name;
     document.getElementById('wp-fields').innerHTML=fields.map(fieldHtml).join('')+'<p id="wp-edit-error" role="alert"></p>';
+    if(commitmentDraft!==null)window.WorldBloomPersonValues.render(document.querySelector('[data-person-commitments-editor]'),commitmentDraft,w,()=>{changed=true;});
     document.getElementById('wp-field-verb')?.addEventListener('change',e=>{
       const newKinds=(model.force_action_specs||{})[e.target.value]||[];
       document.getElementById('wp-event-args').innerHTML=newKinds.map((kind,i)=>fieldHtml(argFieldDescriptor(kind,i,''))).join('');
@@ -605,6 +616,15 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   const zoneOptions = current => [['','未指定'],...zones.map(z=>[z.name,z.name]),...(current&&!zones.some(z=>z.name===current)?[[current,current+'（未登録）']]:[])];
   function closeEditor(){
     if(busy)return;
+    if(changed&&commitmentDraft!==null){
+      const box=document.getElementById('wp-edit-error');box.replaceChildren();
+      box.append(document.createTextNode('入力中の変更を破棄しますか？ '));
+      const discard=document.createElement('button');discard.type='button';discard.className='ui-button ui-button--secondary';discard.textContent='変更を破棄する';
+      discard.addEventListener('click',()=>{changed=false;dialog.close();});
+      const resume=document.createElement('button');resume.type='button';resume.className='ui-button ui-button--secondary';resume.textContent='編集を続ける';
+      resume.addEventListener('click',()=>{box.replaceChildren();document.querySelector('[data-person-commitments-editor] input')?.focus();});
+      box.append(discard,resume);resume.focus();return;
+    }
     if(changed&&!window.confirm('入力中の変更を破棄しますか？'))return;
     changed=false;dialog.close();
   }
@@ -619,7 +639,8 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     request.revision=model.revision;
     const errorBox=document.getElementById('wp-edit-error');
     busy=true;errorBox.textContent='保存中…';
-    form.querySelectorAll('input,textarea,select,button').forEach(el=>el.disabled=true);
+    const disabledBefore=new Map(Array.from(form.querySelectorAll('input,textarea,select,button'),el=>[el,el.disabled]));
+    disabledBefore.forEach((_,el)=>el.disabled=true);
     let saved=null;
     try {
       const response=await fetch(`/api/worlds/${encodeURIComponent(model.id)}/edit`,{
@@ -638,7 +659,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
       errorBox.textContent='保存結果を確認できませんでした。再送せず、再読み込みして設定を確認してください。';
       errorBox.append(' ',Object.assign(document.createElement('a'),{href:location.href,textContent:'再読み込みして確認'}));
     }finally{
-      busy=false;form.querySelectorAll('input,textarea,select,button').forEach(el=>el.disabled=false);
+      busy=false;disabledBefore.forEach((disabled,el)=>el.disabled=disabled);
       form.querySelector('[type="submit"]').disabled=blocked;
     }
     if(!saved)return;

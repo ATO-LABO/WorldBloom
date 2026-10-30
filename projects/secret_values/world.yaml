@@ -196,7 +196,7 @@
     ]
   },
   "concerns": {
-    "version": 1,
+    "version": 2,
     "conditions": [
       {
         "id": "secret_kept",
@@ -223,44 +223,6 @@
           "equals": "確保"
         }
       }
-    ],
-    "commitments": {
-      "アオ": [
-        {
-          "condition": "secret_kept",
-          "priority": 3,
-          "required": true
-        },
-        {
-          "condition": "help_received",
-          "priority": 2,
-          "required": false
-        }
-      ],
-      "サキ": [
-        {
-          "condition": "secret_kept",
-          "priority": 3,
-          "required": true
-        },
-        {
-          "condition": "help_received",
-          "priority": 2,
-          "required": false
-        }
-      ],
-      "ユラ": [
-        {
-          "condition": "secret_kept",
-          "priority": 3,
-          "required": true
-        },
-        {
-          "condition": "help_received",
-          "priority": 2,
-          "required": false
-        }
-      ]
-    }
+    ]
   }
 }
