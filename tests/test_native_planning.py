@@ -55,6 +55,10 @@ class NativePlanningTests(unittest.TestCase):
         for source in FAMILIES:
             folder=project_folder(source+'_shared_planning')
             manifest=json.loads((folder/'migration.json').read_text(encoding='utf8'))
+            expected_paths = {'world.yaml'} | {'subjects/' + p.name for p in (ROOT/'projects'/source/'subjects').glob('*.yaml')}
+            self.assertEqual(set(manifest['source_sha256']), expected_paths)
+            for generated in [folder/'world.yaml', folder/'migration.json', *sorted((folder/'subjects').glob('*.yaml'))]:
+                self.assertNotIn(b'\r\n', generated.read_bytes())
             for rel,digest in manifest['source_sha256'].items():
                 self.assertEqual(hashlib.sha256((ROOT/'projects'/source/rel).read_bytes()).hexdigest(),digest)
             _,old=inputs(source);_,new=inputs(source+'_shared_planning')
