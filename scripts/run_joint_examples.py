@@ -14,7 +14,15 @@ from engine.subject import Subject
 from engine.world import World
 
 
+def fresh_output(output):
+    output=Path(output)
+    if output.exists() and (not output.is_dir() or any(output.iterdir())):
+        raise FileExistsError('Preserve existing evidence; choose a new or empty output folder: '+str(output))
+    return output
+
+
 def run(project, output, seed=0):
+    output=fresh_output(output)
     source=project/'world.yaml'; raw=load_yaml(source)
     if raw.get('slot_execution',{}).get('mode')=='calendar_promises_v2':
         world,people=load_project(source)
@@ -43,6 +51,7 @@ def main():
     parser.add_argument('--seed',type=int,default=0)
     parser.add_argument('--example',choices=['voyage','repair','festival'])
     args=parser.parse_args()
+    fresh_output(args.out)
     reports=[]
     for name in ([args.example] if args.example else ['voyage','repair','festival']):
         reports.append(run(ROOT/('projects/joint_'+name+'_example'),args.out/name,args.seed))
