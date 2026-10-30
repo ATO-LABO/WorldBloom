@@ -22,12 +22,16 @@ PRIVATE_DIRS = {'.git', '.aws', '.ssh', 'control', 'runs', '.venv', 'venv'}
 PRIVATE_NAMES = {'secrets.json', 'credentials.json', 'id_rsa', 'id_ed25519'}
 PRIVATE_SUFFIXES = {'.pem', '.key', '.p12', '.pfx', '.sqlite', '.sqlite3', '.db'}
 BINARY_SUFFIXES = {'.exe', '.dll', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.woff', '.woff2', '.ttf', '.otf'}
-# mkdocs-material 9.7.7 vendor attribution. Only these exact reviewed bytes
+# mkdocs-material 9.7.7/9.8.0 vendor attribution. Only these exact reviewed bytes
 # are exempt from the email check; credential/Gitleaks checks still apply.
 REVIEWED_VENDOR_EMAIL_HASHES = {
     'dcfd5eb85b43e975773ecf102220197ef3f985f45abbbee4a5286e137f8097ba',  # bundle.js.map
     '780dccece24891aa19da6285715e2c7d0cd884237a87a3a9be6684823584921f',  # search.js.map
     '1b044c239610ef65fceff6039567442bb1692d413f5ee8686fee81b1a3067761',  # lunr/tinyseg.js
+    # 9.8.0: same upstream author's public MIT copyright notices, reviewed
+    # in the package's source maps; see docs/mkdocs-9.8.0-publication-review.md.
+    '17168108f7ce26dfb278571f4db8dbafdb18ada6aadf54cba93fb629b73f9d48',  # bundle.c21346df.min.js.map
+    'bcb8d79f2873cf66f17dcb6691f4ed3032dbf436a7b50339864da8910a55f694',  # workers/search.a7633da7.min.js.map
 }
 CREDENTIAL_FIELDS = {
     'api_key', 'apikey', 'access_token', 'refresh_token', 'client_secret',
