@@ -60,7 +60,7 @@ class JointCalendarTests(unittest.TestCase):
                                                        'test':{'kind':'task','task':'pieces','minimum':3}}]}
             date=contract['calendar']['period']['start_date']
             raw['goal_rules']={'version':2,'definitions':[{'condition':'pieces_done','success':{'condition':'pieces_done'},
-                'failure':{'constant':False},'period':{'start':{'date':date,'time':'08:00'},'end':{'date':date,'time':'08:40'}}}]}
+                'failure':{'constant':False},'period':{'start':{'date':date,'time':'08:00'},'end':{'date':date,'time':'08:32'}}}]}
             i=raw['joint_activities']['instances'][0];i.pop('initial_agreement');i['known_by']=['Ada','Bo']
             write(base/'project/world.yaml',raw)
             for path in (base/'project/subjects').glob('*.yaml'):

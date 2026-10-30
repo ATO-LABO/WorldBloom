@@ -94,6 +94,13 @@ def tick(joint, at):
 
 
 class JointExecutionTests(unittest.TestCase):
+    def test_forecast_at_logical_deadline_matches_real_shared_finish(self):
+        raw,people=inputs(accepted=False);raw['goal_rules']['definitions'][0]['period']['end']=3
+        w,p,s,j=runtime(raw,people);j.instances['segment']['known_by']=list(p)
+        plan=w.planner.search(w,p['pilot'],'arrived',1)
+        self.assertEqual(plan['status'],'conditional')
+        self.assertEqual(plan['steps'][0]['completion_delay'],2)
+
     def test_JA22_full_minute_pipeline_keeps_diagnosis_and_requires_real_disclosure(self):
         raw,people=inputs(repair=True);config=raw['joint_activities']
         config['definitions'][0]['duration']['unit']='minute'

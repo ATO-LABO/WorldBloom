@@ -45,8 +45,10 @@ class JointPlanning:
             if rt.review(inst,actor)['excluded']: continue
             try:
                 duration=rt._duration(inst)
-                earliest=max(inst['earliest_start'],turn-1 if rt.kernel.axis.unit=='logical_step' else turn)
-                wait=max(0,earliest-(turn-1 if rt.kernel.axis.unit=='logical_step' else turn))
+                point=turn+elapsed-(rt.kernel.axis.unit=='logical_step')
+                handshake=2 if rt.kernel.axis.unit=='minute' and inst['status']=='proposed' else 1
+                start=inst['start'] if inst['status']=='reserved' else max(inst['earliest_start'],point+handshake)
+                remaining_time=max(1,start+duration-point)
                 cost=next((float(c['per_unit']['numerator']/c['per_unit']['denominator'])*duration
                            for c in rt.definitions[inst['definition_id']]['costs']
                            if actor.id in inst['roles'][c['role']]),0)
@@ -59,7 +61,7 @@ class JointPlanning:
                 assumptions.append({'kind':'joint_resources','segment':inst['id'],'expected':'reserved_at_start'})
             yield {'verb':'await_activity' if inst['consents'].get(actor.id) else 'join_activity',
                    'args':[inst['id'],inst['terms_hash']], 'label':rt.definitions[inst['definition_id']].get('label',inst['definition_id']),
-                   'duration':duration+wait+1,'completion_delay':duration+wait+1,'cost':cost,
+                   'duration':remaining_time,'completion_delay':remaining_time,'cost':cost,
                    'effects':effects,'assumptions':assumptions,'meta':{'joint_segment':inst['id']}}
 
     def execute(self, actor, action):
