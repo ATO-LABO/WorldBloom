@@ -1,0 +1,31 @@
+{
+  "source": "momotaro",
+  "target": "momotaro_shared_planning",
+  "family": "journey",
+  "planning_actors": [
+    "桃太郎"
+  ],
+  "legacy_supporting_actors": [
+    "おじいさん",
+    "おばあさん",
+    "犬",
+    "猿",
+    "キジ",
+    "鬼"
+  ],
+  "changes": [
+    "removed protagonist force_action: departure_day",
+    "added explicit actual victory requirement; old item-only ending retained in source edition",
+    "authored initial enemy location and treasure possession beliefs; subsequent movement is not public"
+  ],
+  "source_sha256": {
+    "world.yaml": "7af222dfd1a2cf39e784e58151a666c9feed268e6e7980426bde984a04a310f4",
+    "subjects/01_ojiisan.yaml": "d7e444e505e3d648ac3e68b7b43a74b98dd52c3a8781567b82c342639fb45431",
+    "subjects/02_obaasan.yaml": "8c248f312966b5368de8cf3cf2df37d3c7bc43b8fa826a333cc87ae410b5a80b",
+    "subjects/03_momotaro.yaml": "332694c2179ba9483678d77699170d06d85df8f6a2deb7ccaa151b38a2e4d8c5",
+    "subjects/04_inu.yaml": "6eb0d4641af2590c8b0d9b788d9db65efc72e4112c5b1d4a09e8130c849f3aed",
+    "subjects/05_saru.yaml": "f0b32f97cec6019db11aaa7e7767268f29dd4917de04eab1f94cc440eba437b9",
+    "subjects/06_kiji.yaml": "0958792c89911f256f2c456e07074e82d400baa2386a463edbeaa1ef666986e6",
+    "subjects/07_oni.yaml": "de76723ef1129fe4f0c98b0b98f97e866998e5930931a07635321cb51d785cdd"
+  }
+}

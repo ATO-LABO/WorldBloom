@@ -27,6 +27,26 @@ def explanation(items):
 
 
 class PlanningViewTests(unittest.TestCase):
+    def test_native_completion_advances_the_plan_and_losses_are_attempt_failures(self):
+        path=[step('boat','craft'),step('enemy','fight'),step('home','move')]
+        rows=[decision(1,path,result='crafted',verb='craft'),
+              decision(2,path[1:],result='lost',verb='fight'),
+              decision(3,[step('enemy','observe')],result='observed',verb='observe',reason='previous_action_failed')]
+        group,=planning_view.model(explanation(rows))
+        self.assertEqual(group['events'][1]['kind'],'failure')
+        self.assertEqual(group['events'][2]['kind'],'replan')
+        html=planning_view.render(explanation(rows))
+        self.assertIn('戦闘に敗れました',html)
+        self.assertIn('製作完了',html)
+
+    def test_wrong_accusation_is_a_failed_attempt_not_a_final_failure(self):
+        item=decision(1,[step('suspect','confront')],result='misjudged',verb='confront')
+        group,=planning_view.model(explanation([item]))
+        self.assertEqual(group['events'][0]['kind'],'failure')
+        html=planning_view.render(explanation([item]))
+        self.assertIn('告発は誤りでした',html)
+        self.assertIn('最終目的の判定とは分けて',html)
+
     def test_completed_scheduled_wait_is_progress_not_a_replan(self):
         path = [step('opening', 'wait'), step('scheduled work')]
         rows = [decision(1,path,result='waited',verb='wait'),
