@@ -13,6 +13,14 @@ from test_joint_calendar import project,simulation
 
 
 class JointAcceptanceTests(unittest.TestCase):
+    def test_receiving_proposal_later_does_not_change_the_signed_terms(self):
+        raw,people=inputs(accepted=False);raw['joint_activities']['instances'][0]['known_by']=['pilot']
+        w,p,s,j=runtime(raw,people);original=j.instances['segment']['terms_hash']
+        for actor in ('helper','analyst','backup'):j.deliver_terms('segment','pilot',actor)
+        state=j.snapshot();j.restore(state)
+        self.assertEqual(j.instances['segment']['terms_hash'],original)
+        self.assertEqual(j.instances['segment']['known_by'],sorted(p))
+
     def test_fixed_work_rate_requires_every_declared_contributing_role(self):
         raw,people=inputs(repair=True);d=raw['joint_activities']['definitions'][0]
         d['roles'][1]['min']=0;raw['joint_activities']['instances'][0]['roles']['holder']=[]
@@ -26,6 +34,9 @@ class JointAcceptanceTests(unittest.TestCase):
         cast=deepcopy(people);cast[1]['traits']['diligence']=.1
         w3,p3,s3,j3=runtime(raw,cast)
         with self.assertRaises(ValueError):j3.restore(state)
+        cast=deepcopy(people);cast[1]['range']['entry']='bench'
+        w4,p4,s4,j4=runtime(raw,cast)
+        with self.assertRaises(ValueError):j4.restore(state)
 
     def test_duplicate_consent_does_not_reopen_a_reserved_segment(self):
         w,p,s,j=runtime();tick(j,0);before=j.snapshot();i=j.instances['segment']

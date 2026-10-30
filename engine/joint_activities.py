@@ -165,7 +165,8 @@ class JointActivities:
         self.signature = digest({'config': self.config, 'source':world.joint_source_hash, 'zones': world.zones,
                                  'profiles':{a:{'traits':p.traits,'verbs':sorted(p.verbs),'range':sorted(p.range_zones),
                                     'excluded':p.range_exclude,'commitments':p.commitments,'initial_knowledge':sorted(p.knowledge),
-                                    'inventory':p.inventory,'companions':p.companions,'stamina_max':p.stamina_max}
+                                    'inventory':p.inventory,'companions':p.companions,'stamina_max':p.stamina_max,
+                                    'base':p.base,'initial_zone':p.zone,'initial_stamina':p.stamina}
                                              for a,p in world.subjects.items()},
                                  'people': sorted(world.subjects), 'facts': world.facts,
                                  'conditions': world.concerns.config if world.concerns else None})
@@ -246,12 +247,12 @@ class JointActivities:
         if entry['id'] in self.instances: raise ValueError('Segment identifiers cannot be reused')
         self._validate_terms(entry)
         inst = deepcopy(entry)
-        inst['terms'] = deepcopy(entry)
+        inst['terms'] = {k:deepcopy(v) for k,v in entry.items() if k not in {'known_by','initial'}}
         known=sorted(set(entry.get('known_by',[])))
         if not set(known)<=set(self.people(entry)): raise ValueError('Unknown activity recipient')
         inst.update(status='proposed', consents={}, received={}, known_by=known, cursor=None, start=None, finish=None,
                     spent={a: pair(0) for a in self.people(entry)}, consumed=[], receipts=[], reason=None)
-        inst['terms_hash'] = digest({'definition': self.definitions[entry['definition_id']], 'terms': entry})
+        inst['terms_hash'] = digest({'definition': self.definitions[entry['definition_id']], 'terms': inst['terms']})
         if not authored:
             if proposer not in self.people(inst): raise ValueError('Proposer is not a participant')
             inst['known_by'] = [a for a in self.people(inst) if self.co_present(a, proposer)]
