@@ -1,0 +1,12 @@
+[
+  {
+    "id": "diagnosis-handover",
+    "actor": "制作担当",
+    "at": 491,
+    "verb": "share_knowledge",
+    "args": [
+      "委員長",
+      "design_record"
+    ]
+  }
+]
