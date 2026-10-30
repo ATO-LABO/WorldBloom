@@ -1,0 +1,12 @@
+[
+  {
+    "id": "diagnosis-handover",
+    "actor": "Bo",
+    "at": 491,
+    "verb": "share_knowledge",
+    "args": [
+      "Ada",
+      "diagnosis_record"
+    ]
+  }
+]

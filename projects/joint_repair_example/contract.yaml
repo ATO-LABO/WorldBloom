@@ -1,0 +1,113 @@
+{
+  "version": 3,
+  "calendar": {
+    "schema_version": 1,
+    "period": {
+      "start_date": "2026-11-01",
+      "end_date": "2026-11-01"
+    },
+    "normal": {
+      "bands": [
+        {
+          "id": "day",
+          "name": "Daytime display",
+          "start": "09:00",
+          "end": "10:00",
+          "overnight": false,
+          "interval_minutes": 17
+        }
+      ],
+      "weekdays": {},
+      "holidays": []
+    },
+    "specials": []
+  },
+  "timezone": "UTC",
+  "start_time": "08:00",
+  "end_time": "09:00",
+  "travel_minutes": {
+    "Bench": {
+      "Store": 10
+    },
+    "Store": {
+      "Bench": 10
+    }
+  },
+  "roles": {
+    "Ada": [
+      "maker"
+    ],
+    "Bo": [
+      "maker"
+    ]
+  },
+  "tasks": {
+    "diagnosis": {
+      "label": "diagnosis",
+      "place": "Bench",
+      "units": 1,
+      "minutes_per_unit": 10,
+      "dependencies": [],
+      "resource": "bench-tool",
+      "roles": [
+        "maker"
+      ],
+      "materials_per_unit": {},
+      "operation": "work"
+    },
+    "replacement": {
+      "label": "replacement",
+      "place": "Bench",
+      "units": 1,
+      "minutes_per_unit": 20,
+      "dependencies": [
+        "diagnosis"
+      ],
+      "resource": "bench-tool",
+      "roles": [
+        "maker"
+      ],
+      "materials_per_unit": {},
+      "operation": "work"
+    },
+    "verification": {
+      "label": "verification",
+      "place": "Bench",
+      "units": 1,
+      "minutes_per_unit": 5,
+      "dependencies": [
+        "replacement"
+      ],
+      "resource": "bench-tool",
+      "roles": [
+        "maker"
+      ],
+      "materials_per_unit": {},
+      "operation": "work"
+    }
+  },
+  "materials": {
+    "blank": 3
+  },
+  "facility_hours": {},
+  "appraisal": {
+    "fulfilled": 0.05,
+    "unexplained_breach": -0.05
+  },
+  "assumptions": [
+    "Explicit acceptance input in an independent workshop; no action search.",
+    "One worker makes three units and hands them to a named receiver."
+  ],
+  "initial_task_knowledge": {
+    "Ada": [
+      "diagnosis",
+      "replacement",
+      "verification"
+    ],
+    "Bo": [
+      "diagnosis",
+      "replacement",
+      "verification"
+    ]
+  }
+}

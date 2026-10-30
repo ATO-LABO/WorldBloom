@@ -1,5 +1,7 @@
 # 共同行動と共同作業の受入条件
 
+現在の実装と試験の接続先は[使い方](joint-activities-runtime.md)にまとめています。以下は設計時に定めた受入条件です。
+
 [設計書](joint-activities-design.md)を実装する際の試験条件です。ここに挙げた実行試験は設計段階ではまだ実施していません。[契約例](design-examples/joint-activities-contract.json)の数値は整合性を検査するための例として定めたものです。
 
 ## 契約と予約
