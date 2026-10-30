@@ -133,6 +133,11 @@ class JointAcceptanceTests(unittest.TestCase):
         self.assertEqual(w.concerns.evaluate(w,'separate',actor='pilot')['state'],'unknown')
         j.interrupt('segment','damage');j.interrupt('other-boat','damage')
         self.assertEqual(w.concerns.evaluate(w,'separate')['state'],'false')
+        self.assertNotIn(p['analyst'],w.present_subjects('sea',observer=p['pilot']))
+        p['pilot'].knowledge.add('diagnosis_record')
+        result,_,_=s.verb_engine.execute(p['pilot'],Action('share_knowledge',('analyst','diagnosis_record')),turn=2,day=1)
+        self.assertEqual(result,'invalid')
+        self.assertNotIn('diagnosis_record',p['analyst'].knowledge)
 
     def test_unknown_provider_and_zero_participant_contract_are_rejected(self):
         for modify in [lambda d:d.update(provider='arbitrary_eval'),lambda d:d['roles'][0].update(min=0)]:

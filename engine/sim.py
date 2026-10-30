@@ -169,7 +169,7 @@ class Simulation:
             self.slot_runtime = SlotRuntime(self)
 
     def _present_for(self, subject: Subject) -> list[Subject]:
-        return self.world.present_subjects(subject.zone)
+        return self.world.present_subjects(subject.zone,**({'observer':subject} if self.world.joint_activities is not None else {}))
 
     def _layer_snapshots(
         self,

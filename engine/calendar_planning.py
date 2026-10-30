@@ -92,7 +92,8 @@ class CalendarPlanning:
         if self.world.social_planner is not None:
             state.update({('knowledge',actor.id,f):f in actor.knowledge for f in self.world.facts})
         for who, person in rt.people.items():
-            if person.zone == actor.zone and person.zone != '移動中': state[('zone', who)] = person.zone
+            if (person.zone == actor.zone and person.zone != '移動中'
+                    and (rt.joint is None or rt.joint.co_present(actor.id,who))): state[('zone', who)] = person.zone
             elif (actor.zone != '移動中' and self.planner.memory.get(actor.id, {}).get('known', {}).get(('zone', who)) == actor.zone):
                 state[('zone', who)] = None  # Observed absence does not reveal a remote destination.
         known_tasks = {**rt.known_tasks[actor.id], **{task:entry for task,entry in rt.ledger['tasks'].items()

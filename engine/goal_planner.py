@@ -71,7 +71,8 @@ class GoalPlanner:
 
     def _ordinary_visible(self, world, actor):
         values = {('zone', actor.id): actor.zone}
-        for person in ([] if getattr(actor, 'in_transit', False) else world.present_subjects(actor.zone, include_downed=False)):
+        for person in ([] if getattr(actor, 'in_transit', False) else world.present_subjects(actor.zone, include_downed=False,
+                          **({'observer':actor} if getattr(world,'joint_activities',None) is not None else {}))):
             values[('zone', person.id)] = person.zone
         for item in world.items:
             values[('inventory', actor.id, item)] = actor.inventory.get(item, 0)

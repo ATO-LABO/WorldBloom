@@ -233,7 +233,7 @@ class VerbEngine:
     _await_response = _response_action
 
     def _present(self, actor: Subject) -> list[Subject]:
-        return self.world.present_subjects(actor.zone)
+        return self.world.present_subjects(actor.zone,**({'observer':actor} if self.world.joint_activities is not None else {}))
 
     def _target(
         self,
@@ -248,6 +248,8 @@ class VerbEngine:
         if (target is None or target.id == actor.id or target.zone != actor.zone
                 or getattr(actor, 'in_transit', False) or getattr(target, 'in_transit', False)):
             return None
+        joint=getattr(self.world,'joint_activities',None)
+        if joint is not None and not joint.co_present(actor.id,target.id): return None
         allowed = {"alive", "revived", "downed"} if allow_downed else {
             "alive",
             "revived",

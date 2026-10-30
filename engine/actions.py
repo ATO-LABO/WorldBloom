@@ -82,7 +82,7 @@ def _action_key(candidate: tuple[Action, float]) -> tuple[str, tuple[str, ...]]:
 
 
 def _present(subject: Subject, world: World) -> list[Subject]:
-    return world.present_subjects(subject.zone)
+    return world.present_subjects(subject.zone,**({'observer':subject} if getattr(world,'joint_activities',None) is not None else {}))
 
 
 def _is_hostile(actor: Subject, target: Subject, world: World) -> bool:

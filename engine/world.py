@@ -1962,6 +1962,7 @@ class World:
         zone: str,
         *,
         include_downed: bool = True,
+        observer: Subject | None = None,
     ) -> list[Subject]:
         allowed = {"alive", "revived", "downed"} if include_downed else {
             "alive",
@@ -1971,6 +1972,7 @@ class World:
             subject
             for subject in self.subjects.values()
             if subject.zone == zone and subject.vitality in allowed and not getattr(subject, 'in_transit', False)
+            and (observer is None or self.joint_activities is None or self.joint_activities.co_present(observer.id,subject.id))
         ]
 
     def scheduled_for(self, day: int, slot: str | None) -> list[dict[str, Any]]:

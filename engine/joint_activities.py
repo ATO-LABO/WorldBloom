@@ -417,6 +417,7 @@ class JointActivities:
             place = (self.calendar.contract['tasks'][task['id']]['place'] if self.calendar else task.get('place',bindings.get('place')))
             if place not in self.world.zones or any(self.world.subjects[a].zone!=place for a in actors):
                 raise ValueError('Work location unavailable')
+            if any(not self.co_present(actors[0],a) for a in actors): raise ValueError('Work participants are in separate containers')
             if self.calendar:
                 from engine.task_windows import permits
                 tid = task['id']; native = self.calendar.contract['tasks'][tid]

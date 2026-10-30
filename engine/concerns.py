@@ -242,6 +242,8 @@ class Concerns:
             return (responses is not None and args[0] in responses.locations
                     and responses.can_observe(world.subjects[actor], args[0]))
         if kind in {'vitality','zone'}:
+            joint=getattr(world,'joint_activities',None)
+            if joint is not None and joint.sim is not None:return args[0]==actor or joint.co_present(actor,args[0])
             return args[0]==actor or (not getattr(world.subjects[actor], 'in_transit', False)
                 and not getattr(world.subjects[args[0]], 'in_transit', False)
                 and world.subjects[actor].zone in world.zones and world.subjects[args[0]].zone in world.zones
