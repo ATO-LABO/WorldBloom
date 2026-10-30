@@ -111,8 +111,11 @@ class Concerns:
             if world.facts[test['fact']].get('values'):raise ValueError('Knowledge concern requires a boolean fact')
         if test['kind']=='inventory' and test['item'] not in world.items:raise ValueError('Unknown concern item')
         if test['kind']=='zone' and test['equals'] not in world.zones:raise ValueError('Unknown concern place')
-        if test['kind']=='state' and (world.deliberation is None or test['key'] not in world.deliberation.state):
-            raise ValueError('Unknown concern state key')
+        if test['kind']=='state':
+            states = set(world.deliberation.state) if world.deliberation else set()
+            responses = getattr(world, 'responses', None)
+            if responses is not None: states.update(responses.state)
+            if test['key'] not in states: raise ValueError('Unknown concern state key')
 
     def validate_projections(self,world,spec):
         projections=spec['concern_projections']
@@ -153,7 +156,10 @@ class Concerns:
 
     def _read(self,world,coordinate):
         kind,*args=coordinate
-        if kind=='state':return world.deliberation.state[args[0]]
+        if kind=='state':
+            responses = getattr(world, 'responses', None)
+            if responses is not None and args[0] in responses.state: return responses.state[args[0]]
+            return world.deliberation.state[args[0]]
         if kind=='vitality':return world.subjects[args[0]].vitality
         if kind=='zone':return world.subjects[args[0]].zone
         if kind=='knowledge':return args[1] in world.subjects[args[0]].knowledge
@@ -163,6 +169,10 @@ class Concerns:
     def _visible(self,world,actor,coordinate,public):
         if public:return True
         kind,*args=coordinate
+        if kind=='state':
+            responses = getattr(world, 'responses', None)
+            return (responses is not None and args[0] in responses.locations
+                    and world.subjects[actor].zone == responses.locations[args[0]])
         if kind in {'vitality','zone'}:
             return args[0]==actor or world.subjects[args[0]].zone==world.subjects[actor].zone
         if kind in {'inventory','knowledge','relation'}:return args[0]==actor

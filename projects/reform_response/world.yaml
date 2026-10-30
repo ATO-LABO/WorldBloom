@@ -1,0 +1,221 @@
+{
+  "name": "制度移行の不利益への対応",
+  "overview": "制度移行で資格を失わない",
+  "initial_story": "制度移行で資格を失わない",
+  "time": {
+    "days": 2,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6",
+      "時点7",
+      "時点8"
+    ]
+  },
+  "protagonist": "改革官",
+  "antagonist": "相談員",
+  "zones": [
+    {
+      "name": "出張先"
+    },
+    {
+      "name": "中継庁舎"
+    },
+    {
+      "name": "窓口"
+    }
+  ],
+  "routes": {
+    "出張先": [
+      {
+        "to": "中継庁舎",
+        "cost": 1
+      }
+    ],
+    "中継庁舎": [
+      {
+        "to": "出張先",
+        "cost": 1
+      },
+      {
+        "to": "窓口",
+        "cost": 1
+      }
+    ],
+    "窓口": [
+      {
+        "to": "中継庁舎",
+        "cost": 1
+      }
+    ]
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "facts": [
+    {
+      "id": "danger_report",
+      "values": [
+        "active",
+        "resolved"
+      ],
+      "sources": []
+    }
+  ],
+  "truth": {
+    "danger_report": "active"
+  },
+  "concerns": {
+    "version": 1,
+    "conditions": [
+      {
+        "id": "eligibility_safe",
+        "label": "給付資格が個人単位で適用されている",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "protected",
+          "equals": "individual"
+        }
+      }
+    ],
+    "commitments": {
+      "改革官": [
+        {
+          "condition": "eligibility_safe",
+          "priority": 10,
+          "required": true
+        }
+      ],
+      "担当官": [
+        {
+          "condition": "eligibility_safe",
+          "priority": 8,
+          "required": true
+        }
+      ]
+    }
+  },
+  "responses": {
+    "version": 1,
+    "state": {
+      "danger": "active",
+      "protected": "marital"
+    },
+    "locations": {
+      "danger": "窓口",
+      "protected": "窓口"
+    },
+    "signals": [
+      {
+        "fact": "danger_report",
+        "condition": "eligibility_safe",
+        "key": "danger",
+        "danger_values": [
+          "active"
+        ],
+        "max_age": 30,
+        "threshold": 0.4,
+        "deadline": 12
+      }
+    ],
+    "actions": [
+      {
+        "id": "secure",
+        "label": "移行措置を施行する",
+        "condition": "eligibility_safe",
+        "signal": "danger_report",
+        "zone": "窓口",
+        "actors": [
+          "改革官",
+          "担当官"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "danger": "active"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "danger",
+            "value": "resolved"
+          },
+          {
+            "kind": "state",
+            "key": "protected",
+            "value": "individual"
+          }
+        ]
+      }
+    ],
+    "channels": [
+      {
+        "from": "改革官",
+        "to": "担当官",
+        "delay": 2
+      },
+      {
+        "from": "担当官",
+        "to": "改革官",
+        "delay": 2
+      }
+    ],
+    "events": [
+      {
+        "id": "damage",
+        "turn": 13,
+        "unless": {
+          "danger": "resolved"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "protected",
+            "value": "marital"
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "condition": "eligibility_safe",
+        "start": 1,
+        "end": 16,
+        "mode": "by_deadline"
+      }
+    ]
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 16",
+      "label": "観測期間の終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": [
+    {
+      "id": "first_report",
+      "label": "危険の知らせが届く",
+      "day": 1,
+      "slot": "時点1",
+      "targets": [
+        "相談員"
+      ],
+      "force_action": {
+        "verb": "share_knowledge",
+        "args": [
+          "改革官",
+          "danger_report"
+        ]
+      }
+    }
+  ]
+}

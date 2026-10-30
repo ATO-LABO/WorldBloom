@@ -23,13 +23,14 @@ from engine.phase2 import (
 )
 from engine.subject import BeliefAbout
 from engine.deliberation import VERBS as DELIBERATION_VERBS
+from engine.responses import VERBS as RESPONSE_VERBS
 
 if TYPE_CHECKING:
     from engine.subject import Subject
     from engine.world import World
 
 
-HANDLED_VERBS = DELIBERATION_VERBS | frozenset(
+HANDLED_VERBS = DELIBERATION_VERBS | RESPONSE_VERBS | frozenset(
     {
         "move",
         "rest",
@@ -89,7 +90,8 @@ class VerbEngine:
         if handler is None:
             return "invalid", {"reason": "unknown_verb"}, []
 
-        if self.world.action_graph_enabled and action.args and action.verb not in DELIBERATION_VERBS:
+        if (self.world.action_graph_enabled and action.args
+                and action.verb not in DELIBERATION_VERBS | (RESPONSE_VERBS - {'request_response'})):
             target = self.world.subjects.get(str(action.args[0]))
             if target is not None and target.id != actor.id:
                 role = self.world.target_role(actor, target)
@@ -130,6 +132,8 @@ class VerbEngine:
             turn=turn,
             day=day,
         )
+        if self.world.responses is not None:
+            self.world.responses.after_action(self.world, actor, action, result, details, turn)
         markers.extend(
             plant_from_action(
                 self.world,
@@ -157,6 +161,16 @@ class VerbEngine:
     _amend_proposal = _deliberation_action
     _request_decision = _deliberation_action
     _decide_proposal = _deliberation_action
+
+    def _response_action(self, actor, action, *, turn, day):
+        if self.world.responses is None:
+            return 'invalid', {'reason': 'responses_not_configured'}, []
+        return self.world.responses.execute(self.world, actor, action, turn, day)
+
+    _respond = _response_action
+    _inspect_response = _response_action
+    _request_response = _response_action
+    _answer_response = _response_action
 
     def _present(self, actor: Subject) -> list[Subject]:
         return self.world.present_subjects(actor.zone)

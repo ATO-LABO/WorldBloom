@@ -4,7 +4,7 @@
  const kinds={vitality:'命・生存状態',state:'制度や世界の状態',knowledge:'情報が誰に知られたか',inventory:'持ち物の必要量',zone:'人物の居場所',relation:'一方向の親しさ'};
  function render(root,draft,snapshot,editable,change){
   root.replaceChildren();
-  const people=snapshot.people.map(p=>p.id),world=snapshot.world,states=Object.keys(world.deliberation?.state||{}),facts=Array.isArray(world.facts)?world.facts.filter(f=>typeof f==='string'||f.values==null).map(f=>typeof f==='string'?f:f.id):Object.entries(world.facts||{}).filter(([,f])=>f?.values==null).map(([id])=>id),items=names(world.items),zones=names(world.zones);
+  const people=snapshot.people.map(p=>p.id),world=snapshot.world,states=[...Object.keys(world.deliberation?.state||{}),...Object.keys(world.responses?.state||{})],facts=Array.isArray(world.facts)?world.facts.filter(f=>typeof f==='string'||f.values==null).map(f=>typeof f==='string'?f:f.id):Object.entries(world.facts||{}).filter(([,f])=>f?.values==null).map(([id])=>id),items=names(world.items),zones=names(world.zones);
   const title=document.createElement('h2');title.textContent='大切にしていること';root.append(title);
   if(!Array.isArray(draft.conditions)||!draft.commitments||typeof draft.commitments!=='object'||Array.isArray(draft.commitments)||draft.conditions.some(c=>!c||typeof c!=='object'||!c.test||!kinds[c.test.kind]||(c.test.kind==='knowledge'&&!Array.isArray(c.test.actors))||(c.test.kind==='vitality'&&!Array.isArray(c.test.allowed)))||Object.values(draft.commitments).some(v=>!Array.isArray(v))){
    const error=document.createElement('p');error.className='ui-error';error.textContent='この設定はフォームで扱えない形式です。設定ファイルから対象と条件を確認してください。';root.append(error);return;
