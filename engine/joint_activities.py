@@ -265,6 +265,12 @@ class JointActivities:
         if a.zone != b.zone: return False
         one = self.membership(first); two = self.membership(second)
         one=getattr(a,'shared_container',one);two=getattr(b,'shared_container',two)
+        def current(person,container):
+            entry=self.instances.get(container)
+            if entry is None or person.zone!=entry['bindings'].get('transit_zone'): return None
+            if getattr(person,'in_transit',False) and self.membership(person.id)!=container:return None
+            return container
+        one=current(a,one);two=current(b,two)
         if one is not None or two is not None: return one is not None and one==two
         if getattr(a,'in_transit',False) or getattr(b,'in_transit',False): return False
         return True
@@ -287,13 +293,15 @@ class JointActivities:
         if not authored and accepted:
             review = self.review(inst, self.world.subjects[actor])
             if review['excluded']: raise ValueError('Participant objective conflict')
-        if inst['consents'].get(actor) is accepted and actor in inst['received']:
-            return
-        inst['consents'][actor] = accepted
         host=self.host(inst)
         audience=(inst['known_by'] if authored else sorted({actor,host}) if self.co_present(actor,host) else [actor])
-        inst['received'][actor]=audience
-        if not accepted:
+        if inst['consents'].get(actor) is accepted and set(audience)<=set(inst['received'].get(actor,[])):
+            return
+        if not accepted and inst['status']=='reserved' and host not in audience:
+            raise ValueError('Withdrawal requires an actual communication channel')
+        inst['consents'][actor] = accepted
+        inst['received'][actor]=sorted(set(inst['received'].get(actor,[]))|set(audience))
+        if not accepted and host in inst['received'][actor]:
             inst['status']='canceled'; inst['reason']='participant_declined'; self.bookings.release(ident)
         elif all(inst['consents'].get(a) and host in inst['received'].get(a,[]) for a in self.people(inst)):
             inst['status']='agreed'
@@ -618,7 +626,11 @@ class JointActivities:
             return False
         if settle: self._settle(inst,self.kernel.now)
         inst.update(status='interrupted',reason=reason)
-        for aid in self.people(inst): self.world.subjects[aid].in_transit=False
+        for aid in self.people(inst):
+            self.world.subjects[aid].in_transit=False
+            if (self.definitions[inst['definition_id']]['provider']=='joint_move'
+                    and self.world.subjects[aid].zone!=inst['bindings'].get('transit_zone')):
+                self.world.subjects[aid].shared_container=None
         self.bookings.release(ident); self._record(inst,'interrupted'); return True
 
     def recheck_running(self):

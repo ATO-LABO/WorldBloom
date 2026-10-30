@@ -351,6 +351,7 @@ class VerbEngine:
 
         origin = actor.zone
         actor.zone = destination
+        if self.world.joint_activities is not None: actor.shared_container=None
         if self.world.action_timing is not None:
             actor.in_transit = False
         if self.world.action_timing is None or not self.world.action_timing.prepaid(actor, action):
@@ -504,7 +505,7 @@ class VerbEngine:
         markers: list[dict[str, Any]] = []
         present_ids = {
             subject.id
-            for subject in self.world.present_subjects(actor.zone)
+            for subject in self._present(actor)
         }
         for fact, definition in sorted(self.world.facts.items()):
             if definition.get("values") is not None:

@@ -1997,7 +1997,7 @@ class World:
             return False
         if "companions" not in access.get("allow", []):
             return False
-        for owner in self.present_subjects(subject.zone):
+        for owner in self.present_subjects(subject.zone,observer=subject):
             if not owner.has_item(item):
                 continue
             if owner.companions is not None and subject.id in owner.companions:

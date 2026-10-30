@@ -13,6 +13,16 @@ from test_joint_calendar import project,simulation
 
 
 class JointAcceptanceTests(unittest.TestCase):
+    def test_private_refusal_is_not_known_until_the_reply_reaches_the_host(self):
+        raw,people=inputs(accepted=False);w,p,s,j=runtime(raw,people)
+        i=j.instances['segment'];i['known_by']=list(p);p['analyst'].zone='bench'
+        before=w.planner.search(w,p['pilot'],'arrived',1)
+        j.record_consent('segment','analyst',i['terms_hash'],False)
+        self.assertEqual(w.planner.search(w,p['pilot'],'arrived',1),before)
+        self.assertEqual(i['status'],'proposed')
+        p['analyst'].zone='coast';j.record_consent('segment','analyst',i['terms_hash'],False)
+        self.assertEqual(i['status'],'canceled')
+
     def test_receiving_proposal_later_does_not_change_the_signed_terms(self):
         raw,people=inputs(accepted=False);raw['joint_activities']['instances'][0]['known_by']=['pilot']
         w,p,s,j=runtime(raw,people);original=j.instances['segment']['terms_hash']
@@ -133,10 +143,11 @@ class JointAcceptanceTests(unittest.TestCase):
 
     def test_JA43_separate_vessels_do_not_share_their_interiors(self):
         raw,people=inputs();first=raw['joint_activities']['instances'][0]
+        raw['routes']['sea']=[{'to':'island','cost':1,'requires_item':'boat'}]
         first['roles']['passenger']=['helper'];first['initial_agreement']['accepted_by']=['pilot','helper'];first['initial_agreement']['known_by']=['pilot','helper']
         other=deepcopy(first);other.update(id='other-boat');other['roles']={'pilot':['analyst'],'passenger':['backup']}
         other['initial_agreement']['accepted_by']=['analyst','backup'];other['initial_agreement']['known_by']=['analyst','backup']
-        raw['joint_activities']['instances'].append(other);people[2]['inventory']={'boat':1};people[2]['companions']=['backup']
+        raw['joint_activities']['instances'].append(other);people[2]['inventory']={'boat':1};people[2]['companions']=['backup','pilot']
         raw['concerns']['conditions'].append({'id':'separate','label':'Two vessels','mode':'maintain','visibility':'observed',
                                             'test':{'kind':'co_location','actor':'pilot','target':'analyst'}})
         w,p,s,j=runtime(raw,people);tick(j,0);tick(j,1)
@@ -149,6 +160,13 @@ class JointAcceptanceTests(unittest.TestCase):
         result,_,_=s.verb_engine.execute(p['pilot'],Action('share_knowledge',('analyst','diagnosis_record')),turn=2,day=1)
         self.assertEqual(result,'invalid')
         self.assertNotIn('diagnosis_record',p['analyst'].knowledge)
+        p['pilot'].inventory['boat']=0
+        self.assertNotIn('island',w.reachable_paths(p['pilot']))
+        p['pilot'].inventory['boat']=1
+        for who in ('pilot','analyst'):
+            result,_,_=s.verb_engine.execute(p[who],Action('move',('island',)),turn=2,day=1)
+            self.assertEqual(result,'moved')
+        self.assertTrue(j.co_present('pilot','analyst'))
 
     def test_unknown_provider_and_zero_participant_contract_are_rejected(self):
         for modify in [lambda d:d.update(provider='arbitrary_eval'),lambda d:d['roles'][0].update(min=0)]:

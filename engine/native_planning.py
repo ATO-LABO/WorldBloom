@@ -94,7 +94,8 @@ class NativePlanning:
         for peer in world.subjects:
             state[aux('observations',actor.id,peer)] = self.observations.get((actor.id,peer),0)
             if peer==actor.id:continue
-            if world.subjects[peer].zone==actor.zone:
+            if (world.subjects[peer].zone==actor.zone and
+                    (world.joint_activities is None or world.joint_activities.co_present(actor.id,peer))):
                 state[('zone',peer)]=actor.zone
                 state[('vitality',peer)]=world.subjects[peer].vitality
                 # A present owner's usable vehicle is visible to its permitted
@@ -106,9 +107,9 @@ class NativePlanning:
                             and actor.id in (world.subjects[peer].companions or [])):
                         state[('inventory',peer,item)]=world.subjects[peer].inventory.get(item,0)
                 from engine.contest import believed_strength
-                state[aux('rival',actor.id,peer)]=believed_strength(actor,world.subjects[peer],world,world.present_subjects(actor.zone))
+                state[aux('rival',actor.id,peer)]=believed_strength(actor,world.subjects[peer],world,world.present_subjects(actor.zone,observer=actor))
                 belief=actor.beliefs_about.get(peer)
-                for modifier in world.subjects[peer].all_modifiers(world,world.present_subjects(actor.zone)):
+                for modifier in world.subjects[peer].all_modifiers(world,world.present_subjects(actor.zone,observer=actor)):
                     if modifier.visible or belief and modifier.source in belief.known_modifiers:
                         state[aux('modifier',peer,modifier.source)]=modifier.value if modifier.active else 0
                         state[aux('item_modifier',peer,modifier.source)]=modifier.kind=='item'

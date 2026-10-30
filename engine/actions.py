@@ -724,7 +724,7 @@ def _sacrifice_candidates(
 
     allies = [
         target
-        for target in world.present_subjects(subject.zone)
+        for target in _present(subject,world)
         if target.id != subject.id
         and target.vitality in {"alive", "revived"}
         and world.relations.stance(target.id, subject.id)

@@ -686,6 +686,8 @@ class Simulation:
             names = sorted(subject.id for subject in subjects)
             for index, first in enumerate(names):
                 for second in names[index + 1 :]:
+                    if self.world.joint_activities is not None and not self.world.joint_activities.co_present(first,second):
+                        continue
                     self.world.relations.change(
                         first,
                         second,

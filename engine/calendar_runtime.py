@@ -776,6 +776,7 @@ class CalendarRuntime:
         self.lifecycle.start(actor, pending, duration)
         if verb == 'move':
             person.zone = '移動中'
+            if self.joint is not None: person.shared_container=None
         self.emit('start:'+ident, 'action_started', actor, choice=choice, duration_minutes=duration,
                   finish_at=pending['finish'], source=source, reserved_resource=(self.contract['tasks'][choice['task_id']]['resource'] if verb == 'work' else None))
 

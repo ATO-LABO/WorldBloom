@@ -154,6 +154,7 @@ class ActionTiming:
             return 'failed', details, []
         self.lifecycle.start(actor.id, pending, spec['duration'])
         actor.in_transit = action.verb == 'move'
+        if action.verb=='move' and world.joint_activities is not None: actor.shared_container=None
         details = {'activity': self.record(pending, 'started')}
         if world.planner is not None: world.planner.after_action(world, actor, action, 'started', details, turn)
         pending['view'] = self._view(world, actor)
