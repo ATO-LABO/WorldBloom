@@ -1,0 +1,30 @@
+id: 依頼人
+traits:
+  social: 0.6
+  stubbornness: 0.4
+  curiosity: 0.5
+  diligence: 0.6
+  temper: 0.2
+base: 50
+knowledge: []
+inventory: {}
+verbs:
+- move
+- rest
+- share_knowledge
+stamina:
+  max: 100
+  current: 80
+  recover_per_slot: 1
+range:
+  zones:
+  - 工房
+  - 資材置場
+  entry: 工房
+relations:
+  職人:
+    affinity: 0.3
+    awareness: 0.5
+goal:
+  outcome: observation_finished
+objective_claimant: false

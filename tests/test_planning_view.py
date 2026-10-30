@@ -61,6 +61,24 @@ class PlanningViewTests(unittest.TestCase):
         html = planning_view.render(explanation([decision(1, [], status='search_limit')]))
         self.assertIn('これだけで最終目的を失敗確定にはしません', html)
 
+    def test_calendar_route_durations_and_replan_causes_use_calendar_units(self):
+        old = [step('fetch'), step('send')]
+        ex = explanation([decision(1, old, result='working', verb='respond'),
+                          decision(2, old, result='failed', verb='respond'),
+                          decision(3, [step('recover'), step('send')], result='working',
+                                   verb='respond', reason='previous_action_failed')])
+        ex['calendar'] = {'schema_version': 2, 'start_date': '2026-11-01',
+                          'end_date': '2026-11-01', 'timezone': 'UTC',
+                          'origin': '2026-11-01T00:00:00+00:00', 'duration_minutes': 1440}
+        html = planning_view.render(ex)
+        self.assertIn('所要見込み 1分', html)
+        self.assertNotIn('所要見込み 1時点', html)
+        self.assertIn('見直しのきっかけ：2026-11-01 00:02', html)
+        ex.pop('calendar')
+        ordinary = planning_view.render(ex)
+        self.assertIn('所要見込み 1時点', ordinary)
+        self.assertIn('見直しのきっかけ：時点 2', ordinary)
+
     def test_deadline_marker_after_last_choice_is_shown_separately(self):
         row = decision(1, [], status='no_known_plan')
         ex = explanation([row]); ex['planning_outcomes'] = [

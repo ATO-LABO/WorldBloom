@@ -1,6 +1,6 @@
 # Automatic prerequisites and replanning
 
-This optional ordinary-instant runtime connects character-owned final purposes
+This optional ordinary-logical runtime connects character-owned final purposes
 to existing, authored causal operators. Intermediate tasks are not extra genes,
 personality traits or saved commitments. Worlds without `planning` retain their
 previous candidate policy and ledger shape.
@@ -39,9 +39,18 @@ Supported steps are ordinary `move`, proactive `respond`, and the existing
 operators retain their world `condition` label but, in an enabled world, need
 not have independent temporal goal rules. Their capabilities, explicit boolean
 knowledge requirements, resources, effort, actual state guards and authorization
-gates still apply. Planner worlds currently require response version 2 with no
-signals/channels and ordinary instant time. Existing reactive response worlds
-and calendar/slot runtimes are not implicitly migrated.
+gates still apply. Ordinary planner worlds require response version 2 with no
+signals/channels. Calendar worlds can instead opt into the native task domain
+with version 2 calendar objectives; see [calendar-goal-planning.md](calendar-goal-planning.md).
+Existing reactive response worlds and calendar/slot worlds without these
+declarations retain their previous behavior.
+
+Worlds can opt into the shared pending-action lifecycle with `action_timing`.
+See [timed-actions.md](timed-actions.md) for interval durations, exact deadline
+boundaries, paid elapsed effort, interruption and compatibility. The planner and
+executor use the same normalized duration and remaining-cost provider. The two
+data-only examples are `ship_timed_planning` and `village_timed_planning`; the
+latter uses separate timber/fence identifiers, not battery/beacon identifiers.
 
 ## Epistemic boundary and failed attempts
 
@@ -87,9 +96,11 @@ do not prevent safe work on lower-priority feasible ones.
 Effort and movement costs are accumulated conservatively against current
 stamina. Work already performed on the current operator is retained. Actual
 failed guards reset only that operator's incomplete work; prior spent effort,
-time, facts, transfers and relationship changes are not undone. Rest can restore
-resources in the live simulation, after which a new plan may become feasible;
-search does not forecast future regeneration or invent a rest schedule.
+time, facts, transfers and relationship changes are not undone. Timed worlds
+with an authored rest provider also search recovery before/between steps, using
+actual recovery, capacity and duration. Calendar task worlds use their explicit
+energy contract. Hypothetical rest never changes the live actor, and no future
+free regeneration is forecast. Legacy instant worlds retain their prior search.
 
 An intermediate negotiation uses the old payment bundle, not price selection:
 all eligible lootable items except the requested item. It forecasts a potential

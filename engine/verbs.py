@@ -217,7 +217,8 @@ class VerbEngine:
         if not action.args:
             return None
         target = self.world.subjects.get(str(action.args[0]))
-        if target is None or target.id == actor.id or target.zone != actor.zone:
+        if (target is None or target.id == actor.id or target.zone != actor.zone
+                or getattr(actor, 'in_transit', False) or getattr(target, 'in_transit', False)):
             return None
         allowed = {"alive", "revived", "downed"} if allow_downed else {
             "alive",
@@ -305,7 +306,10 @@ class VerbEngine:
 
         origin = actor.zone
         actor.zone = destination
-        actor.change_stamina(-path.cost)
+        if self.world.action_timing is not None:
+            actor.in_transit = False
+        if self.world.action_timing is None or not self.world.action_timing.prepaid(actor, action):
+            actor.change_stamina(-path.cost)
         self._update_exhausted(actor)
 
         present = self._present(actor)

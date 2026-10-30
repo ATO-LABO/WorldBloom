@@ -5,7 +5,7 @@ import json
 import shutil
 
 from engine.deliberation import digest
-from engine.episode_contract import factory_identities
+from engine.episode_contract import factory_identities, native_profile
 from engine.execution_plan import ExecutionPlan
 from engine.sim import Simulation
 from engine.subject import Subject
@@ -32,7 +32,7 @@ def run_batch(world_path, output, seeds):
         raise ValueError('Distinct predeclared integer seeds required')
     path, output = Path(world_path).resolve(), Path(output)
     world, _ = load_response(path)
-    sampler, provider = factory_identities('legacy_instant')
+    sampler, provider = factory_identities(native_profile(world))
     classification = {'id':'concern_response_v1','version':1,
                       'source_hash':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                       'config_hash':digest({'outcome':'actual_state_and_temporal_history'})}

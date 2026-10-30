@@ -7,6 +7,8 @@ KINDS = {
     'vitality': {'kind','actor','allowed'}, 'state': {'kind','key','equals'},
     'knowledge': {'kind','fact','actors','rule'}, 'inventory': {'kind','actor','item','minimum'},
     'zone': {'kind','actor','equals'}, 'relation': {'kind','observer','target','minimum'},
+    'task': {'kind','task','minimum'},
+    'promise': {'kind','promise','version','statuses'},
 }
 VITALITIES = {'alive','downed','revived','dead'}
 
@@ -51,6 +53,8 @@ def validate_commitments(values, conditions=None, *, allow_empty=True):
 
 def coordinates(test):
     kind=test['kind']
+    if kind=='task': return [(kind,test['task'])]
+    if kind=='promise': return [(kind,test['promise'],str(test['version']))]
     if kind in {'vitality','zone'}: return [(kind,test['actor'])]
     if kind=='state': return [(kind,test['key'])]
     if kind=='inventory': return [(kind,test['actor'],test['item'])]
@@ -60,6 +64,8 @@ def coordinates(test):
 
 def effect_coordinate(effect):
     kind=effect['kind']
+    if kind=='task': return (kind,effect['task'])
+    if kind=='promise': return (kind,effect['promise'],str(effect['version']))
     if kind in {'vitality','zone'}: return (kind,effect['actor'])
     if kind=='state': return (kind,effect['key'])
     if kind=='inventory': return (kind,effect['actor'],effect['item'])
@@ -87,7 +93,14 @@ class Concerns:
                 raise ValueError('Unknown concern state adapter')
             shape(test,KINDS[test['kind']])
             for key,value in test.items():
-                if key not in {'minimum','allowed','actors'}:identifier(value)
+                if key not in {'minimum','allowed','actors','version','statuses'}:identifier(value)
+            if test['kind']=='task' and (type(test['minimum']) is not int or not 0 <= test['minimum'] <= 10000):
+                raise ValueError('Invalid task minimum')
+            if test['kind']=='promise':
+                from engine.promises_v2 import STATUSES
+                distinct(test['statuses'])
+                if type(test['version']) is not int or test['version'] < 1 or not test['statuses'] or not set(test['statuses']) <= STATUSES:
+                    raise ValueError('Invalid promise version/status')
             if test['kind']=='vitality':
                 distinct(test['allowed'])
                 if not test['allowed'] or not set(test['allowed'])<=VITALITIES:raise ValueError('Invalid vitality condition')
@@ -127,6 +140,12 @@ class Concerns:
                 or actor in self.config.get('commitments', {}))
 
     def _validate_refs(self,world,people,test):
+        if test['kind'] in {'task','promise'}:
+            if (world.slot_execution or {}).get('mode') != 'calendar_promises_v2':
+                raise ValueError('Task/promise conditions require calendar execution')
+            if test['kind']=='task' and test['task'] not in world.slot_contract['tasks']:
+                raise ValueError('Unknown calendar task')
+            return
         for key in ('actor','observer','target'):
             if key in test and test[key] not in people:raise ValueError('Unknown concern person')
         if test['kind']=='knowledge':
@@ -153,6 +172,8 @@ class Concerns:
             for effect in projection['effects']:
                 if not isinstance(effect,dict) or not isinstance(effect.get('kind'),str) or effect['kind'] not in KINDS:raise ValueError('Unknown projection effect')
                 kind=effect['kind']
+                if kind in {'task','promise'}:
+                    raise ValueError('Native task/promise evidence is read-only; use the native registry')
                 keys={'kind','value'}|({'observer','target'} if kind=='relation' else {'key'} if kind=='state'
                       else {'actor','fact'} if kind=='knowledge' else {'actor','item'} if kind=='inventory' else {'actor'})
                 shape(effect,keys)
@@ -177,19 +198,25 @@ class Concerns:
                 if coordinate in seen:raise ValueError('Duplicate projected assignment')
                 seen.add(coordinate)
 
-    def _read(self,world,coordinate):
+    def _read(self,world,coordinate,actor=None):
         kind,*args=coordinate
+        if kind in {'task','promise'}:
+            domain = getattr(world, 'planning_domain', None)
+            return None if domain is None else domain.read(coordinate, actor)
         if kind=='state':
             responses = getattr(world, 'responses', None)
             if responses is not None and args[0] in responses.state: return responses.state[args[0]]
             return world.deliberation.state[args[0]]
         if kind=='vitality':return world.subjects[args[0]].vitality
-        if kind=='zone':return world.subjects[args[0]].zone
+        if kind=='zone':return None if getattr(world.subjects[args[0]], 'in_transit', False) else world.subjects[args[0]].zone
         if kind=='knowledge':return args[1] in world.subjects[args[0]].knowledge
         if kind=='inventory':return world.subjects[args[0]].inventory.get(args[1],0)
         return world.relations.stance(*args)
 
     def _visible(self,world,actor,coordinate,public):
+        if coordinate[0] in {'task','promise'}:
+            domain = getattr(world, 'planning_domain', None)
+            return domain is not None and domain.read(coordinate, actor) is not None
         if public:return True
         kind,*args=coordinate
         if kind=='state':
@@ -197,7 +224,10 @@ class Concerns:
             return (responses is not None and args[0] in responses.locations
                     and responses.can_observe(world.subjects[actor], args[0]))
         if kind in {'vitality','zone'}:
-            return args[0]==actor or world.subjects[args[0]].zone==world.subjects[actor].zone
+            return args[0]==actor or (not getattr(world.subjects[actor], 'in_transit', False)
+                and not getattr(world.subjects[args[0]], 'in_transit', False)
+                and world.subjects[actor].zone in world.zones and world.subjects[args[0]].zone in world.zones
+                and world.subjects[args[0]].zone==world.subjects[actor].zone)
         if kind in {'inventory','knowledge','relation'}:return args[0]==actor
         return False
 
@@ -209,14 +239,18 @@ class Concerns:
             if key in overlay:
                 values.append(overlay[key] if justified else None);sources.append('declared_forecast' if justified else 'unjustified_forecast')
             elif actor is None or self._visible(world,actor,key,definition['visibility']=='public'):
-                values.append(self._read(world,key));sources.append('world' if actor is None else 'direct')
+                values.append(self._read(world,key,actor));sources.append('world' if actor is None else 'direct')
             else:values.append(None);sources.append('unobserved')
         if test['kind']=='knowledge':
             wanted=False if test['rule']=='none' else True
             raw=False if any(v is not None and v!=wanted for v in values) else None if any(v is None for v in values) else True
+        elif (test['kind']=='zone' and keys[0] not in overlay and getattr(world.subjects[test['actor']], 'in_transit', False)
+                and (actor is None or self._visible(world,actor,keys[0],definition['visibility']=='public'))):
+            raw=False  # Being in transit is known absence from every stationary endpoint.
         elif values[0] is None:raw=None
         elif test['kind']=='vitality':raw=values[0] in test['allowed']
-        elif test['kind'] in {'relation','inventory'}:raw=values[0]>=test['minimum']
+        elif test['kind']=='promise':raw=values[0] in test['statuses']
+        elif test['kind'] in {'relation','inventory','task'}:raw=values[0]>=test['minimum']
         else:raw=values[0]==test['equals']
         confidence=1.0 if raw is not None else 0.0
         # A stale belief is a view of current state, not evidence for an unseen

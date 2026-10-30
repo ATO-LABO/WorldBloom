@@ -773,6 +773,10 @@ class World:
         if 'planning' in definition:
             from engine.goal_planner import GoalPlanner
             self.planner = GoalPlanner(definition['planning'])
+        self.action_timing = None
+        if 'action_timing' in definition:
+            from engine.action_timing import ActionTiming
+            self.action_timing = ActionTiming(definition['action_timing'])
 
     @classmethod
     def from_yaml(
@@ -1569,6 +1573,8 @@ class World:
             self.goal_rules.bind(self)
         if self.planner is not None:
             self.planner.bind(self)
+        if self.action_timing is not None:
+            self.action_timing.bind(self)
 
         from engine.subject import Belief
 
@@ -1931,7 +1937,7 @@ class World:
         return [
             subject
             for subject in self.subjects.values()
-            if subject.zone == zone and subject.vitality in allowed
+            if subject.zone == zone and subject.vitality in allowed and not getattr(subject, 'in_transit', False)
         ]
 
     def scheduled_for(self, day: int, slot: str | None) -> list[dict[str, Any]]:

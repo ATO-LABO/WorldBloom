@@ -195,7 +195,7 @@ class Responses:
         return value if isinstance(value, list) else [value]
 
     def can_observe(self, actor, key):
-        return actor.zone in self.observation_zones(key)
+        return not getattr(actor, 'in_transit', False) and actor.zone in self.observation_zones(key)
 
     def view(self, world, actor, fact, turn):
         signal = self.signals[fact]
@@ -342,21 +342,27 @@ class Responses:
         if set(spec['requires']) - actor.knowledge: fail('missing_evidence')
         if any(not actor.has_item(item, n) for item, n in spec['items'].items()): fail('missing_resources')
         remaining = spec['steps'] - self.progress.get((actor.id, spec['id']), 0)
-        if actor.stamina < spec['cost']: fail('insufficient_stamina')
+        from engine.action_timing import step_timing
+        remaining, remaining_cost, completion = step_timing(world, actor, 'respond', (spec['id'],), remaining,
+            spec['cost'] * remaining, turn=turn)
+        if actor.stamina < (remaining_cost if world.action_timing is not None and 'respond' in world.action_timing.rules else spec['cost']):
+            fail('insufficient_stamina')
         path = None
         if actor.zone != spec['zone']:
             path = world.reachable_paths(actor).get(spec['zone'])
             if path is None or 'move' not in allowed or not world.genre_allows('move'): fail('unreachable')
         hops = len(path.route)-1 if path else 0
+        travel = (step_timing(world, actor, 'move', (spec['zone'],), hops, path.cost,
+                  turn=turn, hops=hops)[0] if path else 0)
         deadline = self.signals[spec['signal']]['deadline'] if spec['signal'] is not None else None
-        if deadline is not None and turn + hops + remaining - 1 > deadline: fail('too_late')
+        if deadline is not None and turn + travel + completion > deadline: fail('too_late')
         objective = world.goal_rules
         if objective is not None and spec['condition'] in objective.definitions:
             own = objective.actor_view(world, actor.id, spec['condition'], turn)
             result['objective_view'] = own
             if own['status'] in {'achieved', 'failed'}: fail('objective_terminal')
             if turn < own['period']['start']: fail('objective_not_started')
-            if turn + hops + remaining - 1 > own['period']['end']: fail('objective_too_late')
+            if turn + travel + completion > own['period']['end']: fail('objective_too_late')
         projection = {'effects': spec['effects']}
         forecast = world.concerns.assessment(world, actor.id, projection=projection)
         own_result = next((c for c in forecast['entries'] if c['condition'] == spec['condition']), None)
@@ -387,10 +393,10 @@ class Responses:
                     fail('required_condition_conflict')
                 elif commitment and prediction['failure']['state'] == 'true' and value['priority'] >= commitment['priority']:
                     fail('higher_priority_harm')
-        result.update(forecast=forecast, eta=hops+remaining, priority=commitment['priority'] if commitment else 0,
+        result.update(forecast=forecast, eta=travel+remaining, priority=commitment['priority'] if commitment else 0,
                       required=commitment['required'] if commitment else False)
         if not result['excluded']:
-            score = (20 + 4 * actor.traits['diligence']) * view['confidence'] / max(1, hops+remaining)
+            score = (20 + 4 * actor.traits['diligence']) * view['confidence'] / max(1, travel+remaining)
             score /= 1 + sum(c['priority'] for c in soft_harms) / max(1, commitment['priority'])
             if self.active.get(actor.id, {}).get('action') == spec['id']: score *= 2
             result['weight'] = score
@@ -517,9 +523,10 @@ class Responses:
             if action.meta.get('goal_plan'):
                 self.active.pop(actor.id, None)
             return 'failed', {'response': {'action': spec['id'], 'reason': 'actual_preconditions_changed', 'assessment': option}}, []
-        actor.change_stamina(-spec['cost'])
+        prepaid = world.action_timing is not None and world.action_timing.prepaid(actor, action)
+        if not prepaid: actor.change_stamina(-spec['cost'])
         key = (actor.id, spec['id'])
-        progress = self.progress.get(key, 0) + 1
+        progress = spec['steps'] if prepaid else self.progress.get(key, 0) + 1
         self.progress[key] = progress
         self.active[actor.id] = {'action': spec['id'], 'since': turn}
         if action.meta.get('goal_plan'):

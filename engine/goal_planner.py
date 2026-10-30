@@ -9,6 +9,7 @@ import itertools
 import json
 
 from engine.concerns import coordinates, effect_coordinate, shape, distinct
+from engine.action_timing import step_timing
 
 
 class GoalPlanner:
@@ -26,6 +27,12 @@ class GoalPlanner:
         self.history = []
 
     def bind(self, world):
+        if (world.slot_execution or {}).get('mode') == 'calendar_promises_v2':
+            if world.goal_rules is None or world.goal_rules.config['version'] != 2 or world.responses is not None:
+                raise ValueError('Calendar planning requires calendar objectives and native task operators')
+            if not set(self.config['actors']) <= set(world.subjects):
+                raise ValueError('Unknown planning actor')
+            return
         if (world.goal_rules is None or world.responses is None or world.responses.config['version'] != 2
                 or world.responses.signals or world.responses.channels or world.slot_execution is not None):
             raise ValueError('Planning requires ordinary proactive responses and explicit goal rules')
@@ -51,8 +58,10 @@ class GoalPlanner:
         return view['status'] not in {'achieved', 'failed'} and view['period']['start'] <= turn <= view['period']['end']
 
     def _visible(self, world, actor):
+        if getattr(world, 'planning_domain', None) is not None:
+            return world.planning_domain.visible(actor)
         values = {('zone', actor.id): actor.zone}
-        for person in world.present_subjects(actor.zone, include_downed=False):
+        for person in ([] if getattr(actor, 'in_transit', False) else world.present_subjects(actor.zone, include_downed=False)):
             values[('zone', person.id)] = person.zone
         for item in world.items:
             values[('inventory', actor.id, item)] = actor.inventory.get(item, 0)
@@ -64,7 +73,8 @@ class GoalPlanner:
         for definition in world.concerns.conditions.values():
             for coord in coordinates(definition['test']):
                 if world.concerns._visible(world, actor.id, coord, definition['visibility'] == 'public'):
-                    values[tuple(coord)] = world.concerns._read(world, coord)
+                    value = world.concerns._read(world, coord)
+                    if value is not None: values[tuple(coord)] = value
         return values
 
     def view(self, world, actor):
@@ -89,6 +99,8 @@ class GoalPlanner:
             kind, *args = coord
             effect = {'kind': kind, 'value': value}
             if kind == 'state': effect['key'] = args[0]
+            elif kind == 'task': effect['task'] = args[0]
+            elif kind == 'promise': effect.update(promise=args[0], version=int(args[1]))
             elif kind == 'relation': effect.update(observer=args[0], target=args[1])
             else:
                 effect['actor'] = args[0]
@@ -147,6 +159,9 @@ class GoalPlanner:
         return needs
 
     def _steps(self, world, actor, root, state, turn, elapsed, spent):
+        if getattr(world, 'planning_domain', None) is not None:
+            yield from world.planning_domain.steps(actor, root, state, turn, elapsed, spent)
+            return
         from engine.phase2 import available_verbs
         from engine.objective_actions import offered_assets
         shadow = copy(actor)
@@ -164,16 +179,33 @@ class GoalPlanner:
             if test['kind'] == 'state' and belief and belief.value == 'false' and belief.confidence > 0:
                 negatives.add((('state', test['key']), test['equals']))
         relevant, needed = self._relevant(world, actor, root)
+        timing = world.action_timing
+        if timing is not None and 'rest' in timing.rules and 'rest' in allowed and world.genre_allows('rest'):
+            recovery = min(actor.stamina_max - shadow.stamina, actor.stamina_recover)
+            if recovery > 1e-9:
+                duration, _, completion = step_timing(world, actor, 'rest', (), 1, 0, turn=turn, elapsed=elapsed)
+                yield {'verb': 'rest', 'args': [], 'label': '休息する', 'duration': duration,
+                       'completion_delay': completion, 'cost': 0, 'recovery': recovery,
+                       'effects': [], 'assumptions': [], 'meta': {}}
         if 'move' in allowed and world.genre_allows('move'):
             excluded = world._excluded_zones(shadow)
+            actual_paths = world.reachable_paths(shadow) if world.action_timing is not None else None
             for route in world.routes.get(shadow.zone, ()):
+                path = actual_paths.get(route.destination) if actual_paths is not None else None
+                if actual_paths is not None and path is None: continue
+                raw_cost = path.cost if path is not None else route.cost
+                hops = path.hops if path is not None else 1
+                duration, cost, completion = step_timing(world, actor, 'move', (route.destination,), hops, raw_cost,
+                    turn=turn, elapsed=elapsed, hops=hops)
                 if (route.destination not in shadow.range_zones or route.destination in excluded
-                        or route.cost > shadow.stamina or route.requires_item and not shadow.has_item(route.requires_item)):
+                        or cost > shadow.stamina or route.requires_item and not shadow.has_item(route.requires_item)):
                     continue
                 yield {'verb': 'move', 'args': [route.destination], 'label': route.destination,
-                       'duration': 1, 'cost': route.cost, 'effects': [{'kind': 'zone', 'actor': actor.id, 'value': route.destination}],
-                       'assumptions': [], 'meta': {'dest': route.destination, 'cost': route.cost, 'hops': 1,
-                                                  'route': [shadow.zone, route.destination]}}
+                       'duration': duration, 'cost': cost,
+                       **({'completion_delay': completion} if world.action_timing is not None else {}),
+                       'effects': [{'kind': 'zone', 'actor': actor.id, 'value': route.destination}],
+                       'assumptions': [], 'meta': {'dest': route.destination, 'cost': raw_cost, 'hops': hops,
+                                                  'route': list(path.route) if path is not None else [shadow.zone, route.destination]}}
         if 'respond' in allowed and world.genre_allows('respond'):
             for spec in world.responses.actions.values():
                 if spec['id'] not in relevant or shadow.zone != spec['zone']:
@@ -195,9 +227,12 @@ class GoalPlanner:
                         assumptions.append({'key': key, 'expected': wanted})
                 else:
                     remaining = spec['steps'] - (world.responses.progress.get((actor.id, spec['id']), 0) if not elapsed else 0)
+                    duration, cost, completion = step_timing(world, actor, 'respond', (spec['id'],), remaining,
+                        spec['cost'] * remaining, turn=turn, elapsed=elapsed)
                     if spec['cost'] * remaining <= shadow.stamina:
                         yield {'verb': 'respond', 'args': [spec['id']], 'label': spec['label'],
-                               'duration': remaining, 'cost': spec['cost'] * remaining,
+                               'duration': duration, 'cost': cost,
+                               **({'completion_delay': completion} if world.action_timing is not None else {}),
                                'effects': deepcopy(spec['effects']), 'assumptions': assumptions, 'meta': {}}
         if 'negotiate' not in allowed or not world.genre_allows('negotiate') or not actor.objective_claimant:
             return
@@ -276,7 +311,7 @@ class GoalPlanner:
                 continue
             for step in self._steps(world, actor, root, state, turn, elapsed, spent):
                 duration = step['duration']
-                if turn + elapsed + duration - 1 > period['end']: continue
+                if turn + elapsed + step.get('completion_delay', duration - 1) > period['end']: continue
                 changed = {effect_coordinate(e) for e in step['effects']}
                 future = dict(state)
                 for assumption in step['assumptions']:
@@ -285,14 +320,15 @@ class GoalPlanner:
                         future[coord] = assumption['expected']
                         changed.add(coord)
                 future.update({effect_coordinate(e): e['value'] for e in step['effects']})
-                if future == state or self._safe(world, actor, root, future, changed) is None: continue
+                if (future == state and not step.get('recovery')
+                        or self._safe(world, actor, root, future, changed) is None): continue
                 # Assumptions are conditional branches, not actor knowledge.
                 pending = [*assumptions, *step['assumptions']]
                 if queued >= self.config['max_nodes']:
                     truncated = True
                     continue
                 heapq.heappush(queue, (elapsed + duration + 3 * len(pending), next(serial),
-                    elapsed + duration, spent + step['cost'], future, [*steps, step], pending))
+                    elapsed + duration, spent + step['cost'] - step.get('recovery', 0), future, [*steps, step], pending))
                 queued += 1
         if best_plan is not None:
             best_plan.update(expanded=expanded, search_truncated=bool(queue or truncated))
@@ -301,6 +337,7 @@ class GoalPlanner:
                 'expanded': expanded, 'max_nodes': self.config['max_nodes']}
 
     def _pending(self, world, actor, root, turn):
+        if getattr(world, 'planning_domain', None) is not None: return None
         for (claimant, holder), offer in sorted(world.offers.items()):
             if claimant == actor.id and offer.get('planning_root') == root and self.offer_valid(world, actor, offer, turn):
                 return holder
@@ -308,6 +345,7 @@ class GoalPlanner:
 
     def _information(self, world, actor, root, turn, day=1):
         """Travel to declared observation sites without reading their contents."""
+        if getattr(world, 'planning_domain', None) is not None: return None
         from engine.phase2 import available_verbs
         if 'move' not in available_verbs(world, actor, turn=turn, day=day) or not world.genre_allows('move'):
             return None
@@ -320,13 +358,15 @@ class GoalPlanner:
         paths = world.reachable_paths(actor)
         deadline = world.goal_rules.definitions[root]['period']['end']
         for zone in sorted(zones, key=lambda z: (paths[z].hops if z in paths else 100000, z)):
-            if zone not in paths or (root, zone, epoch) in inspected or turn + paths[zone].hops > deadline:
+            if zone not in paths or (root, zone, epoch) in inspected:
                 continue
             route = paths[zone]
+            duration = step_timing(world, actor, 'move', (zone,), route.hops, route.cost, turn=turn, hops=route.hops)[0]
+            if turn + duration > deadline: continue
             # Runtime movement remains adjacent and uses its real cost.
             edge = next(r for r in world.routes[actor.zone] if r.destination == route.route[1])
             return {'status': 'seeking_information', 'root': root, 'steps': [], 'observation_site': zone,
-                    'next_zone': route.route[1], 'eta': route.hops, 'cost': edge.cost}
+                    'next_zone': route.route[1], 'eta': duration, 'cost': edge.cost}
         return None
 
     def candidates(self, world, actor, turn, day):
@@ -427,7 +467,7 @@ class GoalPlanner:
         if action.meta.get('goal_plan'):
             plan = deepcopy(action.meta['goal_plan'])
             previous = memory['last']
-            reason = ('initial_plan' if previous is None else 'previous_action_failed' if previous['failed']
+            reason = ('initial_plan' if previous is None else 'action_interrupted' if previous.get('interrupted') else 'previous_action_failed' if previous['failed']
                       else 'reply_received' if memory.get('reply') else
                       'new_information' if before != memory['known'] else 'continuing')
             record = {'turn': turn, 'actor': actor.id, 'reason': reason, 'result': result, **plan}
@@ -436,6 +476,7 @@ class GoalPlanner:
             if plan['status'] == 'seeking_information' and actor.zone == plan['observation_site']:
                 memory.setdefault('inspected', set()).add((plan['root'], actor.zone, memory.get('failures', 0)))
             memory['last'] = {'failed': failed, 'root': plan['root']}
+            if world.action_timing is not None: memory['last']['interrupted'] = result == 'interrupted'
             memory.pop('reply', None)
 
     def snapshot(self):

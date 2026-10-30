@@ -136,3 +136,14 @@ are hidden while this full-width tab is active. This is an information-layout
 choice, not another style/token owner. Old per-decision planning disclosures
 start collapsed. Selection and route expansion survive tab switches; switching
 actor/objective retains that group's selected scene independently.
+
+Timed activity records appear in the same planning workspace. Selection and
+execution are distinct source records. Shared notices show start/expected finish
+using authored day/slot labels, actual elapsed effort and explicit ongoing,
+completed, failed, interrupted or unfinished status. Starting is never labelled
+arrival or success. The view consumes activity events, not new actor decisions.
+
+Native calendar goal choices use that same workspace. The reader preserves their
+original event/decision source lines and distinguishes journaled selection from
+native completion. Rest completion is a visible milestone with actual recovered
+stamina; date/time labels come from the execution calendar, not inferred slots.

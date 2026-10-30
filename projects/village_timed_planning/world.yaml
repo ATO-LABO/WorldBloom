@@ -1,0 +1,490 @@
+{
+  "name": "時間付き行動で村の防柵を作る",
+  "overview": "桃太郎は防柵の完成を目的に丸太と縄の調達を組み立てる。丸太の流失後、捜索と回収の手順を組み直す。",
+  "initial_story": "桃太郎は村にいる。縄の準備と、山の貯木場の丸太の回収が必要だ。",
+  "time": {
+    "days": 6,
+    "slots": [
+      "早朝",
+      "朝",
+      "午前",
+      "昼",
+      "午後",
+      "夕",
+      "夜",
+      "深夜"
+    ]
+  },
+  "protagonist": "桃太郎",
+  "antagonist": "村の商人",
+  "zones": [
+    {
+      "name": "村"
+    },
+    {
+      "name": "山の貯木場"
+    },
+    {
+      "name": "川辺"
+    },
+    {
+      "name": "下流"
+    },
+    {
+      "name": "商店"
+    },
+    {
+      "name": "山の見張り台"
+    }
+  ],
+  "routes": {
+    "村": [
+      {
+        "to": "山の貯木場",
+        "cost": 1
+      }
+    ],
+    "山の貯木場": [
+      {
+        "to": "村",
+        "cost": 1
+      },
+      {
+        "to": "川辺",
+        "cost": 1
+      },
+      {
+        "to": "商店",
+        "cost": 1
+      }
+    ],
+    "川辺": [
+      {
+        "to": "山の貯木場",
+        "cost": 1
+      },
+      {
+        "to": "下流",
+        "cost": 1
+      }
+    ],
+    "下流": [
+      {
+        "to": "川辺",
+        "cost": 1
+      }
+    ],
+    "商店": [
+      {
+        "to": "山の貯木場",
+        "cost": 1
+      }
+    ],
+    "山の見張り台": []
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "items": [
+    {
+      "name": "丸太"
+    },
+    {
+      "name": "彫り物",
+      "lootable": true,
+      "modifier": {
+        "id": "craft_value",
+        "base": 2
+      }
+    },
+    {
+      "name": "縄"
+    }
+  ],
+  "facts": [
+    {
+      "id": "recovery_method",
+      "sources": []
+    },
+    {
+      "id": "timber_location",
+      "sources": []
+    }
+  ],
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "fence_built",
+        "label": "防柵を完成させる",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "fence",
+          "equals": "built"
+        }
+      },
+      {
+        "id": "timber_owned",
+        "label": "防柵用の丸太を持つ",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "桃太郎",
+          "item": "丸太",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "timber_stored",
+        "label": "丸太は山の貯木場にある",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "timber",
+          "equals": "stored"
+        }
+      },
+      {
+        "id": "village_safe",
+        "label": "村の安全を損なわない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "village_safety",
+          "equals": "safe"
+        }
+      },
+      {
+        "id": "merchant_timber",
+        "label": "村の商人が丸太を持つ",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "inventory",
+          "actor": "村の商人",
+          "item": "丸太",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "merchant_paid",
+        "label": "村の商人が彫り物を得る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "村の商人",
+          "item": "彫り物",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "merchant_at_store",
+        "label": "村の商人が商店にいる",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "zone",
+          "actor": "村の商人",
+          "equals": "商店"
+        }
+      },
+      {
+        "id": "carving_retained",
+        "label": "桃太郎が彫り物を保つ",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "桃太郎",
+          "item": "彫り物",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "rope_owned",
+        "label": "縄を用意する",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "桃太郎",
+          "item": "縄",
+          "minimum": 1
+        }
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "fence_built",
+        "success": {
+          "condition": "fence_built"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 44
+        }
+      },
+      {
+        "condition": "merchant_paid",
+        "success": {
+          "condition": "merchant_paid"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 44
+        }
+      }
+    ]
+  },
+  "responses": {
+    "version": 2,
+    "state": {
+      "timber": "stored",
+      "fence": "unsent",
+      "village_safety": "safe"
+    },
+    "locations": {
+      "timber": "山の見張り台",
+      "fence": "村",
+      "village_safety": [
+        "村",
+        "山の貯木場",
+        "川辺",
+        "下流",
+        "商店",
+        "山の見張り台"
+      ]
+    },
+    "signals": [],
+    "actions": [
+      {
+        "id": "collect_timber",
+        "label": "山の貯木場で丸太を回収する",
+        "condition": "timber_owned",
+        "signal": null,
+        "zone": "山の貯木場",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 3,
+        "preconditions": {
+          "timber": "stored"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "丸太",
+            "value": 1
+          },
+          {
+            "kind": "state",
+            "key": "timber",
+            "value": "recovered"
+          }
+        ]
+      },
+      {
+        "id": "locate_timber",
+        "label": "流された丸太の位置を川辺で調べる",
+        "condition": "timber_stored",
+        "signal": null,
+        "zone": "川辺",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [
+          "recovery_method"
+        ],
+        "items": {},
+        "cost": 2,
+        "steps": 2,
+        "preconditions": {
+          "timber": "adrift"
+        },
+        "effects": [
+          {
+            "kind": "knowledge",
+            "actor": "桃太郎",
+            "fact": "timber_location",
+            "value": true
+          },
+          {
+            "kind": "state",
+            "key": "timber",
+            "value": "located"
+          }
+        ]
+      },
+      {
+        "id": "haul_timber",
+        "label": "下流で丸太を縄で引き上げる",
+        "condition": "timber_owned",
+        "signal": null,
+        "zone": "下流",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [
+          "timber_location"
+        ],
+        "items": {
+          "縄": 1
+        },
+        "cost": 2,
+        "steps": 2,
+        "preconditions": {
+          "timber": "located"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "丸太",
+            "value": 1
+          },
+          {
+            "kind": "state",
+            "key": "timber",
+            "value": "recovered"
+          }
+        ]
+      },
+      {
+        "id": "build_fence",
+        "label": "丸太と縄を使って防柵を組み立てる",
+        "condition": "fence_built",
+        "signal": null,
+        "zone": "村",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [],
+        "items": {
+          "丸太": 1,
+          "縄": 1
+        },
+        "cost": 1,
+        "steps": 1,
+        "preconditions": {
+          "fence": "unsent"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "丸太",
+            "value": 0
+          },
+          {
+            "kind": "state",
+            "key": "fence",
+            "value": "built"
+          },
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "縄",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "id": "make_rope",
+        "label": "防柵と回収作業に使う縄を用意する",
+        "condition": "rope_owned",
+        "signal": null,
+        "zone": "村",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 2,
+        "steps": 1,
+        "preconditions": {},
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "縄",
+            "value": 1
+          }
+        ]
+      }
+    ],
+    "channels": [],
+    "events": [
+      {
+        "id": "timber_lost",
+        "turn": 6,
+        "unless": {
+          "timber": "recovered"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "timber",
+            "value": "adrift"
+          }
+        ]
+      }
+    ],
+    "windows": []
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 48",
+      "label": "再計画の観測終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": [],
+  "planning": {
+    "version": 1,
+    "actors": [
+      "桃太郎"
+    ],
+    "max_depth": 10,
+    "max_nodes": 512
+  },
+  "action_timing": {
+    "version": 1,
+    "rules": [
+      {
+        "verb": "move",
+        "duration": 2,
+        "interruptible": false
+      },
+      {
+        "verb": "respond",
+        "duration": "work_steps",
+        "interruptible": true
+      },
+      {
+        "verb": "rest",
+        "duration": 1,
+        "interruptible": true
+      }
+    ]
+  }
+}

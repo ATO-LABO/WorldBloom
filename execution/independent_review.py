@@ -11,7 +11,7 @@ from execution.provenance import (ConfigError,canonical,sha256,identifier,contai
                                   atomic_json,materialize,verify_files,code_snapshot,
                                   directory_lock,publish_directory)
 from engine.execution_plan import ExecutionPlan
-from engine.episode_contract import factory_identities
+from engine.episode_contract import factory_identities, native_profile
 
 MAX_TRIALS=100
 
@@ -74,7 +74,7 @@ def admit(configs,request):
     config,manifest,root=configs._bundle(request['config_id'])
     world=yaml.safe_load(contained(root/'inputs',f"projects/{config['project_id']}/world.yaml").read_bytes())
     code,runtime=code_snapshot(configs.repo)
-    sampler,provider=factory_identities('next_boundary' if world.get('slot_execution') else 'legacy_instant',engine_files=code)
+    sampler,provider=factory_identities(native_profile(world),engine_files=code)
     classifier={'id':'observed_terminal_v1','version':1,'source_hash':sha256(Path(__file__).read_bytes()),'config_hash':sha256(canonical({'unknown_is_not_failure':True}))}
     value={'schema_version':1,'execution_kind':'independent_trials','sampler':sampler,'provider':provider,
            'predeclared_seeds':request['seed_plan'],'planned_trials':len(request['seed_plan']),

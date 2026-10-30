@@ -33,7 +33,7 @@ def references(expression, *, depth=0, budget=None):
 class Objectives:
     def __init__(self, raw):
         shape(raw, {'version', 'definitions'})
-        if type(raw['version']) is not int or raw['version'] != 1:
+        if type(raw['version']) is not int or raw['version'] not in (1, 2):
             raise ValueError('Unsupported objectives version')
         if not isinstance(raw['definitions'], list) or not 1 <= len(raw['definitions']) <= 32:
             raise ValueError('Bounded objective definitions required')
@@ -49,24 +49,44 @@ class Objectives:
             references(spec['failure'])
             shape(spec['period'], {'start', 'end'})
             start, end = spec['period']['start'], spec['period']['end']
-            if type(start) is not int or type(end) is not int or not 1 <= start <= end <= 10000:
+            if raw['version'] == 2:
+                for point in (start, end):
+                    shape(point, {'date', 'time'})
+                    identifier(point['date']); identifier(point['time'])
+            elif type(start) is not int or type(end) is not int or not 1 <= start <= end <= 10000:
                 raise ValueError('Invalid objective period')
-            self.definitions[cid] = spec
+            self.definitions[cid] = deepcopy(spec)
         self.world_records = {}
         self.actor_records = {}
         self.current_turn = 0
-        self.last_closed = 0
+        self.last_closed = -1 if raw['version'] == 2 else 0
 
     def bind(self, world):
         if world.concerns is None:
             raise ValueError('Objectives require shared condition definitions')
-        if world.slot_execution is not None:
+        self.calendar_mode = self.config['version'] == 2
+        if self.calendar_mode:
+            if world.planner is None:
+                raise ValueError('Calendar objectives require the declared shared planning integration')
+            if (world.slot_execution or {}).get('mode') != 'calendar_promises_v2':
+                raise ValueError('Calendar objectives require the minute runtime')
+            from engine.calendar_v2 import compile_calendar, minute_for
+            contract = world.slot_contract
+            calendar = compile_calendar(contract['calendar'], timezone=contract['timezone'], scheduled_events=list(world.scheduled_events))
+            first = minute_for(calendar, calendar['start_date'], contract['start_time'])
+            last = minute_for(calendar, calendar['end_date'], contract['end_time'])
+            for raw_spec in self.config['definitions']:
+                spec = self.definitions[raw_spec['condition']]
+                spec['period'] = {key: minute_for(calendar, value['date'], value['time']) for key, value in raw_spec['period'].items()}
+                if not first <= spec['period']['start'] <= spec['period']['end'] <= last:
+                    raise ValueError('Calendar objective outside observation range')
+        elif world.slot_execution is not None:
             raise ValueError('Objectives v1 supports ordinary instant execution only')
         for cid, spec in self.definitions.items():
             refs = references(spec['success']) | references(spec['failure']) | {cid}
             if not refs <= set(world.concerns.conditions):
                 raise ValueError('Unknown objective condition reference: ' + ', '.join(sorted(refs-set(world.concerns.conditions))))
-            if spec['period']['end'] > world.days * len(world.slots):
+            if not self.calendar_mode and spec['period']['end'] > world.days * len(world.slots):
                 raise ValueError('Objective period exceeds the world time range')
             if world.responses is not None and cid in world.responses.windows:
                 raise ValueError('An objective and a legacy response window cannot judge the same condition')
@@ -134,7 +154,7 @@ class Objectives:
             record.update(status='unknown', reason='period_not_observed', observation_gap=True)
             return
         previous = record['last_observed']
-        if (previous is None and turn > start) or (previous is not None and turn > previous + 1):
+        if ((previous is None and turn > start) or (previous is not None and turn > previous + 1 and not getattr(self, 'calendar_mode', False))):
             record['observation_gap'] = True
         record['last_observed'] = turn
         success, failure = (prediction[k] for k in ('success', 'failure'))

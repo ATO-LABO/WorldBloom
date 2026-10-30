@@ -11,11 +11,30 @@ def e(value):
     return escape(str(value), quote=True)
 
 
+def activity_time(activity, key):
+    label = activity.get(key + '_label')
+    if isinstance(label, dict) and type(label.get('day')) is int and isinstance(label.get('slot'), str):
+        return str(label['day']) + '日目・' + label['slot']
+    point = activity.get(key)
+    if type(point) is not int: return '不明'
+    return ('開始から' + str(point) + '分' if activity.get('unit') == 'minute' else '時点 ' + str(point + 1))
+
+
 STATUS = {'pending': '継続中', 'not_started': '判定前', 'achieved': '達成', 'failed': '失敗確定', 'unknown': '判定できない'}
 KINDS = {'initial': '最初の計画', 'failure': '手段の失敗', 'replan': '計画を変更',
          'complete': '作業を完了', 'information': '情報を確認', 'observe': '観測へ移動',
          'offer': '交換を申し入れ', 'accepted': '交換が成立', 'refused': '交換を拒否された',
          'pause': '手順を探し直す', 'achieved': '目的を達成', 'failed': '目的の失敗確定', 'routine': '行動の記録'}
+KINDS.update(arrived='目的地に到着', interrupted='行動を中断', unfinished='観測終了時も継続中')
+KINDS.update(recovered='休息で回復')
+
+
+def point_label(explanation, point):
+    if explanation.get('calendar') and type(point) is int:
+        from engine.calendar_v2 import time_label
+        value = time_label(explanation['calendar'], point)
+        return value['date'] + ' ' + value['time']
+    return '時点 ' + str(point)
 
 
 def step_key(step):
@@ -32,7 +51,9 @@ def step_label(step):
 
 def model(explanation):
     groups = {}; pending_offers = {}
-    for item in explanation.get('decisions', []):
+    records = sorted([*explanation.get('decisions', []), *explanation.get('activity_records', []),
+                      *explanation.get('planning_assessments', [])], key=lambda r:r['line'])
+    for item in records:
         detail = item.get('outcome', {}).get('details') or {}
         plan = detail.get('planning')
         if isinstance(plan, dict) and plan.get('root'):
@@ -44,7 +65,7 @@ def model(explanation):
             reference = (previous or {}).get('plan')
             if reference and reference.get('status') == 'awaiting_consent': reference = group.get('offer_plan') or reference
             expected = deepcopy((reference or {}).get('steps', []))
-            if previous and previous['result'] in {'moved', 'responded'} and expected: expected = expected[1:]
+            if previous and previous['result'] in {'moved', 'responded', 'rested', 'delivered'} and expected: expected = expected[1:]
             elif previous and group.get('reply') == 'accepted' and expected and expected[0]['verb'] == 'negotiate': expected = expected[1:]
             changed = previous is not None and [step_key(s) for s in current_steps] != [step_key(s) for s in expected]
             result = item['outcome'].get('result')
@@ -60,6 +81,11 @@ def model(explanation):
             elif previous is not None and result == 'responded':
                 kind = ('information' if any(v.get('kind') == 'knowledge' and v.get('actor') == item['subject']
                         and v.get('value') is True for v in response.get('effects', [])) else 'complete')
+            activity = detail.get('activity')
+            if activity:
+                if activity.get('phase') == 'completed' and item['verb'] == 'move': kind = 'arrived'
+                elif activity.get('phase') == 'completed' and item['verb'] == 'rest': kind = 'recovered'
+                elif activity.get('phase') in {'interrupted','unfinished'}: kind = activity['phase']
             action_label = next((step_label(s) for s in current_steps if step_key(s) == (item['verb'], tuple(map(str, item.get('args', []))))),
                                 '状況を確かめる' if status == 'seeking_information' else '次の手順を検討する')
             event = {'turn': item['turn'], 'line': item['line'], 'source': item['source'], 'kind': kind,
@@ -67,6 +93,9 @@ def model(explanation):
                      'before': deepcopy(reference), 'cause': deepcopy(group['failure']) if kind in {'replan', 'pause', 'observe'} and
                          (plan.get('reason') in {'previous_action_failed', 'reply_received'} or previous and previous['kind'] == 'failure') else None,
                      'outcome': None, 'progress': response.get('progress'), 'total': response.get('steps')}
+            if activity: event['activity'] = deepcopy(activity)
+            if item.get('source_kind') == 'execution': event['source_kind'] = 'execution'
+            if item.get('source_kind') == 'assessment': event['source_kind'] = 'assessment'
             group['records'].append(event)
             group['events'].append(event)
             if kind == 'failure': group['failure'] = {'turn': item['turn'], 'line': item['line'], 'action': action_label, 'kind': 'failure'}
@@ -87,7 +116,7 @@ def model(explanation):
                     'plan': None, 'result': item['outcome']['result'], 'action': item['subject'] + 'の返答',
                     'before': None, 'cause': None, 'outcome': None, 'progress': None, 'total': None})
     outcomes = []
-    for item in explanation.get('decisions', []):
+    for item in records:
         for outcome in (item.get('outcome', {}).get('details') or {}).get('objective_outcomes', []):
             outcomes.append({'turn': item['turn'], 'source': item['source'], 'outcome': outcome})
     outcomes.extend(explanation.get('planning_outcomes', []))
@@ -155,8 +184,8 @@ def render(explanation, *, instance='planning'):
         final = group['final']; status = final.get('status', 'unknown')
         body += '<header class="pw-goal"><div><p class="pw-caption">' + e(group['actor']) + 'が目指すこと</p><h3>' + e(group['label']) + '</h3></div>'
         body += '<div class="pw-final" data-plan-verdict="' + e(status) + '"><span class="pw-caption">記録の最後の判定（作者向け）</span><strong>' + e(STATUS.get(status, '不明')) + '</strong>'
-        if final.get('decided_at') is not None: body += '<span>時点 ' + e(final['decided_at']) + '</span>'
-        if final.get('period'): body += '<span class="pw-caption">判定期間 ' + e(final['period'].get('start')) + '〜' + e(final['period'].get('end')) + '</span>'
+        if final.get('decided_at') is not None: body += '<span>' + e(point_label(explanation,final['decided_at'])) + '</span>'
+        if final.get('period'): body += '<span class="pw-caption">判定期間 ' + e(point_label(explanation,final['period'].get('start')) if explanation.get('calendar') else final['period'].get('start')) + '〜' + e(point_label(explanation,final['period'].get('end')) if explanation.get('calendar') else final['period'].get('end')) + '</span>'
         body += '</div></header><div class="pw-layout"><aside class="pw-history"><div class="pw-history-heading"><h3>変化のあった場面</h3>'
         body += f'<span class="pw-caption">{group["turning_count"]}件</span></div>'
         body += '<button type="button" class="ui-button" data-plan-all aria-pressed="false">全行動を表示</button>'
@@ -165,15 +194,26 @@ def render(explanation, *, instance='planning'):
             idx = event['index']; active = idx == group['default']; key = f'{gi}-{idx}'
             body += f'<button type="button" class="pw-event ui-button" data-plan-event="{idx}" aria-controls="{prefix}-{key}" aria-pressed="{str(active).lower()}"'
             body += (' data-plan-routine hidden' if event['kind'] == 'routine' else '') + '>'
-            body += '<span class="pw-caption">時点 ' + e(event['turn']) + '</span><strong>' + e(KINDS[event['kind']]) + '</strong></button>'
+            body += '<span class="pw-caption">' + e(point_label(explanation,event['turn'])) + '</span><strong>' + e(KINDS[event['kind']]) + '</strong></button>'
         body += '</div></aside><div class="pw-details">'
         for event in group['events']:
             idx = event['index']; key = f'{gi}-{idx}'; plan = event.get('plan') or {}
             body += f'<article id="{prefix}-{key}" data-plan-detail="{idx}"' + ('' if idx == group['default'] else ' hidden') + '>'
-            body += '<header class="pw-scene"><p class="pw-caption">この場面の判断と結果</p><h3>時点 ' + e(event['turn']) + ' ／ ' + e(KINDS[event['kind']]) + '</h3></header>'
+            caption = '開始済みの行動の経過と結果' if event.get('source_kind') == 'execution' else 'この場面の判断と結果'
+            if event.get('source_kind') == 'assessment': caption = '手順の検討結果（行動は開始していません）'
+            body += '<header class="pw-scene"><p class="pw-caption">' + caption + '</p><h3>' + e(point_label(explanation,event['turn'])) + ' ／ ' + e(KINDS[event['kind']]) + '</h3></header>'
+            if event.get('activity'):
+                a = event['activity']
+                phases = {'started':'開始（まだ完了していません）', 'progress':'継続中', 'completed':'完了',
+                          'failed':'途中で失敗', 'interrupted':'中断', 'unfinished':'観測終了時に未完了'}
+                body += '<p class="ui-notice">時間付きの行動：' + e(phases.get(a.get('phase'),'経過の記録'))
+                body += ' ／ 開始 ' + e(activity_time(a,'start')) + ' → 完了予定 ' + e(activity_time(a,'finish'))
+                body += ' ／ 消耗した体力 ' + e(a.get('spent'))
+                if 'recovered' in a: body += ' ／ 回復した体力 ' + e(a['recovered'])
+                body += '</p>'
             if event.get('cause'):
                 cause = event['cause']
-                body += '<p class="ui-notice ui-notice--warning">見直しのきっかけ：時点 ' + e(cause['turn']) + 'で「' + e(cause['action'])
+                body += '<p class="ui-notice ui-notice--warning">見直しのきっかけ：' + e(point_label(explanation,cause['turn'])) + 'で「' + e(cause['action'])
                 body += ('」を断られた。' if cause.get('kind') == 'refused' else '」に失敗した。') + '</p>'
             elif event['kind'] == 'failure':
                 body += '<p class="ui-notice ui-notice--warning">「' + e(event['action']) + '」を実行できなかった。最終目的の判定とは分けて確認します。</p>'
@@ -190,7 +230,8 @@ def render(explanation, *, instance='planning'):
             if plan.get('status') == 'seeking_information': body += '<p>次の手順を決めるため、観測場所へ向かいます。</p>'
             if plan:
                 result_label = {'moved': '移動完了', 'working': '作業中', 'responded': '作業完了',
-                    'offered': '申し入れ済み', 'rested': '待機・休息', 'failed': '実行できなかった', 'invalid': '実行されなかった'}
+                    'offered': '申し入れ済み', 'rested': '待機・休息', 'failed': '実行できなかった', 'invalid': '実行されなかった',
+                    'started':'開始・未完了', 'ongoing':'開始済みの行動を継続中', 'interrupted':'中断', 'unfinished':'未完了'}
                 body += '<p class="pw-action">この場面の行動：' + e(event['action']) + ' ／ ' + e(result_label.get(event['result'], '結果は原記録で確認')) + '</p>'
             if event['kind'] == 'replan' and event.get('before'):
                 body += '<div class="pw-comparison">' + _tasks(event['before'], failure=event.get('cause'), title='見直し前')
@@ -202,8 +243,9 @@ def render(explanation, *, instance='planning'):
             body += '<p class="pw-at-point">この時点の目的の判定（世界の実態）：<strong>' + e(STATUS.get(actual.get('status'), '不明')) + '</strong></p>'
             if plan.get('steps'):
                 body += '<details class="pw-route"><summary>移動を含む全手順を確認（' + e(len(plan['steps'])) + '段階）</summary><ol>'
+                duration_unit = '分' if explanation.get('calendar') or plan.get('time_unit') == 'minute' else '時点'
                 for step in plan['steps']:
-                    body += '<li>' + e(step_label(step)) + ' ／ 所要見込み ' + e(step.get('duration', '?')) + '時点</li>'
+                    body += '<li>' + e(step_label(step)) + ' ／ 所要見込み ' + e(step.get('duration', '?')) + duration_unit + '</li>'
                 body += '</ol></details>'
             body += '<p class="pw-caption">計画は行動を選んだ時点の見込みです。最後の判定と、この場面で本人が知っていた情報は異なる場合があります。</p>'
             body += _source(explanation, event) + '</article>'

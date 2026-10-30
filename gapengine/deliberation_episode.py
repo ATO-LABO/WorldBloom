@@ -10,7 +10,7 @@ import json
 import shutil
 
 from engine.deliberation import digest
-from engine.episode_contract import factory_identities
+from engine.episode_contract import factory_identities, native_profile
 from engine.execution_plan import ExecutionPlan
 from engine.sim import Simulation
 from engine.subject import Subject
@@ -42,7 +42,7 @@ def run_batch(world_path, output, seeds):
     if not isinstance(seeds, list) or not seeds or len(seeds) > 1000 or any(type(s) is not int or s < 0 for s in seeds) or len(set(seeds)) != len(seeds):
         raise ValueError("Distinct, predeclared nonnegative seeds required")
     world, _ = load_episode(world_path)
-    sampler, provider = factory_identities("legacy_instant")
+    sampler, provider = factory_identities(native_profile(world))
     source = Path(__file__).read_bytes()
     classification = {"id": "deliberation_terminal_v1", "version": 1,
                       "source_hash": hashlib.sha256(source).hexdigest(),
