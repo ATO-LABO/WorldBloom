@@ -17,11 +17,11 @@
   ],
   "source_sha256": {
     "world.yaml": "7c23c27ecdae38cd86ccc8cfd5842035d1d52e57eaa972fee224db8d8652200d",
-    "subjects\\01_detective.yaml": "00302e1934813f59c6e013f2488bf4ab1baa31525e01b928e1965eff3a342b2c",
-    "subjects\\02_suspect_a.yaml": "bb9eb04fa184751ed20398a7f721faf828f4cb7b48d91755eef9822011b254d6",
-    "subjects\\03_suspect_b.yaml": "2da51313a95e4ddc4c63079f86400c98d6540630d84c7982d040a56f27ad6fb7",
-    "subjects\\04_suspect_c.yaml": "2ab10cdc7d3752db2ee5a3aed4a261b2edec03c109a3ebfa01231ab9752b3a06",
-    "subjects\\05_witness_one.yaml": "d19273cd232f1301f317d9f578ec7a584835514b62c0e9bbdda0a8ab733aa482",
-    "subjects\\06_witness_two.yaml": "9e2fc8122b7214c13643ad548efba5de693685b3300fd132ecbcb1173238a6e3"
+    "subjects/01_detective.yaml": "00302e1934813f59c6e013f2488bf4ab1baa31525e01b928e1965eff3a342b2c",
+    "subjects/02_suspect_a.yaml": "bb9eb04fa184751ed20398a7f721faf828f4cb7b48d91755eef9822011b254d6",
+    "subjects/03_suspect_b.yaml": "2da51313a95e4ddc4c63079f86400c98d6540630d84c7982d040a56f27ad6fb7",
+    "subjects/04_suspect_c.yaml": "2ab10cdc7d3752db2ee5a3aed4a261b2edec03c109a3ebfa01231ab9752b3a06",
+    "subjects/05_witness_one.yaml": "d19273cd232f1301f317d9f578ec7a584835514b62c0e9bbdda0a8ab733aa482",
+    "subjects/06_witness_two.yaml": "9e2fc8122b7214c13643ad548efba5de693685b3300fd132ecbcb1173238a6e3"
   }
 }

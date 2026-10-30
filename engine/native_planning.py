@@ -438,11 +438,15 @@ class NativePlanning:
             # not a remote live location feed or a multi-hop destination.
             route=details.get('route',[]);origin=details.get('origin')
             for witness in world.subjects.values():
-                if witness.id==actor.id or not world.planner.owns(witness):continue
+                if (witness.id==actor.id or not world.planner.owns(witness)
+                        or witness.vitality not in {'alive','revived'}):continue
                 if witness.zone not in {origin,actor.zone}:continue
                 memory=world.planner.memory.setdefault(witness.id,{'known':{},'negative':set(),'blocked':set(),'last':None})
                 memory['known'][('zone',actor.id)]=actor.zone if witness.zone==actor.zone or len(route)==2 else None
                 memory['known'][('vitality',actor.id)]=actor.vitality
+                details.setdefault('native_departure_observations',[]).append({
+                    'observer':witness.id,'actor':actor.id,'turn':turn,
+                    'origin':origin,'last_seen_zone':memory['known'][('zone',actor.id)]})
         if action.verb=='neutralize' and result=='neutralized':
             self.blocked_relations={v for v in self.blocked_relations if v[:2]!=(actor.id,str(action.args[0]))}
         if action.verb=='rethink' and result in {'rethought','unchanged'}:

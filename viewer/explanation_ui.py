@@ -28,6 +28,7 @@ def objective_outcomes(values):
                 'failed':'失敗確定','unknown':'観測不足で判定できない'}
     reasons = {'failure_condition':'失敗確定条件が成立','maintenance_breach':'維持する条件が崩れた',
                'achievement_condition':'達成条件が成立','period_maintained':'期間の終了まで維持',
+               'period_end_condition':'終了時点で達成条件が成立',
                'deadline_unmet':'期限までに達成しなかった','incomplete_observation':'期間中の観測が不足',
                'period_not_observed':'判定期間を観測していない'}
     body = '<details open><summary>達成・失敗の判定（世界の実態）</summary><ul>'

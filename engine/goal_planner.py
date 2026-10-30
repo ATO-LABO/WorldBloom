@@ -132,6 +132,14 @@ class GoalPlanner:
                 # The root can be pending while its prerequisites are obtained.
                 if cid == root and not final and failure == 'false':
                     continue
+                if (cid==root and not final and failure=='unknown' and not entry['required']
+                        and getattr(world,'native_planning',None) is not None):
+                    # Information gathering may leave an unrelated, unknown
+                    # failure predicate untouched. It does not make it false.
+                    from engine.objectives import references
+                    failure_coords={c for ref in references(world.goal_rules.definitions[root]['failure'])
+                                    for c in coordinates(world.concerns.conditions[ref]['test'])}
+                    if not changed & failure_coords:continue
                 return None
         return assessment
 

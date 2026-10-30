@@ -23,12 +23,17 @@ their legacy decisions. This is not an all-character or all-story conversion.
   objective immediately. Omission preserves the old first-success behavior.
   `maintain` continues to fail on the first observed breach. This does not
   erase terminal history or imply that every intermediate moment was successful.
+  Missing intermediate success observations do not prevent an end-only success
+  verdict; missing failure observations remain conservative. Its completion
+  reason is distinct from continuous maintenance in records and the viewer.
 - Native rescue is a normal planning operator over another person's vitality.
   Execution uses the existing rescue handler, affinity threshold, verb and genre
   permissions. It never invents a capability or revives someone already dead.
 - A witnessed one-edge departure supplies a last-seen destination and vitality
   observation. Multi-edge travel does not reveal the remote final destination
   to someone at the origin. Subsequent unseen changes are not broadcast.
+  The action log identifies who witnessed the departure. Dead and downed
+  people receive no new departure observations.
 - A nearby owner's permitted vehicle is visible to a borrower. Its presence
   remains an assumption rechecked by actual movement. Other possessions remain
   private. A remote owner does not supply local access to their boat.
@@ -36,6 +41,9 @@ their legacy decisions. This is not an all-character or all-story conversion.
   unrelated transport-material collection before a simple local reunion.
 - Waiting under a currently met purpose is rechecked before execution. A
   newly downed companion can invalidate an old wait and require a new plan.
+- An optional native goal may gather information while an unknown failure
+  predicate remains untouched. This does not assume that failure is false;
+  required commitments and changes to failure coordinates remain constrained.
 
 All of these use the existing goal planner, concern evaluation and verb engine.
 There is no engine dispatch on a character, story, place or item name. A

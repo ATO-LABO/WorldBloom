@@ -135,6 +135,7 @@ class SupportingPlanningTests(unittest.TestCase):
         hero.zone=dog.zone;w.goal_rules.record(w,3,close=True)
         report={r['condition']:r for r in w.goal_rules.report(w)}
         self.assertEqual(report['escort_1']['status'],'achieved')
+        self.assertEqual(report['escort_1']['reason'],'period_end_condition')
         w,p,e=load();hero,dog=ready(w,p);hero.vitality='dead';w.goal_rules.record(w,1)
         hero.vitality='alive'
         self.assertEqual(w.goal_rules.actor_view(w,dog.id,'escort_1',2)['status'],'failed')
@@ -144,6 +145,39 @@ class SupportingPlanningTests(unittest.TestCase):
         for value in ('forever',[],None,1):
             bad=deepcopy(raw['goal_rules']);bad['definitions'][-1]['completion']=value
             with self.assertRaises(ValueError):Objectives(bad)
+        for value in (None,[],1,'broken'):
+            bad=deepcopy(raw['goal_rules']);bad['definitions']=[value]
+            with self.assertRaises(ValueError):Objectives(bad)
+
+    def test_end_only_success_does_not_require_observing_every_intermediate_success(self):
+        from viewer.explanation_ui import objective_outcomes
+        w,p,e=load();hero,dog=ready(w,p)
+        spec=w.goal_rules.definitions['escort_1'];spec['period']['end']=3;spec['failure']={'constant':False}
+        w.goal_rules.record(w,1,close=True)
+        hero.zone='森';w.goal_rules.record(w,2,close=True)
+        hero.zone=dog.zone;w.goal_rules.record(w,3,close=True)
+        own=w.goal_rules.actor_records[dog.id]['escort_1']
+        self.assertEqual((own['status'],own['reason']),('achieved','period_end_condition'))
+        html=objective_outcomes(w.goal_rules.report(w))
+        self.assertIn('終了時点で達成条件が成立',html)
+
+    def test_departure_has_witness_evidence_but_dead_and_remote_people_receive_none(self):
+        w,p,e=load();hero,dog=ready(w,p);p['猿'].zone=hero.zone;p['猿'].vitality='dead'
+        result,details,_=e.execute(hero,Action('move',('森',)),turn=1,day=1)
+        self.assertEqual(result,'moved')
+        receipts=details['native_departure_observations']
+        self.assertEqual({r['observer'] for r in receipts},{dog.id,'キジ'})
+        self.assertTrue(all(r['last_seen_zone']=='森' for r in receipts))
+        self.assertNotIn('猿',w.planner.memory)
+
+    def test_search_for_missing_person_does_not_assume_an_unknown_failure_is_false(self):
+        w,p,e=load();hero,dog=ready(w,p);hero.zone='森';w.planner.memory[dog.id]['known'].clear()
+        before=w.goal_rules.predict(w,'escort_1',actor=dog.id)
+        self.assertEqual(before['failure']['state'],'unknown')
+        plan=w.planner.search(w,dog,'escort_1',1)
+        self.assertEqual(plan['status'],'seeking_information')
+        self.assertTrue(plan['steps'])
+        self.assertEqual(w.goal_rules.predict(w,'escort_1',actor=dog.id)['failure']['state'],'unknown')
 
     def test_higher_priority_personal_goal_can_override_accompaniment(self):
         raw,cast=definitions()

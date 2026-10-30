@@ -40,7 +40,8 @@ class Objectives:
         self.config = deepcopy(raw)
         self.definitions = {}
         for spec in self.config['definitions']:
-            shape(spec, {'condition', 'success', 'failure', 'period'} | ({'completion'} if 'completion' in spec else set()))
+            shape(spec, {'condition', 'success', 'failure', 'period'} |
+                  ({'completion'} if isinstance(spec,dict) and 'completion' in spec else set()))
             if (not isinstance(spec.get('completion','first_success'),str)
                     or spec.get('completion','first_success') not in {'first_success','period_end'}):
                 raise ValueError('Unknown objective completion policy')
@@ -162,7 +163,8 @@ class Objectives:
             record['observation_gap'] = True
         record['last_observed'] = turn
         success, failure = (prediction[k] for k in ('success', 'failure'))
-        if success['state'] == 'unknown' or failure['state'] == 'unknown':
+        end_only=prediction['mode']=='achieve' and prediction.get('completion')=='period_end'
+        if failure['state']=='unknown' or success['state']=='unknown' and not end_only:
             record['observation_gap'] = True
         record['minimum_confidence'] = min(record['minimum_confidence'], success['confidence'], failure['confidence'])
         record['period_sources'] = sorted(set(record['period_sources']) | set(success['sources']) | set(failure['sources']))
@@ -180,7 +182,7 @@ class Objectives:
                 record.update(status='unknown', reason='incomplete_observation')
                 return
             status = 'achieved' if success['state'] == 'true' and failure['state'] == 'false' else 'failed'
-            reason = 'period_maintained' if status == 'achieved' else 'deadline_unmet'
+            reason = ('period_end_condition' if end_only else 'period_maintained') if status=='achieved' else 'deadline_unmet'
             confidence = min(success['confidence'], failure['confidence'])
             if prediction['mode'] == 'maintain':
                 confidence = min(confidence, record['minimum_confidence'])
