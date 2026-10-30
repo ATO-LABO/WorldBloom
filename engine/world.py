@@ -753,6 +753,14 @@ class World:
             else:
                 from engine.slot_runtime import load_contract
             self.slot_contract = load_contract(self, self.slot_execution)
+        self.deliberation = None
+        if "deliberation" in definition:
+            from engine.deliberation import Deliberation
+            self.deliberation = Deliberation(definition["deliberation"])
+        self.concerns = None
+        if "concerns" in definition:
+            from engine.concerns import Concerns
+            self.concerns = Concerns(definition["concerns"])
 
     @classmethod
     def from_yaml(
@@ -1228,6 +1236,8 @@ class World:
             )
 
         subject_ids = set(subjects)
+        if self.concerns is not None:
+            self.concerns.bind(self, subjects)
         for drift_entry in self.companionship["drift"]:
             unknown_drift = (
                 set(drift_entry["between"]) - subject_ids
@@ -1328,6 +1338,8 @@ class World:
                 subject.beliefs.items()
             ):
                 definition = self.facts.get(fact_id)
+                if definition is None and self.concerns is not None and fact_id in self.concerns.conditions:
+                    definition = {"values": ["true", "false"]}
                 if definition is None:
                     raise ValueError(
                         f"Unknown subject belief: "
@@ -1623,6 +1635,8 @@ class World:
             | relation_aliases
         )
         bind_phase2(self, predicate_names)
+        if self.deliberation is not None:
+            self.deliberation.bind(self)
 
         for threshold in self.thresholds:
             source = threshold.get(
@@ -2092,6 +2106,14 @@ class World:
                 "confront_success": (
                     lambda actor, fact: (actor, fact)
                     in self.confront_successes
+                ),
+                "proposal_decided": lambda proposal, status: (
+                    self.deliberation is not None
+                    and self.deliberation.decided(proposal, status)
+                ),
+                "proposal_state": lambda key, value: (
+                    self.deliberation is not None
+                    and self.deliberation.state_is(key, value)
                 ),
                 # WB-ROUTE-001 S2: whether `actor` believes themself weaker
                 # than the world's antagonist -- the general-purpose reading

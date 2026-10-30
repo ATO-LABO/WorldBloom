@@ -32,6 +32,12 @@ class Action:
 # and drive scheduled_events.force_action (world.py load-time check,
 # world_editor.py save-time check, and the world-prototype.js form).
 FORCE_ARG_KINDS: dict[str, tuple[str, ...]] = {
+    "submit_proposal": ("text", "text", "text"),
+    "present_proposal": ("text", "subject", "text"),
+    "review_proposal": ("text", "text"),
+    "amend_proposal": ("text", "text", "text"),
+    "decide_proposal": ("text", "text"),
+    "request_decision": ("text", "text"),
     "move": ("zone",),
     "rest": (),
     "investigate": ("zone",),
@@ -1905,6 +1911,11 @@ def candidates(
     )
     weighted.extend(_trial_candidates(subject, world))
     weighted.extend(_donate_candidates(subject, world))
+    if world.deliberation is not None:
+        weighted.extend(
+            (Action(verb, args), weight)
+            for verb, args, weight in world.deliberation.candidates(world, subject.id, turn=sim.turn)
+        )
 
     return sorted(
         (

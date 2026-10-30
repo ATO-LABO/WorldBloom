@@ -2,13 +2,13 @@
  'use strict';const root=document.querySelector('[data-world-advanced]');if(!root)return;
  const initial=JSON.parse(root.dataset.initial),$=s=>root.querySelector(s),list=$('[data-advanced-list]'),detail=$('[data-advanced-detail]'),status=$('[data-advanced-status]');
  const clone=v=>JSON.parse(JSON.stringify(v)),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- let world=initial.world,genre=initial.genre,files=initial.files,section='canon',index=0,variant='canon.yaml',file='world.yaml',dirty=false,busy=false,blocked=false;
+ let world=initial.world,genre=initial.genre,files=initial.files,section=location.hash==='#concerns'?'concerns':'canon',index=0,variant='canon.yaml',file='world.yaml',dirty=false,busy=false,blocked=false;
  let draft=null;
  const labels={phase:'段階',hostile_present:'敵対者がいる',objective:'目的の品',vitality:'生存状態',stance:'態度',category:'カテゴリ',verb:'行動',role:'相手との関係',n:'重み'};
  const terms={hostile:'敵対',self:'自分',neutral:'中立',alive:'生存',dead:'死亡',none:'指定なし',friendly:'友好',give_item:'品物を渡す',craft:'作る',fight:'戦う',move:'移動する',rest:'休む',observe:'調べる',persuade:'説得する',cooperate:'協力する',ally:'仲間',ground:'地面',unknown:'不明',downed:'倒れている'};
  const text=v=>Array.isArray(v)?(v.length?v.join('・'):'指定なし'):v===null?'指定なし':v===true?'はい':v===false?'いいえ':terms[v]||String(v??'未設定');
  const entries=()=>Array.isArray(draft?.entries)?draft.entries:[];
- function loaded(){draft=section==='canon'?clone(genre?.files[variant]?.value??{entries:[]}):section==='roles'?{protagonist:world.world.protagonist||'',antagonist:world.world.antagonist||'',target_ending:Array.isArray(world.world.target_ending)?clone(world.world.target_ending):world.world.target_ending?[world.world.target_ending]:[]}:files[file]??'';dirty=false;}
+ function loaded(){draft=section==='concerns'?clone(world.world.concerns??{version:1,conditions:[],commitments:{}}):section==='canon'?clone(genre?.files[variant]?.value??{entries:[]}):section==='roles'?{protagonist:world.world.protagonist||'',antagonist:world.world.antagonist||'',target_ending:Array.isArray(world.world.target_ending)?clone(world.world.target_ending):world.world.target_ending?[world.world.target_ending]:[]}:files[file]??'';dirty=false;}
  function refresh(){const can=initial.editable&&section!=='actions'&&(section!=='canon'||!!genre);$('[data-advanced-save]').disabled=!can||!dirty||busy||blocked;$('[data-advanced-check]').disabled=!can||busy||blocked;$('[data-advanced-reset]').disabled=!dirty||busy;root.querySelectorAll('[data-advanced-section]').forEach(b=>b.setAttribute('aria-current',b.dataset.advancedSection===section?'page':'false'));}
  function change(){dirty=true;status.textContent='未保存の変更があります';refresh();}
  function ruleText(row){return Object.entries(row?.ctx||{}).map(([k,v])=>`${labels[k]||k}：${k==='objective'?({hostile:'敵が持っている',self:'自分が持っている',ally:'仲間が持っている',ground:'地面にある'}[v]||text(v)):text(v)}`).join(' ／ ')||'条件の指定なし';}
@@ -30,6 +30,8 @@
    for(const [key,title] of [['ctx','適用する状況'],['act','選ぶ行動']]){const group=document.createElement('fieldset');group.innerHTML='<legend>'+title+'</legend>';for(const k of Object.keys(row[key]))control(row[key],k,group);if(key==='ctx'){const fold=document.createElement('details');fold.innerHTML='<summary>適用する状況を編集</summary><p>'+esc(ruleText(row))+'</p>';fold.append(group);detail.append(fold);}else detail.append(group);}if('n'in row)control(row,'n',detail);
    detail.insertAdjacentHTML('beforeend','<p class="ux-readback" data-readback>'+esc(ruleText(row)+' → '+ruleTitle(row))+'</p>');
    const canon=document.createElement('details');canon.innerHTML='<summary>定石の早見表を確認</summary>';canon.append($('[data-advanced-canon]').content.cloneNode(true));detail.append(canon);if(genre)detail.insertAdjacentHTML('beforeend','<a href="/genres/'+encodeURIComponent(genre.id)+'">ジャンル全体を編集 →</a>');
+  }else if(section==='concerns'){
+   window.WorldBloomConcerns.render(detail,draft,world,initial.editable,()=>{change();window.WorldBloomConcerns.summary(list,draft,detail);});window.WorldBloomConcerns.summary(list,draft,detail);
   }else if(section==='roles'){
    detail.innerHTML='<h2>役割と目標の結末</h2><p>この世界の登場人物から選びます。</p>';
    for(const [key,title] of [['protagonist','主人公'],['antagonist','敵役']]){const label=document.createElement('label');label.textContent=title;const select=document.createElement('select');select.innerHTML='<option value="">未設定</option>'+world.people.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.id)+'</option>').join('');select.value=draft[key];select.disabled=!initial.editable;select.addEventListener('change',()=>{draft[key]=select.value;change();});label.append(select);detail.append(label);}
@@ -50,13 +52,17 @@
    }
   }else if(section==='roles'){list.innerHTML='<h2>物語の役割</h2><p>主人公・敵役・目標の結末を設定します。</p><p class="ux-note">初期物語の導入文は、通常の世界設定にあります。</p>';}
   else if(section==='files'){list.innerHTML='<h2>設定ファイル</h2>';Object.keys(files).forEach(p=>{const b=document.createElement('button');b.type='button';b.className='ux-rule';b.textContent=p;b.setAttribute('aria-pressed',String(p===file));b.addEventListener('click',()=>{if(dirty||busy){status.textContent='先に変更を保存するか、変更を戻してください。';return;}file=p;loaded();render();});list.append(b);});}
+  else if(section==='concerns'){list.textContent='条件を定義し、その条件を重視する人物と優先順位を選びます。案への予測と現実の達成は別に扱います。';}
   else list.append($('[data-advanced-actions]').content.cloneNode(true));
   renderDetail();refresh();
  }
  async function api(url,body){const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-WorldBloom-Client':'1'},body:JSON.stringify(body)});const result=await response.json();if(!response.ok){const error=Error(result.message||'保存内容を確認してください');error.status=response.status;throw error;}return result;}
  async function action(check){if(busy||blocked||!initial.editable)return;for(const el of detail.querySelectorAll('input,textarea,select'))if(!el.reportValidity())return;
   busy=true;root.querySelectorAll('input,textarea,select,button').forEach(e=>{e.dataset.disabled=String(e.disabled);e.disabled=true;});status.textContent=check?'設定を確認中…':'保存中…';
-  try{if(section==='canon'){
+  try{if(section==='concerns'){
+    const result=await api('/api/worlds/'+encodeURIComponent(world.id)+'/edit',{revision:world.revision,operation:check?'concerns-check':'concerns',target:null,values:{definition:draft.conditions.length?draft:null}});
+    if(check){status.textContent='未保存の条件を確認しました。';}else{world=result;dirty=busy=false;location.hash='concerns';location.reload();return;}
+   }else if(section==='canon'){
     const content=JSON.stringify(draft,null,2),prefix='/api/genres/'+encodeURIComponent(genre.id)+'/';
     if(check){const result=await api(prefix+'check',{world_id:world.id,files:{[variant]:content},revision:genre.revision});status.textContent='設定の組み合わせを確認しました。'+(result.world_name||'')+(result.subjects!=null?'・登場人物 '+result.subjects+'人':'');}
     else{const result=await api(prefix+'save',{path:variant,content,revision:genre.files[variant].revision});genre=result;dirty=false;status.textContent='共有ジャンルの定石を保存しました';}

@@ -84,6 +84,8 @@ def save(store, ident, body):
         "add-event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "remove-event": set(),
+        "concerns": {"definition"},
+        "concerns-check": {"definition"},
     }
     if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict):
         _bad("values", "編集項目を確認してください")
@@ -99,7 +101,22 @@ def save(store, ident, body):
         names = [z if isinstance(z, str) else z["name"] for z in zones]
         people = [(rel, p) for rel, p in files.items() if rel != "world.yaml"]
         rel, updated = "world.yaml", deepcopy(world)
-        if operation == "file":
+        if operation in {"concerns","concerns-check"}:
+            from engine.world import World
+            from engine.subject import Subject
+            definition = values['definition']
+            if definition is None:
+                updated.pop('concerns',None)
+            else:
+                updated['concerns'] = deepcopy(definition)
+            try:
+                runtime=World(updated,_base(store,ident)/'world.yaml')
+                runtime.bind_subjects({p['id']:Subject.from_definition(p) for _,p in people})
+            except (ValueError,KeyError,TypeError) as error:
+                _bad('concerns','条件の対象・判定方法・人物の設定を確認してください。'+str(error))
+            if operation=='concerns-check':
+                return {'valid':True,'conditions':len(runtime.concerns.conditions) if runtime.concerns else 0}
+        elif operation == "file":
             if not isinstance(target, str) or target not in files:
                 _bad("target", "登録された世界・人物ファイルを指定してください")
             content = values["content"]

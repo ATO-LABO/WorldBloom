@@ -29,6 +29,12 @@ SPECIAL_PRIORITY = {
 }
 
 VERB_LABELS = {
+    "submit_proposal": "原案を提示した",
+    "present_proposal": "現在の案を説明した",
+    "review_proposal": "案への賛否を示した",
+    "amend_proposal": "案を修正した",
+    "request_decision": "この版の判断を求めた",
+    "decide_proposal": "案への最初の判断を下した",
     "ally_gained": "仲間になった",
     "ally_lost": "仲間から離脱した",
     "betrayal": "誓いを破った",

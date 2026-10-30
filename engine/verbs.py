@@ -9,6 +9,7 @@ from engine import vitality
 from engine.actions import Action, evidence_replay_order
 from engine.contest import resolve, strength
 from engine.phase2 import (
+    available_verbs,
     apply_effect,
     dedicated_plant_options,
     disguise_options,
@@ -21,13 +22,14 @@ from engine.phase2 import (
     trial_options,
 )
 from engine.subject import BeliefAbout
+from engine.deliberation import VERBS as DELIBERATION_VERBS
 
 if TYPE_CHECKING:
     from engine.subject import Subject
     from engine.world import World
 
 
-HANDLED_VERBS = frozenset(
+HANDLED_VERBS = DELIBERATION_VERBS | frozenset(
     {
         "move",
         "rest",
@@ -87,7 +89,7 @@ class VerbEngine:
         if handler is None:
             return "invalid", {"reason": "unknown_verb"}, []
 
-        if self.world.action_graph_enabled and action.args:
+        if self.world.action_graph_enabled and action.args and action.verb not in DELIBERATION_VERBS:
             target = self.world.subjects.get(str(action.args[0]))
             if target is not None and target.id != actor.id:
                 role = self.world.target_role(actor, target)
@@ -139,6 +141,22 @@ class VerbEngine:
             )
         )
         return result, details, markers
+
+    def _deliberation_action(self, actor, action, *, turn, day):
+        if self.world.deliberation is None:
+            return "invalid", {"reason": "deliberation_not_configured"}, []
+        if not self.world.genre_allows(action.verb):
+            return "invalid", {"reason": "deliberation_genre_not_allowed"}, []
+        if action.verb not in available_verbs(self.world, actor, turn=turn, day=day):
+            return "invalid", {"reason": "deliberation_verb_not_available"}, []
+        return self.world.deliberation.execute(self.world, actor.id, action.verb, action.args, turn=turn)
+
+    _submit_proposal = _deliberation_action
+    _present_proposal = _deliberation_action
+    _review_proposal = _deliberation_action
+    _amend_proposal = _deliberation_action
+    _request_decision = _deliberation_action
+    _decide_proposal = _deliberation_action
 
     def _present(self, actor: Subject) -> list[Subject]:
         return self.world.present_subjects(actor.zone)
@@ -1311,6 +1329,8 @@ class VerbEngine:
             )
         elif topic != "雑談":
             target.knowledge.add(topic)
+            if self.world.concerns is not None:
+                details['concern_observations'] = self.world.concerns.observe_disclosure(self.world,actor.id,target.id,topic)
             marker_details: dict[str, Any] = {
                 "fact": topic,
                 "from": actor.id,
