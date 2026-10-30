@@ -133,7 +133,8 @@ class VerbEngine:
         from engine.objective_actions import review_transaction, enabled as objective_actions_enabled
         objective_choice = None
         if (action.meta.get('goal_plan') and self.world.planner is not None
-                and (action.verb == 'move' or getattr(self.world,'native_planning',None) is not None and action.meta['goal_plan'].get('steps'))):
+                and (action.verb == 'move' or getattr(self.world,'native_planning',None) is not None
+                     and (action.meta['goal_plan'].get('steps') or action.meta['goal_plan'].get('status')=='condition_met'))):
             validation = self.world.planner.validate(self.world, actor, action, turn)
             if validation['excluded']:
                 return 'invalid', {'reason': 'plan_no_longer_justified', 'planning_validation': validation}, []

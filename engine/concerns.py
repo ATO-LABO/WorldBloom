@@ -7,6 +7,7 @@ KINDS = {
     'vitality': {'kind','actor','allowed'}, 'state': {'kind','key','equals'},
     'knowledge': {'kind','fact','actors','rule'}, 'inventory': {'kind','actor','item','minimum'},
     'zone': {'kind','actor','equals'}, 'relation': {'kind','observer','target','minimum'},
+    'co_location': {'kind','actor','target'},
     'task': {'kind','task','minimum'},
     'promise': {'kind','promise','version','statuses'},
 }
@@ -53,6 +54,7 @@ def validate_commitments(values, conditions=None, *, allow_empty=True):
 
 def coordinates(test):
     kind=test['kind']
+    if kind=='co_location': return [('zone',test['actor']),('zone',test['target'])]
     if kind=='task': return [(kind,test['task'])]
     if kind=='promise': return [(kind,test['promise'],str(test['version']))]
     if kind in {'vitality','zone'}: return [(kind,test['actor'])]
@@ -140,6 +142,8 @@ class Concerns:
                 or actor in self.config.get('commitments', {}))
 
     def _validate_refs(self,world,people,test):
+        if test['kind']=='co_location' and test['actor']==test['target']:
+            raise ValueError('Co-location requires two different people')
         if test['kind'] in {'task','promise'}:
             if (world.slot_execution or {}).get('mode') != 'calendar_promises_v2':
                 raise ValueError('Task/promise conditions require calendar execution')
@@ -172,7 +176,7 @@ class Concerns:
             for effect in projection['effects']:
                 if not isinstance(effect,dict) or not isinstance(effect.get('kind'),str) or effect['kind'] not in KINDS:raise ValueError('Unknown projection effect')
                 kind=effect['kind']
-                if kind in {'task','promise'}:
+                if kind in {'task','promise','co_location'}:
                     raise ValueError('Native task/promise evidence is read-only; use the native registry')
                 keys={'kind','value'}|({'observer','target'} if kind=='relation' else {'key'} if kind=='state'
                       else {'actor','fact'} if kind=='knowledge' else {'actor','item'} if kind=='inventory' else {'actor'})
@@ -245,7 +249,9 @@ class Concerns:
             elif actor is None or self._visible(world,actor,key,definition['visibility']=='public'):
                 values.append(self._read(world,key,actor));sources.append('world' if actor is None else 'direct')
             else:values.append(None);sources.append('unobserved')
-        if test['kind']=='knowledge':
+        if test['kind']=='co_location':
+            raw=None if any(v is None for v in values) else values[0]==values[1]
+        elif test['kind']=='knowledge':
             wanted=False if test['rule']=='none' else True
             raw=False if any(v is not None and v!=wanted for v in values) else None if any(v is None for v in values) else True
         elif (test['kind']=='zone' and keys[0] not in overlay and getattr(world.subjects[test['actor']], 'in_transit', False)

@@ -1,7 +1,7 @@
 (() => {
  'use strict';
  const names=value=>Array.isArray(value)?value.map(v=>typeof v==='string'?v:v.name||v.id):Object.keys(value||{});
- const kinds={vitality:'命・生存状態',state:'制度や世界の状態',knowledge:'情報が誰に知られたか',inventory:'持ち物の必要量',zone:'人物の居場所',relation:'一方向の親しさ'};
+ const kinds={vitality:'命・生存状態',state:'制度や世界の状態',knowledge:'情報が誰に知られたか',inventory:'持ち物の必要量',zone:'人物の居場所',co_location:'二人が同じ場所にいる',relation:'一方向の親しさ'};
  function render(root,draft,snapshot,editable,change){
   root.replaceChildren();
   const people=snapshot.people.map(p=>p.id),world=snapshot.world,states=[...Object.keys(world.deliberation?.state||{}),...Object.keys(world.responses?.state||{})],facts=Array.isArray(world.facts)?world.facts.filter(f=>typeof f==='string'||f.values==null).map(f=>typeof f==='string'?f:f.id):Object.entries(world.facts||{}).filter(([,f])=>f?.values==null).map(([id])=>id),items=names(world.items),zones=names(world.zones);
@@ -25,6 +25,7 @@
    if(kind==='knowledge')return {kind,fact:facts[0]||'',actors:people.slice(0,1),rule:'none'};
    if(kind==='inventory')return {kind,actor:people[0]||'',item:items[0]||'',minimum:1};
    if(kind==='zone')return {kind,actor:people[0]||'',equals:zones[0]||''};
+   if(kind==='co_location')return {kind,actor:people[0]||'',target:people[1]||''};
    return {kind:'relation',observer:people[0]||'',target:people[1]||people[0]||'',minimum:0};
   }
   for(const [index,condition] of draft.conditions.entries()){
@@ -35,7 +36,7 @@
    const choices=Object.entries(kinds).filter(([k])=>!(k==='state'&&!states.length)&&!(k==='knowledge'&&!facts.length)&&!(k==='inventory'&&!items.length));
    field(section,'何の状態で判断するか',condition.test.kind,choices,v=>{condition.test=defaultTest(v);redraw();});
    const test=condition.test;
-   for(const key of ['actor','observer','target'])if(key in test)field(section,{actor:'対象の人物',observer:'気持ちを持つ人物',target:'気持ちが向かう相手'}[key],test[key],people,v=>test[key]=v,{required:true});
+   for(const key of ['actor','observer','target'])if(key in test)field(section,{actor:'対象の人物',observer:'気持ちを持つ人物',target:test.kind==='co_location'?'一緒にいる相手':'気持ちが向かう相手'}[key],test[key],people,v=>test[key]=v,{required:true});
    if(test.kind==='state'){
     field(section,'確認する状態',test.key,states,v=>test.key=v,{required:true});field(section,'望む状態',test.equals,null,v=>test.equals=v,{required:true});
    }else if(test.kind==='vitality'){
