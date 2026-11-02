@@ -145,7 +145,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   let people = model.people.filter(p => p.id);
   let zones = (w.zones || []).map(z => typeof z === 'string' ? {name:z,note:''} : {...z});
   people.sort((a,b) => Number(b.id === w.protagonist) - Number(a.id === w.protagonist));
-  let screen = 'overview', person = 0, place = Math.max(0,zones.findIndex(z=>z.name==='海')), eventDay = null;
+  let screen = new URLSearchParams(location.hash.slice(1)).get('screen')==='time'?'time':'overview', person = 0, place = Math.max(0,zones.findIndex(z=>z.name==='海')), eventDay = null;
   let peopleView = 'list', placeView = 'map', storyView = 'intro', query = '';
   let graphMode='all', relationScope='all', relationGroup='', relationKind='all', relationInspector=true, relationExpanded=false;
   let relationZoom=1, relationPan={x:0,y:0}, relationDrag=null;

@@ -94,6 +94,12 @@ def _zip_entries_to_files(archive) -> dict[str, str]:
         if not normalized.startswith(root_prefix):
             continue
         rel = normalized[len(root_prefix):]
+        if rel.casefold() == "time-pressure.yaml":
+            raise ConfigError(
+                "zip_base64",
+                "時間制約の根拠を含む世界ZIPはこの形式では取り込めません。根拠を欠落させないため取込を停止しました。",
+                code="unsupported",
+            )
         if rel != "world.yaml" and not _SUBJECT_REL.fullmatch(rel):
             if rel.startswith("subjects/"):
                 raise ConfigError("zip_base64", f"{rel}: 対象外のファイル名です", code="bad_request")
@@ -379,6 +385,19 @@ class LibraryStore:
                         # line into every folded/literal YAML block scalar.
                         (staged / rel).write_bytes(text.encode("utf-8"))
                 (staged / "world.yaml").write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                if (staged / "time-pressure.yaml").exists():
+                    # Preserve the sidecar on cloning, but never publish stale
+                    # references as a new, apparently valid world.
+                    from engine.time_pressure import load_sources
+                    try:
+                        people = {}
+                        for subject_path in (staged / "subjects").glob("*.yaml"):
+                            subject = yaml.safe_load(subject_path.read_bytes())
+                            if isinstance(subject, dict) and isinstance(subject.get("id"), str):
+                                people[subject["id"]] = subject
+                        load_sources(staged, world, people)
+                    except (OSError, ValueError, TypeError, KeyError, yaml.YAMLError) as error:
+                        raise ConfigError("time_pressure.sources", "Copied deadline settings have invalid references", code="bad_request") from error
                 staged.rename(dest)
         return new_id
 

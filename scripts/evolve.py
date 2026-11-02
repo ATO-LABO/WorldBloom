@@ -74,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Override target ending ids; any listed ending counts as reached."
         ),
     )
+    parser.add_argument("--time-pressure", action="store_true", default=False, help="Use explicitly known deadline pressure (ordinary protagonist planning only).")
     parser.add_argument("--record-explanations", action=argparse.BooleanOptionalAction, default=True,
                         help="Record bounded choice candidates for the explanation viewer (default: on).")
     parser.add_argument(
@@ -302,6 +303,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     archive = evolve(
         {
+            **({"time_pressure": {"version": 1, "enabled": True, "profile": "subjective_v1"}}
+               if args.time_pressure else {}),
             "record_explanations": args.record_explanations,
             "coevolve": args.coevolve,
             "ga_seed": args.ga_seed,

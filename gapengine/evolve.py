@@ -774,6 +774,8 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
             policies=policies or None,
             precedent=precedent,
             record_explanations=bool(job.get("record_explanations", False)),
+            **({"time_pressure": job["time_pressure"]["config"],
+                "time_pressure_sources": job["time_pressure"]["sources"]} if "time_pressure" in job else {}),
         ).run()
         rows = read_rows(layer_path)
 
@@ -1395,6 +1397,7 @@ def _cfg_fingerprint(
     route_cfg: Mapping[str, Any] | None = None,
     seed_genomes_sha256: str | None = None,
     growth_enabled: bool = False,
+    time_pressure_cfg: Mapping[str, Any] | None = None,
 ) -> str:
     """WB-GA-RESUME: sha256 of every setting that changes what the GA
     computes -- resuming with a different value here is a bug (or a
@@ -1451,6 +1454,8 @@ def _cfg_fingerprint(
     # identically to a pre-S1 run.
     if growth_enabled:
         payload["personality_growth"] = {"enabled": True}
+    if time_pressure_cfg is not None:
+        payload["time_pressure"] = time_pressure_cfg
     return hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -1684,6 +1689,22 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         world_path,
         action_graph_path=action_graph_path,
     )
+    pressure_runtime = None
+    pressure_fingerprint = None
+    if cfg.get("time_pressure") is not None:
+        from engine.time_pressure import normalize_config, load_sources, validate_runtime
+        enabled_pressure = normalize_config(cfg["time_pressure"])
+        if enabled_pressure is not None:
+            if cfg.get("world_expansion", "off") != "off":
+                raise ValueError("Time pressure does not support world expansion")
+            pressure_people = [Subject.from_yaml(p).id for p in sorted(subjects_dir.glob("*.yaml"))]
+            pressure_sources = load_sources(project_dir, world_model, pressure_people)
+            validate_runtime(world_model, pressure_people)
+            if not pressure_sources["sources"]:
+                raise ValueError("Enabled time pressure needs at least one source")
+            pressure_runtime = {"config": enabled_pressure, "sources": pressure_sources}
+            pressure_fingerprint = {**enabled_pressure,
+                "sources_sha256": hashlib.sha256(json.dumps(pressure_sources, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}
     target_ending_override = cfg.get("target_ending")
     if target_ending_override is not None:
         world_model.set_target_ending(target_ending_override)
@@ -1730,6 +1751,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         route_cfg=route_cfg,
         seed_genomes_sha256=seed_sha256,
         growth_enabled=growth_enabled,
+        time_pressure_cfg=pressure_fingerprint,
     )
     engine_hash = _engine_source_hash(_ENGINE_DIR)
     gapengine_hash = _engine_source_hash(_GAPENGINE_DIR)
@@ -2045,6 +2067,8 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
         for job in jobs:
             job["record_explanations"] = bool(cfg.get("record_explanations", False))
             job["target_ending"] = world_model.target_ending
+            if pressure_runtime is not None:
+                job["time_pressure"] = pressure_runtime
             if rationality_enabled:
                 job["rationality_cfg"] = rationality_cfg
                 job["rationality_table_path"] = str(rationality_table_path)
@@ -2161,6 +2185,8 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
             for job in antagonist_jobs:
                 job["record_explanations"] = bool(cfg.get("record_explanations", False))
                 job["target_ending"] = world_model.target_ending
+                if pressure_runtime is not None:
+                    job["time_pressure"] = pressure_runtime
                 # Opus review R4: the protagonist sample evaluated here gets
                 # the *same* rationality_cfg as the main protagonist pass,
                 # so the same genome never ends up with m_rat applied in
