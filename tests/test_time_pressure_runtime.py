@@ -220,7 +220,7 @@ class SourceAndRuntimeTests(unittest.TestCase):
 class ConfigAndWiringTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='pressure-config-');self.addCleanup(self.temp.cleanup)
-        self.base=Path(self.temp.name);self.repo=self.base/'repo';self.repo.mkdir()
+        self.base=Path(self.temp.name).resolve();self.repo=self.base/'repo';self.repo.mkdir()
         for area in ('projects','templates','engine','gapengine','scripts','execution'):
             shutil.copytree(ROOT/area,self.repo/area,ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copyfile(ROOT/'requirements.txt',self.repo/'requirements.txt')
@@ -299,6 +299,13 @@ class ConfigAndWiringTests(unittest.TestCase):
             self.assertEqual(cfg.get('time_pressure'),PROFILE if enabled else None)
             if not enabled:self.assertNotIn('time_pressure',cfg)
             self.assertEqual(cfg['project'],run/'inputs/projects/ship_planning')
+
+    def test_worker_still_rejects_execution_outside_frozen_runtime(self):
+        adapter=importlib.import_module('execution.evolution_worker')
+        with patch.object(adapter,'__file__',str(ROOT/'execution/evolution_worker.py')):
+            with self.assertRaisesRegex(ValueError,'frozen run runtime'):
+                adapter.main(['--run',str(self.base/'runs/outside'),
+                              '--control',str(self.base/'control'),'--job','outside-job'])
 
     def test_real_single_generation_frozen_fixture_runs_without_model_calls(self):
         module=importlib.import_module('gapengine.evolve')

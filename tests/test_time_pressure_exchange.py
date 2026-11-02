@@ -4,8 +4,8 @@ import unittest
 import zipfile
 from copy import deepcopy
 from execution import time_pressure_settings as tp
-from test_time_pressure_settings import TimePressureSettingsTests
-from test_time_pressure_runtime import ConfigAndWiringTests
+import test_time_pressure_settings as settings_tests
+import test_time_pressure_runtime as runtime_tests
 
 from execution.library import zip_to_files
 from execution.provenance import ConfigError
@@ -38,8 +38,8 @@ class PressureExchangeTests(unittest.TestCase):
 
 
 class PressureCloneTests(unittest.TestCase):
-    setUp = TimePressureSettingsTests.setUp
-    body = TimePressureSettingsTests.body
+    setUp = settings_tests.TimePressureSettingsTests.setUp
+    body = settings_tests.TimePressureSettingsTests.body
 
     def test_clone_keeps_sidecar_and_source_unchanged(self):
         (self.repo / "templates/basic").mkdir(parents=True)
@@ -65,7 +65,7 @@ class PressureCloneTests(unittest.TestCase):
 
 
 class PressureServiceCaptureTests(unittest.TestCase):
-    setUp = ConfigAndWiringTests.setUp
+    setUp = runtime_tests.ConfigAndWiringTests.setUp
 
     def test_editor_save_connects_to_capture_and_off_preserves_source(self):
         from execution.library import LibraryStore
