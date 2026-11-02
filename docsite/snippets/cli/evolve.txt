@@ -2,7 +2,7 @@ usage: evolve.py [-h] --project PROJECT --template TEMPLATE --out OUT [--generat
                  [--population POPULATION] [--seeds SEEDS] [--seed-base SEED_BASE]
                  [--ga-seed GA_SEED] [--processes PROCESSES] [--keep {all,reached,exemplar}]
                  [--coevolve] [--meta-evolution]
-                 [--target-ending TARGET_ENDING [TARGET_ENDING ...]]
+                 [--target-ending TARGET_ENDING [TARGET_ENDING ...]] [--time-pressure]
                  [--record-explanations | --no-record-explanations]
                  [--world-expansion {off,detect,expand}] [--seed-genomes SEED_GENOMES]
                  [--kappa KAPPA] [--rationality-backend {ollama,jev,none}]
@@ -30,6 +30,8 @@ options:
   --meta-evolution      Evolve per-rule enable bits in addition to the nine scalar genes.
   --target-ending TARGET_ENDING [TARGET_ENDING ...]
                         Override target ending ids; any listed ending counts as reached.
+  --time-pressure       Use explicitly known deadline pressure (ordinary protagonist planning
+                        only).
   --record-explanations, --no-record-explanations
                         Record bounded choice candidates for the explanation viewer (default: on).
   --world-expansion {off,detect,expand}
