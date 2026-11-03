@@ -165,8 +165,8 @@ function diagram({graph,selected,kind='people',onNode,onEdge,anchor}){
 window.WorldBloomDraftWorkspace=function(root,options={}){
 root.innerHTML='<div class="ui-workspace ui-workspace--nav draft-workspace"><nav id="draft-nav" class="ui-nav" aria-label="下案の項目"></nav><section id="draft-content" class="ui-content draft-content" tabindex="-1" aria-labelledby="section-title"></section></div><div class="draft-section-footer"><span id="section-position"></span><button id="previous-section" class="ui-button" type="button">前の項目</button><button id="next-section" class="ui-button" type="button">次の項目へ</button></div>';
 const $=id=>root.querySelector('#'+id),node=(tag,cls,text)=>{const el=document.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=text;return el};
-const sections=[['overview','概要・全体像'],['people','登場人物'],['places','場所'],['items','品物'],['story','初期物語'],['relations','人物の関係'],['routes','経路'],['defaults','時間・基本設定']];
-let draft,section='overview',person=null,place=null,item=null,route=0,autoEditedHash=null;
+const sections=[['overview','概要・全体像'],['people','登場人物'],['places','場所'],['items','品物'],['facts','情報'],['story','初期物語'],['relations','人物の関係'],['routes','経路'],['defaults','時間・基本設定']];
+let draft,section='overview',person=null,place=null,item=null,route=0,autoEditedHash=null,displayedHash=location.hash;
 const content=$('draft-content');
 function jump(target,entity){navigate(target,entity);content.focus({preventScroll:true})}
 function link(label,target,entity){const b=node('button','inline-link',label);b.type='button';b.onclick=()=>jump(target,entity);return b}
@@ -205,6 +205,11 @@ function items(){
  heading('品物','誰が持ち、どの人物の目標に関わるかを確認します。',`${draft.items.length}点`);const v=draft.items.find(i=>i.name===item)||draft.items[0];if(!v){content.append(node('p','','品物の指定はありません。'));return}
  const grid=node('div','master-detail');grid.append(masterList(draft.items,v.name,'items',x=>'所持：'+x.holder));const detail=node('div','entity-detail'),about=card(v.name,'holder');about.append(facts([['持っている人物',link(v.holder,'people',v.holder)]]));detail.append(about);const goals=card('この品物が関わる目標');for(const p of draft.people.filter(p=>conditions(p).some(c=>c.item===v.name))){const row=node('div','ref-row');row.append(node('span','',`${p.name}：${goal(p)}`),link('目標を見る →','people',p.name));goals.append(row)}if(goals.children.length===1)goals.append(node('p','subtle','目標には指定されていません。'));detail.append(goals);grid.append(detail);content.append(grid);
 }
+function information(){
+ const rows=draft.facts||[];heading('情報','調べて得る内容と、調べる場所を確認します。',`${rows.length}件`);
+ if(!rows.length){content.append(node('p','ui-notice','情報の指定はありません。'));return;}
+ for(const fact of rows){const detail=card(fact.name);detail.append(node('p','reading-copy',fact.description),facts([['調べる場所',link(fact.place,'places',fact.place)]]));content.append(detail);}
+}
 function story(){heading('初期物語','シミュレーションが始まる直前の状況です。');const prose=card('物語の始まり','story');prose.append(node('p','reading-copy',draft.initial_story||'記述なし'));content.append(prose);const initial=card('開始時点の人物'),table=node('table','plain-table'),thead=node('thead'),tr=node('tr');for(const t of['人物','開始位置','持っている品物'])tr.append(node('th','',t));thead.append(tr);table.append(thead);const tbody=node('tbody');for(const p of draft.people){const row=node('tr');for(const el of[link(p.name,'people',p.name),link(p.entry,'places',p.entry),document.createTextNode(draft.items.filter(i=>i.holder===p.name).map(i=>i.name).join('・')||'指定なし')]){const td=node('td');td.append(el);row.append(td)}tbody.append(row)}table.append(tbody);initial.append(table);content.append(initial)}
 function relations(){
  heading('人物の関係','世界設定と同じ相関図で、人物の所属と関係を確認します。');
@@ -218,7 +223,7 @@ function routes(){
  const list=node('div','entity-list');draft.routes.forEach((r,i)=>{const b=node('button','entity-button',`${r.from} → ${r.to}`);b.type='button';b.setAttribute('aria-pressed',String(r===selected));b.onclick=()=>jump('routes',String(i));list.append(b)});const grid=node('div','master-detail');grid.append(list);const detail=node('div','entity-detail'),graph=node('div','route-graph'),a=node('div','graph-node'),b=node('div','graph-node');a.append(link(selected.from,'places',selected.from));b.append(link(selected.to,'places',selected.to));graph.append(a,node('span','graph-arrow','→'),b);detail.append(graph);const info=card('移動の条件','route');info.append(facts([['向き',`${selected.from} → ${selected.to}`],['コスト',String(selected.cost??1)+(selected.cost===undefined?'（既定値）':'')],['必要な品物',selected.requires_item?link(selected.requires_item,'items',selected.requires_item):'指定なし']]));detail.append(info);const reverse=draft.routes.find(r=>r.from===selected.to&&r.to===selected.from);detail.append(node('p','subtle',reverse?'戻る方向の経路も、別の設定として登録されています。':'戻る方向の経路は登録されていません。'));grid.append(detail);content.append(grid);
 }
 function defaults(){heading('時間・基本設定','この下案に適用する初期値を確認します。');const time=card('期間と時間帯');time.append(facts([['期間','7日間（既定値）']]));const bands=node('div','time-bands');for(const t of['朝','昼','夕','夜'])bands.append(node('span','',t));time.append(bands);content.append(time);const numbers=card('数値特性の初期値');numbers.append(facts([['各数値特性','0.5'],['基礎値','50']]));content.append(numbers,node('p','ui-notice','共通の基本ルールを使う既定値です。概要の文章から推定した数値ではありません。'))}
-const renderers={overview,people,places,items,story,relations,routes,defaults};
+const renderers={overview,people,places,items,facts:information,story,relations,routes,defaults};
 function render(){
  const nav=$('draft-nav');nav.replaceChildren();
  for(const [id,title]of sections){const button=node('button','',title);button.type='button';button.dataset.section=id;if(section===id)button.setAttribute('aria-current','page');const count=id==='people'?draft.people.length:id==='places'?draft.places.length:id==='items'?draft.items.length:id==='routes'?draft.routes.length:null;if(count!==null)button.append(node('small','',String(count)));button.onclick=()=>navigate(id);nav.append(button)}
@@ -230,10 +235,17 @@ function navigate(target,entity,push=true){
  if(push&&options.beforeNavigate&&!options.beforeNavigate())return;
  section=sections.some(s=>s[0]===target)?target:'overview';if(entity){if(section==='people'||section==='relations')person=entity;if(section==='places')place=entity;if(section==='items')item=entity;if(section==='routes')route=Number(entity)||0}
  const hash=new URLSearchParams({section});const selected=section==='people'||section==='relations'?person:section==='places'?place:section==='items'?item:section==='routes'?String(route):null;if(selected)hash.set('entity',selected);
- if(push)history.pushState(null,'','#'+hash);render();
+ if(push)history.pushState(null,'','#'+hash);displayedHash=location.hash;render();
 }
-function restore(){const hash=new URLSearchParams(location.hash.slice(1));navigate(hash.get('section')||'overview',hash.get('entity'),false);if(hash.get('edit')&&autoEditedHash!==location.hash){autoEditedHash=location.hash;Array.from(content.querySelectorAll('[data-field-pencil]')).find(b=>b.dataset.fieldPencil===hash.get('edit'))?.click()}}
-$('previous-section').onclick=()=>{const i=sections.findIndex(s=>s[0]===section);if(i>0)navigate(sections[i-1][0])};$('next-section').onclick=()=>{const i=sections.findIndex(s=>s[0]===section);if(i<sections.length-1)navigate(sections[i+1][0])};window.addEventListener('popstate',()=>{if(draft)restore()});
+function restore(fromHistory=false){
+ if(fromHistory&&options.beforeNavigate&&!options.beforeNavigate()){
+  // Reconcile the current entry synchronously. A compensating history.go()
+  // would queue another traversal that can race a second Back/Forward action.
+  history.replaceState(history.state,'',location.pathname+location.search+displayedHash);return;
+ }
+ const hash=new URLSearchParams(location.hash.slice(1));navigate(hash.get('section')||'overview',hash.get('entity'),false);if(hash.get('edit')&&autoEditedHash!==location.hash){autoEditedHash=location.hash;Array.from(content.querySelectorAll('[data-field-pencil]')).find(b=>b.dataset.fieldPencil===hash.get('edit'))?.click()}
+}
+$('previous-section').onclick=()=>{const i=sections.findIndex(s=>s[0]===section);if(i>0)navigate(sections[i-1][0])};$('next-section').onclick=()=>{const i=sections.findIndex(s=>s[0]===section);if(i<sections.length-1)navigate(sections[i+1][0])};window.addEventListener('popstate',()=>{if(draft)restore(true)});
 
 return {select(target,entity){draft=options.getDraft?options.getDraft():draft;navigate(target,entity)},render(value){draft=structuredClone(value);restore()},setDisabled(value){root.querySelectorAll('button,select').forEach(el=>{if(value){if(el.dataset.wasDisabled===undefined)el.dataset.wasDisabled=String(el.disabled);el.disabled=true}else if(el.dataset.wasDisabled!==undefined){el.disabled=el.dataset.wasDisabled==='true';delete el.dataset.wasDisabled}})}};
 };
