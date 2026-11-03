@@ -151,4 +151,13 @@ facts.back(); assert.equal(facts.section(), 'facts'); assert.equal(JSON.stringif
 for (const draft of [{...original, facts: []}, Object.fromEntries(Object.entries(original).filter(([key]) => key !== 'facts'))]) {
   const empty = environment(draft); empty.workspace.select('facts'); assert.match(empty.content().textContent, /情報の指定はありません/);
 }
-console.log('Draft workspace review: guarded Back/Forward, pending input retention, literal facts/place review, and unchanged draft passed.');
+// Prototype property names and unknown sections never dispatch object methods.
+for (const section of ['constructor', '__proto__', 'toString', '<script>bad()</script>']) {
+  const invalid = environment();
+  invalid.workspace.select(section);
+  assert.equal(invalid.section(), 'overview');
+  assert.match(invalid.content().textContent, /下案の全体像/);
+  invalid.workspace.select('story'); invalid.back();
+  assert.equal(invalid.section(), 'overview');
+}
+console.log('Draft workspace review: guarded Back/Forward, pending input retention, literal facts/place review, invalid section fallback, and unchanged draft passed.');
