@@ -9,7 +9,8 @@
 .wp{--wp-ink:var(--ws-text);--wp-muted:var(--ws-muted);--wp-line:var(--ws-line);--wp-orange:var(--ws-advance);height:100%;display:grid;grid-template-columns:var(--ws-side-w) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;background:var(--ws-canvas);color:var(--wp-ink);font-family:var(--wp-font-sans);font-size:var(--ws-fs-h3);line-height:var(--ws-line-height);letter-spacing:.01em}
 .wp [hidden]{display:none!important}
 .wp button,.wp input,.wp textarea,.wp select{font:inherit}
-.wp button{cursor:pointer;color:inherit;background:transparent;border:0;border-radius:0;box-shadow:none;line-height:var(--ws-line-height);padding:var(--ws-space-2) var(--ws-space-3)}
+/* Shared ui-button controls retain their ui.css border/background owner. */
+.wp button:where(:not(.ui-button)){cursor:pointer;color:inherit;background:transparent;border:0;border-radius:0;box-shadow:none;line-height:var(--ws-line-height);padding:var(--ws-space-2) var(--ws-space-3)}
 .wp button:hover{background:#eeece5}
 .wp :focus-visible{outline:3px solid var(--ws-focus);outline-offset:3px}
 .wp h1,.wp h2,.wp h3,.wp p{margin:0}
