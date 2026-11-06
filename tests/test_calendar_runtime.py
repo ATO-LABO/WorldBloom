@@ -35,9 +35,9 @@ class CalendarRuntimeTests(unittest.TestCase):
             authored = self.root/('authored-'+name)
             write_fixture(authored)
             contract_path = authored/'contract_v2.yaml'
-            contract = yaml.safe_load(contract_path.read_text())
+            contract = yaml.safe_load(contract_path.read_text(encoding='utf-8'))
             contract['observers'][0]['fields']['primary_present']['actor'] = lead
-            contract_path.write_text(yaml.safe_dump(contract, allow_unicode=True))
+            contract_path.write_text(yaml.safe_dump(contract, allow_unicode=True), encoding='utf-8')
             world, people = load(authored)
             sim = Simulation(0, world, people, self.root/name)
             sim.slot_runtime.configure(commands)
@@ -71,7 +71,7 @@ class CalendarRuntimeTests(unittest.TestCase):
             world, _ = load(); commands = choices(world, case)
             rt = self.execute(commands, case)
             self.assertFalse([r for r in rt.rows if r['result'] in ('failed', 'rejected')])
-            summary = json.loads((rt.store.out/'summary.json').read_text())
+            summary = json.loads((rt.store.out/'summary.json').read_text(encoding='utf-8'))
             records.append((rt, summary))
         self.assertEqual(len({digest(rt.contract) for rt, _ in records}), 1)
         self.assertEqual(len({digest(rt.initial) for rt, _ in records}), 1)
@@ -114,7 +114,7 @@ class CalendarRuntimeTests(unittest.TestCase):
         for interval in (60, 7):
             project = self.root/('project'+str(interval)); write_fixture(project)
             import yaml
-            p = project/'contract_v2.yaml'; contract = yaml.safe_load(p.read_text())
+            p = project/'contract_v2.yaml'; contract = yaml.safe_load(p.read_text(encoding='utf-8'))
             for band in contract['calendar']['normal']['bands']:
                 band['interval_minutes'] = interval
             extra = deepcopy(contract['calendar']['specials'][0])
@@ -123,7 +123,7 @@ class CalendarRuntimeTests(unittest.TestCase):
             for b in extra['bands']:
                 b['interval_minutes'] = interval
             contract['calendar']['specials'].append(extra)
-            p.write_text(yaml.safe_dump(contract, allow_unicode=True))
+            p.write_text(yaml.safe_dump(contract, allow_unicode=True), encoding='utf-8')
             commands = [{'id': 'ten', 'actor': '紗季', 'at': 510, 'verb': 'move', 'to': '体育館'}]
             projects.append(self.execute(commands, 'split-'+str(interval), project=project))
         for rt in projects:
@@ -240,7 +240,7 @@ class CalendarRuntimeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             freeze_design(self.root/'fixed-project', settings)
         p = self.root/'fixed-project/contract_v2.yaml'
-        p.write_text(p.read_text()+'\n# tampered frozen bytes\n')
+        p.write_text(p.read_text(encoding='utf-8')+'\n# tampered frozen bytes\n', encoding='utf-8')
         with self.assertRaises(ValueError):
             load(self.root/'fixed-project')
 
@@ -341,13 +341,13 @@ class CalendarRuntimeTests(unittest.TestCase):
             strict_json('{"version":2,"version":1}')
         for field, bad in [('version', 2.0), ('roles', []), ('appraisal', {'fulfilled': float('nan'), 'unexplained_breach': -.05})]:
             project = self.root/('bad-'+field); write_fixture(project)
-            p = project/'contract_v2.yaml'; data = yaml.safe_load(p.read_text()); data[field] = bad
-            p.write_text(yaml.safe_dump(data, allow_unicode=True))
+            p = project/'contract_v2.yaml'; data = yaml.safe_load(p.read_text(encoding='utf-8')); data[field] = bad
+            p.write_text(yaml.safe_dump(data, allow_unicode=True), encoding='utf-8')
             with self.subTest(field=field), self.assertRaises(ValueError):
                 load(project)
         project = self.root/'bad-days'; write_fixture(project)
-        p = project/'world.yaml'; data = yaml.safe_load(p.read_text()); data['time']['days'] = 3.5
-        p.write_text(yaml.safe_dump(data, allow_unicode=True))
+        p = project/'world.yaml'; data = yaml.safe_load(p.read_text(encoding='utf-8')); data['time']['days'] = 3.5
+        p.write_text(yaml.safe_dump(data, allow_unicode=True), encoding='utf-8')
         with self.assertRaises(ValueError):
             load(project)
         fixed = self.root/'missing-fixed'; freeze_design(fixed, self.simulation('design').slot_runtime.contract['calendar'])
@@ -396,7 +396,7 @@ class CalendarRuntimeTests(unittest.TestCase):
                      'task_id': 'panel-cards', 'minutes': 10}]
         rt = self.execute(commands, 'closed-work')
         self.assertEqual(rt.ledger['tasks']['panel-cards']['effort_minutes'], 5)
-        summary = json.loads((rt.store.out/'summary.json').read_text())
+        summary = json.loads((rt.store.out/'summary.json').read_text(encoding='utf-8'))
         self.assertEqual(summary['used_minutes']['灯']['work'], 5)
         self.assertEqual(summary['remaining_work']['panel-cards']['minutes'], 35)
 

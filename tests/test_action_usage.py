@@ -13,10 +13,12 @@ from engine.action_usage import current_policy, reference, parse
 from engine.actions import Action, candidates
 from engine.verbs import VerbEngine
 from engine.world import World
+from engine.world_format import initialize, validate
 from execution import action_usage_settings as settings, world_editor
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from test_engine import FixedRandom
+from test_goal_planner import load
 from engine.subject import Subject
 import shutil
 ROOT=Path(__file__).resolve().parents[1]
@@ -25,6 +27,22 @@ def load_fixture():
     world=World.from_yaml(project/"world.yaml")
     people={p.id:p for p in [Subject.from_yaml(f) for f in sorted((project/"subjects").glob("*.yaml"))]}
     world.bind_subjects(people);return world,people
+
+
+def current_response_fixture():
+    from test_action_timing import configuration
+
+    raw, people = configuration()
+    raw["gapengine"] = {
+        "action_graph": "templates/basic/action_graph.yaml",
+        "effects": "templates/basic/effects.yaml",
+    }
+    definition = initialize(raw)
+    definition["mechanics"]["stamina_management"] = True
+    validate(definition)
+    return definition, people
+
+
 def install_fixture(repo):
     shutil.copytree(ROOT/"projects/momotaro_plus3_new",repo/"projects/modern")
     for name in ["momotaro_plus3","basic"]:
@@ -80,9 +98,7 @@ class UsageEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'departure'):parse(w,{**policy,'enabled':['verb:rest']},mechanics)
 
     def test_planner_and_timed_response_cannot_use_disabled_leaf(self):
-        from test_action_timing import configuration
-        from test_goal_planner import load
-        raw,people=configuration();w,p,_=load(raw,people);policy,mechanics=current_policy(w)
+        raw,people=current_response_fixture();w,p,_=load(raw,people);policy,mechanics=current_policy(w)
         policy['enabled'].remove('response:send_beacon');raw.update(action_usage=policy,mechanics=mechanics)
         w,p,_=load(raw,people);a=p['通信士']
         with self.assertRaisesRegex(ValueError,'action_disabled'):w.action_timing._spec(w,a,Action('respond',('send_beacon',)),1)
