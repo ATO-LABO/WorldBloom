@@ -16,15 +16,19 @@
 36a04db4aa3a9abf8a0ee64ef5efbedfd308af02:launch-assets/package-files.json:generic-api-key:547
 # Updated line 443: tests/test_world_expansion_api.py in the newer commit.
 896df09068b4c7d568d1730831d321886f4b2696:launch-assets/package-files.json:generic-api-key:443
-# Historical line 925: verified SHA256 of viewer/static/ui-tokens.css.
-0386a61a1e2bdd7e40dd42317ef73f3e32297573:launch-assets/package-files.json:generic-api-key:925
 # Six working-tree fingerprints approved on 2026-10-28.
 # Each value was rechecked against the current Git file's SHA256.
 # The source files are identified beside the historical entries above.
 # Positions updated for the same six approved file checksums; scope unchanged.
-launch-assets/package-files.json:generic-api-key:645
-launch-assets/package-files.json:generic-api-key:664
-launch-assets/package-files.json:generic-api-key:742
-launch-assets/package-files.json:generic-api-key:784
-launch-assets/package-files.json:generic-api-key:785
-launch-assets/package-files.json:generic-api-key:865
+launch-assets/package-files.json:generic-api-key:647
+launch-assets/package-files.json:generic-api-key:666
+launch-assets/package-files.json:generic-api-key:744
+launch-assets/package-files.json:generic-api-key:787
+launch-assets/package-files.json:generic-api-key:788
+launch-assets/package-files.json:generic-api-key:868
+
+# Verified historical SHA-256 of viewer/static/ui-tokens.css.
+0386a61a1e2bdd7e40dd42317ef73f3e32297573:launch-assets/package-files.json:generic-api-key:925
+
+# Verified historical SHA-256 of tests/test_world_expansion_api.py.
+1b692a6667000f1f02a7b2fa867edaa72acdd921:launch-assets/package-files.json:generic-api-key:742
