@@ -86,7 +86,7 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertIsNone(self.initial(body)['view'])
         self.assertIn('settings.json を読めません', body)
         self.assertNotIn('data-gs-output', body)
-        self.assertEqual(body.count('data-gs-tab='), 3)
+        self.assertCountEqual(re.findall(r'data-gs-tab="([^"]+)"', body), ['output', 'compute', 'configs'])
         self.assertIn('まだ保存版がありません', body)
 
     def test_assets_are_served(self):
