@@ -755,7 +755,7 @@
   "tests/test_run_settings.py": "61766c8ac34f0ace9e369006a065a3ede35d9f6c43f0cfe04f4caa1bfabc8ff8",
   "tests/test_run_workspace.py": "90c90d64bc78f3cd08dd35a2a770f38ab11c5ac4ae18ba27e498a7ab09d792c2",
   "tests/test_screening_pages.py": "ecd53ac3825e292a9db72257a3a83104b8b9f01274dc27bf0f164243fd1ce779",
-  "tests/test_security_html.py": "cfc49873e3a7a976b302fb2c85dbdd0b130605ac351dde133170af7f08bb1ce9",
+  "tests/test_security_html.py": "f7b502b1d45a30f233ad2ea21c46cdc01156ac925d2b02ba8c04f3b481ab6df8",
   "tests/test_security_paths.py": "5792c98f95927a11387a9b8b1ed0b907d6cca8d470d2552bd6d7d038a380d79d",
   "tests/test_seed_genomes.py": "ca3de4e9bbab114a490ca212cbc614ca687852ac5098390ca7cdfe774f439e87",
   "tests/test_settings_navigation.py": "7fc4ea9be1433273b8c702661ca87b1ed2c6dcdaf5ebb82beca483438052a5fb",
