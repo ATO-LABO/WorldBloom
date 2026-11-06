@@ -181,9 +181,10 @@ class UsageHttpTests(unittest.TestCase):
     def test_boundary_check_save_status_and_readonly(self):
         store=LibraryStore(self.repo);model=settings.view(store,'modern');body={k:model[k] for k in settings.FIELDS};url='/api/worlds/modern/action-usage'
         import re
-        conn=http.client.HTTPConnection('127.0.0.1',self.server.server_port);conn.request('GET','/worlds/modern');response=conn.getresponse();page=response.read().decode('utf-8');self.assertEqual(response.status,200);conn.close()
-        initial=json.loads(re.search(r'id="wp-data">(.*?)</script>',page,re.S).group(1))
-        self.assertEqual(initial['scheduled_events_version'],1);self.assertIn('can_edit_logical',initial['scheduled_event_safety'])
+        conn=http.client.HTTPConnection('127.0.0.1',self.server.server_port);conn.request('GET','/worlds/modern?view=actions');response=conn.getresponse();page=response.read().decode('utf-8');self.assertEqual(response.status,200);conn.close()
+        initial=json.loads(re.search(r'id="as-data">(.*?)</script>',page,re.S).group(1))
+        self.assertIn('mechanics',initial)
+        self.assertIn('enabled',initial)
         self.assertEqual(self.http('POST',url+'/check',body,client_header=False)[0],403)
         status,result=self.http('POST',url+'/check',body);self.assertEqual(status,200,result);self.assertNotIn('candidate',result)
         status,result=self.http('POST',url+'/save',{**body,'request_id':'http-save-1','check_fingerprint':result['check_fingerprint']});self.assertEqual(status,200,result);self.assertEqual(result['state'],'applied')

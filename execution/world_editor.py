@@ -294,6 +294,11 @@ def save(store, ident, body):
             slots = _list(values["slots"], "slots")
             if not slots:
                 _bad("slots", "時間帯を1つ以上指定してください")
+            from execution import time_slot_references
+            references = time_slot_references.snapshot(store, ident, world)
+            errors, warnings = time_slot_references.validate(references, slots, days)
+            if errors or warnings:
+                _bad("time", " / ".join(entry["message"] for entry in (errors or warnings)[:8]))
             updated["time"] = {**(updated.get("time") or {}), "days": days, "slots": slots}
         elif operation == "place":
             if not isinstance(target, str) or names.count(target) != 1:

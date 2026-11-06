@@ -299,7 +299,7 @@ class LibraryStore:
     def _validate_saved_world(base):
         from engine.world_format import validate
         try:
-            validate(yaml.safe_load(contained(base, "world.yaml").read_bytes()))
+            validate(load_yaml(contained(base, "world.yaml")))
         except FileNotFoundError:
             raise ConfigError("world_id", "世界がありません", code="not_found") from None
         except (ValueError, yaml.YAMLError) as error:

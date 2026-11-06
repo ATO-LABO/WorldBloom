@@ -290,8 +290,7 @@ def validate(repo, value):
                 raise
             _bad("draft", "エンジンへの入力を確認できません: " + type(error).__name__)
     narrative_only = [p["name"] for p in d["people"] if p["goal"].get("description") and not p["goal"]["conditions"]]
-    from engine.world_format import initialize
-    return d, initialize(world), subjects, {"subjects": len(result["subjects"]), "places": len(d["places"]),
+    return d, world, subjects, {"subjects": len(result["subjects"]), "places": len(d["places"]),
         "narrative_only_goals": narrative_only,
         "note": "構造・参照とエンジン入力を確認しました。到達可能性や面白さは保証していません。"}
 
