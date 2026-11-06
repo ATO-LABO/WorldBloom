@@ -33,6 +33,7 @@ from viewer.data import (
 
 MAX_POST_BYTES = 64 * 1024
 STATIC_FILES = {
+    "ui-tabs.js": "application/javascript; charset=utf-8",
     "purpose-independent.js": "application/javascript; charset=utf-8",
     "purpose-workspace.js": "application/javascript; charset=utf-8",
     "purpose-workspace.css": "text/css; charset=utf-8",
@@ -43,6 +44,8 @@ STATIC_FILES = {
     "review-workspace.css": "text/css; charset=utf-8",
     "review-workspace.js": "application/javascript; charset=utf-8",
     "world-advanced.css": "text/css; charset=utf-8",
+    "items-workspace.js": "application/javascript; charset=utf-8",
+    "items-workspace.css": "text/css; charset=utf-8",
     "world-advanced.js": "application/javascript; charset=utf-8",
     "person-commitments-editor.js": "application/javascript; charset=utf-8",
     "objectives-editor.js": "application/javascript; charset=utf-8",

@@ -89,6 +89,10 @@ def save(store, ident, body):
         "place": {"note"}, "add-person": {"name", "description", "entry"},
         "add-place": {"name", "description"}, "state": {"entry", "knowledge"},
         "route": {"item", "cost"},
+        "item-topic": {"topic", "value"},
+        "add-item": {"name", "content", "holders", "acquisition", "effects"},
+        "add-fact": {"name", "content", "known", "acquisition"},
+        "fact-topic": {"topic", "value"},
         "relation": {"label"},
         "roles": {"protagonist", "antagonist", "target_ending"},
         "file": {"content"},
@@ -122,7 +126,20 @@ def save(store, ident, body):
         names = [z if isinstance(z, str) else z["name"] for z in zones]
         people = [(rel, p) for rel, p in files.items() if rel != "world.yaml"]
         rel, updated = "world.yaml", deepcopy(world)
-        if operation in {"person-commitments","concerns","concerns-check","responses","responses-check","goal-rules","goal-rules-check","planning","planning-check"}:
+        if operation in ('item-topic', 'fact-topic', 'add-item', 'add-fact'):
+            from execution.items_editor import apply
+            from engine.world import World
+            from engine.subject import Subject
+            candidate = apply(files, operation, target, values)
+            try:
+                runtime = World(candidate['world.yaml'], _base(store, ident)/'world.yaml')
+                runtime.bind_subjects({p['id']: Subject.from_definition(p) for rel, p in candidate.items() if rel != 'world.yaml'})
+            except (ValueError, KeyError, TypeError, AttributeError) as error:
+                _bad('value', '持ち物・情報の設定を確認してください。'+str(error))
+            person_values.write_changes(store, ident, files, candidate)
+            saved, revision = _read(store, ident)
+            return _model(ident, saved, revision, _base(store, ident)/'world.yaml')
+        elif operation in {"person-commitments","concerns","concerns-check","responses","responses-check","goal-rules","goal-rules-check","planning","planning-check"}:
             from engine.world import World
             from engine.subject import Subject
             try:

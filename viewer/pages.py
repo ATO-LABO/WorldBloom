@@ -245,7 +245,7 @@ def document(
         + page_assets + '<link rel="stylesheet" href="/static/ui.css">'
         +
         '<script src="/static/app.js" defer></script><script src="/static/local-status.js" defer></script>'
-        '<script src="/static/workbench.js" defer></script>'
+        '<script src="/static/workbench.js" defer></script><script src="/static/ui-tabs.js" defer></script>'
         '<script src="/static/purpose-workspace.js" defer></script>'
         + page_scripts +
         f"</head><body{body_class}>"

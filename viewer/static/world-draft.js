@@ -12,7 +12,7 @@
   const workspaceRoot=$('[data-wd-workspace]');let workspace=null,editing=null;
   if(workspaceRoot&&window.WorldBloomDraftWorkspace&&window.WorldBloomDraftEditing){
     root.classList.add('has-workspace');
-    workspace=new window.WorldBloomDraftWorkspace(workspaceRoot,{beforeNavigate:()=>editing?.canLeave()??true,afterRender:(target,content)=>editing?.mount(target,content)});
+    workspace=new window.WorldBloomDraftWorkspace(workspaceRoot,{onChange:next=>{editor.value=JSON.stringify(next,null,2);markDirty();workspace.render(next);},beforeNavigate:()=>editing?.canLeave()??true,afterRender:(target,content)=>editing?.mount(target,content)});
     editing=new window.WorldBloomDraftEditing({getDraft:()=>JSON.parse(editor.value),
       onChange:(draft,target)=>{editor.value=JSON.stringify(draft,null,2);markDirty();workspace.render(draft);if(target)workspace.select(target.section,target.entity);},
       requestRevision:async body=>{busy=true;controls();try{return await api('/'+token+'/revise',{revision:record.edit_revision||record.revision,...body});}finally{busy=false;controls();}},
@@ -101,7 +101,7 @@
       const relations=d.people.flatMap(p=>p.relations.map(r=>[p.name+' → '+r.person,r.label || 'ラベルなし',r.affinity,r.awareness]));
       context.append(table('人物間の関係',['関係の向き','ラベル','親しさ（−1〜1）','認知（0〜1）'],relations));
     }
-    if(!goalEditor)context.append(table('品物と経路',['種類','内容'],[...d.items.map(i=>['品物',i.name+'／所持：'+i.holder]),...d.routes.map(r=>['経路',r.from+' → '+r.to])]));
+    if(!goalEditor)context.append(table('品物と経路',['種類','内容'],[...d.items.map(i=>['品物',i.name+'／所持：'+(i.holders?i.holders.map(h=>h.person+' ×'+h.count).join('、'):i.holder)]),...d.routes.map(r=>['経路',r.from+' → '+r.to])]));
     if(d.facts?.length)context.append(table('調べて得る情報',['名前','内容','調べる場所'],d.facts.map(f=>[f.name,f.description,f.place])));
   }
   function show(value) {

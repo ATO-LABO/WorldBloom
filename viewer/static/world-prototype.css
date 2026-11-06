@@ -37,9 +37,6 @@
 .wp .wp-primary{display:inline-flex;align-items:center;justify-content:center;gap:var(--ws-space-5);min-height:var(--ws-control-h);background:var(--ws-advance);color:var(--ws-surface);border:1px solid var(--ws-advance);border-radius:var(--ws-radius);padding:var(--ws-space-2) var(--ws-space-4);text-decoration:none;white-space:nowrap;font-family:var(--wp-font-sans);font-size:var(--ws-fs-control);font-weight:600}
 .wp .wp-primary:hover{background:var(--ws-advance-ink)}
 .wp .wp-primary.is-confirm{background:var(--ws-confirm);border-color:var(--ws-confirm)}
-.wp-tabs{display:flex;gap:var(--ws-space-4);border-bottom:1px solid var(--wp-line);margin:var(--ws-space-4) 0 var(--ws-space-5)}
-.wp-tabs>button{border-bottom:3px solid transparent;padding:var(--ws-space-2) var(--ws-space-4)}
-.wp-tabs>button[aria-pressed=true]{border-bottom-color:#bd572c;font-weight:bold}
 .wp-people{display:grid;grid-template-columns:245px minmax(0,1fr);gap:38px;min-height:0;flex:1}
 .wp-content.is-people{display:flex;flex-direction:column;overflow:hidden}
 .wp-people-list{overflow:auto;min-height:0;border-right:1px solid var(--wp-line);padding-right:var(--ws-space-5)}
@@ -77,7 +74,7 @@
 .wp-state th,.wp-state td{text-align:left;border-bottom:1px solid var(--wp-line);padding:var(--ws-space-3) var(--ws-space-3);background:transparent;overflow-wrap:anywhere}
 .wp-state th{font-weight:600}
 @media(max-width:1280px){.wp{grid-template-columns:var(--ws-side-w) minmax(0,1fr);font-size:var(--ws-fs-h3)}.wp-content{padding:var(--ws-space-5) var(--ws-space-6)}.wp h1{font-size:var(--ws-fs-h1)}.wp h2{font-size:var(--ws-fs-h2)}.wp-section{margin-top:var(--ws-space-5)}.wp-subtitle{font-size:var(--ws-fs-h2)}.wp-people{grid-template-columns:205px minmax(0,1fr);gap:var(--ws-space-5)}.wp-dl>div{grid-template-columns:120px 1fr}.wp-map button{width:65px;height:65px;font-size:var(--ws-fs-control)}.wp-place-grid{gap:var(--ws-space-5)}.wp-place-detail{padding-left:var(--ws-space-5)}.wp-footer{padding:var(--ws-space-3) var(--ws-space-5)}}
-@media(max-width:760px){.wp{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr) auto;font-size:var(--ws-fs-md)}.wp-preview{display:none}.wp-content{padding:var(--ws-space-5) var(--ws-space-4)}.wp h1{font-size:var(--ws-fs-h1)}.wp h2{font-size:var(--ws-fs-h2)}.wp-title{gap:var(--ws-space-2);flex-wrap:wrap}.wp-title .wp-add{font-size:var(--ws-fs-sm)}.wp-subtitle{font-size:var(--ws-fs-md)}.wp-columns{grid-template-columns:1fr;gap:var(--ws-space-5)}.wp-columns>section+section{border:0;padding:0}.wp-jump{grid-template-columns:85px 1fr 18px;gap:var(--ws-space-2)}.wp-footer{padding:var(--ws-space-2) var(--ws-space-4);display:block}.wp-footer>span{display:block;font:var(--ws-fs-xs)/1.5 var(--wp-font-sans);margin-bottom:var(--ws-space-2)}.wp .wp-primary{font-size:var(--ws-fs-control);padding:var(--ws-space-2) var(--ws-space-4)}.wp-footer .wp-primary{width:100%}.wp-people{display:block}.wp-content.is-people{display:block;overflow:auto}.wp-people-list{overflow:visible;border:0;padding:0}.wp-person-options{display:flex;overflow:visible;flex-wrap:wrap;gap:var(--ws-space-2);margin:var(--ws-space-2) 0 var(--ws-space-4)}.wp-person-button{width:auto;padding:var(--ws-space-2) var(--ws-space-2)!important;border:1px solid var(--wp-line)!important;font-size:var(--ws-fs-sm)}.wp-person-button small{display:none}.wp-person-detail{overflow:visible;padding:0}.wp-person-detail h2{font-size:var(--ws-fs-h2)}.wp-dl>div{grid-template-columns:1fr;gap:var(--ws-space-1)}.wp-place-grid{display:block}.wp-place-detail{border:0;padding:var(--ws-space-5) 0 0}.wp-map button{width:51px;height:51px;font-size:var(--ws-fs-xs)}.wp-tabs{gap:var(--ws-space-2)}.wp-tabs>button{padding:var(--ws-space-2) var(--ws-space-2);font-size:var(--ws-fs-control)}.wp-story-copy{font-size:var(--ws-fs-h3)}.wp-state{font-size:var(--ws-fs-xs);table-layout:fixed}.wp-state th,.wp-state td{padding:var(--ws-space-2) var(--ws-space-1)}}
+@media(max-width:760px){.wp{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr) auto;font-size:var(--ws-fs-md)}.wp-preview{display:none}.wp-content{padding:var(--ws-space-5) var(--ws-space-4)}.wp h1{font-size:var(--ws-fs-h1)}.wp h2{font-size:var(--ws-fs-h2)}.wp-title{gap:var(--ws-space-2);flex-wrap:wrap}.wp-title .wp-add{font-size:var(--ws-fs-sm)}.wp-subtitle{font-size:var(--ws-fs-md)}.wp-columns{grid-template-columns:1fr;gap:var(--ws-space-5)}.wp-columns>section+section{border:0;padding:0}.wp-jump{grid-template-columns:85px 1fr 18px;gap:var(--ws-space-2)}.wp-footer{padding:var(--ws-space-2) var(--ws-space-4);display:block}.wp-footer>span{display:block;font:var(--ws-fs-xs)/1.5 var(--wp-font-sans);margin-bottom:var(--ws-space-2)}.wp .wp-primary{font-size:var(--ws-fs-control);padding:var(--ws-space-2) var(--ws-space-4)}.wp-footer .wp-primary{width:100%}.wp-people{display:block}.wp-content.is-people{display:block;overflow:auto}.wp-people-list{overflow:visible;border:0;padding:0}.wp-person-options{display:flex;overflow:visible;flex-wrap:wrap;gap:var(--ws-space-2);margin:var(--ws-space-2) 0 var(--ws-space-4)}.wp-person-button{width:auto;padding:var(--ws-space-2) var(--ws-space-2)!important;border:1px solid var(--wp-line)!important;font-size:var(--ws-fs-sm)}.wp-person-button small{display:none}.wp-person-detail{overflow:visible;padding:0}.wp-person-detail h2{font-size:var(--ws-fs-h2)}.wp-dl>div{grid-template-columns:1fr;gap:var(--ws-space-1)}.wp-place-grid{display:block}.wp-place-detail{border:0;padding:var(--ws-space-5) 0 0}.wp-map button{width:51px;height:51px;font-size:var(--ws-fs-xs)}.wp-story-copy{font-size:var(--ws-fs-h3)}.wp-state{font-size:var(--ws-fs-xs);table-layout:fixed}.wp-state th,.wp-state td{padding:var(--ws-space-2) var(--ws-space-1)}}
 
 .wp-preview button{font:var(--ws-fs-code) var(--wp-font-sans);padding:var(--ws-space-2) 0;text-decoration:underline;text-underline-offset:4px}
 .wp-time-summary{display:grid;grid-template-columns:1fr 1fr;margin-top:34px;border-block:1px solid var(--wp-line)}
@@ -118,8 +115,6 @@
   .wp-footer {padding:var(--ws-space-2) var(--ws-gutter);}
   .wp-footer > span {font-size:var(--ws-fs-sm);}
   .wp .wp-primary {padding:var(--ws-space-2) var(--ws-space-4);font-size:var(--ws-fs-control);}
-  .wp-tabs {margin:var(--ws-space-2) 0 var(--ws-space-3);}
-  .wp-tabs > button {padding:var(--ws-space-1) var(--ws-space-3);}
   .wp-people {grid-template-columns:205px minmax(0,1fr);gap:var(--ws-space-5);}
   .wp-person-button {padding:var(--ws-space-2) var(--ws-space-3)!important;}
   .wp-person-detail {padding-top:var(--ws-space-2);}
@@ -153,7 +148,6 @@
 @media (min-width:1024px) {
   .wp-content[data-screen="story"] .wp-title {display:inline-flex;margin-right:var(--ws-space-4);}
   .wp-content[data-screen="story"] .wp-subtitle {display:inline;}
-  .wp-content[data-screen="story"] .wp-tabs {margin-bottom:var(--ws-space-2);}
   .wp-state th,.wp-state td {padding-block:var(--ws-space-1);}
   .wp-search {margin-block:var(--ws-space-2);}
   .wp-person-button {padding-block:var(--ws-space-2)!important;}
@@ -204,9 +198,6 @@
 /* Relationship workspace; intentionally isolated from the place map. */
 .wp-rel-people{grid-template-columns:220px minmax(0,1fr);gap:var(--ws-space-5);flex:1;min-height:0}
 .wp-rel-people .wp-person-detail{padding:0 0 var(--ws-space-5)}
-.wp-rel-people .wp-tabs{border-bottom:1px solid var(--ws-line);margin:0 0 var(--ws-space-4);gap:var(--ws-space-3)}
-.wp-rel-people .wp-tabs button{padding:var(--ws-space-3) var(--ws-space-4);font-size:var(--ws-fs-h3);border-bottom:4px solid transparent}
-.wp-rel-people .wp-tabs button[aria-pressed=true]{border-bottom-color:var(--wp-orange);background:transparent;font-weight:700}
 .wp-rel-people .wp-person-detail>h2,.wp-rel-matrix-view h2{font-size:var(--ws-fs-h2);margin:var(--ws-space-2) 0}
 .wp-rel-description{font-size:var(--ws-fs-md);color:var(--ws-muted);margin-bottom:var(--ws-space-4)!important}
 .wp-rel-workspace{border:1px solid var(--ws-line);border-radius:var(--ws-radius);overflow:hidden;background:var(--ws-surface)}
@@ -279,7 +270,7 @@
 .wp-rel-workspace:fullscreen .wp-rel-canvas{height:82vh}
 @media(max-width:1280px){.wp-rel-people{grid-template-columns:165px minmax(0,1fr);gap:var(--ws-space-4)}.wp-rel-people .wp-people-list{padding-right:var(--ws-space-3)}.wp-rel-body.has-inspector{grid-template-columns:minmax(0,1fr) 220px}.wp-rel-inspector{padding:var(--ws-space-3);font-size:var(--ws-fs-xs)}.wp-rel-toolbar{gap:var(--ws-space-2)}.wp-rel-scope{margin-left:0}.wp-rel-canvas{height:490px}}
 @media(max-width:1000px){.wp-rel-body.has-inspector{grid-template-columns:1fr}.wp-rel-inspector{margin:var(--ws-space-2) var(--ws-space-3) var(--ws-space-3);max-height:360px}.wp-rel-inspector ul{display:grid;grid-template-columns:1fr 1fr;gap:var(--ws-space-1) var(--ws-space-4)}.wp-rel-canvas{height:440px}}
-@media(max-width:760px){.wp-rel-people{display:block}.wp-rel-toolbar{align-items:stretch}.wp-rel-toolbar label:first-child{flex-basis:100%}.wp-rel-scope{flex-wrap:wrap}.wp .wp-rel-segments button{padding:var(--ws-space-2) var(--ws-space-2)}.wp-rel-description{font-size:var(--ws-fs-sm)}.wp-rel-canvas{height:400px;min-width:0}.wp-rel-controls{right:4px;bottom:8px}.wp .wp-rel-controls button{padding:var(--ws-space-2);font-size:var(--ws-fs-xs)}.wp-rel-inspector ul{display:block}.wp-rel-row{align-items:start;flex-wrap:wrap}.wp-rel-people .wp-tabs button{padding:var(--ws-space-2) var(--ws-space-3);font-size:var(--ws-fs-control)}.wp-rel-people .wp-person-detail{padding-right:0}}
+@media(max-width:760px){.wp-rel-people{display:block}.wp-rel-toolbar{align-items:stretch}.wp-rel-toolbar label:first-child{flex-basis:100%}.wp-rel-scope{flex-wrap:wrap}.wp .wp-rel-segments button{padding:var(--ws-space-2) var(--ws-space-2)}.wp-rel-description{font-size:var(--ws-fs-sm)}.wp-rel-canvas{height:400px;min-width:0}.wp-rel-controls{right:4px;bottom:8px}.wp .wp-rel-controls button{padding:var(--ws-space-2);font-size:var(--ws-fs-xs)}.wp-rel-inspector ul{display:block}.wp-rel-row{align-items:start;flex-wrap:wrap}.wp-rel-people .wp-person-detail{padding-right:0}}
 
 .wp-rel-inspector{max-height:520px;box-sizing:border-box}.wp-rel-person-heading h3{margin:0}.wp-rel-inspector li small{line-height:var(--ws-line-height)}
 

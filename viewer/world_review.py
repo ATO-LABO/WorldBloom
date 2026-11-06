@@ -3,7 +3,7 @@ import html
 import json
 from urllib.parse import quote
 from viewer import pages, purpose_pages, ui
-from viewer.settings_navigation import navigation
+from viewer.settings_navigation import navigation, checks_navigation
 
 
 def work_note(world_id, *, review=False):
@@ -23,6 +23,7 @@ def render(world, *, job_store=None):
     aliases=[world['id']]+([name] if sum((w.get('name') or w['id'])==name for w in names)==1 else [])
     nav=ui.navigation(navigation(world['id'],active='checks'),label='世界設定')
     content=(ui.heading('世界のレビュー',name+'の条件で試し、保存した結果を確認します。')
+             +checks_navigation(world['id'],'review')
              +f'<p class="ui-notice">対象の世界：<strong>{html.escape(name)}</strong></p>'
              +ui.button('制作の実行条件',href='/jobs?world='+wid)
              +f'<input type="hidden" data-purpose-world value="{html.escape(world["id"],quote=True)}">'

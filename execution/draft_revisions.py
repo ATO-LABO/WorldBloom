@@ -15,11 +15,11 @@ def target_for(draft, target):
     section, entity = target["section"], target["entity"]
     if not isinstance(section, str) or not isinstance(entity, str):
         fail("target", "修正する対象を選んでください")
-    key = {"people": "people", "places": "places", "items": "items", "relations": "people"}.get(section)
-    exists=(key and any(row["name"] == entity for row in draft[key])) or (section=='routes' and entity.isdecimal() and int(entity)<len(draft['routes'])) or (section in ('overview','story') and not entity)
+    key = {"people": "people", "places": "places", "items": "items", "facts": "facts", "relations": "people"}.get(section)
+    exists=(key and any(row["name"] == entity for row in draft.get(key, []))) or (section=='routes' and entity.isdecimal() and int(entity)<len(draft['routes'])) or (section in ('overview','story') and not entity)
     if not exists:fail("target", "修正する人物・場所・経路が見つかりません")
     if 'field' in target:
-        allowed={'overview':{'roles'},'people':{'profile','goal'},'places':{'description'},'items':{'holder'},'story':{'story'},'relations':{'relation'},'routes':{'route'}}
+        allowed={'overview':{'roles'},'people':{'profile','goal'},'places':{'description'},'items':{'holder'},'facts':{'factDescription','factPlace'},'story':{'story'},'relations':{'relation'},'routes':{'route'}}
         if not isinstance(target['field'],str) or target['field'] not in allowed.get(section,set()):fail('target','編集する項目を確認してください')
         if section=='relations':
             person=next(p for p in draft['people'] if p['name']==entity)
@@ -42,7 +42,7 @@ def scope_paths(draft,target):
     if field=='relation':
         ri=next(i for i,r in enumerate(draft[key][index]['relations']) if r['person']==target['peer'])
         return [prefix+f'relations/{ri}']
-    return [prefix+{'goal':'goal','description':'description','holder':'holder'}[field]]
+    return [prefix+{'goal':'goal','description':'description','holder':'holders' if 'holders' in draft[key][index] else 'holder','factDescription':'description','factPlace':'place'}[field]]
 
 
 def scoped_candidate(base,candidate,target):
@@ -108,7 +108,7 @@ def revision_prompt(name, overview, draft, target, instruction):
     elif target['section'] in ('people','relations'):
         index=next(i for i,p in enumerate(draft['people']) if p['name']==target['entity'])
         path=f'/people/{index}/personality'
-    elif target['section'] in ('places','items'):
+    elif target['section'] in ('places','items','facts'):
         key=target['section'];index=next(i for i,p in enumerate(draft[key]) if p['name']==target['entity'])
         path=f'/{key}/{index}/'+('description' if key=='places' else 'holder')
     value_example='修正後の値'
@@ -119,6 +119,11 @@ def revision_prompt(name, overview, draft, target, instruction):
             current=next(p['goal'] for p in draft['people'] if p['name']==target['entity'])
             value_example=deepcopy(current) if 'description' in current else {'description':current['target']+'を'+current['deliver_to']+'へ届ける','conditions':[{'type':'deliver','item':current['target'],'place':current['deliver_to']}] if current['target'] else []}
             guide+='今回は目標と達成条件だけを編集します。goal全体をdescriptionとconditionsの2項目で置き換えます。旧形式のtargetやdeliver_toは残しません。目標が品物を届ける状態なら必ずdeliverを使い、acquireとreachだけで代用してはいけません。到着だけの目標ならreachを使います。人物の紹介や開始位置は変更禁止です。'
+        if target['field']=='holder':
+            item=next(p for p in draft['items'] if p['name']==target['entity'])
+            value_example=deepcopy(item.get('holders',item.get('holder')))
+            guide+=('初期所持だけを変更します。holdersはpersonとcountの一覧です。personは既存の人物名、countは1〜10000の整数、同じ人物は重複不可です。所持者なしは空の一覧にします。'
+                    if 'holders' in item else '初期所持だけを変更します。holderは既存の人物名を文字列で指定します。')
         guide+='変更できる範囲は'+json.dumps(allowed_paths,ensure_ascii=False)+'だけです。その外の変更は返してはいけません。'
     return (
         "物語世界の下案を、利用者の修正要望に従って修正してください。JSONだけを返します。"

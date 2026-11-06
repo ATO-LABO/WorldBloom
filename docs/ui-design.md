@@ -1,5 +1,15 @@
 # Shared WorldBloom viewer design
 
+Item definitions contain a stable reference, a user-facing name, descriptions,
+effects and acquisition channels. Initial holder/count assignments are separate
+subject state. Existing reference keys remain stable when display names change.
+The item table displays effects alongside holders; registration and topic modals
+use the shared fields/buttons/dialogs. Purchase, crafting and reward channels can
+coexist with investigation/labor. Transfer rewards consume the giver's existing
+stock; grant rewards create stock. Facts share registration and reward controls,
+with initial knowledge assignments instead of quantities. Drafts compile these
+same channels into world definitions and enable the required action verbs.
+
 Execution entry follows world list → opened world → that world's conditions.
 The run phase carries `world` in its link. A bare `/jobs` or an unknown world
 returns to `/worlds` before choosing any saved setting or inspecting active jobs.
@@ -24,6 +34,33 @@ not lose pending text or duplicate the editor. Shared precedent originals are ed
 in the shared-rule workspace, rather than through a world-local save. Legacy
 role URLs resolve to the new role/ending controls; field-scoped draft targets
 retain their existing server contract after their visual relocation.
+
+Items and information use the same tabbed tables in saved worlds and drafts.
+Each row represents one item/fact; people appear as related holders/knowers.
+Multiple holders and quantities wrap inside one cell. Topic pencils open only
+the relevant modal. Item holdings and initial knowledge save across people
+using the existing journalled multi-file transaction and revision boundary.
+Drafts accept both legacy `name/holder` items (one unit) and `name/holders`
+items with unique `person/count` rows; adoption preserves every quantity.
+Draft holder edits normalize only their selected item to the multiple-holder
+form, including AI previews. Information content/place use separate AI scopes.
+Acquisition source `count` means required action repetitions, not item quantity;
+`max` is the per-person acquisition limit. Draft initial knowledge, effects and
+acquisition channels use the same definitions as saved worlds and survive adoption.
+Narrow screens scroll the table inside the content area. Legacy draft tables
+may stack, but must not override the shared item table's header or row layout.
+
+World-settings subview tabs use `.ui-tabs` from `ui.css` and the automatically
+loaded `ui-tabs.js`. Selected tabs have the same orange underline, typography,
+spacing and minimum target size. Page styles must not redefine their appearance.
+The strip scrolls horizontally on narrow screens rather than shrinking labels.
+`ui.tabs()` renders server-owned strips; client renderers use the same class.
+Button groups share arrow/Home/End navigation and roving focus. Each workspace
+still owns activation, unsaved-input guards, URL state and panel contents.
+Disabling controls must preserve the selected tab. Cross-page links retain link
+semantics and use `aria-current`, with the same appearance as in-page tabs.
+Checks, route investigation, investigation conditions and world review share
+one navigation definition in `settings_navigation.py`.
 
 All three settings surfaces use the actual shared `ui-nav` component, including
 the world-rules page's `settings-workspace` shell. Sidebar width, label padding,
