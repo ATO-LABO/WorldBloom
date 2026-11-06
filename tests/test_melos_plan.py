@@ -12,6 +12,7 @@ from execution.melos_plan import MelosPlanBinding, capabilities, classify_sessio
 from execution.melos_session import MelosSession
 from gapengine.genome import Genome
 from gapengine.melos_choice_provider import MelosChoiceProvider
+from test_melos_adapter import bind_approved_trial_world
 
 
 class EvidenceTests(unittest.TestCase):
@@ -83,7 +84,7 @@ class BindingTests(unittest.TestCase):
         import melos_runner
         cls.base = melos_runner
         root = Path(os.environ['MELOS_INPUT_DIR'])
-        cls.base.ROOT = root.parent
+        bind_approved_trial_world(cls, cls.base, root)
         cls.inputs = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in sorted(root.rglob('*.yaml'))}
         cls.sources = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
