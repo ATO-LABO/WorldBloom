@@ -536,11 +536,12 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('data-advanced-save', body)
         self.assertIn('href="/worlds/momotaro"', body)
 
-    def test_world_detail_page_has_four_sections(self):
+    def test_world_detail_page_links_file_settings_from_shared_navigation(self):
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        for section in ('roles','canon','actions','files'):
+        for section in ('roles','canon','actions'):
             self.assertIn(f'data-advanced-section="{section}"',body)
+        self.assertIn('href="/worlds/momotaro?view=advanced#files" data-settings-category="files"', body)
         self.assertNotIn('class="tab-input"',body)
 
     def test_world_detail_action_catalog(self):
@@ -555,12 +556,11 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn("<dl class=\"world-summary\">", body)
 
     def test_world_detail_overview_intro(self):
-        # WB-UI-024: the 概要 tab leads with a one-sentence auto-generated
-        # introduction, not just a bare metadata line.
+        # The advanced view uses the saved world's settings and navigation.
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('世界の詳細設定', body)
-        self.assertIn('href="/worlds/momotaro"', body)
+        self.assertIn('data-world-advanced', body)
+        self.assertIn('href="/worlds/momotaro#screen=overview"', body)
         self.assertIn('&quot;days&quot;: 16', body)
         self.assertNotIn('data-gs-tab="genres"', body)
 
