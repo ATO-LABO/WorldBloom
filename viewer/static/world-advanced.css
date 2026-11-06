@@ -1,0 +1,30 @@
+/* Content geometry; shared UI owns controls, typography and dialogs. */
+.wa-layout{display:grid;grid-template-columns:var(--ws-side-w) minmax(0,1fr);gap:var(--ws-space-5);flex:1;min-height:0;overflow:hidden}
+.wa-layout>.ux-advanced-nav{overflow:auto}
+.wa-body{display:flex;gap:var(--ws-space-5);min-width:0;overflow:auto}
+.wa-body>.ux-advanced-list{width:var(--ws-aside-w);flex:none}
+.wa-reading{min-width:0;flex:1;overflow:auto;padding:var(--ws-space-2) var(--ws-space-3)}
+.wa-topic{border-bottom:1px solid var(--ws-line);padding:var(--ws-space-4) 0}
+.wa-topic>.ui-section-head{margin-bottom:var(--ws-space-3)}
+.wa-topic .ui-section-head>h3{margin:0}
+.wa-topic fieldset{border:0;padding:0;margin:0}
+.wa-topic legend,.wa-topic summary{font-weight:600;margin:var(--ws-space-2) 0}
+.wa-topic label{display:block;margin:var(--ws-space-3) 0}
+.wa-topic label:has(.wa-value)>span:first-child{display:block;color:var(--ws-muted);font-size:var(--ws-fs-sm)}
+.wa-value{display:block;white-space:pre-wrap;overflow-wrap:anywhere}
+.wa-topic pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--ws-fs-code)}
+.wa-topic .ui-content{padding:0}
+.wa-person-links{display:flex;flex-wrap:wrap;gap:var(--ws-space-2);margin:var(--ws-space-3) 0}
+.wa-topic>fieldset>legend,.wa-topic>label>span:first-child{display:none}
+.wa-dialog[open]{display:flex;flex-direction:column;overflow:hidden}
+.wa-dialog>.ui-section-head{flex:none;align-items:flex-start}
+.wa-dialog>form{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.wa-editor{overflow:auto;min-height:0;overscroll-behavior:contain;padding-right:var(--ws-space-2)}
+.wa-editor>h2{display:none}
+.wa-dialog .ui-edit-dialog-actions{position:static;flex:none}
+.wa-editor fieldset{margin:var(--ws-space-3) 0;border:1px solid var(--ws-line);border-radius:var(--ws-radius);padding:var(--ws-space-3)}
+.wa-editor>.ui-content{padding:0;border:0}
+.wa-editor pre{white-space:pre-wrap;overflow-wrap:anywhere}
+[data-world-advanced][data-advanced-view=actions] .ux-advanced-list{width:100%;flex:1}
+@media(max-width:1000px){.wa-body{flex-direction:column}.wa-body>.ux-advanced-list{width:auto;max-height:35dvh;overflow:auto;flex:none}.wa-reading{overflow:visible}}
+@media(max-width:760px){.wa-layout{display:flex;flex-direction:column;overflow:auto}.wa-layout>.ux-advanced-nav{overflow:visible;flex:none}.wa-body{overflow:visible;flex:none}.wa-reading{padding:var(--ws-space-2) 0}.wa-dialog .ui-edit-dialog-actions{gap:var(--ws-space-2)}}
