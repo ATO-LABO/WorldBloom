@@ -75,6 +75,16 @@ STATIC_FILES = {
     "draft-authoring.js": "application/javascript; charset=utf-8",
     "draft-settings-forms.js": "application/javascript; charset=utf-8",
     "draft-goal-editor.js": "application/javascript; charset=utf-8",
+    "creation-workflow.css": "text/css; charset=utf-8",
+    "creation-refinement.css": "text/css; charset=utf-8",
+    "creation-workflow-model.js": "application/javascript; charset=utf-8",
+    "creation-conflict.js": "application/javascript; charset=utf-8",
+    "creation-prepare.js": "application/javascript; charset=utf-8",
+    "creation-generation.js": "application/javascript; charset=utf-8",
+    "creation-world-picker.js": "application/javascript; charset=utf-8",
+    "creation-workflow-list.js": "application/javascript; charset=utf-8",
+    "creation-workflow.js": "application/javascript; charset=utf-8",
+    "creation-refinement.js": "application/javascript; charset=utf-8",
     "draft-workspace.js": "application/javascript; charset=utf-8",
     "draft-editing.js": "application/javascript; charset=utf-8",
     "draft-workspace.css": "text/css; charset=utf-8",
@@ -439,7 +449,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         elif (
             path in ("/api/world-draft-forms", "/api/world-drafts")
             or re.fullmatch(r"/api/world-draft-workspaces/[a-f0-9]{32}", path)
-            or re.fullmatch(r"/api/world-drafts/[a-f0-9]{32}/(stage|validate|revise|apply-revision)", path)
+            or re.fullmatch(r"/api/world-drafts/[a-f0-9]{32}/(stage|validate|revise|apply-revision|save-refinement-input)", path)
         ):
             limit = 1024 * 1024
         if length > limit:

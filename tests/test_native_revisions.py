@@ -135,5 +135,5 @@ class NativeRevisionHTTP(unittest.TestCase):
         status,raw=self.request(path+'/revise',body);self.assertEqual(status,200,raw);self.assertEqual(json.loads(raw)['state'],'ready')
         status,raw=self.request(path+'/revisions/'+rid);self.assertEqual(status,200,raw);self.assertNotIn('buffer',json.loads(raw));self.assertEqual(len(calls),1)
         status,raw=self.request(path+'/apply-revision',{'revision':r['revision'],'request_id':rid});self.assertEqual(status,200,raw);self.assertEqual(len(json.loads(raw)['buffer']['edits']),1)
-        status,raw=self.request('/worlds/new?method=ai');self.assertEqual(status,200);self.assertIn(b'draft-native-ai.js',raw)
+        status,raw=self.request('/worlds/new?method=ai');self.assertEqual(status,200);self.assertIn(b'creation-workflow.js',raw)
         status,_=self.request('/static/draft-native-ai.js');self.assertEqual(status,200)

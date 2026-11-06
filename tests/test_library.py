@@ -588,9 +588,10 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
     def test_new_forms(self):
         status, body = self.get("/worlds/new?from=momotaro&genre=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-world-create', body)
-        self.assertIn('name="mode" value="copy" checked', body)
-        self.assertIn('<option value="momotaro" selected>', body)
+        self.assertIn('data-creation-workflow', body)
+        self.assertIn('data-cw-screen="world-import"', body)
+        self.assertIn('data-cw-source value="momotaro"', body)
+        self.assertIn('value="momotaro" data-cw-world-option checked', body)
 
         status, body = self.get("/genres/new?from=momotaro")
         self.assertEqual(status, 200, body)

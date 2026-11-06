@@ -914,6 +914,79 @@ def _world_draft_get(handler, token):
     handler._send_json(HTTPStatus.OK, _draft_store(handler).get(token))
 
 
+def _world_draft_generation_status(handler):
+    from execution.draft_generation_status import availability
+    from viewer.job_api import boundary
+    boundary(handler, client_header=False, body_required=False)
+    handler._send_json(HTTPStatus.OK, availability(_draft_store(handler)))
+
+
+def _world_refinement_get(handler, token, request_id):
+    from execution.world_refinements import Refinements
+    from execution.refinement_contract import capabilities
+    from viewer.job_api import boundary
+    boundary(handler, client_header=False, body_required=False)
+    store = _draft_store(handler)
+    store.get(token)
+    result = capabilities() if request_id == 'capabilities' else Refinements(store).get(token, request_id)
+    handler._send_json(HTTPStatus.OK, result)
+
+
+def _world_refinement_post(handler, token, action):
+    from execution.world_refinements import Refinements
+    body = _boundary_body(handler)
+    fields = {
+        'refine': {'revision', 'request_id', 'mode', 'prompt', 'preset', 'targets'},
+        'apply-refinement': {'revision', 'request_id', 'candidate_id', 'candidate_hash', 'acknowledged_warnings'},
+        'cancel-refinement': {'request_id'},
+        'save-refinement-input': {'revision','draft'},
+    }
+    if not isinstance(body, dict) or set(body) != fields[action]:
+        raise ConfigError('request', 'Invalid refinement request fields', code='bad_request')
+    store = _draft_store(handler)
+    planner = None
+    if action == 'refine':
+        factory = getattr(store.provider, 'refinement_factory', None)
+        if callable(factory):
+            class LazyPlanner:
+                def decompose(self, *args):
+                    self.delegate = factory()
+                    method = getattr(self.delegate, 'decompose', None)
+                    return method(*args) if callable(method) else None
+                def __call__(self, *args):
+                    if not hasattr(self, 'delegate'): self.delegate = factory()
+                    return self.delegate(*args)
+                def review(self, *args):
+                    reviewer = getattr(self.delegate, 'review', None)
+                    if not callable(reviewer): raise ConfigError('alignment', 'Refinement audit unavailable', code='unavailable')
+                    return reviewer(*args)
+                @property
+                def raw_generation(self):
+                    return getattr(getattr(self, 'delegate', None), 'raw_generation', None)
+                @property
+                def raw_requirements(self):
+                    return getattr(getattr(self, 'delegate', None), 'raw_requirements', None)
+                @property
+                def raw_review(self):
+                    return getattr(getattr(self, 'delegate', None), 'raw_review', None)
+                @property
+                def provenance(self):
+                    return getattr(getattr(self, 'delegate', None), 'provenance', {})
+            planner = LazyPlanner()
+    service = Refinements(store, planner)
+    if action == 'refine':
+        result = service.preview(token, body['revision'], body['request_id'],
+            mode=body['mode'], prompt=body['prompt'], preset=body['preset'], targets=body['targets'])
+    elif action == 'save-refinement-input':
+        result = service.save_input(token, body['revision'], body['draft'])
+    elif action == 'cancel-refinement':
+        result = service.cancel(token, body['request_id'])
+    else:
+        result = service.apply(token, body['request_id'], body['revision'], body['candidate_id'],
+            body['candidate_hash'], acknowledged_warnings=body['acknowledged_warnings'])
+    handler._send_json(HTTPStatus.OK, result)
+
+
 def _world_draft_revision_get(handler,token,request_id):
     from execution.draft_revisions import get
     handler._send_json(HTTPStatus.OK,get(_draft_store(handler),token,request_id))
@@ -926,6 +999,7 @@ def _world_draft_post(handler, token=None, action=None):
         "revise": {"revision", "draft", "target", "instruction", "request_id"},
         "apply-revision": {"revision", "request_id", "draft"}}[action]
     if token is None and isinstance(body,dict) and 'settings' in body:expected=expected|{'settings'}
+    if token is None and isinstance(body,dict) and 'strategy' in body:expected=expected|{'strategy'}
     if (token is None or action=='stage') and isinstance(body,dict) and 'authoring' in body:expected=expected|{'authoring'}
     if action == 'stage' and isinstance(body,dict) and 'validation_mode' in body:expected=expected|{'validation_mode'}
     if action == 'apply-revision' and isinstance(body,dict) and 'candidate' in body:expected=expected|{'candidate'}
@@ -935,7 +1009,7 @@ def _world_draft_post(handler, token=None, action=None):
         raise ConfigError('settings','実行設定は対応する項目のJSONで指定してください',code='bad_request')
     store = _draft_store(handler)
     if token is None:
-        result = store.create(body["request_id"], body["name"], body["overview"], **({k:body[k] for k in ['settings','authoring'] if k in body}))
+        result = store.create(body["request_id"], body["name"], body["overview"], **({k:body[k] for k in ['settings','authoring','strategy'] if k in body}))
     elif action == "stage":
         result = store.stage(token,body["name"],body["overview"],body["draft"],**({k:body[k] for k in ['authoring','validation_mode'] if k in body}))
     elif action == "cancel":
@@ -1393,6 +1467,8 @@ def _import_patch_action(handler, world_id):
 # --------------------------------------------------------------------------
 
 def _resolve(parts, method):
+    if method == 'GET' and parts == ['api', 'world-draft-generation']:
+        return _world_draft_generation_status, ()
     if method == "POST":
         if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "action-usage" and parts[4] in ("check", "save"):
             return _action_usage_post, (parts[2], parts[4])
@@ -1404,6 +1480,9 @@ def _resolve(parts, method):
             return _workspace_save,(parts[2],)
         if parts == ["api", "world-drafts"]:
             return _world_draft_post, ()
+        if (len(parts) == 4 and parts[:2] == ["api", "world-drafts"]
+                and parts[3] in ("refine", "apply-refinement", "cancel-refinement", "save-refinement-input")):
+            return _world_refinement_post, (parts[2], parts[3])
         if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("stage", "cancel", "validate", "adopt", "revise", "apply-revision"):
             return _world_draft_post, (parts[2], parts[3])
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-pressure":
@@ -1455,6 +1534,8 @@ def _resolve(parts, method):
         return _action_usage_get, (parts[2],)
     if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3:] == ["action-usage", "status"]:
         return _action_usage_get, (parts[2], "status")
+    if len(parts) == 5 and parts[:2] == ["api", "world-drafts"] and parts[3] == "refinements":
+        return _world_refinement_get, (parts[2], parts[4])
     if len(parts)==5 and parts[:2]==['api','world-drafts'] and parts[3]=='revisions':return _world_draft_revision_get,(parts[2],parts[4])
     if len(parts)==5 and parts[:2]==['api','native-world-drafts'] and parts[3]=='revisions':return _native_revision,(parts[2],'status',parts[4])
     if parts==['api','native-world-drafts']:return _native_drafts,()
