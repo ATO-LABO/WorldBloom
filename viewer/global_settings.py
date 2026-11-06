@@ -10,15 +10,15 @@ from execution.rationality_settings import read_jev_settings
 from viewer import pages, ui, workbench_pages as wb
 E, U = pages._escape, pages._url_segment
 BACKENDS = {"claude-cli":"Claude Code CLI", "codex-cli":"Codex CLI", "anthropic":"Anthropic API", "openai":"OpenAI API", "ollama":"ローカル Ollama", "llama-server":"ローカルLLM（llama-server）", "none":"生成しない（プロンプト保存のみ）"}
-LIMITS = (("max_calls","候補数の上限","件"),("call_timeout_seconds","1件の待ち時間","秒"),("wall_seconds","全体の待ち時間","秒"),("max_saved_response_bytes","応答の保存上限","bytes"))
+LIMITS = (("max_calls","AI呼出しの上限","件"),("call_timeout_seconds","1件の待ち時間","秒"),("wall_seconds","全体の待ち時間","秒"),("max_saved_response_bytes","応答の保存上限","bytes"))
 
 
 def link(url, label, cls=""):
     return ui.button(label, href=url, kind='advance' if 'gs-primary' in cls else 'secondary', class_name=cls) if cls else f'<a href="{E(url)}">{E(label)}</a>'
 
 
-def field(name, label, value, *, number=False, unit="", minimum=1, maximum=None):
-    tag = ' type="number" step="1" min="'+str(minimum)+'"'+('' if maximum is None else ' max="'+str(maximum)+'"') if number else ' type="text" list="output-model-list" autocomplete="off"'
+def field(name, label, value, *, unit="", minimum=1, maximum=None):
+    tag = ' type="number" step="1" min="'+str(minimum)+'"'+('' if maximum is None else ' max="'+str(maximum)+'"')
     return f'<label class="gs-field ui-field" for="gs-{E(name)}"><span>{E(label)}</span><span class="gs-input ui-input-group"><input id="gs-{E(name)}" data-field="{E(name)}"{tag} value="{E(value)}"><span>{E(unit)}</span></span><small data-error-for="{E(name)}"></small></label>'
 
 
@@ -31,29 +31,79 @@ def settings_footer(*, compute=False):
                     attrs={'type':'submit', f'data-gs-{key}save':True}), class_name='gs-footer')
 
 
-def output_panel(view, error):
+def gemma_setup():
+    return (
+        '<section class="gs-gemma" data-gemma-setup aria-labelledby="gs-gemma-title">'
+        '<div class="ui-section-head"><h2 id="gs-gemma-title">Gemma 4</h2></div>'
+        '<div class="gs-test"><button class="ui-button" type="button" data-gs-gemma-profile>'
+        'Gemma 4を選ぶ</button>'
+        '<button class="ui-button" type="button" data-gemma-refresh>導入状況を再確認</button></div>'
+        '<p data-gemma-state role="status">導入状況を確認中…</p>'
+        '<p data-gemma-link role="status">保存済みの生成先を確認中…</p>'
+        '<p class="ui-hint" data-gs-profile-note>Gemma 4を選んで「設定を保存」を押すと、生成先が切り替わります。'
+        '導入状況の確認では文章生成は行いません。</p>'
+        '<details class="ui-settings-help" data-gemma-guide>'
+        '<summary>Gemma 4の導入手順</summary>'
+        '<div data-gemma-unreachable hidden><p>Ollamaの起動状況と接続先を確認してください。</p>'
+        '<a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">'
+        'Ollama公式のインストール案内</a></div>'
+        '<p>Ollamaを実行しているPCで、次のコマンドを実行してください。'
+        '別のPCのOllamaを使っている場合は、そのPCで実行します。</p>'
+        '<p><code>ollama pull gemma4:e4b-it-qat</code></p>'
+        '<p>完了したら「導入状況を再確認」を押してください。</p></details></section>'
+    )
+
+
+def settings_tabs(group, items, active, label, *, hook=None):
+    return ui.tabs(''.join(ui.button(text, attrs={
+        'id': f'{group}-tab-{key}', 'role': 'tab',
+        'aria-selected': str(key == active).lower(), 'aria-controls': f'{group}-panel-{key}',
+        'tabindex': '0' if key == active else '-1', 'disabled': disabled,
+        **({hook: key} if hook else {}),
+    }) for key, text, disabled in items), label=label, attrs={'role': 'tablist'})
+
+
+def tab_panel(group, key, active, content, *, class_name=""):
+    return (f'<section id="{group}-panel-{key}" class="{class_name}" role="tabpanel" '
+            f'aria-labelledby="{group}-tab-{key}"'+('' if key == active else ' hidden')+f'>{content}</section>')
+
+
+def output_panel(view, error, jev=None):
+    heading = ui.heading('AIの設定', 'すべての世界に共通する文章生成と合理性の判定器を設定します。', class_name='gs-heading')
+    start = '<section class="gs-panel" id="output" data-gs-panel="output">'
     if error:
-        return '<section class="gs-panel" id="output" data-gs-panel="output">' + ui.heading('文章生成の設定', class_name='gs-heading') + '<div class="gs-empty" role="alert">settings.json を読めません。設定ファイルを確認してから再読み込みしてください。</div></section>'
-    options = ''.join(f'<option value="{E(k)}"'+(' selected' if k==view['backend'] else '')+f'>{E(v)}</option>' for k,v in BACKENDS.items())
-    limits = ''.join(field('limits.'+k,label,view['limits'][k],number=True,unit=unit,minimum=0 if k=='max_calls' and view['backend']=='none' else 1) for k,label,unit in LIMITS[:3])
-    advanced = field('limits.max_saved_response_bytes',LIMITS[3][1],view['limits']['max_saved_response_bytes'],number=True,unit='bytes')
-    return ('<section class="gs-panel" id="output" data-gs-panel="output">' + ui.heading('文章生成の設定', 'あらすじと本文の生成に使う設定です。', class_name='gs-heading', title_extra=' <span class="gs-badge" data-gs-dirty>保存済み</span>') + ''
-        '<form id="gs-output-form" data-wb="output-settings" data-gs-output><div class="gs-output-layout ui-split"><div class="gs-editor ui-content"><div class="gs-error ui-error" data-form-error role="alert"></div><fieldset data-gs-fields><legend class="gs-sr-only">文章生成の設定項目</legend><h2>生成先とモデル</h2>'
-        '<div class="gs-source-fields"><label class="gs-field ui-field" for="f-backend"><span>生成方式</span><select id="f-backend" name="backend" data-field="backend">'+options+'</select></label>'
-        + field('model','モデル',view['model'] or '') + '</div><datalist id="output-model-list"></datalist><p class="gs-hint ui-hint" data-gs-model-hint></p>'
-        '<div class="gs-key" data-gs-key hidden><label class="gs-field ui-field" for="gs-key"><span>APIキー</span><input id="gs-key" type="password" autocomplete="off" data-gs-key-input placeholder="変更する場合のみ入力"></label><div class="gs-test"><button class="ui-button" type="button" data-gs-key-save>キーを保存</button><span data-gs-key-status role="status"></span></div><p class="gs-hint ui-hint">キーはこのボタンで個別に保存します。保存済みの値は表示しません。</p></div>'
-        '<div class="gs-test"><button class="ui-button" type="button" data-gs-test>接続を確認</button><span data-gs-connection role="status">未確認</span></div><p class="gs-hint ui-hint">接続先・実行環境を確認します。文章生成は行いません。</p>'
-        '<section class="gs-limits"><h2>生成の上限</h2><div class="gs-limit-fields">'+limits+'</div><p class="gs-hint ui-hint">1回の生成操作で使う上限です。</p></section>'
-        '<details class="gs-advanced"><summary>詳細設定 <small>応答の保存上限</small></summary>'+advanced+'</details></fieldset></div>'
-        '<aside class="gs-summary ui-aside" aria-label="現在使っている設定"><h2>現在使っている設定</h2><span class="gs-saved">● 保存済み</span><dl data-gs-saved></dl><div class="gs-diff" data-gs-diff></div><div class="gs-scope"><h2>この変更が適用される範囲</h2><p>③ Sifting のあらすじ生成</p><p>④ 上映の本文生成</p><p class="gs-hint ui-hint">保存後に開始する生成から適用されます。</p></div></aside></div>'
-        '' + settings_footer(compute=False) + '</form></section>')
+        return start + heading + '<div class="gs-empty" role="alert">settings.json を読めません。設定ファイルを確認してから再読み込みしてください。</div></section>'
+
+    items = [('ai', '使用するAI', False), ('limits', '生成の上限', False)]
+    if jev is not None:
+        items.append(('jev', '合理性の判定器（Jev）', False))
+    tabs = settings_tabs('gs', items, 'ai', 'AIの設定の切り替え', hook='data-gs-output-tab')
+    jev_tab = tab_panel('gs', 'jev', 'ai', jev_panel(jev)) if jev is not None else ''
+    limits = ''.join(field('limits.'+k, label, view['limits'][k], unit=unit,
+                           minimum=0 if k=='max_calls' and view['backend']=='none' else 1)
+                     for k, label, unit in LIMITS)
+
+    return (start + heading
+        + '<form id="gs-output-form" data-wb="output-settings" data-gs-output novalidate>'
+        + tabs + '<div class="gs-form-scroll ui-content"><div class="ui-error" data-form-error role="alert"></div>'
+        '<fieldset data-gs-fields><legend class="gs-sr-only">文章生成の設定項目</legend>'
+        '<section id="gs-panel-ai" role="tabpanel" aria-labelledby="gs-tab-ai" data-gs-output-panel="ai">'
+        '<h2>保存済みの生成先</h2><dl data-gs-saved></dl>'
+        + gemma_setup() + '</section>'
+        '<section id="gs-panel-limits" role="tabpanel" aria-labelledby="gs-tab-limits" data-gs-output-panel="limits" hidden>'
+        '<h2>保存済みの上限</h2><dl data-gs-saved-limits></dl>'
+        '<h2>上限を変更</h2><p class="ui-hint">生成方式ごとに、1回の生成操作で使う上限を設定します。'
+        '編集中の生成方式は <strong data-gs-limits-backend></strong> です。</p>'
+        '<div class="gs-limit-fields">'+limits+'</div></section></fieldset>'
+        + jev_tab + '<div data-gs-output-details><div class="gs-diff" data-gs-diff></div>'
+        '<details class="ui-settings-help gs-scope"><summary>この設定を使う画面</summary>'
+        '<p>① 概要からの設定作成</p><p>③ Sifting のあらすじ生成</p><p>④ 上映の本文生成</p>'
+        '<p class="ui-hint">保存後に開始する生成から適用されます。</p></details></div></div>'
+        + settings_footer(compute=False) + '</form></section>')
 
 
 def jev_panel(jev):
-    """WB-JEV-005: the 計算 tab's "合理性の判定器（Jev）" block -- a
-    standalone key-save form (same look as output_panel()'s .gs-key), not
-    woven into gs-compute's own dirty-tracking: this key has no "saved vs.
-    draft" numeric fields, just an opaque credential."""
+    """Render the Jev key editor and its independent save action."""
     status = (f"有効（{E(jev['model'])}、{E(display_date(jev['verified_at']))} 確認）"
               if jev['available'] else "未設定")
     return ('<section class="gs-jev"><h2>合理性の判定器（Jev）</h2>'
@@ -65,21 +115,38 @@ def jev_panel(jev):
         '</section>')
 
 
-def compute_panel(evolution, error, jev=None):
+def compute_panel(evolution, error):
+    start = '<section class="gs-panel" id="compute" data-gs-panel="compute">'
     if error:
-        return '<section class="gs-panel" id="compute" data-gs-panel="compute">' + ui.heading('計算の設定', class_name='gs-heading') + '<div class="gs-empty" role="alert">settings.json を読めません。設定ファイルを確認してから再読み込みしてください。</div></section>'
-    input_field = field('processes', 'GA の並列数', evolution['processes'], number=True, minimum=1, maximum=evolution['cpu_count']).replace('<input ', '<input required ', 1)
-    return ('<section class="gs-panel" id="compute" data-gs-panel="compute">' + ui.heading('計算の設定', 'このPCでGA実験をどれだけ並列に計算するか、GPUの温度をどう守るかの設定です。', class_name='gs-heading', title_extra=' <span class="gs-badge" data-gs-compute-dirty>保存済み</span>') + ''
-        '<form id="gs-compute-form" data-wb="compute-settings" data-gs-compute><div class="gs-output-layout ui-split"><div class="gs-editor ui-content"><div class="gs-error ui-error" data-compute-form-error role="alert"></div><fieldset data-gs-compute-fields><legend class="gs-sr-only">計算の設定項目</legend><h2>GA の並列数</h2>'
-        + input_field +
-        f'<p class="gs-hint ui-hint">GA の個体評価を同時に何本走らせるか。結果は変わらず、速さだけが変わります。開発PC（20コア）の実測では 8 前後で頭打ちでした。このPCのコア数は {evolution["cpu_count"]}、既定は {evolution["default"]} です。</p>'
-        '<h2>GPU ガード（温度）</h2>'
-        '<label class="gs-check" for="gs-thermal-enabled"><input id="gs-thermal-enabled" type="checkbox" data-field="thermal_enabled"'+(' checked' if evolution['thermal_enabled'] else '')+'>GPU ガードを使う</label>'
-        + field('pause_at', '一時停止する温度', evolution['pause_at'], number=True, unit='℃', minimum=evolution['pause_min'], maximum=evolution['pause_max']).replace('<input ', '<input required ', 1) +
-        f'<p class="gs-hint ui-hint">ローカルLLMで文章を生成する前に GPU 温度を確かめ、この温度以上なら 8℃ 下がるまで待ちます（最長10分）。既定はオン・{evolution["pause_default"]}℃です。</p>'
-        '</fieldset>' + (jev_panel(jev) if jev is not None else '') + '</div>'
-        '<aside class="gs-summary ui-aside" aria-label="現在使っている設定"><h2>現在使っている設定</h2><span class="gs-saved">● 保存済み</span><dl data-gs-compute-saved></dl><div class="gs-scope"><h2>この変更が適用される範囲</h2><p>GA 実験の実行（並列数）</p><p>ローカルLLMの文章生成（GPU ガード）</p><p class="gs-hint ui-hint">保存後に開始する実験・生成から適用されます。</p></div></aside></div>'
-        '' + settings_footer(compute=True) + '</form></section>')
+        return start + ui.heading('計算の設定', class_name='gs-heading') + '<div class="gs-empty" role="alert">settings.json を読めません。設定ファイルを確認してから再読み込みしてください。</div></section>'
+
+    tabs = [('parallel', 'GA の並列数', False), ('gpu', 'GPU ガード', False)]
+    group = 'gs-compute'
+    parallel = (
+        '<h2>GA の並列数</h2><p>保存済みの並列数 <strong data-gs-compute-saved-processes>'
+        f'{evolution["processes"]}</strong></p>'
+        + field('processes', 'GA の並列数', evolution['processes'], minimum=1,
+                maximum=evolution['cpu_count']).replace('<input ', '<input required ', 1)
+        + f'<p class="ui-hint">GA の個体評価を同時に何本走らせるか。結果は変わらず、速さだけが変わります。開発PC（20コア）の実測では 8 前後で頭打ちでした。このPCのコア数は {evolution["cpu_count"]}、既定は {evolution["default"]} です。</p>'
+        '<p class="ui-hint">保存後に開始するGA実験から適用されます。</p>'
+    )
+    gpu = (
+        '<h2>GPU ガード（温度）</h2><p>保存済みの状態 <strong data-gs-compute-saved-thermal></strong></p>'
+        '<label class="gs-check" for="gs-thermal-enabled"><input id="gs-thermal-enabled" type="checkbox" '
+        'data-field="thermal_enabled"'+(' checked' if evolution['thermal_enabled'] else '')+'>GPU ガードを使う</label>'
+        + field('pause_at', '一時停止する温度', evolution['pause_at'], unit='℃',
+                minimum=evolution['pause_min'], maximum=evolution['pause_max']).replace('<input ', '<input required ', 1)
+        + f'<p class="ui-hint">ローカルLLMで文章を生成する前に GPU 温度を確かめ、この温度以上なら 8℃ 下がるまで待ちます（最長10分）。既定はオン・{evolution["pause_default"]}℃です。</p>'
+        '<p class="ui-hint">保存後に開始する生成から適用されます。</p>'
+    )
+    panels = tab_panel(group, 'parallel', 'parallel', parallel) + tab_panel(group, 'gpu', 'parallel', gpu)
+    return (start + ui.heading('計算の設定', 'GAの並列数とGPUの温度を設定します。',
+        class_name='gs-heading', title_extra=' <span class="gs-badge" data-gs-compute-dirty>保存済み</span>')
+        + '<form id="gs-compute-form" data-wb="compute-settings" data-gs-compute novalidate>'
+        + settings_tabs(group, tabs, 'parallel', '計算の設定の切り替え')
+        + '<div class="gs-form-scroll ui-content"><div class="ui-error" data-compute-form-error role="alert"></div>'
+        '<fieldset data-gs-compute-fields><legend class="gs-sr-only">計算の設定項目</legend>'
+        + panels + '</fieldset></div>' + settings_footer(compute=True) + '</form></section>')
 
 
 def display_date(value):
@@ -88,37 +155,46 @@ def display_date(value):
     except ValueError: return str(value)
 
 
-def collection_panel(kind, items, worlds, selected):
-    if kind == 'genres':
-        from viewer.story_genre_pages import panel
-        return '<section class="gs-panel" id="genres" data-gs-panel="genres">'+panel()+'</section>'
-    configs = kind == 'configs'
-    title = '実行設定の保存版' if configs else 'ジャンル'
-    description = '保存した条件を確認し、複製や実行に使います。' if configs else '物語の展開ルールと、それを使う世界を確認します。'
-    create = link('/configs/new' if configs else '/genres/new','＋ 新しい実行設定' if configs else '＋ 新しいジャンル','gs-add')
+def collection_panel(items, worlds, selected, *, show_detail=False):
+    group = 'gs-configs'
+    active = 'detail' if items and show_detail else 'list'
+    tabs = settings_tabs(group, (('list', '保存版一覧', False), ('detail', '保存版の内容', not items)),
+                         active, '実行設定の保存版の切り替え')
     rows, details = [], []
     for item in items:
-        ident = item['config_id'] if configs else item['id']
-        label = item['label'] if configs else item.get('name') or item['id']
+        ident = item['config_id']
+        label = item['label']
         selected_attr = ' aria-current="true"' if ident == selected else ''
-        if configs:
-            ev=item['evolution']; world=worlds.get(item['project_id'],item['project_id'])
-            meta=f'{world} · {ev["generations"]}世代 × {ev["population"]}個体 × {ev["seeds"]}回'
-            pairs=[('世界',world),('基本ルール',item['template_id']),('実行規模',f'{ev["generations"]}世代 × {ev["population"]}個体 × {ev["seeds"]}回'),('作成日時',display_date(item.get('created_at')))]
-            body='<dl>'+''.join(f'<dt>{E(k)}</dt><dd>{E(v)}</dd>' for k,v in pairs)+'</dl><p class="gs-hint ui-hint">保存版は編集不可です。条件を変える場合は複製してください。</p>'
-            body+=link('/configs/'+U(ident),'実行条件を詳しく確認 ↗')
-            body+='<details><summary>保存版の記録</summary><p>'+E(ident)+'</p><p>複製元：'+E(item.get('parent_config_id') or 'なし')+'</p></details>'
-            footer=link('/configs/new?from='+U(ident),'複製して調整')+link('/configs/'+U(ident)+'/start','この設定で実行画面へ →','gs-primary')
-        else:
-            used=item['used_by'];meta=f'利用中の世界 {len(used)}件'
-            body='<h3>使っている世界</h3>'+('<ul>'+''.join('<li>'+link('/worlds/'+U(w),worlds.get(w,w))+'</li>' for w in used)+'</ul>' if used else '<p>まだ利用している世界はありません。</p>')
-            names={'actions.yaml':'行動のつながり','action_graph.yaml':'行動のつながり','canon.yaml':'状況ごとの定石','effects.yaml':'行動の効果','rules.yaml':'展開のルール','qd.yaml':'候補の分類軸'}
-            body+='<h3>含まれる設定</h3><ul>'+''.join(f'<li>{E(names.get(f,f))}</li>' for f in item['files'])+'</ul><p class="gs-hint ui-hint">ジャンルは複数の世界で共有される、物語の展開ルールです。</p>'
-            footer=link('/genres/'+U(ident),'ジャンルを編集 →','gs-primary')
-        search=label+' '+meta+' '+ident
-        rows.append(f'<a class="gs-item" data-gs-item="{E(ident)}" data-search="{E(search)}" href="/configs?tab={kind}&amp;item={U(ident)}"{selected_attr}><strong>{E(label)}</strong><span>{E(meta)}</span></a>')
-        details.append(f'<article class="gs-item-detail" data-gs-detail="{E(ident)}"'+('' if ident==selected else ' hidden')+f'><div class="gs-detail-scroll ui-content"><h2>{E(label)}</h2>{body}</div><footer class="gs-footer ui-footer">{footer}</footer></article>')
-    return (f'<section class="gs-panel" id="{kind}" data-gs-panel="{kind}">{ui.heading(title, description, actions=create, class_name="gs-heading")}<div class="gs-collection"><div class="gs-list"><label class="gs-search">{title}を探す<input type="search" data-gs-search placeholder="名前で検索"></label><p class="gs-hint ui-hint" data-gs-count>{len(items)}件</p><div class="gs-list-scroll">'+''.join(rows)+'<p data-gs-no-match hidden>一致する項目がありません。</p>'+('' if items else '<p>まだ登録されていません。</p>')+'</div></div><div class="gs-details">'+''.join(details)+('' if items else '<div class="gs-empty">左上のボタンから作成できます。</div>')+'</div></div></section>')
+        ev = item['evolution']
+        world = worlds.get(item['project_id'], item['project_id'])
+        scale = f'{ev["generations"]}世代 × {ev["population"]}個体 × {ev["seeds"]}回'
+        meta = f'{world} · {scale}'
+        pairs = [('世界', world), ('ジャンル', item['template_id']), ('実行規模', scale),
+                 ('作成日時', display_date(item.get('created_at')))]
+        body = '<dl>'+''.join(f'<dt>{E(k)}</dt><dd>{E(v)}</dd>' for k,v in pairs)+'</dl>'
+        body += '<p class="ui-hint">保存版は編集不可です。条件を変える場合は複製してください。</p>'
+        body += link('/configs/'+U(ident), '実行条件を詳しく確認 ↗')
+        body += '<details><summary>保存版の記録</summary><p>'+E(ident)+'</p><p>複製元：'+E(item.get('parent_config_id') or 'なし')+'</p></details>'
+        actions = ui.button('複製して調整', href='/configs/new?from='+U(ident))
+        actions += link('/configs/'+U(ident)+'/start', 'この設定で実行画面へ →', 'gs-primary')
+        rows.append(f'<a class="gs-item" data-gs-item="{E(ident)}" data-search="{E(label+" "+meta+" "+ident)}" '
+                    f'href="/configs?tab=configs&amp;item={U(ident)}"{selected_attr}><strong>{E(label)}</strong><span>{E(meta)}</span></a>')
+        details.append(f'<article class="gs-item-detail" data-gs-detail="{E(ident)}"'
+                       + ('' if ident == selected else ' hidden')
+                       + f'><div class="gs-detail-scroll ui-content"><h2 tabindex="-1">{E(label)}</h2>{body}</div>'
+                       + ui.footer(actions) + '</article>')
+
+    listing = ('<div class="gs-list-tools"><label class="ui-field">保存版を探す'
+               '<input type="search" data-gs-search placeholder="名前で検索"></label>'
+               f'<p class="ui-hint" data-gs-count role="status">{len(items)}件</p></div>'
+               '<div class="gs-list-scroll ui-content">'+''.join(rows)
+               + '<p data-gs-no-match hidden>一致する項目がありません。</p>'
+               + ('' if items else '<p>まだ保存版がありません。「新しい実行設定」から作成できます。</p>')+'</div>')
+    heading = ui.heading('実行設定の保存版', '保存した条件を確認し、複製や実行に使います。',
+                         actions=link('/configs/new', '＋ 新しい実行設定', 'gs-add'), class_name='gs-heading')
+    return ('<section class="gs-panel" id="configs" data-gs-panel="configs">' + heading + tabs
+            + tab_panel(group, 'list', active, listing, class_name='gs-config-view')
+            + tab_panel(group, 'detail', active, ''.join(details), class_name='gs-config-view') + '</section>')
 
 
 def render(handler):
@@ -129,10 +205,9 @@ def render(handler):
     if active not in ('output','compute','configs'): active='output'
     library=LibraryStore(jobs.configs.repo)
     worlds={w['id']:w.get('name') or w['id'] for w in library.worlds()}
-    configs=jobs.configs.list(); genres=library.genres()
+    configs=jobs.configs.list()
     requested=query.get('item',[None])[0]
     selected_config=next((c['config_id'] for c in configs if c['config_id']==requested),configs[0]['config_id'] if configs else None)
-    selected_genre=next((g['id'] for g in genres if g['id']==requested),genres[0]['id'] if genres else None)
     view=None;error=False
     try: view=read_output_settings(getattr(handler.server,'settings_path',None))
     except ConfigError: error=True
@@ -142,12 +217,12 @@ def render(handler):
     jev=None
     try: jev=read_jev_settings(getattr(handler.server,'settings_path',None))
     except ConfigError: jev=None
-    initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution,'jev':jev},ensure_ascii=False))
-    nav='<h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','文章生成'),('compute','計算'),('configs','実行設定の保存版')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small>'
+    initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution},ensure_ascii=False))
+    nav='<h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','AIの設定'),('compute','計算'),('configs','実行設定の保存版')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small>'
     nav=ui.navigation(nav, label='全体設定', class_name='gs-nav')
-    panels=[output_panel(view,error),compute_panel(evolution,compute_error,jev),collection_panel('configs',configs,worlds,selected_config)]
+    panels=[output_panel(view,error,jev),compute_panel(evolution,compute_error),collection_panel(configs,worlds,selected_config,show_detail=bool(requested))]
     for i,key in enumerate(('output','compute','configs')):
         if key != active: panels[i]=panels[i].replace('data-gs-panel="'+key+'"','data-gs-panel="'+key+'" hidden',1)
     content=f'<div class="gs-shell ui-workspace ui-workspace--nav" data-global-settings data-initial="{initial}">{nav}<div class="gs-main">'+''.join(panels)+'</div></div>'
-    doc=pages.document('全体設定',content,phase=None,job_store=jobs,pin=wb.data.pinned_target(jobs,configs=configs),page_class='settings-workspace', stylesheets=('global-settings.css',), scripts=('global-settings.js',))
+    doc=pages.document('全体設定',content,phase=None,job_store=jobs,pin=wb.data.pinned_target(jobs,configs=configs),page_class='settings-workspace', stylesheets=('global-settings.css',), scripts=('ui-tabs.js','global-settings.js','gemma-setup.js'))
     handler._send_html(doc)
