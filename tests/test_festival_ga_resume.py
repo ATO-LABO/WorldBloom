@@ -118,7 +118,8 @@ class FestivalGAResumeTests(unittest.TestCase):
                     self.assertEqual(run['audit']['decision_checks'], 88)
                     self.assertEqual(run['temporal_evaluation']['matched_completions'], 88)
                     self.assertEqual(run['temporal_evaluation']['absence_reward'], 0)
-                    draws = json.loads((out / candidate / f'seed-{run["seed"]}' / 'choice-draws.json').read_text())
+                    draws_path = out / candidate / f'seed-{run["seed"]}' / 'choice-draws.json'
+                    draws = json.loads(draws_path.read_text(encoding='utf-8'))
                     self.assertEqual(len(draws), 88)
                     self.assertEqual({d['actor'] for d in draws}, set(ACTORS))
                     genes = ChoiceGenome.from_dict(individual['genome']).choices
@@ -131,7 +132,8 @@ class FestivalGAResumeTests(unittest.TestCase):
         for elite in archive_split.cells.values():
             self.assertTrue(set(elite.parents) <= known)
             self.assertIn('/'.join(Path(elite.exemplar['layers_path']).parts[:2]), known)
-        logs = [json.loads(line) for line in (out / 'evaluations.jsonl').read_text().splitlines()]
+        log_lines = (out / 'evaluations.jsonl').read_text(encoding='utf-8').splitlines()
+        logs = [json.loads(line) for line in log_lines]
         self.assertEqual(len(logs), 32)
         self.assertEqual({entry['evaluation_id'] for entry in logs}, evaluation_ids)
         self.assertEqual(checkpoint.input_fingerprint(self.project), state['input_manifest'])
@@ -400,7 +402,7 @@ class FestivalGAResumeTests(unittest.TestCase):
         self.assertFalse((out / 'g0').exists())
         self.run_cfg({**cfg, 'resume': True}); clean = self.cfg('clean'); self.run_cfg(clean)
         self.assertEqual(self.stable_files(out), self.stable_files(Path(clean['out'])))
-        logs = (out / 'evaluations.jsonl').read_text().splitlines()
+        logs = (out / 'evaluations.jsonl').read_text(encoding='utf-8').splitlines()
         self.assertEqual(len(logs), 2)
 
     def test_generation_rename_failure_retains_checkpoint_and_restarts_own_stage(self):
