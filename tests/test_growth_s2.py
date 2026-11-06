@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from saved_world_fixtures import install_current_worlds
 from test_viewer import _write_json, _write_jsonl
 
 from gapengine.scenes import SPECIAL_PRIORITY, describe_row, extract_scenes, growth_event_text
@@ -333,8 +334,7 @@ class ViewerGrowthPanelTests(unittest.TestCase):
 
 class ExecutionConfigGrowthToggleTests(unittest.TestCase):
     def test_default_is_off_and_excluded_from_argv(self) -> None:
-        from saved_world_fixtures import install_current_worlds
-from execution.configs import evolution_defaults, normalize
+        from execution.configs import evolution_defaults, normalize
 
         self.assertEqual(evolution_defaults()["personality_growth"], False)
         normalized = normalize(

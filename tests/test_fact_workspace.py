@@ -21,7 +21,7 @@ class WorkspaceFixture:
         self.fx = fact_job_fixtures.FactJobTests('test_wrong_candidate_sha_version_and_conflicting_style_rejected_before_dispatch')
         self.fx.setUp()
         self.addCleanup(self.fx.doCleanups)
-        project = create_project(self.fx.repo / 'projects/message-scene', lambda m: m['contexts'][0].update(value='SECRET_CAUSE_FOR_DISCLOSURE_TEST'))
+        project = create_project(self.fx.base / 'native-message-scene', lambda m: m['contexts'][0].update(value='SECRET_CAUSE_FOR_DISCLOSURE_TEST'))
         self.run = self.fx.configs.runs / 'actual-message-scene'
         runtime = run(project, self.run, witness_commands(combined=True), until=520)
         self.raw = (self.run / 'layers.jsonl').read_bytes()
@@ -29,9 +29,9 @@ class WorkspaceFixture:
                     'reach_rate': 0.0, 'exemplar': {'seed': 0, 'layers_path': 'layers.jsonl'}, 'genome': {}}}})
         self.rid = self.fx.catalog.register_legacy(self.run.name)
         self.cid = self.fx.catalog.candidates(self.rid)['candidates'][0]['candidate_id']
-        self.cfg = 'cfg-message-scene'
-        self.fx.configs.save({'label':'明示条件での通知と認識の試走', 'project_id':'message-scene', 'template_id':'romance',
-            'evolution': {'generations':1, 'population':1, 'seeds':1}}, config_id=self.cfg)
+        # A historical run uses an explicit posthoc generation config.
+        # The original native slot contract stays with the recorded run fixture.
+        self.cfg = 'cfg-test'
         self.store = FactWorkspace(self.fx.configs, self.fx.catalog)
         ctx = self.store.context(self.rid, self.cid, self.cfg)
         selection = deepcopy(ctx['selection']); selection['selected'].remove('argument'); selection['hidden'] = ['argument']

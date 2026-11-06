@@ -1,11 +1,13 @@
 """Reading and editor boundaries for the world workspace."""
 from html.parser import HTMLParser
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
 import yaml
 
+from saved_world_fixtures import copy_current_world_repo
 from execution.library import LibraryStore
 from viewer import library_pages
 
@@ -24,7 +26,10 @@ class Elements(HTMLParser):
 
 class WorldEditorialTests(unittest.TestCase):
     def setUp(self):
-        self.store = LibraryStore(ROOT)
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        repo = copy_current_world_repo(ROOT, Path(temp.name), "momotaro")
+        self.store = LibraryStore(repo)
         self.world = next(w for w in self.store.worlds() if w['id'] == 'momotaro')
 
     def test_editor_targets_match_subject_ids_and_keep_each_file_once(self):

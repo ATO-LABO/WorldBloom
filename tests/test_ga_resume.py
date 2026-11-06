@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from execution.configs import evolution_defaults, normalize
-from gapengine.evolve import evolve
+from frozen_world import evolve_frozen
 from gapengine.genome import Genome
 from gapengine.qd import Archive, Descriptor, Elite
 from scripts.evolve import build_parser
@@ -118,9 +118,9 @@ class ByteIdenticalResumeTests(unittest.TestCase):
                         "template": TEMPLATE,
                     }
 
-                    evolve({**common, "generations": 4, "out": root / "full"})
-                    evolve({**common, "generations": 2, "out": root / "resumed"})
-                    evolve(
+                    evolve_frozen({**common, "generations": 4, "out": root / "full"})
+                    evolve_frozen({**common, "generations": 2, "out": root / "resumed"})
+                    evolve_frozen(
                         {
                             **common,
                             "generations": 4,
@@ -147,9 +147,9 @@ class ByteIdenticalResumeTests(unittest.TestCase):
                 "template": TEMPLATE,
             }
 
-            evolve({**common, "generations": 3, "out": root / "full"})
-            evolve({**common, "generations": 1, "out": root / "resumed"})
-            evolve(
+            evolve_frozen({**common, "generations": 3, "out": root / "full"})
+            evolve_frozen({**common, "generations": 1, "out": root / "resumed"})
+            evolve_frozen(
                 {
                     **common,
                     "generations": 3,
@@ -176,9 +176,9 @@ class ByteIdenticalResumeTests(unittest.TestCase):
                 "template": TEMPLATE,
             }
 
-            evolve({**common, "generations": 3, "out": root / "full"})
-            evolve({**common, "generations": 1, "out": root / "resumed"})
-            evolve(
+            evolve_frozen({**common, "generations": 3, "out": root / "full"})
+            evolve_frozen({**common, "generations": 1, "out": root / "resumed"})
+            evolve_frozen(
                 {
                     **common,
                     "generations": 3,
@@ -210,7 +210,7 @@ class CrashRecoveryTests(unittest.TestCase):
                 "template": TEMPLATE,
             }
 
-            evolve({**common, "generations": 3, "out": root / "full"})
+            evolve_frozen({**common, "generations": 3, "out": root / "full"})
 
             import gapengine.evolve as evolve_module
 
@@ -225,7 +225,7 @@ class CrashRecoveryTests(unittest.TestCase):
 
             with patch("gapengine.evolve._evaluate_jobs", side_effect=flaky):
                 with self.assertRaises(RuntimeError):
-                    evolve({**common, "generations": 3, "out": root / "resumed"})
+                    evolve_frozen({**common, "generations": 3, "out": root / "resumed"})
 
             state = json.loads(
                 (root / "resumed" / "ga_state.json").read_text(encoding="utf-8")
@@ -235,7 +235,7 @@ class CrashRecoveryTests(unittest.TestCase):
             self.assertTrue((stale_generation_dir / "population.json").exists())
             self.assertFalse((stale_generation_dir / "results.json").exists())
 
-            evolve(
+            evolve_frozen(
                 {
                     **common,
                     "generations": 3,
@@ -265,19 +265,19 @@ class CrashRecoveryTests(unittest.TestCase):
                 "template": TEMPLATE,
             }
 
-            evolve({**common, "generations": 2, "out": root / "full"})
+            evolve_frozen({**common, "generations": 2, "out": root / "full"})
 
             def flaky(jobs, processes, observer=None):
                 raise RuntimeError("simulated crash during generation 0")
 
             with patch("gapengine.evolve._evaluate_jobs", side_effect=flaky):
                 with self.assertRaises(RuntimeError):
-                    evolve({**common, "generations": 2, "out": root / "resumed"})
+                    evolve_frozen({**common, "generations": 2, "out": root / "resumed"})
 
             self.assertFalse((root / "resumed" / "ga_state.json").exists())
             self.assertTrue((root / "resumed" / "g0").exists())
 
-            evolve(
+            evolve_frozen(
                 {**common, "generations": 2, "out": root / "resumed", "resume": True}
             )
 
@@ -308,20 +308,20 @@ class NonAtomicCheckpointWindowTests(unittest.TestCase):
             root = Path(temporary)
             common = self._ROMANCE_COMMON
 
-            evolve({**common, "out": root / "full"})
+            evolve_frozen({**common, "out": root / "full"})
 
             patcher, triggered = _patch_crash_after_write(
                 "archive.json", min_generation=1, require_new_cell=True
             )
             with patcher:
                 with self.assertRaises(RuntimeError):
-                    evolve({**common, "out": root / "crashed"})
+                    evolve_frozen({**common, "out": root / "crashed"})
             self.assertTrue(
                 triggered["done"],
                 "never hit the archive.json-then-crash window -- test is inconclusive",
             )
 
-            evolve({**common, "out": root / "crashed", "resume": True})
+            evolve_frozen({**common, "out": root / "crashed", "resume": True})
             _assert_same_output(self, root / "full", root / "crashed")
 
     def test_crash_right_after_summary_json_before_ga_state_json(self) -> None:
@@ -339,21 +339,21 @@ class NonAtomicCheckpointWindowTests(unittest.TestCase):
                 "generations": 5,
             }
 
-            evolve({**common, "out": root / "full"})
+            evolve_frozen({**common, "out": root / "full"})
 
             patcher, triggered = _patch_crash_after_write(
                 "summary.json", min_generation=1
             )
             with patcher:
                 with self.assertRaises(RuntimeError):
-                    evolve({**common, "out": root / "crashed"})
+                    evolve_frozen({**common, "out": root / "crashed"})
             self.assertTrue(
                 triggered["done"],
                 "never hit the summary.json-then-crash window -- test is inconclusive",
             )
             # The stray summary.json entry for the crashed generation must
             # not have made it into a resumed run's final output.
-            evolve({**common, "out": root / "crashed", "resume": True})
+            evolve_frozen({**common, "out": root / "crashed", "resume": True})
             _assert_same_output(self, root / "full", root / "crashed")
 
 
@@ -392,14 +392,14 @@ class LegacyVersion1CheckpointTests(unittest.TestCase):
             project = make_reaching_project(root)
             common = self._common(project)
 
-            evolve({**common, "generations": 4, "out": root / "full"})
-            evolve({**common, "generations": 2, "out": root / "resumed"})
+            evolve_frozen({**common, "generations": 4, "out": root / "full"})
+            evolve_frozen({**common, "generations": 2, "out": root / "resumed"})
             self._downgrade_to_version1(root / "resumed" / "ga_state.json")
 
             # No gapengine_hash key in this state -- must not be checked
             # (item 6a), so this succeeds even though the *current*
             # gapengine_hash of course differs from "absent".
-            evolve(
+            evolve_frozen(
                 {**common, "generations": 4, "out": root / "resumed", "resume": True}
             )
 
@@ -411,7 +411,7 @@ class LegacyVersion1CheckpointTests(unittest.TestCase):
             project = make_reaching_project(root)
             common = self._common(project)
 
-            evolve({**common, "generations": 2, "out": root / "resumed"})
+            evolve_frozen({**common, "generations": 2, "out": root / "resumed"})
             self._downgrade_to_version1(root / "resumed" / "ga_state.json")
 
             archive_path = root / "resumed" / "archive.json"
@@ -422,7 +422,7 @@ class LegacyVersion1CheckpointTests(unittest.TestCase):
             _rewrite_json(archive_path, archive_raw)
 
             with self.assertRaises(ValueError):
-                evolve(
+                evolve_frozen(
                     {**common, "generations": 4, "out": root / "resumed", "resume": True}
                 )
 
@@ -432,14 +432,14 @@ class LegacyVersion1CheckpointTests(unittest.TestCase):
             project = make_reaching_project(root)
             common = self._common(project)
 
-            evolve({**common, "generations": 2, "out": root / "out"})
+            evolve_frozen({**common, "generations": 2, "out": root / "out"})
             state_path = root / "out" / "ga_state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
             state["version"] = 3
             _rewrite_json(state_path, state)
 
             with self.assertRaises(ValueError):
-                evolve(
+                evolve_frozen(
                     {**common, "generations": 3, "out": root / "out", "resume": True}
                 )
 
@@ -465,7 +465,7 @@ class GapengineHashGuardTests(unittest.TestCase):
             root = Path(temporary)
             project = make_reaching_project(root)
             common = self._common(project)
-            evolve({**common, "generations": 2, "out": root / "out"})
+            evolve_frozen({**common, "generations": 2, "out": root / "out"})
 
             state_path = root / "out" / "ga_state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -473,7 +473,7 @@ class GapengineHashGuardTests(unittest.TestCase):
             _rewrite_json(state_path, state)
 
             with self.assertRaises(ValueError):
-                evolve(
+                evolve_frozen(
                     {**common, "generations": 3, "out": root / "out", "resume": True}
                 )
 
@@ -484,14 +484,14 @@ class GapengineHashGuardTests(unittest.TestCase):
             root = Path(temporary)
             project = make_reaching_project(root)
             common = self._common(project)
-            evolve({**common, "generations": 2, "out": root / "out"})
+            evolve_frozen({**common, "generations": 2, "out": root / "out"})
 
             state_path = root / "out" / "ga_state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
             state["gapengine_hash"] = "deadbeefdead"
             _rewrite_json(state_path, state)
 
-            archive = evolve(
+            archive = evolve_frozen(
                 {
                     **common,
                     "generations": 3,
@@ -552,7 +552,7 @@ class NonResumeUnaffectedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             project = make_reaching_project(root)
-            evolve(
+            evolve_frozen(
                 {
                     "ga_seed": 23,
                     "generations": 2,
@@ -596,8 +596,8 @@ class NonResumeUnaffectedTests(unittest.TestCase):
                 "seeds": 1,
                 "template": TEMPLATE,
             }
-            evolve({**common, "out": root / "one"})
-            evolve({**common, "out": root / "two"})
+            evolve_frozen({**common, "out": root / "one"})
+            evolve_frozen({**common, "out": root / "two"})
             _assert_same_output(self, root / "one", root / "two")
 
 
@@ -622,9 +622,9 @@ class ResumeGuardrailTests(unittest.TestCase):
             root = Path(temporary)
             project = make_reaching_project(root)
             common = self._common(project)
-            evolve({**common, "generations": 2, "out": root / "out"})
+            evolve_frozen({**common, "generations": 2, "out": root / "out"})
             with self.assertRaises(ValueError):
-                evolve(
+                evolve_frozen(
                     {
                         **common,
                         "population": 5,
@@ -639,9 +639,9 @@ class ResumeGuardrailTests(unittest.TestCase):
             root = Path(temporary)
             project = make_reaching_project(root)
             common = self._common(project)
-            evolve({**common, "generations": 2, "out": root / "out"})
+            evolve_frozen({**common, "generations": 2, "out": root / "out"})
             with self.assertRaises(ValueError):
-                evolve(
+                evolve_frozen(
                     {
                         **common,
                         "ga_seed": 999,
@@ -658,13 +658,13 @@ class ResumeGuardrailTests(unittest.TestCase):
             template_copy = root / "template"
             shutil.copytree(TEMPLATE, template_copy)
             common = {**self._common(project), "template": template_copy}
-            evolve({**common, "generations": 2, "out": root / "out"})
+            evolve_frozen({**common, "generations": 2, "out": root / "out"})
 
             with (template_copy / "qd.yaml").open("a", encoding="utf-8") as handle:
                 handle.write("# resume-test-byte-flip\n")
 
             with self.assertRaises(ValueError):
-                evolve(
+                evolve_frozen(
                     {
                         **common,
                         "generations": 3,
@@ -678,9 +678,9 @@ class ResumeGuardrailTests(unittest.TestCase):
             root = Path(temporary)
             project = make_reaching_project(root)
             common = self._common(project)
-            evolve({**common, "generations": 2, "out": root / "out"})
+            evolve_frozen({**common, "generations": 2, "out": root / "out"})
             # Must not raise: generations is excluded from the fingerprint.
-            evolve(
+            evolve_frozen(
                 {**common, "generations": 3, "out": root / "out", "resume": True}
             )
 
@@ -689,11 +689,11 @@ class ResumeGuardrailTests(unittest.TestCase):
             root = Path(temporary)
             project = make_reaching_project(root)
             common = self._common(project)
-            evolve({**common, "generations": 2, "out": root / "out"})
+            evolve_frozen({**common, "generations": 2, "out": root / "out"})
             before = _files_under(root / "out")
             before_bytes = {name: path.read_bytes() for name, path in before.items()}
 
-            archive = evolve(
+            archive = evolve_frozen(
                 {**common, "generations": 2, "out": root / "out", "resume": True}
             )
 
@@ -714,7 +714,7 @@ class ResumeGuardrailTests(unittest.TestCase):
             (out_dir / "g1").mkdir(parents=True)
             project = make_reaching_project(root)
             with self.assertRaises(ValueError):
-                evolve(
+                evolve_frozen(
                     {
                         **self._common(project),
                         "generations": 2,
@@ -735,14 +735,14 @@ class ResumeGuardrailTests(unittest.TestCase):
             project = make_reaching_project(root)
             common = self._common(project)
 
-            evolve({**common, "generations": 2, "out": root / "baseline"})
+            evolve_frozen({**common, "generations": 2, "out": root / "baseline"})
 
             out_dir = root / "crashed-g0"
             (out_dir / "g0" / "leftover").mkdir(parents=True)
             (out_dir / "g0" / "leftover" / "junk.txt").write_text(
                 "half-written generation 0\n", encoding="utf-8"
             )
-            evolve(
+            evolve_frozen(
                 {**common, "generations": 2, "out": out_dir, "resume": True}
             )
 
@@ -754,8 +754,8 @@ class ResumeGuardrailTests(unittest.TestCase):
             project = make_reaching_project(root)
             common = self._common(project)
 
-            evolve({**common, "generations": 2, "out": root / "baseline"})
-            evolve(
+            evolve_frozen({**common, "generations": 2, "out": root / "baseline"})
+            evolve_frozen(
                 {
                     **common,
                     "generations": 2,

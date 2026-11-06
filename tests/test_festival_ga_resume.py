@@ -15,6 +15,8 @@ import threading
 import unittest
 from unittest.mock import patch
 
+from festival_fixture import load_frozen_festival
+from frozen_world import evolve_frozen
 from gapengine.evolve import _evolve
 from gapengine.festival_choices import ACTORS, ChoiceGenome
 from gapengine.festival_ga import ADAPTER
@@ -36,6 +38,7 @@ class FestivalGAResumeTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
         self.project = self.root / 'project'
         shutil.copytree(PROJECT, self.project)
+        self.enterContext(patch('scripts.cultural_festival_state_search.load', load_frozen_festival))
 
     def cfg(self, name='run', *, generations=1, population=2, seeds=(0,), **extra):
         return {'search_adapter': ADAPTER, 'out': str(self.root / name),
@@ -62,7 +65,9 @@ class FestivalGAResumeTests(unittest.TestCase):
     def run_cfg(self, cfg):
         # Any accidental external evaluation becomes an immediate test failure.
         with patch('socket.socket.connect', side_effect=AssertionError('external network forbidden')):
-            return _evolve(cfg)
+            if cfg.get('search_adapter') == ADAPTER:
+                return _evolve(cfg)
+            return evolve_frozen(cfg)
 
     def write_state(self, out, state):
         # Re-sign intentionally modified content to exercise semantic validation,

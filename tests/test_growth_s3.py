@@ -20,7 +20,7 @@ import yaml
 from execution import worker
 from execution.provenance import atomic_json, canonical, sha256, write_bytes
 
-from gapengine.evolve import evolve
+from frozen_world import evolve_frozen
 from gapengine.genome import Genome
 from gapengine.qd import Archive, Descriptor, Elite, arc
 from gapengine.seed_genomes import from_archive as seed_genomes_from_archive
@@ -281,7 +281,7 @@ class EvolveByteCompatibilityTests(unittest.TestCase):
                 yaml.safe_dump(qd, allow_unicode=True), encoding="utf-8",
             )
 
-            archive = evolve({
+            archive = evolve_frozen({
                 "ga_seed": 3, "generations": 2, "keep": "all", "population": 4,
                 "processes": 1, "project": PLUS2_PROJECT, "seed_base": 5, "seeds": 1,
                 "template": stripped_template, "out": root / "out",
@@ -320,8 +320,8 @@ class MomotaroPlus2ArcAxisTests(unittest.TestCase):
     def test_archive_gets_three_element_cells_with_a_non_none_arc_bin(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            first = evolve(self._common(root / "first"))
-            second = evolve(self._common(root / "second"))
+            first = evolve_frozen(self._common(root / "first"))
+            second = evolve_frozen(self._common(root / "second"))
 
             self.assertIsNotNone(first.arc_thresholds)
             non_none = [cell for cell in first.cells if len(cell) == 3 and cell[2] != "none"]
@@ -363,8 +363,8 @@ class MomotaroPlus2ArcAxisTests(unittest.TestCase):
                 "ga_seed": 4, "generations": 2, "keep": "all", "population": 4,
                 "processes": 1, "project": PLUS2_PROJECT, "seed_base": 0, "seeds": 1,
             }
-            pre_s3 = evolve({**common, "template": old_template, "out": root / "pre_s3"})
-            growth_off = evolve({**common, "template": PLUS2_TEMPLATE, "out": root / "growth_off"})
+            pre_s3 = evolve_frozen({**common, "template": old_template, "out": root / "pre_s3"})
+            growth_off = evolve_frozen({**common, "template": PLUS2_TEMPLATE, "out": root / "growth_off"})
 
             self.assertIsNone(growth_off.arc_thresholds)
             for cell in growth_off.cells:
@@ -412,11 +412,11 @@ class MomotaroPlus2ArcAxisTests(unittest.TestCase):
                 "processes": 4, "project": PLUS2_PROJECT, "seed_base": 0, "seeds": 3,
                 "template": PLUS2_TEMPLATE, "out": out, "personality_growth": True,
             }
-            first = evolve(cfg)
+            first = evolve_frozen(cfg)
             self.assertIsNotNone(first.arc_thresholds)
             frozen = dict(first.arc_thresholds)
 
-            resumed = evolve({**cfg, "generations": 2, "resume": True})
+            resumed = evolve_frozen({**cfg, "generations": 2, "resume": True})
             self.assertEqual(resumed.arc_thresholds, frozen)
 
 
@@ -441,7 +441,7 @@ class ViewerArcAxisTests(unittest.TestCase):
             root = Path(temporary)
             runs_root = root / "runs"
             runs_root.mkdir()
-            evolve({
+            evolve_frozen({
                 "ga_seed": 1, "generations": 1, "keep": "all", "population": 12,
                 "processes": 4, "project": PLUS2_PROJECT, "seed_base": 0, "seeds": 3,
                 "template": PLUS2_TEMPLATE, "out": runs_root / "growth-s3-unit",
