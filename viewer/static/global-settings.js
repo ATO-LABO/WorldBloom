@@ -6,7 +6,7 @@
   const $ = (selector, scope = root) => scope.querySelector(selector);
   const $$ = (selector, scope = root) => [...scope.querySelectorAll(selector)];
   const form = $("[data-gs-output]");
-  const TABS = ["output", "compute", "configs", "genres"];
+  const TABS = ["output", "compute", "configs"];
   function mountTabs(container, onActivate) {
     const buttons = $$(":scope > .ui-tabs > button", container);
     const panels = $$('[role="tabpanel"]', container);
@@ -96,12 +96,7 @@
     const cfield = $("#gs-processes", cform);
     const tfield = $("#gs-thermal-enabled", cform);
     const pfield = $("#gs-pause_at", cform);
-    const footer = $("[data-gs-compute-save]", cform).closest("footer");
-    const activateTab = mountTabs(cform, showComputeTab);
-    function showComputeTab(panelId) {
-      activateTab(panelId);
-      footer.hidden = panelId === "gs-compute-panel-jev";
-    }
+    const activateCompute = mountTabs(cform);
     const num = f => f.value === "" ? null : Number(f.value);
     const cvalues = () => ({ processes: num(cfield), thermal_enabled: tfield.checked, pause_at: num(pfield) });
     const pick = s => ({ processes: s.processes, thermal_enabled: s.thermal_enabled, pause_at: s.pause_at });
@@ -133,10 +128,10 @@
     });
     cform.addEventListener("submit", async event => {
       event.preventDefault();
-      if (cbusy || footer.hidden || !cdifferent()) return;
+      if (cbusy || !cdifferent()) return;
       const invalid = [cfield, pfield].find(control => control.willValidate && !control.validity.valid);
       if (invalid) {
-        revealField(invalid, showComputeTab);
+        revealField(invalid, activateCompute);
         invalid.reportValidity();
         return;
       }
@@ -151,7 +146,7 @@
         cupdate("保存できませんでした。変更内容は残っています");
         const invalid = [cfield, tfield, pfield].find(control => e?.field_errors?.[control.dataset.field]);
         if (invalid) {
-          revealField(invalid, showComputeTab);
+          revealField(invalid, activateCompute);
           (invalid.disabled ? tfield : invalid).focus();
         }
       }
@@ -194,7 +189,15 @@
   })();
   if (!form) { syncURL(); return; }
 
-  const activateOutput = mountTabs(form);
+  const outputFooter = $("[data-gs-save]", form).closest("footer");
+  const outputDetails = $("[data-gs-output-details]", form);
+  const outputError = $("[data-form-error]", form);
+  const activateOutput = mountTabs(form, showOutputTab);
+  function showOutputTab(panelId) {
+    activateOutput(panelId);
+    const showJev = panelId === "gs-panel-jev";
+    outputFooter.hidden = outputDetails.hidden = outputError.hidden = showJev;
+  }
 
   let saved = initial.view;
   let busy = false;
@@ -272,7 +275,7 @@
     if (!response.ok) throw result;
     return result;
   }
-  form.addEventListener("input", () => { errors(); update(); });
+  $("[data-gs-fields]", form).addEventListener("input", () => { errors(); update(); });
   chooseGemma.addEventListener("click", () => {
     if (busy) return;
     if (backend() !== "ollama") {
@@ -292,10 +295,10 @@
   });
   form.addEventListener("submit", async event => {
     event.preventDefault();
-    if (busy || !different()) return;
+    if (busy || outputFooter.hidden || !different()) return;
     const invalid = fields.find(control => !control.validity.valid);
     if (invalid) {
-      revealField(invalid, activateOutput);
+      revealField(invalid, showOutputTab);
       invalid.reportValidity();
       return;
     }
@@ -311,7 +314,7 @@
     } catch (e) {
       busy = false; errors(e); update("保存できませんでした。変更内容は残っています");
       const invalidField = fields.find(control => e?.field_errors?.[control.dataset.field]);
-      if (invalidField) { revealField(invalidField, activateOutput); invalidField.focus(); }
+      if (invalidField) { revealField(invalidField, showOutputTab); invalidField.focus(); }
     }
   });
   addEventListener("beforeunload", event => {

@@ -31,7 +31,6 @@ class GenreWorkspaceTests(unittest.TestCase):
         self.assertEqual(json.loads((self.repo/'templates/custom/genre.json').read_text(encoding='utf-8'))['name'],'冒険と発見')
         self.assertEqual((self.repo/'templates/romance/rules.yaml').read_bytes(),before)
         self.assertIn('冒険と発見',self.get('/genres/custom')[1])
-        self.assertIn('冒険と発見',self.get('/configs?tab=genres')[1])
 
     def test_copy_preserves_files_and_legacy_api(self):
         for body in ({'template_id':'legacy','from_template_id':'romance'}, {'mode':'copy','template_id':'copy','from_template_id':'romance','name':'複製','description':'説明'}):

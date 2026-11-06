@@ -68,14 +68,17 @@ def tab_panel(group, key, active, content, *, class_name=""):
             f'aria-labelledby="{group}-tab-{key}"'+('' if key == active else ' hidden')+f'>{content}</section>')
 
 
-def output_panel(view, error):
-    heading = ui.heading('AIの設定', 'すべての世界の文章生成に共通する設定です。', class_name='gs-heading')
+def output_panel(view, error, jev=None):
+    heading = ui.heading('AIの設定', 'すべての世界に共通する文章生成と合理性の判定器を設定します。', class_name='gs-heading')
     start = '<section class="gs-panel" id="output" data-gs-panel="output">'
     if error:
         return start + heading + '<div class="gs-empty" role="alert">settings.json を読めません。設定ファイルを確認してから再読み込みしてください。</div></section>'
 
-    tabs = settings_tabs('gs', (('ai', '使用するAI', False), ('limits', '生成の上限', False)),
-                         'ai', 'AIの設定の切り替え', hook='data-gs-output-tab')
+    items = [('ai', '使用するAI', False), ('limits', '生成の上限', False)]
+    if jev is not None:
+        items.append(('jev', '合理性の判定器（Jev）', False))
+    tabs = settings_tabs('gs', items, 'ai', 'AIの設定の切り替え', hook='data-gs-output-tab')
+    jev_tab = tab_panel('gs', 'jev', 'ai', jev_panel(jev)) if jev is not None else ''
     limits = ''.join(field('limits.'+k, label, view['limits'][k], unit=unit,
                            minimum=0 if k=='max_calls' and view['backend']=='none' else 1)
                      for k, label, unit in LIMITS)
@@ -92,16 +95,15 @@ def output_panel(view, error):
         '<h2>上限を変更</h2><p class="ui-hint">生成方式ごとに、1回の生成操作で使う上限を設定します。'
         '編集中の生成方式は <strong data-gs-limits-backend></strong> です。</p>'
         '<div class="gs-limit-fields">'+limits+'</div></section></fieldset>'
-        '<div class="gs-diff" data-gs-diff></div>'
+        + jev_tab + '<div data-gs-output-details><div class="gs-diff" data-gs-diff></div>'
         '<details class="ui-settings-help gs-scope"><summary>この設定を使う画面</summary>'
         '<p>① 概要からの設定作成</p><p>③ Sifting のあらすじ生成</p><p>④ 上映の本文生成</p>'
-        '<p class="ui-hint">保存後に開始する生成から適用されます。</p></details></div>'
+        '<p class="ui-hint">保存後に開始する生成から適用されます。</p></details></div></div>'
         + settings_footer(compute=False) + '</form></section>')
 
 
 def jev_panel(jev):
-    """WB-JEV-005: the 計算 tab's "合理性の判定器（Jev）" block -- a
-    standalone key-save form outside gs-compute's dirty tracking."""
+    """Render the Jev key editor and its independent save action."""
     status = (f"有効（{E(jev['model'])}、{E(display_date(jev['verified_at']))} 確認）"
               if jev['available'] else "未設定")
     return ('<section class="gs-jev"><h2>合理性の判定器（Jev）</h2>'
@@ -113,14 +115,12 @@ def jev_panel(jev):
         '</section>')
 
 
-def compute_panel(evolution, error, jev=None):
+def compute_panel(evolution, error):
     start = '<section class="gs-panel" id="compute" data-gs-panel="compute">'
     if error:
         return start + ui.heading('計算の設定', class_name='gs-heading') + '<div class="gs-empty" role="alert">settings.json を読めません。設定ファイルを確認してから再読み込みしてください。</div></section>'
 
     tabs = [('parallel', 'GA の並列数', False), ('gpu', 'GPU ガード', False)]
-    if jev is not None:
-        tabs.append(('jev', '合理性の判定器（Jev）', False))
     group = 'gs-compute'
     parallel = (
         '<h2>GA の並列数</h2><p>保存済みの並列数 <strong data-gs-compute-saved-processes>'
@@ -140,14 +140,13 @@ def compute_panel(evolution, error, jev=None):
         '<p class="ui-hint">保存後に開始する生成から適用されます。</p>'
     )
     panels = tab_panel(group, 'parallel', 'parallel', parallel) + tab_panel(group, 'gpu', 'parallel', gpu)
-    jev_tab = tab_panel(group, 'jev', 'parallel', jev_panel(jev)) if jev is not None else ''
-    return (start + ui.heading('計算の設定', 'GAの並列数、GPUの温度、合理性の判定器を設定します。',
+    return (start + ui.heading('計算の設定', 'GAの並列数とGPUの温度を設定します。',
         class_name='gs-heading', title_extra=' <span class="gs-badge" data-gs-compute-dirty>保存済み</span>')
         + '<form id="gs-compute-form" data-wb="compute-settings" data-gs-compute novalidate>'
         + settings_tabs(group, tabs, 'parallel', '計算の設定の切り替え')
         + '<div class="gs-form-scroll ui-content"><div class="ui-error" data-compute-form-error role="alert"></div>'
         '<fieldset data-gs-compute-fields><legend class="gs-sr-only">計算の設定項目</legend>'
-        + panels + '</fieldset>' + jev_tab + '</div>' + settings_footer(compute=True) + '</form></section>')
+        + panels + '</fieldset></div>' + settings_footer(compute=True) + '</form></section>')
 
 
 def display_date(value):
@@ -198,39 +197,17 @@ def collection_panel(items, worlds, selected, *, show_detail=False):
             + tab_panel(group, 'detail', active, ''.join(details), class_name='gs-config-view') + '</section>')
 
 
-def genre_collection(items, worlds, selected):
-    kind = 'genres'
-    title = 'ジャンル'
-    description = '物語の展開ルールと、それを使う世界を確認します。'
-    create = link('/genres/new','＋ 新しいジャンル','gs-add')
-    rows, details = [], []
-    for item in items:
-        ident = item['id']
-        label = item.get('name') or item['id']
-        selected_attr = ' aria-current="true"' if ident == selected else ''
-        used=item['used_by'];meta=f'利用中の世界 {len(used)}件'
-        body='<h3>使っている世界</h3>'+('<ul>'+''.join('<li>'+link('/worlds/'+U(w),worlds.get(w,w))+'</li>' for w in used)+'</ul>' if used else '<p>まだ利用している世界はありません。</p>')
-        names={'actions.yaml':'行動のつながり','action_graph.yaml':'行動のつながり','canon.yaml':'状況ごとの定石','effects.yaml':'行動の効果','rules.yaml':'展開のルール','qd.yaml':'候補の分類軸'}
-        body+='<h3>含まれる設定</h3><ul>'+''.join(f'<li>{E(names.get(f,f))}</li>' for f in item['files'])+'</ul><p class="gs-hint ui-hint">ジャンルは複数の世界で共有される、物語の展開ルールです。</p>'
-        footer=link('/genres/'+U(ident),'ジャンルを編集 →','gs-primary')
-        search=label+' '+meta+' '+ident
-        rows.append(f'<a class="gs-item" data-gs-item="{E(ident)}" data-search="{E(search)}" href="/configs?tab={kind}&amp;item={U(ident)}"{selected_attr}><strong>{E(label)}</strong><span>{E(meta)}</span></a>')
-        details.append(f'<article class="gs-item-detail" data-gs-detail="{E(ident)}"'+('' if ident==selected else ' hidden')+f'><div class="gs-detail-scroll ui-content"><h2>{E(label)}</h2>{body}</div><footer class="gs-footer ui-footer">{footer}</footer></article>')
-    return (f'<section class="gs-panel" id="{kind}" data-gs-panel="{kind}">{ui.heading(title, description, actions=create, class_name="gs-heading")}<div class="gs-collection"><div class="gs-list"><label class="gs-search">{title}を探す<input type="search" data-gs-search placeholder="名前で検索"></label><p class="gs-hint ui-hint" data-gs-count>{len(items)}件</p><div class="gs-list-scroll">'+''.join(rows)+'<p data-gs-no-match hidden>一致する項目がありません。</p>'+('' if items else '<p>まだ登録されていません。</p>')+'</div></div><div class="gs-details">'+''.join(details)+('' if items else '<div class="gs-empty">左上のボタンから作成できます。</div>')+'</div></div></section>')
-
-
 def render(handler):
     jobs=wb._job_store(handler)
     if jobs is None:
         handler._send_html(wb._guidance_page(phase="world")); return
     query=parse_qs(urlsplit(handler.path).query); active=query.get('tab',['output'])[0]
-    if active not in ('output','compute','configs','genres'): active='output'
+    if active not in ('output','compute','configs'): active='output'
     library=LibraryStore(jobs.configs.repo)
     worlds={w['id']:w.get('name') or w['id'] for w in library.worlds()}
-    configs=jobs.configs.list(); genres=library.genres()
+    configs=jobs.configs.list()
     requested=query.get('item',[None])[0]
     selected_config=next((c['config_id'] for c in configs if c['config_id']==requested),configs[0]['config_id'] if configs else None)
-    selected_genre=next((g['id'] for g in genres if g['id']==requested),genres[0]['id'] if genres else None)
     view=None;error=False
     try: view=read_output_settings(getattr(handler.server,'settings_path',None))
     except ConfigError: error=True
@@ -240,11 +217,11 @@ def render(handler):
     jev=None
     try: jev=read_jev_settings(getattr(handler.server,'settings_path',None))
     except ConfigError: jev=None
-    initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution,'jev':jev},ensure_ascii=False))
-    nav='<h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','AIの設定'),('compute','計算'),('configs','実行設定の保存版'),('genres','ジャンル')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small>'
+    initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution},ensure_ascii=False))
+    nav='<h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','AIの設定'),('compute','計算'),('configs','実行設定の保存版')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small>'
     nav=ui.navigation(nav, label='全体設定', class_name='gs-nav')
-    panels=[output_panel(view,error),compute_panel(evolution,compute_error,jev),collection_panel(configs,worlds,selected_config,show_detail=bool(requested)),genre_collection(genres,worlds,selected_genre)]
-    for i,key in enumerate(('output','compute','configs','genres')):
+    panels=[output_panel(view,error,jev),compute_panel(evolution,compute_error),collection_panel(configs,worlds,selected_config,show_detail=bool(requested))]
+    for i,key in enumerate(('output','compute','configs')):
         if key != active: panels[i]=panels[i].replace('data-gs-panel="'+key+'"','data-gs-panel="'+key+'" hidden',1)
     content=f'<div class="gs-shell ui-workspace ui-workspace--nav" data-global-settings data-initial="{initial}">{nav}<div class="gs-main">'+''.join(panels)+'</div></div>'
     doc=pages.document('全体設定',content,phase=None,job_store=jobs,pin=wb.data.pinned_target(jobs,configs=configs),page_class='settings-workspace', stylesheets=('global-settings.css',), scripts=('ui-tabs.js','global-settings.js','gemma-setup.js'))

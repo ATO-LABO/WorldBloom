@@ -38,13 +38,3 @@
 @media(max-width:760px){
   .gs-limit-fields {grid-template-columns:1fr;gap:var(--ws-space-3)}
 }
-
-.gs-collection{display:grid;grid-template-columns:minmax(220px,30%) minmax(0,1fr);flex:1;min-height:0}
-.gs-list{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--ws-line);padding-top:var(--ws-space-4)}
-.gs-search,.gs-list>.gs-hint{padding:0 var(--ws-space-4)}
-.gs-search input{margin-top:var(--ws-space-2);width:100%}
-.gs-list-scroll{overflow:auto;min-height:0;flex:1}.gs-list-scroll>p{padding:var(--ws-space-4)}
-.gs-details{min-height:0;min-width:0}
-@media(max-width:520px){.gs-collection{display:flex;flex-direction:column;overflow:auto}.gs-list{flex:0 0 180px;border-right:0;border-bottom:1px solid var(--ws-line)}.gs-details{flex:1}.gs-item-detail{height:auto;min-height:100%}.gs-item-detail>.ui-footer{position:sticky;bottom:0}}
-.gs-details>.gs-item-detail {height:100%}
-@media(max-width:760px){.gs-collection{grid-template-columns:40% minmax(0,1fr)}}
