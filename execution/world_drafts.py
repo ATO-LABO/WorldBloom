@@ -379,7 +379,13 @@ def existing_provider(settings_path, *, time_budget=None):
         request=_draft_request(settings_path,review_prompt(name,overview,draft),elapsed=elapsed,reviewing=True,time_budget=time_budget)
         text=generation.validate_response(request['backend'], generation.transport(request,generation.preflight(request)))
         return checked_review(parse_response(text),draft)
+    def revise(name, overview, draft, target, instruction):
+        from execution import generation
+        from execution.draft_revisions import revision_prompt
+        request=_draft_request(settings_path,revision_prompt(name,overview,draft,target,instruction),time_budget=time_budget)
+        return generation.validate_response(request['backend'], generation.transport(request,generation.preflight(request)))
     generate.review=review
+    generate.revise=revise
     return generate
 
 
@@ -473,6 +479,14 @@ class DraftStore:
             r.pop('needs_revalidation',None)
             atomic_json(self._path(token), r)
             return r
+
+    def revise(self, token, revision, draft, target, instruction, request_id):
+        from execution.draft_revisions import preview
+        return preview(self, token, revision, draft, target, instruction, request_id)
+
+    def apply_revision(self, token, revision, request_id, draft, candidate=None):
+        from execution.draft_revisions import apply
+        return apply(self, token, revision, request_id, draft, candidate)
 
     def _assess(self, name, overview, proposal, revision, elapsed, *, mode=None):
         if (self.mode if mode is None else mode) != 'live':

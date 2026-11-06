@@ -36,7 +36,7 @@ def render(store, jobs, *, from_id=None, genre_id=None, copy_mode=False, method=
     def page(body):
         return pages.document('新しい世界を作る', body, phase='world', job_store=jobs,
             pin=data.pinned_target(jobs), page_class='form-workspace',
-            stylesheets=('world-create.css', 'world-draft.css'), scripts=('world-create.js', 'draft-goal-editor.js', 'world-draft.js'))
+            stylesheets=('world-create.css', 'world-draft.css', 'draft-workspace.css', 'draft-editing.css'), scripts=('world-create.js', 'draft-goal-editor.js', 'draft-workspace.js', 'draft-editing.js', 'world-draft.js'))
     if method is None:
         return page('<section class="creation-choice"><a data-purpose-carry href="/worlds">← 世界一覧へ戻る</a><h1>新しい世界を作る</h1><p>作成方法を選んでください。</p><div class="creation-options">'
             '<a data-purpose-carry href="/worlds/new?method=manual"><strong>マニュアル作成</strong><span>名前と概要を自分で入力します。既存世界の複製やZIPの取込も選べます。</span></a>'

@@ -839,7 +839,10 @@ def _world_draft_get(handler, token):
 def _world_draft_post(handler, token=None, action=None):
     body = _boundary_body(handler)
     expected = {"request_id", "name", "overview"} if token is None else {
-        "cancel": set(), "validate": {"revision", "draft"}, "adopt": {"revision"}}[action]
+        "cancel": set(), "validate": {"revision", "draft"}, "adopt": {"revision"},
+        "revise": {"revision", "draft", "target", "instruction", "request_id"},
+        "apply-revision": {"revision", "request_id", "draft"}}[action]
+    if action == 'apply-revision' and isinstance(body,dict) and 'candidate' in body:expected=expected|{'candidate'}
     if not isinstance(body, dict) or set(body) != expected:
         raise ConfigError("request", "下案への入力項目を確認してください", code="bad_request")
     store = _draft_store(handler)
@@ -849,6 +852,10 @@ def _world_draft_post(handler, token=None, action=None):
         result = store.cancel(token)
     elif action == "validate":
         result = store.update(token, body["revision"], body["draft"])
+    elif action == "revise":
+        result = store.revise(token, body["revision"], body["draft"], body["target"], body["instruction"], body["request_id"])
+    elif action == "apply-revision":
+        result = store.apply_revision(token, body["revision"], body["request_id"], body["draft"], body.get('candidate'))
     else:
         result = store.adopt(token, body["revision"])
     handler._send_json(HTTPStatus.OK, result)
@@ -1288,7 +1295,7 @@ def _resolve(parts, method):
     if method == "POST":
         if parts == ["api", "world-drafts"]:
             return _world_draft_post, ()
-        if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("cancel", "validate", "adopt"):
+        if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("cancel", "validate", "adopt", "revise", "apply-revision"):
             return _world_draft_post, (parts[2], parts[3])
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings":
             return _time_settings_post, (parts[2], "save")
