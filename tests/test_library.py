@@ -553,12 +553,11 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn("<dl class=\"world-summary\">", body)
 
     def test_world_detail_overview_intro(self):
-        # WB-UI-024: the 概要 tab leads with a one-sentence auto-generated
-        # introduction, not just a bare metadata line.
+        # The advanced view uses the saved world's settings and navigation.
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('世界の詳細設定', body)
-        self.assertIn('href="/worlds/momotaro"', body)
+        self.assertIn('data-world-advanced', body)
+        self.assertIn('href="/worlds/momotaro#screen=overview"', body)
         self.assertIn('&quot;days&quot;: 16', body)
         self.assertNotIn('data-gs-tab="genres"', body)
 

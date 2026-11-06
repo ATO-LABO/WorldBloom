@@ -134,11 +134,11 @@ class WorldCreateTests(unittest.TestCase):
     def test_copy_mode_notes_that_expansions_are_not_duplicated(self):
         # WB-WORLDGROW-001 段階5d: patches/ is excluded from a world copy
         # (execution/library.py's LibraryStore._publish_world), so the copy
-        # screen says so and points at the genre-asset route back in instead.
+        # screen says so and directs users to the rules assets.
         self.create()
         status, markup = self.get('/worlds/new?from=original')
         self.assertEqual(status, 200)
-        self.assertIn('拡張は複製されません。ジャンルの資産から取り込めます。', markup)
+        self.assertIn('拡張は複製されません。基本ルールの資産から取り込めます。', markup)
 
     def test_basic_rules_accept_a_configured_original(self):
         self.create()
