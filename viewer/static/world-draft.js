@@ -9,7 +9,18 @@
   const editor = $('[data-wd-json]'), confirm = $('[data-wd-confirm]');
   let record = null, token = null, busy = false, dirty = false, uncertain = false, epoch = 0;
   const goalRoot=$('[data-wd-goals]'),confirmRow=$('[data-wd-confirm-row]');
-  const goalEditor=goalRoot&&window.WorldBloomDraftGoals?new window.WorldBloomDraftGoals.Editor(goalRoot,document,draft=>{
+  const workspaceRoot=$('[data-wd-workspace]');let workspace=null,editing=null;
+  if(workspaceRoot&&window.WorldBloomDraftWorkspace&&window.WorldBloomDraftEditing){
+    root.classList.add('has-workspace');
+    workspace=new window.WorldBloomDraftWorkspace(workspaceRoot,{beforeNavigate:()=>editing?.canLeave()??true,afterRender:(target,content)=>editing?.mount(target,content)});
+    editing=new window.WorldBloomDraftEditing({getDraft:()=>JSON.parse(editor.value),
+      onChange:(draft,target)=>{editor.value=JSON.stringify(draft,null,2);markDirty();workspace.render(draft);if(target)workspace.select(target.section,target.entity);},
+      requestRevision:async body=>{busy=true;controls();try{return await api('/'+token+'/revise',{revision:record.edit_revision||record.revision,...body});}finally{busy=false;controls();}},
+      applyRevision:async(preview,base,candidate)=>{busy=true;controls();try{show(await api('/'+token+'/apply-revision',{revision:record.edit_revision||record.revision,request_id:preview.request_id,draft:base,candidate}));}catch(error){failed(error);throw error;}finally{busy=false;controls();}},
+      refresh:()=>workspace.render(JSON.parse(editor.value)),
+      notice:root.dataset.mode==='live'?undefined:'この起動は表示用サンプルです。実AI修正は利用できません。実モデル接続時に修正案を作れます。'});
+  }
+  const goalEditor=!workspace&&goalRoot&&window.WorldBloomDraftGoals?new window.WorldBloomDraftGoals.Editor(goalRoot,document,draft=>{
     editor.value=JSON.stringify(draft,null,2);markDirty();
     if(record?.state==='review'){
       try{summary(draft);}catch(_){$('[data-wd-summary]').replaceChildren();$('[data-wd-context]')?.replaceChildren();}
@@ -19,6 +30,7 @@
   function canValidate(){return record?.state==='review'||editableRecord();}
   function markDirty(){dirty=true;confirm.checked=false;status.textContent='下案に未検証の変更があります。修正した下案を確認してください。';controls();}
   function updateGoalEditor(){
+    if(workspace){try{workspace.render(JSON.parse(editor.value));}catch(_){workspaceRoot.textContent='下案の形式を確認してください。';}return;}
     if(!goalEditor)return;
     try {goalEditor.render(editor.value.length<=128000?JSON.parse(editor.value):null);}catch(_){goalEditor.render(null);}
   }
@@ -45,6 +57,8 @@
     if(confirmRow)confirmRow.hidden=record?.state!=='review'||dirty||!!record?.needs_revalidation;
     editor.disabled = busy || uncertain;
     if(goalEditor)goalEditor.setDisabled(busy||uncertain||!canValidate());
+    if(workspace)workspace.setDisabled(busy||uncertain||!canValidate());
+    if(editing)editing.setDisabled(busy||uncertain||!canValidate());
   }
   async function api(path, body) {
     const response = await fetch('/api/world-drafts' + path, body === undefined ? {} : {
@@ -86,6 +100,7 @@
   }
   function show(value) {
     record=value;uncertain=false;confirm.checked=false;dirty=false;
+    if(workspace)root.classList.toggle('is-reviewing',value.state==='review'||editableRecord());
     if(['adopted','cancelled'].includes(value.state)){sessionStorage.removeItem('wb-new-world-draft');carryToken(null);}
     if(value.name)name.value=value.name;
     if(value.overview)overview.value=value.overview;
