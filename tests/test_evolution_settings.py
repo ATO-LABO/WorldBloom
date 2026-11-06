@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import unittest
 
+from saved_world_fixtures import install_current_worlds
 from execution.configs import ConfigStore
 from execution.evolution_settings import (
     default_processes, read_evolution_settings, write_evolution_settings,
@@ -71,6 +72,7 @@ class PrepareRunProcessesOverrideTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates", "engine", "gapengine", "scripts", "execution"):
             shutil.copytree(ROOT / name, self.repo / name, ignore=shutil.ignore_patterns("__pycache__"))
+        install_current_worlds(self.repo, "romance")
         shutil.copy(ROOT / "requirements.txt", self.repo / "requirements.txt")
         self.store = ConfigStore(self.repo, base / "control", base / "runs")
         spec = {"label": "確認用", "project_id": "romance", "template_id": "romance",

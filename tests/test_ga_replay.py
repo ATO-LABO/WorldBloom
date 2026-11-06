@@ -18,6 +18,7 @@ import unittest.mock
 import urllib.error
 import urllib.request
 
+from saved_world_fixtures import copy_current_world_repo
 from execution.configs import ConfigStore
 from execution.provenance import atomic_json, canonical, sha256, write_bytes
 from gapengine import lineage
@@ -445,7 +446,8 @@ class ReplayHttpTests(unittest.TestCase):
         self.runs = base / "runs"
         self.runs.mkdir()
         control = base / "control"
-        configs = ConfigStore(ROOT, control, self.runs)
+        repo = copy_current_world_repo(ROOT, base / "repo", "romance")
+        configs = ConfigStore(repo, control, self.runs)
         configs.save({
             "label": "replay", "project_id": "romance", "template_id": "romance",
             "evolution": {"generations": 2, "population": 4, "seeds": 1},
@@ -504,7 +506,8 @@ class SeedGenomesReplayTests(unittest.TestCase):
         self.runs = base / "runs"
         self.runs.mkdir()
         control = base / "control"
-        configs = ConfigStore(ROOT, control, self.runs)
+        repo = copy_current_world_repo(ROOT, base / "repo", "romance")
+        configs = ConfigStore(repo, control, self.runs)
         configs.save({
             "label": "replay-seed", "project_id": "romance", "template_id": "romance",
             "evolution": {"generations": 2, "population": 4, "seeds": 1},

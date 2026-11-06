@@ -57,7 +57,7 @@ def _engine_source_hash(engine_dir: Path) -> str:
 
     paths = tuple(
         sorted(
-            [*engine_dir.glob("*.py"), *engine_dir.glob("action_types.json")],
+            [*engine_dir.glob("*.py"), *engine_dir.glob("action_types.json"), *engine_dir.glob("story_genres.json")],
             key=lambda value: value.name,
         )
     )
@@ -145,7 +145,7 @@ class Simulation:
             if subject.stamina_max <= 0.0:
                 subject.stamina_max = self.world.stamina["default_max"]
                 subject.stamina = subject.stamina_max
-            if subject.stamina_recover <= 0.0 and not getattr(subject, '_stamina_recovery_authored', False):
+            if subject.stamina_recover <= 0.0 and (self.world.action_usage is None or not getattr(subject, '_stamina_recovery_authored', False)):
                 subject.stamina_recover = self.world.stamina[
                     "default_recover_per_slot"
                 ]
@@ -1071,7 +1071,7 @@ class Simulation:
                 )
 
     def _recover_stamina(self) -> None:
-        if not self.world.mechanics_enabled('stamina_management') or not self.world.stamina['passive_recovery']:
+        if self.world.action_usage is not None and (not self.world.mechanics_enabled('stamina_management') or not self.world.stamina['passive_recovery']):
             return
         if self.world.action_timing is not None and 'rest' in self.world.action_timing.rules:
             return  # Recovery is the timed rest effect, not an extra free slot effect.

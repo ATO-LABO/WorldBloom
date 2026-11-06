@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 from gapengine.world_patch import EMPTY_STACK_DIGEST, next_digest, patch_id_for, read_stack
 from gapengine.world_patch_inputs import inputs_digest, read_subjects, resolve_references
+from saved_world_fixtures import install_current_worlds
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,6 +38,7 @@ def frozen_experiment(root, *, explanations=True, coevolve=False):
     world["scheduled_events"] = [{"id": "fixture_end", "day": 1, "slot": "夕", "targets": ["桃太郎"],
         "label": "試験の帰還", "grants_item": {"name": "鬼ヶ島の宝物", "count": 1}, "move_to": "村"}]
     path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    install_current_worlds(repo, "momotaro")
     store = ConfigStore(repo, root / "control", root / "runs")
     spec = {"label": "パッチ試験", "project_id": "momotaro", "template_id": "momotaro",
             "evolution": {"generations": 2, "population": 12, "seeds": 2, "seed_base": 31,
@@ -130,6 +132,7 @@ def branch_entry_experiment(root):
     world_path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
     experiment = root / "runs/exp"
+    install_current_worlds(root / "repo", "momotaro")
     shutil.copytree(project, experiment / "expanded-project")
     (experiment / "summary.json").write_text(json.dumps({"seeds": [1, 2, 3, 4]}), encoding="utf-8")
 
@@ -231,6 +234,7 @@ def frozen_experiment_with_external_reference(root, *, mode):
         raise ValueError(mode)
 
     world_path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    install_current_worlds(repo, "momotaro")
     store = ConfigStore(repo, root / "control", root / "runs")
     spec = {"label": "外部repo試験", "project_id": "momotaro", "template_id": "momotaro",
             "evolution": {"generations": 2, "population": 12, "seeds": 2, "seed_base": 41,
@@ -324,6 +328,7 @@ def external_repo_experiment(root, *, individuals=3):
     world_path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
     experiment = root / "runs/ext"
+    install_current_worlds(control, "extproj")
     shutil.copytree(project, experiment / "expanded-project")
     seeds = list(range(1, individuals + 5))
     (experiment / "summary.json").write_text(json.dumps({"seeds": seeds}), encoding="utf-8")

@@ -11,6 +11,7 @@ import yaml
 from engine.actions import Action, candidates
 from engine.subject import Subject
 from engine.verbs import VerbEngine
+from frozen_world import load_frozen_world
 from engine.world import World
 
 
@@ -50,7 +51,7 @@ def load_yaml(path: Path) -> Any:
 def load_case(
     seed: int,
 ) -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(
+    world = load_frozen_world(
         PROJECT / "world.yaml",
         action_graph_path=(
             TEMPLATE / "action_graph.yaml"
@@ -252,7 +253,7 @@ class DetectiveTemplateTests(unittest.TestCase):
         }
 
         for seed in range(30):
-            unbound = World.from_yaml(
+            unbound = load_frozen_world(
                 PROJECT / "world.yaml",
                 action_graph_path=(
                     TEMPLATE / "action_graph.yaml"

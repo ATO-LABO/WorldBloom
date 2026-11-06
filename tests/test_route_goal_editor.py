@@ -36,7 +36,7 @@ class GoalEditorTests(unittest.TestCase):
         w = yaml.safe_load(self.world_path.read_text())
         w['gapengine'] = {'action_graph':'templates/festival/action_graph.yaml', 'effects':'templates/festival/effects.yaml'}
         w['facts'] = [{'id':'合図'}]
-        self.world_path.write_text(yaml.safe_dump(w, allow_unicode=True))
+        self.world_path.write_bytes(fixtures.current_world_yaml(w, template="festival").encode("utf-8"))
         self.store = LibraryStore(self.repo)
         self.path = self.project / 'route.yaml'
         self.url = '/api/worlds/festival/route-goal'

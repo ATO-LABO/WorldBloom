@@ -719,7 +719,7 @@ def run_individual(job: Mapping[str, Any]) -> dict[str, Any]:
     for seed in seeds:
         _seed_checkpoint(job)
         _seed_event(job, seed, "started")
-        world = World.from_yaml(
+        world = job.get("_world_loader", World.from_yaml)(
             world_path,
             action_graph_path=action_graph_path,
         )
@@ -1513,7 +1513,7 @@ def _refuse_stale_archive(
     )
 
 
-def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
+def _evolve(cfg: Mapping[str, Any], *, observer=None, world_loader=None) -> Archive:
     if cfg.get("search_adapter") == "cultural_festival_choices_v1":
         from gapengine.festival_ga import evolve_choices
         return evolve_choices(cfg, observer=observer)
@@ -1680,7 +1680,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     route_motives_hash = route_object.motives_hash() if route_object is not None else None
     route_gene_affinity = route_object.gene_affinity if route_object is not None else None
 
-    world_model = World.from_yaml(
+    world_model = (world_loader or World.from_yaml)(
         world_path,
         action_graph_path=action_graph_path,
     )
@@ -2039,6 +2039,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                 "seeds": seeds,
                 "subjects_dir": str(subjects_dir),
                 "world_path": str(world_path),
+                **({"_world_loader": world_loader} if world_loader is not None else {}),
             }
             for index, (genome, parents) in enumerate(population)
         ]
@@ -2153,6 +2154,7 @@ def _evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
                     "subjects_dir": str(subjects_dir),
                     "vol_high": vol_high,
                     "world_path": str(world_path),
+                **({"_world_loader": world_loader} if world_loader is not None else {}),
                 }
                 for index, (genome, parents) in enumerate(
                     antagonist_population
@@ -2503,7 +2505,7 @@ def _rationality_lease_params(cfg: Mapping[str, Any]) -> tuple[bool, str, float]
     return True, f"jev-ga:{out_dir.name}", wait_seconds
 
 
-def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
+def evolve(cfg: Mapping[str, Any], *, observer=None, world_loader=None) -> Archive:
     """WB-JEV-001: a thin wrapper around _evolve() that takes the
     machine-wide GPU lease (gapengine.gpu_guard.gpu_lease) around the whole
     run when this run's rationality judge will actually call Ollama
@@ -2513,12 +2515,16 @@ def evolve(cfg: Mapping[str, Any], *, observer=None) -> Archive:
     it surfaces as a RuntimeError naming the current holder, and _evolve()
     (so no generation) never runs."""
 
+    # A Python caller may inject an explicit engine-fixture loader. This is
+    # never read from cfg/CLI input; ordinary saved worlds remain strict.
+    if world_loader is not None and not callable(world_loader):
+        raise TypeError("world_loader must be callable")
     needs_lease, owner, wait_seconds = _rationality_lease_params(cfg)
     if not needs_lease:
-        return _evolve(cfg, observer=observer)
+        return _evolve(cfg, observer=observer, **({"world_loader": world_loader} if world_loader is not None else {}))
     try:
         with gpu_guard.gpu_lease(owner, wait_seconds=wait_seconds):
-            return _evolve(cfg, observer=observer)
+            return _evolve(cfg, observer=observer, **({"world_loader": world_loader} if world_loader is not None else {}))
     except gpu_guard.GpuBusy as exc:
         raise RuntimeError(
             "GPU is busy for the GA run: held by "

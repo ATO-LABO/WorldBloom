@@ -15,6 +15,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+from saved_world_fixtures import install_current_worlds
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution.provenance import ConfigError, atomic_json, read_json
@@ -54,6 +55,7 @@ class JobTests(unittest.TestCase):
         for name in ("engine", "gapengine", "scripts", "execution", "projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name, ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copyfile(ROOT / "requirements.txt", self.repo / "requirements.txt")
+        install_current_worlds(self.repo, "romance", "momotaro")
         self.configs = ConfigStore(self.repo, self.base / "control", self.base / "runs")
         self.configs.save({"label":"jobs", "project_id":"romance", "template_id":"romance",
                            "evolution":{"generations":1,"population":1,"seeds":1}}, config_id="cfg-test")

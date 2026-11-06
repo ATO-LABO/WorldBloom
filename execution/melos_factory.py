@@ -2,7 +2,8 @@
 
 Original external source bytes remain unchanged. Two AST-only packaging edits
 remove its top-level sys.path insertion and inject the explicit input parent as
-ROOT. All scenario/action code is compiled unchanged. No external trial runner
+ROOT. The isolated runner gets a hash-bound world loader. All scenario/action
+code is compiled unchanged. No external trial runner
 or main entrypoint is called. Inputs must retain the approved melos-input name.
 """
 import ast
@@ -14,12 +15,15 @@ import sys
 import threading
 import types
 
+import yaml
+
 from engine.execution_plan import digest
+from engine.world import World
 from execution.melos_session import MelosSession
 from gapengine.genome import Genome
 from gapengine.melos_choice_provider import MelosChoiceProvider
 
-TRANSFORM_VERSION = 'approved_melos_root_binding_v1'
+TRANSFORM_VERSION = 'approved_melos_root_binding_v2'
 # Approved received sources, frozen 2026-10-14. Caller catalogs cannot expand
 # this allowlist; a new source revision requires explicit reviewed code change.
 _APPROVED_SOURCES = {
@@ -42,6 +46,17 @@ _LOCK = threading.RLock()
 
 def approved_catalogs():
     return {'sources': deepcopy(_APPROVED_SOURCES), 'inputs': deepcopy(_APPROVED_INPUTS)}
+
+
+def load_approved_world(path):
+    """Load only the exact frozen Melos world; regular saved-world gates still apply."""
+    source = Path(path)
+    if source.name != "world.yaml" or source.is_symlink():
+        raise ValueError("Approved world.yaml required")
+    raw = source.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != _APPROVED_INPUTS["world.yaml"]:
+        raise ValueError("World differs from the approved Melos world")
+    return World(yaml.safe_load(raw), source)
 
 
 def source_class_identity(cls):
@@ -122,6 +137,13 @@ class MelosSessionFactory:
             sys.modules[name] = module
             try:
                 exec(compile(_transform(source, str(path)), str(path), 'exec'), module.__dict__)
+                approved_path = self.input_dir / "world.yaml"
+                def from_yaml(world_path):
+                    if Path(world_path) != approved_path:
+                        raise ValueError("World is outside the approved Melos input")
+                    return load_approved_world(approved_path)
+
+                module.World = types.SimpleNamespace(from_yaml=from_yaml)
             except BaseException:
                 if previous is None: sys.modules.pop(name, None)
                 else: sys.modules[name] = previous

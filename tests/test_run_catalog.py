@@ -1,4 +1,5 @@
 """UI005 candidate provenance, immutable selection and legacy compatibility."""
+from frozen_world import evolve_frozen
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import http.client
@@ -280,7 +281,7 @@ class CatalogTests(unittest.TestCase):
                "population": 2, "seeds": 2, "seed_base": 0, "ga_seed": 9,
                "coevolve": True, "processes": 1, "keep": "exemplar"}
         with EvolutionObserver(root, rid, cfg) as observer:
-            evolve(cfg, observer=observer)
+            evolve_frozen(cfg, observer=observer)
         manifest = {"schema_version": 1, "run_id": rid, "job_id": "job-real", "config_id": "cfg-test",
                     "evolution": {"generations": 2}}
         atomic_json(root / "manifest.json", manifest)

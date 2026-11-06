@@ -69,6 +69,7 @@ class RelationPersistenceTests(unittest.TestCase):
 
     def test_saved_metadata_can_initialize_the_real_simulation(self):
         import shutil
+        from frozen_world import load_frozen_world
         from engine.world import World
         from engine.subject import Subject
         from engine.sim import Simulation
@@ -77,7 +78,7 @@ class RelationPersistenceTests(unittest.TestCase):
         shutil.copytree(root/'projects/momotaro',project)
         graph=root/'templates/momotaro/action_graph.yaml'
         def load():
-            world=World.from_yaml(project/'world.yaml',action_graph_path=graph)
+            world=load_frozen_world(project/'world.yaml',action_graph_path=graph)
             people={s.id:s for s in [Subject.from_yaml(p) for p in sorted((project/'subjects').glob('*.yaml'))]}
             Simulation(123,world,people,Path(self.temp.name)/'unused-simulation-output')
             return world.relations.snapshot()
