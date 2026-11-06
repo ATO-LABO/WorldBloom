@@ -258,15 +258,15 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("wb", body)
         self.assertIn("cfg-test", body)
 
-        # WB-UI-021: /configs carries the single 文章生成 card, defaulted from
-        # an absent settings.json (DEFAULT_BACKEND = llama-server).
+        # The AI settings page displays the saved backend separately from model selection.
         self.assertIn('<section class="gs-panel" id="output" data-gs-panel="output">', body)
         self.assertIn('data-wb="output-settings"', body)
-        self.assertIn(
-            '<select id="f-backend" name="backend" data-field="backend">',
-            body,
-        )
-        self.assertIn('<option value="llama-server" selected>', body)
+        self.assertIn('data-gs-saved', body)
+        self.assertIn('data-gs-gemma-profile', body)
+        self.assertNotIn('<select id="f-backend"', body)
+        status, saved_settings = self.http("GET", "/api/settings/output")
+        self.assertEqual(status, 200, saved_settings)
+        self.assertEqual(saved_settings["backend"], "llama-server")
 
         status, body, _ = self.get_status("/configs/cfg-test")
         self.assertEqual(status, 200, body)
