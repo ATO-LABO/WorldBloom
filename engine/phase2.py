@@ -1072,8 +1072,11 @@ def available_verbs(
 ) -> set[str]:
     """Apply matching phase-rule allowlists and denylists."""
 
+    base_verbs = set(subject.verbs)
+    from engine.story_genres import granted_actions
+    base_verbs.update(granted_actions(world.story_genres))
     if not world.phase_rules:
-        return set(subject.verbs)
+        return base_verbs
 
     present = world.present_subjects(subject.zone)
     namespace = world.namespace(
@@ -1088,7 +1091,7 @@ def available_verbs(
         if rule["predicate"].evaluate(namespace)
     ]
     if not matching:
-        return set(subject.verbs)
+        return base_verbs
 
     enable_lists = [
         set(rule["enable"])
@@ -1101,7 +1104,7 @@ def available_verbs(
         for verb in rule["disable"]
     }
 
-    available = set(subject.verbs)
+    available = base_verbs
     if enable_lists:
         enabled = set().union(*enable_lists)
         available.intersection_update(enabled)

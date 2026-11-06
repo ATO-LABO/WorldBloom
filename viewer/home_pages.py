@@ -104,8 +104,13 @@ def world_people(store, world_id):
 
 def world_card(store, world, genres):
     wid = world["id"]
-    genre = world.get("genre") or ""
-    genre_name = genres.get(genre, {}).get("name") or genre or "ジャンル未設定"
+    from engine.story_genres import for_world, label
+    try:
+        definition = yaml.safe_load(store.read("world", wid, "world.yaml")) or {}
+        selected = for_world(definition, store.repo / "projects" / wid / "world.yaml")
+    except (OSError, ValueError, TypeError, AttributeError, yaml.YAMLError):
+        selected = []
+    genre, genre_name = " ".join(selected), label(selected)
     description, places, period = world_details(store, world)
     protagonist = world.get("protagonist") or "未設定"
     antagonist = world.get("antagonist") or "未設定"
@@ -116,7 +121,7 @@ def world_card(store, world, genres):
             f'<p class="hl-description">{E(description)}</p>'
             f'<p class="hl-facts">人物 {E(world["subjects"])}人 <span>・</span> 場所 {places}か所 <span>・</span> {E(period)}</p>'
             f'<p class="hl-roles">主人公 <strong>{E(protagonist)}</strong><span>／</span>敵役 <strong>{E(antagonist)}</strong></p>'
-            f'<a class="hl-open" data-purpose-carry href="/worlds/{U(wid)}" aria-label="{E(name)}の世界を開く">世界を開く →</a></article>')
+            f'<a class="hl-open" data-home-world data-purpose-carry href="/worlds/{U(wid)}" aria-label="{E(name)}の世界を開く">世界を開く →</a></article>')
 
 
 def genre_card(genre, worlds, editable):
@@ -137,37 +142,15 @@ def render(repository, *, job_store=None):
     store = LibraryStore(job_store.configs.repo if job_store else data.ROOT)
     notice = ""
     try:
-        worlds, genres = store.worlds(), store.genres()
+        worlds = store.worlds()
     except (ValueError, OSError, KeyError, TypeError):
-        worlds, genres = [], []
-        notice = '<p class="hl-notice" role="status">世界の一覧を読み込めませんでした。保存場所を確認してから、ページを開き直してください。</p>'
-    genre_map = {g["id"]: g for g in genres}
-    world_map = {w["id"]: w.get("name") or w["id"] for w in worlds}
-    options = {w.get("genre") or "": genre_map.get(w.get("genre"), {}).get("name") or w.get("genre") or "ジャンル未設定" for w in worlds}
-    select = "".join(f'<option value="{E(key or "__unset__")}">{E(value)}</option>' for key, value in sorted(options.items()))
+        worlds = []
+        notice = '<p class="hl-notice" role="status">世界の一覧を読み込めませんでした。</p>'
     create = '<a class="hl-primary" data-purpose-carry href="/worlds/new">＋ 新しい世界を作る</a>' if job_store else '<span class="hl-readonly">閲覧専用</span>'
-    new_genre = '<a class="hl-open hl-new-genre" href="/genres/new">＋ 新しいジャンルを作る</a>' if job_store else ""
-    cards = "".join(world_card(store, w, genre_map) for w in worlds)
-    genre_cards = "".join(genre_card(g, world_map, job_store is not None) for g in genres)
+    cards = "".join(world_card(store, w, {}) for w in worlds)
     body = ('<div class="hl-shell" data-home-library><nav class="hl-purpose"><a href="/">← 目的を選び直す</a><span data-purpose-current>目的：物語制作</span></nav><header class="hl-heading"><div><h1>世界を選ぶ</h1>'
-            '<p>世界を開いて、人物や場所、物語の始まりを確かめましょう。</p></div>' + create + '</header>'
-            + notice + recent_execution(job_store)
-            + '<div class="hl-toolbar"><div class="hl-tabs" role="tablist" aria-label="ライブラリー">'
-            f'<button id="hl-world-tab" role="tab" aria-selected="true" aria-controls="worlds" data-home-tab="worlds">世界 <span>{len(worlds)}</span></button>'
-            f'<button id="hl-genre-tab" role="tab" aria-selected="false" aria-controls="genres" tabindex="-1" data-home-tab="genres">ジャンル <span>{len(genres)}</span></button></div>'
-            '<div class="hl-filters"><label><span class="hl-sr">世界名・人物で検索</span><input data-home-search type="search" placeholder="世界名・人物で検索"></label>'
-            '<label data-home-genre-label><span class="hl-sr">ジャンルで絞り込み</span><select data-home-genre><option value="">すべてのジャンル</option>'
-            + select + '</select></label><span class="hl-count" data-home-count role="status" aria-live="polite">'
-            f'{len(worlds)}件</span></div></div><div class="hl-scroll">'
-            '<section id="worlds" role="tabpanel" aria-labelledby="hl-world-tab"><div class="hl-grid">' + cards + '</div>'
-            + ('' if worlds else '<div class="hl-empty"><h2>まだ世界がありません</h2><p>新しい世界を作るところから始めましょう。</p></div>')
-            + '</section><section id="genres" role="tabpanel" aria-labelledby="hl-genre-tab" hidden>'
-            '<div class="hl-genre-intro"><p>ジャンルは、行動とその結果を決める共通のルールです。</p>' + new_genre + '</div>'
-            '<div class="hl-grid">' + genre_cards + '</div>'
-            + ('' if genres else '<div class="hl-empty"><h2>ジャンルがありません</h2></div>')
-            + '</section><div class="hl-empty" data-home-empty hidden><h2>条件に合うものがありません</h2>'
-            '<p>検索する言葉やジャンルを変えてみてください。</p><button type="button" data-home-reset>絞り込みを解除</button></div></div>'
+            '<p>世界を開いて、人物や場所、物語の始まりを確かめましょう。</p></div>'+create+'</header>'+notice+recent_execution(job_store)
+            +'<div class="hl-toolbar"><div class="hl-filters"><label><span class="hl-sr">世界名・人物で検索</span><input data-home-search type="search" placeholder="世界名・人物で検索"></label><span class="hl-count" data-home-count role="status" aria-live="polite">'+str(len(worlds))+'件</span></div></div><div class="hl-scroll"><section id="worlds"><div class="hl-grid">'+cards+'</div>'
+            +('' if worlds else '<div class="hl-empty"><h2>まだ世界がありません</h2></div>')+'</section><div class="hl-empty" data-home-empty hidden><h2>条件に合うものがありません</h2><p>検索する言葉を変えてみてください。</p><button type="button" data-home-reset>絞り込みを解除</button></div></div>'
             '<footer class="hl-footer">世界の設定を編集しても、保存済みの実行結果は変わりません。</footer></div>')
-    doc = pages.document("世界を選ぶ", body, phase="world", job_store=job_store,
-                         show_phase_band=False, is_home=True, page_class="home-library", stylesheets=('home-workspace.css',), scripts=('home-workspace.js',))
-    return doc
+    return pages.document("世界を選ぶ", body, phase="world", job_store=job_store, show_phase_band=False, is_home=True, page_class="home-library", stylesheets=('home-workspace.css',), scripts=('home-workspace.js',))

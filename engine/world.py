@@ -408,6 +408,9 @@ class World:
             for verb, roles in sorted(raw_permission.items())
             if isinstance(roles, dict)
         }
+        from engine.story_genres import resolve
+        self.story_genres = resolve(definition, self.action_graph)
+        self.romantic_relationships = {}
         self.permission_restricted_weight = float(
             self.action_graph.get(
                 "restricted_weight",
@@ -890,9 +893,18 @@ class World:
             if str(ending["id"]) in target_ids
         )
 
+    def story_genre_allows(self, verb: str) -> bool:
+        from engine.story_genres import allows
+        return allows(self.story_genres, verb)
+
     def genre_allows(self, verb: str) -> bool:
         """Apply node genre tags only when the template declares a genre."""
 
+        if not self.story_genre_allows(verb):
+            return False
+        from engine.story_genres import owner
+        if owner(verb) is not None:
+            return True
         if not self.genres:
             return True
 
@@ -1198,6 +1210,7 @@ class World:
         self.pending_effects.clear()
         self.offers.clear()
         self.pledges.clear()
+        self.romantic_relationships.clear()
         self.settled.clear()
 
         for (

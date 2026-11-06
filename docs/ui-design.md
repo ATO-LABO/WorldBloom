@@ -1,8 +1,36 @@
 # Shared WorldBloom viewer design
 
+Execution entry follows world list → opened world → that world's conditions.
+The run phase carries `world` in its link. A bare `/jobs` or an unknown world
+returns to `/worlds` before choosing any saved setting or inspecting active jobs.
+An explicitly identified saved configuration or job retains its own world;
+existing settings, execution history and results remain readable.
+
 New screens use the shared design by default. A different design requires an
 explicit user request or a documented content-specific need (for example, a
 story-reading layout). Every viewer layout carries the `ui-screen` baseline.
+
+Saved worlds and new-world drafts use the same ordered categories from
+`viewer/settings_navigation.py`: premise, people/relationships, places/movement,
+items/information, time/events, world rules, checks/investigation, and files. Existing
+leaf views remain subordinate to their owning category. Character roles live
+with people; the world's target ending lives with the premise. Goal verdict
+definitions are reachable from character goals and retain their shared condition
+references. Low-priority genres and rule definitions live under world rules.
+File editing has its own final sidebar entry. Saved worlds retain their existing
+setting-file editor; unadopted drafts expose their existing draft JSON. The JSON
+field is reused and parked when another category is selected, so navigation does
+not lose pending text or duplicate the editor. Shared precedent originals are edited
+in the shared-rule workspace, rather than through a world-local save. Legacy
+role URLs resolve to the new role/ending controls; field-scoped draft targets
+retain their existing server contract after their visual relocation.
+
+All three settings surfaces use the actual shared `ui-nav` component, including
+the world-rules page's `settings-workspace` shell. Sidebar width, label padding,
+typography, active markers and mobile wrapping have one owner in `ui.css` and
+`ui-tokens.css`. Page styles must not redefine navigation controls. Explicit
+`aria-current="false"` is inactive. Browser checks compare both links and buttons
+against a minimal shared-navigation reference, rather than only checking tokens.
 
 The new-world draft review uses a settings workspace with left section navigation,
 selected-object details, schematic place/route nodes and edges, and the existing

@@ -7,7 +7,7 @@
   const generateButton = $('[data-wd-generate]') || form.querySelector('button');
   const status = $('[data-wd-status]'), errors = $('[data-wd-errors]');
   const editor = $('[data-wd-json]'), confirm = $('[data-wd-confirm]');
-  let record = null, token = null, busy = false, dirty = false, uncertain = false, epoch = 0;
+  let record = null, token = null, busy = false, dirty = false, uncertain = false, rawInvalid = false, epoch = 0;
   const goalRoot=$('[data-wd-goals]'),confirmRow=$('[data-wd-confirm-row]');
   const workspaceRoot=$('[data-wd-workspace]');let workspace=null,editing=null;
   if(workspaceRoot&&window.WorldBloomDraftWorkspace&&window.WorldBloomDraftEditing){
@@ -30,7 +30,13 @@
   function canValidate(){return record?.state==='review'||editableRecord();}
   function markDirty(){dirty=true;confirm.checked=false;status.textContent='下案に未検証の変更があります。修正した下案を確認してください。';controls();}
   function updateGoalEditor(){
-    if(workspace){try{workspace.render(JSON.parse(editor.value));}catch(_){workspaceRoot.textContent='下案の形式を確認してください。';}return;}
+    if(workspace){
+      const focused=document.activeElement===editor,start=editor.selectionStart,end=editor.selectionEnd,scroll=editor.scrollTop;
+      try{workspace.render(JSON.parse(editor.value));rawInvalid=false;if(errors.textContent==='下案JSONの書式を確認してください。入力は残っています。項目の編集は書式を直してから行ってください。')errors.textContent='';}
+      catch(_){rawInvalid=true;errors.textContent='下案JSONの書式を確認してください。入力は残っています。項目の編集は書式を直してから行ってください。';}
+      if(focused&&editor.isConnected){editor.focus({preventScroll:true});editor.setSelectionRange(start,end);editor.scrollTop=scroll;}
+      return;
+    }
     if(!goalEditor)return;
     try {goalEditor.render(editor.value.length<=128000?JSON.parse(editor.value):null);}catch(_){goalEditor.render(null);}
   }
@@ -58,7 +64,7 @@
     editor.disabled = busy || uncertain;
     if(goalEditor)goalEditor.setDisabled(busy||uncertain||!canValidate());
     if(workspace)workspace.setDisabled(busy||uncertain||!canValidate());
-    if(editing)editing.setDisabled(busy||uncertain||!canValidate());
+    if(editing)editing.setDisabled(busy||uncertain||rawInvalid||!canValidate());
   }
   async function api(path, body) {
     const response = await fetch('/api/world-drafts' + path, body === undefined ? {} : {
@@ -141,7 +147,7 @@
     const run=++epoch;busy=true;controls();
     try{const r=await api('/'+token);if(run===epoch)show(r);}catch(error){if(run===epoch)failed(error);}finally{if(run===epoch){busy=false;controls();}}
   });
-  editor.addEventListener('input',()=>{markDirty();updateGoalEditor();});
+  editor.addEventListener('input',()=>{markDirty();updateGoalEditor();controls();});
   confirm.addEventListener('change',controls);
   $('[data-wd-validate]').addEventListener('click',async()=>{
     if(busy||uncertain||!canValidate())return;

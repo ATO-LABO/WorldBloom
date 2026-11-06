@@ -52,6 +52,8 @@ STATIC_FILES = {
     "concerns-editor.js": "application/javascript; charset=utf-8",
     "responses-editor.js": "application/javascript; charset=utf-8",
     "home-workspace.css": "text/css; charset=utf-8",
+    "world-review.css": "text/css; charset=utf-8",
+    "world-notes.js": "application/javascript; charset=utf-8",
     "home-workspace.js": "application/javascript; charset=utf-8",
     "world-create.css": "text/css; charset=utf-8",
     "world-draft.css": "text/css; charset=utf-8",
@@ -257,8 +259,10 @@ class ViewerHandler(BaseHTTPRequestHandler):
             self._send_html(purpose_pages.landing(job_store))
             return
         if parts == ["modes"]:
-            from viewer import purpose_pages
-            self._send_html(purpose_pages.render(self.repository, job_store=job_store))
+            self.send_response(302)
+            mode=parse_qs(urlsplit(self.path).query).get("mode",[None])[0]
+            self.send_header("Location", "/worlds"+("?mode="+mode if mode in ("create","review") else ""))
+            self.end_headers()
             return
         if parts == ["version"]:
             from viewer import version

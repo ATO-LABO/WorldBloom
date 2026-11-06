@@ -162,7 +162,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   const genreName = id => model.genres.find(g=>g.id===id)?.name || id;
   const edit = (key,label='編集') => model.editable ? `<button type="button" data-edit="${key}">✎ ${label}</button>` : '';
   const head = (title,action='') => `<div class="wp-section-head"><h2>${title}</h2>${action}</div>`;
-  const title = (name,sub='',action='') => `<div class="wp-title"><h1 tabindex="-1">${esc(name)}</h1>${action}</div>${sub?`<p class="wp-subtitle">${esc(sub)}</p>`:''}`;
+  const title = (name,sub='',action='') => `<div class="wp-title"><h1 tabindex="-1">${esc(name)}</h1>${action}</div>${sub?`<p class="wp-subtitle">${esc(sub)}</p>`:''}<p class="ui-hint" data-settings-save-note>保存した変更はこの世界で次に実行を始めるときから使われます。過去の実行結果は変更されません。</p>`;
   const row = (name,value) => `<div><dt>${esc(name)}</dt><dd>${value}</dd></div>`;
   const tabs = (group,selected,entries) => `<div class="wp-tabs" aria-label="表示の切り替え">${entries.map(([key,label])=>`<button type="button" data-view="${group}:${key}" aria-pressed="${selected===key}">${label}</button>`).join('')}</div>`;
   const time = () => `${w.time?.days ?? '未指定'}日間 ・ ${(w.time?.slots||[]).join(' ／ ')}`;
@@ -179,11 +179,11 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const expansionHtml = expansionTemplate ? expansionTemplate.innerHTML : '';
     return title(model.name,'この世界の前提を確認する') +
       `<section class="wp-section">${head('どんな世界？',edit('overview'))}<p>${absent(model.overview)}</p></section>`+
-      `<section class="wp-section">${head('ジャンル',edit('genre'))}<p>${model.genre ? esc(genreName(model.genre)) : '未設定（実行前に選んでください）'}</p></section>`+
+      `<p class="wp-muted">ジャンル：${esc(model.story_genre_label || '共通')} · <a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#genres">世界のルールで変更</a></p>`+
       `<div class="wp-columns"><section><h2>物語の出発点</h2><p>${hero?`${esc(hero.id)}は${esc(entry(hero))}にいる。`:'主人公は未指定です。'}</p></section><section><h2>目指す結末</h2><p>${esc(goal(hero))}</p></section></div>`+
       `<section class="wp-section">${head('この世界を構成するもの')}<button class="wp-jump" data-screen="people"><strong>登場人物</strong><span>${esc(people.map(p=>p.id).join('、')) || 'まだいません'}</span><span>→</span></button><button class="wp-jump" data-screen="places"><strong>場所</strong><span>${esc(zones.map(z=>z.name).join('、')) || 'まだありません'}</span><span>→</span></button><button class="wp-jump" data-screen="story"><strong>初期物語</strong><span>シミュレーション開始時点の導入・状況</span><span>→</span></button><button class="wp-jump" data-screen="time"><strong>時間</strong><span>${esc(time())}</span><span>→</span></button></section>`+
-      `<details class="wp-section"><summary>詳しい世界設定</summary><p>状況別の定石・行動図鑑・設定ファイルは、<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced">詳細設定</a>で確認できます。</p></details>`+
-      expansionHtml;
+      `<section class="wp-section">${head('物語の始まり',edit('intro','導入文を編集'))}<p class="wp-story-copy">${absent(model.intro)}</p></section><section class="wp-section">${head('世界全体で目指す結末',edit('target-ending'))}<p>${esc((w.target_ending||[]).map(id=>(w.ending||[]).find(e=>e.id===id)?.label||id).join('・')||'未設定')}</p></section>`+
+      (document.getElementById('wp-work-note')?.innerHTML||'')+expansionHtml;
   }
   const TRAIT_LABELS = {social:'社交性',stubbornness:'頑固さ',curiosity:'好奇心',diligence:'勤勉さ',temper:'気性の荒さ'};
   const num = v => Number(v) || 0;
@@ -212,8 +212,20 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const commitments=window.WorldBloomPersonValues.effective(p,w);
     const values=commitments.map(v=>{const condition=w.concerns?.conditions?.find(c=>c.id===v.condition);return `<li>${esc(condition?.label||v.condition)} ／ 優先順位 ${esc(v.priority)} ／ ${v.required?'譲れない条件':'他の価値と比較して判断'}</li>`;}).join('');
     const personal=`<section class="wp-section">${head('大切にしていること',edit('person-commitments','価値観を編集'))}${values?`<ul>${values}</ul>`:'<p>重視する条件は未設定です。</p>'}<p class="wp-muted">優先順位は大きい数を先に比べます。<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#concerns">状態・条件の定義を確認</a> ／ <a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#objectives">達成・失敗・期間の定義を確認</a></p></section>`;
-    return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目的',esc(goal(p)))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl>${personal}<details open><summary>性格・能力の数値</summary>${statBars(p)}</details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
+    return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目標と達成条件',esc(goal(p))+'<br>'+goalConditions(p))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl>${personal}<section class="wp-section">${head('開始時点の状態',edit('state'))}<p>居場所：${esc(entry(p))}<br>持ち物：${esc(items(p))}<br>知識：${esc(knows(p))}</p></section><details open><summary>性格・能力の数値</summary>${statBars(p)}</details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
   }
+  function goalConditions(p){
+    const base='/worlds/'+encodeURIComponent(model.id);
+    const values=window.WorldBloomPersonValues.effective(p,w),definitions=w.goal_rules?.definitions||[],conditions=w.concerns?.conditions||[];
+    const expression=e=>!e?'未設定':e.condition?(conditions.find(c=>c.id===e.condition)?.label||e.condition):e.all?e.all.map(expression).join('、かつ、'):e.any?e.any.map(expression).join('、または、'):e.not?'満たさない：'+expression(e.not):(e.constant?'常に成立':'常に不成立');
+    const related=definitions.filter(d=>values.some(v=>v.condition===d.condition));
+    return related.map(d=>'<p>達成：'+esc(expression(d.success))+'<br>失敗：'+esc(expression(d.failure))+'<br>判定期間：'+esc((d.period?.start??'未設定')+'〜'+(d.period?.end??'未設定')+'（開始・終了の時点を含む）')+'</p>').join('')+'<a href="'+base+'?view=advanced#objectives">達成・失敗・判定期間を確認・編集 →</a>';
+  }
+  function itemsScreen(){
+    const entries=w.items||[],facts=w.facts||[];
+    return title('持ち物と情報','既存の定義と、開始時点の所持・知識を確認します。')+entries.map(i=>`<section class="wp-section"><h2>${esc(i.name||i.id)}</h2><p>${esc(i.description||i.note||'')}</p><p>所持者：${esc(people.filter(p=>Number(p.inventory?.[i.name])>0).map(p=>p.id).join('・')||'人物の初期所持には指定なし')}</p></section>`).join('')+`<section class="wp-section"><h2>開始時点の所持・知識</h2>${stateTable()}</section><section class="wp-section"><h2>情報の定義</h2><p>${esc(facts.map(f=>typeof f==='string'?f:f.id||f.name||JSON.stringify(f)).join('・')||'未設定')}</p></section><a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#files">元の設定を編集 →</a>`;
+  }
+  function checksScreen(){return title('確認・調査','設定の検証と、保存された結果を確認します。')+`<section class="wp-section"><button class="ui-button" data-screen="routes">結末までの経路を調査</button><a class="ui-button" href="/worlds/${encodeURIComponent(model.id)}/goal">経路の目標を入力・検証</a><a class="ui-button" href="/worlds/${encodeURIComponent(model.id)}?view=review" data-world-review-link>この世界をレビュー</a><a class="ui-button" href="/worlds/${encodeURIComponent(model.id)}?view=advanced#files">設定ファイル・保存済み設定の検証</a></section>`;}
   function personButton(p,i){
     const anchor=WorldRelations.affiliation(people.find(q=>q.id===w.protagonist)||{});
     const groups=[...new Set(people.map(WorldRelations.affiliation))].sort((a,b)=>Number(b===anchor)-Number(a===anchor)||(a<b?-1:a>b?1:0));
@@ -221,7 +233,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   }
   function peopleScreen() {
     const top=title('登場人物','',`<span>${people.length}人</span>${model.editable?'<button class="wp-add" data-edit="add-person">＋ 人物を追加</button>':''}`);
-    return top+`<div class="wp-people wp-rel-people"><aside class="wp-people-list"><input class="wp-search" type="search" aria-label="人物を探す" placeholder="人物を探す" value="${esc(query)}"><div class="wp-person-options">${people.map(personButton).join('')}</div><p class="wp-muted" id="wp-no-results" ${people.some(p=>p.id.includes(query))?'hidden':''}>一致する人物がいません。</p></aside><article class="wp-person-detail">${tabs('people',peopleView,[['list','一覧'],['graph','相関図'],['matrix','関係表']])}${peopleBody()}</article></div>`;
+    return top+`<section class="wp-section">${head('物語の役割',edit('roles'))}<p>主人公：${esc(w.protagonist||'未設定')} ／ 敵役：${esc(w.antagonist||'未設定')}</p></section><div class="wp-people wp-rel-people"><aside class="wp-people-list"><input class="wp-search" type="search" aria-label="人物を探す" placeholder="人物を探す" value="${esc(query)}"><div class="wp-person-options">${people.map(personButton).join('')}</div><p class="wp-muted" id="wp-no-results" ${people.some(p=>p.id.includes(query))?'hidden':''}>一致する人物がいません。</p></aside><article class="wp-person-detail">${tabs('people',peopleView,[['list','一覧'],['graph','相関図'],['matrix','関係表']])}${peopleBody()}</article></div>`;
   }
   function peopleBody(){return peopleView==='graph'?relationsView():peopleView==='matrix'?relationMatrixView():personDetail();}
   const relationText = e => `${e.source} → ${e.target}：${e.label||'ラベルなし'} ／ 親しさ ${e.affinity??'未設定'} ／ 認知 ${e.awareness??'未設定'}`;
@@ -410,12 +422,12 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     content.classList.toggle('is-people',screen==='people');
     content.classList.toggle('is-routes',screen==='routes');
     content.dataset.screen=screen;
-    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,story,time:timeScreen,routes:routesScreen}[screen])();
+    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,items:itemsScreen,story,time:timeScreen,routes:routesScreen,checks:checksScreen}[screen]||overview)();
+    window.WorldBloomWorldNotes?.mount(content);
     if(screen==='time')timeSettings.mount(content.querySelector('[data-time-settings]'));
     updateRelationTransform();
-    root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===screen)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+    root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===({story:'overview',routes:'checks'}[screen]||screen))b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     const missing=[];
-    if(!model.genre)missing.push('ジャンル');
     if(!people.length)missing.push('登場人物');
     if(!zones.length)missing.push('場所');
     if(!people.some(p=>p.id===w.protagonist))missing.push('主人公');
@@ -423,7 +435,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     if(!w.target_ending?.length)missing.push('目標の結末');
     if(people.some(p=>!p.range?.entry))missing.push('人物の初期位置');
     const next=root.querySelector('[data-next]');
-    next.href=missing.length?`/worlds/${encodeURIComponent(model.id)}?view=advanced`:model.configUrl;
+    next.href=missing.length?`/worlds/${encodeURIComponent(model.id)}#screen=people`:model.configUrl;
     next.textContent=missing.length?'未設定の項目を確認 →':'実行条件を決める →';
     if(model.editable)document.getElementById('wp-message').textContent=missing.length?'未設定：'+missing.join('・'):'編集した項目ごとに保存できます。';
     content.scrollTop=screen==='routes'?0:(scrolls[screen]||0);
@@ -435,13 +447,17 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     opener=trigger; changed=false; commitmentDraft=null;
     let name='',fields=[];
     const field=(key,label,value,type='textarea',options=null,required=false)=>({key,label,value,type,options,required});
-    if(key==='overview'||key==='intro'){
+    if(key==='roles'||key==='target-ending'){
+      const current={protagonist:w.protagonist||'',antagonist:w.antagonist||'',target_ending:structuredClone(w.target_ending||[])};name=key==='roles'?'主人公・敵役を指定':'世界全体で目指す結末';
+      fields=key==='roles'?[field('protagonist','主人公',current.protagonist,'select',people.map(p=>[p.id,p.id])),field('antagonist','敵役',current.antagonist,'select',people.map(p=>[p.id,p.id]))]:[field('target_ending','目指す結末',current.target_ending,'multiselect',(w.ending||[]).map(e=>[e.id,e.label||e.id]))];
+      applyEdit=values=>({operation:'roles',target:null,values:{...current,...values}});
+    }else if(key==='overview'||key==='intro'){
       name=key==='overview'?'世界の説明を編集':'導入文を編集';fields=[...(key==='overview'?[field('name','世界の名前',model.name,'text')]:[]),field('text','文章',model[key])];
       applyEdit=values=>({operation:key,target:null,values});
     }else if(key==='genre'){
       name='ジャンルを選ぶ';
-      fields=[field('template_id','ジャンル',model.genre||'','select',[['','選んでください'],...model.genres.map(g=>[g.id,g.name])],true)];
-      applyEdit=values=>({operation:'genre',target:null,values});
+      fields=[{html:'<p>共通の行動に、必要なジャンルを追加できます。複数選択できます。</p><fieldset><legend>この世界で使うジャンル</legend><label><input type="checkbox" checked disabled> 共通（常に有効）</label>'+model.story_genre_catalog.map(g=>`<label><input type="checkbox" data-story-genre value="${esc(g.id)}" ${(model.story_genres||[]).includes(g.id)?'checked':''}> ${esc(g.name)}<small>${esc(g.description)}</small></label>`).join('')+'</fieldset>'}];
+      applyEdit=()=>({operation:'story-genres',target:null,values:{genres:[...dialog.querySelectorAll('[data-story-genre]:checked')].map(el=>el.value)}});
     }else if(key==='time'){
       name='時間の範囲を編集';fields=[field('days','日数',w.time?.days||16,'number'),field('slots','時間帯（読点で区切る）',(w.time?.slots||[]).join('、'),'text')];
       applyEdit=v=>({operation:'time',target:null,values:{days:Number(v.days),slots:split(v.slots)}});
@@ -554,7 +570,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   root.addEventListener('click',e=>{
     const b=e.target.closest('button,[data-person]');if(!b)return;
     if(screen==='routes')rememberRoutes();
-    if(b.dataset.screen){const nextScreen=b.dataset.screen;timeSettings.guard(()=>{timeSettings.leave();scrolls[screen]=content.scrollTop;screen=nextScreen;render(true);});}
+    if(b.dataset.screen){const nextScreen=b.dataset.screen;timeSettings.guard(()=>{timeSettings.leave();scrolls[screen]=content.scrollTop;screen=nextScreen;history.pushState(null,'','#'+new URLSearchParams({screen}));render(true);});}
     else if(b.hasAttribute('data-event-day')){const day=Number(b.dataset.eventDay);eventDay=eventDay===day?null:day;render();}
     else if(b.hasAttribute('data-state-person')){person=Number(b.dataset.statePerson);openEditor('state',b);}
     else if(b.dataset.personLink){person=Number(b.dataset.personLink);screen='people';render(true);}
@@ -686,5 +702,6 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   });
   dialog.addEventListener('close',()=>{if(opener?.isConnected)opener.focus({preventScroll:true});});
   window.addEventListener('beforeunload',e=>{if(changed||busy){e.preventDefault();e.returnValue='';}});
-  render();
+  let autoOpened=false;function restoreScreen(){const hash=new URLSearchParams(location.hash.slice(1));const requested=hash.get('screen')||(['time','time-special'].includes(location.hash.slice(1))?'time':'overview');screen=['overview','people','places','items','story','time','routes','checks'].includes(requested)?requested:'overview';const actor=hash.get('entity');if(actor&&people.some(p=>p.id===actor))person=people.findIndex(p=>p.id===actor);render();const edit=new URLSearchParams(location.search).get('edit');if(!autoOpened&&['roles','target-ending'].includes(edit)){autoOpened=true;const trigger=content.querySelector('[data-edit="'+edit+'"]');if(trigger)openEditor(edit,trigger);}}
+  addEventListener('popstate',()=>timeSettings.guard(restoreScreen));restoreScreen();
 })();

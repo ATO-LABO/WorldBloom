@@ -10,7 +10,7 @@
    if(this.active)this.dispose(this.active);
    this.active=null;this.pencils=[];
    for(const block of content.querySelectorAll('[data-edit-field]')){
-    const field=block.dataset.editField,spec={...target,field};if(block.dataset.editEntity)spec.entity=block.dataset.editEntity;if(block.dataset.editPeer)spec.peer=block.dataset.editPeer;
+    const field=block.dataset.editField,spec={...target,field};if(block.dataset.editSection){spec.section=block.dataset.editSection;spec.entity='';}if(block.dataset.editEntity)spec.entity=block.dataset.editEntity;if(block.dataset.editPeer)spec.peer=block.dataset.editPeer;
     const head=el('div','field-card-head'),heading=block.querySelector(':scope>h3,:scope>h4')||el('h3','',names[field]);if(!heading.parentNode)block.prepend(heading);block.insertBefore(head,heading);head.append(heading);
     const pencil=this.button('',()=>this.open(block,head,pencil,spec));pencil.classList.add('field-pencil');pencil.dataset.fieldPencil=field;
     pencil.fieldSpec=spec;
@@ -97,7 +97,7 @@
    const candidate=copy(a.base);this.put(candidate,a.spec,a.read());
    if(candidate.protagonist===candidate.antagonist){a.error.textContent='主人公と相手役は別の人物を選んでください。';return;}
    if(a.spec.field==='route'){const r=candidate.routes[Number(a.spec.entity)];if(r.from===r.to||candidate.routes.some((other,i)=>i!==Number(a.spec.entity)&&r.from===other.from&&r.to===other.to)){a.error.textContent='同じ場所への経路や、同じ向きの経路の重複は使えません。';return;}}
-   if(!a.preview||this.options.demo){this.dispose(a);this.options.onChange(candidate,a.spec);this.focusPencil(a.spec);return;}
+   if(!a.preview||this.options.demo){this.dispose(a);this.options.onChange(candidate,a.spec.field==='roles'?{...a.spec,section:'people'}:a.spec);this.focusPencil(a.spec);return;}
    a.pending=true;a.committing=true;a.status.textContent='候補と編集した内容を確認して反映しています。';a.error.textContent='';this.setDisabled(this.disabled);
    try{await this.options.applyRevision(a.preview,a.base,candidate);this.dispose(a);this.options.refresh?.();this.focusPencil(a.spec);}
    catch(error){if(a.alive){a.error.textContent=error.message;a.status.textContent='反映できませんでした。入力内容を確認してください。';}}

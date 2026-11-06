@@ -1,7 +1,7 @@
 /* Durable local independent jobs. Mode changes affect presentation only. */
 (function(global){
   'use strict';
-  const KEY='worldbloom-independent-job-v1', TERMINAL=['succeeded','failed','cancelled','interrupted'];
+  const BASE_KEY='worldbloom-independent-job-v1', TERMINAL=['succeeded','failed','cancelled','interrupted'];
   const clone=v=>JSON.parse(JSON.stringify(v));
   function melosProfileSpec(){
     return {label:'Melos 通常9遺伝子・固定中立設定',project_id:'melos-input',template_id:'momotaro',
@@ -74,6 +74,9 @@
   const root=document.querySelector('[data-independent-root]');if(!root)return;
   const q=s=>root.querySelector(s),config=q('[data-independent-config]'),seed=q('[data-independent-seeds]'),start=q('[data-independent-start]'),retry=q('[data-independent-retry]'),cancel=q('[data-independent-cancel]'),status=q('[data-independent-status]'),plan=q('[data-independent-plan]');
   const profile=q('[data-independent-melos-profile]');let profilePending=false;
+  const scope=document.querySelector('[data-purpose-root]')?.dataset?.worldReview||'';
+  let configLabels={};try{configLabels=JSON.parse(document.querySelector('[data-purpose-root]')?.dataset?.worldConfigLabels||'{}');}catch(_){}
+  const KEY=scope?BASE_KEY+':'+encodeURIComponent(scope):BASE_KEY;
   const world=document.querySelector('[data-purpose-world]');let saved={},caps=[],pollTimer=null,epoch=0,leaving=false,loadingResult=false;
   try{saved=JSON.parse(sessionStorage.getItem(KEY)||'{}');}catch(_){}
   const session=new Session(saved,value=>{try{sessionStorage.setItem(KEY,JSON.stringify(value));}catch(_){status.textContent='この画面内で保持しています。再訪時に要求を復元できないため、ジョブIDを控えてください。';}});
@@ -111,11 +114,14 @@
   function schedule(){clearTimeout(pollTimer);epoch++;leaving=false;render();poll();}
   function configurations(){
     const previous=config.value;config.replaceChildren();
-    for(const c of caps.filter(c=>!world||!world.value||c.world===world.value)){const option=document.createElement('option');option.value=c.config_id;option.textContent=c.world+' / '+c.config_id+(c.supported?'':'（利用不可）');config.append(option);}
+    for(const c of caps.filter(c=>!world||!world.value||c.world===world.value)){const option=document.createElement('option');option.value=c.config_id;option.textContent=(configLabels[c.config_id]||c.config_id)+(c.supported?'':'（利用不可）');config.append(option);}
     if([...config.options].some(o=>o.value===previous))config.value=previous;
-    start.disabled=start.disabled||!config.value;
+    config.value=[...config.options].some(o=>o.value===previous)?previous:(config.options[0]?.value||'');
+    const selected=caps.find(c=>c.config_id===config.value);start.disabled=start.disabled||!selected||!selected.supported;
+    if(!session.active)status.textContent=!selected?'この世界の保存済み設定はありません。「制作の実行条件」から設定を保存してください。':!selected.supported?(selected.reason||'この設定では独立CPU試行を利用できません。'):'設定と事前seedを確認して開始してください。画面を開くだけでは実行しません。';
   }
   if(profile)profile.addEventListener('click',async()=>{
+    if(scope&&scope!=='melos-input')return;
     if(profilePending)return;profilePending=true;profile.disabled=true;
     try{
       const existing=await request('/api/independent/capabilities');caps=existing.configurations.map(validateCapability);
@@ -133,15 +139,19 @@
     epoch++;clearTimeout(pollTimer);
     try{const cap=validateCapability(await request('/api/independent/capabilities?config_id='+encodeURIComponent(config.value)));
       if(session.pending||leaving)return;
+      if(scope&&cap.world!==scope)throw new Error('別の世界の条件では実行できません。条件を選び直してください。');
       const id='review-'+global.crypto.randomUUID(),r=makeRequest(cap,seed.value,id);
       const pending=session.start(r,body=>request('/api/independent/jobs',body));render();await pending;schedule();
     }catch(error){render();status.textContent=error.message+' 同じ要求の再確認で重複実行を避けます。';}
   });
   retry.addEventListener('click',async()=>{try{if(session.active&&session.active.job){schedule();return;}const pending=session.retry(body=>request('/api/independent/jobs',body));render();await pending;schedule();}catch(error){render();status.textContent=error.message;}});
   cancel.addEventListener('click',async()=>{try{const pending=session.cancel(id=>request(path(id)+'/cancel',{}));render();await pending;schedule();}catch(error){render();status.textContent=error.message;}});
-  if(world)world.addEventListener('change',configurations);
+  config.addEventListener('change',()=>{render();configurations();});
+  if(world)world.addEventListener('change',()=>{render();configurations();});
   global.addEventListener('pagehide',()=>{leaving=true;epoch++;clearTimeout(pollTimer);session.suspend();});
   global.addEventListener('pageshow',event=>{if(!event.persisted)return;try{const fresh=JSON.parse(sessionStorage.getItem(KEY)||'{}');session.active=new Session(fresh).active;}catch(_){}schedule();});
-  render();request('/api/independent/capabilities').then(value=>{caps=value.configurations.map(validateCapability);render();configurations();}).catch(error=>{start.disabled=true;status.textContent=error.message;});
+  render();request('/api/independent/capabilities').then(value=>{caps=value.configurations.map(validateCapability);
+    if(scope&&!session.active)try{const legacy=JSON.parse(sessionStorage.getItem(BASE_KEY)||'{}');if(caps.some(c=>c.world===scope&&c.config_id===legacy.active?.request?.config_id)){session.active=new Session(legacy).active;session.persist();if(session.active?.job)schedule();}}catch(_){}
+    render();configurations();}).catch(error=>{start.disabled=true;status.textContent=error.message;});
   if(session.active&&session.active.job)schedule();
 })(typeof window!=='undefined'?window:globalThis);

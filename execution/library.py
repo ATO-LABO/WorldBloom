@@ -323,6 +323,7 @@ class LibraryStore:
             "ending": [], "target_ending": [],
             "gapengine": {"action_graph": "templates/basic/action_graph.yaml",
                           "effects": "templates/basic/effects.yaml"},
+            "story_genres": [],
         }
         return self._publish_world(new_id, world=world)
 
