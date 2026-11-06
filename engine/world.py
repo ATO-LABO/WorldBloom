@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from engine.actions import FORCE_ARG_KINDS
+from engine.logical_calendar import LogicalDateLabels, normalize_date_calendar
 from engine.predicate import (
     PREDICATE_NAMES,
     Namespace,
@@ -193,6 +194,12 @@ class PathInfo:
 class World:
     """Validated immutable definitions plus simulation-owned shared state."""
 
+    def time_context(self, day):
+        """Read-only dates for logical days; no action or clock conversion."""
+        if self.date_calendar is None or day == 0:
+            return {}
+        return self._date_labels.label(day)
+
     def __init__(
         self,
         definition: dict[str, Any],
@@ -211,6 +218,11 @@ class World:
         self.slots = tuple(str(slot) for slot in time.get("slots", []))
         if self.days < 1 or not self.slots:
             raise ValueError("World time requires positive days and slots")
+        raw_date_calendar = time.get("date_calendar")
+        if definition.get("slot_execution") is not None and raw_date_calendar is not None:
+            raise ValueError("Logical date calendar cannot replace a slot execution contract")
+        self.date_calendar = normalize_date_calendar(raw_date_calendar, time.get("days", 1))
+        self._date_labels = LogicalDateLabels(time)
 
         self.protagonist = str(definition["protagonist"])
         self.antagonist = str(definition["antagonist"])

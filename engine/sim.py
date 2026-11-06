@@ -432,6 +432,9 @@ class Simulation:
             "precedent_hash": self._precedent_hash(),
             "engine_hash": self._engine_hash(),
         }
+        if self.world.date_calendar is not None:
+            header["date_calendar"] = _plain(self.world.date_calendar)
+            header["date_calendar_semantics"] = "logical_day_labels_v1"
         if self.record_explanations:
             header["explanation_recording"] = {"version": VERSION, "rule": RULE, "cost_baseline_version": 1}
         if self.execution_plan is not None:
@@ -505,6 +508,7 @@ class Simulation:
             "kind": "event",
             "turn": self.turn,
             "day": self.day,
+            **self.world.time_context(self.day),
             "slot": self.slot,
             "subject": subject,
             "verb": verb,
@@ -903,6 +907,7 @@ class Simulation:
             "kind": "decision",
             "turn": self.turn,
             "day": self.day,
+            **self.world.time_context(self.day),
             "slot": self.slot,
             "subject": subject.id,
             "verb": action.verb,
@@ -1257,6 +1262,7 @@ class Simulation:
                 "kind": "snapshot",
                 "turn": self.turn,
                 "day": self.day,
+                **self.world.time_context(self.day),
                 "subject": subject.id,
                 "vector": vector,
                 "layers": layers,
