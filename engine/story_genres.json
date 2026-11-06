@@ -1,0 +1,4 @@
+[
+  {"id":"combat","name":"戦闘","description":"戦う行動を選択肢に加えます。戦闘の結果、負傷や死亡につながることがあります。","actions":["fight"],"grant_actions":[],"enabled":true},
+  {"id":"romance","name":"恋愛","description":"互いの親密度が高いときに、交際する行動を選べます。親密度だけで自動的に交際が始まることはありません。","actions":["start_relationship"],"grant_actions":["start_relationship"],"enabled":true}
+]

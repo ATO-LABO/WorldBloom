@@ -123,19 +123,8 @@ GENRE_LEAD = (
 
 
 def render_genres_section(genres, *, heading=True):
-    # Genres are grammar shared across worlds: this section also appears on
-    # the ⚙ 設定 page (/configs) and, since WB-UI-023, on the home hub's
-    # ジャンル tab (rendered without its own heading there).
-    genre_table = (
-        '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
-        "<th>ID</th><th>ファイル</th><th>使っている世界</th><th>操作</th>"
-        f'</tr></thead><tbody>{"".join(_genre_row(g) for g in genres)}</tbody></table></div>'
-    ) if genres else "<p>ジャンルがありません。</p>"
-    head = "<h2>ジャンル</h2>" if heading else ""
-    return (
-        f'<section class="card" id="genres">{head}{GENRE_LEAD}' + genre_table
-        + '<p><a href="/genres/new">新しいジャンルを作る</a></p></section>'
-    )
+    from viewer.story_genre_pages import panel
+    return panel()
 
 
 def render_home_tabs(worlds, genres, *, can_create):
@@ -679,6 +668,10 @@ def _worlds_detail(handler, world_id):
     if world is None:
         raise ConfigError("world_id", "世界がありません", code="not_found")
     label = world["name"] or world_id
+    if _query(handler).get("view") == ["review"]:
+        from viewer.world_review import render
+        handler._send_html(render(world,job_store=job_store))
+        return
     if _query(handler).get("view") != ["advanced"]:
         from execution.world_editor import snapshot
         from viewer import world_prototype
@@ -770,15 +763,17 @@ def _worlds_routes(handler, world_id):
 
 
 def _genres_new(handler):
-    job_store = _job_store(handler)
-    if job_store is None:
-        handler._send_html(_guidance_page(phase="world"))
-        return
-    from viewer import genre_pages
-    genre_pages.new(handler)
+    from viewer.story_genre_pages import show
+    show(handler)
 
 
 def _genres_detail(handler, genre_id):
+    from engine.story_genres import catalog
+    if genre_id in {g["id"] for g in catalog()}:
+        from viewer.story_genre_pages import show
+        show(handler, genre_id)
+        return
+
     if _job_store(handler) is None:
         handler._send_html(_guidance_page(phase="world"))
         return
@@ -909,21 +904,9 @@ def _save_world_basics(handler, world_id):
 
 
 def _create_genre(handler):
-    job_store = _require_job_store(handler)
-    body = _boundary_body(handler)
-    store = LibraryStore(job_store.configs.repo)
-    if set(body) == {"template_id", "from_template_id"}:
-        template_id = store.create_genre(body["template_id"], from_id=body["from_template_id"])
-    else:
-        from execution.genre_editor import create
-        expected = {"mode", "template_id", "name", "description"}
-        if body.get("mode") == "copy": expected.add("from_template_id")
-        if set(body) != expected or body.get("mode") not in ("new", "copy"):
-            raise ConfigError("request", "作成方法と入力項目を確認してください", code="bad_request")
-        if body["mode"] == "copy" and not isinstance(body.get("from_template_id"), str):
-            raise ConfigError("from_template_id", "複製元を選んでください", code="bad_request")
-        template_id = create(store, body["template_id"], name=body["name"], description=body["description"], from_id=body.get("from_template_id"))
-    handler._send_json(HTTPStatus.CREATED, {"template_id": template_id})
+    _require_job_store(handler)
+    _boundary_body(handler)
+    raise ConfigError("genre", "ジャンルの新規作成は利用できません。世界の概要で用意されたジャンルを選んでください", code="forbidden")
 
 
 def _save_world_file(handler, world_id):

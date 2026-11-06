@@ -20,8 +20,8 @@ main.ui-screen fieldset {border-color:var(--ws-line);border-radius:var(--ws-radi
 main.ui-screen :is(.rw-heading,.sf-heading,.sc-heading,.cp-heading,.rv-heading,.lw-heading,.ge-heading) {padding:var(--ws-content-y) var(--ws-content-x);}
 main.ui-screen :is(.rw-content,.rb-content,.rs-editor,.ge-scroll,.wp-content) {padding:var(--ws-content-y) var(--ws-content-x);}
 main.ui-screen :is(.rw-footer,.rs-footer,.sf-footer,.sc-footer,.cp-footer,.rv-footer,.lw-footer,.ge-footer,.ux-footer,.wp-footer) {font-size:var(--ws-fs-sm);padding:var(--ws-space-2) var(--ws-gutter);min-height:var(--ws-bar-h);border-top:1px solid var(--ws-line);background:var(--ws-surface);}
-main.ui-screen :is(.rw-sidebar,.wp-nav,.ge-nav) {padding:var(--ws-space-5) 0;}
-main.ui-screen :is(.rw-sidebar,.wp-nav,.ge-nav)>:is(a,button) {font:600 var(--ws-fs-md)/var(--ws-line-height) var(--ws-font);padding:var(--ws-space-3) var(--ws-nav-x);border-radius:0;}
+main.ui-screen :is(.rw-sidebar,.wp-nav:not(.ui-nav),.ge-nav) {padding:var(--ws-space-5) 0;}
+main.ui-screen :is(.rw-sidebar,.wp-nav:not(.ui-nav),.ge-nav)>:is(a,button) {font:600 var(--ws-fs-md)/var(--ws-line-height) var(--ws-font);padding:var(--ws-space-3) var(--ws-nav-x);border-radius:0;}
 main.ui-screen :is(.rw-tabs,.ux-tabs,.cp-tabs,.hl-tabs)>button {border-radius:0;}
 /* Dense data toolbars use one explicit compact size; forms keep the default. */
 main.ui-screen :is(.sf-list-toolbar,.rv-toolbar,.lw-view-controls,.sc-controls,.rw-river-tools) :is(input,select,button) {font-size:var(--ws-fs-sm);min-height:var(--ws-control-h-sm);padding:var(--ws-space-1) var(--ws-space-2);}
@@ -83,9 +83,11 @@ main.ui-screen .ux-footer {margin-inline:calc(-1 * var(--ws-content-x));margin-b
 .ui-content h2 {padding-bottom:var(--ws-space-1);border-bottom:1px solid var(--ws-line);}
 .ui-split {display:grid;grid-template-columns:minmax(0,1fr) var(--ws-aside-w);flex:1;min-height:0;min-width:0;}
 .ui-aside {padding:var(--ws-content-y) var(--ws-content-x);background:var(--ws-panel-bg);border-left:1px solid var(--ws-line);overflow:auto;min-width:0;min-height:0;}
-.ui-nav {display:flex;flex-direction:column;gap:0;padding:var(--ws-space-5) 0;border-right:1px solid var(--ws-line);min-height:0;overflow:auto;}
-.ui-nav>a,.ui-nav>button {padding:var(--ws-space-3) var(--ws-nav-x);border:0;border-left:5px solid transparent;border-radius:0;text-align:left;background:transparent;color:var(--ws-text);font:600 var(--ws-fs-md)/var(--ws-line-height) var(--ws-font);text-decoration:none;}
-.ui-nav>[aria-current] {background:var(--ws-select-bg);border-left-color:var(--ws-advance);}
+.ui-nav {display:flex;flex-direction:column;gap:0;padding:var(--ws-space-5) 0;border-right:1px solid var(--ws-line);min-width:0;min-height:0;overflow:auto;}
+.ui-nav>a,.ui-nav>button,main.ui-screen .ui-nav>:is(a,button) {display:flex;align-items:center;gap:var(--ws-space-2);flex-shrink:0;min-width:0;max-width:100%;box-sizing:border-box;white-space:normal;overflow-wrap:anywhere;padding:var(--ws-space-3) var(--ws-nav-x);border:0;border-left:5px solid transparent;border-radius:0;text-align:left;background:transparent;color:var(--ws-text);font:600 var(--ws-fs-md)/var(--ws-line-height) var(--ws-font);text-decoration:none;}
+.ui-nav>[aria-current]:not([aria-current="false"]) {background:var(--ws-select-bg);border-left-color:var(--ws-advance);}
+.ui-nav>:is(a,button) {min-height:var(--ws-control-h);letter-spacing:normal;cursor:pointer;}
+.ui-nav small {margin-inline-start:auto;font-size:var(--ws-fs-sm);color:var(--ws-muted);}
 .ui-nav>h2 {padding:0 var(--ws-nav-x);font-size:var(--ws-fs-sm);color:var(--ws-muted);margin:0 0 var(--ws-space-3);}
 .ui-field {display:flex;flex-direction:column;gap:var(--ws-space-2);margin:0 0 var(--ws-space-4);font-size:var(--ws-fs-md);font-weight:400;min-width:0;}
 .ui-field small,.ui-hint {font-size:var(--ws-fs-sm);color:var(--ws-muted);line-height:var(--ws-line-height);}
@@ -147,8 +149,8 @@ main.ui-screen .ux-footer {margin-inline:calc(-1 * var(--ws-content-x));margin-b
   main.ui-screen [data-world-advanced]>.ux-advanced-grid>* {flex-shrink:0;}
   main.ui-screen.run-observer>.page-content {overflow:auto;}
   main.ui-screen :is(.rw-footer,.rs-footer,.sf-footer,.sc-footer,.cp-footer,.rv-footer,.lw-footer,.ge-footer,.ux-footer) {flex-wrap:wrap;padding:var(--ws-space-3) var(--ws-content-x);}
-  main.ui-screen :is(.rw-sidebar,.wp-nav,.ge-nav) {padding:var(--ws-space-2);}
-  main.ui-screen :is(.rw-sidebar,.wp-nav,.ge-nav)>:is(a,button) {padding:var(--ws-space-2);font-size:var(--ws-fs-sm);}
+  main.ui-screen :is(.rw-sidebar,.wp-nav:not(.ui-nav),.ge-nav) {padding:var(--ws-space-2);}
+  main.ui-screen :is(.rw-sidebar,.wp-nav:not(.ui-nav),.ge-nav)>:is(a,button) {padding:var(--ws-space-2);font-size:var(--ws-fs-sm);}
   .site-header .header-pickers {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--ws-space-2) var(--ws-space-3);padding:var(--ws-space-2) var(--ws-space-3);}
   .site-header .header-pickers>.brand,.site-header .header-pickers>.home-cell {grid-row:1;grid-column:1/-1;}
   .site-header .header-pickers>.header-links {grid-row:2;grid-column:1/-1;margin:0;justify-content:flex-start;max-width:100%;white-space:normal;}
@@ -158,8 +160,8 @@ main.ui-screen .ux-footer {margin-inline:calc(-1 * var(--ws-content-x));margin-b
   .site-header .purpose-top-status {display:none;}
   .ui-workspace--nav {display:flex;flex-direction:column;}
   .ui-nav {flex-direction:row;flex-wrap:wrap;flex-shrink:0;padding:var(--ws-space-2) var(--ws-content-x);border-right:0;border-bottom:1px solid var(--ws-line);}
-  .ui-nav>a,.ui-nav>button {padding:var(--ws-space-2);font-size:var(--ws-fs-sm);border-left:0;border-bottom:3px solid transparent;}
-  .ui-nav>[aria-current] {border-bottom-color:var(--ws-advance);}
+  .ui-nav>a,.ui-nav>button,main.ui-screen .ui-nav>:is(a,button) {padding:var(--ws-space-2);font-size:var(--ws-fs-sm);border-left:0;border-bottom:3px solid transparent;}
+  .ui-nav>[aria-current]:not([aria-current="false"]) {border-bottom-color:var(--ws-advance);}
   .ui-nav>h2 {display:none;}
   .ui-heading {flex-wrap:wrap;}
   .ui-split {display:block;overflow:auto;}

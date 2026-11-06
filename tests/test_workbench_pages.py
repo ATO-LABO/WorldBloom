@@ -1158,7 +1158,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn('<nav class="phase-band"', body)
         self.assertNotIn('data-wb="world-picker"', body)
 
-        for path in ("/configs", "/jobs", "/worlds/romance"):
+        for path in ("/configs", "/jobs?world=romance", "/worlds/romance"):
             status, body, _ = self.get_status(path)
             self.assertEqual(status, 200, body)
             band = body[body.index('<nav class="phase-band"'):body.index("</nav>")]
@@ -1405,7 +1405,7 @@ class WorkbenchTests(unittest.TestCase):
         status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)
         self.assertIn("実行した探索を振り返り", body)
-        self.assertIn('href="/jobs">実行条件を確認 →</a>', body)
+        self.assertIn('href="/worlds">世界を選んで実行条件へ →</a>', body)
 
     def test_raw_log(self):
         self._legacy_experiment("exp-raw")

@@ -89,6 +89,9 @@ def display_date(value):
 
 
 def collection_panel(kind, items, worlds, selected):
+    if kind == 'genres':
+        from viewer.story_genre_pages import panel
+        return '<section class="gs-panel" id="genres" data-gs-panel="genres">'+panel()+'</section>'
     configs = kind == 'configs'
     title = '実行設定の保存版' if configs else 'ジャンル'
     description = '保存した条件を確認し、複製や実行に使います。' if configs else '物語の展開ルールと、それを使う世界を確認します。'
@@ -101,7 +104,7 @@ def collection_panel(kind, items, worlds, selected):
         if configs:
             ev=item['evolution']; world=worlds.get(item['project_id'],item['project_id'])
             meta=f'{world} · {ev["generations"]}世代 × {ev["population"]}個体 × {ev["seeds"]}回'
-            pairs=[('世界',world),('ジャンル',item['template_id']),('実行規模',f'{ev["generations"]}世代 × {ev["population"]}個体 × {ev["seeds"]}回'),('作成日時',display_date(item.get('created_at')))]
+            pairs=[('世界',world),('基本ルール',item['template_id']),('実行規模',f'{ev["generations"]}世代 × {ev["population"]}個体 × {ev["seeds"]}回'),('作成日時',display_date(item.get('created_at')))]
             body='<dl>'+''.join(f'<dt>{E(k)}</dt><dd>{E(v)}</dd>' for k,v in pairs)+'</dl><p class="gs-hint ui-hint">保存版は編集不可です。条件を変える場合は複製してください。</p>'
             body+=link('/configs/'+U(ident),'実行条件を詳しく確認 ↗')
             body+='<details><summary>保存版の記録</summary><p>'+E(ident)+'</p><p>複製元：'+E(item.get('parent_config_id') or 'なし')+'</p></details>'
@@ -123,7 +126,7 @@ def render(handler):
     if jobs is None:
         handler._send_html(wb._guidance_page(phase="world")); return
     query=parse_qs(urlsplit(handler.path).query); active=query.get('tab',['output'])[0]
-    if active not in ('output','compute','configs','genres'): active='output'
+    if active not in ('output','compute','configs'): active='output'
     library=LibraryStore(jobs.configs.repo)
     worlds={w['id']:w.get('name') or w['id'] for w in library.worlds()}
     configs=jobs.configs.list(); genres=library.genres()
@@ -140,10 +143,10 @@ def render(handler):
     try: jev=read_jev_settings(getattr(handler.server,'settings_path',None))
     except ConfigError: jev=None
     initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution,'jev':jev},ensure_ascii=False))
-    nav='<h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','文章生成'),('compute','計算'),('configs','実行設定の保存版'),('genres','ジャンル')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small>'
+    nav='<h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','文章生成'),('compute','計算'),('configs','実行設定の保存版')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small>'
     nav=ui.navigation(nav, label='全体設定', class_name='gs-nav')
-    panels=[output_panel(view,error),compute_panel(evolution,compute_error,jev),collection_panel('configs',configs,worlds,selected_config),collection_panel('genres',genres,worlds,selected_genre)]
-    for i,key in enumerate(('output','compute','configs','genres')):
+    panels=[output_panel(view,error),compute_panel(evolution,compute_error,jev),collection_panel('configs',configs,worlds,selected_config)]
+    for i,key in enumerate(('output','compute','configs')):
         if key != active: panels[i]=panels[i].replace('data-gs-panel="'+key+'"','data-gs-panel="'+key+'" hidden',1)
     content=f'<div class="gs-shell ui-workspace ui-workspace--nav" data-global-settings data-initial="{initial}">{nav}<div class="gs-main">'+''.join(panels)+'</div></div>'
     doc=pages.document('全体設定',content,phase=None,job_store=jobs,pin=wb.data.pinned_target(jobs,configs=configs),page_class='settings-workspace', stylesheets=('global-settings.css',), scripts=('global-settings.js',))

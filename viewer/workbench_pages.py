@@ -2510,6 +2510,18 @@ def _jobs_list(handler):
     # newest system-wide -- see data.pinned_target's world_id docstring.
     world_id = query.get("world", [None])[0] or None
     config_id = query.get("config", [None])[0] or None
+    # An explicit saved configuration identifies its own world. A bare /jobs
+    # must never borrow the newest configuration or another running world.
+    if world_id is None and config_id:
+        try:
+            world_id = job_store.configs.get(config_id)["project_id"]
+        except (ConfigError, FileNotFoundError):
+            world_id = None
+    if not world_id or not any(w["id"] == world_id for w in pages._library_worlds(job_store)):
+        handler.send_response(HTTPStatus.FOUND)
+        handler.send_header("Location", "/worlds")
+        handler.end_headers()
+        return
     view = _run_view(handler, world_id=world_id, config_id=config_id)
     if view is None:
         handler._send_html(pages.document(

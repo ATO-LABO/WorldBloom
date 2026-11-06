@@ -54,7 +54,7 @@ def _phase_href(
         # instead of falling back to whichever world's config is newest.
         if world and world.get("id"):
             return f"/jobs?world={_url_segment(str(world['id']))}"
-        return "/jobs"
+        return "/worlds"
     if key == "sifting":
         return f"/exp/{_url_segment(run)}" if run else "/selected"
     if key == "stage":
@@ -682,7 +682,7 @@ def next_action_for(
         job_id = phases.get("job_id")
         if job_id:
             return "実行の進捗を見る →", f"/jobs/{_url_segment(str(job_id))}"
-        return "実行する →", "/jobs"
+        return "世界を選んで実行条件へ →", "/worlds"
     if next_phase == "sifting":
         return _NEXT_LABELS["sifting"], f"/exp/{_url_segment(run_name)}"
     return _NEXT_LABELS["stage"], f"/outputs?run={_url_segment(output_run)}"

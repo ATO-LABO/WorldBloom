@@ -185,7 +185,7 @@ def compile_draft(value):
         seen.add(pair)
         routes[route["from"]].append({key: route[key] for key in ("to", "cost", "requires_item") if key in route})
     world = {key: d[key] for key in ("name", "overview", "initial_story", "protagonist", "antagonist")}
-    world.update(time={"days": 7, "slots": ["朝", "昼", "夕方", "夜"]},
+    world.update(story_genres=[], time={"days": 7, "slots": ["朝", "昼", "夕方", "夜"]},
                  zones=[{"name": p["name"], "note": p["description"]} for p in d["places"]],
                  routes=routes, items=[{"name": p["name"], "lootable": True} for p in d["items"]],
                  gapengine={"action_graph": "templates/basic/action_graph.yaml", "effects": "templates/basic/effects.yaml"},

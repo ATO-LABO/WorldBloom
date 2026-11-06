@@ -57,6 +57,7 @@ FORCE_ARG_KINDS: dict[str, tuple[str, ...]] = {
     "give_item": ("subject", "item"),
     "persuade": ("subject",),
     "pledge": ("subject",),
+    "start_relationship": ("subject",),
     "negotiate": ("subject",),
     "concede": ("subject",),
     "craft": ("item",),
@@ -1205,6 +1206,22 @@ def _persuade_candidates(
     )
 
 
+def _relationship_candidates(subject, world, present):
+    if not world.story_genre_allows("start_relationship"):
+        return []
+    result = []
+    for target in _living_targets(subject, present):
+        key = world.pledge_key(subject.id, target.id)
+        if key in world.romantic_relationships:
+            continue
+        if world.relations.stance(subject.id, target.id) < 0.6 or world.relations.stance(target.id, subject.id) < 0.6:
+            continue
+        if _permission_weight(subject, target, "start_relationship", world) <= 0:
+            continue
+        result.append((Action("start_relationship", (target.id,)), 0.15 + subject.traits["social"] * 0.15))
+    return result
+
+
 def _pledge_candidates(
     subject: Subject,
     world: World,
@@ -1890,6 +1907,7 @@ def candidates(
     weighted.extend(_give_candidates(subject, world, present))
     weighted.extend(_persuade_candidates(subject, world, present))
     weighted.extend(_pledge_candidates(subject, world, present))
+    weighted.extend(_relationship_candidates(subject, world, present))
     weighted.extend(_negotiate_candidates(subject, world, present))
     weighted.extend(_concede_candidates(subject, world, present))
     weighted.extend(_craft_candidates(subject, world))

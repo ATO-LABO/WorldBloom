@@ -46,6 +46,7 @@ HANDLED_VERBS = DELIBERATION_VERBS | RESPONSE_VERBS | frozenset(
         "give_item",
         "persuade",
         "pledge",
+        "start_relationship",
         "negotiate",
         "concede",
         "craft",
@@ -84,6 +85,8 @@ class VerbEngine:
         day: int,
         notify: bool = True,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        if not self.world.story_genre_allows(action.verb):
+            return "invalid", {"reason": "genre_disabled", "verb": action.verb}, []
         joint = getattr(self.world,'joint_activities',None)
         if joint is not None and joint.sim is not None:
             if action.verb=='leave_activity': return joint.planning.execute(actor,action)
@@ -1577,6 +1580,20 @@ class VerbEngine:
             [],
         )
 
+
+    def _start_relationship(self, actor, action, *, turn, day):
+        target = self._target(actor, action)
+        if target is None or target.vitality not in {"alive", "revived"}:
+            return "invalid", {"reason": "target_not_present"}, []
+        if self.world.relations.stance(actor.id, target.id) < 0.6 or self.world.relations.stance(target.id, actor.id) < 0.6:
+            return "invalid", {"reason": "affinity_too_low"}, []
+        key = self.world.pledge_key(actor.id, target.id)
+        if key in self.world.romantic_relationships:
+            return "invalid", {"reason": "already_dating"}, []
+        self.world.romantic_relationships[key] = {"parties": list(key), "status": "dating", "turn": turn}
+        actor.phase.add(f"交際:{target.id}")
+        target.phase.add(f"交際:{actor.id}")
+        return "relationship_started", {"target": target.id, "status": "dating", "parties": list(key)}, []
 
     def _pledge(
         self,

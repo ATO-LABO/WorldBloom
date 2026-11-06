@@ -12,10 +12,10 @@ class El{
   set textContent(text){this._text=text;this.children=[];}
   get textContent(){return this._text+this.children.map(x=>x.textContent).join('');}
 }
-function environment({root=true,query='',storageError=false,initialSaved=null}={}){
+function environment({root=true,query='',storageError=false,initialSaved=null,rootDataset={}}={}){
   const fields={};for(const name of ['status','result','history','file','import','cancel','world','note','run','storage','copy','copy-status','copy-fallback'])fields[name]=new El();
   const select=new El(),label=new El(),notice=new El(),panels=['create','review'].map(mode=>{const e=new El();e.dataset.purposePanel=mode;return e;});
-  const container=new El();container.querySelector=s=>fields[s.match(/data-purpose-(.*)\]/)[1]];
+  const container=new El();container.dataset=rootDataset;container.querySelector=s=>fields[s.match(/data-purpose-(.*)\]/)[1]];
   const map=new Map(),events={},readers=[];let blocked=storageError;if(initialSaved)map.set(KEY,JSON.stringify(initialSaved));
   const context={URL,URLSearchParams,console,JSON,Set,Map,Object,Number,Error,
     location:{search:query,href:'http://localhost/modes'+query},
