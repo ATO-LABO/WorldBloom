@@ -8,8 +8,9 @@ from engine.verbs import VerbEngine
 from engine.action_constraints import validate_bound
 from execution import action_usage_settings as settings, world_editor
 from execution.provenance import ConfigError
-from test_action_usage import load_fixture
+from test_action_usage import current_response_fixture, load_fixture
 from test_engine import FixedRandom
+from test_goal_planner import load
 import test_action_usage as usage_tests
 
 
@@ -80,9 +81,7 @@ class ConstraintEngineTests(unittest.TestCase):
         self.assertEqual(before,after)
 
     def test_response_grant_replaces_native_actor_list_without_bypassing_domain_conditions(self):
-        from test_action_timing import configuration
-        from test_goal_planner import load
-        raw,people=configuration();w,p,_=load(raw,people);a=p['通信士']
+        raw,people=current_response_fixture();w,p,_=load(raw,people);a=p['通信士']
         spec=w.responses.actions['send_beacon']
         before=w.responses._option(w,a,spec,1,1)['excluded']
         a.verbs=set(a.verbs)-{'respond'};spec['actors']=[]
@@ -93,9 +92,7 @@ class ConstraintEngineTests(unittest.TestCase):
         self.assertEqual(parse(w,policy,w.mechanics)[0]['constraints']['response:send_beacon']['slots'],['昼'])
 
     def test_planning_forecast_excludes_forbidden_person_and_current_band(self):
-        from test_action_timing import configuration
-        from test_goal_planner import load
-        raw,people=configuration();w,p,_=load(raw,people);a=p['通信士']
+        raw,people=current_response_fixture();w,p,_=load(raw,people);a=p['通信士']
         restrict(w,'response:send_beacon',actors=[])
         plan=w.planner.search(w,a,'beacon_sent',1)
         self.assertFalse(any(s['verb']=='respond' for s in plan.get('steps',[])))
