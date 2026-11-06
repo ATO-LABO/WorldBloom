@@ -11,6 +11,7 @@ import re
 import tempfile
 import unittest
 
+from frozen_world import load_frozen_world
 from engine.world import World
 from viewer import action_catalog
 
@@ -20,7 +21,7 @@ _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
 def _world(project_id, genre_id):
-    return World.from_yaml(
+    return load_frozen_world(
         ROOT / "projects" / project_id / "world.yaml",
         action_graph_path=ROOT / "templates" / genre_id / "action_graph.yaml",
     )

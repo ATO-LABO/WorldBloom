@@ -380,11 +380,6 @@ def _capture_inputs(repo, spec, runs=None):
     template = contained(repo, "templates/" + spec["template_id"])
     if not project.is_dir() or not template.is_dir():
         raise ConfigError("inputs", "世界またはテンプレートがありません")
-    try:
-        from engine.world_format import validate as validate_format
-        validate_format(yaml.safe_load((project / "world.yaml").read_bytes()))
-    except ValueError as error:
-        raise ConfigError("world_format_version",str(error),code="unsupported") from error
     if "execution_profile" in spec:
         # Preserve the exact approved project bytes, including scenario.yaml.
         # Template/genetic guidance is not part of this closed profile input.
@@ -402,6 +397,11 @@ def _capture_inputs(repo, spec, runs=None):
         return blobs, {"schema_version": 1, "files": entries}
     world_key = add(project / "world.yaml")
     declared_world = yaml.safe_load(blobs[world_key])
+    from engine.world_format import validate as validate_format
+    try:
+        validate_format(declared_world)
+    except ValueError as error:
+        raise ConfigError("world_format_version", str(error), code="unsupported") from error
     calendar_mode = (isinstance(declared_world, dict) and isinstance(declared_world.get('slot_execution'), dict)
                      and declared_world['slot_execution'].get('mode') == 'calendar_promises_v2')
     if calendar_mode:
@@ -574,11 +574,12 @@ def _describe(root, spec):
     template = root / "templates" / spec["template_id"]
     graph = template / "action_graph.yaml"
     definition = yaml.safe_load((project / 'world.yaml').read_bytes())
-    try:
+    if "execution_profile" not in spec:
         from engine.world_format import validate as validate_format
-        validate_format(definition)
-    except ValueError as error:
-        raise ConfigError("world_format_version",str(error),code="unsupported") from error
+        try:
+            validate_format(definition)
+        except ValueError as error:
+            raise ConfigError("world_format_version", str(error), code="unsupported") from error
     calendar_mode = (isinstance(definition.get('slot_execution'), dict)
                      and definition['slot_execution'].get('mode') == 'calendar_promises_v2')
     if calendar_mode:
@@ -587,7 +588,11 @@ def _describe(root, spec):
         people = list(subjects.values())
         subject_paths = [project / r['path'] for r in definition['slot_execution']['subjects']]
     else:
-        world = World.from_yaml(project / "world.yaml", action_graph_path=graph if graph.is_file() else None)
+        if "execution_profile" in spec:
+            from execution.melos_factory import load_approved_world
+            world = load_approved_world(project / "world.yaml")
+        else:
+            world = World.from_yaml(project / "world.yaml", action_graph_path=graph if graph.is_file() else None)
         subject_paths = sorted((project / 'subjects').glob('*.yaml'))
         people = [Subject.from_yaml(p) for p in subject_paths]
     if spec["evolution"]["target_ending"] is not None:

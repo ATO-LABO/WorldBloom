@@ -31,9 +31,10 @@ def supported(world):
 def parse(world, raw, mechanics):
     if raw is None:
         if mechanics is not None: raise ValueError('mechanics requires action_usage')
-        if not supported(world):return None, {"version":1,**{f:True for f in FEATURES}}
-        raw={"version":VERSION,"engine_contract":CONTRACT,"catalog_version":1,"enabled":sorted(references(world)-{"verb:start_relationship"})}
-        mechanics={"version":1,**{f:True for f in FEATURES}}
+        # Historical in-memory inputs retain intrinsic stamina and price costs,
+        # without the new per-action budget or policy restrictions. Public
+        # serialized entry points enforce the current format separately.
+        return None, {"version": 1, **{f: True for f in FEATURES}}
     if not supported(world): raise ValueError('Action usage editing does not support this execution contract')
     if not isinstance(raw, dict) or set(raw) not in ({'version','engine_contract','catalog_version','enabled'}, {'version','engine_contract','catalog_version','enabled','constraints'}):
         raise ValueError('Invalid action_usage fields')

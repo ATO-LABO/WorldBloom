@@ -333,7 +333,8 @@ class ViewerGrowthPanelTests(unittest.TestCase):
 
 class ExecutionConfigGrowthToggleTests(unittest.TestCase):
     def test_default_is_off_and_excluded_from_argv(self) -> None:
-        from execution.configs import evolution_defaults, normalize
+        from saved_world_fixtures import install_current_worlds
+from execution.configs import evolution_defaults, normalize
 
         self.assertEqual(evolution_defaults()["personality_growth"], False)
         normalized = normalize(
@@ -376,6 +377,7 @@ class ExecutionConfigGrowthToggleTests(unittest.TestCase):
                     ignore=shutil.ignore_patterns("__pycache__"),
                 )
             shutil.copyfile(root / "requirements.txt", repo / "requirements.txt")
+            install_current_worlds(repo, "momotaro")
             store = ConfigStore(repo, base / "control", base / "runs")
             spec = {
                 "label": "growth-toggle", "project_id": "momotaro", "template_id": "momotaro",

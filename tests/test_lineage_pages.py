@@ -1,6 +1,6 @@
 """Tests for the 系譜 (lineage) viewer page (WB-LINEAGE-002).
 
-Reuses one small real evolve() run (see gapengine/lineage.py's own
+Reuses one small real evolve_frozen() run (see gapengine/lineage.py's own
 RealRunLineageTests for why ga_seed=17/generations=5/population=8/seeds=2 is
 pinned) so the page is exercised against genuine multi-generation ancestry,
 an immigrant single-node lineage, and a deliberately damaged ancestor --
@@ -20,6 +20,7 @@ single-node immigrant cell.
 
 from __future__ import annotations
 
+from frozen_world import evolve_frozen
 import json
 import re
 import shutil
@@ -44,7 +45,7 @@ class LineagePageTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory()
         root = Path(cls.temporary.name)
         cls.runs_root = root / "runs"
-        evolve(
+        evolve_frozen(
             {
                 "ga_seed": 17,
                 "generations": 5,

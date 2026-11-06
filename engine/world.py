@@ -225,7 +225,8 @@ class World:
         if definition.get('slot_execution') is not None and time.get('date_calendar') is not None:
             raise ValueError('Logical date calendar cannot replace a slot execution contract')
         self.date_calendar = normalize_date_calendar(time.get('date_calendar'),time.get('days',1))
-        self._date_labels = LogicalDateLabels(time)
+        if self.date_calendar is not None:
+            self._date_labels = LogicalDateLabels(time)
 
         self.protagonist = str(definition["protagonist"])
         self.antagonist = str(definition["antagonist"])
@@ -438,6 +439,8 @@ class World:
         }
         self.action_usage = None
         self.mechanics = None
+        from engine.story_genres import resolve
+        self.story_genres = resolve(definition, self.action_graph)
         self.romantic_relationships = {}
         self.permission_restricted_weight = float(
             self.action_graph.get(
@@ -932,11 +935,17 @@ class World:
         )
 
     def action_enabled(self, verb: str) -> bool:
+        if self.action_usage is None:
+            from engine.story_genres import allows
+            return allows(self.story_genres, verb)
         return self.action_usage_allows(verb)
     def mechanics_enabled(self, feature: str) -> bool:
         return bool((self.mechanics or {}).get(feature,False))
     def global_action_grants(self) -> set[str]:
-        # Permissions live on people or explicit action actor lists, never genres.
+        if self.action_usage is None:
+            from engine.story_genres import granted_actions
+            return granted_actions(self.story_genres)
+        # Current-format permissions live on people or explicit actor lists.
         return set()
     def action_usage_allows(self, verb, args=None):
         from engine.action_usage import allows

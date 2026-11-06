@@ -3,6 +3,7 @@ tests for gapengine/knowledge_text.py's situation-class renderer."""
 
 from __future__ import annotations
 
+from frozen_world import run_frozen
 import re
 import tempfile
 import unittest
@@ -11,6 +12,7 @@ from pathlib import Path
 from engine.actions import Action
 from engine.contest import strength
 from engine.subject import Subject
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.knowledge_text import (
     _power_bucket,
@@ -33,7 +35,7 @@ DECIMAL = re.compile(r"\d+\.\d+")
 
 
 def load_fixture() -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(PROJECT / "world.yaml")
+    world = load_frozen_world(PROJECT / "world.yaml")
     subjects = [
         Subject.from_yaml(path)
         for path in sorted(
@@ -235,7 +237,7 @@ class GoldenTurnOneTests(unittest.TestCase):
         from scripts.rationality_probe import _run_mode_a
 
         with tempfile.TemporaryDirectory() as run_out:
-            points = _run_mode_a(
+            points = run_frozen(_run_mode_a,
                 project=PROJECT,
                 template=TEMPLATE,
                 seed=1,
@@ -295,7 +297,7 @@ class NoDisallowedNamesAcrossSeedsTests(unittest.TestCase):
 
         for seed in (1, 2, 3):
             with tempfile.TemporaryDirectory() as run_out:
-                points = _run_mode_a(
+                points = run_frozen(_run_mode_a,
                     project=PROJECT,
                     template=TEMPLATE,
                     seed=seed,

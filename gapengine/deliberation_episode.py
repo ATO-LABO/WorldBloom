@@ -17,9 +17,9 @@ from engine.subject import Subject
 from engine.world import World
 
 
-def load_episode(world_path):
+def load_episode(world_path, *, world_loader=None):
     world_path = Path(world_path)
-    world = World.from_yaml(world_path)
+    world = (world_loader or World.from_yaml)(world_path)
     if world.deliberation is None:
         raise ValueError("This runner requires an explicit deliberation world")
     if world.action_graph_enabled or world.effect_library:
@@ -37,11 +37,11 @@ def load_episode(world_path):
     return world, people
 
 
-def run_batch(world_path, output, seeds):
+def run_batch(world_path, output, seeds, *, world_loader=None):
     world_path, output = Path(world_path).resolve(), Path(output)
     if not isinstance(seeds, list) or not seeds or len(seeds) > 1000 or any(type(s) is not int or s < 0 for s in seeds) or len(set(seeds)) != len(seeds):
         raise ValueError("Distinct, predeclared nonnegative seeds required")
-    world, _ = load_episode(world_path)
+    world, _ = load_episode(world_path, world_loader=world_loader)
     sampler, provider = factory_identities(native_profile(world))
     source = Path(__file__).read_bytes()
     classification = {"id": "deliberation_terminal_v1", "version": 1,
@@ -71,7 +71,7 @@ def run_batch(world_path, output, seeds):
     (output / "input-manifest.json").write_text(json.dumps(manifest_doc, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
     (output / "execution-plan.json").write_text(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
     def evaluate(seed):
-        current_world, people = load_episode(inputs / "world.yaml")
+        current_world, people = load_episode(inputs / "world.yaml", world_loader=world_loader)
         episode = Simulation(seed, current_world, people, output / f"seed-{seed:04}", execution_plan=plan.to_dict())
         ledger = episode.run()
         from gapengine.deliberation_story import scene_material
