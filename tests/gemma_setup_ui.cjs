@@ -1,0 +1,47 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {MODEL,catalogState,linked} = require('../viewer/static/gemma-setup.js');
+assert.equal(catalogState({live:true,models:[],reason:null}),'missing');
+assert.equal(catalogState({live:true,models:[MODEL],reason:null}),'available');
+assert.equal(catalogState({live:true,models:[],reason:'server_unreachable'}),'unreachable');
+for (const payload of [null,{}, {models:[MODEL]}, {live:true}, {live:true,models:[null]}, {live:true,models:[],reason:'invalid_response'}]) assert.equal(catalogState(payload),'unknown');
+assert.equal(catalogState({live:true,models:['gemma4:other'],reason:null}),'missing');
+assert.equal(linked({backend:'ollama',model:MODEL}),true);
+assert.equal(linked({backend:'openai',model:MODEL}),false);
+assert.equal(linked({backend:'ollama',model:'qwen3.8:27b-q4_K_M'}),false);
+assert.equal(linked(null),false);
+const source=fs.readFileSync(require.resolve('../viewer/static/gemma-setup.js'),'utf8');
+assert.ok(!source.includes('/api/pull'));
+assert.ok(!source.includes('method:'));
+assert.ok(source.includes('worldbloom:output-saved'));
+console.log('Gemma setup states, exact binding, no download/write request: passed');
+// Exercise rendered states, retry and post-save/reload without network or disk writes.
+(async () => {
+ const {mount}=require('../viewer/static/gemma-setup.js');
+ const nodes={};
+ function node(){return {dataset:{},textContent:'',hidden:false,disabled:false,events:{},setAttribute(){},addEventListener(n,f){this.events[n]=f;},querySelector(n){return nodes[n]||(nodes[n]=node());}};}
+ const root=node(),panel=node();
+ root.querySelector=()=>panel;
+ const doc={querySelector:()=>root};
+ let models={live:true,models:[],reason:null}, settings={backend:'ollama',model:'qwen3.8:27b-q4_K_M'}, fail=false;
+ const calls=[];
+ global.fetch=async (path,options)=>{calls.push({path,options});if(fail)throw Error('offline');return {ok:true,json:async()=>path.includes('/models?')?models:settings};};
+ mount(doc);
+ const tick=()=>new Promise(r=>setImmediate(r));await tick();
+ assert.equal(panel.dataset.state,'missing');assert.equal(nodes['[data-gemma-guide]'].open,true);
+ assert.equal(nodes['[data-gemma-unreachable]'].hidden,true);
+ models={live:true,models:[],reason:'server_unreachable'};
+ await nodes['[data-gemma-refresh]'].events.click();
+ assert.equal(panel.dataset.state,'unreachable');assert.equal(nodes['[data-gemma-guide]'].open,false);
+ models={live:true,models:[MODEL],reason:null};
+ await nodes['[data-gemma-refresh]'].events.click();
+ assert.equal(panel.dataset.state,'available');assert.equal(nodes['[data-gemma-guide]'].open,false);assert.match(nodes['[data-gemma-link]'].textContent,/選ばれていません/);
+ settings={backend:'ollama',model:MODEL};await root.events['worldbloom:output-saved']();
+ assert.match(nodes['[data-gemma-link]'].textContent,/紐付けを確認/);
+ mount(doc);await tick();assert.match(nodes['[data-gemma-link]'].textContent,/紐付けを確認/);
+ fail=true;await nodes['[data-gemma-refresh]'].events.click();assert.equal(panel.dataset.state,'unknown');assert.match(nodes['[data-gemma-link]'].textContent,/確認できません/);
+ fail=false;settings={};await nodes['[data-gemma-refresh]'].events.click();
+ assert.match(nodes['[data-gemma-link]'].textContent,/確認できません/);
+ assert.ok(calls.every(c=>c.options.cache==='no-store'&&!c.options.method));
+ console.log('DOM mocks: missing, unreachable, installed, saved, reload, failed retry passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

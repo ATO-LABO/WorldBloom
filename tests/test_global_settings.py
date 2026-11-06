@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 import test_workbench_pages as fixtures
 from execution.output_settings import write_api_key, write_output_settings
+from viewer.global_settings import collection_panel, compute_panel
 
 class GlobalSettingsTests(unittest.TestCase):
     setUp = fixtures.WorkbenchTests.setUp
@@ -42,15 +43,25 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertEqual(before, self.configs.get('cfg-test'))
         self.assertEqual(self.fake.submitted, [])
 
-    def test_old_genre_tab_uses_default_and_world_settings_stay_accessible(self):
+    def test_old_genres_tab_falls_back_to_ai_settings(self):
         status, body, _ = self.get_status('/configs?tab=genres&item=romance')
         self.assertEqual(status, 200)
         self.assertEqual(self.initial(body)['tab'], 'output')
+        self.assertNotIn('data-gs-tab="genres"', body)
         self.assertNotIn('data-gs-panel="genres"', body)
+        self.assertIn('data-gs-panel="output">', body)
         status, body, _ = self.get_status('/worlds/romance?view=advanced#genres')
         self.assertEqual(status, 200)
         self.assertIn('data-advanced-section="genres"', body)
         self.assertIn('href="/worlds/romance?view=advanced#genres"', body)
+
+    def test_jev_tab_is_in_ai_settings_only(self):
+        status, body, _ = self.get_status('/configs?tab=output')
+        self.assertEqual(status, 200)
+        ai, compute = body.split('data-gs-panel="compute"', 1)
+        self.assertIn('aria-controls="gs-panel-jev"', ai)
+        self.assertIn('data-gs-jev-key-save', ai)
+        self.assertNotIn('data-gs-jev-key-save', compute)
 
     def test_save_round_trip_is_reflected_without_config_mutation(self):
         before = self.configs.get('cfg-test')
@@ -66,15 +77,15 @@ class GlobalSettingsTests(unittest.TestCase):
 
     def test_broken_settings_and_empty_collections_keep_navigation(self):
         self.settings_path.write_text('{broken', encoding='utf-8')
-        with patch('execution.library.LibraryStore.genres', return_value=[]), patch.object(self.configs, 'list', return_value=[]):
+        with patch.object(self.configs, 'list', return_value=[]):
             status, body, _ = self.get_status('/configs?tab=bad')
         self.assertEqual(status, 200)
         self.assertEqual(self.initial(body)['tab'], 'output')
         self.assertIsNone(self.initial(body)['view'])
         self.assertIn('settings.json を読めません', body)
         self.assertNotIn('data-gs-output', body)
-        self.assertEqual(set(re.findall(r'data-gs-tab="([^"]+)"', body)), {'output', 'compute', 'configs'})
-        self.assertIn('まだ登録されていません', body)
+        self.assertCountEqual(re.findall(r'data-gs-tab="([^"]+)"', body), ['output', 'compute', 'configs'])
+        self.assertIn('まだ保存版がありません', body)
 
     def test_assets_are_served(self):
         for name, content_type in [('global-settings.css', 'text/css'), ('global-settings.js', 'application/javascript')]:
@@ -82,6 +93,32 @@ class GlobalSettingsTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertIn(content_type, headers['Content-Type'])
             self.assertTrue(body)
+
+class SettingsTabRenderTests(unittest.TestCase):
+    def test_compute_tabs_share_one_numeric_save(self):
+        settings = dict(processes=2, cpu_count=8, default=4, thermal_enabled=True,
+                        pause_at=80, pause_min=60, pause_max=95, pause_default=85)
+        body = compute_panel(settings, False)
+        self.assertEqual(body.count('class="ui-tabs"'), 1)
+        self.assertIn('aria-controls="gs-compute-panel-parallel"', body)
+        self.assertIn('aria-controls="gs-compute-panel-gpu"', body)
+        self.assertEqual(body.count('data-gs-compute-save '), 1)
+        self.assertNotIn('data-gs-jev-key-save', body)
+
+    def test_saved_configs_keep_deep_links_and_actions(self):
+        item = dict(config_id="cfg-a", label="保存版 A", project_id="a", template_id="base",
+                    evolution=dict(generations=2, population=3, seeds=4))
+        body = collection_panel([item], {"a": "世界 A"}, "cfg-a", show_detail=True)
+        self.assertRegex(body, r'aria-selected="true" aria-controls="gs-configs-panel-detail"')
+        self.assertIn('/configs?tab=configs&amp;item=cfg-a', body)
+        self.assertIn('/configs/new?from=cfg-a', body)
+        self.assertIn('/configs/cfg-a/start', body)
+
+    def test_empty_saved_configs_disable_detail_tab(self):
+        body = collection_panel([], {}, None, show_detail=True)
+        self.assertRegex(body, r'aria-controls="gs-configs-panel-detail" tabindex="-1" disabled')
+        self.assertIn('まだ保存版がありません', body)
+
 
 if __name__ == '__main__':
     unittest.main()
