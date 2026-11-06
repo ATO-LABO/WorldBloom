@@ -57,7 +57,7 @@ def _engine_source_hash(engine_dir: Path) -> str:
 
     paths = tuple(
         sorted(
-            engine_dir.glob("*.py"),
+            [*engine_dir.glob("*.py"), *engine_dir.glob("story_genres.json")],
             key=lambda value: value.name,
         )
     )
@@ -1261,6 +1261,7 @@ class Simulation:
                 "vector": vector,
                 "layers": layers,
                 "relations": self.world.relations.flat_rows(),
+                **({"romance": list(self.world.romantic_relationships.values())} if "romance" in self.world.story_genres else {}),
                 **({"deliberation": self.world.deliberation.snapshot()}
                    if self.world.deliberation is not None else {}),
                 **({'responses': self.world.responses.snapshot()} if self.world.responses is not None else {}),

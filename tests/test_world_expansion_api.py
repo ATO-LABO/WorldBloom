@@ -986,12 +986,14 @@ class WorldLibraryPageTests(unittest.TestCase):
         self.assertNotIn("<script>alert(1)</script>", html)
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
 
-    def test_worlds_hub_genre_card_shows_asset_count(self):
+    def test_asset_count_is_on_the_world_reached_from_the_hub(self):
         _write_library_asset(self.template_dir, _FIT_ADD)
         status, body = self.get("/worlds?mode=create")
-        html = body.decode("utf-8")
         self.assertEqual(status, 200)
-        self.assertIn("資産 1件", html)
+        self.assertIn('data-home-world data-purpose-carry href="/worlds/momotaro"', body.decode("utf-8"))
+        status, body = self.get("/worlds/momotaro")
+        self.assertEqual(status, 200)
+        self.assertIn("ジャンルの資産（1件）", body.decode("utf-8"))
 
 
 class WorldExpansionStaticFileTests(unittest.TestCase):

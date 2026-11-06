@@ -5,6 +5,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 const workspaceSource = fs.readFileSync(path.join(__dirname, '../viewer/static/draft-workspace.js'), 'utf8');
 const editingSource = fs.readFileSync(path.join(__dirname, '../viewer/static/draft-editing.js'), 'utf8');
+const registrySource = fs.readFileSync(path.join(__dirname, '../viewer/settings_navigation.py'), 'utf8');
+const sections = [...registrySource.matchAll(/^\s*\('([^']+)', '([^']+)'\),$/gm)].map(match => [match[1], match[2]]);
+assert.ok(sections.length, 'The fixture must supply the shared navigation registry');
 
 class Element {
   constructor(tag) {
@@ -18,6 +21,7 @@ class Element {
   setAttribute(key, value) { this.attributes[key] = String(value); }
   addEventListener(name, callback) { (this.listeners[name] ||= []).push(callback); }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  closest() { return null; }
   querySelectorAll(selector) {
     return descendants(this).filter(node => selector.split(',').some(part => {
       part = part.trim();
@@ -50,6 +54,7 @@ const original = {
 
 function environment(draft = original) {
   const root = new Element('div'); root.allowSkeleton = true;
+  root.dataset.settingsSections = JSON.stringify(sections);
   const events = {}, entries = [{url: new URL('http://localhost/worlds/new?draft=abc#section=overview'), state: {initial: true}}];
   let position = 0, renders = 0, guardCalls = 0, confirmations = 0, discard = false;
   const location = {};
@@ -87,7 +92,8 @@ function environment(draft = original) {
     get renders() { return renders; }, get guards() { return guardCalls; }, get confirmations() { return confirmations; },
     allowDiscard(value) { discard = value; },
     content: () => root.querySelector('#draft-content'),
-    section: () => root.querySelector('#draft-nav').children.find(node => node.attributes['aria-current'] === 'page')?.dataset.section,
+    section: () => new URLSearchParams(location.hash.slice(1)).get('section') || 'overview',
+    category: () => root.querySelector('#draft-nav').children.find(node => node.attributes['aria-current'] === 'page')?.dataset.section,
     edit({pending = false} = {}) {
       const dialog = new Element('dialog'), input = new Element('textarea'), pencil = new Element('button');
       input.value = 'Unconfirmed human input'; dialog.open = true; dialog.append(input); this.content().append(dialog);
@@ -138,8 +144,12 @@ assert.equal(pending.confirmations, 0);
 const factDraft = copy(original), unsafe = '<img src=x onerror="alert(1)"><script>bad()</script>\n';
 factDraft.facts = [{name: '<b>Secret</b>', description: unsafe + '長い情報\n'.repeat(300), place: 'Archive'}, {name: 'Second', description: 'Another clue', place: 'Home'}];
 const before = JSON.stringify(factDraft), facts = environment(factDraft);
-facts.workspace.select('facts');
+facts.workspace.select('items');
+assert.deepEqual(facts.root.querySelector('#draft-nav').children.map(node => node.dataset.section), sections.map(row => row[0]));
+const factsLink = descendants(facts.content()).find(node => node.tagName === 'BUTTON' && node.textContent === '情報の内容と調べる場所を確認');
+assert.ok(factsLink, 'Information remains reachable even when the draft has no items'); factsLink.onclick();
 assert.equal(facts.section(), 'facts');
+assert.equal(facts.category(), 'items');
 const factNodes = descendants(facts.content());
 assert.ok(factNodes.some(node => node.tagName === 'H3' && node.textContent === '<b>Secret</b>'));
 assert.ok(factNodes.some(node => node.tagName === 'P' && node.textContent === factDraft.facts[0].description));

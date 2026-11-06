@@ -1,9 +1,12 @@
 /* Content geometry; shared UI owns controls, typography and dialogs. */
-.wa-layout{display:grid;grid-template-columns:var(--ws-side-w) minmax(0,1fr);gap:var(--ws-space-5);flex:1;min-height:0;overflow:hidden}
-.wa-layout>.ux-advanced-nav{overflow:auto}
-.wa-body{display:flex;gap:var(--ws-space-5);min-width:0;overflow:auto}
+.wa-layout{height:100%;flex:1;min-height:0;overflow:hidden}
+.wa-main{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+.wa-body{display:grid;grid-template-columns:var(--ws-aside-w) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:var(--ws-space-5);flex:1;min-width:0;min-height:0;overflow:auto;align-content:start}
+.wa-body>[data-advanced-sections]{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:var(--ws-space-2)}
+.wa-body:has(>[data-advanced-sections][hidden]){grid-template-rows:minmax(0,1fr)}
+.wa-body:has(>.ux-advanced-list[hidden])>.wa-reading{grid-column:1/-1}
 .wa-body>.ux-advanced-list{width:var(--ws-aside-w);flex:none}
-.wa-reading{min-width:0;flex:1;overflow:auto;padding:var(--ws-space-2) var(--ws-space-3)}
+.wa-reading{min-width:0;flex:1;overflow:auto}
 .wa-topic{border-bottom:1px solid var(--ws-line);padding:var(--ws-space-4) 0}
 .wa-topic>.ui-section-head{margin-bottom:var(--ws-space-3)}
 .wa-topic .ui-section-head>h3{margin:0}
@@ -26,5 +29,9 @@
 .wa-editor>.ui-content{padding:0;border:0}
 .wa-editor pre{white-space:pre-wrap;overflow-wrap:anywhere}
 [data-world-advanced][data-advanced-view=actions] .ux-advanced-list{width:100%;flex:1}
-@media(max-width:1000px){.wa-body{flex-direction:column}.wa-body>.ux-advanced-list{width:auto;max-height:35dvh;overflow:auto;flex:none}.wa-reading{overflow:visible}}
-@media(max-width:760px){.wa-layout{display:flex;flex-direction:column;overflow:auto}.wa-layout>.ux-advanced-nav{overflow:visible;flex:none}.wa-body{overflow:visible;flex:none}.wa-reading{padding:var(--ws-space-2) 0}.wa-dialog .ui-edit-dialog-actions{gap:var(--ws-space-2)}}
+@media(max-width:1000px){.wa-body{display:flex;flex-direction:column}.wa-body>.ux-advanced-list{width:auto;max-height:35dvh;overflow:auto;flex:none}.wa-reading{overflow:visible}}
+@media(max-width:760px){.wa-layout{overflow:auto}.wa-dialog .ui-edit-dialog-actions{gap:var(--ws-space-2)}}
+
+.wa-editor [data-genre-choices] label,.wa-reading [data-genre-choices] label{display:flex;align-items:start;gap:var(--ws-space-3);padding:var(--ws-space-3) 0}
+.wa-genre-option span{display:grid;gap:var(--ws-space-2)}
+.wa-genre-option small{color:var(--ws-muted)}
