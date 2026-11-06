@@ -22,7 +22,7 @@ class GenreWorkspaceTests(unittest.TestCase):
     def snap(self, ident='romance'):
         return ge.snapshot(LibraryStore(self.repo), ident)
 
-    def test_create_original_without_copy_and_display_name(self):
+    def test_create_original_is_rejected_without_writes(self):
         before=set((self.repo/'templates').iterdir())
         self.assertEqual(self.create()[0],403)
         self.assertEqual(before,set((self.repo/'templates').iterdir()))
