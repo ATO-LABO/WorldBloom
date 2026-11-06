@@ -167,7 +167,7 @@ def transport(request, command):
     if backend == "ollama":
         url, payload = ollama.build_request(
             {**request["credentials"], "model": request["model"]}, request["prompt"])
-        if request.get("response_format") == "world_draft_json":
+        if request.get("response_format") in ("world_draft_json", "story_v2_json"):
             payload["format"] = "json"
         if request.get("response_format") == "story_json":
             payload["format"] = {"type":"object","required":["paragraphs"],"additionalProperties":False,

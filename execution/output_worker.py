@@ -56,6 +56,10 @@ def run(control, output_id):
     try:
         store.verify_artifacts(output_id)
         auth = credentials(job.get("settings_path"), request["backend"])
+        if request.get("pipeline") == "story_v2":
+            # Writing is intentionally non-reasoning; review occurs after the
+            # saved response, under the deterministic Story v2 contract.
+            auth["think"] = False
         output_settings = _output_settings(job.get("settings_path"))
     except (OSError, ValueError, ConfigError) as error:
         preflight_error = error
@@ -103,7 +107,7 @@ def run(control, output_id):
                 call = sink.call_request(auth)
                 call["deadline"] = job["created_at"] + job["wall_seconds"]
                 run_generation(call, sink)
-                if request.get("pipeline") == "story_v1":
+                if request.get("pipeline") in ("story_v1", "story_v2"):
                     from execution.story_service import process_story_output
                     try:
                         process_story_output(store, output_id, cid)
@@ -165,6 +169,14 @@ def build(root):
                 "source_log_sha256":c["source_log_sha256"]} for c in plan["candidates"]]}
             material, story_plan, _ = pinned_story(root, cid, prompt_request)
             prompts[cid] = build_story_prompt(material, story_plan)
+            continue
+        if request.get("pipeline") == "story_v2":
+            from execution.story_service import pinned_story
+            from gapengine.story_v2 import build_story_v2_prompt
+            prompt_request = {**request, "sources":[{"candidate_id":c["candidate_id"],
+                "source_log_sha256":c["source_log_sha256"]} for c in plan["candidates"]]}
+            material, story_plan, _ = pinned_story(root, cid, prompt_request)
+            prompts[cid] = build_story_v2_prompt(material, story_plan, request["kind"])
             continue
         rows = read_rows(root / "inputs/candidates" / cid / "layers.jsonl")
         scenes = extract_scenes(rows, meta)

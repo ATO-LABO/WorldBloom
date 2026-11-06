@@ -48,7 +48,7 @@
    if(token!==version)return;output=projected;
    for(const entry of output?.entries||[]){if(entry.status!=='ok'||!entry.text_sha256)continue;const identity=`${output.output_id}:${entry.candidate_id}:${entry.text_sha256}`;if(texts.has(identity))continue;
     const response=await fetch(`/outputs/${encodeURIComponent(output.output_id)}/entries/${encodeURIComponent(entry.candidate_id)}/text`);if(!response.ok)throw Error('生成された文章の整合性を確認できません。詳細の記録を確認してください。');const text=await response.text();if(token!==version)return;texts.set(identity,text);
-    if(job.kind==='synopsize'&&!applied.has(identity)){applied.add(identity);window.dispatchEvent(new CustomEvent('wb-generation-entry',{detail:{run_id:job.run_id,candidate_id:entry.candidate_id,text,output_id:output.output_id,text_sha256:entry.text_sha256}}));}
+    if(job.kind==='synopsize'&&!applied.has(identity)){applied.add(identity);window.dispatchEvent(new CustomEvent('wb-generation-entry',{detail:{run_id:job.run_id,candidate_id:entry.candidate_id,text,output_id:output.output_id,text_sha256:entry.text_sha256,pipeline:output.request?.pipeline}}));}
    }
    connectionLost=false;error('');renderJob();
   }catch(e){if(token!==version)return;readFailed=true;connectionLost=true;error(e.message+'。自動生成は行わず、状態の確認だけを続けます。');if(job)renderJob();else button('進捗を再確認');}
