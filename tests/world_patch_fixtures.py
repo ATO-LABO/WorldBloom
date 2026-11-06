@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 from gapengine.world_patch import EMPTY_STACK_DIGEST, next_digest, patch_id_for, read_stack
 from gapengine.world_patch_inputs import inputs_digest, read_subjects, resolve_references
+from saved_world_fixtures import install_current_worlds
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,6 +37,14 @@ def frozen_experiment(root, *, explanations=True, coevolve=False):
     world["daily_events"] = None
     world["scheduled_events"] = [{"id": "fixture_end", "day": 1, "slot": "夕", "targets": ["桃太郎"],
         "label": "試験の帰還", "grants_item": {"name": "鬼ヶ島の宝物", "count": 1}, "move_to": "村"}]
+    path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    install_current_worlds(repo, "momotaro")
+    # This short fixture needs the original combat and recovery behavior to
+    # fill three real archive cells for a measured holdout.
+    world = yaml.safe_load(path.read_bytes())
+    world["action_usage"]["enabled"] = sorted(set(world["action_usage"]["enabled"]) | {"verb:fight"})
+    world["mechanics"]["stamina_management"] = True
+    world["stamina"].update(default_action_cost=0, passive_recovery=True)
     path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
     store = ConfigStore(repo, root / "control", root / "runs")
     spec = {"label": "パッチ試験", "project_id": "momotaro", "template_id": "momotaro",
@@ -116,7 +125,7 @@ def branch_entry_experiment(root):
 
     world_path = project / "world.yaml"
     world = yaml.safe_load(world_path.read_text(encoding="utf-8"))
-    world["time"] = {"days": 2, "slots": ["朝", "昼", "夕"]}
+    world["time"] = {"days": 3, "slots": ["朝", "昼", "夕"]}
     world["daily_events"] = None
     world["zones"] = [{"name": "村", "note": "起点"}]
     world["routes"] = {"村": []}
@@ -125,11 +134,12 @@ def branch_entry_experiment(root):
     world["trials"] = []
     world["facts"] = []
     world["truth"] = {}
-    world["scheduled_events"] = [{"id": "fixture_end", "day": 2, "slot": "夕", "targets": ["桃太郎"],
+    world["scheduled_events"] = [{"id": "fixture_end", "day": 3, "slot": "夕", "targets": ["桃太郎"],
         "label": "試験の帰還", "grants_item": {"name": "鬼ヶ島の宝物", "count": 1}, "move_to": "村"}]
     world_path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
     experiment = root / "runs/exp"
+    install_current_worlds(root / "repo", "momotaro")
     shutil.copytree(project, experiment / "expanded-project")
     (experiment / "summary.json").write_text(json.dumps({"seeds": [1, 2, 3, 4]}), encoding="utf-8")
 
@@ -231,6 +241,7 @@ def frozen_experiment_with_external_reference(root, *, mode):
         raise ValueError(mode)
 
     world_path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    install_current_worlds(repo, "momotaro")
     store = ConfigStore(repo, root / "control", root / "runs")
     spec = {"label": "外部repo試験", "project_id": "momotaro", "template_id": "momotaro",
             "evolution": {"generations": 2, "population": 12, "seeds": 2, "seed_base": 41,
@@ -324,6 +335,7 @@ def external_repo_experiment(root, *, individuals=3):
     world_path.write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
     experiment = root / "runs/ext"
+    install_current_worlds(control, "extproj")
     shutil.copytree(project, experiment / "expanded-project")
     seeds = list(range(1, individuals + 5))
     (experiment / "summary.json").write_text(json.dumps({"seeds": seeds}), encoding="utf-8")
@@ -342,8 +354,9 @@ def external_repo_experiment(root, *, individuals=3):
     # already-absolute gapengine paths builds the cells here -- the
     # *canonical* project/expanded-project world.yaml (used by the code
     # actually under test) keeps the plain relative "lib/..." reference.
-    scratch_world = dict(world, gapengine={"action_graph": str(lib / "action_graph.yaml"),
-                                            "effects": str(lib / "effects.yaml")})
+    scratch_world = yaml.safe_load(world_path.read_bytes())
+    scratch_world["gapengine"] = {"action_graph": str(lib / "action_graph.yaml"),
+                                  "effects": str(lib / "effects.yaml")}
     scratch_world_path = control / "scratch-world.yaml"
     scratch_world_path.write_text(yaml.safe_dump(scratch_world, allow_unicode=True, sort_keys=False), encoding="utf-8")
     cells = {}

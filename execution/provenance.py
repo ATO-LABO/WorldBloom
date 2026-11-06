@@ -290,7 +290,7 @@ def code_snapshot(repo: Path):
         folder = contained(repo, package)
         if not folder.is_dir():
             raise ConfigError("runtime", f"実行コードがありません: {package}")
-        runtime_data = list(folder.glob("story_genres.json")) if package == "engine" else []
+        runtime_data = [p for name in ("action_types.json", "story_genres.json") for p in folder.glob(name)] if package == "engine" else []
         for path in sorted([*folder.rglob("*.py"), *runtime_data]):
             relative = path.relative_to(repo).as_posix()
             target = contained(repo, relative)

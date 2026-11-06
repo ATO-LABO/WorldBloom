@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import heapq
+import math
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -193,6 +195,12 @@ class PathInfo:
 class World:
     """Validated immutable definitions plus simulation-owned shared state."""
 
+    def time_context(self, day):
+        """Read-only dates for logical days; no action or clock conversion."""
+        if self.date_calendar is None or day == 0:
+            return {}
+        return self._date_labels.label(day)
+
     def __init__(
         self,
         definition: dict[str, Any],
@@ -201,6 +209,7 @@ class World:
         action_graph_path: str | Path | None = None,
     ) -> None:
         self.source = source
+        self.purpose_preparation_definition = deepcopy(definition)
         self.name = str(definition["name"])
         time = definition.get("time", {})
         if (isinstance(definition.get("slot_execution"), dict)
@@ -211,6 +220,13 @@ class World:
         self.slots = tuple(str(slot) for slot in time.get("slots", []))
         if self.days < 1 or not self.slots:
             raise ValueError("World time requires positive days and slots")
+
+        from engine.logical_calendar import normalize_date_calendar,LogicalDateLabels
+        if definition.get('slot_execution') is not None and time.get('date_calendar') is not None:
+            raise ValueError('Logical date calendar cannot replace a slot execution contract')
+        self.date_calendar = normalize_date_calendar(time.get('date_calendar'),time.get('days',1))
+        if self.date_calendar is not None:
+            self._date_labels = LogicalDateLabels(time)
 
         self.protagonist = str(definition["protagonist"])
         self.antagonist = str(definition["antagonist"])
@@ -288,6 +304,7 @@ class World:
                 )
             },
         }
+        self.world_format_version = definition.get('world_format_version')
         self.stamina = {
             "default_max": float(
                 definition.get("stamina", {}).get(
@@ -308,6 +325,18 @@ class World:
                 )
             ),
         }
+        self.stamina['default_action_cost'] = float(definition.get('stamina',{}).get('default_action_cost', 1))
+        self.stamina['passive_recovery'] = definition.get('stamina',{}).get('passive_recovery', False)
+        adjustments=definition.get('stamina',{}).get('action_cost_adjustments',{})
+        from engine.stamina import action_verbs
+        import math
+        if not isinstance(adjustments,dict) or any(k not in action_verbs() or type(v) not in (int,float) or not math.isfinite(v) or abs(v)>100000 for k,v in adjustments.items()):
+            raise ValueError('Invalid per-action stamina adjustments')
+        self.stamina['action_cost_adjustments'] = dict(adjustments)
+        zero_behavior=definition.get('stamina',{}).get('zero_behavior')
+        if zero_behavior is not None and zero_behavior not in ('rest','death'):
+            raise ValueError('Invalid stamina.zero_behavior')
+        if zero_behavior is not None:self.stamina['zero_behavior']=zero_behavior
         raw_companionship = definition.get("companionship", {}) or {}
         self.companionship = {
             "threshold": float(
@@ -408,6 +437,8 @@ class World:
             for verb, roles in sorted(raw_permission.items())
             if isinstance(roles, dict)
         }
+        self.action_usage = None
+        self.mechanics = None
         from engine.story_genres import resolve
         self.story_genres = resolve(definition, self.action_graph)
         self.romantic_relationships = {}
@@ -478,6 +509,8 @@ class World:
                 key=lambda value: str(value["name"]),
             )
         }
+        from engine.economy import validate as validate_economy
+        self.economy = validate_economy(definition)
         self._item_modifiers: dict[str, dict[str, Any] | None] = {}
         self.recipes = {
             name: dict(item["made_from"])
@@ -585,7 +618,11 @@ class World:
         if self.contest["tau"] <= 0:
             raise ValueError("contest.tau must be positive")
 
+        raw_vitality = definition.get('vitality', {})
+        if not isinstance(raw_vitality, dict) or type(raw_vitality.get('allow_death', True)) is not bool:
+            raise ValueError('vitality.allow_death must be a boolean')
         self.vitality = {
+            'allow_death': raw_vitality.get('allow_death', True),
             "revive_after": int(
                 definition.get("vitality", {}).get(
                     "revive_after",
@@ -805,6 +842,8 @@ class World:
                 self.joint_activities = JointActivities(definition['joint_activities'])
             except (KeyError,TypeError,IndexError,OverflowError) as exc:
                 raise ValueError('Malformed joint activities contract') from exc
+        from engine.action_usage import parse as parse_action_usage
+        self.action_usage, self.mechanics = parse_action_usage(self, definition.get('action_usage'), definition.get('mechanics'))
 
     @classmethod
     def from_yaml(
@@ -815,6 +854,8 @@ class World:
     ) -> World:
         source = Path(path)
         raw = load_yaml(source)
+        from engine.world_format import validate as validate_format
+        validate_format(raw)
         if not isinstance(raw, dict):
             raise ValueError(
                 f"World YAML must contain a mapping: {source}"
@@ -893,16 +934,29 @@ class World:
             if str(ending["id"]) in target_ids
         )
 
-    def story_genre_allows(self, verb: str) -> bool:
-        from engine.story_genres import allows
-        return allows(self.story_genres, verb)
+    def action_enabled(self, verb: str) -> bool:
+        if self.action_usage is None:
+            from engine.story_genres import allows
+            return allows(self.story_genres, verb)
+        return self.action_usage_allows(verb)
+    def mechanics_enabled(self, feature: str) -> bool:
+        return bool((self.mechanics or {}).get(feature,False))
+    def global_action_grants(self) -> set[str]:
+        if self.action_usage is None:
+            from engine.story_genres import granted_actions
+            return granted_actions(self.story_genres)
+        # Current-format permissions live on people or explicit actor lists.
+        return set()
+    def action_usage_allows(self, verb, args=None):
+        from engine.action_usage import allows
+        return allows(self, verb, args)
 
     def genre_allows(self, verb: str) -> bool:
         """Apply node genre tags only when the template declares a genre."""
 
-        if not self.story_genre_allows(verb):
+        if not self.action_enabled(verb):
             return False
-        from engine.story_genres import owner
+        from engine.action_types import owner
         if owner(verb) is not None:
             return True
         if not self.genres:
@@ -974,24 +1028,31 @@ class World:
         for item, definition in sorted(self.items.items()):
             for source in definition.get("sources", []) or []:
                 zone = source.get("zone")
+                if "amount" in source and (source.get("type") != "labor" or type(source["amount"]) is not int or not 1 <= source["amount"] <= 1000000000):
+                    raise ValueError(f"Labor amount must be an integer from 1 to 1000000000: {item}")
                 if zone is not None and zone not in self.zones:
                     raise ValueError(f"Unknown item source zone: {item}:{zone}")
 
+            if "monetary_trade" in definition and type(definition["monetary_trade"]) is not bool:
+                raise ValueError(f"Monetary trade must be boolean: {item}")
             price = definition.get("price")
             shop_zone = definition.get("shop_zone")
             if price is None and shop_zone is None:
                 continue
-            if not isinstance(price, dict) or not price:
-                raise ValueError(f"Item price must be a non-empty mapping: {item}")
-            for currency, quantity in sorted(price.items()):
+            if price is not None and not isinstance(price, dict):
+                raise ValueError(f"Item price must be a mapping: {item}")
+            for currency, quantity in sorted((price or {}).items()):
                 if currency not in self.items:
                     raise ValueError(f"Unknown price currency: {item}:{currency}")
                 if (
                     not isinstance(quantity, (int, float))
                     or isinstance(quantity, bool)
-                    or quantity <= 0
+                    or quantity < 0
+                    or isinstance(quantity,float) and not math.isfinite(quantity)
                 ):
-                    raise ValueError(f"Item price must be positive: {item}:{currency}")
+                    raise ValueError(f"Item price must be nonnegative and finite: {item}:{currency}")
+            if shop_zone is None and definition.get("monetary_trade") is False:
+                continue
             if not isinstance(shop_zone, str) or shop_zone not in self.zones:
                 raise ValueError(f"Unknown shop_zone: {item}:{shop_zone}")
 
@@ -1206,6 +1267,9 @@ class World:
         subjects: dict[str, Subject],
     ) -> None:
         self.delivered.clear()
+        for person in subjects.values():
+            person.stamina_enabled = self.mechanics_enabled('stamina_management')
+            if not person.stamina_enabled: person.exhausted = False
         self.confront_successes.clear()
         self.pending_effects.clear()
         self.offers.clear()
@@ -1606,6 +1670,9 @@ class World:
             subject_id: subjects[subject_id]
             for subject_id in sorted(subjects)
         }
+
+        from engine.action_constraints import validate_bound
+        validate_bound(self)
 
         if self.responses is not None:
             self.responses.bind(self)
@@ -2048,7 +2115,8 @@ class World:
                 if not self._route_allowed(subject, route, projection=projection, actual=actual):
                     continue
                 next_cost = round(cost + route.cost, 4)
-                if next_cost > subject.stamina:
+                from engine.stamina import adjusted_cost
+                if adjusted_cost(self,'move',next_cost) > subject.stamina:
                     continue
                 candidate = (
                     next_cost,

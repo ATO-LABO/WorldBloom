@@ -795,6 +795,8 @@ def _rerun_node(
             # judgments the experiment's own shared table already has
             # (plan §0 item 3).
             job["rationality_table_only"] = True
+        if ctx.get("_world_loader") is not None:
+            job["_world_loader"] = ctx["_world_loader"]
         run_individual(job)
         publish_directory(staging / seed_name, out_dir / seed_name)
         rows = read_rows(layers_path)
@@ -981,6 +983,8 @@ def build_lineage_report(
     repository: Any,
     experiment: Path,
     cell_key: str,
+    *,
+    world_loader=None,
 ) -> dict[str, Any]:
     """The full model for the lineage page: the primary-lineage band, every
     turning point found between adjacent ancestors, and the first-reach
@@ -1005,6 +1009,10 @@ def build_lineage_report(
     # genuinely agree) forces a rebuild instead of returning ancestry that
     # was rerun with no Route/Rationality at all.
     ctx = _resolve_world_context(repository, experiment)
+    if world_loader is not None:
+        if not callable(world_loader):
+            raise TypeError("world_loader must be callable")
+        ctx["_world_loader"] = world_loader
     route_rho = ctx["route_cfg"].get("rho") if ctx.get("route_cfg") else None
     rationality_kappa = (
         ctx["rationality_cfg"].get("kappa") if ctx.get("rationality_cfg") else None

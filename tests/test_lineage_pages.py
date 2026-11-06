@@ -1,6 +1,6 @@
 """Tests for the 系譜 (lineage) viewer page (WB-LINEAGE-002).
 
-Reuses one small real evolve() run (see gapengine/lineage.py's own
+Reuses one small real evolve_frozen() run (see gapengine/lineage.py's own
 RealRunLineageTests for why ga_seed=17/generations=5/population=8/seeds=2 is
 pinned) so the page is exercised against genuine multi-generation ancestry,
 an immigrant single-node lineage, and a deliberately damaged ancestor --
@@ -20,6 +20,7 @@ single-node immigrant cell.
 
 from __future__ import annotations
 
+from frozen_world import evolve_frozen, run_frozen
 import json
 import re
 import shutil
@@ -44,7 +45,7 @@ class LineagePageTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory()
         root = Path(cls.temporary.name)
         cls.runs_root = root / "runs"
-        evolve(
+        evolve_frozen(
             {
                 "ga_seed": 17,
                 "generations": 5,
@@ -66,6 +67,15 @@ class LineagePageTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls.temporary.cleanup()
+
+    def setUp(self):
+        # Replay this historical fixture explicitly, then exercise the real
+        # viewer against its persisted report. The viewer admits no old input.
+        from gapengine.lineage import build_lineage_report
+        experiment = self.repository.experiment("exp1")
+        for cell in ("II|high", "III|mid"):
+            (experiment / "lineage" / (cell.replace("|", "-") + "-cache.json")).unlink(missing_ok=True)
+            run_frozen(build_lineage_report, self.repository, experiment, cell)
 
     def test_cell_page_links_to_lineage(self) -> None:
         rendered = pages.cell_page(self.repository, "exp1", "II|high", view="digest")

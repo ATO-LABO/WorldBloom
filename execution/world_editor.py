@@ -49,14 +49,19 @@ def _read(store, ident):
             _bad("content", f"{rel} は項目と値の形式で指定してください")
         values[rel] = value
         revisions[rel] = sha256(raw)
+    try:
+        from engine.world_format import validate
+        validate(values["world.yaml"])
+    except ValueError as error:
+        raise ConfigError("world_format_version",str(error),code="unsupported") from error
     return values, sha256(canonical(revisions))
 
 
 def _model(ident, files, revision, source):
     world = files["world.yaml"]
-    from engine.story_genres import for_world, label
+    from engine.action_types import for_world, label, features
     selected = for_world(world, source)
-    return {"id": ident, "name": world.get("name") or ident, "world": world, "story_genres": selected, "story_genre_label": label(selected),
+    return {"id": ident, "name": world.get("name") or ident, "world": world, "action_types": selected, "action_type_label": label(selected), "mechanic_features": sorted(features(world)),
             "people": [value for rel, value in files.items() if rel != "world.yaml"],
             "overview": world.get("overview") or "", "intro": world.get("initial_story") or "",
             "revision": revision,
@@ -97,7 +102,6 @@ def save(store, ident, body):
         "roles": {"protagonist", "antagonist", "target_ending"},
         "file": {"content"},
         "genre": {"template_id"},
-        "story-genres": {"genres"},
         "add-event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "remove-event": set(),
@@ -290,6 +294,11 @@ def save(store, ident, body):
             slots = _list(values["slots"], "slots")
             if not slots:
                 _bad("slots", "時間帯を1つ以上指定してください")
+            from execution import time_slot_references
+            references = time_slot_references.snapshot(store, ident, world)
+            errors, warnings = time_slot_references.validate(references, slots, days)
+            if errors or warnings:
+                _bad("time", " / ".join(entry["message"] for entry in (errors or warnings)[:8]))
             updated["time"] = {**(updated.get("time") or {}), "days": days, "slots": slots}
         elif operation == "place":
             if not isinstance(target, str) or names.count(target) != 1:
@@ -334,14 +343,6 @@ def save(store, ident, body):
             else:
                 route.pop("requires_item", None)
             route["cost"] = cost
-        elif operation == "story-genres":
-            from engine.story_genres import validate
-            try:
-                updated["story_genres"] = validate(values["genres"])
-            except ValueError as error:
-                _bad("genres", str(error))
-            if not updated.get("gapengine"):
-                updated["gapengine"] = {"action_graph":"templates/basic/action_graph.yaml", "effects":"templates/basic/effects.yaml"}
         elif operation == "genre":
             # WB-WORLD-IMPORT-001: lets a world imported without a genre (or
             # any world) pick/switch its templates/<id>/ afterward. Other

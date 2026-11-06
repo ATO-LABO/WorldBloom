@@ -1,4 +1,4 @@
-"""Independent genre combinations, action gates, registry evolution and storage."""
+"""Frozen legacy genre behavior and rejection of retired Studio edits."""
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -105,24 +105,20 @@ class GenreStorageTests(unittest.TestCase):
             return response.status,response.read().decode('utf-8')
         finally:conn.close()
 
-    def test_save_reload_add_remove_and_reject_stale_or_unknown_without_other_changes(self):
+    def test_retired_genre_edit_cannot_change_current_world_or_subjects(self):
         store=LibraryStore(self.repo)
+        path=self.repo/'projects/momotaro/world.yaml'
+        before=path.read_bytes()
         subject_bytes={p:p.read_bytes() for p in (self.repo/'projects/momotaro/subjects').glob('*.yaml')}
-        original=world_editor.snapshot(store,'momotaro')['world']
-        old=None
-        for selected in [[],['combat'],['romance'],['combat','romance'],[]]:
-            current=world_editor.snapshot(store,'momotaro')
-            if old is None:old=current['revision']
-            status,result=self.http('POST','/api/worlds/momotaro/edit',{'revision':current['revision'],'operation':'story-genres','target':None,'values':{'genres':selected}})
-            self.assertEqual(status,200,result)
-            self.assertEqual(result['story_genres'],selected)
-            self.assertEqual(world_editor.snapshot(store,'momotaro')['story_genres'],selected)
-            self.assertEqual({k:v for k,v in result['world'].items() if k!='story_genres'},original)
-        before=(self.repo/'projects/momotaro/world.yaml').read_bytes()
-        for revision,selection,expected in [(old,[],409),(result['revision'],['other'],400)]:
-            status,_=self.http('POST','/api/worlds/momotaro/edit',{'revision':revision,'operation':'story-genres','target':None,'values':{'genres':selection}})
-            self.assertEqual(status,expected)
-            self.assertEqual(before,(self.repo/'projects/momotaro/world.yaml').read_bytes())
+        current=world_editor.snapshot(store,'momotaro')
+        status,result=self.http('POST','/api/worlds/momotaro/edit',{
+            'revision':current['revision'],'operation':'story-genres','target':None,
+            'values':{'genres':['combat']},
+        })
+        self.assertEqual(status,400,result)
+        self.assertEqual(result['code'],'bad_request')
+        self.assertEqual(world_editor.snapshot(store,'momotaro'),current)
+        self.assertEqual(path.read_bytes(),before)
         self.assertTrue(all(p.read_bytes()==v for p,v in subject_bytes.items()))
 
     def test_user_creation_is_closed_and_catalog_has_no_creation_entry(self):

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from execution import world_editor
+from saved_world_fixtures import install_current_worlds
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from viewer.explanation_ui import planning_panel
@@ -18,6 +19,8 @@ class PlanningEditorTests(unittest.TestCase):
         self.repo = Path(self.temp.name)
         self.folder = self.repo / 'projects' / 'ship_planning'
         shutil.copytree(ROOT / 'projects' / 'ship_planning', self.folder)
+        shutil.copytree(ROOT / "templates/basic", self.repo / "templates/basic")
+        install_current_worlds(self.repo, "ship_planning", template="basic")
         self.store = LibraryStore(self.repo)
         self.current = world_editor.snapshot(self.store, 'ship_planning')
 

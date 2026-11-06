@@ -4,15 +4,15 @@
  const clone=v=>JSON.parse(JSON.stringify(v)),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const reading=$('[data-advanced-reading]'),dialog=$('[data-advanced-dialog]'),message=$('[data-advanced-message]');
  let activeTopic=null,returnFocus=null;
- let world=initial.world,genre=initial.genre,files=initial.files,section=['roles','concerns','objectives','responses','planning','genres','canon','actions','files'].includes(location.hash.slice(1))?location.hash.slice(1):'genres',index=0,variant='canon.yaml',file='world.yaml',dirty=false,busy=false,blocked=false;
+ let world=initial.world,genre=initial.genre,files=initial.files,section=['roles','concerns','objectives','responses','planning','canon','actions','files'].includes(location.hash.slice(1))?location.hash.slice(1):'roles',index=0,variant='canon.yaml',file='world.yaml',dirty=false,busy=false,blocked=false;
  let draft=null;
  if(section==='roles'){const edit=new URLSearchParams(location.search).get('edit');location.replace('/worlds/'+encodeURIComponent(world.id)+(edit?'?edit='+(edit==='roles:2'?'target-ending':'roles'):'')+'#screen='+(edit==='roles:2'?'overview':'people'));return;}
  const labels={phase:'段階',hostile_present:'敵対者がいる',objective:'目的の品',vitality:'生存状態',stance:'態度',category:'カテゴリ',verb:'行動',role:'相手との関係',n:'重み'};
  const terms={hostile:'敵対',self:'自分',neutral:'中立',alive:'生存',dead:'死亡',none:'指定なし',friendly:'友好',give_item:'品物を渡す',craft:'作る',fight:'戦う',move:'移動する',rest:'休む',observe:'調べる',persuade:'説得する',cooperate:'協力する',ally:'仲間',ground:'地面',unknown:'不明',downed:'倒れている'};
  const text=v=>Array.isArray(v)?(v.length?v.join('・'):'指定なし'):v===null?'指定なし':v===true?'はい':v===false?'いいえ':terms[v]||String(v??'未設定');
  const entries=()=>Array.isArray(draft?.entries)?draft.entries:[];
- function loaded(){draft=section==='genres'?clone(world.story_genres||[]):section==='planning'?clone(world.world.planning??window.WorldBloomPlanning.empty()):section==='objectives'?clone(world.world.goal_rules??window.WorldBloomObjectives.empty()):section==='responses'?clone(world.world.responses??window.WorldBloomResponses.empty()):section==='concerns'?{version:2,conditions:clone(world.world.concerns?.conditions??[])}:section==='canon'?clone(genre?.files[variant]?.value??{entries:[]}):section==='roles'?{protagonist:world.world.protagonist||'',antagonist:world.world.antagonist||'',target_ending:Array.isArray(world.world.target_ending)?clone(world.world.target_ending):world.world.target_ending?[world.world.target_ending]:[]}:files[file]??'';dirty=false;}
- function refresh(){$('[data-advanced-check]').hidden=section==='genres';const can=initial.editable&&section!=='actions'&&(section!=='canon'||!!genre);$('[data-advanced-save]').disabled=!can||!dirty||busy||blocked;$('[data-advanced-check]').disabled=!can||busy||blocked;root.querySelectorAll('[data-advanced-close]').forEach(b=>b.disabled=busy);root.querySelectorAll('[data-advanced-section]').forEach(b=>b.setAttribute('aria-current',b.dataset.advancedSection===section?'page':'false'));}
+ function loaded(){draft=section==='planning'?clone(world.world.planning??window.WorldBloomPlanning.empty()):section==='objectives'?clone(world.world.goal_rules??window.WorldBloomObjectives.empty()):section==='responses'?clone(world.world.responses??window.WorldBloomResponses.empty()):section==='concerns'?{version:2,conditions:clone(world.world.concerns?.conditions??[])}:section==='canon'?clone(genre?.files[variant]?.value??{entries:[]}):section==='roles'?{protagonist:world.world.protagonist||'',antagonist:world.world.antagonist||'',target_ending:Array.isArray(world.world.target_ending)?clone(world.world.target_ending):world.world.target_ending?[world.world.target_ending]:[]}:files[file]??'';dirty=false;}
+ function refresh(){const can=initial.editable&&section!=='actions'&&(section!=='canon'||!!genre);$('[data-advanced-save]').disabled=!can||!dirty||busy||blocked;$('[data-advanced-check]').disabled=!can||busy||blocked;root.querySelectorAll('[data-advanced-close]').forEach(b=>b.disabled=busy);root.querySelectorAll('[data-advanced-section]').forEach(b=>b.setAttribute('aria-current',b.dataset.advancedSection===section?'page':'false'));}
  function change(){dirty=true;message.textContent='';refresh();}
  function ruleText(row){return Object.entries(row?.ctx||{}).map(([k,v])=>`${labels[k]||k}：${k==='objective'?({hostile:'敵が持っている',self:'自分が持っている',ally:'仲間が持っている',ground:'地面にある'}[v]||text(v)):text(v)}`).join(' ／ ')||'条件の指定なし';}
  function ruleTitle(row){return text(row?.act?.verb)||'行動未設定';}
@@ -26,9 +26,7 @@
   field.disabled=!initial.editable;field.addEventListener('input',()=>{field.setCustomValidity('');let next=field.value;if(typeof value==='boolean')next=next==='true';else if(typeof value==='number'){next=Number(next);if(!Number.isFinite(next)){field.setCustomValidity('数値を入力してください');return;}}else if(Array.isArray(value)||typeof value==='object'&&value!==null){try{next=JSON.parse(next);if(Array.isArray(value)?!Array.isArray(next):!next||typeof next!=='object'||Array.isArray(next))throw Error();}catch{field.setCustomValidity('元と同じ形式のJSONで入力してください');return;}}else if(value===null&&next==='')next=null;obj[key]=next;change();const readback=detail.querySelector('[data-readback]');if(readback)readback.textContent=ruleText(entries()[index])+' → '+ruleTitle(entries()[index]);});wrapper.append(field);parent.append(wrapper);
  }
  function renderDetail(){detail.replaceChildren();
-  if(section==='genres'){
-   detail.innerHTML='<h2>この世界で使うジャンル</h2><p>共通の行動は常に有効です。追加するジャンルは複数選べます。</p>';const field=document.createElement('fieldset');field.dataset.genreChoices='';field.innerHTML='<legend>ジャンルの追加・解除</legend><label class="ux-inline"><input type="checkbox" checked disabled> 共通（常に有効）</label>';for(const g of initial.story_genre_catalog){const label=document.createElement('label');label.className='wa-genre-option';const check=document.createElement('input');check.type='checkbox';check.dataset.storyGenre=g.id;check.checked=draft.includes(g.id);check.disabled=!initial.editable;check.addEventListener('change',()=>{draft=check.checked?[...draft,g.id]:draft.filter(id=>id!==g.id);change();});const text=document.createElement('span');text.innerHTML='<strong>'+esc(g.name)+'</strong><small>'+esc(g.description)+'</small>';label.append(check,text);field.append(label);}detail.append(field);
-  }else if(section==='canon'){
+  if(section==='canon'){
    const row=entries()[index];detail.innerHTML='<h2>選んだ定石</h2><p class="ux-note">ジャンル「'+esc(genre?.id||'未設定')+'」の共有設定です。このジャンルを使う他の世界にも影響します。保存済みの実験は変わりません。</p>';
    if(!row){detail.insertAdjacentHTML('beforeend','<p>定石を選ぶか、追加してください。</p>');return;}
    if(!row.ctx||typeof row.ctx!=='object'||Array.isArray(row.ctx)||!row.act||typeof row.act!=='object'||Array.isArray(row.act)){detail.insertAdjacentHTML('beforeend','<p>この定石はフォームで扱えない形式です。ジャンル編集の設定ファイルで確認してください。</p>');return;}
@@ -56,7 +54,7 @@
  // topic is exposed in the dialog; the saved snapshot is never mutated locally.
  function topics(){
   const children=[...detail.children];
-  if(section==='genres'||section==='canon'||section==='files')return [{key:'whole',title:section==='genres'?'この世界で使うジャンル':section==='files'?file:'選んだ定石',nodes:children}];
+  if(section==='canon'||section==='files')return [{key:'whole',title:section==='files'?file:'選んだ定石',nodes:children}];
   let nodes=[];
   if(section==='roles')nodes=children.filter(n=>n.matches('label,fieldset'));
   if(section==='concerns')nodes=children.filter(n=>n.hasAttribute('data-concern-index'));
@@ -174,7 +172,6 @@
   else if(section==='planning'){list.textContent='最終目的から準備を組み立て、失敗や新しい情報に応じて手順を見直します。';}
   else if(section==='responses'){list.textContent='知らせ、現場での対処、連絡手段、条件を守る期間を設定します。';}
   else if(section==='concerns'){list.textContent='世界で共有する条件を定義します。重視する条件・優先順位・譲れない条件は、登場人物から編集できます。';}
-  else if(section==='genres')list.textContent='この世界で使う行動の範囲を選びます。';
   else list.append($('[data-advanced-actions]').content.cloneNode(true));
   list.hidden=!['canon','files','actions','objectives'].includes(section);root.dataset.advancedView=section;
   renderDetail();renderReading();refresh();
@@ -183,9 +180,7 @@
  async function action(check){if(busy||blocked||!initial.editable)return;for(const el of detail.querySelectorAll('input,textarea,select'))if(el.getClientRects().length&&!el.reportValidity())return;
   busy=true;root.querySelectorAll('input,textarea,select,button').forEach(e=>{e.dataset.disabled=String(e.disabled);e.disabled=true;});message.textContent=check?'設定を確認中…':'保存中…';
   let saved=false;
-  try{if(section==='genres'){
-    if(!check){world=await api('/api/worlds/'+encodeURIComponent(world.id)+'/edit',{revision:world.revision,operation:'story-genres',target:null,values:{genres:draft}});dirty=false;status.textContent='ジャンルを保存しました';}
-   }else if(['concerns','responses','objectives','planning'].includes(section)){
+  try{if(['concerns','responses','objectives','planning'].includes(section)){
     const result=await api('/api/worlds/'+encodeURIComponent(world.id)+'/edit',{revision:world.revision,operation:check?(section==='objectives'?'goal-rules':section)+'-check':section==='objectives'?'goal-rules':section,target:null,values:{definition:section==='planning'?window.WorldBloomPlanning.definition(draft):section==='objectives'?(draft.definitions.length?draft:null):section==='responses'?(Object.keys(draft.state).length?draft:null):(draft.conditions.length?draft:null)}});
     if(check){status.textContent=section==='planning'?'未保存の再計画設定を確認しました。':section==='objectives'?'未保存の達成・失敗・期間の定義を確認しました。':section==='responses'?'未保存の対処設定を確認しました。':'未保存の条件を確認しました。';}else{world=result;dirty=false;status.textContent='世界の設定を保存しました';}
    }else if(section==='canon'){
@@ -205,7 +200,7 @@
   finally{busy=false;root.querySelectorAll('[data-disabled]').forEach(e=>{e.disabled=e.dataset.disabled==='true';delete e.dataset.disabled;});refresh();if(saved){dialog.close();activeTopic=null;loaded();render();restoreFocus();}}
  }
  root.querySelectorAll('[data-advanced-section]').forEach(b=>b.addEventListener('click',()=>{if(dirty||busy){status.textContent='先に変更を保存するか、変更を戻してください。';return;}section=b.dataset.advancedSection;history.replaceState(null,'','#'+section);index=0;loaded();render();}));
- addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(next===section||!['roles','concerns','objectives','responses','planning','genres','canon','actions','files'].includes(next))return;if(dirty||busy){history.replaceState(null,'','#'+section);status.textContent='先に変更を保存するか、キャンセルしてください。';return;}section=next;index=0;loaded();render();});
+ addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(next===section||!['roles','concerns','objectives','responses','planning','canon','actions','files'].includes(next))return;if(dirty||busy){history.replaceState(null,'','#'+section);status.textContent='先に変更を保存するか、キャンセルしてください。';return;}section=next;index=0;loaded();render();});
  $('[data-advanced-form]').addEventListener('submit',e=>{e.preventDefault();action(false);});$('[data-advanced-check]').addEventListener('click',()=>action(true));
  root.addEventListener('click',e=>{if(busy&&e.target.closest('a'))e.preventDefault();});addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue='';}});loaded();render();const requested=new URLSearchParams(location.search).get('edit');if(requested){const opener=[...reading.querySelectorAll('[data-topic]')].find(n=>n.dataset.topic===requested);if(opener)openTopic(requested,opener);}
 })();

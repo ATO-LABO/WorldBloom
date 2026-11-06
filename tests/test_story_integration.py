@@ -6,6 +6,7 @@ import unittest
 from urllib.parse import urlencode
 import test_output_jobs as jobfixtures
 import test_output_pages as uifixtures
+from saved_world_fixtures import install_current_worlds
 from test_story_pipeline import fixture
 from gapengine.story_materials import extract_materials
 from gapengine.story_plan import create_plan
@@ -24,6 +25,7 @@ class StoryJobTests(unittest.TestCase):
     finish=jobfixtures.OutputJobTests.finish
     def setUp(self):
         jobfixtures.OutputJobTests.setUp(self)
+        install_current_worlds(self.repo, "momotaro_plus3")
         self.configs.save({"label":"momotaro","project_id":"momotaro_plus3","template_id":"momotaro_plus3",
             "evolution":{"generations":1,"population":1,"seeds":1}},config_id="cfg-story")
         _,raw,_=fixture()

@@ -11,10 +11,28 @@ import os
 from pathlib import Path
 import random
 import sys
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from execution.melos_adapter import MelosActionStage, _hash
+from execution.melos_factory import load_approved_world
+
+
+def bind_approved_trial_world(test_class, module, root):
+    """Give the original Trial its approved world within this test class."""
+    if root.name != 'melos-input':
+        raise ValueError('Original Trial requires a melos-input fixture directory')
+    approved_path = root / 'world.yaml'
+
+    def from_yaml(path):
+        if Path(path) != approved_path:
+            raise ValueError('World is outside the approved Melos input')
+        return load_approved_world(approved_path)
+
+    test_class.enterClassContext(patch.multiple(
+        module, ROOT=root.parent, World=SimpleNamespace(from_yaml=from_yaml),
+    ))
 
 
 @unittest.skipUnless(os.environ.get('MELOS_APPROVED_ADAPTER_DIR') and
@@ -28,9 +46,7 @@ class MelosActionStageTests(unittest.TestCase):
         sys.modules[spec.name] = cls.module
         spec.loader.exec_module(cls.module)
         root = Path(os.environ['MELOS_INPUT_DIR'])
-        if root.name != 'melos-input':
-            raise ValueError('Original Trial requires a melos-input fixture directory')
-        cls.module.ROOT = root.parent
+        bind_approved_trial_world(cls, cls.module, root)
         cls.inputs = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in sorted(root.rglob('*.yaml'))}
         cls.sources = {'approved_trial': hashlib.sha256(source.read_bytes()).hexdigest()}

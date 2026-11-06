@@ -50,10 +50,6 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertNotIn('data-gs-tab="genres"', body)
         self.assertNotIn('data-gs-panel="genres"', body)
         self.assertIn('data-gs-panel="output">', body)
-        status, body, _ = self.get_status('/worlds/romance?view=advanced#genres')
-        self.assertEqual(status, 200)
-        self.assertIn('data-advanced-section="genres"', body)
-        self.assertIn('href="/worlds/romance?view=advanced#genres"', body)
 
     def test_jev_tab_is_in_ai_settings_only(self):
         status, body, _ = self.get_status('/configs?tab=output')
@@ -62,6 +58,12 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertIn('aria-controls="gs-panel-jev"', ai)
         self.assertIn('data-gs-jev-key-save', ai)
         self.assertNotIn('data-gs-jev-key-save', compute)
+
+    def test_current_action_settings_are_accessible(self):
+        status, body, _ = self.get_status('/worlds/romance?view=actions')
+        self.assertEqual(status, 200)
+        self.assertIn('data-as-tab="types"', body)
+        self.assertIn('href="/worlds/romance?view=actions"', body)
 
     def test_save_round_trip_is_reflected_without_config_mutation(self):
         before = self.configs.get('cfg-test')

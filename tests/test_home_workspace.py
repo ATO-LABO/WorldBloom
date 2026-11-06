@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import yaml
 
+from saved_world_fixtures import current_world_yaml
 from execution.library import LibraryStore
 from viewer import data, pages, home_pages, server
 
@@ -34,9 +35,9 @@ class HomeWorkspaceTests(unittest.TestCase):
         self.world = self.root / "projects" / "original"
         self.world.mkdir(parents=True)
         self.file = self.world / "world.yaml"
-        self.file.write_text(yaml.safe_dump({"name": "同じ世界", "overview": "保存した紹介 <script>危険</script>",
+        self.write_world({"name": "同じ世界", "overview": "保存した紹介 <script>危険</script>",
             "protagonist": "花子", "antagonist": "太郎", "zones": [{"name": "村"}],
-            "time": {"days": 7}}, allow_unicode=True), encoding="utf-8")
+            "time": {"days": 7}})
         (self.world / "subjects").mkdir()
         (self.world / "subjects" / "dog.yaml").write_text("id: 犬", encoding="utf-8")
         self.store = LibraryStore(self.root)
@@ -47,6 +48,9 @@ class HomeWorkspaceTests(unittest.TestCase):
         self.configs = SimpleNamespace(repo=self.root, get=lambda cid: {"preview": {"world_name": "実行時の世界"}})
         self.jobs = SimpleNamespace(root=self.jobs_root, configs=self.configs,
             list=lambda: self.fail("Home must not reconcile jobs"), get=lambda _: self.fail("Home must not reconcile jobs"))
+
+    def write_world(self, definition):
+        self.file.write_bytes(current_world_yaml(definition, template="basic").encode("utf-8"))
 
     def job(self, jid, stamp, **kwargs):
         folder = self.jobs_root / jid
@@ -62,23 +66,23 @@ class HomeWorkspaceTests(unittest.TestCase):
         self.assertIn("場所 1か所", page)
         self.assertIn("7日間", page)
         self.assertIn(' 犬" data-genre', page)
-        self.assertIn('data-search="同じ世界 original 共通＋戦闘 花子 太郎', page)
+        self.assertIn('data-search="同じ世界 original 基本 花子 太郎', page)
 
     def test_blank_overview_is_distinct_from_missing(self):
         world = self.store.worlds()[0]
-        self.file.write_text('overview: ""\nzones: [{name: 村}]\ntime: {days: true}', encoding="utf-8")
+        self.write_world({"overview": "", "zones": [{"name": "村"}], "time": {"days": True}})
         desc, places, period = home_pages.world_details(self.store, world)
         self.assertIn("まだ設定", desc)
         self.assertEqual(period, "期間 未設定")
-        self.file.write_text('zones: [{name: 村}]\ntime: {days: 9}', encoding="utf-8")
+        self.write_world({"zones": [{"name": "村"}], "time": {"days": 9}})
         self.assertEqual(home_pages.world_details(self.store, world), ("舞台：村。", 1, "9日間"))
 
     def test_catalogue_rereads_same_size_edit_even_with_preserved_mtime(self):
-        self.file.write_text('overview: first\n', encoding="utf-8")
+        self.write_world({"overview": "first"})
         world = self.store.worlds()[0]
         stamp = self.file.stat()
         self.assertEqual(home_pages.world_details(self.store, world)[0], "first")
-        self.file.write_text('overview: other\n', encoding="utf-8")
+        self.write_world({"overview": "other"})
         os.utime(self.file, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
         self.assertEqual(home_pages.world_details(self.store, world)[0], "other")
 

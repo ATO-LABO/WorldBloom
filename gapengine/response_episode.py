@@ -12,9 +12,9 @@ from engine.subject import Subject
 from engine.world import World
 
 
-def load_response(world_path):
+def load_response(world_path, *, world_loader=None):
     path = Path(world_path)
-    world = World.from_yaml(path)
+    world = (world_loader or World.from_yaml)(path)
     if world.responses is None or world.action_graph_enabled or world.effect_library:
         raise ValueError('Response runner requires a self-contained explicit response world')
     files = sorted((path.parent/'subjects').glob('*.yaml'))
@@ -26,12 +26,12 @@ def load_response(world_path):
     return world, people
 
 
-def run_batch(world_path, output, seeds):
+def run_batch(world_path, output, seeds, *, world_loader=None):
     if (not isinstance(seeds,list) or not 1 <= len(seeds) <= 1000
             or any(type(s) is not int or s < 0 for s in seeds) or len(set(seeds)) != len(seeds)):
         raise ValueError('Distinct predeclared integer seeds required')
     path, output = Path(world_path).resolve(), Path(output)
-    world, _ = load_response(path)
+    world, _ = load_response(path, world_loader=world_loader)
     sampler, provider = factory_identities(native_profile(world))
     classification = {'id':'concern_response_v1','version':1,
                       'source_hash':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -56,7 +56,7 @@ def run_batch(world_path, output, seeds):
     save('input-manifest.json',{'inputs':manifest,'sources':sources,'runner':classification['source_hash']})
     save('execution-plan.json',plan.to_dict())
     def evaluate(seed):
-        current, people = load_response(inputs/'world.yaml')
+        current, people = load_response(inputs/'world.yaml', world_loader=world_loader)
         sim = Simulation(seed,current,people,output/f'seed-{seed:04}',record_explanations=True,execution_plan=plan.to_dict())
         ledger = sim.run()
         rows = [json.loads(line) for line in ledger.read_text(encoding='utf8').splitlines()]

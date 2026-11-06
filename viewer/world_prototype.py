@@ -12,7 +12,7 @@ from viewer.settings_navigation import navigation, checks_navigation
 
 def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=None, experiments=(), expansion_html="", genres=()):
     """Render saved settings in the shared production shell. Rendering never writes."""
-    from engine.story_genres import for_world, label, catalog
+    from engine.action_types import for_world, label
     repo = job_store.configs.repo if job_store is not None else data.ROOT
     selected = for_world(world_yaml, repo / "projects" / world["id"] / "world.yaml")
     from viewer.world_review import work_note
@@ -22,7 +22,7 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         "overview": world_yaml.get("overview") or "", "intro": world_yaml.get("initial_story") or "",
         "editable": job_store is not None and revision is not None, "revision": revision,
         "genre": world.get("genre"),
-        "story_genres": selected, "story_genre_label": label(selected), "story_genre_catalog": catalog(),
+        "action_types": selected, "action_type_label": label(selected),
         "genres": [{"id": g["id"], "name": g.get("name") or g["id"]} for g in genres],
         # WB-TIMEEVENT-001: verb -> argument kinds for the time screen's
         # force_action form (same shape execution/world_editor.py._model()

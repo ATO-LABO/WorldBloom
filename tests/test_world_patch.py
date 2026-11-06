@@ -10,7 +10,8 @@ from world_patch_fixtures import write_approved
 from gapengine.world_patch import EMPTY_STACK_DIGEST
 
 from engine.sim import Simulation
-from engine.world import World
+from frozen_world import load_frozen_world
+from saved_world_fixtures import current_world_yaml
 from gapengine.world_patch import (
     PatchError,
     absolutize_references,
@@ -115,7 +116,7 @@ class WorldPatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "world.yaml"
             path.write_text(yaml.safe_dump(patched, allow_unicode=True, sort_keys=False), encoding="utf-8")
-            loaded = World.from_yaml(path, action_graph_path=ACTION_GRAPH_PATH)
+            loaded = load_frozen_world(path, action_graph_path=ACTION_GRAPH_PATH)
         self.assertIn("船大工の小屋", loaded.zones)
         self.assertIn("古びた帆布", loaded.items)
         self.assertIn("船大工の噂", loaded.facts)
@@ -763,7 +764,7 @@ class LotteryTruthImpliesTests(unittest.TestCase):
             world_path = Path(temp) / "world.yaml"
             world_path.write_text(yaml.safe_dump(patched_world, allow_unicode=True, sort_keys=False),
                                    encoding="utf-8")
-            loaded = World.from_yaml(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
+            loaded = load_frozen_world(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
 
             seen: dict[int, tuple[str, str]] = {}
             for seed in range(8):
@@ -799,7 +800,7 @@ class LotteryTruthImpliesTests(unittest.TestCase):
             world_path = Path(temp) / "world.yaml"
             world_path.write_text(yaml.safe_dump(patched_world, allow_unicode=True, sort_keys=False),
                                    encoding="utf-8")
-            loaded = World.from_yaml(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
+            loaded = load_frozen_world(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
             for seed in (0, 1, 2):
                 people = load_detective_subjects()
                 loaded.resolve_truth(seed)
@@ -819,7 +820,7 @@ class LotteryTruthImpliesTests(unittest.TestCase):
                                    encoding="utf-8")
 
             def run(tag):
-                loaded = World.from_yaml(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
+                loaded = load_frozen_world(world_path, action_graph_path=DETECTIVE_ACTION_GRAPH_PATH)
                 people = load_detective_subjects()
                 return Simulation(7, loaded, people, root / tag).run()
 
@@ -856,7 +857,7 @@ def _minimal_contract_world(temp: Path, *, subject_range_zones: list[str]) -> tu
         "ending": [{"id": "done", "when": "False", "label": "x"}], "target_ending": ["done"],
     }
     world_path = temp / "world.yaml"
-    world_path.write_text(yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+    world_path.write_text(current_world_yaml(world, template="basic"), encoding="utf-8")
 
     person = {
         "id": "サブ",

@@ -5,6 +5,7 @@ Beliefs live on Subject; this runtime retains their provenance, plans and mail.
 All objective state/history reports are kept out of candidate scoring.
 """
 from copy import deepcopy
+from engine.action_constraints import response_actor_allowed, effective_verbs
 
 from engine.concerns import coordinates, effect_coordinate, finite, identifier, shape
 
@@ -217,6 +218,8 @@ class Responses:
         return dict(result, status=status)
 
     def _apply(self, world, effects, turn):
+        from engine.vitality import transition_value
+        effects = deepcopy(effects)
         for effect in effects:
             kind, value = effect['kind'], effect['value']
             if kind == 'state':
@@ -224,6 +227,7 @@ class Responses:
                 state[effect['key']] = value
             elif kind == 'vitality':
                 person = world.subjects[effect['actor']]
+                value = effect['value'] = transition_value(world, person, value)
                 if person.vitality != value:
                     person.vitality = value
                     person.downed_since = turn if value == 'downed' else None
@@ -236,6 +240,7 @@ class Responses:
                 before = world.relations.stance(effect['observer'], effect['target'])
                 world.relations.change(effect['observer'], effect['target'], affinity=value-before)
         for fact, signal in self.signals.items(): world.truth[fact] = self.state[signal['key']]
+        return effects
 
     def tick(self, world, turn):
         """Environmental events and delayed communications happen before choices."""
@@ -246,9 +251,9 @@ class Responses:
             if event['id'] in self.applied or event['turn'] > turn: continue
             self.applied.add(event['id'])
             prevented = bool(event['unless']) and all(self.state[k] == v for k, v in event['unless'].items())
-            if not prevented: self._apply(world, event['effects'], turn)
+            applied = [] if prevented else self._apply(world, event['effects'], turn)
             markers.append({'verb': 'response_environment', 'details': {'event': event['id'],
-                'prevented': prevented, 'world_effects': [] if prevented else deepcopy(event['effects'])}})
+                'prevented': prevented, 'world_effects': applied}})
         ready = [m for m in self.mail if m['due'] <= turn]
         self.mail = [m for m in self.mail if m['due'] > turn]
         for message in ready:
@@ -335,24 +340,28 @@ class Responses:
         fail = result['excluded'].append
         if not commitment: fail('no_commitment')
         if view['status'] not in {'danger', 'objective'}: fail(view['status'])
-        if actor.id not in spec['actors']: fail('capability_unavailable')
+        if not response_actor_allowed(world, spec, actor.id): fail('capability_unavailable')
+        from engine.action_constraints import denial as constraint_denial
+        restricted = constraint_denial(world, actor, 'respond', (spec['id'],), turn)
+        if restricted and (restricted != 'action_time_restricted' or actor.zone == spec['zone']): fail(restricted)
         authorization = spec.get('authorization')
         if authorization and not world.deliberation.decided(authorization['proposal'], authorization['status']):
             fail('authorization_pending')
         elif authorization and world.social_planner is not None and authorization['proposal'] in world.social_planner.proposals:
             known=world.social_planner.known(world,actor.id,authorization['proposal'])
             if known is None or known['status']!=authorization['status']: fail('authorization_pending')
-        if 'respond' not in actor.verbs: fail('response_verb_unavailable')
+        if 'respond' not in effective_verbs(world, actor): fail('response_verb_unavailable')
         from engine.phase2 import available_verbs
         allowed = available_verbs(world, actor, turn=turn, day=day)
-        if 'respond' not in allowed or not world.genre_allows('respond'): fail('response_phase_unavailable')
+        if 'respond' not in allowed or not world.genre_allows('respond') or not world.action_usage_allows('respond',(spec['id'],)): fail('response_phase_unavailable')
         if set(spec['requires']) - actor.knowledge: fail('missing_evidence')
         if any(not actor.has_item(item, n) for item, n in spec['items'].items()): fail('missing_resources')
         remaining = spec['steps'] - self.progress.get((actor.id, spec['id']), 0)
         from engine.action_timing import step_timing
         remaining, remaining_cost, completion = step_timing(world, actor, 'respond', (spec['id'],), remaining,
             spec['cost'] * remaining, turn=turn)
-        if actor.stamina < (remaining_cost if world.action_timing is not None and 'respond' in world.action_timing.rules else spec['cost']):
+        from engine.stamina import adjusted_cost
+        if world.mechanics_enabled('stamina_management') and actor.stamina < (remaining_cost if world.action_timing is not None and 'respond' in world.action_timing.rules else adjusted_cost(world,'respond',spec['cost'])):
             fail('insufficient_stamina')
         path = None
         if actor.zone != spec['zone']:
@@ -361,6 +370,11 @@ class Responses:
         hops = len(path.route)-1 if path else 0
         travel = (step_timing(world, actor, 'move', (spec['zone'],), hops, path.cost,
                   turn=turn, hops=hops)[0] if path else 0)
+        if path and world.action_timing is not None and 'respond' in world.action_timing.rules:
+            remaining,remaining_cost,completion=step_timing(world,actor,'respond',(spec['id'],),
+                spec['steps']-self.progress.get((actor.id,spec['id']),0),spec['cost']*spec['steps'],turn=turn+travel)
+            restricted=constraint_denial(world,actor,'respond',(spec['id'],),turn+travel)
+            if restricted:fail(restricted)
         deadline = self.signals[spec['signal']]['deadline'] if spec['signal'] is not None else None
         if deadline is not None and turn + travel + completion > deadline: fail('too_late')
         objective = world.goal_rules
@@ -434,14 +448,14 @@ class Responses:
             if option['next_zone'] is not None:
                 verb, args = 'move', (option['next_zone'],)
                 path = world.reachable_paths(actor).get(args[0])
-                if path is None or path.cost > actor.stamina: continue
+                if path is None or world.mechanics_enabled('stamina_management') and path.cost > actor.stamina: continue
                 meta = {'dest': args[0], 'cost': path.cost, 'hops': path.hops, 'route': list(path.route)}
             else:
                 verb, args, meta = 'respond', (spec['id'],), {}
             if 'objective_view' in option:
                 reason.update(objective_view=option['objective_view'], objective_forecast=option['objective_forecast'])
             meta.update(response_plan=spec['id'], response_reason=reason)
-            if verb in allowed and world.genre_allows(verb):
+            if verb in allowed and world.genre_allows(verb) and world.action_usage_allows(verb,args):
                 weighted.append((Action(verb, args, meta), option['weight']))
         # Inspection is local, and refreshes stale beliefs without inventing remote knowledge.
         if 'inspect_response' in allowed:
@@ -462,7 +476,7 @@ class Responses:
                 if REQUEST_BLOCKERS.intersection(option['excluded']): continue
                 for (sender, target), delay in sorted(self.channels.items()):
                     key = (actor.id, target, spec['id'], option['signal'].get('observed_at'))
-                    if sender != actor.id or target not in spec['actors'] or key in self.sent: continue
+                    if sender != actor.id or not response_actor_allowed(world, spec, target) or key in self.sent: continue
                     # Do not inspect the other person's private goals, position or stamina.
                     weight = 4 + 4 * actor.traits['social']
                     if option['excluded']: weight *= 3
@@ -475,6 +489,12 @@ class Responses:
         from engine.subject import Belief
         from engine.phase2 import available_verbs
         invalid = lambda reason: ('invalid', {'reason': reason}, [])
+        from engine.action_constraints import execution_busy
+        if execution_busy(world,actor,action):return invalid('actor_busy')
+        if not world.action_usage_allows(action.verb, action.args): return invalid('action_disabled')
+        from engine.action_constraints import denial as constraint_denial
+        restricted = constraint_denial(world, actor, action.verb, action.args, turn)
+        if restricted: return invalid(restricted)
         if actor.vitality not in {'alive', 'revived'}: return invalid('actor_unavailable')
         if action.verb not in available_verbs(world, actor, turn=turn, day=day) or not world.genre_allows(action.verb):
             return invalid('response_verb_unavailable')
@@ -495,7 +515,7 @@ class Responses:
             assessment = self._option(world, actor, spec, turn, day)
             if REQUEST_BLOCKERS.intersection(assessment['excluded']): return invalid('request_conflicts_with_own_conditions')
             key = (actor.id, target, sid, view.get('observed_at'))
-            if (target not in spec['actors'] or not self._commitment(world, actor, spec['condition'])
+            if (not response_actor_allowed(world, spec, target) or not self._commitment(world, actor, spec['condition'])
                     or view['status'] != 'danger' or key in self.sent): return invalid('request_not_justified')
             rid = 'request-' + str(len(self.requests)+1)
             self.sent.add(key)
@@ -545,7 +565,7 @@ class Responses:
         details = {'action': spec['id'], 'label': spec['label'], 'progress': progress, 'steps': spec['steps'],
                    'assessment': option, 'effects': []}
         if progress < spec['steps']: return 'working', {'response': details}, []
-        self._apply(world, spec['effects'], turn)
+        applied_effects = self._apply(world, spec['effects'], turn)
         signal = self.signals.get(spec['signal'])
         if signal is not None and self.can_observe(actor, signal['key']):
             actor.beliefs[spec['signal']] = Belief(self.state[signal['key']], 1)
@@ -559,7 +579,7 @@ class Responses:
                         'reply': 'completed', 'fact': spec['signal'], 'value': self.state[signal['key']],
                         'confidence': 1.0, 'observed_at': turn,
                         'due': turn+self.channels[(actor.id, request['from'])]})
-        details['effects'] = deepcopy(spec['effects'])
+        details['effects'] = applied_effects
         return 'responded', {'response': details}, []
 
     def after_action(self, world, actor, action, result, details, turn):

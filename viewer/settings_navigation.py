@@ -14,10 +14,12 @@ def checks_navigation(world_id, active):
 
 SECTIONS = (
     ('overview', '概要と物語の前提'),
+    ('description', '話の説明'),
     ('people', '登場人物と関係'),
     ('places', '場所と移動'),
     ('items', '持ち物と情報'),
     ('time', '時間と出来事'),
+    ('actions', '行動設定'),
     ('rules', '世界のルール'),
     ('checks', '確認・調査'),
     ('files', '設定ファイル'),
@@ -34,9 +36,9 @@ def navigation(world_id, *, buttons=False, active=None):
     for key,label in SECTIONS:
         attrs=f' data-settings-category="{key}"'
         if key==active:attrs+=' aria-current="page"'
-        if buttons and key not in ('rules','files'):
+        if buttons and key not in ('genres','rules','files','actions'):
             parts.append(f'<button type="button" data-screen="{key}"{attrs}>{label}</button>')
         else:
-            href=base+'?view=advanced#'+('genres' if key=='rules' else 'files') if key in ('rules','files') else base+'#screen='+key
+            href=base+'?view=actions' if key=='actions' else base+'?view=advanced#'+({'rules':'concerns'}.get(key,key)) if key in ('genres','rules','files') else base+'#screen='+key
             parts.append(f'<a href="{html.escape(href,quote=True)}"{attrs}>{label}</a>')
     return ''.join(parts)

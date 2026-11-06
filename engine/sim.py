@@ -57,7 +57,7 @@ def _engine_source_hash(engine_dir: Path) -> str:
 
     paths = tuple(
         sorted(
-            [*engine_dir.glob("*.py"), *engine_dir.glob("story_genres.json")],
+            [*engine_dir.glob("*.py"), *engine_dir.glob("action_types.json"), *engine_dir.glob("story_genres.json")],
             key=lambda value: value.name,
         )
     )
@@ -69,6 +69,8 @@ def _engine_source_hash(engine_dir: Path) -> str:
 
 class Simulation:
     """Run one reproducible world trajectory and write layers.jsonl."""
+
+    purpose_analysis_selector_version = 1
 
     def __init__(
         self,
@@ -82,6 +84,9 @@ class Simulation:
         execution_plan: dict[str, Any] | None = None,
         decision_provider: Any | None = None,
         terminal_policy: dict[str, bool] | None = None,
+        time_pressure: dict[str, Any] | None = None,
+        time_pressure_sources: dict[str, Any] | None = None,
+        purpose_preparation: dict[str, Any] | bool | None = None,
     ) -> None:
         self.seed = int(seed)
         self.world = world
@@ -140,7 +145,7 @@ class Simulation:
             if subject.stamina_max <= 0.0:
                 subject.stamina_max = self.world.stamina["default_max"]
                 subject.stamina = subject.stamina_max
-            if subject.stamina_recover <= 0.0:
+            if subject.stamina_recover <= 0.0 and (self.world.action_usage is None or not getattr(subject, '_stamina_recovery_authored', False)):
                 subject.stamina_recover = self.world.stamina[
                     "default_recover_per_slot"
                 ]
@@ -157,7 +162,21 @@ class Simulation:
                            for field in fields(person) if field.name != 'policy'
                            and not (field.name == 'commitments' and person.commitments is None)})
             for actor, person in self.subjects.items()}
+        if time_pressure is not None:
+            from engine.time_pressure import normalize_config, TimePressure
+            enabled_pressure = normalize_config(time_pressure)
+            if enabled_pressure is not None:
+                if execution_plan is not None or decision_provider is not None:
+                    raise ValueError("Time pressure supports ordinary autonomous selection only")
+                self._time_pressure = TimePressure(enabled_pressure, time_pressure_sources, self.world, self.subjects)
         self.verb_engine = VerbEngine(self.world, self.rng)
+        from engine.purpose_preparation_runtime import load_runtime
+        self._purpose_preparation = load_runtime(self.world, self._initial_subject_specs, purpose_preparation)
+        if (self._purpose_preparation is not None and hasattr(self, '_time_pressure')
+                and self._purpose_preparation.plan.get('pressure', {}).get('enabled') is True):
+            raise ValueError('Legacy time pressure and purpose-preparation deadlines cannot be enabled together; explicitly choose one')
+        if self._purpose_preparation is not None and (execution_plan is not None or decision_provider is not None):
+            raise ValueError('Preparation guidance requires ordinary autonomous choices')
         self.slot_runtime = None
         if getattr(self.world, "slot_execution", None) is not None:
             if self.world.slot_execution.get("mode") == "calendar_promises_v2":
@@ -432,6 +451,11 @@ class Simulation:
             "precedent_hash": self._precedent_hash(),
             "engine_hash": self._engine_hash(),
         }
+        if self.world.date_calendar is not None:
+            header['date_calendar'] = _plain(self.world.date_calendar)
+            header['date_calendar_semantics'] = 'logical_day_labels_v1'
+        if self._purpose_preparation is not None:
+            header['purpose_preparation'] = self._purpose_preparation.header()
         if self.record_explanations:
             header["explanation_recording"] = {"version": VERSION, "rule": RULE, "cost_baseline_version": 1}
         if self.execution_plan is not None:
@@ -505,6 +529,7 @@ class Simulation:
             "kind": "event",
             "turn": self.turn,
             "day": self.day,
+            **self.world.time_context(self.day),
             "slot": self.slot,
             "subject": subject,
             "verb": verb,
@@ -608,8 +633,14 @@ class Simulation:
                 args = [str(value) for value in force_action.get("args", [])]
                 registered: list[str] = []
                 skipped: list[str] = []
+                busy_targets = []
                 for target in targets:
                     if target.vitality in {"alive", "revived"}:
+                        timing = self.world.action_timing
+                        running = timing.pending.get(target.id) if timing is not None else None
+                        if running and 'work_duration' in running and running['finish'] > self.time_kernel.now:
+                            skipped.append(target.id);busy_targets.append(target.id)
+                            continue  # A paused action retains occupancy; never queue a stale forced choice.
                         # Later scheduled events for the same subject/slot win.
                         self._forced[target.id] = {
                             "event_id": str(event["id"]),
@@ -626,6 +657,7 @@ class Simulation:
                     "subjects": registered,
                     "skipped": skipped,
                 }
+                if busy_targets:details["force_action"]["busy"]={a:"actor_busy" for a in busy_targets}
             writer.write(
                 self._event_row(
                     verb="scheduled_event",
@@ -776,6 +808,11 @@ class Simulation:
         forced: dict[str, Any] | None = None,
     ) -> tuple[Action, float | None]:
         self._decision_context = None
+        if hasattr(self, "_time_pressure") and self.record_explanations:
+            self._time_pressure_review = None
+        from engine.stamina import forced_rest
+        rest=forced_rest(self.world,subject)
+        if rest is not None:return rest,1.0
         if self.record_explanations:
             self._decision_context = {"zone": subject.zone,
                                       "present": [s.id for s in self._present_for(subject)],
@@ -838,6 +875,9 @@ class Simulation:
         if not weighted:
             return Action("rest"), None
 
+        preparation = self._purpose_preparation
+        if preparation is not None:
+            weighted = preparation.augment(subject, weighted, self.turn, self.day)
         policy = subject.policy
         if policy is not None:
             reweight = getattr(policy, "reweight", None)
@@ -856,6 +896,16 @@ class Simulation:
 
         if not weighted:
             return Action("rest"), None
+        pressure = getattr(self, "_time_pressure", None)
+        if pressure is not None and subject.id == self.world.protagonist:
+            weighted, actor_pressure, _ = pressure.apply(
+                self.world, subject, weighted, self.turn, record=self.record_explanations)
+            if self.record_explanations:
+                self._decision_context["time_pressure"] = actor_pressure
+        if preparation is not None:
+            weighted, preparation_explanation = preparation.reweight(subject, weighted, self.turn, record=self.record_explanations)
+            if self.record_explanations:
+                self._decision_context['purpose_preparation'] = preparation_explanation
         weights = [max(0.0, float(weight)) for _, weight in weighted]
         total = sum(weights)
         if total <= 0.0:
@@ -869,10 +919,21 @@ class Simulation:
             weights=weights,
             k=1,
         )[0]
+        # Analysis-only opt-in: enumerate another positively weighted choice after
+        # consuming the normal selector draw. Ordinary runs have no hook.
+        analysis_choose = getattr(self, "_purpose_analysis_choose", None)
+        if analysis_choose is not None:
+            index = analysis_choose(subject, weighted, weights, index)
+            if type(index) is not int or not 0 <= index < len(weighted) or weights[index] <= 0:
+                raise ValueError("Analysis selector returned a non-positive or invalid candidate")
         action = weighted[index][0]
         probability = weights[index] / total
         if self.record_explanations:
             self._decision_context["selection"] = record_distribution(weighted, weights, index)
+            if pressure is not None and subject.id == self.world.protagonist:
+                # Review truth is read only after the random choice and is not
+                # part of actor evidence, policy or judge context.
+                self._time_pressure_review = pressure.review(self.world, action, self.turn)
 
         if policy is not None:
             record = getattr(policy, "record", None)
@@ -903,6 +964,7 @@ class Simulation:
             "kind": "decision",
             "turn": self.turn,
             "day": self.day,
+            **self.world.time_context(self.day),
             "slot": self.slot,
             "subject": subject.id,
             "verb": action.verb,
@@ -919,6 +981,10 @@ class Simulation:
             "delta": delta,
             "details": _plain(details),
         }
+        if self._purpose_preparation is not None:
+            preparation_evidence = self._purpose_preparation.selected_evidence(action)
+            if preparation_evidence is not None:
+                row['purpose_preparation'] = preparation_evidence
 
         forced_meta = action.meta.get("forced")
         if forced_meta is not None:
@@ -926,6 +992,9 @@ class Simulation:
 
         if self.record_explanations:
             row["explanation"] = _plain(self._decision_context)
+            review = getattr(self, "_time_pressure_review", None)
+            if review is not None:
+                row["time_pressure_review"] = _plain(review)
         return row
 
     def _strength_details(self, subject: Subject) -> dict[str, float]:
@@ -1002,11 +1071,15 @@ class Simulation:
                 )
 
     def _recover_stamina(self) -> None:
+        if self.world.action_usage is not None and (not self.world.mechanics_enabled('stamina_management') or not self.world.stamina['passive_recovery']):
+            return
         if self.world.action_timing is not None and 'rest' in self.world.action_timing.rules:
             return  # Recovery is the timed rest effect, not an extra free slot effect.
         for subject_id in sorted(self.subjects):
             subject = self.subjects[subject_id]
             if subject.vitality == "dead":
+                continue
+            if subject.stamina<=0 and self.world.stamina.get('zero_behavior') in ('rest','death'):
                 continue
             if self.world.joint_activities is not None and self.world.joint_activities.bookings.is_busy(subject.id,self.time_kernel.now):
                 continue
@@ -1257,11 +1330,12 @@ class Simulation:
                 "kind": "snapshot",
                 "turn": self.turn,
                 "day": self.day,
+            **self.world.time_context(self.day),
                 "subject": subject.id,
                 "vector": vector,
                 "layers": layers,
                 "relations": self.world.relations.flat_rows(),
-                **({"romance": list(self.world.romantic_relationships.values())} if "romance" in self.world.story_genres else {}),
+                **({"romance": list(self.world.romantic_relationships.values())} if self.world.action_enabled("start_relationship") else {}),
                 **({"deliberation": self.world.deliberation.snapshot()}
                    if self.world.deliberation is not None else {}),
                 **({'responses': self.world.responses.snapshot()} if self.world.responses is not None else {}),
@@ -1339,6 +1413,8 @@ class Simulation:
     def _time_choices(self, frame, writer):
         for subject_id in self._action_order():
             subject = self.subjects[subject_id]
+            from engine.stamina import resolve_zero
+            self._write_markers(writer,resolve_zero(self.world,subject))
             if subject.vitality == "dead":
                 continue
 
@@ -1353,6 +1429,8 @@ class Simulation:
             action, probability = self.choose_action(
                 subject, forced=forced
             )
+            from engine.stamina import forced_rest
+            action=forced_rest(self.world,subject) or action
             if self._fallback is not None:
                 fallback = self._fallback
                 self._fallback = None
