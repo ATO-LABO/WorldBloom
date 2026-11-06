@@ -793,7 +793,7 @@
   "tests/test_world_draft_controller.py": "51a9cceaa5c952d81ffc21dcc844f9c8e7e9dff22beeaba5fdb28c2cd465d997",
   "tests/test_world_draft_goals.py": "87b1c0d0f5d6cf86fbda8ac6057913f8ea3c7c0604b422e3db889dec70642c37",
   "tests/test_world_drafts.py": "4acab8c32efba2a4a321f7d0f22e310a2345187a4ba17180f92ab90ad698b383",
-  "tests/test_world_editor.py": "7ffd565eee85aa83b6a3248c5e50625547b08f2b6433bd8454a6fca268c003a4",
+  "tests/test_world_editor.py": "930b77ad7ab746067a2f27486e68f0cfc4c41620e0d6a4d4557fd69bcdba401e",
   "tests/test_world_editorial.py": "e8708428de2a5794137650a67100d94cd6361df3d174082969714977b86d09ba",
   "tests/test_world_effect_view.py": "af39fce059fe7ea284afa428aad06239c7a8a0b15b8625a4c02b356a14438abd",
   "tests/test_world_expansion_api.py": "46ce18523df3fc330d61ce7db5145a25a60128ccd8d2d9fda7fa9441ac2b4fc6",
