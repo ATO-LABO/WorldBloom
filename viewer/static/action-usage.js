@@ -131,7 +131,11 @@
       const timed=(model.timed_verbs||[]).includes(action.verb);
       configHelp(q('[data-as-time-help]'),'実行時間の説明','世界の時間設定で定義した時間帯から選びます。'+(timed?'禁止時間帯は作業を停止し、次の許可時間帯から再開します。停止中は他の行動もできません。':''));
       configHelp(q('[data-as-conditions-help]'),'その他の条件・起きる変化',action.conditions+' → '+action.result);
-      q('[data-as-config-detail]').href=action.href;
+      const base='/worlds/'+encodeURIComponent(model.id);
+      const detail=ref.startsWith('recipe:')
+        ? '#screen=items&entity='+encodeURIComponent(ref.slice('recipe:'.length))
+        : '?view=advanced#'+(ref.startsWith('response:')?'responses':'actions');
+      q('[data-as-config-detail]').href=base+detail;
       syncModal();config.querySelector('.as-config-body').scrollTop=0;config.showModal();search.focus();
     }
     root.querySelectorAll('[data-as-config]').forEach(button=>button.addEventListener('click',()=>openConfig(button.dataset.asConfig,button)));
