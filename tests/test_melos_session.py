@@ -13,6 +13,7 @@ from gapengine.genome import Genome
 from gapengine.melos_choice_provider import MelosChoiceProvider
 from execution.melos_session import MelosSession
 from execution.melos_adapter import _hash
+from test_melos_adapter import bind_approved_trial_world
 
 
 @unittest.skipUnless(os.environ.get('MELOS_APPROVED_ADAPTER_DIR') and os.environ.get('MELOS_INPUT_DIR'),
@@ -26,7 +27,8 @@ class MelosSessionTests(unittest.TestCase):
         import ninegene_melos
         cls.base=melos_runner;cls.original=ninegene_melos
         root=Path(os.environ['MELOS_INPUT_DIR'])
-        cls.base.ROOT=root.parent;cls.original.ROOT=root.parent
+        bind_approved_trial_world(cls, cls.base, root)
+        cls.enterClassContext(patch.object(cls.original, 'ROOT', root.parent))
         cls.inputs={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob('*.yaml'))}
         cls.sources={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in [folder/'melos_runner.py',folder/'ninegene_melos.py']}
 
