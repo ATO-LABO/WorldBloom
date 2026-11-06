@@ -20,7 +20,7 @@ class ActionTypeTests(unittest.TestCase):
         from engine.sim import _engine_source_hash
         root=Path(__file__).resolve().parents[1];blobs,_=code_snapshot(root)
         self.assertEqual(blobs['engine/action_types.json'],(root/'engine/action_types.json').read_bytes())
-        self.assertNotIn('engine/story_genres.json',blobs)
+        self.assertEqual(blobs['engine/story_genres.json'],(root/'engine/story_genres.json').read_bytes())
         with tempfile.TemporaryDirectory() as directory:
             folder=Path(directory);(folder/'example.py').write_text('example')
             data=folder/'action_types.json';data.write_text('[]');_engine_source_hash.cache_clear()
