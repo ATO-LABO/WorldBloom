@@ -264,7 +264,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if parts == ["modes"]:
             self.send_response(302)
             mode=parse_qs(urlsplit(self.path).query).get("mode",[None])[0]
-            self.send_header("Location", "/worlds"+("?mode="+mode if mode in ("create","review") else ""))
+            destinations = {"create": "/worlds?mode=create", "review": "/worlds?mode=review"}
+            self.send_header("Location", destinations.get(mode, "/worlds"))
             self.end_headers()
             return
         if parts == ["version"]:

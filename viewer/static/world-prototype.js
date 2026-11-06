@@ -168,22 +168,12 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   const time = () => `${w.time?.days ?? '未指定'}日間 ・ ${(w.time?.slots||[]).join(' ／ ')}`;
   function overview() {
     const hero = people.find(p=>p.id===w.protagonist);
-    // V2 (viewer review): "後から生まれたもの" (承認済み/提案中の世界拡張)
-    // ships as an inert <template id="wp-expansion"> (viewer/world_prototype.py)
-    // so it renders inside 世界の概要 instead of sitting as a stray sibling
-    // of #wp-content in the .wp 2-column grid. Its markup is server-built
-    // and already HTML-escaped (viewer/world_expansion_view.py), so
-    // innerHTML here doesn't need its own escaping. Absent when there's
-    // nothing to show (template tag itself is omitted server-side then).
-    const expansionTemplate = document.getElementById('wp-expansion');
-    const expansionHtml = expansionTemplate ? expansionTemplate.innerHTML : '';
     return title(model.name,'この世界の前提を確認する') +
       `<section class="wp-section">${head('どんな世界？',edit('overview'))}<p>${absent(model.overview)}</p></section>`+
       `<p class="wp-muted">行動の種類：${esc(model.action_type_label || '共通')} · <a href="/worlds/${encodeURIComponent(model.id)}?view=actions">行動設定で変更</a></p>`+
       `<div class="wp-columns"><section><h2>物語の出発点</h2><p>${hero?`${esc(hero.id)}は${esc(entry(hero))}にいる。`:'主人公は未指定です。'}</p></section><section><h2>目指す結末</h2><p>${esc(goal(hero))}</p></section></div>`+
       `<section class="wp-section">${head('この世界を構成するもの')}<button class="wp-jump" data-screen="people"><strong>登場人物</strong><span>${esc(people.map(p=>p.id).join('、')) || 'まだいません'}</span><span>→</span></button><button class="wp-jump" data-screen="places"><strong>場所</strong><span>${esc(zones.map(z=>z.name).join('、')) || 'まだありません'}</span><span>→</span></button><button class="wp-jump" data-screen="story"><strong>初期物語</strong><span>シミュレーション開始時点の導入・状況</span><span>→</span></button><button class="wp-jump" data-screen="time"><strong>時間</strong><span>${esc(time())}</span><span>→</span></button></section>`+
-      `<section class="wp-section">${head('物語の始まり',edit('intro','導入文を編集'))}<p class="wp-story-copy">${absent(model.intro)}</p></section><section class="wp-section">${head('世界全体で目指す結末',edit('target-ending'))}<p>${esc((w.target_ending||[]).map(id=>(w.ending||[]).find(e=>e.id===id)?.label||id).join('・')||'未設定')}</p></section>`+
-      (document.getElementById('wp-work-note')?.innerHTML||'')+expansionHtml;
+      `<section class="wp-section">${head('物語の始まり',edit('intro','導入文を編集'))}<p class="wp-story-copy">${absent(model.intro)}</p></section><section class="wp-section">${head('世界全体で目指す結末',edit('target-ending'))}<p>${esc((w.target_ending||[]).map(id=>(w.ending||[]).find(e=>e.id===id)?.label||id).join('・')||'未設定')}</p></section>`;
   }
   const TRAIT_LABELS = {social:'社交性',stubbornness:'頑固さ',curiosity:'好奇心',diligence:'勤勉さ',temper:'気性の荒さ'};
   const num = v => Number(v) || 0;
@@ -429,6 +419,12 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     content.classList.toggle('is-routes',screen==='routes');
     content.dataset.screen=screen;
     content.innerHTML=({overview,people:peopleScreen,places:placesScreen,items:itemsScreen,story,time:timeScreen,routes:routesScreen,checks:checksScreen}[screen]||overview)();
+    if(screen==='overview'){
+      for(const id of ['wp-work-note','wp-expansion']){
+        const template = document.getElementById(id);
+        if(template?.content)content.append(template.content.cloneNode(true));
+      }
+    }
     window.WorldBloomWorldNotes?.mount(content);
     if(screen==='items')new window.WorldBloomItems.Workspace(content.querySelector('[data-items-workspace]'),{getData:()=>window.WorldBloomItems.fromWorld(model),save:saveItems,link:(type,name)=>'/worlds/'+encodeURIComponent(model.id)+'#'+new URLSearchParams({screen:type,entity:name}),navigate:(type,name)=>{if(type==='people')person=Math.max(0,people.findIndex(p=>p.id===name));if(type==='places')place=Math.max(0,zones.findIndex(p=>p.name===name));screen=type;render(true);}});
     if(screen==='time')timeSettings.mount(content.querySelector('[data-time-settings]'));
