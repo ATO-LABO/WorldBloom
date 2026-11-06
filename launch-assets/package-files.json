@@ -822,7 +822,7 @@
   "tests/test_sifting_actions.py": "10e91aa94d0b284b2778766c980f174fd48ceb7dc6efc8d72f6e3e09069c879d",
   "tests/test_slot_runtime.py": "e76ab130bb9f870c8ed096fc067c55888864e0ecd171225308f61e13d2098f4e",
   "tests/test_story_genres.py": "4fe8142086baa425a4bb109c6e87f493544a216e3fb19da77ca497277dc68710",
-  "tests/test_story_integration.py": "516de511874b156cc89d03d4bc75be37bcb53035dfac0d3aa337f13eaa5bebdb",
+  "tests/test_story_integration.py": "c1925accb4c3bf755cee0de001e7a491379b5beef4f5052e32cd7ba4ae7cc14e",
   "tests/test_story_pipeline.py": "42fc1f0f659d1d9ebb1321dc7d6be4e00b6c2216f6644798ed67eb6abfa5749e",
   "tests/test_studio_python.py": "7e20b2ee7032fba7c95e6297e05ba46f0ca42f50122ee88bbbbd397e1b936ab2",
   "tests/test_subjective_objective.py": "797d628cd78ccbf201ebc16eb31da25ce0b041d27b3ecc49394178c07c18807b",

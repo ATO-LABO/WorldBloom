@@ -12,6 +12,7 @@ from engine.subject import Subject
 from engine.sim import Simulation
 from engine.verbs import VerbEngine
 from frozen_world import load_frozen_world
+from saved_world_fixtures import install_current_worlds
 from engine.world import World
 from tools.migrate_supporting_stories import migrate,SOURCES
 from test_native_planning import FIXTURE_ROOT
@@ -218,6 +219,7 @@ class SupportingPlanningTests(unittest.TestCase):
             root=Path(temp);src=FIXTURE_ROOT/'projects/momotaro_shared_planning'
             shutil.copytree(src,root/'projects'/src.name);migrate('momotaro',root=root)
             store=LibraryStore(root);name='momotaro_companions_planning'
+            install_current_worlds(root, name, template='momotaro')
             current=world_editor.snapshot(store,name)
             for operation in ('concerns','goal_rules'):
                 key=operation
