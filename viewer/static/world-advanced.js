@@ -95,7 +95,18 @@
   if(section==='roles'){
    const extra=document.createElement('details');extra.innerHTML='<summary>人物の能力・秘密・伏線を確認</summary>';extra.append($('[data-advanced-readouts]').content.cloneNode(true));
    const choices=document.createElement('div');choices.className='wa-person-links';
-   for(const sheet of extra.querySelectorAll('dialog[id]')){const button=document.createElement('button');button.type='button';button.dataset.sheet=sheet.id;button.textContent=sheet.querySelector('h4')?.textContent||sheet.getAttribute('aria-label');choices.append(button);}
+   for(const sheet of extra.querySelectorAll('dialog[id]')){
+        const button=document.createElement('button');
+        button.type='button';
+        button.dataset.sheet=sheet.id;
+        button.textContent=sheet.querySelector('h4')?.textContent||sheet.getAttribute('aria-label');
+        button.addEventListener('click',()=>{if(!sheet.open)sheet.showModal();});
+        sheet.addEventListener('click',event=>{
+          if(event.target===sheet||event.target.closest('[data-close-dialog]'))sheet.close();
+        });
+        sheet.addEventListener('close',()=>button.focus({preventScroll:true}));
+        choices.append(button);
+      }
    extra.insertBefore(choices,extra.children[1]);reading.append(extra);
   }
   // Empty states and unsupported forms retain their renderer's explanation.
