@@ -6,7 +6,7 @@ from viewer import settings_navigation,world_prototype,world_advanced,world_draf
 class SettingsNavigationTests(unittest.TestCase):
     def test_saved_rules_and_draft_share_the_same_category_registry(self):
         repo=Path(__file__).resolve().parents[1];store=LibraryStore(repo)
-        world=next(w for w in store.worlds() if w['id']=='momotaro')
+        world=next(w for w in store.worlds() if w['id']=='momotaro_plus3_new')
         normal=world_prototype.render(world,{},[])
         advanced=world_advanced.render(world,store,None)
         expected=[key for key,_ in settings_navigation.SECTIONS]
@@ -20,7 +20,7 @@ class SettingsNavigationTests(unittest.TestCase):
 
     def test_world_links_escape_ids_and_keep_the_selected_world(self):
         text=settings_navigation.navigation('a&b')
-        self.assertIn('/worlds/a%26b?view=advanced#genres',text)
+        self.assertIn('/worlds/a%26b?view=actions',text)
         self.assertIn('/worlds/a%26b#screen=people',text)
         self.assertIn('/worlds/a%26b?view=advanced#files',text)
         self.assertEqual(re.findall(r'data-settings-category="files"',text),['data-settings-category="files"'])

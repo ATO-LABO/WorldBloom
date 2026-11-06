@@ -75,7 +75,7 @@ class WorldPrototypeTests(unittest.TestCase):
     def test_wp_data_includes_scheduled_events_and_force_action_specs(self):
         # WB-TIMEEVENT-001 (U-4)
         store = LibraryStore(ROOT)
-        world = next(w for w in store.worlds() if w['id'] == 'momotaro')
+        world = next(w for w in store.worlds() if w['id'] == 'momotaro_plus3_new')
         source = library_pages._world_yaml_mapping(ROOT, world['id'])
         subjects = world_graph.load_subjects(ROOT / 'projects' / world['id'])
         result = world_prototype.render(world, source, subjects)
