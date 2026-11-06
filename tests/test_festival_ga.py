@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from festival_fixture import load_frozen_festival
 from gapengine.evolve import _evolve,run_individual,_next_population
 from gapengine.festival_choices import ChoiceGenome,ACTORS
 from gapengine.festival_ga import ADAPTER,completed_evaluation
@@ -14,6 +15,9 @@ from scripts.cultural_festival_probe import input_manifest,source_manifest
 
 
 class FestivalGATests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch('scripts.cultural_festival_state_search.load', load_frozen_festival))
+
     def test_choice_codec_has_no_personality_and_breeds(self):
         rng=random.Random(3);g=ChoiceGenome.random(rng)
         self.assertEqual(ChoiceGenome.from_dict(g.to_dict()),g)

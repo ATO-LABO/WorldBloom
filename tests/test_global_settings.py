@@ -59,6 +59,12 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertIn('data-gs-jev-key-save', ai)
         self.assertNotIn('data-gs-jev-key-save', compute)
 
+    def test_current_action_settings_are_accessible(self):
+        status, body, _ = self.get_status('/worlds/romance?view=actions')
+        self.assertEqual(status, 200)
+        self.assertIn('data-as-tab="types"', body)
+        self.assertIn('href="/worlds/romance?view=actions"', body)
+
     def test_save_round_trip_is_reflected_without_config_mutation(self):
         before = self.configs.get('cfg-test')
         payload = {'backend':'none', 'model':None, 'limits':{'max_calls':3,'call_timeout_seconds':120,'wall_seconds':500,'max_saved_response_bytes':2048}}

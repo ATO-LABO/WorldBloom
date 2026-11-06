@@ -7,11 +7,11 @@ from engine import communication_boundary
 from engine.decision_provider import provider_snapshot,staged_provider_restore
 from gapengine.communication_repeat import VERSION
 from gapengine.festival_policy import build_policies
-from scripts.cultural_festival_probe import load
+from festival_fixture import load_frozen_festival
 
 class CompletionBoundaryTests(unittest.TestCase):
     def fixture(self,out):
-        w,people=load();organizer=w.slot_contract['actions']['sound_check']['actor']
+        w,people=load_frozen_festival();organizer=w.slot_contract['actions']['sound_check']['actor']
         cfg={'version':VERSION,'epoch':'boundary-fixture','completion_mode':'explicit','actor_tendencies':{organizer:'reminder'}}
         policies=build_policies(w.slot_contract,communication_config=cfg)
         sim=Simulation(0,w,people,out,policies=policies);rt=sim.slot_runtime;rows=[]
@@ -66,7 +66,7 @@ class CompletionBoundaryTests(unittest.TestCase):
 
     def test_final_flush_and_saved_complete_policy_state(self):
         with tempfile.TemporaryDirectory() as d:
-            w,people=load();cfg={'version':VERSION,'epoch':'final-flush','completion_mode':'explicit'}
+            w,people=load_frozen_festival();cfg={'version':VERSION,'epoch':'final-flush','completion_mode':'explicit'}
             policies=build_policies(w.slot_contract,communication_config=cfg)
             sim=Simulation(0,w,people,Path(d),policies=policies);sim.run()
             saved=json.loads((Path(d)/'communication-state.json').read_text())

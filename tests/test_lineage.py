@@ -10,7 +10,7 @@ raising.
 
 from __future__ import annotations
 
-from frozen_world import evolve_frozen
+from frozen_world import evolve_frozen, run_frozen
 import json
 import shutil
 import tempfile
@@ -470,7 +470,7 @@ class RealRunLineageTests(unittest.TestCase):
             ],
         )
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, "II|high")
+        report = run_frozen(lineage.build_lineage_report, self.repository, self.experiment, "II|high")
         self.assertEqual(report["seed"], 11)
         for entry in report["ancestry"]:
             self.assertIsNone(entry["rerun_error"])
@@ -535,7 +535,7 @@ class RealRunLineageTests(unittest.TestCase):
         chain = lineage.primary_lineage(self.repository, self.experiment, "III|mid")
         self.assertEqual([node["ref"] for node in chain], ["g4/ind-0"])
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, "III|mid")
+        report = run_frozen(lineage.build_lineage_report, self.repository, self.experiment, "III|mid")
         self.assertEqual(report["turnings"], [])
         self.assertEqual(len(report["ancestry"]), 1)
         self.assertIsNone(report["ancestry"][0]["rerun_error"])
@@ -560,7 +560,7 @@ class RealRunLineageTests(unittest.TestCase):
         if rerun_dir.is_dir():
             shutil.rmtree(rerun_dir)
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, "II|high")
+        report = run_frozen(lineage.build_lineage_report, self.repository, self.experiment, "II|high")
         by_ref = {entry["ref"]: entry for entry in report["ancestry"]}
         self.assertIsNotNone(by_ref["g0/ind-7"]["rerun_error"])
         self.assertIsNone(by_ref["g1/ind-4"]["rerun_error"])
@@ -574,7 +574,7 @@ class RealRunLineageTests(unittest.TestCase):
         # as stale and recomputed, not returned as-is (gapengine/lineage.py::
         # build_lineage_report's cache-validity check).
         cache_path = self.experiment / "lineage" / "II-high-cache.json"
-        good_report = lineage.build_lineage_report(self.repository, self.experiment, "II|high")
+        good_report = run_frozen(lineage.build_lineage_report, self.repository, self.experiment, "II|high")
         self.addCleanup(
             cache_path.write_text,
             json.dumps(good_report, ensure_ascii=False),
@@ -588,7 +588,7 @@ class RealRunLineageTests(unittest.TestCase):
             turning.pop("trait_series", None)
         cache_path.write_text(json.dumps(stale, ensure_ascii=False), encoding="utf-8")
 
-        recomputed = lineage.build_lineage_report(self.repository, self.experiment, "II|high")
+        recomputed = run_frozen(lineage.build_lineage_report, self.repository, self.experiment, "II|high")
         for entry in recomputed["ancestry"]:
             self.assertIn("scalars", entry)
         for turning in recomputed["turnings"]:
@@ -689,7 +689,7 @@ class CoevolveLineageRerunTests(unittest.TestCase):
         self.assertTrue(cells)
         cell_key = next(iter(cells))
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, cell_key)
+        report = run_frozen(lineage.build_lineage_report, self.repository, self.experiment, cell_key)
         seed = report["seed"]
         for entry in report["ancestry"]:
             self.assertIsNone(entry["rerun_error"])
@@ -775,7 +775,7 @@ class RouteLineageRerunTests(unittest.TestCase):
         self.assertTrue(cells)
         cell_key = next(iter(cells))
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, cell_key)
+        report = run_frozen(lineage.build_lineage_report, self.repository, self.experiment, cell_key)
         seed = report["seed"]
         for entry in report["ancestry"]:
             self.assertIsNone(entry["rerun_error"])
@@ -877,7 +877,7 @@ class RationalityLineageRerunTests(unittest.TestCase):
         self.assertTrue(cells)
         cell_key = next(iter(cells))
 
-        report = lineage.build_lineage_report(self.repository, self.experiment, cell_key)
+        report = run_frozen(lineage.build_lineage_report, self.repository, self.experiment, cell_key)
         seed = report["seed"]
         for entry in report["ancestry"]:
             self.assertIsNone(entry["rerun_error"])

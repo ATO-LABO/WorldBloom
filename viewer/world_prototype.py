@@ -49,7 +49,6 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
     if not world_yaml.get("antagonist") or world_yaml["antagonist"] not in people_ids: missing.append("敵役")
     if not world_yaml.get("target_ending"): missing.append("目標の結末")
     if any(not (p.get("range") or {}).get("entry") for p in subjects): missing.append("人物の初期位置")
-    model["configUrl"] = config
     payload = json.dumps(model, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     next_href = f"/worlds/{wid}#screen=people" if missing else config
     next_label = "未設定の項目を確認 →" if missing else "実行条件を決める →"
