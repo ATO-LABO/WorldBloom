@@ -1,17 +1,3 @@
-:root {
- --ws-money-canvas: #f5f7f5;
- --ws-money-shadow: 0 1px 4px #163e2b08;
- --ws-money-card-radius: 12px;
- --ws-money-tab-size: 20px;
- --ws-money-switch-on: #32905a;
- --ws-money-switch-off: #bcc3c8;
- --ws-money-switch-w: 64px;
- --ws-money-switch-h: 36px;
- --ws-money-switch-knob: 30px;
-}
-:root {--ws-help-width:360px;--ws-help-gap:8px;--ws-help-target:44px;--ws-help-glyph:24px;--ws-help-z:1000;}
-.ui-money-theme {
-
 /* Opt-in settings frame. Only the money editor mounts this component initially. */
 .ui-settings-host {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;overflow:hidden;}
 .ui-settings-frame {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;margin:0;overflow:hidden;}
@@ -40,7 +26,7 @@
 }
 
 /* Money visual pilot, matched to the owner-provided reference PNG. */
-.ui-money-theme.ui-settings-frame, .ui-settings-theme.ui-settings-frame {color:var(--ws-text);font:400 var(--ws-fs-md)/var(--ws-line-height) var(--ws-font);background:var(--ws-surface);border:1px solid var(--ws-line);border-radius:var(--ws-money-card-radius);box-shadow:var(--ws-money-shadow);}
+.ui-money-theme.ui-settings-frame, .ui-settings-theme.ui-settings-frame {color:var(--ws-text);font-family:var(--ws-font);font-size:var(--ws-fs-md);font-weight:400;line-height:var(--ws-line-height);background:var(--ws-surface);border:1px solid var(--ws-line);border-radius:var(--ws-money-card-radius);box-shadow:var(--ws-money-shadow);}
 .ui-money-theme .ui-settings-header, .ui-settings-theme .ui-settings-header {display:flex;flex-wrap:wrap;background:var(--ws-surface);padding-block:var(--ws-space-5);}
 .ui-money-theme .ui-settings-title, .ui-settings-theme .ui-settings-title {flex:1 1 auto;gap:var(--ws-space-6);}
 .ui-money-theme .ui-settings-title>h1, .ui-settings-theme .ui-settings-title>h1 {font-weight:700;color:var(--ws-text);}
@@ -48,7 +34,7 @@ main.ui-screen .ui-money-theme .ui-settings-title>.ui-button, main.ui-screen .ui
 .ui-money-theme .ui-settings-actions, .ui-settings-theme .ui-settings-actions {margin-inline-start:auto;gap:var(--ws-space-4);}
 .ui-money-theme .ui-settings-status, .ui-settings-theme .ui-settings-status {display:flex;align-items:center;gap:var(--ws-space-2);min-inline-size:10em;max-inline-size:none;white-space:nowrap;font-size:var(--ws-fs-md);color:var(--ws-text);}
 .ui-money-theme .ui-settings-error, .ui-settings-theme .ui-settings-error {flex-basis:100%;}
-.ui-money-theme .ui-settings-status::before, .ui-settings-theme .ui-settings-status::before {content:'';width:var(--ws-space-3);height:var(--ws-space-3);border-radius:50%;background:var(--ws-confirm);flex:none;}
+.ui-money-theme .ui-settings-status::before, .ui-settings-theme .ui-settings-status::before {content:'';width:var(--ws-space-3);height:var(--ws-space-3);border-radius:var(--ws-radius-circle);background:var(--ws-confirm);flex:none;}
 .ui-money-theme .ui-settings-status[data-money-state=dirty]::before, .ui-settings-theme .ui-settings-status[data-settings-state=dirty]::before {background:var(--ws-advance);}
 .ui-money-theme .ui-settings-status[data-money-state=blocked]::before, .ui-settings-theme .ui-settings-status[data-settings-state=blocked]::before {background:var(--ws-danger);}
 main.ui-screen .ui-money-theme .ui-settings-actions>.ui-button, main.ui-screen .ui-settings-theme .ui-settings-actions>.ui-button {padding-inline:var(--ws-space-6);border-color:var(--ws-confirm);font-weight:700;}
@@ -93,8 +79,8 @@ main.ui-screen .ui-money-theme .money-trades-table input[type=number] {text-alig
 .ui-money-theme .money-trades-table [data-money-trade-state=blocked] .ui-field-unit {color:var(--ws-muted);}
 .ui-money-theme .money-trades-table [data-money-trade-state=blocked] :is(input,select):focus {background:var(--ws-surface);}
 .ui-money-theme .ui-switch-target {display:inline-flex;align-items:center;justify-content:flex-start;min-height:var(--ws-control-h);min-width:var(--ws-money-switch-w);margin:0;cursor:pointer;}
-main.ui-screen .ui-money-theme input.ui-switch[type=checkbox] {appearance:none;position:relative;width:var(--ws-money-switch-w);height:var(--ws-money-switch-h);min-height:var(--ws-money-switch-h);margin:0;padding:0;border:0;border-radius:999px;background:var(--ws-money-switch-off);cursor:pointer;}
-main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]::before {content:'';position:absolute;top:calc((var(--ws-money-switch-h) - var(--ws-money-switch-knob))/2);left:calc((var(--ws-money-switch-h) - var(--ws-money-switch-knob))/2);width:var(--ws-money-switch-knob);height:var(--ws-money-switch-knob);border-radius:50%;background:var(--ws-surface);box-shadow:var(--ws-money-shadow);}
+main.ui-screen .ui-money-theme input.ui-switch[type=checkbox] {appearance:none;position:relative;width:var(--ws-money-switch-w);height:var(--ws-money-switch-h);min-height:var(--ws-money-switch-h);margin:0;padding:0;border:0;border-radius:var(--ws-radius-pill);background:var(--ws-money-switch-off);cursor:pointer;}
+main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]::before {content:'';position:absolute;top:calc((var(--ws-money-switch-h) - var(--ws-money-switch-knob))/2);left:calc((var(--ws-money-switch-h) - var(--ws-money-switch-knob))/2);width:var(--ws-money-switch-knob);height:var(--ws-money-switch-knob);border-radius:var(--ws-radius-circle);background:var(--ws-surface);box-shadow:var(--ws-money-shadow);}
 main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]:checked {background:var(--ws-money-switch-on);}
 main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]:checked::before {transform:translateX(calc(var(--ws-money-switch-w) - var(--ws-money-switch-h)));}
 main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]:disabled {cursor:default;opacity:.6;}
@@ -117,14 +103,14 @@ main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]:disabled {cursor:d
 .ui-heading-with-help {margin-bottom:var(--ws-space-3);}
 main.ui-screen .ui-money-theme .ui-settings-title h1, main.ui-screen .ui-settings-theme .ui-settings-title h1 {font-weight:700;color:var(--ws-text);}
 main.ui-screen .ui-money-theme .ui-heading-with-help>:is(h2,h3), main.ui-screen .ui-settings-theme .ui-heading-with-help>:is(h2,h3) {margin:0;}
-main.ui-screen .ui-help-button,.ui-help-button {display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--ws-help-target);height:var(--ws-help-target);min-height:var(--ws-help-target);padding:0;border:0;border-radius:var(--ws-radius);background:transparent;color:var(--ws-confirm);font:600 var(--ws-fs-control)/1 var(--ws-font);cursor:pointer;}
-.ui-help-glyph {display:inline-flex;align-items:center;justify-content:center;width:var(--ws-help-glyph);height:var(--ws-help-glyph);border:1px solid var(--ws-control-line);border-radius:50%;}
+main.ui-screen .ui-help-button,.ui-help-button {display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--ws-help-target);height:var(--ws-help-target);min-height:var(--ws-help-target);padding:0;border:0;border-radius:var(--ws-radius);background:transparent;color:var(--ws-confirm);font-family:var(--ws-font);font-size:var(--ws-fs-control);font-weight:600;line-height:var(--ws-line-height-tight);cursor:pointer;}
+.ui-help-glyph {display:inline-flex;align-items:center;justify-content:center;width:var(--ws-help-glyph);height:var(--ws-help-glyph);border:1px solid var(--ws-control-line);border-radius:var(--ws-radius-circle);}
 .ui-help-button:hover .ui-help-glyph,.ui-help-button[aria-expanded=true] .ui-help-glyph {background:var(--ws-confirm-soft);border-color:var(--ws-confirm);}
-.ui-help-panel {position:fixed;z-index:var(--ws-help-z);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;width:var(--ws-help-width);max-width:calc(100vw - 2 * var(--ws-help-gap));margin:0;padding:var(--ws-space-3);border:1px solid var(--ws-line);border-radius:var(--ws-radius);background:var(--ws-surface);color:var(--ws-text);box-shadow:var(--ws-dialog-shadow);font:400 var(--ws-fs-sm)/var(--ws-line-height) var(--ws-font);overflow-wrap:anywhere;}
+.ui-help-panel {position:fixed;z-index:var(--ws-help-z);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;width:var(--ws-help-width);max-width:calc(100vw - 2 * var(--ws-help-gap));margin:0;padding:var(--ws-space-3);border:1px solid var(--ws-line);border-radius:var(--ws-radius);background:var(--ws-surface);color:var(--ws-text);box-shadow:var(--ws-dialog-shadow);font-family:var(--ws-font);font-size:var(--ws-fs-sm);font-weight:400;line-height:var(--ws-line-height);overflow-wrap:anywhere;}
 .ui-help-panel[hidden] {display:none!important;}
 .ui-help-head {display:flex;align-items:center;justify-content:space-between;gap:var(--ws-space-2);}
 .ui-help-panel p {margin:var(--ws-space-2) 0 0;white-space:pre-wrap;}
-.ui-help-close {display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:var(--ws-help-target);min-height:var(--ws-help-target);padding:0;border:0;background:transparent;color:var(--ws-text);font:600 var(--ws-fs-control)/1 var(--ws-font);cursor:pointer;}
+.ui-help-close {display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:var(--ws-help-target);min-height:var(--ws-help-target);padding:0;border:0;background:transparent;color:var(--ws-text);font-family:var(--ws-font);font-size:var(--ws-fs-control);font-weight:600;line-height:var(--ws-line-height-tight);cursor:pointer;}
 .ui-help-panel:focus-visible,.ui-help-panel :focus-visible,.ui-help-button:focus-visible {outline:3px solid var(--ws-focus);outline-offset:3px;}
 
 /* Neutral opt-in settings tables; money price/trade geometry stays separate. */
