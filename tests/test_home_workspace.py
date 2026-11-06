@@ -62,7 +62,7 @@ class HomeWorkspaceTests(unittest.TestCase):
         self.assertIn("場所 1か所", page)
         self.assertIn("7日間", page)
         self.assertIn(' 犬" data-genre', page)
-        self.assertIn('data-search="同じ世界 original ジャンル未設定 花子 太郎', page)
+        self.assertIn('data-search="同じ世界 original 共通＋戦闘 花子 太郎', page)
 
     def test_blank_overview_is_distinct_from_missing(self):
         world = self.store.worlds()[0]
@@ -121,7 +121,7 @@ class HomeWorkspaceTests(unittest.TestCase):
         with patch.object(LibraryStore, "worlds", return_value=[]), patch.object(LibraryStore, "genres", return_value=[]):
             page = home_pages.render(self.repository, job_store=self.jobs)
         self.assertIn("まだ世界がありません", page)
-        self.assertIn("ジャンルがありません", page)
+        self.assertNotIn('data-home-tab="genres"', page)
         self.assertIn('href="/worlds/new"', page)
 
     def test_unreadable_world_settings_do_not_invent_content(self):

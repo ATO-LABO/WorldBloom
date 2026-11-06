@@ -52,9 +52,11 @@ def _read(store, ident):
     return values, sha256(canonical(revisions))
 
 
-def _model(ident, files, revision):
+def _model(ident, files, revision, source):
     world = files["world.yaml"]
-    return {"id": ident, "name": world.get("name") or ident, "world": world,
+    from engine.story_genres import for_world, label
+    selected = for_world(world, source)
+    return {"id": ident, "name": world.get("name") or ident, "world": world, "story_genres": selected, "story_genre_label": label(selected),
             "people": [value for rel, value in files.items() if rel != "world.yaml"],
             "overview": world.get("overview") or "", "intro": world.get("initial_story") or "",
             "revision": revision,
@@ -73,7 +75,7 @@ def snapshot(store, ident):
         files, revision = _read(store, ident)
         _, confirmed = _read(store, ident)
         if revision == confirmed and not contained(base, person_values.JOURNAL).exists():
-            return _model(ident, files, revision)
+            return _model(ident, files, revision, _base(store, ident)/"world.yaml")
     raise ConfigError("revision", "設定の保存中です。少し待って再読み込みしてください", code="conflict")
 
 
@@ -91,6 +93,7 @@ def save(store, ident, body):
         "roles": {"protagonist", "antagonist", "target_ending"},
         "file": {"content"},
         "genre": {"template_id"},
+        "story-genres": {"genres"},
         "add-event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "remove-event": set(),
@@ -172,7 +175,7 @@ def save(store, ident, body):
                 return {'valid':True,'conditions':len(runtime.concerns.conditions) if runtime.concerns else 0}
             person_values.write_changes(store, ident, files, candidate)
             saved, revision = _read(store, ident)
-            return _model(ident, saved, revision)
+            return _model(ident, saved, revision, _base(store, ident) / "world.yaml")
         elif operation == "file":
             if not isinstance(target, str) or target not in files:
                 _bad("target", "登録された世界・人物ファイルを指定してください")
@@ -314,6 +317,14 @@ def save(store, ident, body):
             else:
                 route.pop("requires_item", None)
             route["cost"] = cost
+        elif operation == "story-genres":
+            from engine.story_genres import validate
+            try:
+                updated["story_genres"] = validate(values["genres"])
+            except ValueError as error:
+                _bad("genres", str(error))
+            if not updated.get("gapengine"):
+                updated["gapengine"] = {"action_graph":"templates/basic/action_graph.yaml", "effects":"templates/basic/effects.yaml"}
         elif operation == "genre":
             # WB-WORLD-IMPORT-001: lets a world imported without a genre (or
             # any world) pick/switch its templates/<id>/ afterward. Other

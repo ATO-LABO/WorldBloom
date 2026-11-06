@@ -22,32 +22,20 @@ class GenreWorkspaceTests(unittest.TestCase):
     def snap(self, ident='romance'):
         return ge.snapshot(LibraryStore(self.repo), ident)
 
-    def test_create_original_without_copy_and_display_name(self):
-        before=(self.repo/'templates/romance/rules.yaml').read_bytes()
-        status,payload=self.create()
-        self.assertEqual(status,201,payload)
-        store=LibraryStore(self.repo)
-        self.assertEqual(yaml.safe_load(store.read('genre','custom','rules.yaml')),[])
-        self.assertEqual(json.loads((self.repo/'templates/custom/genre.json').read_text(encoding='utf-8'))['name'],'冒険と発見')
-        self.assertEqual((self.repo/'templates/romance/rules.yaml').read_bytes(),before)
-        self.assertIn('冒険と発見',self.get('/genres/custom')[1])
+    def test_create_original_is_rejected_without_writes(self):
+        before=set((self.repo/'templates').iterdir())
+        self.assertEqual(self.create()[0],403)
+        self.assertEqual(before,set((self.repo/'templates').iterdir()))
 
     def test_copy_preserves_files_and_legacy_api(self):
         for body in ({'template_id':'legacy','from_template_id':'romance'}, {'mode':'copy','template_id':'copy','from_template_id':'romance','name':'複製','description':'説明'}):
-            status,result=self.http('POST','/api/genres',body)
-            self.assertEqual(status,201,result)
-            for name in ge.GENRE_FILES:
-                source=self.repo/'templates/romance'/name
-                if source.exists(): self.assertEqual(source.read_bytes(),(self.repo/'templates'/body['template_id']/name).read_bytes())
+            self.assertEqual(self.http('POST','/api/genres',body)[0],403)
+            self.assertFalse((self.repo/'templates'/body['template_id']).exists())
 
     def test_duplicate_invalid_inputs_and_write_boundary(self):
-        self.create()
-        before=self.snap('custom')
-        self.assertEqual(self.create(name='置換')[0],409)
-        for change in ({'template_id':'../bad'},{'name':''},{'mode':'copy','from_template_id':None},{'mode':'bad'},{'description':[]}):
-            with self.subTest(change=change):self.assertIn(self.create(**change)[0],(400,422))
-        self.assertEqual(self.snap('custom'),before)
-        self.assertEqual(self.http('POST','/api/genres',{'mode':'new','template_id':'x','name':'x','description':''},client_header=False)[0],403)
+        for change in ({},{'template_id':'../bad'},{'name':''},{'mode':'copy','from_template_id':None},{'mode':'bad'},{'description':[]}):
+            self.assertEqual(self.create(**change)[0],403)
+        self.assertFalse((self.repo/'templates/custom').exists())
 
     def test_atomic_save_preserves_other_fields_and_conflicts_with_legacy_write(self):
         snap=self.snap();path='rules.yaml'
@@ -78,7 +66,7 @@ class GenreWorkspaceTests(unittest.TestCase):
         self.assertFalse(list(self.repo.glob('.genre-create-*')))
 
     def test_draft_check_uses_unsaved_selected_genre_and_never_saves(self):
-        self.create();before=self.snap('custom')
+        ge.create(LibraryStore(self.repo),'custom',name='旧基本ルール');before=self.snap('custom')
         world=(self.repo/'projects/momotaro/world.yaml').read_bytes()
         body={'world_id':'momotaro','files':{},'revision':before['revision']}
         status,result=self.http('POST','/api/genres/custom/check',body)
@@ -120,12 +108,12 @@ class GenreWorkspaceTests(unittest.TestCase):
         self.assertEqual((self.repo/'templates/romance'/path).read_text(encoding='utf-8'),raw)
 
     def test_markup_assets_escaping_and_missing_optional_sections(self):
-        self.create(name='<script>alert(1)</script>')
+        ge.create(LibraryStore(self.repo),'custom',name='<script>alert(1)</script>')
         status,body=self.get('/genres/custom')
         self.assertEqual(status,200)
         self.assertIn('data-genre-editor',body)
         self.assertNotIn('<script>alert(1)</script>',body)
-        self.assertIn('data-genre-new',self.get('/genres/new')[1])
+        self.assertNotIn('data-genre-new',self.get('/genres/new')[1])
         for name in ('genre-workspace.js','genre-workspace.css'):
             self.assertEqual(self.get('/static/'+name)[0],200)
         self.assertEqual(self.http('POST','/api/genres/custom/check',{'world_id':'momotaro','files':{},'revision':'stale'})[0],409)

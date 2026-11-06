@@ -169,7 +169,7 @@ def collection_panel(items, worlds, selected, *, show_detail=False):
         world = worlds.get(item['project_id'], item['project_id'])
         scale = f'{ev["generations"]}世代 × {ev["population"]}個体 × {ev["seeds"]}回'
         meta = f'{world} · {scale}'
-        pairs = [('世界', world), ('ジャンル', item['template_id']), ('実行規模', scale),
+        pairs = [('世界', world), ('基本ルール', item['template_id']), ('実行規模', scale),
                  ('作成日時', display_date(item.get('created_at')))]
         body = '<dl>'+''.join(f'<dt>{E(k)}</dt><dd>{E(v)}</dd>' for k,v in pairs)+'</dl>'
         body += '<p class="ui-hint">保存版は編集不可です。条件を変える場合は複製してください。</p>'

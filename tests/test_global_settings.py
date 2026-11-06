@@ -50,6 +50,10 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertNotIn('data-gs-tab="genres"', body)
         self.assertNotIn('data-gs-panel="genres"', body)
         self.assertIn('data-gs-panel="output">', body)
+        status, body, _ = self.get_status('/worlds/romance?view=advanced#genres')
+        self.assertEqual(status, 200)
+        self.assertIn('data-advanced-section="genres"', body)
+        self.assertIn('href="/worlds/romance?view=advanced#genres"', body)
 
     def test_jev_tab_is_in_ai_settings_only(self):
         status, body, _ = self.get_status('/configs?tab=output')
@@ -80,7 +84,7 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertIsNone(self.initial(body)['view'])
         self.assertIn('settings.json を読めません', body)
         self.assertNotIn('data-gs-output', body)
-        self.assertEqual(body.count('data-gs-tab='), 3)
+        self.assertCountEqual(re.findall(r'data-gs-tab="([^"]+)"', body), ['output', 'compute', 'configs'])
         self.assertIn('まだ保存版がありません', body)
 
     def test_assets_are_served(self):

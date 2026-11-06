@@ -41,7 +41,7 @@ class WorldEditorTests(unittest.TestCase):
             self.assertNotIn('プレビュー用の例文',html)
             self.assertNotIn('元の世界設定には保存されません',html)
             self.assertIn('/worlds/momotaro?view=advanced',html)
-            for screen in ('overview','people','places','story','time'):
+            for screen in ('overview','people','places','items','time','checks'):
                 self.assertIn(f'data-screen="{screen}"',html)
         self.assertEqual(before,self.current()['revision'])
         status,html=self.get('/worlds/momotaro?view=advanced')
