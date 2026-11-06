@@ -334,7 +334,7 @@ def mock_response(name, overview):
 
 
 def _draft_request(settings_path, prompt, *, elapsed=0, reviewing=False, time_budget=None):
-    from execution.output_settings import _read_settings, _section, resolve_generation
+    from execution.output_settings import _read_settings, _section, model_credentials, resolve_generation
     selected = resolve_generation(settings_path)
     if time_budget is not None and selected['backend']=='ollama':
         selected['limits']={**selected['limits'],'call_timeout_seconds':time_budget[0],'wall_seconds':time_budget[1]}
@@ -350,6 +350,7 @@ def _draft_request(settings_path, prompt, *, elapsed=0, reviewing=False, time_bu
                   'call_timeout_seconds':min(cap, remaining, selected['limits']['call_timeout_seconds'])},
         'deadline':time.time()+remaining}
     if selected['backend']=='ollama':
+        request['credentials'] = model_credentials(request['credentials'], selected['model'])
         options=deepcopy(request['credentials'].get('options') or {})
         options['num_ctx']=max(8192,options.get('num_ctx',8192))
         options['num_predict']=1600 if reviewing else max(3000,options.get('num_predict',3000))
