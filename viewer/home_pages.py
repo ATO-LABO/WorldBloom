@@ -102,7 +102,7 @@ def world_people(store, world_id):
     return " ".join(names)
 
 
-def world_card(store, world, genres):
+def world_card(store, world, genres, *, selection=False, selected_world=None):
     wid = world["id"]
     from engine.action_types import for_world, label
     try:
@@ -116,12 +116,27 @@ def world_card(store, world, genres):
     antagonist = world.get("antagonist") or "未設定"
     name = world.get("name") or wid
     search = " ".join(str(v) for v in (name, wid, genre_name, protagonist, antagonist, description, world_people(store, wid)))
-    return (f'<article class="world-card" data-home-card data-search="{E(search)}" data-genre="{E(genre)}">'
-            f'<span class="hl-tag">{E(genre_name)}</span><h2>{E(name)}</h2>'
-            f'<p class="hl-description">{E(description)}</p>'
+    heading = 'h3' if selection else 'h2'
+    extra = (f' data-cw-world-card data-world-id="{E(wid)}" data-world-name="{E(name)}"'
+             f' data-selected="{str(wid == selected_world).lower()}"') if selection else ''
+    classes = 'world-card ui-settings-card' if selection else 'world-card'
+    if selection:
+        checked = ' checked' if wid == selected_world else ''
+        action = (f'<p class="ui-hint cw-world-id">世界ID: {E(wid)}</p>'
+                  '<label class="hl-open ui-button cw-world-choice">'
+                  f'<input type="radio" name="source-world" value="{E(wid)}" data-cw-world-option{checked}'
+                  f' aria-label="{E(name)}（ID: {E(wid)}）を元の世界として選択">'
+                  f'<span data-cw-world-label>{"選択中" if checked else "この世界を選ぶ"}</span></label>')
+    else:
+        action = f'<a class="hl-open" data-home-world data-purpose-carry href="/worlds/{U(wid)}" aria-label="{E(name)}の世界を開く">世界を開く →</a>'
+    heading_focus = ' tabindex="0" aria-label="世界名（長い場合はスクロールできます）"' if selection and len(name) > 60 else ''
+    description_focus = ' tabindex="0" aria-label="概要（長い場合はスクロールできます）"' if selection and len(description) > 200 else ''
+    return (f'<article class="{classes}" data-home-card data-search="{E(search)}" data-genre="{E(genre)}"{extra}>'
+            f'<span class="hl-tag">{E(genre_name)}</span><{heading}{heading_focus}>{E(name)}</{heading}>'
+            f'<p class="hl-description"{description_focus}>{E(description)}</p>'
             f'<p class="hl-facts">人物 {E(world["subjects"])}人 <span>・</span> 場所 {places}か所 <span>・</span> {E(period)}</p>'
             f'<p class="hl-roles">主人公 <strong>{E(protagonist)}</strong><span>／</span>敵役 <strong>{E(antagonist)}</strong></p>'
-            f'<a class="hl-open" data-home-world data-purpose-carry href="/worlds/{U(wid)}" aria-label="{E(name)}の世界を開く">世界を開く →</a></article>')
+            + action + '</article>')
 
 
 def genre_card(genre, worlds, editable):

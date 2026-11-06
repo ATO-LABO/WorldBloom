@@ -1,5 +1,6 @@
 """Full-width settings workspace. Secrets stay behind the existing settings API."""
 import json
+import re
 from urllib.parse import parse_qs, urlsplit
 from datetime import datetime
 from execution.evolution_settings import read_evolution_settings
@@ -219,6 +220,10 @@ def render(handler):
     except ConfigError: jev=None
     initial=E(json.dumps({'view':view,'labels':BACKENDS,'tab':active,'compute':evolution},ensure_ascii=False))
     nav='<h2>全体設定</h2>'+''.join(f'<a href="/configs?tab={key}" data-gs-tab="{key}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label in (('output','AIの設定'),('compute','計算'),('configs','実行設定の保存版')))+'<div class="gs-nav-back">'+link('/version','バージョン情報')+'<br>'+link('/','← 世界一覧へ戻る')+'</div><small>すべての世界に共通</small>'
+    workspace = query.get('creation_workspace', [''])[0]
+    if re.fullmatch(r'[a-f0-9]{32}', workspace):
+        target = '/worlds/new?mode=create&screen=workflow&step=1&workspace=' + workspace
+        nav += ui.button('← 保存した下書きの①へ戻る', href=target)
     nav=ui.navigation(nav, label='全体設定', class_name='gs-nav')
     panels=[output_panel(view,error,jev),compute_panel(evolution,compute_error),collection_panel(configs,worlds,selected_config,show_detail=bool(requested))]
     for i,key in enumerate(('output','compute','configs')):

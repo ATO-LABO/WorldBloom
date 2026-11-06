@@ -165,7 +165,7 @@ class NativeHTTPTests(unittest.TestCase):
         self.assertFalse((self.repo/'projects'/('world-'+self.token)).exists())
     def test_http_forms_new_assets_and_no_model(self):
         status,raw=self.request('/worlds/new?method=ai');self.assertEqual(status,200,raw)
-        self.assertIn(b'draft-settings-forms.js',raw);self.assertIn(b'draft-native.js',raw)
+        self.assertIn(b'draft-settings-forms.js',raw);self.assertIn(b'creation-workflow.js',raw)
         for asset in ['draft-settings-forms.js','draft-native.js','draft-native.css']:
             status,_=self.request('/static/'+asset);self.assertEqual(status,200)
         status,raw=self.request('/api/world-draft-forms',{'draft':self.proposal});self.assertEqual(status,200,raw);self.assertEqual(json.loads(raw)['people'][0]['name'],'アオ')

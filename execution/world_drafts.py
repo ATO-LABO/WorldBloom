@@ -13,6 +13,7 @@ import re
 import shutil
 import tempfile
 import time
+import threading
 from uuid import UUID
 
 import yaml
@@ -267,7 +268,7 @@ def compile_draft(value):
     return d, draft_settings.apply(initialize(world), settings), subjects
 
 
-def validate(repo, value):
+def validate(repo, value, *, allow_initial_goal_achieved=False):
     d, world, subjects = compile_draft(value)
     check_alignment(d)
     # Reuse the exact World/Subject/Simulation construction used by preview.
@@ -294,8 +295,8 @@ def validate(repo, value):
                     expression = f"holds({person['name']!r}, {goal['target']!r}) and zone({person['name']!r}) == {goal['deliver_to']!r}"
                 else:
                     expression = None
-                if expression and compile_predicate(expression).evaluate(initial_world.namespace(
-                        initial_subjects[person['name']], list(initial_subjects.values()), turn=1, day=1)):
+                if (not allow_initial_goal_achieved and expression and compile_predicate(expression).evaluate(initial_world.namespace(
+                        initial_subjects[person['name']], list(initial_subjects.values()), turn=1, day=1))):
                     _bad(f'people.{i}.goal.conditions', '開始時点で目標を達成しています。開始位置・所持品・関係・達成条件を見直してください')
         except (ValueError, KeyError, TypeError, OSError) as error:
             if isinstance(error, ConfigError):
@@ -364,6 +365,7 @@ def existing_provider(settings_path, *, time_budget=None):
     """
     def generate(name, overview, *, settings=None, authoring=None):
         from execution import generation
+        from execution.draft_generation_contract import draft_schema, instructions
         # A structural skeleton, rather than a delivery story to imitate.
         example = {"name":"入力名", "overview":"入力概要", "initial_story":"概要に沿った導入",
                     "places":[{"name":p, "description":"概要に沿った場所"} for p in ("場所A", "場所B")],
@@ -371,7 +373,7 @@ def existing_provider(settings_path, *, time_budget=None):
                                "goal":{"description":target+"へ到着する", "conditions":[{"type":"reach","place":target}]}, "relations":[]}
                               for n,start,target in (("人物A","場所A","場所B"),("人物B","場所B","場所A"))],
                     "items":[], "facts":[], "routes":[{"from":"場所A","to":"場所B"},{"from":"場所B","to":"場所A"}], "protagonist":"人物A", "antagonist":"人物B"}
-        prompt = ("新規物語世界の下案をJSONだけで返してください。次のJSONと全く同じキーと型を使い、"
+        prompt = instructions() + ("新規物語世界の下案をJSONだけで返してください。次のJSONと全く同じキーと型を使い、"
                   "人物2〜8人、場所1〜8か所、品物0〜8個、調べて得る情報factsは0〜8件。全参照は定義済みの名前と一致させてください。"
                   "概要の舞台・時代・人物・対立・望みを優先し、人物ごとの目標descriptionを具体的な文章で作成してください。"
                   "配送に限定しません。品物が不要な概要ではitemsを空にし、配送や宝物探しを勝手に追加しません。"
@@ -408,10 +410,13 @@ def existing_provider(settings_path, *, time_budget=None):
                   "文章だけから優先度や必須指定、時間制限、予定を補いません。settingsの指定値は人の入力として保持されます。\n"
                   + json.dumps({"input": {"name": name, "overview": overview, **({'settings':settings} if settings is not None else {})}, "format_example": example}, ensure_ascii=False))
         request = _draft_request(settings_path,prompt+authoring_prompt(authoring),time_budget=time_budget)
+        request['response_schema'] = draft_schema()
         return generation.validate_response(request["backend"], generation.transport(request, generation.preflight(request)))
     def review(name, overview, draft, *, elapsed=0, authoring=None):
         from execution import generation
-        request=_draft_request(settings_path,review_prompt(name,overview,draft)+authoring_prompt(authoring),elapsed=elapsed,reviewing=True,time_budget=time_budget)
+        from execution.draft_generation_contract import review_schema, review_instructions
+        request=_draft_request(settings_path,review_instructions()+review_prompt(name,overview,draft)+authoring_prompt(authoring),elapsed=elapsed,reviewing=True,time_budget=time_budget)
+        request['response_schema'] = review_schema(draft)
         text=generation.validate_response(request['backend'], generation.transport(request,generation.preflight(request)))
         return checked_review(parse_response(text),draft)
     def revise(name, overview, draft, target, instruction, *, authoring=None):
@@ -431,6 +436,20 @@ def existing_provider(settings_path, *, time_budget=None):
     generate.review=review
     generate.revise=revise
     generate.with_settings=lambda name, overview, settings: generate(name, overview, settings=settings)
+    from execution.draft_generation_status import settings_status
+    generate.configuration_status=lambda:settings_status(settings_path)
+    from execution.goal_plan_pipeline import PlanProvider
+    generate.plan_factory=lambda:PlanProvider(settings_path)
+    from execution.refinement_provider import RefinementPlanner
+    generate.refinement_factory=lambda:RefinementPlanner(settings_path)
+    def planning_status():
+        from execution.output_settings import resolve_generation
+        status=settings_status(settings_path)
+        if status.get('status')=='configured':
+            status={**status,'max_calls':resolve_generation(settings_path)['limits']['max_calls'],
+                    'strategy':'goal-plan-v1','progress':'phases'}
+        return status
+    generate.planning_status=planning_status
     return generate
 
 
@@ -439,6 +458,7 @@ class DraftStore:
         self.repo = Path(repo)
         self.root = contained(control, "world-drafts")
         self.provider, self.mode = provider, mode
+        self._plan_gate = threading.Lock()
 
     def _path(self, token):
         if not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{32}", token):
@@ -487,8 +507,10 @@ class DraftStore:
             atomic_json(path,r)
             return self.get(token)
 
-    def create(self, token, name, overview, *, settings=None, authoring=None):
+    def create(self, token, name, overview, *, settings=None, authoring=None, strategy=None):
         path = self._path(token)
+        if strategy not in (None, 'goal-plan-v1'):
+            _bad('strategy','対応していない作成方式です')
         name = _text(name, "name")
         overview = _text(overview, "overview", 8000)
         if settings is not None:
@@ -496,6 +518,7 @@ class DraftStore:
             settings=normalize_settings(settings)
         authoring=authoring_context(authoring)
         identity=[name,overview,settings,authoring] if authoring is not None else [name, overview] if settings is None else [name, overview, settings]
+        if strategy is not None:identity=[*identity,{'strategy':strategy}]
         digest = sha256(canonical(identity))
         if self.provider is None:
             _bad("generation", "実LLM生成は待機中です。接続先・モデル・費用条件の確認後に有効化します", "unavailable")
@@ -505,9 +528,15 @@ class DraftStore:
                 if old["input_hash"] != digest:
                     _bad("request_id", "同じIDで入力を変更できません", "conflict")
                 return old
+            if strategy == 'goal-plan-v1':
+                from execution.draft_generation_status import planning_availability
+                admission = planning_availability(self)
+                if admission.get('status') != 'configured':
+                    _bad('generation', 'Three-stage generation is not ready: ' + admission.get('status', 'unknown'), 'unavailable')
             record = {"request_id": token, "input_hash": digest, "mode": self.mode,
                       "state": "generating", "name": name, "overview": overview, "draft": None,
                       "revision": None, "errors": {}, "world_id": "world-" + token}
+            if strategy is not None:record['strategy']=strategy
             if settings is not None:record['input_settings']=deepcopy(settings)
             if authoring is not None:record['authoring']=deepcopy(authoring)
             atomic_json(path, record)
@@ -515,25 +544,34 @@ class DraftStore:
         draft = None
         phase = 'generation'
         try:
-            generate_with_settings=getattr(self.provider,'with_settings',None)
-            context_provider=getattr(self.provider,'with_context',None)
-            if authoring is not None and self.mode=='live' and not context_provider:
-                _bad('authoring','制作メモを渡せる生成接続がありません。入力は保持しています')
-            draft = parse_response(context_provider(name,overview,deepcopy(settings),deepcopy(authoring)) if authoring is not None and context_provider
-                                   else generate_with_settings(name,overview,deepcopy(settings))
-                                   if settings is not None and generate_with_settings else self.provider(name, overview))
-            # The human's name/overview stay authoritative even if a model changes them.
-            if isinstance(draft, dict):
-                draft.update(name=name, overview=overview)
-                if settings is not None:draft['settings']=deepcopy(settings)
-            phase = 'validation'
-            proposal, world, subjects, summary = validate(self.repo, draft)
-            revision = validated_revision(self.repo, proposal, world, subjects)
-            phase = 'review'
-            alignment = self._assess(name, overview, proposal, revision, time.monotonic()-started, authoring=authoring)
-            summary['alignment'] = 'reviewed' if alignment else 'offline'
-            result = {"state": "review", "draft": proposal, "summary": summary,
-                      "revision": revision, "alignment":alignment, "errors": {}}
+            if strategy == 'goal-plan-v1':
+                if not self._plan_gate.acquire(blocking=False):
+                    _bad('generation','別の設定作成が進行中です。自動再送しません','unavailable')
+                try:
+                    from execution.planned_creation import run
+                    result=run(self,token,name,overview,settings,authoring)
+                    draft=result.get('draft')
+                finally:self._plan_gate.release()
+            else:
+                generate_with_settings=getattr(self.provider,'with_settings',None)
+                context_provider=getattr(self.provider,'with_context',None)
+                if authoring is not None and self.mode=='live' and not context_provider:
+                    _bad('authoring','制作メモを渡せる生成接続がありません。入力は保持しています')
+                draft = parse_response(context_provider(name,overview,deepcopy(settings),deepcopy(authoring)) if authoring is not None and context_provider
+                                       else generate_with_settings(name,overview,deepcopy(settings))
+                                       if settings is not None and generate_with_settings else self.provider(name, overview))
+                # The human's name/overview stay authoritative even if a model changes them.
+                if isinstance(draft, dict):
+                    draft.update(name=name, overview=overview)
+                    if settings is not None:draft['settings']=deepcopy(settings)
+                phase = 'validation'
+                proposal, world, subjects, summary = validate(self.repo, draft)
+                revision = validated_revision(self.repo, proposal, world, subjects)
+                phase = 'review'
+                alignment = self._assess(name, overview, proposal, revision, time.monotonic()-started, authoring=authoring)
+                summary['alignment'] = 'reviewed' if alignment else 'offline'
+                result = {"state": "review", "draft": proposal, "summary": summary,
+                          "revision": revision, "alignment":alignment, "errors": {}}
         except ConfigError as error:
             result = {"state": "invalid", "draft":draft, "errors": error.field_errors,
                       "failure_reason": 'review_failed' if phase == 'review' else 'invalid_draft' if phase == 'validation' else 'generation_rejected'}

@@ -1,95 +1,12 @@
 """Creation workspace and small persistent text editors for world metadata."""
-import json
-import uuid
-import yaml
-from viewer import pages, data, ui
-from execution.library import MAX_ZIP_BYTES
-from execution.provenance import ConfigError
+from viewer import pages
 E = pages._escape
 
 
-def source_models(store):
-    result = []
-    for world in store.worlds():
-        try:
-            raw = yaml.safe_load(store.read("world", world["id"], "world.yaml")) or {}
-        except (ConfigError, ValueError, OSError, yaml.YAMLError):
-            raw = {}
-        if not isinstance(raw, dict): raw = {}
-        period = raw.get("time")
-        if not isinstance(period, dict): period = {}
-        zones = raw.get("zones")
-        if not isinstance(zones, list): zones = []
-        slots = period.get("slots")
-        if not isinstance(slots, list): slots = []
-        result.append({**world, "overview":str(raw.get("overview") or ""),
-            "initial_story":str(raw.get("initial_story") or ""),
-            "places":[str(z.get("name")) for z in zones if isinstance(z,dict) and z.get("name")],
-            "days":period.get("days"), "slots":[str(slot) for slot in slots]})
-    return result
-
-
 def render(store, jobs, *, from_id=None, genre_id=None, copy_mode=False, method=None):
-    if copy_mode:
-        method = 'manual'
-    back = '<nav class="creation-back ui-breadcrumb"><a data-purpose-carry href="/worlds/new">← 作成方法を選び直す</a><a data-purpose-carry href="/worlds">世界一覧へ戻る</a></nav>'
-    def page(body):
-        return pages.document('新しい世界を作る', body, phase='world', job_store=jobs,
-            pin=data.pinned_target(jobs), page_class='form-workspace',
-            stylesheets=('world-create.css', 'world-draft.css', 'draft-workspace.css', 'draft-editing.css', 'items-workspace.css', 'draft-native.css'), scripts=('items-workspace.js', 'world-create.js', 'draft-goal-editor.js', 'draft-workspace.js', 'draft-editing.js', 'draft-settings-forms.js', 'draft-authoring.js',
-                'world-draft.js', 'draft-native-ai.js', 'draft-native.js'))
-    if method is None:
-        return page('<section class="creation-choice"><a data-purpose-carry href="/worlds">← 世界一覧へ戻る</a><h1>新しい世界を作る</h1><p>作成方法を選んでください。</p><div class="creation-options">'
-            '<a data-purpose-carry href="/worlds/new?method=manual"><strong>マニュアル作成</strong><span>名前と概要を自分で入力します。既存世界の複製やZIPの取込も選べます。</span></a>'
-            '<a data-purpose-carry href="/worlds/new?method=ai"><strong>共同下書き・取り込み</strong><span>下書きを保存・再開し、既存の世界やZIPも取り込めます。</span></a></div></section>')
-    if method == 'ai':
-        from viewer.draft_native import fragment as native_fragment
-        from viewer.world_draft import fragment as proposal_fragment
-
-        mode = getattr(jobs, 'world_draft_mode', 'waiting')
-        worlds = store.worlds()
-        return page(back + native_fragment(worlds, from_id if copy_mode else None, mode)
-                    + proposal_fragment(mode, getattr(jobs, 'world_draft_notice', None), worlds))
-    worlds = source_models(store)
-    genres = store.genres()
-    copy_mode = copy_mode and bool(worlds)
-    selected = next((w for w in worlds if w['id']==from_id), worlds[0] if worlds else None)
-    zip_max = MAX_ZIP_BYTES
-    initial = E(json.dumps({'worlds':worlds,'source':selected['id'] if selected else None,'genre':genre_id,'zipMax':zip_max},ensure_ascii=False))
-    source_rows = ''.join(f'<label class="wc-source"><input type="radio" name="source" value="{E(w["id"])}"'+(' checked' if selected and w['id']==selected['id'] else '')+f'><span><strong>{E(w["name"] or w["id"])}</strong><small>{E(w["subjects"])}人 · {E(w["genre"] or "基本ルール未設定")}</small></span></label>' for w in worlds)
-    options = ''.join(f'<option value="{E(g["id"])}"'+(' selected' if g['id']==genre_id else '')+f'>{E("共通の基本ルール" if g["id"]=="basic" else g.get("name") or g["id"])}</option>' for g in genres)
-    auto_id = "world-" + uuid.uuid4().hex[:12]
-    initial_mode = 'copy' if copy_mode else 'new'
-    mode = lambda name: ' checked' if name == initial_mode else ''
-    guide_url = 'https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md'
-    page_heading = ui.heading('マニュアルで、新しい世界を作る', 'まずは名前と概要から。人物や場所は、あとから自由に設定できます。', class_name='wc-heading')
-    page_footer = ui.footer('<p data-create-status role="status">名前を付けて、世界づくりを始めましょう。</p>'
-        + ui.button('キャンセル', href='/worlds', class_name='wc-cancel')
-        + ui.button('世界を作成して設定へ →', kind='advance', class_name='wc-primary', attrs={'type':'submit'}), class_name='wc-footer')
-    body = f'''<div class="wc ui-workspace ui-workspace--form" data-world-create data-initial="{initial}">
-      {page_heading}
-      <form data-create-form novalidate>
-        <div class="wc-layout ui-split"><div class="wc-editor ui-content">
-          <fieldset class="wc-fields" data-create-fields><legend class="wc-sr">世界の作成</legend>
-            <div class="wc-modes" role="group" aria-label="作成方法">
-              <label><input type="radio" name="mode" value="new"{mode('new')}><span><strong>新しく作る</strong><small>オリジナルの世界を、一から</small></span></label>
-              <label><input type="radio" name="mode" value="copy"{mode('copy')}{'' if worlds else ' disabled'}><span><strong>既存の世界から作る</strong><small>{'今ある設定をコピーして始める' if worlds else '作成元の世界がまだありません'}</small></span></label>
-              <label><input type="radio" name="mode" value="import"{mode('import')}><span><strong>ZIPから取り込む</strong><small>world.yaml と subjects/ をまとめたZIPから</small></span></label>
-            </div>
-            <p class="wc-error ui-error" data-create-error role="alert"></p>
-            <section data-copy-panel{'' if initial_mode == 'copy' else ' hidden'}><h2>作成元の世界</h2><label class="wc-search ui-field">世界を探す<input type="search" data-source-search placeholder="名前で検索"></label><div class="wc-sources">{source_rows}</div><p data-no-sources hidden>一致する世界がありません。</p><p class="wc-hint ui-hint">選んだ世界の設定をコピーします。元の世界は変わりません。</p><p class="wc-hint ui-hint">拡張は複製されません。基本ルールの資産から取り込めます。</p></section>
-            <section data-import-panel hidden><h2>取り込むZIP</h2><label class="wc-field ui-field" for="f-zip"><span>ZIPファイル</span><input id="f-zip" type="file" accept=".zip,application/zip" data-zip-input></label><p class="wc-hint ui-hint">{zip_max // 1024}KB以内。作り方（AIに渡す仕様書）: <a href="{guide_url}" target="_blank" rel="noopener">docs/world-import-guide.md</a>（GitHub）／使い方はドキュメントサイトの該当ページを参照してください。</p><p class="wc-hint ui-hint">基本ルールはZIPの指定に従います。指定が無ければ未設定で作成し、世界設定画面であとから選べます。</p><p class="wc-error ui-error" data-zip-error role="alert"></p></section>
-            <h2>世界の基本情報</h2>
-            <label class="wc-field ui-field" for="f-name"><span>世界の名前 <small class="wc-required" data-name-required>必須</small></span><input id="f-name" name="name" data-field="name" maxlength="120" placeholder="例：星を運ぶ街"></label><p class="wc-hint ui-hint">世界設定から、あとで変更できます。</p><p class="wc-hint ui-hint" data-name-import-hint hidden>空欄にすると、ZIPのworld.yamlのnameを使います。</p>
-            <div data-new-panel{ ' hidden' if initial_mode != 'new' else ''}><label class="wc-field ui-field" for="f-overview"><span>世界の概要 <small>任意</small></span><textarea id="f-overview" name="overview" data-field="overview" maxlength="8000" rows="3" placeholder="舞台や雰囲気など、思いついたことから書いてください。"></textarea></label>
-            <div class="wc-note ui-notice"><strong>物語の基本ルール <small>初期設定</small></strong><p>共通の基本ルールで始めます。必要に応じて、あとから変更できます。</p></div></div>
-            <div data-copy-panel{'' if initial_mode == 'copy' else ' hidden'}><label class="wc-field ui-field" for="f-genre"><span>基本ルール</span><select id="f-genre" data-field="template_id">{options}</select></label><p class="wc-hint ui-hint">作成元のルールを初期選択します。</p></div>
-            <details class="wc-advanced"><summary>詳細設定 <small>世界IDは自動入力</small></summary><label class="wc-field ui-field" for="f-world_id"><span>世界ID</span><input id="f-world_id" data-field="world_id" value="{auto_id}" pattern="[A-Za-z0-9][A-Za-z0-9_-]{{0,95}}" maxlength="96" required></label><p class="wc-hint ui-hint">半角英数字・ハイフン・アンダースコアが使えます。</p></details>
-          </fieldset>
-        </div><aside class="wc-preview ui-aside" aria-label="作成する世界"><h2>作成する世界</h2><h3 data-preview-name>名前を入力してください</h3><span class="wc-chip" data-preview-mode>{'複製' if initial_mode == 'copy' else '新規作成'}</span><p data-preview-overview class="wc-copy">概要はあとから追加できます。</p><section><h2 data-preview-heading>作成後に設定すること</h2><dl data-preview-facts></dl><p class="wc-hint ui-hint" data-preview-note>人物・場所・初期物語は、空の状態から始まります。</p></section><div class="wc-note ui-notice"><strong>作成後は世界設定へ進みます。</strong><p>設定を整えてから、実行に進めます。</p></div></aside></div>
-        {page_footer}
-      </form><noscript>この作成画面を利用するにはJavaScriptを有効にしてください。</noscript></div>'''
-    return page(back + body)
+    # Old method bookmarks enter the same coauthor workflow.
+    from viewer.creation_workflow import render as workflow
+    return workflow(store,jobs,selected=from_id if copy_mode else None)
 
 
 def basics_editor(world_id, world_yaml, *, story=False):

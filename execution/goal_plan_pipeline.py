@@ -129,7 +129,8 @@ class GoalPlanRun:
 
     def extract(self, token, name, overview, *, settings=None, authoring=None):
         if settings is not None:
-            raise ConfigError('input_settings', 'この下案作成では個別の入力設定を指定できません')
+            from execution.draft_settings import normalize as normalize_settings
+            settings = normalize_settings(settings)
         a = authoring_context(authoring)
         identity = {'name': name, 'overview': overview, 'input_settings': settings, 'authoring': a}
         if (not isinstance(name, str) or not name.strip() or len(name) > 120 or
