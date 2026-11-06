@@ -69,7 +69,7 @@ class CompletionBoundaryTests(unittest.TestCase):
             w,people=load_frozen_festival();cfg={'version':VERSION,'epoch':'final-flush','completion_mode':'explicit'}
             policies=build_policies(w.slot_contract,communication_config=cfg)
             sim=Simulation(0,w,people,Path(d),policies=policies);sim.run()
-            saved=json.loads((Path(d)/'communication-state.json').read_text())
+            saved=json.loads((Path(d)/'communication-state.json').read_text(encoding='utf-8'))
             self.assertTrue(all(s['last_tick']==len(w.slots)-1 for s in saved.values()))
             self.assertTrue(all(not s['communication_repeat']['pending'] for s in saved.values()))
             self.assertIn('communication_state_sha256',sim.run_record())
