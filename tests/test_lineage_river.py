@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from frozen_world import evolve_frozen
 import json
 import tempfile
 import threading
@@ -158,7 +159,7 @@ class RiverRealRunTests(unittest.TestCase):
         project, template = _momotaro_paths()
         cls.temporary = tempfile.TemporaryDirectory()
         cls.runs_root = Path(cls.temporary.name) / "runs"
-        evolve({
+        evolve_frozen({
             "ga_seed": 1,
             "generations": 5,
             "keep": "all",
@@ -246,14 +247,14 @@ class SeedGenomesRiverTests(unittest.TestCase):
         common = {"ga_seed": 3, "generations": 1, "keep": "all", "population": 4,
                   "project": project, "seed_base": 11, "seeds": 1, "template": MOMOTARO_TEMPLATE,
                   "processes": 1, "record_explanations": False}
-        evolve({**common, "out": cls.runs_root / "source"})
+        evolve_frozen({**common, "out": cls.runs_root / "source"})
         source_archive = json.loads((cls.runs_root / "source" / "archive.json").read_text(encoding="utf-8"))
         entries = from_archive(source_archive)
         assert entries, "source run must reach at least one cell to seed from"
         seed_path = cls.runs_root / "seed_genomes.json"
         seed_path.write_text(json.dumps({"schema_version": 1,
             "source": {"run_id": "exp-prior"}, "genomes": entries}, ensure_ascii=False), encoding="utf-8")
-        evolve({**common, "seed_genomes": seed_path, "out": cls.runs_root / "seeded"})
+        evolve_frozen({**common, "seed_genomes": seed_path, "out": cls.runs_root / "seeded"})
         cls.repository = data.RunRepository(cls.runs_root)
 
     @classmethod

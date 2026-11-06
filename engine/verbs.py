@@ -371,7 +371,7 @@ class VerbEngine:
         )
         if actor.stamina < threshold:
             actor.exhausted = True
-        else:
+        elif self.world.action_usage is not None:
             actor.exhausted = False
 
     def _move(
@@ -451,7 +451,8 @@ class VerbEngine:
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         recovered = actor.change_stamina(actor.stamina_recover)
-        self._update_exhausted(actor)
+        if self.world.action_usage is not None:
+            self._update_exhausted(actor)
         return "rested", {"stamina_delta": recovered}, []
 
     def _gather_items(

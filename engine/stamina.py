@@ -32,7 +32,7 @@ def enabled(world):
 
 
 def modern(world):
-    return enabled(world)
+    return world.action_usage is not None and enabled(world)
 
 
 def zero_behavior(world):

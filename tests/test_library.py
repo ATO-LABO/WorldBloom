@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import yaml
 
+from saved_world_fixtures import current_world_yaml, install_current_worlds
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution.library import MAX_ZIP_ENTRIES, MAX_ZIP_TOTAL, LibraryStore, zip_to_files
@@ -47,6 +48,7 @@ class LibraryStoreTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
+        install_current_worlds(self.repo, "momotaro", "momotaro_plus3")
         self.store = LibraryStore(self.repo)
         self.configs = ConfigStore(self.repo, Path(self.temp.name) / "control", Path(self.temp.name) / "runs")
 
@@ -178,6 +180,7 @@ class ZipImportTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
+        install_current_worlds(self.repo, "momotaro", "momotaro_plus3")
         self.store = LibraryStore(self.repo)
         self.configs = ConfigStore(self.repo, Path(self.temp.name) / "control", Path(self.temp.name) / "runs")
 
@@ -302,19 +305,19 @@ class ZipImportTests(unittest.TestCase):
 
     def _momotaro_files(self):
         base = ROOT / "projects/momotaro"
-        files = {"world.yaml": (base / "world.yaml").read_text(encoding="utf-8")}
+        files = {"world.yaml": current_world_yaml(yaml.safe_load((base / "world.yaml").read_bytes()))}
         for path in sorted((base / "subjects").glob("*.yaml")):
             files[f"subjects/{path.name}"] = path.read_text(encoding="utf-8")
         return files
 
     def test_import_world_uses_zip_name_when_form_name_is_blank(self):
-        files = {"world.yaml": "name: ZIPの名前\noverview: x"}
+        files = {"world.yaml": current_world_yaml({"name": "ZIPの名前", "overview": "x"})}
         self.store.import_world("imported1", files=files, name="")
         world = yaml.safe_load((self.repo / "projects/imported1/world.yaml").read_text(encoding="utf-8"))
         self.assertEqual(world["name"], "ZIPの名前")
 
     def test_import_world_form_name_overrides_zip_name(self):
-        files = {"world.yaml": "name: ZIPの名前"}
+        files = {"world.yaml": current_world_yaml({"name": "ZIPの名前"})}
         self.store.import_world("imported2", files=files, name="フォームの名前")
         world = yaml.safe_load((self.repo / "projects/imported2/world.yaml").read_text(encoding="utf-8"))
         self.assertEqual(world["name"], "フォームの名前")
@@ -326,24 +329,22 @@ class ZipImportTests(unittest.TestCase):
         self.assertIn("name", ctx.exception.field_errors)
         self.assertFalse((self.repo / "projects/imported3").exists())
 
-    def test_import_world_without_gapengine_leaves_genre_unset(self):
-        files = {"world.yaml": "name: x"}
-        self.store.import_world("imported4", files=files, name="")
-        world = yaml.safe_load((self.repo / "projects/imported4/world.yaml").read_text(encoding="utf-8"))
-        self.assertNotIn("gapengine", world)
-        genres = {w["id"]: w["genre"] for w in self.store.worlds()}
-        self.assertIsNone(genres["imported4"])
+    def test_import_world_rejects_current_world_without_rule_references(self):
+        for value in (None, {}):
+            with self.subTest(value=value):
+                files = {"world.yaml": current_world_yaml({"name": "x", "gapengine": value})}
+                with self.assertRaises(ConfigError) as error:
+                    self.store.import_world("no-rules", files=files, name="")
+                self.assertIn("zip_base64" if value == {} else "world_format_version", error.exception.field_errors)
+                self.assertFalse((self.repo / "projects/no-rules").exists())
 
-    def test_import_world_with_null_gapengine_does_not_persist_a_literal_null(self):
-        files = {"world.yaml": "name: x\ngapengine: null\n"}
-        self.store.import_world("imported4b", files=files, name="")
-        raw = (self.repo / "projects/imported4b/world.yaml").read_text(encoding="utf-8")
-        self.assertNotIn("gapengine", raw)
-        world = yaml.safe_load(raw)
-        self.assertNotIn("gapengine", world)
+    def test_import_world_rejects_legacy_world(self):
+        with self.assertRaisesRegex(ConfigError, "旧世界形式"):
+            self.store.import_world("old-world", files={"world.yaml": "name: x"}, name="")
+        self.assertFalse((self.repo / "projects/old-world").exists())
 
     def test_import_world_with_valid_gapengine_is_kept(self):
-        files = {"world.yaml": "name: x\ngapengine:\n  action_graph: templates/momotaro/action_graph.yaml\n  effects: templates/momotaro/effects.yaml\n"}
+        files = {"world.yaml": current_world_yaml({"name": "x"})}
         self.store.import_world("imported5", files=files, name="")
         world = yaml.safe_load((self.repo / "projects/imported5/world.yaml").read_text(encoding="utf-8"))
         self.assertEqual(world["gapengine"], {"action_graph": "templates/momotaro/action_graph.yaml",
@@ -399,7 +400,7 @@ class ZipImportTests(unittest.TestCase):
         # CRLF source ("\r\n") into "\r\r\n" -- a blank line inside every
         # folded/literal YAML block scalar. subjects/ must go through
         # write_bytes() instead, so a CRLF-authored file round-trips exactly.
-        files = {"world.yaml": "name: x", "subjects/01_a.yaml": "id: a\r\ndescription: |\r\n  line one\r\n  line two\r\n"}
+        files = {"world.yaml": current_world_yaml({"name": "x"}), "subjects/01_a.yaml": "id: a\r\ndescription: |\r\n  line one\r\n  line two\r\n"}
         self.store.import_world("imported-crlf", files=files, name="")
         written = (self.repo / "projects/imported-crlf/subjects/01_a.yaml").read_bytes()
         self.assertEqual(written, files["subjects/01_a.yaml"].encode("utf-8"))
@@ -427,6 +428,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
+        install_current_worlds(self.repo, "momotaro", "momotaro_plus3")
         self.control = self.base / "control"
         self.runs = self.base / "runs"
         self.runs.mkdir()

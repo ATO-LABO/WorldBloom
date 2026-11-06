@@ -15,6 +15,7 @@ import yaml
 from world_patch_fixtures import write_approved
 from gapengine.world_patch import patch_id_for
 
+from saved_world_fixtures import install_current_worlds
 from execution.configs import ConfigStore, evolution_defaults, normalize
 from execution.provenance import ConfigError, atomic_json, canonical, directory_lock, read_json, sha256, write_bytes
 from scripts.evolve import build_parser
@@ -31,6 +32,7 @@ class ConfigTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
+        install_current_worlds(self.repo, "romance", "detective", "momotaro")
         self.store = ConfigStore(self.repo, self.base / "control", self.base / "runs")
         self.spec = {"label": "確認用", "project_id": "romance", "template_id": "romance",
                      "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all"}}

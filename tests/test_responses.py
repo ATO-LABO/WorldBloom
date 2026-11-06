@@ -1,4 +1,5 @@
 """Counterfactual information boundaries and actual concern-driven execution."""
+from frozen_world import run_frozen
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -8,6 +9,7 @@ import unittest
 
 from engine.actions import Action, candidates
 from engine.subject import Subject, Belief
+from frozen_world import load_frozen_world
 from engine.world import World
 from engine.verbs import VerbEngine
 from engine.sim import Simulation
@@ -216,7 +218,7 @@ class ResponseTests(unittest.TestCase):
     def test_candidates_are_pure_and_old_worlds_do_not_opt_in(self):
         w,p,r,e=load();before=r.snapshot();r.candidates(w,p['桃太郎'],1);r.candidates(w,p['桃太郎'],1)
         self.assertEqual(r.snapshot(),before)
-        old=World.from_yaml(ROOT/'projects/secret_values/world.yaml')
+        old=load_frozen_world(ROOT/'projects/secret_values/world.yaml')
         self.assertIsNone(old.responses)
 
     def test_ordinary_simulation_returns_and_works_without_forcing_hero(self):
@@ -245,7 +247,7 @@ class ResponseTests(unittest.TestCase):
     def test_proposal_approval_does_not_implement_but_can_authorize_local_work(self):
         from gapengine.deliberation_episode import load_episode
         from engine.responses import Responses
-        w,p=load_episode(ROOT/'tests/fixtures/legacy_concerns/reform_values/world.yaml')
+        w,p=run_frozen(load_episode, ROOT/'tests/fixtures/legacy_concerns/reform_values/world.yaml')
         raw,_=inputs();config=deepcopy(raw['responses'])
         hero=w.protagonist;site=p[hero].zone
         config['locations']={k:site for k in config['state']}
@@ -275,7 +277,7 @@ class ResponseTests(unittest.TestCase):
     def test_real_reform_deliberation_precedes_actual_implementation(self):
         from gapengine.response_episode import load_response
         with tempfile.TemporaryDirectory() as temp:
-            world,people=load_response(ROOT/'projects/reform_implementation/world.yaml')
+            world,people=run_frozen(load_response, ROOT/'projects/reform_implementation/world.yaml')
             sim=Simulation(0,world,people,Path(temp),record_explanations=True)
             rows=[json.loads(line) for line in sim.run().read_text(encoding='utf8').splitlines()]
             approval=next(r for r in rows if r.get('verb')=='decide_proposal' and r.get('kind')=='decision')

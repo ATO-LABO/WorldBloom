@@ -169,7 +169,7 @@ class WorldImportTests(unittest.TestCase):
 
     def import_body(self, **changes):
         body = {'mode': 'import', 'world_id': 'imported', 'name': '',
-                'zip_base64': _zip_b64({'world.yaml': 'name: ZIPの世界'})}
+                'zip_base64': _zip_b64({'world.yaml': fixtures.current_world_yaml({'name': 'ZIPの世界'})})}
         body.update(changes)
         return body
 
@@ -180,7 +180,7 @@ class WorldImportTests(unittest.TestCase):
         store = LibraryStore(self.repo)
         world = yaml.safe_load(store.read('world', 'imported', 'world.yaml'))
         self.assertEqual(world['name'], 'ZIPの世界')
-        self.assertNotIn('gapengine', world)
+        self.assertEqual(world['gapengine']['action_graph'], 'templates/momotaro/action_graph.yaml')
 
     def test_import_rejects_unexpected_keys(self):
         body = self.import_body()
@@ -210,24 +210,22 @@ class WorldImportTests(unittest.TestCase):
         self.assertIn('name="mode" value="import"', markup)
         self.assertIn('data-zip-input', markup)
 
-    def test_import_without_genre_then_pick_one_via_edit_then_preview_succeeds(self):
-        # End-to-end: import a genre-less ZIP over HTTP, pick a genre via the
-        # world-settings "genre" edit operation, then confirm the resulting
-        # world.yaml actually drives a successful ConfigStore.preview() --
-        # not just that the two writes individually look right.
+    def test_import_current_world_then_switch_rules_and_preview(self):
+        # The imported world must have a valid template before switching it.
         base = self.repo / 'projects/momotaro'
         entries = {'world.yaml': (base / 'world.yaml').read_text(encoding='utf-8')}
         for path in sorted((base / 'subjects').glob('*.yaml')):
             entries[f'subjects/{path.name}'] = path.read_text(encoding='utf-8')
         world = yaml.safe_load(entries['world.yaml'])
-        del world['gapengine']
+        world['gapengine'] = {'action_graph': 'templates/basic/action_graph.yaml',
+                              'effects': 'templates/basic/effects.yaml'}
         entries['world.yaml'] = yaml.safe_dump(world, allow_unicode=True, sort_keys=False)
 
         status, payload = self.http('POST', '/api/worlds', self.import_body(
             world_id='e2e-genre-pick', zip_base64=_zip_b64(entries)))
         self.assertEqual(status, 201, payload)
         store = LibraryStore(self.repo)
-        self.assertIsNone(store._genre_of('e2e-genre-pick', yaml.safe_load(store.read('world', 'e2e-genre-pick', 'world.yaml'))))
+        self.assertEqual(store._genre_of('e2e-genre-pick', yaml.safe_load(store.read('world', 'e2e-genre-pick', 'world.yaml'))), 'basic')
 
         from execution.world_editor import snapshot
         revision = snapshot(store, 'e2e-genre-pick')['revision']

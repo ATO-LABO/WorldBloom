@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from frozen_world import evolve_frozen
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import Any
 import yaml
 
 from engine.subject import Subject
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.evolve import evolve
 from gapengine.qd import read_rows, reached
@@ -37,7 +39,7 @@ class RomanceTemplateTests(unittest.TestCase):
     def test_b_has_independent_defense_and_rumor_caps(
         self,
     ) -> None:
-        world = World.from_yaml(
+        world = load_frozen_world(
             PROJECT / "world.yaml",
             action_graph_path=(
                 TEMPLATE / "action_graph.yaml"
@@ -99,7 +101,7 @@ class RomanceTemplateTests(unittest.TestCase):
     def test_world_and_five_subjects_load_without_objectives(
         self,
     ) -> None:
-        world = World.from_yaml(
+        world = load_frozen_world(
             PROJECT / "world.yaml",
             action_graph_path=(
                 TEMPLATE / "action_graph.yaml"
@@ -299,7 +301,7 @@ class RomanceTemplateTests(unittest.TestCase):
                 )
 
             output = root / "evolve"
-            archive = evolve(
+            archive = evolve_frozen(
                 {
                     "ga_seed": 11,
                     "generations": 1,

@@ -23,6 +23,7 @@ import urllib.request
 
 import yaml
 
+from saved_world_fixtures import copy_current_world_repo, install_current_worlds
 from execution.configs import ConfigStore
 from execution.provenance import ConfigError, atomic_json, canonical, sha256, write_bytes
 from execution.worker import TERMINAL
@@ -112,7 +113,8 @@ class WorkbenchTests(unittest.TestCase):
         self.runs = self.base / "runs"
         self.runs.mkdir()
         self.control = self.base / "control"
-        self.configs = ConfigStore(ROOT, self.control, self.runs)
+        repo = copy_current_world_repo(ROOT, self.base / "repo", "romance", "momotaro", "detective")
+        self.configs = ConfigStore(repo, self.control, self.runs)
         self.configs.save({
             "label": "wb", "project_id": "romance", "template_id": "romance",
             "evolution": {"generations": 1, "population": 1, "seeds": 1},
@@ -640,6 +642,7 @@ class WorkbenchTests(unittest.TestCase):
         temp_repo = temp / "repo"
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, temp_repo / name)
+        install_current_worlds(temp_repo, "momotaro", "romance")
         store = ConfigStore(temp_repo, temp / "control", temp / "runs")
         config = store.save(
             {"label": "凍結テスト", "project_id": "momotaro", "template_id": "momotaro",
@@ -709,7 +712,7 @@ class WorkbenchTests(unittest.TestCase):
         # M3 (Opus review): growth.mode != off forces evolution.world_expansion
         # to "expand" (execution/configs.py normalize), which reads the
         # approved-patches stack under directory_lock(project/"patches") --
-        # self.configs here is ConfigStore(ROOT, ...) (real repo), so doing
+        # The shared configuration fixture has its own repository. Doing
         # this against project_id="romance" without redirecting .repo would
         # create projects/romance/patches/.write.lock in the actual working
         # tree. Same isolated-temp-copy pattern as
@@ -721,6 +724,7 @@ class WorkbenchTests(unittest.TestCase):
         temp_repo = temp / "repo"
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, temp_repo / name)
+        install_current_worlds(temp_repo, "momotaro", "romance")
         real_patches = ROOT / "projects" / "romance" / "patches"
         self.addCleanup(lambda: self.assertFalse(real_patches.exists(),
                                                   "growth save must never touch the real repo's patches/"))

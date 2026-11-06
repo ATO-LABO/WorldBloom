@@ -1,6 +1,7 @@
 """Navigation and immutable save boundaries for the execution settings editor."""
 import unittest
 from html.parser import HTMLParser
+from saved_world_fixtures import install_current_worlds
 import test_workbench_pages as fixture
 
 
@@ -124,6 +125,7 @@ class RunSettingsTests(unittest.TestCase):
         temp_repo = temp / 'repo'
         for name in ('projects', 'templates'):
             fixture.shutil.copytree(fixture.ROOT / name, temp_repo / name)
+        install_current_worlds(temp_repo, 'romance')
         real_patches = fixture.ROOT / 'projects' / 'romance' / 'patches'
         self.addCleanup(lambda: self.assertFalse(real_patches.exists(),
                                                   'growth save must never touch the real repo\'s patches/'))

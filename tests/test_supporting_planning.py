@@ -11,6 +11,7 @@ from engine.objectives import Objectives
 from engine.subject import Subject
 from engine.sim import Simulation
 from engine.verbs import VerbEngine
+from frozen_world import load_frozen_world
 from engine.world import World
 from tools.migrate_supporting_stories import migrate,SOURCES
 from test_native_planning import FIXTURE_ROOT
@@ -273,7 +274,7 @@ class SupportingPlanningTests(unittest.TestCase):
                 self.assertEqual(manifest,migrate(source,root=root))
                 self.assertEqual(before,{p.relative_to(folder).as_posix():p.read_bytes() for p in folder.rglob('*') if p.is_file()})
                 generated=root/'projects'/(source+'_companions_planning')
-                w=World.from_yaml(generated/'world.yaml')
+                w=load_frozen_world(generated/'world.yaml')
                 people={a.id:a for a in (Subject.from_yaml(p) for p in sorted((generated/'subjects').glob('*.yaml')))}
                 w.bind_subjects(people)
             path=root/'projects/momotaro_companions_planning/subjects/04_inu.yaml'
