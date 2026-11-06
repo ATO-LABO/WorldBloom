@@ -4,7 +4,9 @@
  const clone=v=>JSON.parse(JSON.stringify(v)),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const reading=$('[data-advanced-reading]'),dialog=$('[data-advanced-dialog]'),message=$('[data-advanced-message]');
  let activeTopic=null,returnFocus=null;
- let world=initial.world,genre=initial.genre,files=initial.files,section=['roles','concerns','objectives','responses','planning','canon','actions','files'].includes(location.hash.slice(1))?location.hash.slice(1):'roles',index=0,variant='canon.yaml',file='world.yaml',dirty=false,busy=false,blocked=false;
+ let economyWorkspace=null;
+ const hashSection=()=>location.hash.slice(1).split('&')[0];
+ let world=initial.world,genre=initial.genre,files=initial.files,section=['roles','concerns','objectives','responses','planning','economy','canon','actions','files'].includes(hashSection())?hashSection():'roles',index=0,variant='canon.yaml',file='world.yaml',dirty=false,busy=false,blocked=false;
  let draft=null;
  if(section==='roles'){const edit=new URLSearchParams(location.search).get('edit');location.replace('/worlds/'+encodeURIComponent(world.id)+(edit?'?edit='+(edit==='roles:2'?'target-ending':'roles'):'')+'#screen='+(edit==='roles:2'?'overview':'people'));return;}
  const labels={phase:'段階',hostile_present:'敵対者がいる',objective:'目的の品',vitality:'生存状態',stance:'態度',category:'カテゴリ',verb:'行動',role:'相手との関係',n:'重み'};
@@ -83,6 +85,24 @@
   const b=document.createElement('button');b.type='button';b.className='ui-button';b.dataset.advancedEdit='';b.setAttribute('aria-label',title+'を編集');b.innerHTML='<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="m16.9 3.9 3.2 3.2-11 11-4.3 1.1 1.1-4.3 11-11Zm1.4-1.4a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8l-.7.7-3.2-3.2.7-.7Z"/></svg><span>編集</span>';b.disabled=!initial.editable||blocked;b.addEventListener('click',()=>fn(b));return b;
  }
  function renderReading(){
+  economyWorkspace?.moneyInline?.cleanup?.();
+  if(section==='economy'){
+   reading.hidden=false;
+   economyWorkspace=window.WorldBloomMoney.mount(reading,{
+    getWorld:()=>world,
+    editable:()=>initial.editable&&!blocked,
+    async save(operation,target,values){
+     try{
+      const saved=await api('/api/worlds/'+encodeURIComponent(world.id)+'/edit',{revision:world.revision,operation,target,values});
+      if(saved.id!==world.id||typeof saved.revision!=='string'||!saved.economy_state||!Array.isArray(saved.people))throw Error('保存結果を確認できません。');
+      world=saved;
+     }catch(error){blocked=!error.status||error.status===409||error.status>=500;error.blocked=blocked;throw error;}
+    },
+    onState(state){dirty=state.dirty;busy=state.busy;}
+   });
+   return;
+  }
+  economyWorkspace=null;
   reading.replaceChildren();reading.hidden=section==='actions';
   if(section==='actions')return;
   const heading=document.createElement('h2');heading.textContent=root.querySelector('[data-advanced-section="'+section+'"]')?.textContent||'設定';reading.append(heading);
@@ -200,7 +220,7 @@
   finally{busy=false;root.querySelectorAll('[data-disabled]').forEach(e=>{e.disabled=e.dataset.disabled==='true';delete e.dataset.disabled;});refresh();if(saved){dialog.close();activeTopic=null;loaded();render();restoreFocus();}}
  }
  root.querySelectorAll('[data-advanced-section]').forEach(b=>b.addEventListener('click',()=>{if(dirty||busy){status.textContent='先に変更を保存するか、変更を戻してください。';return;}section=b.dataset.advancedSection;history.replaceState(null,'','#'+section);index=0;loaded();render();}));
- addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(next===section||!['roles','concerns','objectives','responses','planning','canon','actions','files'].includes(next))return;if(dirty||busy){history.replaceState(null,'','#'+section);status.textContent='先に変更を保存するか、キャンセルしてください。';return;}section=next;index=0;loaded();render();});
+ addEventListener('hashchange',()=>{const next=hashSection();if(next===section){economyWorkspace?.moneyInline?.selectFromHash?.();return;}if(!['roles','concerns','objectives','responses','planning','economy','canon','actions','files'].includes(next))return;if(dirty||busy){history.replaceState(null,'',economyWorkspace?.moneyInline?.hash?.()||'#'+section);status.textContent='先に変更を保存するか、キャンセルしてください。';return;}section=next;index=0;loaded();render();});
  $('[data-advanced-form]').addEventListener('submit',e=>{e.preventDefault();action(false);});$('[data-advanced-check]').addEventListener('click',()=>action(true));
- root.addEventListener('click',e=>{if(busy&&e.target.closest('a'))e.preventDefault();});addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue='';}});loaded();render();const requested=new URLSearchParams(location.search).get('edit');if(requested){const opener=[...reading.querySelectorAll('[data-topic]')].find(n=>n.dataset.topic===requested);if(opener)openTopic(requested,opener);}
+ root.addEventListener('click',e=>{const link=e.target.closest('a[href]');if(link&&(busy||section==='economy'&&dirty&&!confirm('未保存の金銭設定を破棄しますか？')))e.preventDefault();});addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue='';}});loaded();render();const requested=new URLSearchParams(location.search).get('edit');if(requested){const opener=[...reading.querySelectorAll('[data-topic]')].find(n=>n.dataset.topic===requested);if(opener)openTopic(requested,opener);}
 })();

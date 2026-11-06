@@ -12,7 +12,10 @@ from viewer.settings_navigation import navigation, checks_navigation
 
 def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=None, experiments=(), expansion_html="", genres=()):
     """Render saved settings in the shared production shell. Rendering never writes."""
-    from engine.action_types import for_world, label
+    from engine.action_types import features, for_world, label
+    from engine.economy import PRESETS, summary
+    from engine.person_presentation import stamina_map
+    from engine.stamina_catalog import catalog as stamina_catalog
     repo = job_store.configs.repo if job_store is not None else data.ROOT
     selected = for_world(world_yaml, repo / "projects" / world["id"] / "world.yaml")
     from viewer.world_review import work_note
@@ -23,6 +26,11 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         "editable": job_store is not None and revision is not None, "revision": revision,
         "genre": world.get("genre"),
         "action_types": selected, "action_type_label": label(selected),
+        "mechanic_features": sorted(features(world_yaml)),
+        "time_basic_version": 1, "person_balance_version": 1,
+        "stamina_action_catalog": stamina_catalog(world_yaml),
+        "person_stamina": stamina_map(world_yaml, subjects),
+        "economy_state": summary(world_yaml, subjects), "economy_presets": list(PRESETS),
         "genres": [{"id": g["id"], "name": g.get("name") or g["id"]} for g in genres],
         # WB-TIMEEVENT-001: verb -> argument kinds for the time screen's
         # force_action form (same shape execution/world_editor.py._model()
@@ -86,6 +94,6 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
       <noscript>この表示にはJavaScriptが必要です。<a href="/worlds/{wid}?view=advanced">詳細設定を開く</a></noscript>
     </div>'''
     doc = pages.document(model["name"], body, world={"id": world["id"], "name": model["name"]},
-                         phase="world", page_class="world-prototype", job_store=job_store, pin=pin, stylesheets=('world-prototype.css','time-settings.css','items-workspace.css'), scripts=('items-workspace.js','time-settings.js','person-commitments-editor.js','world-prototype.js','world-expansion.js','world-notes.js'))
+                         phase="world", page_class="world-prototype", job_store=job_store, pin=pin, stylesheets=('world-prototype.css','time-settings.css','time-basic.css','items-workspace.css'), scripts=('ui-settings-frame.js','ui-help.js','genre-controls.js','items-workspace.js','time-basic.js','time-settings.js','person-commitments-editor.js','world-prototype.js','world-expansion.js','world-notes.js'))
     doc = doc.replace('data-wb="world-picker"', 'data-wb="world-picker" aria-label="世界"')
     return doc

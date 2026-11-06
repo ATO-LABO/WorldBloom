@@ -142,6 +142,14 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   const form = document.getElementById('wp-form');
   let w = model.world;
   const timeSettings = new WorldTimeSettings(model);
+  timeSettings.onApplied = result => {
+    Object.assign(model, result);
+    w = model.world;
+    people = model.people.filter(p => p.id).sort((a,b) => Number(b.id===w.protagonist)-Number(a.id===w.protagonist));
+    invalidateRoutes();
+    timeSettings.refreshWorld(model);
+    render();
+  };
   let people = model.people.filter(p => p.id);
   let zones = (w.zones || []).map(z => typeof z === 'string' ? {name:z,note:''} : {...z});
   people.sort((a,b) => Number(b.id === w.protagonist) - Number(a.id === w.protagonist));
@@ -150,6 +158,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   let graphMode='all', relationScope='all', relationGroup='', relationKind='all', relationInspector=true, relationExpanded=false;
   let relationZoom=1, relationPan={x:0,y:0}, relationDrag=null;
   let commitmentDraft = null;
+  let staminaPolicy = null;
   let applyEdit = null, opener = null, changed = false, busy = false, blocked = false;
   const scrolls = {};
   const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -187,6 +196,12 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   }
   const TRAIT_LABELS = {social:'社交性',stubbornness:'頑固さ',curiosity:'好奇心',diligence:'勤勉さ',temper:'気性の荒さ'};
   const num = v => Number(v) || 0;
+  function effectiveStamina(p){
+    if(model.person_stamina?.[p.id])return model.person_stamina[p.id];
+    const raw=p.stamina||{},v=staminaSettings(),maximum=Number(raw.max??0),inheritMax=maximum<=0,max=inheritMax?Number(v.default_max):maximum;
+    const current=inheritMax?max:Math.min(max,Math.max(0,Number(raw.current??maximum))),initialRecovery=Number(raw.recover_per_slot??0),inheritRecovery=initialRecovery<=0&&(!Object.hasOwn(raw,'recover_per_slot'));
+    return {max,current,recover_per_slot:inheritRecovery?Number(v.default_recover_per_slot):initialRecovery,max_inherited:inheritMax,current_inherited:inheritMax||!Object.hasOwn(raw,'current'),recovery_inherited:inheritRecovery};
+  }
   const bar = (label, value, scale, text) => {
     const ratio = scale > 0 ? Math.max(0, Math.min(1, value / scale)) : 0;
     return `<div class="stat"><span class="stat-label">${esc(label)}</span><span class="gene-track"><span class="gene-fill" style="width:${(ratio*100).toFixed(1)}%"></span></span><span class="stat-value">${esc(text)}</span></div>`;
@@ -194,13 +209,13 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   // Same nine bars and scales as the advanced sheet (viewer/world_graph.py).
   function statBars(p) {
     const traits = p.traits || {};
-    const stamina = p.stamina || {};
+    const stamina = effectiveStamina(p);
     const baseScale = Math.max(100, ...people.map(q => num(q.base)));
-    const staminaScale = Math.max(0, ...people.map(q => num((q.stamina || {}).max)));
+    const staminaScale = Math.max(0, ...people.map(q => num(effectiveStamina(q).max)));
     const allyScale = Math.max(0, ...people.map(q => num(q.ally_value)));
     const rows = Object.entries(TRAIT_LABELS).map(([k, label]) => bar(label, num(traits[k]), 1, num(traits[k]).toFixed(2)));
     rows.push(bar('基礎の強さ', num(p.base), baseScale, String(Math.round(num(p.base)))));
-    rows.push(bar('体力', num(stamina.max), staminaScale, `${Math.round(num(stamina.max))}（回復 ${num(stamina.recover_per_slot)}/時間帯）`));
+    rows.push(bar('体力', num(stamina.max), staminaScale, `${num(stamina.max)}（休息・睡眠1回の回復 ${num(stamina.recover_per_slot)}${stamina.max_inherited||stamina.recovery_inherited?'・世界の既定値を使用':''}）`));
     rows.push(bar('評判', num(p.reputation), 1, num(p.reputation).toFixed(2)));
     rows.push(bar('仲間への加勢', num(p.ally_value), allyScale, String(Math.round(num(p.ally_value)))));
     return '<div class="stat-bars">' + rows.join('') + '</div>';
@@ -212,7 +227,15 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const commitments=window.WorldBloomPersonValues.effective(p,w);
     const values=commitments.map(v=>{const condition=w.concerns?.conditions?.find(c=>c.id===v.condition);return `<li>${esc(condition?.label||v.condition)} ／ 優先順位 ${esc(v.priority)} ／ ${v.required?'譲れない条件':'他の価値と比較して判断'}</li>`;}).join('');
     const personal=`<section class="wp-section">${head('大切にしていること',edit('person-commitments','価値観を編集'))}${values?`<ul>${values}</ul>`:'<p>重視する条件は未設定です。</p>'}<p class="wp-muted">優先順位は大きい数を先に比べます。<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#concerns">状態・条件の定義を確認</a> ／ <a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#objectives">達成・失敗・期間の定義を確認</a></p></section>`;
-    return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目標と達成条件',esc(goal(p))+'<br>'+goalConditions(p))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl>${personal}<section class="wp-section">${head('開始時点の状態',edit('state'))}<p>居場所：${esc(entry(p))}<br>持ち物：${esc(items(p))}<br>知識：${esc(knows(p))}</p></section><details open><summary>性格・能力の数値</summary>${statBars(p)}</details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
+    return `<div class="wp-section-head"><span class="wp-role">${esc(role(p)||'登場人物')}</span>${edit('person','人物を編集')}</div><h2>${esc(p.id)}</h2><p>${absent(p.description || p.identity?.true || p.identity?.['true'])}</p><dl class="wp-dl">${row('目標と達成条件',esc(goal(p))+'<br>'+goalConditions(p))}${row('人物像',absent(p.personality))}${row('ほかの人物との関係',`<div class="wp-relation-list">${relations}</div>`)}${row('持ち物・知っていること',`${esc(items(p))}<br>${esc(knows(p))}`)}</dl>${personal}${personBalance(p)}<section class="wp-section">${head('開始時点の状態',edit('state'))}<p>居場所：${esc(entry(p))}<br>持ち物：${esc(items(p))}<br>知識：${esc(knows(p))}</p></section><details open><summary>性格・能力の数値</summary>${statBars(p)}</details><details><summary>秘密・他者からの見え方</summary><p>本当の姿: ${absent(p.identity?.true)}<br>表向きの姿: ${absent(p.identity?.displayed)}</p></details>`;
+  }
+  const personCurrency = () => model.economy_state?.configured ? model.economy_state.currency : null;
+  function personBalance(p){
+    const currency=personCurrency();
+    if(!currency?.asset)return `<section class="wp-section" data-person-balance>${head('開始所持金')}<p class="ui-hint">通貨を設定すると、この人物の開始所持金を入力できます。<a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#economy&tab=currency">通貨を設定</a></p></section>`;
+    const value=Object.hasOwn(p.inventory||{},currency.asset)?p.inventory[currency.asset]:0;
+    const supported=model.person_balance_version===1;
+    return `<section class="wp-section" data-person-balance>${head('開始所持金',supported?edit('person-balance','所持金を編集'):'')}<p>${esc(value)} ${esc(currency.unit)}</p>${supported?'':'<p class="ui-hint">開始所持金の編集には開発版の更新が必要です。</p>'}</section>`;
   }
   function goalConditions(p){
     const base='/worlds/'+encodeURIComponent(model.id);
@@ -342,11 +365,29 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const rows=filtered.map(e=>`<tr><td>${esc(e.day)}</td><td>${esc(e.slot||'日の初め')}</td><td>${esc(e.label||e.id)}</td><td>${esc((e.targets||[]).join('、'))}</td><td>${eventSummary(e)}</td>${model.editable?`<td class="wp-state-action"><button data-edit="event:${e.__index}" aria-label="編集" title="編集">✎</button><button data-edit="remove-event:${e.__index}" aria-label="削除" title="削除">✕</button></td>`:''}</tr>`).join('');
     return `<table class="wp-state wp-events"><thead><tr><th>日</th><th>時間帯</th><th>名前</th><th>対象</th><th>内容</th>${model.editable?'<th class="wp-state-action" aria-label="操作"></th>':''}</tr></thead><tbody>${rows}</tbody></table>`;
   }
+  function staminaSettings(){const v=w.stamina||{};return {default_max:v.default_max??10,default_recover_per_slot:v.default_recover_per_slot??1,exhausted_ratio:v.exhausted_ratio??.2,default_action_cost:v.default_action_cost??1,passive_recovery:v.passive_recovery??false};}
+  function actionCostsPanel(canEdit=model.editable){
+    const rows=model.stamina_action_catalog||[],changes=w.stamina?.action_cost_adjustments||{};
+    return `<section class="wp-section" data-action-cost-panel data-stamina-panel="actions">${head('行動ごとの消費量')}<p>既定値に加える量を、行動ごとに設定できます。マイナスなら減り、消費量は0未満になりません。「既定値に戻す」で増減を取り消せます。休息の回復量は消費・回復のルールを使います。</p><label class="ui-field">行動を検索<input type="search" data-action-cost-search placeholder="行動名で絞り込む" aria-label="行動を検索"></label><div class="items-table-scroll"><table class="items-table"><thead><tr><th>行動</th><th>既定の消費量</th><th>増減</th><th>適用後</th><th>編集</th></tr></thead><tbody>${rows.map(r=>{const delta=Number(changes[r.id]||0),sign=delta>0?'+':'',value=r.base===null?(delta?'既定の消費量 '+sign+delta+'（最低0）':r.defaultDescription):String(Math.max(0,Number(r.base)+delta));return `<tr data-action-cost-row="${esc(r.id)}" data-action-cost-name="${esc(r.name)}"><th>${esc(r.name)}</th><td>${esc(r.defaultDescription)}</td><td>${esc(sign+delta)}</td><td>${esc(value)}</td><td>${canEdit?`<button type="button" class="ui-button" data-edit="action-stamina" data-cost-verb="${esc(r.id)}" aria-label="${esc(r.name)}の消費量を編集">✎ 編集</button>`:''}</td></tr>`;}).join('')}</tbody></table></div><p class="ui-hint">移動・労働・作業などは、それぞれの経路や作業に設定した消費量を基準にします。使わない行動の値も設定しておけます。</p></section>`;
+  }
+  function staminaScreen(){const v=staminaSettings(),enabled=(model.mechanic_features||[]).includes('stamina_management');
+    return title('体力と回復','この世界で使う体力の初期値と、消費・回復のルールを確認します。')+
+      `<p class="ui-notice">体力管理：${enabled?'有効。行動で体力を消費し、足りない行動は選べません。休息で回復します。':'無効。体力の消費・回復・疲労による制約を省きます。時間・場所・負傷や死亡の条件は残ります。登録した設定は保持します。'}</p><p><a class="ui-button" data-stamina-back href="/worlds/${encodeURIComponent(model.id)}?view=actions#tab=types">← 行動の種類に戻る</a></p>`+
+      '<section class="wp-section" data-stamina-zero-host data-stamina-panel="policy"></section>'+
+      `<section class="wp-section" data-stamina-panel="rules">${head('消費・回復のルール',enabled?edit('stamina-settings'):'')}<dl class="wp-dl">${row('標準の最大体力',esc(v.default_max))}${row('休息・睡眠1回の標準回復量',esc(v.default_recover_per_slot))}${row('通常の行動1回の消費量',esc(v.default_action_cost))}${row('疲労とする残量',esc(v.exhausted_ratio*100)+'％未満')}${row('時間経過による回復',v.passive_recovery?'あり':'なし（休息・睡眠で回復）')}</dl><p class="ui-hint">移動は経路に設定したコスト、労働や作業はそれぞれに設定した消費量を使います。時間をかける行動は、その時間のルールに沿って消費します。</p></section>`+
+      `<section class="wp-section" data-stamina-panel="people">${head('人物ごとの開始時点の体力')}<div class="items-table-scroll"><table class="items-table"><thead><tr><th>人物</th><th>開始時点</th><th>最大体力</th><th>休息時の回復量</th><th>編集</th></tr></thead><tbody>${people.map(p=>{const a=effectiveStamina(p),{max,current}=a,recover=a.recover_per_slot;return `<tr><th>${esc(p.id)}</th><td>${esc(current)}</td><td>${esc(max)}</td><td>${esc(recover)}</td><td>${model.editable&&enabled?`<button class="ui-button" data-edit="person-stamina" data-stamina-person="${esc(p.id)}" aria-label="${esc(p.id)}の体力を編集">✎ 編集</button>`:''}</td></tr>`;}).join('')}</tbody></table></div></section>`+
+      actionCostsPanel(model.editable&&enabled)+`<p><a href="#screen=time" data-screen="time">時間と出来事へ戻る →</a></p>`;
+  }
   function timeScreen(){
     const days=Number(w.time?.days)||0;
     const slots=w.time?.slots||[];
     const cycle=slots.length?slots:['時間帯は未設定'];
     const events=sortedEvents();
+    if (model.time_basic_version === 1) {
+      return '<div data-time-settings></div>' +
+        '<section class="wp-section" data-ts-panel="events" id="ts-panel-events" role="tabpanel" aria-labelledby="ts-tab-events" hidden>' +
+        head('予定された出来事',model.editable?'<button class="wp-add" data-edit="add-event">＋ 出来事を追加</button>':'')+eventDayGrid(events)+eventsTable()+'</section>';
+    }
     return title('時間','期間と通常日の設定、特別日を確認する')+
       '<div data-time-settings></div>'+
       `<details class="wp-section"><summary>現在の実行エンジンの設定（既存 v1）</summary><dl class="wp-dl">${row('日数',days?`${esc(days)}日間`:'未設定')}${row('時間帯',esc(slots.join(' ／ ')||'未設定'))}</dl>${edit('time','既存 v1 の時間を編集')}<p class="wp-muted">下書きの可変時間設定とは別です。開始済みの実行結果は変更しません。</p></details>`+
@@ -425,13 +466,26 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   }
 
   function render(focus=false){
+    staminaPolicy=null;
     content.classList.toggle('is-people',screen==='people');
     content.classList.toggle('is-routes',screen==='routes');
     content.dataset.screen=screen;
-    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,items:itemsScreen,story,time:timeScreen,routes:routesScreen,checks:checksScreen}[screen]||overview)();
+    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,items:itemsScreen,story,time:timeScreen,stamina:staminaScreen,routes:routesScreen,checks:checksScreen}[screen]||overview)();
     window.WorldBloomWorldNotes?.mount(content);
     if(screen==='items')new window.WorldBloomItems.Workspace(content.querySelector('[data-items-workspace]'),{getData:()=>window.WorldBloomItems.fromWorld(model),save:saveItems,link:(type,name)=>'/worlds/'+encodeURIComponent(model.id)+'#'+new URLSearchParams({screen:type,entity:name}),navigate:(type,name)=>{if(type==='people')person=Math.max(0,people.findIndex(p=>p.id===name));if(type==='places')place=Math.max(0,zones.findIndex(p=>p.name===name));screen=type;render(true);}});
     if(screen==='time')timeSettings.mount(content.querySelector('[data-time-settings]'));
+    if(screen==='stamina'){
+      staminaPolicy=window.WorldBloomStaminaZero.mount(content.querySelector('[data-stamina-zero-host]'),{
+        getValue:()=>w.stamina?.zero_behavior,
+        editable:model.editable&&!blocked&&(model.mechanic_features||[]).includes('stamina_management'),
+        save:saveItems,
+        onStateChange:state=>{changed=state.dirty;busy=state.busy;blocked=blocked||state.blocked;}
+      });
+      const search=content.querySelector('[data-action-cost-search]');
+      search?.addEventListener('input',()=>content.querySelectorAll('[data-action-cost-row]').forEach(row=>{
+        row.hidden=!row.dataset.actionCostName.includes(search.value.trim());
+      }));
+    }
     updateRelationTransform();
     root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===({story:'overview',routes:'checks'}[screen]||screen))b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     const missing=[];
@@ -461,6 +515,13 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     }else if(key==='overview'||key==='intro'){
       name=key==='overview'?'世界の説明を編集':'導入文を編集';fields=[...(key==='overview'?[field('name','世界の名前',model.name,'text')]:[]),field('text','文章',model[key])];
       applyEdit=values=>({operation:key,target:null,values});
+    }else if(key==='action-stamina'){
+      const row=model.stamina_action_catalog.find(r=>r.id===trigger.dataset.costVerb),delta=w.stamina?.action_cost_adjustments?.[row.id]||0;name=row.name+' / 体力の消費量';fields=[{html:'<p>既定の消費量：'+esc(row.defaultDescription)+'</p><p>プラスで増やし、マイナスで減らせます。0に戻すと既定値を使います。</p>'},field('adjustment','既定値からの増減',delta,'number'),{html:'<button type="button" class="ui-button" data-action-cost-reset>既定値に戻す</button><p class="ui-hint" data-action-cost-preview></p>'}];applyEdit=values=>({operation:'action-stamina',target:row.id,values:{adjustment:Number(values.adjustment)}});
+    }else if(key==='stamina-settings'){
+      const v=staminaSettings();name='体力の消費・回復を編集';fields=[field('default_max','標準の最大体力',v.default_max,'number'),field('default_recover_per_slot','休息・睡眠1回の標準回復量',v.default_recover_per_slot,'number'),field('default_action_cost','通常の行動1回の消費量',v.default_action_cost,'number'),field('exhausted_ratio','疲労とする残量の割合（0〜1）',v.exhausted_ratio,'number'),field('passive_recovery','時間経過でも回復する',String(v.passive_recovery),'select',[['false','しない（休息・睡眠で回復）'],['true','する']])];
+      applyEdit=values=>({operation:'stamina-settings',target:null,values:{default_max:Number(values.default_max),default_recover_per_slot:Number(values.default_recover_per_slot),default_action_cost:Number(values.default_action_cost),exhausted_ratio:Number(values.exhausted_ratio),passive_recovery:values.passive_recovery==='true'}});
+    }else if(key==='person-stamina'){
+      const p=people.find(p=>p.id===trigger.dataset.staminaPerson),a=effectiveStamina(p),max=a.max;name=p.id+' / 開始時点の体力';fields=[field('max','最大体力',max,'number'),field('current','開始時点の体力',a.current,'number'),field('recover_per_slot','休息・睡眠1回の回復量',a.recover_per_slot,'number')];applyEdit=values=>({operation:'person-stamina',target:p.id,values:{max:Number(values.max),current:Number(values.current),recover_per_slot:Number(values.recover_per_slot)}});
     }else if(key==='time'){
       name='時間の範囲を編集';fields=[field('days','日数',w.time?.days||16,'number'),field('slots','時間帯（読点で区切る）',(w.time?.slots||[]).join('、'),'text')];
       applyEdit=v=>({operation:'time',target:null,values:{days:Number(v.days),slots:split(v.slots)}});
@@ -484,6 +545,12 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     }else if(key==='add-person'||key==='add-place'){
       name=key==='add-person'?'人物を追加':'場所を追加';fields=[field('name','名前','','text'),field('description','紹介・説明',''),...(key==='add-person'?[field('affiliation','所属（任意）','','text'),field('entry','開始時の居場所（あとで初期状態からも設定できます）','','select',zoneOptions(''))]:[])];
       applyEdit=values=>({operation:key,target:null,values});
+    }else if(key==='person-balance'){
+      const p=people[person],currency=personCurrency();
+      if(!p||!currency)return;
+      name=p.id+' / 開始所持金';
+      fields=[field('amount',currency.unit,p.inventory?.[currency.asset]??0,'number')];
+      applyEdit=values=>({operation:'person-balance',target:p.id,values:{amount:Number(values.amount)}});
     }else if(key==='state'){
       const p=people[person];if(!p)return;name=`${p.id}の開始時点の状態`;
       fields=[field('entry','居場所',p.range?.entry||'','select', zoneOptions(p.range?.entry)),field('knowledge','知識（読点で区切る）',(p.knowledge||[]).join('、'),'text')];
@@ -543,6 +610,9 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
       const newKinds=(model.force_action_specs||{})[e.target.value]||[];
       document.getElementById('wp-event-args').innerHTML=newKinds.map((kind,i)=>fieldHtml(argFieldDescriptor(kind,i,''))).join('');
     });
+    if(key==='action-stamina'){
+      const input=dialog.querySelector('[name="adjustment"]'),row=model.stamina_action_catalog.find(r=>r.id===trigger.dataset.costVerb),preview=dialog.querySelector('[data-action-cost-preview]');const update=()=>{const delta=Number(input.value);preview.textContent='適用後：'+(row.base===null?'既定の消費量 '+(delta>=0?'+':'')+delta+'（最低0）':Math.max(0,Number(row.base)+delta));};input.addEventListener('input',update);dialog.querySelector('[data-action-cost-reset]').onclick=()=>{input.value='0';changed=true;update();input.focus();};update();
+    }
     dialog.showModal();
   }
   function numAttrs(key){
@@ -573,6 +643,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   root.addEventListener('click',e=>{
     const b=e.target.closest('button,[data-person],a[data-screen]');if(!b)return;
     if(screen==='routes')rememberRoutes();
+    if(staminaPolicy&&(b.tagName==='A'||b.dataset.screen||b.dataset.edit)&&!staminaPolicy.canLeave()){e.preventDefault();return;}
     if(b.dataset.screen){e.preventDefault();const nextScreen=b.dataset.screen;timeSettings.guard(()=>{timeSettings.leave();scrolls[screen]=content.scrollTop;screen=nextScreen;history.pushState(null,'','#'+new URLSearchParams({screen}));render(true);});}
     else if(b.hasAttribute('data-event-day')){const day=Number(b.dataset.eventDay);eventDay=eventDay===day?null:day;render();}
     else if(b.hasAttribute('data-state-person')){person=Number(b.dataset.statePerson);openEditor('state',b);}
@@ -705,6 +776,6 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   });
   dialog.addEventListener('close',()=>{if(opener?.isConnected)opener.focus({preventScroll:true});});
   window.addEventListener('beforeunload',e=>{if(changed||busy){e.preventDefault();e.returnValue='';}});
-  let autoOpened=false;function restoreScreen(){const hash=new URLSearchParams(location.hash.slice(1));const requested=hash.get('screen')||(['time','time-special'].includes(location.hash.slice(1))?'time':'overview');screen=['overview','people','places','items','story','time','routes','checks'].includes(requested)?requested:'overview';const actor=hash.get('entity');if(actor&&people.some(p=>p.id===actor))person=people.findIndex(p=>p.id===actor);render();const edit=new URLSearchParams(location.search).get('edit');if(!autoOpened&&['roles','target-ending'].includes(edit)){autoOpened=true;const trigger=content.querySelector('[data-edit="'+edit+'"]');if(trigger)openEditor(edit,trigger);}}
+  let autoOpened=false;function restoreScreen(){const hash=new URLSearchParams(location.hash.slice(1));const requested=hash.get('screen')||(['time','time-special'].includes(location.hash.slice(1))?'time':'overview');screen=['overview','people','places','items','story','time','stamina','routes','checks'].includes(requested)?requested:'overview';const actor=hash.get('entity');if(actor&&people.some(p=>p.id===actor))person=people.findIndex(p=>p.id===actor);render();const edit=new URLSearchParams(location.search).get('edit');if(!autoOpened&&['roles','target-ending'].includes(edit)){autoOpened=true;const trigger=content.querySelector('[data-edit="'+edit+'"]');if(trigger)openEditor(edit,trigger);}}
   addEventListener('popstate',()=>timeSettings.guard(restoreScreen));restoreScreen();
 })();
