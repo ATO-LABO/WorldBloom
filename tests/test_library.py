@@ -772,7 +772,7 @@ class LibraryGuidanceTests(unittest.TestCase):
         self.assertNotIn('href="/worlds/new"', body)
 
     def test_world_detail_without_control_is_read_only(self):
-        status, body = self.get("/worlds/momotaro?view=advanced")
+        status, body = self.get("/worlds/momotaro_plus3_new?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn('data-world-advanced', body)
         self.assertNotIn('data-action="save-file"', body)
