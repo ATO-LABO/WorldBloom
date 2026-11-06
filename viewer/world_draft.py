@@ -23,7 +23,7 @@ def fragment(mode="waiting", notice=None):
       <p class="ui-error" data-wd-errors role="alert"></p>
       <div class="wd-actions"><button class="ui-button" type="button" data-wd-check hidden>状態を確認</button><button class="ui-button" type="button" data-wd-cancel hidden>この下案を取り消す</button><button class="ui-button" type="button" data-wd-retry hidden>入力から新しい下案を作り直す</button></div>
       <section class="wd-review" data-wd-review hidden><h2>下案を確認する</h2><p>これは提案です。指定していない内容も含まれます。人物・場所・関係・目標を確認してください。</p>
-      <div data-wd-summary></div>
+      <div data-wd-summary></div><div class="wd-workspace" data-wd-workspace></div>
       <section data-wd-goals aria-label="下案の修正"></section><div data-wd-context></div>
       <p class="wd-defaults ui-notice">概要に合わせて人物・場所・目標を作成します。目標の達成条件も確認してください。自動判定のない目標は文章として保存されます。共通の基本ルール／7日間・朝昼夕夜／数値特性は各0.5・基礎値50の既定値です。文章から推定した数値ではありません。</p>
       <p class="ui-hint">実生成の下案は、再確認のたびにAIで整合性を1回確認します。元の世界名と概要は保持します。</p>

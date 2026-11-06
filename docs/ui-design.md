@@ -4,6 +4,22 @@ New screens use the shared design by default. A different design requires an
 explicit user request or a documented content-specific need (for example, a
 story-reading layout). Every viewer layout carries the `ui-screen` baseline.
 
+The new-world draft review uses a settings workspace with left section navigation,
+selected-object details, schematic place/route nodes and edges, and the existing
+affiliation-based person graph geometry. `draft-workspace.css` owns only this
+reading layout; controls, dialogs and bottom actions retain the shared owner.
+Editable blocks have a pencil in their own heading. A pencil opens only that
+topic in the shared native editing dialog. The AI action is inside this editor: it accepts revision
+instructions and fills the same fields with a candidate, which remains editable
+by hand. The shared choices are OK, regenerate, and cancel. Cancelling leaves the
+draft unchanged. AI candidates and human refinements are restricted to the chosen
+block on both client and server; confirming a candidate performs semantic
+revalidation. Draft application never adopts a world. Direct edits stay local
+until revalidation. Cancel, Escape, header close and backdrop click discard
+unaccepted input and restore focus to the pencil. During accepted application,
+all close actions are disabled until the result is known. Long topic input
+scrolls within the dialog while its heading and decision buttons remain visible.
+
 ## Ownership and loading
 
 `viewer/static/ui-tokens.css` owns the `--ws-*` values. They preserve the existing
@@ -147,3 +163,15 @@ Native calendar goal choices use that same workspace. The reader preserves their
 original event/decision source lines and distinguishes journaled selection from
 native completion. Rest completion is a visible milestone with actual recovered
 stamina; date/time labels come from the execution calendar, not inferred slots.
+
+
+World advanced settings now use left navigation and a full-width reading body.
+Only selectable rule/file lists retain a local list/detail arrangement; the
+action catalog occupies the whole body. Form renderers also supply readouts,
+with controls converted to literal text. Each top-level topic opens its own
+shared native modal. Hidden sibling topics cannot be edited through the UI.
+Cancelling discards its draft; saving uses existing revision-checked endpoints.
+Errors retain the input, save-in-flight blocks closing, and focus returns to
+the matching pencil. Exact saved file text is refreshed after a successful save
+before another file editor can be opened. This layout uses world-advanced.css
+for content geometry only, without expanding the legacy design exceptions.
