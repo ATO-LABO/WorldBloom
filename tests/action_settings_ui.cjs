@@ -1,7 +1,7 @@
 // Test actual filtering and retained tab DOM, using the project's offline DOM.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const repo=process.argv[2]||path.resolve(__dirname,'..');
-let fixture=fs.readFileSync(path.join(repo,'tests/people_settings_ui.cjs'),'utf8');fixture=fixture.slice(0,fixture.indexOf('function setup('));
+let fixture=fs.readFileSync(path.join(repo,'tests/fixtures/people_settings_dom.cjs'),'utf8');fixture=fixture.slice(0,fixture.indexOf('function setup('));
 const {Element,Event,setDocument}=vm.runInNewContext(fixture+'\n({Element,Event,setDocument(value){doc=value;}});',{require,process,console,URL,__dirname:path.join(repo,'tests')});
 Element.prototype.insertBefore=function(node,before){node.remove?.();node.parentElement=this;this.nodes.splice(this.nodes.indexOf(before),0,node);};
 const document={listeners:{},window:{listeners:{}},createElement:t=>new Element(t)};document.body=new Element('body');document.body._document=true;document.querySelector=s=>document.body.querySelector(s);setDocument(document);
