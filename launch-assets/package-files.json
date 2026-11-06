@@ -1040,5 +1040,8 @@
   "viewer/world_review.py": "212df5b93d0d023bbf4b9ea28f6d41374b325b23539a14970418cfcf69a5eff3",
   "viewer/world_usage_badge.py": "316a1efbd7c1428c069297d65d75330506d7d02ca3ca35e733b7c26e004442db",
   "viewer/worldbloom.ico": "a28d0c5960125d9f56a4befc48940edc4d72774e37ab20685f60fd2ccd894690",
-  "tests/world_description_navigation.cjs": "591af0add9c632b288605ab23f7a2a8c3195292d555100fd4ec2a712a2c4da74"
+  "tests/world_description_navigation.cjs": "591af0add9c632b288605ab23f7a2a8c3195292d555100fd4ec2a712a2c4da74",
+  "scripts/browser_checks/requirements.txt": "36a0e87367467eec76adca0a6939ed2bccbb1040cd5fece031cb28e1220a68e2",
+  "scripts/browser_checks/world_description.py": "82017e7f537a9fe1d37093b88c4d747f11f30b3edeac0d8a17d0327751afb007",
+  ".github/workflows/browser-navigation.yml": "b8f0c5132e6b88b8f17181f09cce914f8cb0e6819f7a0051f09e1857bac47b59"
 }
