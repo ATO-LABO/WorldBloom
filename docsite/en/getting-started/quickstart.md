@@ -1,22 +1,24 @@
 ---
-ja_rev: "30c3da611397"
+ja_rev: "e75e12c5e28f"
 ---
 
 # Quickstart (one lap with Momotaro)
 
-Using the Studio build (or the source build started with `--control`), this walks through one full lap with the Momotaro world.
+This walkthrough uses the current source build started with `--control` to complete one full lap with the Momotaro world. For the Windows Studio download, follow the screens and samples included in its specific Release.
 
 ## 1. Pick a world
 
-On launch you see the "**世界を選ぶ** (Pick a world)" home screen. Click the bundled "**桃太郎** (Momotaro)" world ("桃太郎＋" and "桃太郎＋2" are extended variants). To create a new one, use "**＋ 新しい世界を作る** (+ Create a new world)" and enter a name and overview.
+On launch, choose "**物語制作** (Story creation)" under "**今日は何を進めますか** (What would you like to work on today?)" to reach the "**世界を選ぶ** (Pick a world)" screen. Open the bundled “**桃太郎＋3（新形式）**” (Momotaro +3, new format), stored at `projects/momotaro_plus3_new`. To create a new one, choose “**新しい世界を作成**” and follow the [three-stage draft workflow](../usage/create-world.md). Existing-world cards show the overview, character/place counts, duration and roles.
 
 ## 2. Run settings
+
+Review the world settings, then use “**実行条件を決める →**” (Decide run conditions) in the footer. Fill in any missing required settings first.
 
 On the "**実行設定** (Run settings)" screen (subtitle: "探索する条件を決める", "Decide what to explore"), set the exploration size — generations, population, seed count — and the run's time limit. Click "**保存して実行条件へ →** (Save and continue →)" to proceed.
 
 ## 3. Run
 
-Confirm the settings and start the run; progress (generation, completed individuals, an ETA) is shown while it runs. The GA step itself never uses an LLM, so no generation backend is needed yet.
+Confirm the settings and start the run; progress (generation, completed individuals, an ETA) is shown while it runs. With κ=0, no AI rationality judging takes place. With κ>0, the chosen judge (Ollama or Jev) needs a working connection. This is separate from synopsis/prose generation.
 
 ## 4. Results (QD map) and Sifting
 
@@ -24,15 +26,15 @@ When the run finishes, you see the QD map: a grid of leading category × volatil
 
 ## 5. Generate synopsis/text (optional, needs an LLM)
 
-From the adopted-candidates review screen, proceeding to generation opens a "**生成内容を確認** (Review what will be generated)" dialog; click "**生成を開始** (Start generation)" to run it. If you haven't chosen an LLM backend and model in ⚙ 全体設定 (Global settings) yet, this step fails here — set that up first, see [LLM Backends](../usage/llm-backends.md). This step is optional: browsing the grid and synopses alone is a complete use case.
+From the adopted-candidates review screen, proceeding to generation opens a "**生成内容を確認** (Review what will be generated)" dialog; click "**生成を開始** (Start generation)" to run it. First check the saved generation backend under ⚙ 全体設定 (Global settings) → AIの設定 (AI settings). You can select and save Gemma 4 on that screen; configure other models following [LLM Backends](../usage/llm-backends.md). This step is optional: you can simply browse the grid and saved action logs.
 
 ## Running the same lap from the CLI
 
 ```
-python scripts/evolve.py --project projects/momotaro --template templates/momotaro \
+python scripts/evolve.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 \
   --out <output dir>/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
 ```
 
-**Measured**: a small run (`--generations 5 --population 30 --seeds 2 --processes 8`, i.e. 5×30×2 = 300 simulations) took 37 seconds and left 3 occupied cells on the QD map (2026-09-25, development machine). Runs that are too small may leave no candidates at all. Time scales roughly with generations × population × seeds.
+**Historical measurement (not a timing guarantee for the new-format example above)**: a small run (`--generations 5 --population 30 --seeds 2 --processes 8`, i.e. 5×30×2 = 300 simulations) took 37 seconds and left 3 occupied cells on the QD map (2026-09-25, development machine). Runs that are too small may leave no candidates at all. Time scales roughly with generations × population × seeds.
 
 For generating synopses/text from the CLI as well, see [CLI Workflow](../usage/cli-workflow.md).

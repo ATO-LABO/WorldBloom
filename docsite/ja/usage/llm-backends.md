@@ -1,16 +1,19 @@
 ---
 sources:
-  - "execution/output_settings.py"
-  - "gapengine/ollama.py"
-  - "gapengine/llama_server.py"
-  - "gapengine/synopsis.py"
-  - "viewer/global_settings.py"
-  - "viewer/workbench_pages.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+- execution/output_settings.py
+- gapengine/ollama.py
+- gapengine/llama_server.py
+- gapengine/synopsis.py
+- viewer/global_settings.py
+- viewer/workbench_pages.py
+- viewer/static/global-settings.js
+- viewer/static/gemma-setup.js
+- viewer/creation_workflow.py
+reviewed: 2e70a9b216b7b2a80a4228a10a928148060e8fc8
 ---
 # LLM バックエンド
 
-あらすじ・本文の[文章を生成する](generate-text.md)ときにだけ LLM を使います。GA 実験そのものは LLM を必要としません。接続先は ⚙ [設定](settings.md)の「文章生成」タブで選びます。
+AIは、任意の世界下書きの生成・修正と、[あらすじ・本文の生成](generate-text.md)に使います。GAの探索と文章化は別工程ですが、κ>0の合理性判定では選択した判定器も呼び出します。接続先の保存状態は ⚙ [設定](settings.md)の「AIの設定」で確認できます。
 
 ## 選べる接続先
 
@@ -28,7 +31,7 @@ reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 
 ### モデル名は誰が決めるか { #model-defaults }
 
-**⚙ 設定の画面から使う場合**は、`claude-cli` だけモデル未入力でも `claude-sonnet-5` が使われます。それ以外の接続先はモデル名の入力が必須です（未入力のまま接続を確認しようとすると「モデルを指定してください」と表示されます）。
+**現在の設定画面**は保存済みの接続先の確認とGemma 4の選択を中心にしています。任意のバックエンド・モデルを使う場合は `settings.json` の `output.default_backend` と接続先ごとの設定を確認してください。設定APIのモデル指定では `claude-cli` だけ空欄時に `claude-sonnet-5` を使用し、他の生成方式では明示的なモデル名が必要です。
 
 **CLI（`scripts/synopsize.py` / `scripts/narrate.py` を直接実行する場合）**は、`settings.json` に `model` を書かなければ、接続先ごとに次の既定値が使われます。
 
@@ -43,6 +46,12 @@ reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 
 同梱サンプル（`samples/`）・提出物の生成条件は `qwen3.5:9b-q4_K_M`（Ollama）です。既定値の `qwen3.6:35b` など、より大きなモデルに切り替えると生成条件が変わります。
 
+## Gemma 4とモデル別プロファイル
+
+「AIの設定」でGemma 4を選び保存すると、Ollamaの `gemma4:e4b-it-qat` と対応するモデル別設定を使用します。導入はOllamaを動かしているPCで `ollama pull gemma4:e4b-it-qat` を実行してください。導入状況の再確認だけでは生成先は変更しません。
+
+`output.<backend>.model_options.<model>` は、そのモデルを選んだときだけ `think` と `options` を適用する仕組みです。Gemma向けの設定を、別のOllamaモデルへ一律に適用しないために使います。
+
 ## Ollama を使う場合
 
 1. [Ollama](https://ollama.com) をインストールします
@@ -53,6 +62,7 @@ reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 ```json
 {
   "output": {
+    "default_backend": "ollama",
     "ollama": {
       "model": "qwen3.5:9b-q4_K_M",
       "base_url": "http://localhost:11434",
@@ -102,11 +112,11 @@ llama-server.exe -m Ternary-Bonsai-2-27B-PTQ1_0.gguf --alias bonsai2-27b -ngl 99
 
 ## CLI 接続先（claude-cli / codex-cli）
 
-`claude` または `codex` コマンドが PATH にあれば使えます。実行ファイルが見つからない場合、⚙ 設定の「接続を確認」は失敗と表示されます。
+`claude` または `codex` コマンドが PATH にあれば使えます。実行ファイルが見つからない場合は利用できません。各CLIの認証も事前に済ませてください。
 
 ## API 接続先（anthropic / openai）
 
-APIキーが必要です。⚙ 設定の「APIキー」欄から個別に保存します（保存済みの値は画面に表示されません）。
+APIキーが必要です。現在のAI画面は汎用APIキー入力欄を表示しないため、`settings.json` の接続先設定を確認してください。キーを公開リポジトリや世界ZIPに含めないでください。
 
 ## 生成しない（none）
 

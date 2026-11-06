@@ -21,8 +21,8 @@
   "AGENTS.md": "012f6c71781d6091fd3a6a110e96dbe706f2267cd3584b351198aa4d1b9073cb",
   "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
   "NEW_WORLD_DRAFTS.md": "18ddf35401261aac8b7a61311e2adbeb566412d4ccf071b54e958c4f6c040c44",
-  "README.en.md": "e3d6490720be029197f282797feab04c5fdc4b54c85d3ea6d1e979a3639cba6e",
-  "README.md": "0fadfadccfe9b09c77fcd68f9329b61f83025d79058e63e537e590e758144302",
+  "README.en.md": "e8b1b3ccf427307e89b7190269dba87c587e26b87456c4b4b552d51549ff9f53",
+  "README.md": "d089682e653a3f3b31033cdd4918a61159bbc45bf4c4638ad9f2f59cfda5916c",
   "SECURITY.md": "d950b7cedbd186c7b5d70b37ec7fedb7aa26f054a4a4230753d08a2649e37848",
   "START_HERE_JA.md": "92af678c5d43f02d1273c1e1625b358a2152d05e66f5122767ed1898603acf13",
   "docs/calendar-goal-planning.md": "fa8f0451edead976c4ab8bc8159e0812780bcc409cc4296776043e73ac2cb823",
@@ -636,7 +636,7 @@
   "tests/fixtures/historical/pre_growth_s3_qd.yaml": "bc03a9ab3c4856f461ce79f044aabe80b3c1cd147cfdb069979c3aac15734c07",
   "tests/fixtures/melos-independent100-execution-plan-v1.json": "68d6d1a6497eecab44d7ef4f21d6e24f9249a61527dbb3f51ed768c151e91b97",
   "tests/fixtures/melos-independent100-review-v1.json": "da70e5d2be0412c663c5bf9c8548f957b3429b95ec1b6e86bd016fb6dc1fda60",
-  "tests/fixtures/people_settings_dom.cjs": "9c7fe6d2a086b95fb21ae42db50096e447da9fd3a9dbbfcc22f64e73063ca81f",
+  "tests/fixtures/people_settings_dom.cjs": "47ea503e92b55a2b3effabb20a5e3545b90d61946ff0cdebe5449705b9995917",
   "tests/fixtures/purpose_common_run_records.json": "f1d635e311d29d9444591b7e54257539a901b3de27fc3c197b98bc5a4f3e715a",
   "tests/fixtures/purpose_independent_real_result.json": "dae253b1be015fa508066a2ae4fbc40e312d9c9822cb4197bf673ba3f7be45ec",
   "tests/fixtures/story_materials/03.json": "226df0fead094a26a87865549b5f0a1b9552bf4220793160a4c091163765611b",
@@ -1022,7 +1022,7 @@
   "viewer/static/world-expansion.js": "5b7e0ee2c568f5e3a4b027511e213e06c78d75820ff4ae07d64675bf3dcd0758",
   "viewer/static/world-notes.js": "94883dd0b399e967544c4de2985605c0812fe7ee2038613953426495ea040f19",
   "viewer/static/world-prototype.css": "8e9522c4c0a77392ea982d46f6aa78a1cfd5af543efad68f3cd5a25d4ebc64e2",
-  "viewer/static/world-prototype.js": "3c670f02e30e09ab37ca4ef4fb4715657bf1679e8cefcd7adb29fc3100795a65",
+  "viewer/static/world-prototype.js": "e644009f81d2efca856bc6a83f440938217b7fe281c06e4c60fee365b04574b7",
   "viewer/static/world-review.css": "b02acb0ffd45ddea7b3ba06a79da4328b40f7d4f482c33f55efab3763ab9a918",
   "viewer/story_genre_pages.py": "4cec79cea65a14d7b8c1dcb649286d9e9f7bccd5ab30fbd53de0a8704b8d48bd",
   "viewer/story_pages.py": "d173b80d91a1d52d3762d8c084c570187a38e2bfbcfe51acfa59ce42b7cdfacf",
@@ -1039,5 +1039,6 @@
   "viewer/world_prototype.py": "7c63140b026db5a30f831b0d6d4215c4671a40ace0682fc28201f3dab56ce24d",
   "viewer/world_review.py": "212df5b93d0d023bbf4b9ea28f6d41374b325b23539a14970418cfcf69a5eff3",
   "viewer/world_usage_badge.py": "316a1efbd7c1428c069297d65d75330506d7d02ca3ca35e733b7c26e004442db",
-  "viewer/worldbloom.ico": "a28d0c5960125d9f56a4befc48940edc4d72774e37ab20685f60fd2ccd894690"
+  "viewer/worldbloom.ico": "a28d0c5960125d9f56a4befc48940edc4d72774e37ab20685f60fd2ccd894690",
+  "tests/world_description_navigation.cjs": "591af0add9c632b288605ab23f7a2a8c3195292d555100fd4ec2a712a2c4da74"
 }

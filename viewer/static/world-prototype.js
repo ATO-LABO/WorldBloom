@@ -460,7 +460,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     content.classList.toggle('is-people',screen==='people');
     content.classList.toggle('is-routes',screen==='routes');
     content.dataset.screen=screen;
-    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,items:itemsScreen,story,time:timeScreen,stamina:staminaScreen,routes:routesScreen,checks:checksScreen}[screen]||overview)();
+    content.innerHTML=({overview,people:peopleScreen,places:placesScreen,items:itemsScreen,description:story,story,time:timeScreen,stamina:staminaScreen,routes:routesScreen,checks:checksScreen}[screen]||overview)();
     if(screen==='overview'){
       for(const id of ['wp-work-note','wp-expansion']){
         const template = document.getElementById(id);
@@ -483,7 +483,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
       }));
     }
     updateRelationTransform();
-    root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===({story:'overview',routes:'checks'}[screen]||screen))b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+    root.querySelectorAll('.wp-nav [data-screen]').forEach(b=>{if(b.dataset.screen===({story:'description',routes:'checks'}[screen]||screen))b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     const missing=[];
     if(!people.length)missing.push('登場人物');
     if(!zones.length)missing.push('場所');
@@ -774,7 +774,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   });
   dialog.addEventListener('close',()=>{if(opener?.isConnected)opener.focus({preventScroll:true});});
   window.addEventListener('beforeunload',e=>{if(changed||busy){e.preventDefault();e.returnValue='';}});
-  let autoOpened=false;function restoreScreen(){const hash=new URLSearchParams(location.hash.slice(1));const requested=hash.get('screen')||(['time','time-special'].includes(location.hash.slice(1))?'time':'overview');screen=['overview','people','places','items','story','time','stamina','routes','checks'].includes(requested)?requested:'overview';const actor=hash.get('entity');if(actor&&people.some(p=>p.id===actor))person=people.findIndex(p=>p.id===actor);render();const edit=new URLSearchParams(location.search).get('edit');if(!autoOpened&&['roles','target-ending'].includes(edit)){autoOpened=true;const trigger=content.querySelector('[data-edit="'+edit+'"]');if(trigger)openEditor(edit,trigger);}}
+  let autoOpened=false;function restoreScreen(){const hash=new URLSearchParams(location.hash.slice(1));const requested=hash.get('screen')||(['time','time-special'].includes(location.hash.slice(1))?'time':'overview');screen=['overview','people','places','items','description','story','time','stamina','routes','checks'].includes(requested)?requested:'overview';const actor=hash.get('entity');if(actor&&people.some(p=>p.id===actor))person=people.findIndex(p=>p.id===actor);render();const edit=new URLSearchParams(location.search).get('edit');if(!autoOpened&&['roles','target-ending'].includes(edit)){autoOpened=true;const trigger=content.querySelector('[data-edit="'+edit+'"]');if(trigger)openEditor(edit,trigger);}}
   addEventListener('popstate',()=>{
     if(screen==='time'&&timeSettings.restoreTabFromHash())return;
     if(staminaPolicy&&!staminaPolicy.canLeave()){

@@ -1,5 +1,5 @@
 ---
-ja_rev: "5b49aebc3c48"
+ja_rev: "b3379ec4e99f"
 ---
 # Create a World
 
@@ -7,56 +7,67 @@ A "world" is the full setup a GA experiment runs on: characters, places, time, a
 
 ## Create a new world
 
-Open this from the home screen ("**世界を選ぶ**", Pick a world) via "**＋ 新しい世界を作る**" (+ Create a new world).
+Start with “新しい世界を作成” (Create a new world) from the world list. Cards show saved overviews, character/place counts, duration, protagonist and antagonist. Search by world or character name.
 
-Choose one of three ways to create it:
+There are four entry choices:
 
-- **新しく作る** (Create new): start from an empty world. The genre defaults to the shared base rules (`basic`) and can be changed later.
-- **既存の世界から作る** (Create from an existing world): pick a source world from the list and copy its settings. The source world itself is unaffected. You can also pick a different genre (from a searchable list) at copy time.
-- **ZIPから取り込む** (Import from ZIP): import a `world.yaml`/`subjects/*.yaml` set built by an AI (Codex, Claude Code, Gemini, etc.) as a ZIP. See [Import a World from ZIP](import-world.md) for details.
+- **既存の世界から始める** (Start from an existing world): select a source and make a separate draft, preserving related files and fields not supported by the forms. The original world is unchanged.
+- **ZIPから始める** (Start from ZIP): make a draft from a ZIP. See [Import a World](import-world.md).
+- **保存した下書きを再開** (Resume a saved draft): restore its content and editing stage. Opening it does not run AI, validation or adoption.
+- **新規作成** (Create new): start with a name and overview. Incomplete inputs can be saved.
 
-Fields common to all three:
+The editing workflow has three stages:
 
-- **世界の名前** (World name) — required, up to 120 characters (optional for "Import from ZIP" — if left blank, the `name` from the ZIP's `world.yaml` is used)
-- **世界の概要** (World overview) — optional, up to 8000 characters (this field only appears for "Create new")
-- Opening **詳細設定** (Advanced settings) lets you edit the **世界ID** (World ID): alphanumerics, hyphens and underscores only (1–96 characters); by default it's auto-filled as `world-` followed by 12 random characters
+1. **① 下書きを用意** (Prepare a draft): enter a name (up to 120 characters) and overview (up to 8000). Optional genre and “世界の脅威への対応” (Respond to a world threat) are creative cues. Selecting them does not generate anything or configure runtime conditions.
+2. **② 内容を整える** (Refine the content): edit people, relationships, places, items, time and goals manually. AI consultation is optional. Request a targeted change, review its diff, then choose “この案を下書きに採用” (Adopt this proposal into the draft). New drafts also support requesting an alternative whole-world outline, preserving current manual edits in a separate saved draft.
+3. **③ 確認して採用** (Review and adopt): run “設定と実行入力を確認” (Check settings and execution inputs), review missing fields, defaults and unsupported details, then check the confirmation box and save as a new world. Adoption neither overwrites the source nor starts GA. Passing validation does not guarantee reaching an ending or producing an interesting story.
 
-Creating the world takes you to that world's **world settings screen** (below). Characters, places, and the initial story start out empty and are filled in afterward.
+### Using AI
 
-## World settings screen (per-world tabs) { #world-settings }
+Check [AI settings](settings.md#output-settings) first. AI input starts only on explicit request. The three-stage generation strategy interprets purposes, generates world settings, then reviews them, showing up to three model calls. This is separate from the three editing stages above.
 
-Opening a world (or clicking "世界を開く", Open world, from its card on the home screen) shows five tabs for viewing and editing its settings.
+Manual editing, saving and adoption work while AI is waiting. For real AI in a source installation, review the provider, model and cost before starting the server with `--control` and `--world-draft-live`. Saving a model setting alone does not leave waiting mode.
 
-| Tab | Contents |
+After a lost connection or uncertain outcome, use “AI入力の状態を確認” (Check AI input status) to inspect the existing request. Requests are not automatically resent. Returning to manual input or another draft prevents an old result from overwriting current input.
+
+## World settings screen { #world-settings }
+
+Open a saved world with “世界を開く” (Open world). The shared categories are:
+
+| Category | Contents |
 |---|---|
-| 世界の概要 (World overview) | Edit the name and overview. A world with no genre set (e.g. one created via [Import from ZIP](import-world.md)) can pick one here. Any approved or proposed changes from world self-expansion (below) are shown here |
-| 登場人物 (Characters) | View and edit each character's parameters (9 stats), starting position, etc. Also where the **relationship graph** (below) opens |
-| 場所 (Places) | The list of places (zones) and the connections between them |
-| 初期物語 (Initial story) | Edit the opening text (the situation at the start) |
-| 時間 (Time) | The run's day count and the day's time-of-day breakdown. **Scheduled events** (below) are also checked and edited here |
+| 概要と物語の前提 (Overview and premise) | Name, overview, roles, ending and expansion proposals |
+| 話の説明 (Story description) | Initial story: opening text and starting state |
+| 登場人物と関係 (Characters and relationships) | Character settings, initial positions, stats, graph and relationship table |
+| 場所と移動 (Places and movement) | Places and connections |
+| 持ち物と情報 (Items and information) | Initial ownership, knowledge and acquisition methods |
+| 時間と出来事 (Time and events) | Duration, time slots and scheduled events |
+| 行動設定 (Action settings) | Action types and allowed conditions |
+| 世界のルール (World rules) | Conditions, objectives, responses, planning and money |
+| 確認・調査 (Checks and surveys) | Overview, routes to the ending, survey conditions and world review |
+| 設定ファイル (Config files) | Direct YAML editing |
 
-The world screen's sidebar always has "最短経路を調査" (Survey shortest routes) — a read-only feature showing up to 3 example walkthroughs to the ending — regardless of genre. A genre with no route layer (`route.yaml`), or whose goal shape isn't supported, shows an unsupported-genre message instead. See [Route Layer](../concepts/route-layer.md#route-paths-survey) for details.
+Choose “話の説明” (Story description) to open “初期物語” (Initial story) and inspect the opening text or starting state. The “初期物語” card and “導入文を編集” (Edit opening text) in “概要と物語の前提” (Overview and story premise) remain available. Existing `#screen=story` URLs are also supported.
 
-Each field can be saved individually. Saving **does not change results from runs already executed** against that world (the new settings apply starting from the next run).
+“結末までの経路” (Routes to the ending) under checks is a read-only survey of up to three example walkthroughs. Some route layers or goal shapes are unsupported. See [Route Layer](../concepts/route-layer.md#route-paths-survey).
 
-The footer at the bottom of the screen shows "未設定の項目を確認 →" (Check what's not set up →) if any required item is missing (characters, places, protagonist, antagonist, target ending, or a character's starting position), or "実行条件を決める →" (Decide run conditions →, leading to [Run Settings](run-settings.md)) once everything is filled in.
+Save individual edits. **Past run results are unchanged.** The footer offers “未設定の項目を確認 →” (Check missing settings) or, when complete, “実行条件を決める →” (Decide run conditions), opening [Run Settings](run-settings.md). The read-only Viewer cannot edit settings.
 
-In the read-only Viewer build, this screen is view-only and the save buttons do nothing (editing only works in Studio).
+### Stamina and starting money
+
+Open stamina management through action settings. When enabled, configure maximum and initial stamina, recovery per rest/sleep, and per-action cost adjustments. Disabling stamina management preserves those settings; time, location, injury and death conditions still apply.
+
+Once a currency is configured, edit each character's “開始所持金” (Starting money). If none is configured, follow the link to money settings first. These values apply as initial settings for future runs.
 
 ## Advanced settings and config-file editing { #advanced-settings }
 
-From "詳細設定・設定ファイル ↗" (Advanced settings / config files) below the left-hand menu on the world settings screen, you can go further. It has four sections:
+Use “世界のルール” (World rules) or “設定ファイル” (Config files) in the left menu for advanced editing: roles/endings, conditions, success/failure/evaluation periods, purposes/responses, decomposition/replanning, money, conventions and the action catalog.
 
-- **役割と結末** (Roles and endings): the protagonist/antagonist roles and the target ending settings
-- **状況ごとの定石** (Situational conventions): the genre's conventions (what tends to happen in which situation), applied to this world's characters
-- **行動図鑑** (Action catalog): the list of actions characters can choose from
-- **設定ファイル** (Config files): direct editing of the YAML files inside the world's folder
-
-To edit the template (genre) itself, use the "ジャンル" (Genre) tab on the home screen → open a genre, or "＋ 新しいジャンルを作る" (+ Create a new genre). A genre is the shared rule set — which actions exist and what they do — used across multiple worlds. An existing genre can only be changed after duplicating it via "複製して編集" (Duplicate and edit) (this doesn't affect other worlds still using the original genre).
+Genres (templates) are shared rules for actions and effects. In genre management, duplicate an existing genre with “複製して編集” (Duplicate and edit) before changing it, to avoid unintended changes to worlds using the original.
 
 ## Relationship graph { #relationship-workspace }
 
-The "登場人物" (Characters) tab has three views: "一覧" (List), "相関図" (Relationship graph), and "関係表" (Relationship table).
+The "登場人物と関係" (Characters and relationships) category has three views: "一覧" (List), "相関図" (Relationship graph), and "関係表" (Relationship table).
 
 - **相関図 (Relationship graph)**: shows characters' relationships as a directed graph. Characters are colored by affiliation (`affiliation`; falls back to their starting place if unset), with groups laid out around the protagonist's own affiliation. Toggle between "全体" (Everyone) and "人物フォーカス" (Focus on one character — pick one, then narrow to direct relationships / two hops / everyone), and filter by relationship kind ("好意"/positive, "反感"/negative, "中立"/neutral) or affiliation. Clicking a character opens a detail panel: affiliation, number of direct relationships, a summary, and their top relationships (up to 6). "関係を数値で確認" (Check relationships as numbers, a collapsible section) switches to a list with `affinity` and `awareness` values
 - **関係表 (Relationship table)**: a separate tab from the graph, showing every character's relationships at once as a person-by-person matrix
@@ -67,7 +78,7 @@ In the graph, any configuration problems (e.g. malformed relationship data) are 
 
 ## Scheduled events and force actions { #scheduled-events }
 
-The "時間" (Time) tab, alongside the run's day count and time-of-day breakdown, also lets you check and edit the world's **scheduled events** (`scheduled_events`) — events (target, effect, label) that fire automatically on a given day/time-slot.
+The "時間と出来事" (Time and events) category, alongside the run's day count and time-of-day breakdown, also lets you check and edit the world's **scheduled events** (`scheduled_events`) — events (target, effect, label) that fire automatically on a given day/time-slot.
 
 An event carrying a **force action** (`force_action`) replaces the target's own action for that slot outright, with a given verb/args (e.g. force the protagonist to move to "道中" on the morning of day 3). The on-screen form guides you through which argument kinds and how many each verb takes. See [Templates](../reference/templates.md#scheduled-events) for the full spec (validation rules, etc.).
 
@@ -75,7 +86,7 @@ An event carrying a **force action** (`force_action`) replaces the target's own 
 
 While running GA experiments, if a character's actions keep coming up empty at the same place (e.g. investigating turns up nothing), WorldBloom automatically proposes elements the world seems to be missing (places, items, facts). These proposals never rewrite the world settings directly — **they take effect only once approved**.
 
-Cards for each proposal appear on the world settings screen's "世界の概要" (World overview) tab, and on the relevant experiment's results screen. Each card shows:
+Cards for each proposal appear on the world settings screen's "概要と物語の前提" (Overview and premise) category, and on the relevant experiment's results screen. Each card shows:
 
 - **何が増えるか** (What gets added): the place/item/fact being added (e.g. "Add place '△△' as part of '○○'")
 - **きっかけ** (Trigger): which experiment, place, and action came up empty, and how many times out of how many attempts

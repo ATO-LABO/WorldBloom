@@ -1,9 +1,20 @@
 ---
-ja_rev: "549bec5911b1"
+ja_rev: "ff23be1c3d0c"
 ---
 # Changelog
 
 The main changes that matter from a user's point of view, in date order. This isn't a list of individual commits. Get the latest release artifacts from [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases).
+
+## 2026-11-07 (current source)
+
+This section describes source changes, which may differ from the EXE version available in Releases.
+
+- World creation now has three stages: prepare a draft, edit its contents, then review and adopt it. Saving, resuming, importing, and optional AI refinement are connected. The internal AI stages, interpreting goals, generating settings, and reviewing content, are a separate process. Generating and adopting a candidate remain separate; unconfirmed content does not overwrite an existing world.
+- Editing screens for people, places, items and acquisition, time, actions, and ending conditions use shared screen components and save controls.
+- Global settings are reorganized. AI settings contain the generation backend and limits shared by world drafts, synopses, and prose; Jev has a separate tab and save action. A model-specific Gemma profile is also available. See [Settings](../usage/settings.md) and [LLM Backends](../usage/llm-backends.md).
+- Fixed the world-settings “話の説明” (Story description) entry to open the initial story. Deep-link restoration and the selected menu now agree, while existing `#screen=story` links remain supported.
+- World files use a single new format. The current runnable example is 桃太郎＋3 (Momotaro +3, `momotaro_plus3_new`). Legacy files remain on disk but are excluded from current editing and execution. They are not converted automatically.
+- The bilingual public docs and README are updated to distinguish current source behavior, saved worlds, and previously distributed builds.
 
 ## 2026-09-28
 

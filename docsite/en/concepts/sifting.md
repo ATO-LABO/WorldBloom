@@ -1,9 +1,9 @@
 ---
-ja_rev: "c5140575ada7"
+ja_rev: "7823a4e3b9e8"
 ---
 # Sifting
 
-Sifting is the process where a human reads the candidates left in the [QD Map](qd-map.md) and decides which are worth turning into a synopsis or prose. In WorldBloom, judging "is this interesting" is always done by a human, never by the LLM (the LLM's only role is turning the chosen path into prose).
+Sifting is the process where a human reads the candidates left in the [QD Map](qd-map.md) and decides which are worth turning into a synopsis or prose. In WorldBloom, judging "is this interesting" is always done by a human, never by the LLM (in this stage, the LLM turns the chosen path into prose; separate stages also use it for world-draft generation/refinement and optional κ>0 rationality evaluation).
 
 ## Screen layout
 
