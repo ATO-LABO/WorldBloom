@@ -178,3 +178,6 @@ main.ui-screen .ux-footer {margin-inline:calc(-1 * var(--ws-content-x));margin-b
   .ui-footer>p,.ui-footer>span {flex-basis:100%;}
   .ui-breadcrumb {padding-inline:var(--ws-content-x);}
 }
+
+.ui-settings-help {margin-block:var(--ws-space-3);}
+.ui-settings-help>summary {cursor:pointer;color:var(--ws-muted);font-size:var(--ws-fs-sm);}

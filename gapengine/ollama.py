@@ -69,17 +69,24 @@ def list_models(
             timeout=timeout,
         ) as response:
             data = json.loads(response.read().decode("utf-8"))
-    except (OSError, urllib.error.URLError, ValueError):
+    except urllib.error.HTTPError:
+        return [], "catalog_unavailable"
+    except OSError:
         return [], "server_unreachable"
+    except ValueError:
+        return [], "invalid_response"
 
+    models = _as_mapping(data).get("models")
+    if not isinstance(models, list):
+        return [], "invalid_response"
     names: set[str] = set()
-    for entry in _as_mapping(data).get("models", []) or []:
-        if not isinstance(entry, Mapping):
-            continue
-        for key in ("name", "model"):
-            value = entry.get(key)
-            if isinstance(value, str):
-                names.add(value)
+    for entry in models:
+        entry = _as_mapping(entry)
+        identifiers = {entry.get(key) for key in ("name", "model")
+                       if isinstance(entry.get(key), str) and entry[key].strip()}
+        if not identifiers:
+            return [], "invalid_response"
+        names.update(identifiers)
     return sorted(names), None
 
 
