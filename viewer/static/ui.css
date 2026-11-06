@@ -89,6 +89,13 @@ main.ui-screen .ux-footer {margin-inline:calc(-1 * var(--ws-content-x));margin-b
 .ui-nav>:is(a,button) {min-height:var(--ws-control-h);letter-spacing:normal;cursor:pointer;}
 .ui-nav small {margin-inline-start:auto;font-size:var(--ws-fs-sm);color:var(--ws-muted);}
 .ui-nav>h2 {padding:0 var(--ws-nav-x);font-size:var(--ws-fs-sm);color:var(--ws-muted);margin:0 0 var(--ws-space-3);}
+.ui-tabs {display:flex;align-items:stretch;gap:var(--ws-space-3);flex-wrap:nowrap;flex-shrink:0;min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;border-bottom:1px solid var(--ws-line);margin:var(--ws-space-4) 0;}
+.ui-tabs>:is(a,button),main.ui-screen .ui-tabs>:is(a,button) {display:inline-flex;align-items:center;justify-content:center;flex:none;min-height:var(--ws-control-h);padding:var(--ws-space-2) var(--ws-space-4);border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--ws-text);font:600 var(--ws-fs-md)/var(--ws-line-height) var(--ws-font);letter-spacing:normal;text-decoration:none;white-space:nowrap;cursor:pointer;box-sizing:border-box;}
+.ui-tabs>button[aria-selected=true],.ui-tabs>a[aria-current=page],main.ui-screen .ui-tabs>button[aria-selected=true],main.ui-screen .ui-tabs>a[aria-current=page] {border-bottom-color:var(--ws-advance);background:transparent;color:var(--ws-text);}
+.ui-tabs>:is(a,button):hover {background:var(--ws-select-bg);}
+.ui-tabs>:is(a,button):focus-visible {outline:3px solid var(--ws-focus);outline-offset:-3px;}
+.ui-tabs>button:disabled {cursor:default;opacity:.55;}
+@media(max-width:760px){.ui-tabs{gap:var(--ws-space-2);margin:var(--ws-space-3) 0}.ui-tabs>:is(a,button),main.ui-screen .ui-tabs>:is(a,button){padding:var(--ws-space-2) var(--ws-space-3);font-size:var(--ws-fs-sm);}}
 .ui-field {display:flex;flex-direction:column;gap:var(--ws-space-2);margin:0 0 var(--ws-space-4);font-size:var(--ws-fs-md);font-weight:400;min-width:0;}
 .ui-field small,.ui-hint {font-size:var(--ws-fs-sm);color:var(--ws-muted);line-height:var(--ws-line-height);}
 .ui-required {margin-left:var(--ws-space-2);color:var(--ws-danger);font-size:var(--ws-fs-xs);}

@@ -14,7 +14,7 @@ def render(world, store, jobs):
     body='<div class="wa-layout ui-workspace ui-workspace--nav" data-world-advanced data-initial="'+pages._escape(json.dumps(initial,ensure_ascii=False))+'">'
     body+='<nav class="ui-nav" aria-label="世界設定">'+navigation(world['id'])+'</nav><div class="wa-main">'
     body+=ui.heading('世界設定',(world.get('name') or world['id'])+'の設定です。保存した変更はこの世界で次に実行を始めるときから使われます。過去の実行結果は変更されません。')
-    body+='<div class="wa-body ui-content"><nav class="ui-navigation" data-advanced-sections aria-label="この分類の項目">'+''.join(
+    body+='<div class="wa-body ui-content"><nav class="ui-tabs" data-advanced-sections aria-label="この分類の項目">'+''.join(
         f'<button class="ui-button" type="button" data-advanced-section="{key}" aria-current="'+('page' if key=='roles' else 'false')+f'">{label}</button>'
         for key,label in (('roles','役割と結末'),('concerns','状態・条件の定義'),('objectives','達成・失敗・判定期間'),('responses','目的と対処の行動'),('planning','目的の分解と再計画'),('genres','ジャンル'),('canon','状況ごとの定石'),('actions','行動図鑑')))
     body+='</nav><section class="ux-advanced-list" aria-label="設定の一覧" data-advanced-list></section><section class="wa-reading" aria-label="設定の内容" data-advanced-reading></section></div>'

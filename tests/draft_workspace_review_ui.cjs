@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const workspaceSource = fs.readFileSync(path.join(__dirname, '../viewer/static/draft-workspace.js'), 'utf8');
 const editingSource = fs.readFileSync(path.join(__dirname, '../viewer/static/draft-editing.js'), 'utf8');
+const itemsSource = fs.readFileSync(path.join(__dirname, '../viewer/static/items-workspace.js'), 'utf8');
 const registrySource = fs.readFileSync(path.join(__dirname, '../viewer/settings_navigation.py'), 'utf8');
 const sections = [...registrySource.matchAll(/^\s*\('([^']+)', '([^']+)'\),$/gm)].map(match => [match[1], match[2]]);
 assert.ok(sections.length, 'The fixture must supply the shared navigation registry');
@@ -13,6 +14,7 @@ class Element {
   constructor(tag) {
     this.tagName = tag.toUpperCase(); this.children = []; this.dataset = {};
     this.attributes = {}; this.listeners = {}; this._text = ''; this.disabled = false;
+    this.classList = {add: (...names) => { this.className = [...new Set([...(this.className || '').split(' '), ...names])].filter(Boolean).join(' '); }};
   }
   append(...nodes) { for (const node of nodes) { node.parentNode = this; this.children.push(node); } }
   replaceChildren(...nodes) { for (const node of this.children) node.parentNode = null; this.children = []; this._text = ''; this.append(...nodes); }
@@ -75,6 +77,7 @@ function environment(draft = original) {
   };
   context.window = context;
   vm.runInNewContext(editingSource, context);
+  vm.runInNewContext(itemsSource, context);
   vm.runInNewContext(workspaceSource, context);
   const editing = new context.WorldBloomDraftEditing({});
   const workspace = new context.WorldBloomDraftWorkspace(root, {
@@ -161,6 +164,24 @@ facts.back(); assert.equal(facts.section(), 'facts'); assert.equal(JSON.stringif
 for (const draft of [{...original, facts: []}, Object.fromEntries(Object.entries(original).filter(([key]) => key !== 'facts'))]) {
   const empty = environment(draft); empty.workspace.select('facts'); assert.match(empty.content().textContent, /情報の指定はありません/);
 }
+// Acquisition-based facts have no legacy place field. Their read-only review
+// must still show investigation sources, reward conditions, and initial knowledge.
+const registered = copy(original);
+registered.items = [{name: '<img src=x>', holder: 'A'}];
+registered.facts = [{name: '<b>Registered clue</b>', description: unsafe, known: ['A'], acquisition: {
+  sources: [{type: 'investigate', zone: 'Archive', count: 2}],
+  rewards: [{id: 'clue-reward', giver: 'B', requires: {item: '<img src=x>', stance: 0.4}, mode: 'grant'}]
+}}, {name: 'No source', description: 'Only initially known', known: [], acquisition: {sources: [], rewards: []}}];
+const registeredBefore = JSON.stringify(registered), registeredReview = environment(registered);
+registeredReview.workspace.select('facts');
+const registeredNodes = descendants(registeredReview.content()), registeredText = registeredReview.content().textContent;
+assert.ok(registeredNodes.some(node => node.tagName === 'P' && node.textContent === unsafe));
+assert.ok(registeredNodes.some(node => node.tagName === 'BUTTON' && node.textContent === 'Archive'));
+assert.match(registeredText, /Archiveを調べる（2回）/); assert.match(registeredText, /Bから報酬として得る/);
+assert.match(registeredText, /必要な持ち物：<img src=x>/); assert.match(registeredText, /関係が0\.4以上/); assert.match(registeredText, /開始時点で知る人物A/);
+assert.match(registeredText, /入手方法の設定なし/); assert.ok(!registeredText.includes('undefined'));
+assert.ok(!registeredNodes.some(node => ['INPUT', 'TEXTAREA', 'SCRIPT', 'IMG'].includes(node.tagName) || node.dataset.editField));
+assert.equal(JSON.stringify(registered), registeredBefore);
 // Prototype property names and unknown sections never dispatch object methods.
 for (const section of ['constructor', '__proto__', 'toString', '<script>bad()</script>']) {
   const invalid = environment();

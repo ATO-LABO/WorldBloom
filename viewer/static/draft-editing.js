@@ -1,7 +1,7 @@
 /* Item-scoped editors. AI candidates fill the same fields as human edits. */
 (function(global){
  const copy=v=>JSON.parse(JSON.stringify(v)),el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e};
- const names={goal:'目標と達成条件',profile:'人物の紹介・人物像・開始位置',description:'場所の説明',holder:'品物の所持者',story:'初期物語',relation:'人物間の関係',route:'経路の移動条件',roles:'主人公と相手役'};
+ const names={goal:'目標と達成条件',profile:'人物の紹介・人物像・開始位置',description:'場所の説明',holder:'初期所持',factDescription:'情報の内容',factPlace:'調べる場所',story:'初期物語',relation:'人物間の関係',route:'経路の移動条件',roles:'主人公と相手役'};
  let modalNumber=0;
  class Editing{
   constructor(options){this.options=options;this.disabled=false;this.active=null;this.pencils=[];}
@@ -31,11 +31,11 @@
    if(s.field==='relation'){const ri=d.people[index].relations.findIndex(r=>r.person===s.peer);return ['people',index,'relations',ri];}
    return [key,index];
   }
-  value(d,s){const p=this.paths(d,s);if(s.field==='roles')return {protagonist:d.protagonist,antagonist:d.antagonist};if(s.field==='story')return d.initial_story;let v=d;for(const k of p)v=v[k];if(s.field==='goal')return copy(global.WorldBloomDraftGoals.goalValue(v.goal));if(s.field==='profile')return {description:v.description,personality:v.personality,entry:v.entry};if(s.field==='description'||s.field==='holder')return v[s.field];return copy(v);}
+  value(d,s){const p=this.paths(d,s);if(s.field==='roles')return {protagonist:d.protagonist,antagonist:d.antagonist};if(s.field==='story')return d.initial_story;let v=d;for(const k of p)v=v[k];if(s.field==='goal')return copy(global.WorldBloomDraftGoals.goalValue(v.goal));if(s.field==='profile')return {description:v.description,personality:v.personality,entry:v.entry};if(s.field==='holder')return global.WorldBloomItems.holders(v);if(s.field==='factDescription')return v.description;if(s.field==='factPlace')return v.place;if(s.field==='description')return v.description;return copy(v);}
   put(d,s,v){
    if(s.field==='roles'){d.protagonist=v.protagonist;d.antagonist=v.antagonist;return;}if(s.field==='story'){d.initial_story=v;return;}
    const p=this.paths(d,s);let owner=d;for(const k of p.slice(0,-1))owner=owner[k];const key=p.at(-1);
-   if(s.field==='goal')owner[key].goal=copy(v);else if(s.field==='profile')Object.assign(owner[key],v);else if(s.field==='description'||s.field==='holder')owner[key][s.field]=v;else owner[key]=copy(v);
+   if(s.field==='goal')owner[key].goal=copy(v);else if(s.field==='profile')Object.assign(owner[key],v);else if(s.field==='holder'){if(!owner[key].holders&&v.length===1&&v[0].count===1)owner[key].holder=v[0].person;else{owner[key].holders=copy(v);delete owner[key].holder;}}else if(s.field==='factDescription')owner[key].description=v;else if(s.field==='factPlace')owner[key].place=v;else if(s.field==='description')owner[key].description=v;else owner[key]=copy(v);
   }
   field(label,input){const f=el('label','ui-field',label);input.setAttribute('aria-label',label);f.append(input);return f;}
   renderFields(a,value){
@@ -50,7 +50,11 @@
     const render=editor.render.bind(editor);editor.render=next=>{render(next);const card=Array.from(a.host.querySelectorAll('.wd-person')).find(card=>card.querySelector('h3')?.textContent===a.spec.entity);a.host.replaceChildren();if(card){for(const c of Array.from(card.children).slice(0,6))c.remove();a.host.append(card)}for(const control of a.host.querySelectorAll('button,input,textarea,select'))if(control.disabled)control.dataset.fieldLocked='true';};editor.render(working);a.read=()=>this.value(editor.draft,a.spec);
    }else if(a.spec.field==='profile'){text('description','人物の紹介');text('personality','人物像');select('entry','開始位置',options('places'));}
    else if(a.spec.field==='description')text(null,'場所の説明');
-   else if(a.spec.field==='holder'){current={holder:current};select('holder','持っている人物',options('people'));a.read=()=>current.holder;}
+   else if(a.spec.field==='holder'){
+    const list=el('div');a.host.append(list);const addRow=(holder={person:a.base.people[0].name,count:1})=>{const row=el('div','items-holder-editor');row.dataset.holderRow='';const person=el('select');for(const p of a.base.people){const opt=el('option','',p.name);opt.value=p.name;person.append(opt)}person.value=holder.person;const count=el('input');count.type='number';count.min=1;count.max=10000;count.step=1;count.required=true;count.value=holder.count;const remove=this.button('削除',()=>{row.remove();change()});row.append(this.field('所持者',person),this.field('数量',count),remove);person.onchange=count.oninput=change;row.read=()=>({person:person.value,count:Number(count.value)});list.append(row);};for(const h of current)addRow(h);a.host.append(this.button('所持者を追加',()=>{addRow();change()}));a.read=()=>[...list.children].map(row=>row.read());
+   }
+   else if(a.spec.field==='factDescription')text(null,'情報の内容');
+   else if(a.spec.field==='factPlace'){current={place:current};select('place','調べる場所',options('places'));a.read=()=>current.place;}
    else if(a.spec.field==='story')text(null,'初期物語',8000);
    else if(a.spec.field==='roles'){select('protagonist','主人公',options('people'));select('antagonist','相手役',options('people'));}
    else if(a.spec.field==='relation'){text('label','関係のラベル',120);number('affinity','親しさ',-1,1);number('awareness','認知',0,1);}
@@ -58,7 +62,7 @@
   }
   open(block,head,pencil,spec){
    if(this.disabled||this.active)return;
-   const base=copy(this.options.getDraft()),dialog=el('dialog','ui-edit-dialog field-edit-dialog'),form=el('div','field-editor'),body=el('div','field-editor-body');form.dataset.fieldEditor=spec.field;const a={block,head,pencil,spec,base,dialog,form,body,pending:false,changed:false,preview:null,alive:true};
+   const base=copy(this.options.getDraft());if(spec.field==='holder'){const item=base.items.find(i=>i.name===spec.entity);item.holders=global.WorldBloomItems.holders(item);delete item.holder;}const dialog=el('dialog','ui-edit-dialog field-edit-dialog'),form=el('div','field-editor'),body=el('div','field-editor-body');form.dataset.fieldEditor=spec.field;const a={block,head,pencil,spec,base,dialog,form,body,pending:false,changed:false,preview:null,alive:true};
    this.active=a;
    const modalHead=el('div','ui-section-head field-dialog-head'),heading=el('h2','',(spec.entity?spec.entity+' / ':'')+names[spec.field]);heading.id='field-dialog-title-'+ ++modalNumber;dialog.setAttribute('aria-labelledby',heading.id);
    const dismiss=this.button('×',()=>this.close());dismiss.dataset.editCancel='';dismiss.setAttribute('aria-label','編集をキャンセルして閉じる');dismiss.classList.add('field-dialog-close');modalHead.append(heading,dismiss);
@@ -94,10 +98,11 @@
   }
   async accept(a){
    if(!a.alive||a.pending)return;if(Array.from(a.host.querySelectorAll('input,textarea,select')).some(e=>!e.reportValidity()))return;
+   if(a.spec.field==='holder'){const rows=a.read();if(new Set(rows.map(h=>h.person)).size!==rows.length){a.error.textContent='同じ所持者が重複しています。';return;}}
    const candidate=copy(a.base);this.put(candidate,a.spec,a.read());
    if(candidate.protagonist===candidate.antagonist){a.error.textContent='主人公と相手役は別の人物を選んでください。';return;}
    if(a.spec.field==='route'){const r=candidate.routes[Number(a.spec.entity)];if(r.from===r.to||candidate.routes.some((other,i)=>i!==Number(a.spec.entity)&&r.from===other.from&&r.to===other.to)){a.error.textContent='同じ場所への経路や、同じ向きの経路の重複は使えません。';return;}}
-   if(!a.preview||this.options.demo){this.dispose(a);this.options.onChange(candidate,a.spec.field==='roles'?{...a.spec,section:'people'}:a.spec);this.focusPencil(a.spec);return;}
+   if(!a.preview||this.options.demo){this.dispose(a);this.options.onChange(candidate,a.spec.field==='roles'?{...a.spec,section:'people'}:a.spec.section==='facts'?{...a.spec,section:'items'}:a.spec);this.focusPencil(a.spec);return;}
    a.pending=true;a.committing=true;a.status.textContent='候補と編集した内容を確認して反映しています。';a.error.textContent='';this.setDisabled(this.disabled);
    try{await this.options.applyRevision(a.preview,a.base,candidate);this.dispose(a);this.options.refresh?.();this.focusPencil(a.spec);}
    catch(error){if(a.alive){a.error.textContent=error.message;a.status.textContent='反映できませんでした。入力内容を確認してください。';}}

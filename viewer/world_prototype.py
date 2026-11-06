@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from engine.actions import FORCE_ARG_KINDS
 from viewer import data, pages
-from viewer.settings_navigation import navigation
+from viewer.settings_navigation import navigation, checks_navigation
 
 
 def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=None, experiments=(), expansion_html="", genres=()):
@@ -77,6 +77,7 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         {navigation(world['id'],buttons=True)}
       </nav>
       <div class="wp-content" id="wp-content"></div>
+      <template id="wp-check-tabs">{checks_navigation(world["id"], "checks")}</template>
       {expansion_template}
       {note_template}
       <footer class="wp-footer"><span id="wp-message" role="status">{html.escape(status)}</span><a class="wp-primary" data-next href="{html.escape(next_href, quote=True)}" {"hidden" if not model["editable"] else ""}>{next_label}</a>{rationality_hint}{saved}</footer>
@@ -85,6 +86,6 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
       <noscript>この表示にはJavaScriptが必要です。<a href="/worlds/{wid}?view=advanced">詳細設定を開く</a></noscript>
     </div>'''
     doc = pages.document(model["name"], body, world={"id": world["id"], "name": model["name"]},
-                         phase="world", page_class="world-prototype", job_store=job_store, pin=pin, stylesheets=('world-prototype.css','time-settings.css'), scripts=('time-settings.js','person-commitments-editor.js','world-prototype.js','world-expansion.js','world-notes.js'))
+                         phase="world", page_class="world-prototype", job_store=job_store, pin=pin, stylesheets=('world-prototype.css','time-settings.css','items-workspace.css'), scripts=('items-workspace.js','time-settings.js','person-commitments-editor.js','world-prototype.js','world-expansion.js','world-notes.js'))
     doc = doc.replace('data-wb="world-picker"', 'data-wb="world-picker" aria-label="世界"')
     return doc

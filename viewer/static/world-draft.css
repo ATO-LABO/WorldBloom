@@ -19,8 +19,8 @@
 .wd details>.ui-field{margin-top:var(--ws-space-3)}
 @media(max-width:760px){
  .wd-steps{display:block}.wd-steps li{margin:var(--ws-space-2) 0}
- .wd table,.wd tbody,.wd tr,.wd th,.wd td{display:block}.wd thead{display:none}
- .wd tr{margin:var(--ws-space-3) 0;border:1px solid var(--ws-line)}
- .wd td:before{content:attr(data-label)"：";font-weight:600}
+ .wd table:not(.items-table),.wd table:not(.items-table) :is(tbody,tr,th,td){display:block}.wd table:not(.items-table) thead{display:none}
+ .wd table:not(.items-table) tr{margin:var(--ws-space-3) 0;border:1px solid var(--ws-line)}
+ .wd table:not(.items-table) td:before{content:attr(data-label)"：";font-weight:600}
  .wd-actions{flex-direction:column;align-items:stretch}
 }

@@ -122,18 +122,31 @@ def compile_draft(value):
     if d["protagonist"] == d["antagonist"]:
         _bad("antagonist", "主人公とは別の人物を選んでください")
     for i, item in enumerate(d["items"]):
-        _object(item, "name holder", f"items.{i}")
+        base_keys = {'name', 'holders' if isinstance(item, dict) and 'holders' in item else 'holder'}
+        if not isinstance(item, dict) or not base_keys <= item.keys() or set(item) - base_keys - {'description', 'display_name', 'acquisition', 'effects'}:
+            _bad(f"items.{i}", "品物・所持者・効果・入手経路を確認してください")
+        for key in ('description', 'display_name'):
+            if key in item:
+                item[key] = _text(item[key], f'items.{i}.{key}', 2000, key == 'description')
         item["name"] = _text(item["name"], f"items.{i}.name")
-        _reference(item["holder"], people, f"items.{i}.holder")
+        if 'holders' in item:
+            from execution.items_editor import holdings
+            item['holders'] = holdings(item['holders'], people)
+        else:
+            _reference(item["holder"], people, f"items.{i}.holder")
     items = _unique(d["items"], "items")
     facts = d.get("facts", [])
     _array(facts, "facts", 0, 8)
     for i, fact in enumerate(facts):
         fp = f"facts.{i}"
-        _object(fact, "name description place", fp)
+        if not isinstance(fact, dict) or not {'name', 'description'} <= fact.keys() or set(fact) - {'name', 'description', 'place', 'acquisition', 'known'} or ('place' in fact) == ('acquisition' in fact):
+            _bad(fp, '情報の内容と入手経路を確認してください')
+        if 'known' in fact and (not isinstance(fact['known'], list) or any(p not in people for p in fact['known']) or len(set(fact['known'])) != len(fact['known'])):
+            _bad(fp, '初期知識を持つ人物を確認してください')
         fact["name"] = _text(fact["name"], fp + ".name")
         fact["description"] = _text(fact["description"], fp + ".description", 2000)
-        _reference(fact["place"], zones, fp + ".place")
+        if "place" in fact:
+            _reference(fact["place"], zones, fp + ".place")
     fact_names = _unique(facts, "facts")
     goal_predicates = {}
     for i, person in enumerate(d["people"]):
@@ -193,8 +206,24 @@ def compile_draft(value):
                  target_ending=["goal_attained"])
     if facts:
         world["facts"] = [{"id": f["name"], "label": f["description"],
-                           "sources": [{"type": "investigate", "zone": f["place"], "count": 1}]}
+                           "sources": ([{"type": "investigate", "zone": f["place"], "count": 1}] if "place" in f else [])}
                           for f in facts]
+    from execution import item_acquisition
+    extra_verbs = set()
+    for kind, rows in (('items', d['items']), ('facts', facts)):
+        for row, definition in zip(rows, world.get(kind, [])):
+            for key in ('description', 'display_name'):
+                if key in row:
+                    definition[key] = row[key]
+            if 'effects' in row:
+                item_acquisition.effects(definition, row['effects'], row['name'])
+            if 'acquisition' in row:
+                item_acquisition.apply(world, definition, row['name'], kind, row['acquisition'], people)
+                channels = row['acquisition']
+                if channels.get('craft'): extra_verbs.add('craft')
+                if channels.get('shop_zone'): extra_verbs.add('buy')
+                if channels.get('rewards'): extra_verbs.add('trial')
+                if any(v['type'] == 'labor' for v in channels['sources']): extra_verbs.add('labor')
     if d["protagonist"] in goal_predicates:
         predicate = goal_predicates[d["protagonist"]]
         protagonist_goal = next(p["goal"] for p in d["people"] if p["name"] == d["protagonist"])
@@ -212,11 +241,15 @@ def compile_draft(value):
         subject = {"id": p["name"], "description": p["description"], "personality": p["personality"],
                    "traits": {key: .5 for key in TRAITS}, "base": 50,
                    "range": {"zones": sorted(zones), "entry": p["entry"]},
-                   "inventory": {item["name"]: 1 for item in d["items"] if item["holder"] == p["name"]},
+                    "inventory": {item["name"]: holder['count'] for item in d["items"]
+                                  for holder in item.get('holders', [{'person': item.get('holder'), 'count': 1}])
+                                  if holder['person'] == p['name']},
                    "goal": (subject_goal(p["goal"]) if "description" in p["goal"]
                             else p["goal"] if p["goal"]["target"] else {}),
                    "relations": {r["person"]: {key: r[key] for key in ("affinity", "awareness", "label")} for r in p["relations"]},
                    "verbs": ["move", "investigate", "observe", "give_item", "persuade", "fight", "rest"]}
+        subject['knowledge'] = [f['name'] for f in facts if p['name'] in f.get('known', [])]
+        subject['verbs'] += sorted(extra_verbs)
         subjects[f"subjects/person_{i+1:02d}.yaml"] = yaml.safe_dump(subject, allow_unicode=True, sort_keys=False)
     return d, world, subjects
 
@@ -325,6 +358,8 @@ def existing_provider(settings_path, *, time_budget=None):
                   "人物2〜8人、場所1〜8か所、品物0〜8個、調べて得る情報factsは0〜8件。全参照は定義済みの名前と一致させてください。"
                   "概要の舞台・時代・人物・対立・望みを優先し、人物ごとの目標descriptionを具体的な文章で作成してください。"
                   "配送に限定しません。品物が不要な概要ではitemsを空にし、配送や宝物探しを勝手に追加しません。"
+                  "品物のnameには『手紙』『宝物』のような品物自体の名前を使い、持ち主や所在地を混ぜません。誰が何個持つかはholdersで指定します。人物が所持している品物はその人物のholdersとして登録してください。"
+                  '品物はnameとholdersで指定できます。holdersは[{"person":"既存の人物名","count":1}]の一覧です。複数人が同じ品物を持つ場合も品物は1件にし、各人物と数量をholdersに入れます。countは1〜10000の整数、人物の重複は禁止です。初期所持なしはholdersを空にします。旧形式nameとholder（所持者1人・数量1）も受け付けます。'
                   "conditionsは全条件の同時成立で達成します。各0〜8件。次の型から概要に合うものだけ使います: "
                   '{"type":"reach","place":"場所名"}, {"type":"acquire","item":"品物名"}, '
                   '{"type":"deliver","item":"品物名","place":"場所名"}, {"type":"meet","person":"相手名"}, '
