@@ -36,14 +36,20 @@ def render(store, jobs, *, from_id=None, genre_id=None, copy_mode=False, method=
     def page(body):
         return pages.document('新しい世界を作る', body, phase='world', job_store=jobs,
             pin=data.pinned_target(jobs), page_class='form-workspace',
-            stylesheets=('world-create.css', 'world-draft.css', 'draft-workspace.css', 'draft-editing.css', 'items-workspace.css'), scripts=('items-workspace.js', 'world-create.js', 'draft-goal-editor.js', 'draft-workspace.js', 'draft-editing.js', 'world-draft.js'))
+            stylesheets=('world-create.css', 'world-draft.css', 'draft-workspace.css', 'draft-editing.css', 'items-workspace.css', 'draft-native.css'), scripts=('items-workspace.js', 'world-create.js', 'draft-goal-editor.js', 'draft-workspace.js', 'draft-editing.js', 'draft-settings-forms.js', 'draft-authoring.js',
+                'world-draft.js', 'draft-native-ai.js', 'draft-native.js'))
     if method is None:
         return page('<section class="creation-choice"><a data-purpose-carry href="/worlds">← 世界一覧へ戻る</a><h1>新しい世界を作る</h1><p>作成方法を選んでください。</p><div class="creation-options">'
             '<a data-purpose-carry href="/worlds/new?method=manual"><strong>マニュアル作成</strong><span>名前と概要を自分で入力します。既存世界の複製やZIPの取込も選べます。</span></a>'
-            '<a data-purpose-carry href="/worlds/new?method=ai"><strong>AI作成</strong><span>世界の名前と概要から下案を作り、内容を確認して採用します。</span></a></div></section>')
+            '<a data-purpose-carry href="/worlds/new?method=ai"><strong>共同下書き・取り込み</strong><span>下書きを保存・再開し、既存の世界やZIPも取り込めます。</span></a></div></section>')
     if method == 'ai':
-        from viewer.world_draft import fragment
-        return page(back + fragment(getattr(jobs, 'world_draft_mode', 'waiting'), getattr(jobs, 'world_draft_notice', None)))
+        from viewer.draft_native import fragment as native_fragment
+        from viewer.world_draft import fragment as proposal_fragment
+
+        mode = getattr(jobs, 'world_draft_mode', 'waiting')
+        worlds = store.worlds()
+        return page(back + native_fragment(worlds, from_id if copy_mode else None, mode)
+                    + proposal_fragment(mode, getattr(jobs, 'world_draft_notice', None), worlds))
     worlds = source_models(store)
     genres = store.genres()
     copy_mode = copy_mode and bool(worlds)
