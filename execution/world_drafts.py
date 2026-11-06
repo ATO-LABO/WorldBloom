@@ -254,7 +254,7 @@ def compile_draft(value):
     return d, world, subjects
 
 
-def validate(repo, value):
+def validate(repo, value, *, allow_initial_goal_achieved=False):
     d, world, subjects = compile_draft(value)
     check_alignment(d)
     # Reuse the exact World/Subject/Simulation construction used by preview.
@@ -279,8 +279,8 @@ def validate(repo, value):
                     expression = f"holds({person['name']!r}, {goal['target']!r}) and zone({person['name']!r}) == {goal['deliver_to']!r}"
                 else:
                     expression = None
-                if expression and compile_predicate(expression).evaluate(initial_world.namespace(
-                        initial_subjects[person['name']], list(initial_subjects.values()), turn=1, day=1)):
+                if (not allow_initial_goal_achieved and expression and compile_predicate(expression).evaluate(initial_world.namespace(
+                        initial_subjects[person['name']], list(initial_subjects.values()), turn=1, day=1))):
                     _bad(f'people.{i}.goal.conditions', '開始時点で目標を達成しています。開始位置・所持品・関係・達成条件を見直してください')
         except (ValueError, KeyError, TypeError, OSError) as error:
             if isinstance(error, ConfigError):
