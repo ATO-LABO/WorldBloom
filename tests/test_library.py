@@ -515,15 +515,20 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn("ジャンルは、行動とその結果を決める共通のルール", body)
         self.assertEqual(body.count("<h2>ジャンル</h2>"), 0)
 
-    def test_genres_live_on_settings_page(self):
-        # ⚙ 設定 (/configs) remains the genre editing surface; WB-UI-023
-        # additionally surfaces a read/browse copy on the home hub's ジャンル
-        # tab after choosing a purpose, so this only pins /configs itself.
+    def test_genres_are_editable_from_library_and_absent_from_global_settings(self):
         status, body = self.get("/configs")
+        self.assertEqual(status, 200, body)
+        self.assertNotIn('id="genres"', body)
+        self.assertNotIn('href="/genres/new"', body)
+        self.assertNotIn('href="/genres/momotaro"', body)
+
+        status, body = self.get("/worlds")
         self.assertEqual(status, 200, body)
         self.assertIn('id="genres"', body)
         self.assertIn('href="/genres/new"', body)
         self.assertIn('href="/genres/momotaro"', body)
+        status, body = self.get("/genres/momotaro")
+        self.assertEqual(status, 200, body)
 
     def test_world_detail_page(self):
         status, body = self.get("/worlds/momotaro?view=advanced")
