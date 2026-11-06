@@ -1,4 +1,5 @@
 """Causal controls for situated choices, epistemic scope and saved evidence."""
+from frozen_world import run_frozen
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -18,7 +19,7 @@ RESCUE = ROOT / "projects/rescue_council/world.yaml"
 
 class SituatedChoiceTests(unittest.TestCase):
     def prepare(self, project=REFORM, *, seed=0, change=None):
-        world, people = load_episode(project)
+        world, people = run_frozen(load_episode, project)
         if change:
             change(world, people)
         self.temp = tempfile.TemporaryDirectory()
@@ -189,7 +190,7 @@ class SituatedChoiceTests(unittest.TestCase):
         self.assertEqual(offered, {('request_decision',''):4.0,('amend_proposal','protected'):3.4,('amend_proposal','staged'):3.0})
 
     def test_malformed_policy_and_unknown_fact_fail_closed(self):
-        world, people = load_episode(REFORM)
+        world, people = run_frozen(load_episode, REFORM)
         raw = world.deliberation.config
         mutations = [lambda p:p.update(goal_priority=True),lambda p:p.update(goal_priority=float('nan')),
                      lambda p:p.update(evidence_threshold=1.1),lambda p:p.update(compromise_limit=-1),
@@ -210,7 +211,7 @@ class SituatedChoiceTests(unittest.TestCase):
             with self.assertRaises(ValueError): self.prepare(change=invalid)
 
     def test_non_mapping_proposal_and_null_policy_raise_validation_error(self):
-        world, _ = load_episode(REFORM)
+        world, _ = run_frozen(load_episode, REFORM)
         for invalid in [None, 1, [], 'proposal']:
             changed = deepcopy(world.deliberation.config)
             changed['proposals'] = [invalid]
@@ -223,7 +224,7 @@ class SituatedChoiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             for project in [REFORM, RESCUE]:
                 folder=Path(temp)/project.parent.name
-                run_batch(project, folder, [0])
+                run_frozen(run_batch, project, folder, [0])
                 rows=[json.loads(l) for l in (folder/'seed-0000/layers.jsonl').read_text(encoding='utf8').splitlines()]
                 choices=[r for r in rows if r.get('verb') in {'amend_proposal','request_decision'}]
                 self.assertTrue(choices)

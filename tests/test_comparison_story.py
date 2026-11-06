@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from saved_world_fixtures import copy_current_world_repo
 from execution.configs import ConfigStore
 from execution.provenance import ConfigError
 from gapengine import reader_summary as rs
@@ -43,7 +44,8 @@ class ComparisonStoryTests(unittest.TestCase):
         self.assertEqual(len(set(consequences)), 1)  # Timing alone is not a different plot.
 
     def test_frozen_goal_uses_selected_endings_and_rejects_tampering(self):
-        store = ConfigStore(ROOT, self.root / 'control', self.root / 'frozen-runs')
+        repo = copy_current_world_repo(ROOT, self.root / 'repo', 'momotaro', runtime=True)
+        store = ConfigStore(repo, self.root / 'control', self.root / 'frozen-runs')
         store.save({'label': 'test', 'project_id': 'momotaro', 'template_id': 'momotaro',
                     'evolution': {'generations': 1, 'population': 1, 'seeds': 1,
                                   'target_ending': ['homecoming_shared']}}, config_id='cfg-test')

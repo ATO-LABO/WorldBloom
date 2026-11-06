@@ -16,6 +16,7 @@ from engine.phase2 import trial_options
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.verbs import VerbEngine
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.genome import Genome
 from gapengine.knowledge_text import (
@@ -36,7 +37,7 @@ TEMPLATE = ROOT / "templates" / "momotaro_plus"
 
 
 def load_fixture() -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(PROJECT / "world.yaml")
+    world = load_frozen_world(PROJECT / "world.yaml")
     subjects = [
         Subject.from_yaml(path)
         for path in sorted((PROJECT / "subjects").glob("*.yaml"), key=lambda v: v.name)
@@ -66,7 +67,7 @@ class WorldLoadTests(unittest.TestCase):
         # loop -- the same path evolve.py's run_individual takes at kappa=0.
         import yaml
 
-        world = World.from_yaml(
+        world = load_frozen_world(
             PROJECT / "world.yaml",
             action_graph_path=TEMPLATE / "action_graph.yaml",
         )

@@ -1,4 +1,5 @@
 """State vs belief, cross-domain conditions and genuine proposal execution."""
+from frozen_world import run_frozen
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -17,7 +18,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class ConcernTests(unittest.TestCase):
     def load(self,project='rescue_values'):
-        world,people=load_episode(ROOT/'tests/fixtures/legacy_concerns'/project/'world.yaml')
+        world,people=run_frozen(load_episode, ROOT/'tests/fixtures/legacy_concerns'/project/'world.yaml')
         return world,people,world.concerns
 
     def test_three_contract_examples_and_maintain_vs_achieve(self):
@@ -192,7 +193,7 @@ class ConcernTests(unittest.TestCase):
     def test_normal_runs_three_domains_preserve_actual_outcomes_and_reason_records(self):
         with tempfile.TemporaryDirectory() as temp:
             for project in ['reform_values','rescue_values','secret_values']:
-                target=Path(temp)/project;summary=run_batch(ROOT/'tests/fixtures/legacy_concerns'/project/'world.yaml',target,[0,4])
+                target=Path(temp)/project;summary=run_frozen(run_batch, ROOT/'tests/fixtures/legacy_concerns'/project/'world.yaml',target,[0,4])
                 self.assertEqual(summary['counts'],{'approved':2})
                 for seed in [0,4]:
                     material=json.loads((target/f'seed-{seed:04}/scene-material.json').read_text(encoding='utf8'))
@@ -208,7 +209,7 @@ class ConcernTests(unittest.TestCase):
                         self.assertEqual(actual['secret_kept'],'maintained');self.assertEqual(actual['help_received'],'pending')
 
     def test_legacy_worlds_have_no_concerns_and_keep_old_mechanisms(self):
-        w,p=load_episode(ROOT/'projects/reform_hearing/world.yaml')
+        w,p=run_frozen(load_episode, ROOT/'projects/reform_hearing/world.yaml')
         self.assertIsNone(w.concerns)
         self.assertEqual(w.deliberation.specs['main']['choice_policy']['version'],1)
 

@@ -72,7 +72,7 @@ class FactoryTests(unittest.TestCase):
         binding.bind_session(f.create(63), 63)
         self.assertNotEqual(binding.seed_admission(0)['actual_provider'], binding.seed_admission(63)['actual_provider'])
         self.assertTrue(f.identity['product_active'])
-        self.assertEqual(f.identity['transform'], 'approved_melos_root_binding_v1')
+        self.assertEqual(f.identity['transform'], 'approved_melos_root_binding_v2')
 
     def test_content_preserving_relocation_keeps_plan_and_binds_fresh_slots(self):
         one = self.copy('admission'); two = self.copy('frozen')
