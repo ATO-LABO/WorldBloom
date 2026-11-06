@@ -24,7 +24,8 @@ class IndependentJobsTests(unittest.TestCase):
                                       'evolution':{'population':1,'generations':1,'seeds':1,'processes':1,'kappa':0,'route_rho':0}})
         self.jobs=JobStore(self.configs)
         from execution.provenance import code_snapshot
-        self.source_snapshot=code_snapshot(repo)
+        # Match capability and prepare_run even when Windows TEMP uses an alias.
+        self.source_snapshot=code_snapshot(self.configs.repo)
     def request(self):
         cap=capability(self.configs,self.config['config_id'])
         return {'request_id':'fixture-review','kind':'independent_trials','config_id':cap['config_id'],
