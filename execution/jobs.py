@@ -252,6 +252,17 @@ class JobStore:
             return [self.public(self._reconcile(j)) for j in self._all()]
 
     def submit(self, request, *, settings_path=None):
+        try:
+            guard = worker.hold_delivery_lease(self.configs.repo)
+            guard.__enter__()
+        except (worker.DeliveryGuardError, OSError, ValueError) as error:
+            raise ConfigError("worker", "更新中または起動保護の設定を確認できないため、ジョブを開始できません", code="unavailable") from error
+        try:
+            return self._submit_without_delivery(request, settings_path=settings_path)
+        finally:
+            guard.__exit__(*sys.exc_info())
+
+    def _submit_without_delivery(self, request, *, settings_path=None):
         if not isinstance(request, dict):
             raise ConfigError("request", "オブジェクトを指定してください")
         kind = request.get("kind")
@@ -364,9 +375,11 @@ class JobStore:
                     "--runs", str(self.configs.runs), "--repo", str(self.configs.repo),
                     "--job", jid, "--nonce", nonce]
             try:
+                launch_environment = worker.delivery_environment(self.configs.repo)
                 process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                            stderr=subprocess.DEVNULL,
-                                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0, close_fds=True)
+                                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0, close_fds=True,
+                                           **({"env": launch_environment} if launch_environment is not None else {}))
                 threading.Thread(target=process.wait, daemon=True).start()
                 identity = worker.process_identity(process.pid)
                 self._save(job, launch_identity=identity)
