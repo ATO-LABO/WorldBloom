@@ -881,7 +881,7 @@
   "viewer/static/world-expansion.js": "5b7e0ee2c568f5e3a4b027511e213e06c78d75820ff4ae07d64675bf3dcd0758",
   "viewer/static/world-notes.js": "94883dd0b399e967544c4de2985605c0812fe7ee2038613953426495ea040f19",
   "viewer/static/world-prototype.css": "8e9522c4c0a77392ea982d46f6aa78a1cfd5af543efad68f3cd5a25d4ebc64e2",
-  "viewer/static/world-prototype.js": "7e99b1dfe0037d62201a57ef50be4c8e0b25615ac41bcdc598c160aff3952bf8",
+  "viewer/static/world-prototype.js": "9d533b7836a8ba42e56ab00820cdbb89b6360025216ae5d242f0c37360e74c1a",
   "viewer/static/world-review.css": "b02acb0ffd45ddea7b3ba06a79da4328b40f7d4f482c33f55efab3763ab9a918",
   "viewer/story_genre_pages.py": "4cec79cea65a14d7b8c1dcb649286d9e9f7bccd5ab30fbd53de0a8704b8d48bd",
   "viewer/story_pages.py": "d173b80d91a1d52d3762d8c084c570187a38e2bfbcfe51acfa59ce42b7cdfacf",
@@ -895,7 +895,7 @@
   "viewer/world_effect_view.py": "276e26ed325d717a3d72b429fb925f477a4cd0be43a4abc0ead0a26874365900",
   "viewer/world_expansion_view.py": "bf40536b1f4679340bd85f4fedbd1da83f6ebfc4b6050a9bf8bfea90926d1aca",
   "viewer/world_graph.py": "83584d491c3987d7a0a2f69d6c2fc68d9f6a97b3d4ca3c8b5f4a49f5654e921a",
-  "viewer/world_prototype.py": "345e3e27d45520631e6c3f5bd4fcb789f6fc388b20e073efb1ecf94b16159a53",
+  "viewer/world_prototype.py": "273987d18ce8e128b6877ab958c155eae294ba9da41418da2340cc7064cbc673",
   "viewer/world_review.py": "212df5b93d0d023bbf4b9ea28f6d41374b325b23539a14970418cfcf69a5eff3",
   "viewer/world_usage_badge.py": "316a1efbd7c1428c069297d65d75330506d7d02ca3ca35e733b7c26e004442db",
   "viewer/worldbloom.ico": "a28d0c5960125d9f56a4befc48940edc4d72774e37ab20685f60fd2ccd894690"
