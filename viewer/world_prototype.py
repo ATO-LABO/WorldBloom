@@ -94,6 +94,6 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
       <noscript>この表示にはJavaScriptが必要です。<a href="/worlds/{wid}?view=advanced">詳細設定を開く</a></noscript>
     </div>'''
     doc = pages.document(model["name"], body, world={"id": world["id"], "name": model["name"]},
-                         phase="world", page_class="world-prototype", job_store=job_store, pin=pin, stylesheets=('world-prototype.css','time-settings.css','time-basic.css','items-workspace.css'), scripts=('ui-settings-frame.js','ui-help.js','genre-controls.js','items-workspace.js','time-basic.js','time-settings.js','person-commitments-editor.js','world-prototype.js','world-expansion.js','world-notes.js'))
+                         phase="world", page_class="world-prototype", job_store=job_store, pin=pin, stylesheets=('world-prototype.css','time-settings.css','time-basic.css','world-condition-settings.css','items-workspace.css'), scripts=('ui-settings-frame.js','ui-help.js','genre-controls.js','items-workspace.js','time-basic.js','time-settings.js','person-commitments-editor.js','world-prototype.js','world-expansion.js','world-notes.js'))
     doc = doc.replace('data-wb="world-picker"', 'data-wb="world-picker" aria-label="世界"')
     return doc

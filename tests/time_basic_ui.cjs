@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const repo=process.argv[2]||path.resolve(__dirname,'..');
 const source=name=>{const staged=process.env.TIME_WORK_ROOT&&path.join(process.env.TIME_WORK_ROOT,'viewer/static',name);return fs.readFileSync(staged&&fs.existsSync(staged)?staged:path.join(repo,'viewer/static',name),'utf8');};
-let base=fs.readFileSync(path.join(repo,'tests/people_settings_ui.cjs'),'utf8').split('async function main(){')[0];
+let base=fs.readFileSync(path.join(repo,'tests/fixtures/people_settings_dom.cjs'),'utf8').split('async function main(){')[0];
 const {setup,Event}=vm.runInNewContext(base+'\n({setup,Event});',{require,process,console,__dirname:path.join(repo,'tests'),structuredClone,URL,URLSearchParams,setImmediate});
 const flush=()=>new Promise(setImmediate);
 async function mount(options={}){

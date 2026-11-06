@@ -1,0 +1,164 @@
+:root {
+ --ws-money-canvas: #f5f7f5;
+ --ws-money-shadow: 0 1px 4px #163e2b08;
+ --ws-money-card-radius: 12px;
+ --ws-money-tab-size: 20px;
+ --ws-money-switch-on: #32905a;
+ --ws-money-switch-off: #bcc3c8;
+ --ws-money-switch-w: 64px;
+ --ws-money-switch-h: 36px;
+ --ws-money-switch-knob: 30px;
+}
+:root {--ws-help-width:360px;--ws-help-gap:8px;--ws-help-target:44px;--ws-help-glyph:24px;--ws-help-z:1000;}
+.ui-money-theme {
+
+/* Opt-in settings frame. Only the money editor mounts this component initially. */
+.ui-settings-host {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;overflow:hidden;}
+.ui-settings-frame {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;margin:0;overflow:hidden;}
+.ui-settings-header {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--ws-space-2) var(--ws-space-4);padding:var(--ws-space-3) var(--ws-content-x);border-bottom:1px solid var(--ws-line);background:var(--ws-canvas);flex-shrink:0;min-width:0;}
+.ui-settings-title,.ui-settings-actions {display:flex;align-items:center;gap:var(--ws-space-3);min-width:0;}
+.ui-settings-title h1 {margin:0;overflow-wrap:anywhere;}
+.ui-settings-title>.ui-button,.ui-settings-actions>.ui-button {flex-shrink:0;white-space:nowrap;}
+.ui-settings-actions {justify-content:flex-end;}
+.ui-settings-frame .ui-settings-status {margin:0;min-inline-size:8em;max-inline-size:14em;font-size:var(--ws-fs-sm);color:var(--ws-muted);overflow-wrap:anywhere;}
+.ui-settings-frame .ui-settings-error {grid-column:1/-1;margin:0;overflow-wrap:anywhere;}
+.ui-settings-frame>.ui-settings-tabs {margin:0;padding-inline:var(--ws-content-x);}
+.ui-settings-body {flex:1;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:var(--ws-space-4) var(--ws-content-x);scroll-padding-block:var(--ws-space-4);}
+.ui-settings-help {margin-block:var(--ws-space-3);}
+.ui-settings-help>summary {cursor:pointer;color:var(--ws-muted);font-size:var(--ws-fs-sm);}
+.ui-field-row {display:flex;align-items:flex-end;flex-wrap:wrap;gap:var(--ws-space-3);min-width:0;}
+.ui-field-row>.ui-field {flex:1 1 12rem;min-width:0;margin:0;}
+.ui-field-unit {align-self:flex-end;padding-block:var(--ws-control-y);overflow-wrap:anywhere;max-width:100%;}
+.ui-field--table {margin:0;}
+.ui-field--table>.ui-field-label {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.ui-settings-frame[data-settings-scroll=flow] {overflow:auto;overscroll-behavior:contain;}
+.ui-settings-frame[data-settings-scroll=flow]>.ui-settings-body {flex:none;overflow:visible;}
+@media(max-width:760px){
+ .ui-settings-header {grid-template-columns:minmax(0,1fr);}
+ .ui-settings-actions {justify-content:flex-end;}
+ .ui-settings-status {margin-inline-end:auto;min-inline-size:0;}
+}
+
+/* Money visual pilot, matched to the owner-provided reference PNG. */
+.ui-money-theme.ui-settings-frame, .ui-settings-theme.ui-settings-frame {color:var(--ws-text);font:400 var(--ws-fs-md)/var(--ws-line-height) var(--ws-font);background:var(--ws-surface);border:1px solid var(--ws-line);border-radius:var(--ws-money-card-radius);box-shadow:var(--ws-money-shadow);}
+.ui-money-theme .ui-settings-header, .ui-settings-theme .ui-settings-header {display:flex;flex-wrap:wrap;background:var(--ws-surface);padding-block:var(--ws-space-5);}
+.ui-money-theme .ui-settings-title, .ui-settings-theme .ui-settings-title {flex:1 1 auto;gap:var(--ws-space-6);}
+.ui-money-theme .ui-settings-title>h1, .ui-settings-theme .ui-settings-title>h1 {font-weight:700;color:var(--ws-text);}
+main.ui-screen .ui-money-theme .ui-settings-title>.ui-button, main.ui-screen .ui-settings-theme .ui-settings-title>.ui-button {border:0;border-inline-end:1px solid var(--ws-line);border-radius:0;background:transparent;padding-inline:0 var(--ws-space-6);min-height:var(--ws-control-h);font-weight:600;}
+.ui-money-theme .ui-settings-actions, .ui-settings-theme .ui-settings-actions {margin-inline-start:auto;gap:var(--ws-space-4);}
+.ui-money-theme .ui-settings-status, .ui-settings-theme .ui-settings-status {display:flex;align-items:center;gap:var(--ws-space-2);min-inline-size:10em;max-inline-size:none;white-space:nowrap;font-size:var(--ws-fs-md);color:var(--ws-text);}
+.ui-money-theme .ui-settings-error, .ui-settings-theme .ui-settings-error {flex-basis:100%;}
+.ui-money-theme .ui-settings-status::before, .ui-settings-theme .ui-settings-status::before {content:'';width:var(--ws-space-3);height:var(--ws-space-3);border-radius:50%;background:var(--ws-confirm);flex:none;}
+.ui-money-theme .ui-settings-status[data-money-state=dirty]::before, .ui-settings-theme .ui-settings-status[data-settings-state=dirty]::before {background:var(--ws-advance);}
+.ui-money-theme .ui-settings-status[data-money-state=blocked]::before, .ui-settings-theme .ui-settings-status[data-settings-state=blocked]::before {background:var(--ws-danger);}
+main.ui-screen .ui-money-theme .ui-settings-actions>.ui-button, main.ui-screen .ui-settings-theme .ui-settings-actions>.ui-button {padding-inline:var(--ws-space-6);border-color:var(--ws-confirm);font-weight:700;}
+main.ui-screen .ui-money-theme .ui-settings-actions>.ui-button--confirm, main.ui-screen .ui-settings-theme .ui-settings-actions>.ui-button--confirm {background:var(--ws-confirm);color:var(--ws-surface);}
+.ui-money-theme .ui-settings-tabs, .ui-settings-theme .ui-settings-tabs {gap:var(--ws-space-4);background:var(--ws-surface);}
+main.ui-screen .ui-money-theme .ui-settings-tabs>button, main.ui-screen .ui-settings-theme .ui-settings-tabs>button {font-size:var(--ws-money-tab-size);font-weight:500;padding:var(--ws-space-4) var(--ws-space-5);border-bottom-width:4px;color:var(--ws-text);}
+main.ui-screen .ui-money-theme .ui-settings-tabs>button[aria-selected=true], main.ui-screen .ui-settings-theme .ui-settings-tabs>button[aria-selected=true] {font-weight:700;border-bottom-color:var(--ws-advance);}
+.ui-money-theme .ui-settings-body, .ui-settings-theme .ui-settings-body {padding-block:var(--ws-space-3) var(--ws-space-5);background:var(--ws-surface);}
+.ui-money-theme .ui-settings-help {border:1px solid var(--ws-line);border-radius:var(--ws-radius);background:var(--ws-money-canvas);padding:var(--ws-space-3) var(--ws-space-5);margin-block:0 var(--ws-space-4);}
+.ui-money-theme .ui-settings-help>summary {display:flex;align-items:center;gap:var(--ws-space-3);list-style:none;font-size:var(--ws-fs-md);font-weight:700;color:var(--ws-text);}
+.ui-money-theme .ui-settings-help>summary::-webkit-details-marker {display:none;}
+.ui-money-theme .ui-settings-help>summary::after {content:'▸';}
+.ui-money-theme .ui-settings-help[open]>summary::after {transform:rotate(90deg);}
+main.ui-screen .ui-money-theme :is(.wa-topic,.ui-settings-card), main.ui-screen .ui-settings-theme :is(.wa-topic,.ui-settings-card) {border:1px solid var(--ws-line);border-radius:var(--ws-radius);background:var(--ws-surface);padding:var(--ws-space-5);margin:0 0 var(--ws-space-4);}
+main.ui-screen .ui-money-theme :is(.wa-topic,.ui-settings-card) h2, main.ui-screen .ui-settings-theme :is(.wa-topic,.ui-settings-card) h2 {border:0;padding:0;margin:0 0 var(--ws-space-4);font-weight:700;}
+.ui-money-theme .ui-settings-card-heading, .ui-settings-theme .ui-settings-card-heading {display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--ws-space-2) var(--ws-space-5);}
+.ui-money-theme .ui-settings-card-heading>.ui-hint, .ui-settings-theme .ui-settings-card-heading>.ui-hint {font-size:var(--ws-fs-sm);}
+main.ui-screen .ui-money-theme .ui-settings-card-heading>h2, main.ui-screen .ui-settings-theme .ui-settings-card-heading>h2 {margin-bottom:var(--ws-space-4);}
+.ui-money-theme .money-reference-row {gap:var(--ws-space-4) var(--ws-space-5);}
+main.ui-screen .ui-money-theme .money-reference-row>.ui-field {display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--ws-space-4);flex:1 1 20rem;max-inline-size:28rem;}
+main.ui-screen .ui-money-theme .money-reference-row>.ui-field:nth-child(2) {flex-basis:15rem;max-inline-size:20rem;}
+.ui-money-theme .money-reference-row>.ui-field-unit {align-self:center;padding:0;}
+.ui-money-theme .money-reference-row>.ui-button {border-color:var(--ws-confirm);font-weight:700;padding-inline:var(--ws-space-5);}
+.ui-money-theme [data-money-reference]>.ui-settings-help {margin-top:var(--ws-space-4);margin-bottom:0;}
+.ui-money-theme [data-money-reference]>p:empty {display:none;}
+main.ui-screen .ui-money-theme .money-trades-table {min-width:760px;}
+main.ui-screen .ui-money-theme .money-trades-table th:first-child {width:30%;}
+main.ui-screen .ui-money-theme .money-trades-table th:nth-child(2) {width:13%;}
+main.ui-screen .ui-money-theme .money-trades-table th:nth-child(3) {width:27%;}
+main.ui-screen .ui-money-theme .money-trades-table th:nth-child(4) {width:30%;}
+.ui-money-theme .money-trades-table thead {background:var(--ws-panel-bg);}
+.ui-money-theme .money-trades-table thead th {padding:var(--ws-space-2) var(--ws-space-5);font-weight:700;}
+.ui-money-theme .money-trades-table thead th+th {border-inline-start:1px solid var(--ws-line);}
+.ui-money-theme .money-trades-table :is(th,td) {color:var(--ws-text);}
+.ui-money-theme .money-trades-table tbody :is(th,td) {background:var(--ws-surface);padding:var(--ws-space-2) var(--ws-space-4);vertical-align:middle;}
+.ui-money-theme .money-trades-table tbody th {font-weight:400;}
+.ui-money-theme .ui-money-price {display:flex;align-items:center;gap:var(--ws-space-3);min-width:0;}
+.ui-money-theme .ui-money-price>.ui-field {flex:1;min-width:0;max-inline-size:16rem;}
+.ui-money-theme .ui-money-price>.ui-field-unit {flex:none;padding:0;align-self:center;max-inline-size:4em;overflow-wrap:anywhere;}
+main.ui-screen .ui-money-theme .money-trades-table input[type=number] {text-align:left;}
+.ui-money-theme .money-trades-table [data-money-trade-state=blocked] :is(input:not([type=checkbox]),select) {background:var(--ws-disabled-bg);}
+.ui-money-theme .money-trades-table [data-money-trade-state=blocked] .ui-field-unit {color:var(--ws-muted);}
+.ui-money-theme .money-trades-table [data-money-trade-state=blocked] :is(input,select):focus {background:var(--ws-surface);}
+.ui-money-theme .ui-switch-target {display:inline-flex;align-items:center;justify-content:flex-start;min-height:var(--ws-control-h);min-width:var(--ws-money-switch-w);margin:0;cursor:pointer;}
+main.ui-screen .ui-money-theme input.ui-switch[type=checkbox] {appearance:none;position:relative;width:var(--ws-money-switch-w);height:var(--ws-money-switch-h);min-height:var(--ws-money-switch-h);margin:0;padding:0;border:0;border-radius:999px;background:var(--ws-money-switch-off);cursor:pointer;}
+main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]::before {content:'';position:absolute;top:calc((var(--ws-money-switch-h) - var(--ws-money-switch-knob))/2);left:calc((var(--ws-money-switch-h) - var(--ws-money-switch-knob))/2);width:var(--ws-money-switch-knob);height:var(--ws-money-switch-knob);border-radius:50%;background:var(--ws-surface);box-shadow:var(--ws-money-shadow);}
+main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]:checked {background:var(--ws-money-switch-on);}
+main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]:checked::before {transform:translateX(calc(var(--ws-money-switch-w) - var(--ws-money-switch-h)));}
+main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]:disabled {cursor:default;opacity:.6;}
+.ui-money-theme .money-trades-card>.ui-settings-help {margin-top:var(--ws-space-4);margin-bottom:0;}
+@media(max-width:760px){
+ .ui-money-theme .ui-settings-header, .ui-settings-theme .ui-settings-header {padding-block:var(--ws-space-3);}
+ .ui-money-theme .ui-settings-title, .ui-settings-theme .ui-settings-title {gap:var(--ws-space-4);}
+ main.ui-screen .ui-money-theme .ui-settings-title>.ui-button, main.ui-screen .ui-settings-theme .ui-settings-title>.ui-button {padding-inline-end:var(--ws-space-4);}
+ .ui-money-theme .ui-settings-actions, .ui-settings-theme .ui-settings-actions {gap:var(--ws-space-2);flex-wrap:wrap;}
+ .ui-money-theme .ui-settings-status, .ui-settings-theme .ui-settings-status {font-size:var(--ws-fs-sm);min-inline-size:0;flex-basis:100%;}
+ main.ui-screen .ui-money-theme .ui-settings-actions>.ui-button, main.ui-screen .ui-settings-theme .ui-settings-actions>.ui-button {padding-inline:var(--ws-space-3);}
+ main.ui-screen .ui-money-theme :is(.wa-topic,.ui-settings-card), main.ui-screen .ui-settings-theme :is(.wa-topic,.ui-settings-card) {padding:var(--ws-space-4);}
+ main.ui-screen .ui-money-theme .money-reference-row>.ui-field {flex-basis:100%;max-inline-size:none;}
+ main.ui-screen .ui-money-theme .money-reference-row>.ui-field:nth-child(2) {flex-basis:100%;max-inline-size:none;}
+}
+@media(forced-colors:active){main.ui-screen .ui-money-theme input.ui-switch[type=checkbox] {appearance:auto;}main.ui-screen .ui-money-theme input.ui-switch[type=checkbox]::before {display:none;}}
+
+/* Supplementary help is outside document flow; status and errors stay inline. */
+.ui-settings-name,.ui-heading-with-help {display:flex;align-items:center;flex-wrap:wrap;gap:var(--ws-space-2);min-width:0;}
+.ui-heading-with-help {margin-bottom:var(--ws-space-3);}
+main.ui-screen .ui-money-theme .ui-settings-title h1, main.ui-screen .ui-settings-theme .ui-settings-title h1 {font-weight:700;color:var(--ws-text);}
+main.ui-screen .ui-money-theme .ui-heading-with-help>:is(h2,h3), main.ui-screen .ui-settings-theme .ui-heading-with-help>:is(h2,h3) {margin:0;}
+main.ui-screen .ui-help-button,.ui-help-button {display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--ws-help-target);height:var(--ws-help-target);min-height:var(--ws-help-target);padding:0;border:0;border-radius:var(--ws-radius);background:transparent;color:var(--ws-confirm);font:600 var(--ws-fs-control)/1 var(--ws-font);cursor:pointer;}
+.ui-help-glyph {display:inline-flex;align-items:center;justify-content:center;width:var(--ws-help-glyph);height:var(--ws-help-glyph);border:1px solid var(--ws-control-line);border-radius:50%;}
+.ui-help-button:hover .ui-help-glyph,.ui-help-button[aria-expanded=true] .ui-help-glyph {background:var(--ws-confirm-soft);border-color:var(--ws-confirm);}
+.ui-help-panel {position:fixed;z-index:var(--ws-help-z);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;width:var(--ws-help-width);max-width:calc(100vw - 2 * var(--ws-help-gap));margin:0;padding:var(--ws-space-3);border:1px solid var(--ws-line);border-radius:var(--ws-radius);background:var(--ws-surface);color:var(--ws-text);box-shadow:var(--ws-dialog-shadow);font:400 var(--ws-fs-sm)/var(--ws-line-height) var(--ws-font);overflow-wrap:anywhere;}
+.ui-help-panel[hidden] {display:none!important;}
+.ui-help-head {display:flex;align-items:center;justify-content:space-between;gap:var(--ws-space-2);}
+.ui-help-panel p {margin:var(--ws-space-2) 0 0;white-space:pre-wrap;}
+.ui-help-close {display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:var(--ws-help-target);min-height:var(--ws-help-target);padding:0;border:0;background:transparent;color:var(--ws-text);font:600 var(--ws-fs-control)/1 var(--ws-font);cursor:pointer;}
+.ui-help-panel:focus-visible,.ui-help-panel :focus-visible,.ui-help-button:focus-visible {outline:3px solid var(--ws-focus);outline-offset:3px;}
+
+/* Neutral opt-in settings tables; money price/trade geometry stays separate. */
+.ui-settings-theme .ui-settings-table thead{background:var(--ws-panel-bg);}
+.ui-settings-theme .ui-settings-table thead th{padding:var(--ws-space-2) var(--ws-space-5);font-weight:700;}
+.ui-settings-theme .ui-settings-table thead th+th{border-inline-start:1px solid var(--ws-line);}
+.ui-settings-theme .ui-settings-table :is(th,td){color:var(--ws-text);}
+.ui-settings-theme .ui-settings-table tbody :is(th,td){background:var(--ws-surface);padding:var(--ws-space-2) var(--ws-space-4);vertical-align:middle;}
+.ui-settings-theme .ui-settings-table tbody th{font-weight:400;}
+
+/* Money is the first consumer of the shared header/tabs/body settings frame. */
+[data-world-advanced][data-money-layout=true] .wa-main {overflow:hidden;}
+[data-world-advanced][data-money-layout=true] .wa-body {display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;}
+[data-world-advanced][data-money-layout=true] .wa-reading {display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;}
+[data-world-advanced][data-money-layout=true] {overflow:hidden;}
+[data-money-inline] .wa-topic {padding-block:var(--ws-space-3);}
+[data-money-inline] .wa-topic>h2 {margin:0 0 var(--ws-space-3);}
+[data-money-inline] .ui-field-row>.ui-field {display:flex;margin:0;}
+[data-money-inline] .wa-topic .ui-field>.ui-field-label {display:block;}
+[data-money-inline] .money-reference-row>.ui-field {flex:1 1 10rem;}
+[data-money-inline] .money-reference-row>.ui-button {flex:none;}
+[data-money-inline] .money-trades-table {min-width:650px;table-layout:fixed;}
+[data-money-inline] .money-trades-table th:first-child {width:22%;}
+[data-money-inline] .money-trades-table th:nth-child(2) {width:14%;}
+[data-money-inline] .money-trades-table th:nth-child(3) {width:24%;}
+[data-money-inline] .money-trades-table th:nth-child(4) {width:40%;}
+[data-money-inline] .money-trades-table .ui-field {display:flex;margin:0;}
+[data-money-inline] .money-trades-table input[type=number] {text-align:right;font-variant-numeric:tabular-nums;}
+[data-money-inline] .items-table-scroll {overflow-x:auto;overflow-y:hidden;}
+@media(max-width:760px){
+ [data-world-advanced][data-money-layout=true]>.ui-nav {flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;}
+ [data-world-advanced][data-money-layout=true]>.ui-nav>:is(a,button) {white-space:nowrap;}
+}
+
+/* Outer canvas for the money visual pilot; other categories keep their shell. */
+[data-world-advanced][data-money-layout=true] .wa-reading {padding:var(--ws-space-4);background:var(--ws-money-canvas);box-sizing:border-box;}
+@media(max-width:760px){[data-world-advanced][data-money-layout=true] .wa-reading {padding:var(--ws-space-2);}}

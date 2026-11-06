@@ -501,7 +501,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     if(model.editable)document.getElementById('wp-message').textContent=missing.length?'未設定：'+missing.join('・'):'編集した項目ごとに保存できます。';
     content.scrollTop=screen==='routes'?0:(scrolls[screen]||0);
     if(screen==='routes'){const current=routeState(),list=content.querySelector('.wp-routes-scroll');if(current&&list){list.scrollTop=current.path.scroll;list.addEventListener('scroll',()=>{current.path.scroll=list.scrollTop;},{passive:true});}}
-    if(focus)content.querySelector('h1').focus({preventScroll:true});
+    if(focus)content.querySelector('h1')?.focus({preventScroll:true});
   }
   function openEditor(key,trigger){
     if (!model.editable || blocked) return;
@@ -777,5 +777,12 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
   dialog.addEventListener('close',()=>{if(opener?.isConnected)opener.focus({preventScroll:true});});
   window.addEventListener('beforeunload',e=>{if(changed||busy){e.preventDefault();e.returnValue='';}});
   let autoOpened=false;function restoreScreen(){const hash=new URLSearchParams(location.hash.slice(1));const requested=hash.get('screen')||(['time','time-special'].includes(location.hash.slice(1))?'time':'overview');screen=['overview','people','places','items','story','time','stamina','routes','checks'].includes(requested)?requested:'overview';const actor=hash.get('entity');if(actor&&people.some(p=>p.id===actor))person=people.findIndex(p=>p.id===actor);render();const edit=new URLSearchParams(location.search).get('edit');if(!autoOpened&&['roles','target-ending'].includes(edit)){autoOpened=true;const trigger=content.querySelector('[data-edit="'+edit+'"]');if(trigger)openEditor(edit,trigger);}}
-  addEventListener('popstate',()=>timeSettings.guard(restoreScreen));restoreScreen();
+  addEventListener('popstate',()=>{
+    if(screen==='time'&&timeSettings.restoreTabFromHash())return;
+    if(staminaPolicy&&!staminaPolicy.canLeave()){
+      history.replaceState(history.state||{},'','#screen=stamina');
+      return;
+    }
+    timeSettings.guard(restoreScreen,()=>history.replaceState(history.state||{},'',timeSettings.lastHash));
+  });restoreScreen();
 })();

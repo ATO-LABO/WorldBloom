@@ -171,7 +171,7 @@
  detail.addEventListener('click',e=>{const text=e.target.closest('button')?.textContent;if(['この条件を外す','この判定を外す'].includes(text))activeTopic='removed';},true);
  new MutationObserver(()=>projectTopic()).observe(detail,{childList:true});
 
- function render(){list.replaceChildren();
+ function render(){root.dataset.moneyLayout=String(section==='economy');list.replaceChildren();
   const category=section==='objectives'?'people':section==='roles'?'overview':section==='files'?'files':'rules';
   root.querySelectorAll('[data-settings-category]').forEach(a=>a.setAttribute('aria-current',a.dataset.settingsCategory===category?'page':'false'));
   $('[data-advanced-sections]').hidden=category==='files';
