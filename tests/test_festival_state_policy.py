@@ -104,7 +104,7 @@ class StatePolicyTests(unittest.TestCase):
             self.assertEqual(first['audit']['decision_checks'],88)
             self.assertFalse(first['ga_evolution']);self.assertEqual(first['jev_calls'],0)
             for name in ('蒼','紗季','蓮','灯'):
-                audits=json.loads((root/'first'/f'decision-audit-{name}.json').read_text())
+                audits=json.loads((root/'first'/f'decision-audit-{name}.json').read_text(encoding='utf-8'))
                 self.assertEqual(len(audits),22)
                 self.assertTrue(all(a['positive_count']>1 for a in audits))
 
