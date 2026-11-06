@@ -20,12 +20,12 @@
 # Each value was rechecked against the current Git file's SHA256.
 # The source files are identified beside the historical entries above.
 # Positions updated for the same six approved file checksums; scope unchanged.
-launch-assets/package-files.json:generic-api-key:700
-launch-assets/package-files.json:generic-api-key:721
-launch-assets/package-files.json:generic-api-key:803
-launch-assets/package-files.json:generic-api-key:851
-launch-assets/package-files.json:generic-api-key:852
-launch-assets/package-files.json:generic-api-key:945
+launch-assets/package-files.json:generic-api-key:705
+launch-assets/package-files.json:generic-api-key:726
+launch-assets/package-files.json:generic-api-key:808
+launch-assets/package-files.json:generic-api-key:856
+launch-assets/package-files.json:generic-api-key:857
+launch-assets/package-files.json:generic-api-key:950
 
 # Verified historical SHA-256 of viewer/static/ui-tokens.css.
 0386a61a1e2bdd7e40dd42317ef73f3e32297573:launch-assets/package-files.json:generic-api-key:925
