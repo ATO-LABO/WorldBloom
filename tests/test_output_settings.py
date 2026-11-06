@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from urllib.error import HTTPError, URLError
 from unittest.mock import patch
 
 from execution.output_settings import (
@@ -272,6 +273,24 @@ class OutputSettingsTests(unittest.TestCase):
             result = list_models(self.settings_path, "ollama")
         self.assertEqual(result, {"models": ["llama3", "qwen3.6:35b"], "live": True, "reason": None})
 
+    def test_ollama_catalog_distinguishes_empty_invalid_and_unreachable(self):
+        cases = (
+            (_FakeModelsResponse(b'{"models":[]}'), None),
+            (_FakeModelsResponse(b'{"models":[{}]}'), "invalid_response"),
+            (_FakeModelsResponse(b'{"models":null}'), "invalid_response"),
+            (_FakeModelsResponse(b'{}'), "invalid_response"),
+            (_FakeModelsResponse(b'not JSON'), "invalid_response"),
+            (HTTPError("http://localhost/api/tags", 503, "unavailable", {}, None), "catalog_unavailable"),
+            (URLError("offline"), "server_unreachable"),
+        )
+        for response, reason in cases:
+            with self.subTest(reason=reason):
+                options = ({"side_effect": response} if isinstance(response, Exception)
+                           else {"return_value": response})
+                with patch("gapengine.ollama.urllib.request.urlopen", **options):
+                    self.assertEqual(list_models(self.settings_path, "ollama"),
+                                     {"models": [], "live": True, "reason": reason})
+
     def test_list_models_cli_backend_falls_back_to_verified_history_not_live(self):
         # codex-cli/claude-cli have no "list models" API -- only what a past
         # 疎通テスト confirmed is offered, and it must say so via live=False.
@@ -286,6 +305,32 @@ class OutputSettingsTests(unittest.TestCase):
     def test_list_models_rejects_invalid_backend(self):
         with self.assertRaises(ConfigError):
             list_models(self.settings_path, "not-a-backend")
+
+    def test_gemma_profile_reaches_output_and_draft_requests(self):
+        from execution.output_settings import GEMMA_MODEL, GEMMA_PROFILE
+        from execution.output_worker import credentials
+        from execution.world_drafts import _draft_request
+
+        older_model = "qwen3.8:fixture"
+        older_profile = {"think": True, "options": {"num_ctx": 16384}}
+        self.write({"output": {"default_backend": "ollama", "ollama": {
+            "model": older_model, "base_url": "http://127.0.0.1:11434",
+            "model_options": {older_model: older_profile}
+        }}})
+        write_output_settings(self.settings_path, {"backend": "ollama", "model": GEMMA_MODEL,
+                              "profile": GEMMA_PROFILE})
+        saved = read_output_settings(self.settings_path)
+        self.assertEqual(saved["profile"], GEMMA_PROFILE)
+        current = credentials(self.settings_path, "ollama", model=GEMMA_MODEL)
+        self.assertFalse(current["think"])
+        self.assertEqual(current["options"]["num_ctx"], 8192)
+        self.assertEqual(current["base_url"], "http://127.0.0.1:11434")
+        old = credentials(self.settings_path, "ollama", model=older_model)
+        self.assertEqual(old["options"], older_profile["options"])
+        self.assertTrue(old["think"])
+        draft = _draft_request(self.settings_path, "fixture", reviewing=True)
+        self.assertEqual(draft["credentials"]["options"]["num_ctx"], 8192)
+        self.assertEqual(draft["credentials"]["options"]["num_predict"], 1600)
 
     # -------------------------------------------------------------- APIキー
 

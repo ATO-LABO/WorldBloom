@@ -19,6 +19,23 @@ from gapengine.synopsis import BACKENDS
 DEFAULT_BACKEND = "llama-server"
 LIMIT_FIELDS = ("max_calls", "call_timeout_seconds", "wall_seconds", "max_saved_response_bytes")
 VERIFIED_MODELS_LIMIT = 20
+GEMMA_MODEL = 'gemma4:e4b-it-qat'
+GEMMA_PROFILE = 'gemma4-e4b-qat'
+
+
+def model_credentials(section, model):
+    """A selected model's explicit profile never changes another model's base options."""
+    result = deepcopy(section)
+    profiles = result.pop('model_options', {})
+    if not isinstance(profiles, dict):
+        raise ConfigError('settings', 'モデル別の設定形式を確認してください')
+    profile = profiles.get(model)
+    if profile is not None:
+        if not isinstance(profile, dict) or not isinstance(profile.get('options'), dict) or type(profile.get('think')) is not bool:
+            raise ConfigError('settings', '選択中のモデル別設定を確認してください')
+        result['options'] = deepcopy(profile['options'])
+        result['think'] = profile['think']
+    return result
 
 # generation_availability() only checks that an api_key string is non-empty --
 # cheap enough to run on every /configs render and every admission check. A
@@ -179,8 +196,12 @@ def read_output_settings(settings_path):
     settings = _read_settings(settings_path)
     backend = _default_backend(settings)
     backends = {b: _backend_view(settings, b) for b in BACKENDS}
-    return {"backend": backend, "model": backends[backend]["model"],
+    view = {"backend": backend, "model": backends[backend]["model"],
             "limits": backends[backend]["limits"], "backends": backends}
+    profile = _section(settings, backend).get('model_options', {})
+    if isinstance(profile, dict) and view['model'] == GEMMA_MODEL and GEMMA_MODEL in profile:
+        view['profile'] = GEMMA_PROFILE
+    return view
 
 
 def resolve_generation(settings_path):
@@ -266,7 +287,7 @@ def test_generation(settings_path, backend, model):
 def write_output_settings(settings_path, changes):
     if settings_path is None:
         raise ConfigError("settings", "設定ファイルの場所が未設定です")
-    if not isinstance(changes, dict) or set(changes) - {"backend", "model", "limits"}:
+    if not isinstance(changes, dict) or set(changes) - {"backend", "model", "limits", "profile"}:
         raise ConfigError("settings", "未対応の設定項目があります")
     settings = _read_settings(settings_path)
     output = settings.get("output")
@@ -295,6 +316,16 @@ def write_output_settings(settings_path, changes):
         limits[key] = _integer(value, "limits." + key, minimum)
     section = output.get(backend)
     section = dict(section) if isinstance(section, dict) else {}
+    if 'profile' in changes:
+        if changes['profile'] != GEMMA_PROFILE or backend != 'ollama' or model != GEMMA_MODEL:
+            raise ConfigError('profile', 'Gemma 4の接続先とモデルを確認してください')
+        profiles = section.get('model_options', {})
+        if not isinstance(profiles, dict):
+            raise ConfigError('profile', '既存のモデル別設定を確認してください。上書きしません')
+        profiles = deepcopy(profiles)
+        profiles[GEMMA_MODEL] = {'think':False, 'options':{'num_ctx':8192, 'temperature':1.0,
+            'top_p':0.95, 'top_k':64, 'use_mmap':True}}
+        section['model_options'] = profiles
     section["model"] = model
     section["limits"] = limits
     output[backend] = section
