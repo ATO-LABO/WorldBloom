@@ -42,7 +42,7 @@ class FestivalGATests(unittest.TestCase):
             self.assertEqual(result['temporal_evaluation']['matched_completions'],88)
             self.assertGreater(len(result['effective_sequence']),0)
             self.assertEqual(result['temporal_evaluation']['absence_reward'],0)
-            draws=json.loads((root/'first/seed-0/choice-draws.json').read_text())
+            draws=json.loads((root/'first/seed-0/choice-draws.json').read_text(encoding='utf-8'))
             self.assertEqual({d['actor'] for d in draws},set(ACTORS));self.assertEqual(len(draws),88)
             rows=read_rows(root/'first/seed-0/layers.jsonl')
             broken=deepcopy(rows)
@@ -59,8 +59,8 @@ class FestivalGATests(unittest.TestCase):
             root=Path(tmp);cfg={'search_adapter':ADAPTER,'out':str(root/'first'),
                 'population':2,'generations':2,'ga_seed':3,'seeds':[0],'processes':1}
             archive=_evolve(cfg);cfg['out']=str(root/'second');_evolve(cfg)
-            first=json.loads((root/'first/summary.json').read_text())
-            second=json.loads((root/'second/summary.json').read_text())
+            first=json.loads((root/'first/summary.json').read_text(encoding='utf-8'))
+            second=json.loads((root/'second/summary.json').read_text(encoding='utf-8'))
             self.assertEqual(first['source_manifest'],second['source_manifest'])
             self.assertTrue(first['ga_evolution']);self.assertEqual(first['individuals'],4)
             self.assertTrue(any(i['parents'] for i in first['history'][1]))
@@ -80,7 +80,8 @@ class FestivalGATests(unittest.TestCase):
                 'expected_input_manifest':input_manifest(), 'out_dir':str(root/'run'),'logical_root':str(root)}
             result=run_individual(job)
             self.assertEqual(result['runs'][0]['input_manifest'],input_manifest())
-            (project/'world.yaml').write_text((project/'world.yaml').read_text()+'\n')
+            world_path = project/'world.yaml'
+            world_path.write_bytes(world_path.read_bytes() + b'\n')
             job['out_dir']=str(root/'bad')
             with self.assertRaises(ValueError):run_individual(job)
 
