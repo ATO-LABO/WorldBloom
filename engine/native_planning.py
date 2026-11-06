@@ -254,7 +254,10 @@ class NativePlanning:
         relevant_outcomes = [r for r in self.config['outcomes'] if ('state',r['key']) in needed]
         fight_targets = {r['match']['loser'] for r in relevant_outcomes if r['verb']=='fight' and 'loser' in r['match']}
         def step(verb,args,label,effects,assumptions=None,meta=None,cost=0,recovery=0):
-            if verb not in allowed or not world.genre_allows(verb) or cost > shadow.stamina: return
+            from engine.stamina import planned_cost
+            cost = planned_cost(world, verb, cost)
+            if not world.mechanics_enabled('stamina_management'): recovery = 0
+            if verb not in allowed or not world.genre_allows(verb) or not world.action_usage_allows(verb,args) or cost > shadow.stamina: return
             peer=world.subjects.get(str(args[0])) if args else None
             if peer is not None and world.action_graph_enabled:
                 if world.permission(verb,world.target_role(actor,peer))<=0:return
@@ -264,7 +267,7 @@ class NativePlanning:
             yield {'verb':verb,'args':args,'label':label,'duration':1,'cost':cost,'recovery':recovery,
                    'effects':[*effects,*[assign(aux('phase',phase),True) for phase in sorted(shadow.phase)]],
                    'assumptions':assumptions or [],'meta':meta or {}}
-        if shadow.stamina < actor.stamina_max:
+        if world.mechanics_enabled('stamina_management') and shadow.stamina < actor.stamina_max:
             yield from step('rest',[],'休息する',[],recovery=min(actor.stamina_max-shadow.stamina,actor.stamina_recover))
         sought={c[1] for c in needed if c[0]=='relation' and c[1]!=actor.id} | {c[2] for c in needed if c[0]=='relation' and c[2]!=actor.id}
         sought.update(c[1] for c in needed if c[0]=='zone' and c[1]!=actor.id)

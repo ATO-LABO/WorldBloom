@@ -4,6 +4,7 @@ Intermediate tasks are runtime plans, never additions to personal commitments.
 Unknown preconditions remain explicit assumptions, not newly acquired facts.
 """
 from copy import copy, deepcopy
+from engine.action_constraints import response_actor_allowed
 import heapq
 import itertools
 import json
@@ -162,7 +163,8 @@ class GoalPlanner:
                     for cid in route.requires_conditions:
                         needed.update(coordinates(world.concerns.conditions[cid]['test']))
             for spec in world.responses.actions.values():
-                if actor.id not in spec['actors'] or not needed.intersection(map(effect_coordinate, spec['effects'])):
+                if not world.action_usage_allows('respond', (spec['id'],)): continue
+                if not response_actor_allowed(world,spec,actor.id) or not needed.intersection(map(effect_coordinate, spec['effects'])):
                     continue
                 operators.add(spec['id'])
                 needed.update(('inventory', actor.id, item) for item in spec['items'])
@@ -188,6 +190,12 @@ class GoalPlanner:
         return needs
 
     def _steps(self, world, actor, root, state, turn, elapsed, spent):
+        from engine.action_constraints import denial as constraint_denial
+        for step in self._unfiltered_steps(world, actor, root, state, turn, elapsed, spent):
+            if not constraint_denial(world, actor, step['verb'], step['args'], turn + elapsed):
+                yield step
+
+    def _unfiltered_steps(self, world, actor, root, state, turn, elapsed, spent):
         joint = getattr(world,'joint_activities',None)
         if joint is not None and joint.sim is not None:
             yield from joint.planning.steps(world,actor,root,state,turn,elapsed,spent)
@@ -216,7 +224,7 @@ class GoalPlanner:
         social=getattr(world,'social_planner',None)
         if social is not None: yield from social.steps(world,actor,root,state,turn,elapsed,spent)
         timing = world.action_timing
-        if native is None and timing is not None and 'rest' in timing.rules and 'rest' in allowed and world.genre_allows('rest'):
+        if world.mechanics_enabled('stamina_management') and native is None and timing is not None and 'rest' in timing.rules and 'rest' in allowed and world.genre_allows('rest'):
             recovery = min(actor.stamina_max - shadow.stamina, actor.stamina_recover)
             if recovery > 1e-9:
                 duration, _, completion = step_timing(world, actor, 'rest', (), 1, 0, turn=turn, elapsed=elapsed)
@@ -235,7 +243,7 @@ class GoalPlanner:
                 duration, cost, completion = step_timing(world, actor, 'move', (route.destination,), hops, raw_cost,
                     turn=turn, elapsed=elapsed, hops=hops)
                 if (route.destination not in shadow.range_zones or route.destination in excluded
-                        or cost > shadow.stamina or route.requires_item and not shadow.has_item(route.requires_item)):
+                        or world.mechanics_enabled('stamina_management') and cost > shadow.stamina or route.requires_item and not shadow.has_item(route.requires_item)):
                     continue
                 yield {'verb': 'move', 'args': [route.destination], 'label': route.destination,
                        'duration': duration, 'cost': cost,
@@ -270,7 +278,7 @@ class GoalPlanner:
                     remaining = spec['steps'] - (world.responses.progress.get((actor.id, spec['id']), 0) if not elapsed else 0)
                     duration, cost, completion = step_timing(world, actor, 'respond', (spec['id'],), remaining,
                         spec['cost'] * remaining, turn=turn, elapsed=elapsed)
-                    if spec['cost'] * remaining <= shadow.stamina:
+                    if not world.mechanics_enabled('stamina_management') or cost <= shadow.stamina:
                         yield {'verb': 'respond', 'args': [spec['id']], 'label': spec['label'],
                                'duration': duration, 'cost': cost,
                                **({'completion_delay': completion} if world.action_timing is not None else {}),

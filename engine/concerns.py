@@ -253,7 +253,9 @@ class Concerns:
 
     def evaluate(self,world,cid,*,actor=None,projection=None,justified=True):
         definition=self.conditions[cid];test=definition['test'];keys=coordinates(test)
-        overlay={effect_coordinate(e):e['value'] for e in (projection or {}).get('effects',[])}
+        from engine.vitality import transition_value
+        overlay={effect_coordinate(e):(transition_value(world,world.subjects[e['actor']],e['value'])
+                 if e['kind']=='vitality' else e['value']) for e in (projection or {}).get('effects',[])}
         values=[];sources=[]
         for key in keys:
             if key in overlay:

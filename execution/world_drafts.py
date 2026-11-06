@@ -139,11 +139,13 @@ def compile_draft(value):
     _array(facts, "facts", 0, 8)
     for i, fact in enumerate(facts):
         fp = f"facts.{i}"
-        if not isinstance(fact, dict) or not {'name', 'description'} <= fact.keys() or set(fact) - {'name', 'description', 'place', 'acquisition', 'known'} or ('place' in fact) == ('acquisition' in fact):
+        if not isinstance(fact, dict) or not {'name', 'description'} <= fact.keys() or set(fact) - {'name', 'description', 'display_name', 'place', 'acquisition', 'known'} or ('place' in fact) == ('acquisition' in fact):
             _bad(fp, '情報の内容と入手経路を確認してください')
         if 'known' in fact and (not isinstance(fact['known'], list) or any(p not in people for p in fact['known']) or len(set(fact['known'])) != len(fact['known'])):
             _bad(fp, '初期知識を持つ人物を確認してください')
         fact["name"] = _text(fact["name"], fp + ".name")
+        if 'display_name' in fact:
+            fact['display_name'] = _text(fact['display_name'], fp + '.display_name', 120)
         fact["description"] = _text(fact["description"], fp + ".description", 2000)
         if "place" in fact:
             _reference(fact["place"], zones, fp + ".place")
@@ -198,7 +200,7 @@ def compile_draft(value):
         seen.add(pair)
         routes[route["from"]].append({key: route[key] for key in ("to", "cost", "requires_item") if key in route})
     world = {key: d[key] for key in ("name", "overview", "initial_story", "protagonist", "antagonist")}
-    world.update(story_genres=[], time={"days": 7, "slots": ["朝", "昼", "夕方", "夜"]},
+    world.update(vitality={"allow_death": False}, stamina={"zero_behavior":"rest"}, time={"days": 7, "slots": ["朝", "昼", "夕方", "夜"]},
                  zones=[{"name": p["name"], "note": p["description"]} for p in d["places"]],
                  routes=routes, items=[{"name": p["name"], "lootable": True} for p in d["items"]],
                  gapengine={"action_graph": "templates/basic/action_graph.yaml", "effects": "templates/basic/effects.yaml"},
@@ -251,7 +253,8 @@ def compile_draft(value):
         subject['knowledge'] = [f['name'] for f in facts if p['name'] in f.get('known', [])]
         subject['verbs'] += sorted(extra_verbs)
         subjects[f"subjects/person_{i+1:02d}.yaml"] = yaml.safe_dump(subject, allow_unicode=True, sort_keys=False)
-    return d, world, subjects
+    from engine.world_format import initialize
+    return d, initialize(world), subjects
 
 
 def validate(repo, value):
@@ -287,7 +290,8 @@ def validate(repo, value):
                 raise
             _bad("draft", "エンジンへの入力を確認できません: " + type(error).__name__)
     narrative_only = [p["name"] for p in d["people"] if p["goal"].get("description") and not p["goal"]["conditions"]]
-    return d, world, subjects, {"subjects": len(result["subjects"]), "places": len(d["places"]),
+    from engine.world_format import initialize
+    return d, initialize(world), subjects, {"subjects": len(result["subjects"]), "places": len(d["places"]),
         "narrative_only_goals": narrative_only,
         "note": "構造・参照とエンジン入力を確認しました。到達可能性や面白さは保証していません。"}
 

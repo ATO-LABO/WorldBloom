@@ -94,6 +94,14 @@ def _zip_entries_to_files(archive) -> dict[str, str]:
         if not normalized.startswith(root_prefix):
             continue
         rel = normalized[len(root_prefix):]
+        if rel.casefold() == "purpose-preparation.json":
+            raise ConfigError("zip_base64", "目標と準備を含む世界ZIPはこの形式では取り込めません。設定を欠落させないため取込を停止しました。", code="unsupported")
+        if rel.casefold() == "time-pressure.yaml":
+            raise ConfigError(
+                "zip_base64",
+                "時間制約の根拠を含む世界ZIPはこの形式では取り込めません。根拠を欠落させないため取込を停止しました。",
+                code="unsupported",
+            )
         if rel != "world.yaml" and not _SUBJECT_REL.fullmatch(rel):
             if rel.startswith("subjects/"):
                 raise ConfigError("zip_base64", f"{rel}: 対象外のファイル名です", code="bad_request")
@@ -213,6 +221,11 @@ class LibraryStore:
         for entry in sorted(p for p in root.iterdir() if p.is_dir()):
             world = _load_yaml_or_none(entry / "world.yaml")
             world = world if isinstance(world, dict) else {}
+            from engine.world_format import validate as validate_format
+            try:
+                validate_format(world)
+            except ValueError:
+                continue
             subjects_dir = entry / "subjects"
             subjects = sorted(subjects_dir.glob("*.yaml")) if subjects_dir.is_dir() else []
             result.append({
@@ -255,7 +268,8 @@ class LibraryStore:
         base = contained(self.repo / "projects", identifier(world_id, "world_id"))
         if not base.is_dir():
             raise ConfigError("world_id", "世界がありません", code="not_found")
-        files = ["world.yaml"] if (base / "world.yaml").is_file() else []
+        self._validate_saved_world(base)
+        files = ["world.yaml"]
         subjects_dir = base / "subjects"
         if subjects_dir.is_dir():
             files += sorted("subjects/" + p.name for p in subjects_dir.glob("*.yaml"))
@@ -272,11 +286,24 @@ class LibraryStore:
 
     def read(self, kind, owner_id, rel):
         _validate_rel(kind, rel)
-        path = contained(self._base(kind, owner_id), rel)
+        base = self._base(kind, owner_id)
+        if kind == "world":
+            self._validate_saved_world(base)
+        path = contained(base, rel)
         try:
             return path.read_text(encoding="utf-8")
         except FileNotFoundError:
             raise ConfigError("path", "ファイルがありません", code="not_found") from None
+
+    @staticmethod
+    def _validate_saved_world(base):
+        from engine.world_format import validate
+        try:
+            validate(yaml.safe_load(contained(base, "world.yaml").read_bytes()))
+        except FileNotFoundError:
+            raise ConfigError("world_id", "世界がありません", code="not_found") from None
+        except (ValueError, yaml.YAMLError) as error:
+            raise ConfigError("world_format_version", str(error), code="unsupported") from error
 
     def write(self, kind, owner_id, rel, text):
         if kind in ("world", "genre"):
@@ -293,6 +320,14 @@ class LibraryStore:
         base = self._base(kind, owner_id)
         if not base.is_dir():
             raise ConfigError(kind + "_id", "対象がありません", code="not_found")
+        if kind == "world":
+            self._validate_saved_world(base)
+            if rel == "world.yaml":
+                from engine.world_format import validate
+                try:
+                    validate(yaml.safe_load(text))
+                except (ValueError, yaml.YAMLError) as error:
+                    raise ConfigError("world_format_version", str(error), code="unsupported") from error
         path = contained(base, rel)
         if rel.startswith("subjects/"):
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -323,9 +358,11 @@ class LibraryStore:
             "ending": [], "target_ending": [],
             "gapengine": {"action_graph": "templates/basic/action_graph.yaml",
                           "effects": "templates/basic/effects.yaml"},
-            "story_genres": [],
+            "vitality": {"allow_death": False},
+            "stamina": {"zero_behavior": "rest"},
         }
-        return self._publish_world(new_id, world=world)
+        from engine.world_format import initialize
+        return self._publish_world(new_id, world=initialize(world))
 
     def create_world(self, new_id, *, from_id, genre_id, name):
         identifier(new_id, "world_id")
@@ -379,7 +416,25 @@ class LibraryStore:
                         # source ("\r\n") into "\r\r\n" and inserting a blank
                         # line into every folded/literal YAML block scalar.
                         (staged / rel).write_bytes(text.encode("utf-8"))
+                from engine.world_format import validate
+                try:
+                    validate(world)
+                except ValueError as error:
+                    raise ConfigError("world_format_version", str(error), code="unsupported") from error
                 (staged / "world.yaml").write_text(yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                if (staged / "time-pressure.yaml").exists():
+                    # Preserve the sidecar on cloning, but never publish stale
+                    # references as a new, apparently valid world.
+                    from engine.time_pressure import load_sources
+                    try:
+                        people = {}
+                        for subject_path in (staged / "subjects").glob("*.yaml"):
+                            subject = yaml.safe_load(subject_path.read_bytes())
+                            if isinstance(subject, dict) and isinstance(subject.get("id"), str):
+                                people[subject["id"]] = subject
+                        load_sources(staged, world, people)
+                    except (OSError, ValueError, TypeError, KeyError, yaml.YAMLError) as error:
+                        raise ConfigError("time_pressure.sources", "Copied deadline settings have invalid references", code="bad_request") from error
                 staged.rename(dest)
         return new_id
 

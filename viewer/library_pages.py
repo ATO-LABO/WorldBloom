@@ -13,6 +13,7 @@ import hashlib
 import json
 from http import HTTPStatus
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import yaml
 
@@ -123,7 +124,7 @@ GENRE_LEAD = (
 
 
 def render_genres_section(genres, *, heading=True):
-    from viewer.story_genre_pages import panel
+    from viewer.action_type_pages import panel
     return panel()
 
 
@@ -672,6 +673,10 @@ def _worlds_detail(handler, world_id):
         from viewer.world_review import render
         handler._send_html(render(world,job_store=job_store))
         return
+    if _query(handler).get("view") == ["actions"]:
+        from viewer import action_settings
+        handler._send_html(action_settings.render(world, store, job_store))
+        return
     if _query(handler).get("view") != ["advanced"]:
         from execution.world_editor import snapshot
         from viewer import world_prototype
@@ -763,14 +768,14 @@ def _worlds_routes(handler, world_id):
 
 
 def _genres_new(handler):
-    from viewer.story_genre_pages import show
+    from viewer.action_type_pages import show
     show(handler)
 
 
 def _genres_detail(handler, genre_id):
-    from engine.story_genres import catalog
+    from engine.action_types import catalog
     if genre_id in {g["id"] for g in catalog()}:
-        from viewer.story_genre_pages import show
+        from viewer.action_type_pages import show
         show(handler, genre_id)
         return
 
@@ -886,6 +891,29 @@ def _create_world(handler):
             raise ConfigError("request", "作成方法と入力項目を確認してください", code="bad_request")
         world_id = store.create_world(body["world_id"], from_id=body["from_world_id"], genre_id=body["template_id"], name=body["name"])
     handler._send_json(HTTPStatus.CREATED, {"world_id": world_id})
+
+
+def _action_usage_get(handler, world_id, operation=None):
+    jobs = _require_job_store(handler)
+    from execution import action_usage_settings as settings
+    store = LibraryStore(jobs.configs.repo)
+    if operation == 'status':
+        query = parse_qs(urlsplit(handler.path).query)
+        result = settings.status(store,world_id,query.get('request_id',[''])[0])
+    else:result = settings.view(store,world_id)
+    handler._send_json(HTTPStatus.OK,result)
+
+
+
+def _action_usage_post(handler, world_id, operation):
+    body = _boundary_body(handler)
+    jobs = _require_job_store(handler)
+    from execution import action_usage_settings as settings
+    store = LibraryStore(jobs.configs.repo)
+    result = settings.save(store,world_id,body) if operation=='save' else settings.check(store,world_id,body)
+    if operation=='check':result={k:v for k,v in result.items() if k!='candidate'}
+    handler._send_json(HTTPStatus.OK,result)
+
 
 
 def _edit_world(handler, world_id):
@@ -1276,6 +1304,8 @@ def _import_patch_action(handler, world_id):
 
 def _resolve(parts, method):
     if method == "POST":
+        if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "action-usage" and parts[4] in ("check", "save"):
+            return _action_usage_post, (parts[2], parts[4])
         if parts == ["api", "world-drafts"]:
             return _world_draft_post, ()
         if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("cancel", "validate", "adopt", "revise", "apply-revision"):
@@ -1321,6 +1351,10 @@ def _resolve(parts, method):
     if method != "GET" or not parts:
         return None
     head = parts[0]
+    if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "action-usage":
+        return _action_usage_get, (parts[2],)
+    if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3:] == ["action-usage", "status"]:
+        return _action_usage_get, (parts[2], "status")
     if head == "api" and len(parts) == 3 and parts[1] == "world-drafts":
         return _world_draft_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "time-settings":

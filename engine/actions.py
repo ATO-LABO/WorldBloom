@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from engine.economy import purchasable
+
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
@@ -259,10 +261,12 @@ def _missing_price_currency(subject: Subject, world: World) -> set[str]:
     """Phase B: the ``buy`` analogue of ``_missing_recipe_materials`` --
     currencies still short for some not-yet-bought priced item."""
 
+    if not world.mechanics_enabled('budgeted_purchases'):
+        return set()
     missing: set[str] = set()
     for product, definition in sorted(world.items.items()):
         price = definition.get("price")
-        if not price or subject.has_item(product):
+        if not purchasable(definition,True) or not price or subject.has_item(product):
             continue
         for currency, required in sorted(price.items()):
             if subject.inventory.get(currency, 0) < int(required):
@@ -330,11 +334,11 @@ def _buy_ready_destinations(subject: Subject, world: World) -> set[str]:
     destinations: set[str] = set()
     for item, definition in sorted(world.items.items()):
         price = definition.get("price")
-        if not price or subject.has_item(item):
+        if not purchasable(definition,world.mechanics_enabled('budgeted_purchases')) or subject.has_item(item):
             continue
-        if not all(
+        if world.mechanics_enabled('budgeted_purchases') and not all(
             subject.inventory.get(currency, 0) >= int(required)
-            for currency, required in price.items()
+            for currency, required in (price or {}).items()
         ):
             continue
         shop_zone = definition.get("shop_zone")
@@ -439,7 +443,7 @@ def _movement_candidates(
             * destination_weights[destination]
             / total
         )
-        if subject.exhausted:
+        if world.mechanics_enabled('stamina_management') and subject.exhausted:
             weight *= 0.3
         candidates_out.append(
             (
@@ -509,7 +513,7 @@ def _labor_candidates(
     subject: Subject,
     world: World,
 ) -> list[tuple[Action, float]]:
-    if "labor" not in subject.verbs or not _labor_zone_eligible(subject, world):
+    if not world.action_enabled('labor') or not _labor_zone_eligible(subject, world):
         return []
     return [
         (
@@ -1207,7 +1211,7 @@ def _persuade_candidates(
 
 
 def _relationship_candidates(subject, world, present):
-    if not world.story_genre_allows("start_relationship"):
+    if not world.action_enabled("start_relationship"):
         return []
     result = []
     for target in _living_targets(subject, present):
@@ -1420,10 +1424,10 @@ def _craft_candidates(
 
 def _can_buy(subject: Subject, item: str, world: World) -> bool:
     definition = world.items[item]
-    price = definition["price"]
-    if subject.zone != definition.get("shop_zone"):
+    price = definition.get("price") or {}
+    if not purchasable(definition,world.mechanics_enabled('budgeted_purchases')) or subject.zone != definition.get("shop_zone"):
         return False
-    return all(
+    return not world.mechanics_enabled('budgeted_purchases') or bool(price) and all(
         subject.inventory.get(currency, 0) >= int(required)
         for currency, required in price.items()
     )
@@ -1441,7 +1445,7 @@ def _buy_candidates(
             1.0 + subject.traits["diligence"],
         )
         for item, definition in sorted(world.items.items())
-        if definition.get("price") and _can_buy(subject, item, world)
+        if definition.get("shop_zone") is not None and _can_buy(subject, item, world)
     ]
 
 
@@ -1854,6 +1858,12 @@ def candidates(
 
     if subject.vitality == "dead":
         return []
+    timing = world.action_timing
+    if timing is not None and 'work_duration' in timing.pending.get(subject.id,{}):return []
+    from engine.stamina import forced_rest,zero_behavior
+    if subject.stamina<=0 and zero_behavior(world)=='death':return []
+    rest=forced_rest(world,subject)
+    if rest is not None:return [(rest,1.0)]
     if subject.vitality == "downed":
         return [(Action("rest"), 1.0)]
 
@@ -1865,10 +1875,15 @@ def candidates(
         turn=int(sim.turn),
         day=int(sim.day),
     )
+    from engine.action_constraints import rules as action_rules
+    if any(rule['actors'] is not None for rule in action_rules(world).values()):
+        from copy import copy
+        subject = copy(subject)
+        subject.verbs = set(allowed_verbs)
     weighted: list[tuple[Action, float]] = []
     weighted.extend(_movement_candidates(subject, world, sim, present))
 
-    if "rest" in subject.verbs and subject.stamina_max > 0.0:
+    if world.mechanics_enabled("stamina_management") and "rest" in subject.verbs and subject.stamina_max > 0.0:
         ratio = subject.stamina / subject.stamina_max
         rest_weight = max(
             0.05,
@@ -1876,7 +1891,7 @@ def candidates(
             * 2.0
             * (1.0 - ratio) ** 2,
         )
-        if subject.exhausted:
+        if world.mechanics_enabled('stamina_management') and subject.exhausted:
             rest_weight *= 2.0
         weighted.append(
             (
@@ -1959,11 +1974,15 @@ def candidates(
             weighted = []  # Explicit joint worlds use the same purpose-led search, including individual operators.
         weighted.extend(planned)
 
+    from engine.action_constraints import denial as constraint_denial
+    from engine.stamina import required_cost
+    weighted = [(a,w) for a,w in weighted if required_cost(world, subject, a) <= subject.stamina]
     return sorted(
         (
             (action, float(weight))
             for action, weight in weighted
-            if weight > 0.0
+            if weight > 0.0 and world.action_usage_allows(action.verb, action.args)
+            and not constraint_denial(world, subject, action.verb, action.args, int(sim.turn))
             and ((action.verb in allowed_verbs and world.genre_allows(action.verb))
                  or getattr(world,'joint_activities',None) is not None
                  and action.verb in {'join_activity','await_activity'} and action.meta.get('joint_segment'))

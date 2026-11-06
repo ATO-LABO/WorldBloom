@@ -104,7 +104,7 @@ def world_people(store, world_id):
 
 def world_card(store, world, genres):
     wid = world["id"]
-    from engine.story_genres import for_world, label
+    from engine.action_types import for_world, label
     try:
         definition = yaml.safe_load(store.read("world", wid, "world.yaml")) or {}
         selected = for_world(definition, store.repo / "projects" / wid / "world.yaml")

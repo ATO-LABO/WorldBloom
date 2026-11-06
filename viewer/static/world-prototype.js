@@ -179,7 +179,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const expansionHtml = expansionTemplate ? expansionTemplate.innerHTML : '';
     return title(model.name,'この世界の前提を確認する') +
       `<section class="wp-section">${head('どんな世界？',edit('overview'))}<p>${absent(model.overview)}</p></section>`+
-      `<p class="wp-muted">ジャンル：${esc(model.story_genre_label || '共通')} · <a href="/worlds/${encodeURIComponent(model.id)}?view=advanced#genres">世界のルールで変更</a></p>`+
+      `<p class="wp-muted">行動の種類：${esc(model.action_type_label || '共通')} · <a href="/worlds/${encodeURIComponent(model.id)}?view=actions">行動設定で変更</a></p>`+
       `<div class="wp-columns"><section><h2>物語の出発点</h2><p>${hero?`${esc(hero.id)}は${esc(entry(hero))}にいる。`:'主人公は未指定です。'}</p></section><section><h2>目指す結末</h2><p>${esc(goal(hero))}</p></section></div>`+
       `<section class="wp-section">${head('この世界を構成するもの')}<button class="wp-jump" data-screen="people"><strong>登場人物</strong><span>${esc(people.map(p=>p.id).join('、')) || 'まだいません'}</span><span>→</span></button><button class="wp-jump" data-screen="places"><strong>場所</strong><span>${esc(zones.map(z=>z.name).join('、')) || 'まだありません'}</span><span>→</span></button><button class="wp-jump" data-screen="story"><strong>初期物語</strong><span>シミュレーション開始時点の導入・状況</span><span>→</span></button><button class="wp-jump" data-screen="time"><strong>時間</strong><span>${esc(time())}</span><span>→</span></button></section>`+
       `<section class="wp-section">${head('物語の始まり',edit('intro','導入文を編集'))}<p class="wp-story-copy">${absent(model.intro)}</p></section><section class="wp-section">${head('世界全体で目指す結末',edit('target-ending'))}<p>${esc((w.target_ending||[]).map(id=>(w.ending||[]).find(e=>e.id===id)?.label||id).join('・')||'未設定')}</p></section>`+
@@ -461,10 +461,6 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     }else if(key==='overview'||key==='intro'){
       name=key==='overview'?'世界の説明を編集':'導入文を編集';fields=[...(key==='overview'?[field('name','世界の名前',model.name,'text')]:[]),field('text','文章',model[key])];
       applyEdit=values=>({operation:key,target:null,values});
-    }else if(key==='genre'){
-      name='ジャンルを選ぶ';
-      fields=[{html:'<p>共通の行動に、必要なジャンルを追加できます。複数選択できます。</p><fieldset><legend>この世界で使うジャンル</legend><label><input type="checkbox" checked disabled> 共通（常に有効）</label>'+model.story_genre_catalog.map(g=>`<label><input type="checkbox" data-story-genre value="${esc(g.id)}" ${(model.story_genres||[]).includes(g.id)?'checked':''}> ${esc(g.name)}<small>${esc(g.description)}</small></label>`).join('')+'</fieldset>'}];
-      applyEdit=()=>({operation:'story-genres',target:null,values:{genres:[...dialog.querySelectorAll('[data-story-genre]:checked')].map(el=>el.value)}});
     }else if(key==='time'){
       name='時間の範囲を編集';fields=[field('days','日数',w.time?.days||16,'number'),field('slots','時間帯（読点で区切る）',(w.time?.slots||[]).join('、'),'text')];
       applyEdit=v=>({operation:'time',target:null,values:{days:Number(v.days),slots:split(v.slots)}});

@@ -247,6 +247,8 @@ def configure_phase2(
             )
         if type(trial.get("transfer_item", False)) is not bool or trial.get("transfer_item") and "item" not in grants:
             raise ValueError("transfer_item requires an item reward and a boolean value")
+        if "item_amount" in trial and ("item" not in grants or type(trial["item_amount"]) is not int or not 1 <= trial["item_amount"] <= 1000000000):
+            raise ValueError("item_amount requires an item reward and an integer from 1 to 1000000000")
         unknown_grants = set(grants) - {"fact", "item"}
         if unknown_grants:
             raise ValueError(
@@ -1074,9 +1076,8 @@ def available_verbs(
 ) -> set[str]:
     """Apply matching phase-rule allowlists and denylists."""
 
-    base_verbs = set(subject.verbs)
-    from engine.story_genres import granted_actions
-    base_verbs.update(granted_actions(world.story_genres))
+    from engine.action_constraints import effective_verbs
+    base_verbs = effective_verbs(world, subject)
     if not world.phase_rules:
         return base_verbs
 
@@ -1184,7 +1185,7 @@ def trial_options(
             and not subject.has_item(str(required_item))
         ):
             continue
-        if trial.get("transfer_item") and not world.subjects[giver].has_item(str(trial["grants"]["item"])):
+        if trial.get("transfer_item") and not world.subjects[giver].has_item(str(trial["grants"]["item"]), trial.get("item_amount", 1)):
             continue
         result.append(trial)
     return result

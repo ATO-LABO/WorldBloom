@@ -665,6 +665,15 @@ class CalendarRuntime:
         return command['minutes']
 
     def _start(self, command):
+        from engine.stamina import needs_rest,resolve_zero
+        person=self.people[command['actor']]
+        for marker in resolve_zero(self.world,person):
+            self.emit('zero:'+command['id']+':'+marker['subject'],marker['verb'],marker['subject'],**marker['details'])
+        if person.vitality=='dead':
+            self.emit('reject:'+command['id'],'action_rejected',person.id,result='rejected',reason='actor_dead',choice=command)
+            return
+        if needs_rest(self.world,person) and person.id not in self.busy:
+            command={key:command[key] for key in ('id','actor','at') if key in command}|{'verb':'rest','minutes':1,'stamina_forced_rest':True,'requested_verb':command['verb']}
         if self.facts is not None:
             from engine.fact_runtime import VERBS
             if command['verb'] in VERBS:
@@ -730,7 +739,8 @@ class CalendarRuntime:
                     reason = 'task_already_complete'
                 else:
                     duration = min(duration, remaining)
-                    if ('energy' in self.contract and person.stamina+1e-9 < duration*self.energy_rules['work_per_minute']):
+                    from engine.stamina import adjusted_cost
+                    if (self.world.mechanics_enabled('stamina_management') and person.stamina+1e-9 < adjusted_cost(self.world,'work',duration*self.energy_rules['work_per_minute'] if 'energy' in self.contract else duration/120)):
                         self.emit('reject:'+ident, 'action_rejected', actor, result='rejected', reason='insufficient_stamina', choice=choice)
                         return
                     reserve = (task['effort_minutes']+duration+spec['minutes_per_unit']-1)//spec['minutes_per_unit']-task['reserved_units']
@@ -756,9 +766,10 @@ class CalendarRuntime:
         if reason:
             self.emit('reject:'+ident, 'action_rejected', actor, result='rejected', reason=reason, choice=choice)
             return
-        if 'energy' in self.contract and verb in ('move','work'):
-            rate = self.energy_rules[verb+'_per_minute']
-            if float(Fraction(*self.energy[actor]))+1e-9 < duration*rate:
+        if self.world.mechanics_enabled('stamina_management') and 'args' not in choice and ('energy' in self.contract or self.world.stamina.get('action_cost_adjustments',{}).get(verb)):
+            from engine.stamina import adjusted_cost
+            base=duration*self.energy_rules[verb+'_per_minute'] if verb in ('move','work') and 'energy' in self.contract else duration/120 if verb=='work' else 0
+            if not choice.get('stamina_forced_rest') and float(Fraction(*self.energy[actor]))+1e-9 < adjusted_cost(self.world,verb,base):
                 self.emit('reject:'+ident, 'action_rejected', actor, result='rejected', reason='insufficient_stamina', choice=choice)
                 return
         if not isinstance(duration, int) or duration < 1 or self.now+duration > self.end:
@@ -769,6 +780,10 @@ class CalendarRuntime:
             if self.known_terms[actor].get(key) != choice.get('terms_hash'):
                 self.emit('reject:'+ident, 'action_rejected', actor, result='rejected', reason='terms_not_received', choice=choice)
                 return
+        if verb=='rest' and 'args' not in choice and not choice.get('stamina_forced_rest'):
+            from engine.stamina import adjusted_cost
+            person.change_stamina(-adjusted_cost(self.world,'rest',0))
+            exact=Fraction(str(person.stamina));self.energy[actor]=[exact.numerator,exact.denominator]
         source = person.zone
         window = self.time_kernel.window(duration, unit='minute')
         pending = {**choice, 'start': window.start, 'finish': window.finish,
@@ -784,15 +799,18 @@ class CalendarRuntime:
         elapsed = at-self.now if elapsed is None else elapsed
         for actor, person in sorted(self.people.items()):
             # Recovery uses elapsed minutes, not number/size of display bands.
-            if (self.planning is None and actor not in self.busy and (self.facts is None or not self.facts.actor_busy(actor))
+            if (not (person.stamina<=0 and self.world.stamina.get('zero_behavior') in ('rest','death')) and self.world.mechanics_enabled('stamina_management') and self.world.stamina['passive_recovery'] and self.planning is None and actor not in self.busy and (self.facts is None or not self.facts.actor_busy(actor))
                     and (self.joint is None or not self.joint.bookings.is_busy(actor,self.now-elapsed))):
                 energy = min(Fraction(str(person.stamina_max)), Fraction(*self.energy[actor])+Fraction(elapsed, 60))
                 self.energy[actor] = [energy.numerator, energy.denominator]
                 person.stamina = float(energy)
         for actor, action in sorted(self.busy.items(), key=lambda pair: pair[1]['id']):
-            if action['verb'] == 'move' and 'energy' in self.contract:
+            if self.world.mechanics_enabled('stamina_management') and action['verb'] == 'move' and ('energy' in self.contract or self.world.stamina.get('action_cost_adjustments',{}).get('move')):
                 minutes = max(0, min(at, action['finish'])-action['last_progress'])
-                energy = max(Fraction(0), Fraction(*self.energy[actor])-minutes*Fraction(str(self.energy_rules['move_per_minute'])))
+                from engine.stamina import adjusted_rate
+                duration=action['finish']-action['start']
+                rate=adjusted_rate(self.world,'move',self.energy_rules['move_per_minute'] if 'energy' in self.contract else 0,duration)
+                energy = max(Fraction(0), Fraction(*self.energy[actor])-minutes*Fraction(str(rate)))
                 self.energy[actor] = [energy.numerator, energy.denominator]
                 self.people[actor].stamina = float(energy)
                 action['last_progress'] = min(at, action['finish'])
@@ -810,7 +828,10 @@ class CalendarRuntime:
                     dep['status'] = 'fallback_selected'
             task['units'] = task['effort_minutes']//spec['minutes_per_unit']
             action['last_progress'] = min(at, action['finish'])
-            cost = minutes*Fraction(str(self.energy_rules['work_per_minute'])) if 'energy' in self.contract else Fraction(minutes, 120)
+            from engine.stamina import adjusted_rate
+            duration=action['finish']-action['start']
+            rate=adjusted_rate(self.world,'work',self.energy_rules['work_per_minute'] if 'energy' in self.contract else Fraction(1,120),duration)
+            cost=minutes*Fraction(str(rate))
             energy = max(Fraction(0), Fraction(*self.energy[actor])-cost)
             self.energy[actor] = [energy.numerator, energy.denominator]
             self.people[actor].stamina = float(energy)
@@ -826,12 +847,18 @@ class CalendarRuntime:
                 self.observe(row, [p for p, s in self.people.items() if s.zone == spec['place']])
                 self.now = previous
 
+        from engine.stamina import refresh_fatigue
+        for person in self.people.values(): refresh_fatigue(self.world, person)
+
     def _complete(self, actor, action):
         ident, verb = action['id'], action['verb']
         person = self.people[actor]
         details = {'choice': deepcopy(action), 'started_at': action['start'], 'duration_minutes': self.now-action['start']}
         audience = [actor]
         try:
+            if 'args' not in action and verb not in ('move','work','rest'):
+                from engine.stamina import adjusted_cost
+                if adjusted_cost(self.world,verb,0) > person.stamina: raise ValueError('insufficient_stamina')
             if 'args' in action:
                 from engine.actions import Action
                 selected=next((r for r in self.rows if r['id']=='decision:'+ident),None)
@@ -853,10 +880,14 @@ class CalendarRuntime:
                     details['arrived_at'] = self.now
             elif verb == 'rest':
                 before = person.stamina
-                energy = min(Fraction(str(person.stamina_max)), Fraction(*self.energy[actor])+
-                             (self.now-action['start'])*Fraction(str(self.energy_rules['rest_per_minute'])))
+                duration = self.now-action['start'] if self.world.mechanics_enabled('stamina_management') else 0
+                rate=Fraction(str(self.energy_rules['rest_per_minute']))
+                if action.get('stamina_forced_rest'):rate=rate.limit_denominator(10**9)
+                energy = min(Fraction(str(person.stamina_max)), Fraction(*self.energy[actor])+duration*rate)
                 self.energy[actor] = [energy.numerator, energy.denominator]; person.stamina = float(energy)
                 details['stamina_delta'] = person.stamina-before
+                from engine.stamina import refresh_fatigue
+                refresh_fatigue(self.world, person)
             elif verb == 'work':
                 details.update(task_id=action['task_id'], task_progress=deepcopy(self.ledger['tasks'][action['task_id']]))
                 audience = [p for p, s in self.people.items() if s.zone == person.zone]
@@ -931,10 +962,19 @@ class CalendarRuntime:
                 details.update(dependent_plan=deepcopy(self.dependencies[action['plan_id']]))
         except ValueError as exc:
             details['failure_reason'] = str(exc)
+        if 'failure_reason' not in details and 'args' not in action and verb not in ('move','work','rest'):
+            from engine.stamina import adjusted_cost,refresh_fatigue
+            person.change_stamina(-adjusted_cost(self.world,verb,0))
+            exact=Fraction(str(person.stamina));self.energy[actor]=[exact.numerator,exact.denominator]
+            refresh_fatigue(self.world,person)
+        from engine.stamina import resolve_zero
+        zero_markers=resolve_zero(self.world,person)
+        if action.get('stamina_forced_rest'):details['forced_by']='stamina_zero'
         if self.planning is not None: self.planning.completed(action, details)
         row = self.emit('complete:'+ident, 'action_completed', actor,
                         result='failed' if 'failure_reason' in details else 'applied',
                         caused_by=['start:'+ident], **details)
+        for marker in zero_markers:self.emit('zero:'+ident+':'+marker['subject'],marker['verb'],marker['subject'],**marker['details'])
         if verb in ('offer', 'change', 'accept', 'accept_change', 'cancel'):
             self.observe(row, [actor], 'direct')
             self.observe(row, [p for p in audience if p != actor], 'addressed')
@@ -1122,6 +1162,10 @@ class CalendarRuntime:
 
     def _time_choices(self, frame):
         at = frame.at
+        from engine.stamina import resolve_zero
+        for person in self.people.values():
+            for marker in resolve_zero(self.world,person):
+                self.emit('zero:'+str(at)+':'+person.id+':'+marker['subject'],marker['verb'],marker['subject'],**marker['details'])
         if self.joint is not None:
             self.joint.recheck_running(); self.joint.start_due(); self.joint.flush()
         for command in self.commands:
@@ -1155,6 +1199,8 @@ class CalendarRuntime:
                 'dependencies': deepcopy(self.dependencies), 'appraisals': deepcopy(self.appraisals),
                 'rows': deepcopy(self.rows), 'observations': deepcopy(self.observations), 'done': self.done,
                 'facilities': deepcopy(self.facilities), 'rng': self.sim.rng.getstate()}
+        if self.world.stamina.get('zero_behavior') is not None:
+            state['actor_vitality']={p:person.vitality for p,person in self.people.items()}
         if getattr(self, '_adapter_journal', None) is not None:
             state['adapter_journal'] = deepcopy(self._adapter_journal)
             state['actor_vitality'] = {p: person.vitality for p, person in self.people.items()}
@@ -1181,6 +1227,8 @@ class CalendarRuntime:
             self.joint.validate_snapshot(state['joint_activities'],at=state['now'])
         if not isinstance(state, dict) or set(state) != expected or set(state['people']) != set(self.people):
             raise ValueError('Invalid runtime checkpoint state')
+        zero_vitality=state.get('actor_vitality') if self.world.stamina.get('zero_behavior') is not None else None
+        if self.world.stamina.get('zero_behavior') is not None and (not isinstance(zero_vitality,dict) or set(zero_vitality)!=set(self.people) or any(v not in ('alive','downed','dead','revived') for v in zero_vitality.values())):raise ValueError('Invalid zero-stamina vitality state')
         staged_provider = (None if self.sim.decision_provider is None else
                            staged_provider_restore(self.sim.decision_provider, state['decision_provider']))
         integer(state['now'], 'checkpoint minute', minute_for(self.calendar, self.calendar['start_date'], self.contract['start_time']), self.end)
@@ -1331,6 +1379,8 @@ class CalendarRuntime:
                 self.people[p].vitality = vitality
         if staged_provider is not None:
             self.sim.decision_provider = staged_provider
+        if zero_vitality is not None:
+            for p,value in zero_vitality.items():self.people[p].vitality=value
         if self.planning is not None: self.planning.restore(state['goal_planning'])
         if self.joint is not None:
             self.joint.work.tasks=self.ledger['tasks']

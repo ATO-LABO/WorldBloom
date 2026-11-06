@@ -380,6 +380,11 @@ def _capture_inputs(repo, spec, runs=None):
     template = contained(repo, "templates/" + spec["template_id"])
     if not project.is_dir() or not template.is_dir():
         raise ConfigError("inputs", "世界またはテンプレートがありません")
+    try:
+        from engine.world_format import validate as validate_format
+        validate_format(yaml.safe_load((project / "world.yaml").read_bytes()))
+    except ValueError as error:
+        raise ConfigError("world_format_version",str(error),code="unsupported") from error
     if "execution_profile" in spec:
         # Preserve the exact approved project bytes, including scenario.yaml.
         # Template/genetic guidance is not part of this closed profile input.
@@ -569,6 +574,11 @@ def _describe(root, spec):
     template = root / "templates" / spec["template_id"]
     graph = template / "action_graph.yaml"
     definition = yaml.safe_load((project / 'world.yaml').read_bytes())
+    try:
+        from engine.world_format import validate as validate_format
+        validate_format(definition)
+    except ValueError as error:
+        raise ConfigError("world_format_version",str(error),code="unsupported") from error
     calendar_mode = (isinstance(definition.get('slot_execution'), dict)
                      and definition['slot_execution'].get('mode') == 'calendar_promises_v2')
     if calendar_mode:

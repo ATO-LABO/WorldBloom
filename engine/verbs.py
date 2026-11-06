@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from engine.economy import purchasable
+
 import random
 from typing import Any, TYPE_CHECKING
 
@@ -76,7 +78,33 @@ class VerbEngine:
         self.rng = rng
         self._ally_gained: set[tuple[str, str]] = set()
 
-    def execute(
+    def execute(self, actor, action, *, turn, day, notify=True):
+        from engine.action_usage import denial
+        denied=denial(self.world,actor,action,turn,day)
+        if denied: return 'invalid', {'reason':denied,'verb':action.verb}, []
+        from engine.stamina import cost_scope,required_cost,settle,refresh_fatigue
+        from engine.stamina import forced_rest,resolve_zero
+        prepaid=self.world.action_timing is not None and self.world.action_timing.prepaid(actor,action)
+        if not prepaid:
+            deaths=resolve_zero(self.world,actor)
+            if deaths:return 'dead',{'reason':'stamina_zero'},deaths
+            if actor.vitality=='dead':return 'invalid',{'reason':'actor_dead'},[]
+            action=forced_rest(self.world,actor) or action
+        if not self.world.action_enabled(action.verb):
+            return self._execute(actor,action,turn=turn,day=day,notify=notify)
+        if required_cost(self.world,actor,action) > actor.stamina:
+            return 'invalid',{'reason':'insufficient_stamina'},[]
+        with cost_scope(self.world,actor,action):
+            result,details,markers=self._execute(actor,action,turn=turn,day=day,notify=notify)
+            if result not in {'invalid','failed'}: settle(actor)
+            meter=getattr(actor,'_stamina_meter',None)
+            if meter is not None: details['stamina_cost']=meter['spent']
+            refresh_fatigue(self.world,actor)
+            markers.extend(resolve_zero(self.world,actor))
+            if action.meta.get('stamina_forced_rest'):details['forced_by']='stamina_zero'
+            return result,details,markers
+
+    def _execute(
         self,
         actor: Subject,
         action: Action,
@@ -85,7 +113,10 @@ class VerbEngine:
         day: int,
         notify: bool = True,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
-        if not self.world.story_genre_allows(action.verb):
+        from engine.action_usage import denial
+        denied=denial(self.world,actor,action,turn,day)
+        if denied: return 'invalid', {'reason':denied,'verb':action.verb}, []
+        if not self.world.action_enabled(action.verb):
             return "invalid", {"reason": "genre_disabled", "verb": action.verb}, []
         joint = getattr(self.world,'joint_activities',None)
         if joint is not None and joint.sim is not None:
@@ -161,12 +192,26 @@ class VerbEngine:
                     action.verb == 'concede' and action.args and self.world.offers.get((action.args[0], actor.id), {}).get('objective_goal')):
                 return 'invalid', {'reason': 'own_objective_conflict', 'objective_choice': objective_choice}, []
 
+        from engine.stamina import required_cost, extra_cost
+        if required_cost(self.world, actor, action) > actor.stamina:
+            return 'invalid', {'reason':'insufficient_stamina'}, []
+        extra = extra_cost(self.world, actor, action)
         result, details, markers = handler(
             actor,
             action,
             turn=turn,
             day=day,
         )
+        if result not in {'invalid','failed'} and extra:
+            paid = -actor.change_stamina(-extra)
+            details['stamina_cost'] = paid
+            self._update_exhausted(actor)
+        if result not in {'invalid','failed'}:
+            from engine.stamina import settle
+            settle(actor)
+            from engine.stamina import resolve_zero
+            markers.extend(resolve_zero(self.world,actor))
+            if getattr(actor,'_stamina_meter',None) is not None: self._update_exhausted(actor)
         if objective_choice is not None:
             details['objective_choice'] = {**objective_choice,
                 'alternatives': action.meta.get('objective_choice', {}).get('alternatives', [])}
@@ -318,11 +363,16 @@ class VerbEngine:
         ]
 
     def _update_exhausted(self, actor: Subject) -> None:
+        if not self.world.mechanics_enabled('stamina_management'):
+            actor.exhausted = False
+            return
         threshold = (
             actor.stamina_max * self.world.stamina["exhausted_ratio"]
         )
         if actor.stamina < threshold:
             actor.exhausted = True
+        else:
+            actor.exhausted = False
 
     def _move(
         self,
@@ -401,6 +451,7 @@ class VerbEngine:
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         recovered = actor.change_stamina(actor.stamina_recover)
+        self._update_exhausted(actor)
         return "rested", {"stamina_delta": recovered}, []
 
     def _gather_items(
@@ -473,11 +524,12 @@ class VerbEngine:
                     continue
                 actor.gather_progress[progress_key] = 0
                 actor.gathered[gathered_key] = already + 1
-                actor.add_item(item, 1)
+                amount = source.get("amount", 1)
+                actor.add_item(item, amount)
                 gathered.append(
                     {
                         "item": item,
-                        "count": 1,
+                        "count": amount,
                         "source": actor.zone,
                     }
                 )
@@ -1898,13 +1950,13 @@ class VerbEngine:
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         item = str(action.args[0])
         definition = self.world.items.get(item, {})
-        price = definition.get("price")
+        price = definition.get("price") or {}
         shop_zone = definition.get("shop_zone")
-        if not price or shop_zone is None:
+        if not purchasable(definition,self.world.mechanics_enabled('budgeted_purchases')):
             return "invalid", {"reason": "not_for_sale", "item": item}, []
         if actor.zone != shop_zone:
             return "invalid", {"reason": "wrong_zone", "zone": shop_zone}, []
-        if not all(
+        if self.world.mechanics_enabled('budgeted_purchases') and not all(
             actor.inventory.get(currency, 0) >= int(required)
             for currency, required in price.items()
         ):
@@ -1915,7 +1967,7 @@ class VerbEngine:
             )
 
         spent: dict[str, int] = {}
-        for currency, required in sorted(price.items()):
+        for currency, required in sorted(price.items()) if self.world.mechanics_enabled('budgeted_purchases') else []:
             count = int(required)
             actor.remove_item(currency, count)
             spent[currency] = count
@@ -2029,7 +2081,8 @@ class VerbEngine:
         lethal_roll: float | None = None
         lethal_chance: float | None = None
         if (
-            hostile_at_start
+            self.world.vitality.get('allow_death', True)
+            and hostile_at_start
             and lethal_modifiers
             and loser.id not in self.world.vitality["lethal_exempt"]
         ):
@@ -2485,7 +2538,7 @@ class VerbEngine:
 
         giver = self.world.subjects[str(trial["giver"])]
         grants = trial["grants"]
-        granted: dict[str, str] = {}
+        granted: dict[str, Any] = {}
 
         granted_fact = grants.get("fact")
         if granted_fact is not None:
@@ -2497,10 +2550,13 @@ class VerbEngine:
         granted_item = grants.get("item")
         if granted_item is not None:
             item = str(granted_item)
+            amount = trial.get("item_amount", 1)
             if trial.get("transfer_item"):
-                giver.remove_item(item, 1)
-            actor.add_item(item, 1)
+                giver.remove_item(item, amount)
+            actor.add_item(item, amount)
             granted["item"] = item
+            if "item_amount" in trial:
+                granted["item_amount"] = amount
 
         self.world.relations.change(
             actor.id,

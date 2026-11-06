@@ -6,6 +6,7 @@ All actions are offered and checked again at execution against the current
 proposal revision. No new behaviour is enabled for worlds without this block.
 """
 from __future__ import annotations
+from engine.action_constraints import effective_verbs
 
 from copy import deepcopy
 import hashlib
@@ -241,7 +242,7 @@ class Deliberation:
             return []
         result = []
         def offer(verb, args, weight):
-            if verb in person.verbs:
+            if verb in effective_verbs(world,person):
                 result.append((verb, tuple(args), weight))
         for pid, spec in sorted(self.specs.items()):
             record = self.records[pid]
