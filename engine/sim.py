@@ -82,6 +82,8 @@ class Simulation:
         execution_plan: dict[str, Any] | None = None,
         decision_provider: Any | None = None,
         terminal_policy: dict[str, bool] | None = None,
+        time_pressure: dict[str, Any] | None = None,
+        time_pressure_sources: dict[str, Any] | None = None,
     ) -> None:
         self.seed = int(seed)
         self.world = world
@@ -157,6 +159,13 @@ class Simulation:
                            for field in fields(person) if field.name != 'policy'
                            and not (field.name == 'commitments' and person.commitments is None)})
             for actor, person in self.subjects.items()}
+        if time_pressure is not None:
+            from engine.time_pressure import normalize_config, TimePressure
+            enabled_pressure = normalize_config(time_pressure)
+            if enabled_pressure is not None:
+                if execution_plan is not None or decision_provider is not None:
+                    raise ValueError("Time pressure supports ordinary autonomous selection only")
+                self._time_pressure = TimePressure(enabled_pressure, time_pressure_sources, self.world, self.subjects)
         self.verb_engine = VerbEngine(self.world, self.rng)
         self.slot_runtime = None
         if getattr(self.world, "slot_execution", None) is not None:
@@ -776,6 +785,8 @@ class Simulation:
         forced: dict[str, Any] | None = None,
     ) -> tuple[Action, float | None]:
         self._decision_context = None
+        if hasattr(self, "_time_pressure") and self.record_explanations:
+            self._time_pressure_review = None
         if self.record_explanations:
             self._decision_context = {"zone": subject.zone,
                                       "present": [s.id for s in self._present_for(subject)],
@@ -856,6 +867,12 @@ class Simulation:
 
         if not weighted:
             return Action("rest"), None
+        pressure = getattr(self, "_time_pressure", None)
+        if pressure is not None and subject.id == self.world.protagonist:
+            weighted, actor_pressure, _ = pressure.apply(
+                self.world, subject, weighted, self.turn, record=self.record_explanations)
+            if self.record_explanations:
+                self._decision_context["time_pressure"] = actor_pressure
         weights = [max(0.0, float(weight)) for _, weight in weighted]
         total = sum(weights)
         if total <= 0.0:
@@ -873,6 +890,10 @@ class Simulation:
         probability = weights[index] / total
         if self.record_explanations:
             self._decision_context["selection"] = record_distribution(weighted, weights, index)
+            if pressure is not None and subject.id == self.world.protagonist:
+                # Review truth is read only after the random choice and is not
+                # part of actor evidence, policy or judge context.
+                self._time_pressure_review = pressure.review(self.world, action, self.turn)
 
         if policy is not None:
             record = getattr(policy, "record", None)
@@ -926,6 +947,9 @@ class Simulation:
 
         if self.record_explanations:
             row["explanation"] = _plain(self._decision_context)
+            review = getattr(self, "_time_pressure_review", None)
+            if review is not None:
+                row["time_pressure_review"] = _plain(review)
         return row
 
     def _strength_details(self, subject: Subject) -> dict[str, float]:

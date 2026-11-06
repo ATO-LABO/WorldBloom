@@ -728,6 +728,20 @@ def _route_goal_post(handler, world_id, action):
     handler._send_json(HTTPStatus.OK, result)
 
 
+def _time_pressure_get(handler, world_id):
+    from execution.time_pressure_settings import snapshot
+    handler._send_json(HTTPStatus.OK, snapshot(_route_goal_store(handler), world_id))
+
+
+def _time_pressure_post(handler, world_id, action):
+    from execution import time_pressure_settings
+    body = _boundary_body(handler)
+    if action != "validate":
+        _require_job_store(handler)
+    handler._send_json(HTTPStatus.OK, getattr(time_pressure_settings, action)(
+        _route_goal_store(handler), world_id, body))
+
+
 def _time_settings_get(handler, world_id):
     from execution.time_settings import snapshot
     handler._send_json(HTTPStatus.OK, snapshot(_route_goal_store(handler), world_id))
@@ -1290,6 +1304,10 @@ def _resolve(parts, method):
             return _world_draft_post, ()
         if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("cancel", "validate", "adopt"):
             return _world_draft_post, (parts[2], parts[3])
+        if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-pressure":
+            return _time_pressure_post, (parts[2], "save")
+        if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3:] == ["time-pressure", "validate"]:
+            return _time_pressure_post, (parts[2], "validate")
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings":
             return _time_settings_post, (parts[2], "save")
         if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings" and parts[4] in ("validate", "archive_design", "finalize"):
@@ -1333,6 +1351,8 @@ def _resolve(parts, method):
     head = parts[0]
     if head == "api" and len(parts) == 3 and parts[1] == "world-drafts":
         return _world_draft_get, (parts[2],)
+    if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "time-pressure":
+        return _time_pressure_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "time-settings":
         return _time_settings_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "route-goal":

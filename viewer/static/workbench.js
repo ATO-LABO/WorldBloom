@@ -223,6 +223,25 @@
       });
     }
 
+    const pressureMeta = form.dataset.worlds ? JSON.parse(form.dataset.worlds) : {};
+    const pressureAvailability = form.querySelector('[data-time-pressure-availability]');
+    const pressureHelpHost = form.querySelector('[data-time-pressure-help]');
+    const pressureHelp = pressureHelpHost && window.WorldBloomHelp?.create('時間的な切迫の補足','通常の主人公計画・目標ルールv1・既存の実行時計に対応します。根拠が未登録、または実行方式が未対応ならオンでは保存できません。既存plannerが除いた候補は追加しません。世界の根拠を保存する操作とは別です。');
+    if (pressureHelp) pressureHelpHost.append(pressureHelp.button);
+    const pressureLink = form.querySelector('[data-time-pressure-link]');
+    const updatePressureLink = () => {
+      if (!pressureLink) return;
+      const world = form.querySelector('[data-field="project_id"], [name="project_id"]')?.value;
+      const info = pressureMeta[world]?.time_pressure;
+      if (pressureAvailability) pressureAvailability.textContent = info
+        ? `保存済みの根拠：${info.source_count ?? '確認不可'}件。${info.reason}${info.source_count === 0 ? ' オンで保存するには根拠の登録が必要です。' : ''}`
+        : '世界を選ぶと、保存済みの根拠と対応状況を表示します。';
+      pressureLink.hidden = !world;
+      if (world) pressureLink.href = `/worlds/${encodeURIComponent(world)}#screen=time&tab=pressure`;
+    };
+    form.addEventListener('change', updatePressureLink);
+    updatePressureLink();
+
     // WB-ROUTE-001 S4 §2: the ρ slider's live numeric readout -- same
     // pattern as κ above, but no eta/warning pair (ρ adds no compute cost).
     const routeRhoInput = form.querySelector('[data-field="evolution.route_rho"]');

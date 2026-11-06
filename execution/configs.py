@@ -88,7 +88,7 @@ def evolution_defaults():
     # configs/argv/tests are byte-for-byte unaffected.
     return {a.dest: deepcopy(a.default) for a in parser._actions
             if a.dest not in {"help", "project", "template", "out",
-                               "resume", "resume_allow_code_change"}}
+                               "resume", "resume_allow_code_change", "time_pressure"}}
 
 
 def quick_label(world_name, genre):
@@ -171,11 +171,18 @@ def _profile_restrictions(values, growth):
 
 def normalize(spec):
     _keys(spec, {"label", "project_id", "template_id", "evolution",
-                 "execution_limits", "generation", "growth", "execution_profile"}, "config")
+                 "execution_limits", "generation", "growth", "execution_profile", "time_pressure"}, "config")
     if "generation" in spec:
         raise ConfigError("generation", "文章生成の設定は ⚙ 設定で行います（実行設定には含めません）")
     profile = _execution_profile(spec["execution_profile"]) if "execution_profile" in spec else None
     growth = _growth(spec.get("growth"))
+    from engine.time_pressure import normalize_config
+    try:
+        pressure = normalize_config(spec.get("time_pressure"))
+    except ValueError as error:
+        raise ConfigError("time_pressure.enabled", str(error)) from error
+    if pressure is not None and (profile is not None or growth is not None):
+        raise ConfigError("time_pressure.enabled", "時間的な切迫は通常の単独実行でのみ利用できます")
     result = {"label": spec.get("label", "")}
     if not isinstance(result["label"], str) or not result["label"].strip() or len(result["label"]) > 200:
         raise ConfigError("label", "設定名を1〜200文字で入力してください")
@@ -272,6 +279,10 @@ def normalize(spec):
     if profile is not None:
         _profile_restrictions(values, growth)
         result["execution_profile"] = profile
+    if pressure is not None:
+        if values["world_expansion"] != "off":
+            raise ConfigError("time_pressure.enabled", "時間的な切迫と世界の拡張は同時に実行できません")
+        result["time_pressure"] = pressure
     result["evolution"] = deepcopy(values)
     limits = spec.get("execution_limits", {})
     _keys(limits, {"wall_seconds"}, "execution_limits")
@@ -396,6 +407,12 @@ def _capture_inputs(repo, spec, runs=None):
                    for key, data in sorted(blobs.items())]
         return blobs, {"schema_version": 1, "files": entries}
     world_key = add(project / "world.yaml")
+    if spec.get("time_pressure") is not None:
+        from engine.time_pressure import FILENAME, MAX_BYTES
+        pressure_path = project / FILENAME
+        if pressure_path.is_symlink() or pressure_path.stat().st_size > MAX_BYTES:
+            raise ConfigError("time_pressure.enabled", "期限根拠ファイルを確認してください")
+        add(pressure_path)
     declared_world = yaml.safe_load(blobs[world_key])
     calendar_mode = (isinstance(declared_world, dict) and isinstance(declared_world.get('slot_execution'), dict)
                      and declared_world['slot_execution'].get('mode') == 'calendar_promises_v2')
@@ -587,7 +604,20 @@ def _describe(root, spec):
     subjects = {p.id: p for p in people}
     if world.protagonist not in subjects or world.antagonist not in subjects:
         raise ConfigError("inputs.subjects", "主人公または敵役の人物入力がありません")
-    Simulation(spec["evolution"]["seed_base"], world, subjects, root / ".unused")
+    pressure_args = {}
+    if spec.get("time_pressure") is not None:
+        from engine.time_pressure import load_sources
+        try:
+            pressure_args = {"time_pressure": spec["time_pressure"],
+                             "time_pressure_sources": load_sources(project, world, subjects)}
+        except (ValueError, OSError, yaml.YAMLError) as error:
+            raise ConfigError("time_pressure.enabled", "期限根拠または対応する実行モードを確認してください") from error
+    try:
+        Simulation(spec["evolution"]["seed_base"], world, subjects, root / ".unused", **pressure_args)
+    except ValueError as error:
+        if pressure_args:
+            raise ConfigError("time_pressure.enabled", str(error)) from error
+        raise
     defaults = {"action_graph.yaml": {"nodes": [], "edges": []},
                 "qd.yaml": {"categories": ["I", "II", "III", "IV", "V", "VI"],
                             "volatility_bins": ["low", "mid", "high"]},
@@ -799,6 +829,8 @@ class ConfigStore:
             spec["execution_profile"] = deepcopy(original["execution_profile"])
         if "growth" in original:
             spec["growth"] = original["growth"]
+        if "time_pressure" in original:
+            spec["time_pressure"] = deepcopy(original["time_pressure"])
         changes = changes or {}
         for key, value in changes.items():
             if (key in ("evolution", "execution_limits", "growth")
@@ -852,7 +884,9 @@ class ConfigStore:
         prior_seed = original["evolution"].get("seed_genomes")
         spec_seed = spec["evolution"].get("seed_genomes")
         same_profile = original.get("execution_profile") == spec.get("execution_profile")
-        parent = config_id if prior_expand == spec_expand and prior_seed == spec_seed and same_profile else None
+        from engine.time_pressure import normalize_config
+        same_pressure = normalize_config(original.get("time_pressure")) == normalize_config(spec.get("time_pressure"))
+        parent = config_id if prior_expand == spec_expand and prior_seed == spec_seed and same_profile and same_pressure else None
         return self.save(spec, config_id=new_id, parent_config_id=parent)
 
     def prepare_run(self, config_id, *, run_id=None, job_id, processes=None):
@@ -895,6 +929,8 @@ class ConfigStore:
                 elif value is not None:
                     argv.append(flag)
                     argv.extend(value if isinstance(value, list) else [str(value)])
+            if config.get("time_pressure") is not None:
+                argv.append("--time-pressure")
             if processes is not None:
                 # PC-side operational setting (WB-COMPUTE-001), not part of what the
                 # config means: overrides the frozen evolution.processes value in the
@@ -957,6 +993,8 @@ class ConfigStore:
                         "status": "prepared"}
             atomic_json(staging / "config.json", config)
             atomic_json(staging / "input-manifest.json", inputs)
+            if config.get("time_pressure") is not None:
+                manifest["time_pressure"] = deepcopy(config["time_pressure"])
             atomic_json(staging / "runtime-manifest.json", runtime)
             atomic_json(staging / "manifest.json", manifest)
             atomic_json(staging / "complete.json", {"schema_version": 1,
