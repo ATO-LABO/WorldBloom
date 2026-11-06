@@ -43,6 +43,9 @@
   --ws-control-h: 44px;
   --ws-control-h-sm: 34px;
   --ws-radius: 6px;
+  --ws-radius-circle: 50%;
+  --ws-radius-pill: 999px;
+  --ws-line-height-tight: 1;
   --ws-bar-h: 58px;
   --ws-space-1: 4px;
   --ws-space-2: 8px;
@@ -64,3 +67,48 @@
 @media (max-width:760px) {
   :root { --ws-content-x:18px; --ws-content-y:24px; }
 }
+
+/* Opt-in theme for the money and time settings screens. */
+:root {
+ --ws-money-canvas: #f5f7f5;
+ --ws-money-shadow: 0 1px 4px #163e2b08;
+ --ws-money-card-radius: 12px;
+}
+.ui-settings-theme,
+.ui-money-theme {
+ --ws-text: #0d3b2e;
+ --ws-muted: #52605b;
+ --ws-line: #dce4e1;
+ --ws-control-line: #c9d2d8;
+ --ws-surface: #ffffff;
+ --ws-canvas: #ffffff;
+ --ws-panel-bg: #f0f4f2;
+ --ws-confirm: #0d3b2e;
+ --ws-confirm-soft: #eaf2ed;
+ --ws-advance: #ee770b;
+ --ws-focus: #367e60;
+ --ws-disabled-bg: #eef0f1;
+ --ws-radius: 8px;
+ --ws-fs-md: 18px;
+ --ws-fs-control: 18px;
+ --ws-fs-sm: 14px;
+ --ws-fs-h1: 30px;
+ --ws-fs-h2: 26px;
+ --ws-fs-h3: 20px;
+ --ws-control-h: 52px;
+ --ws-control-y: 8px;
+ --ws-content-x: 28px;
+ --ws-money-tab-size: 20px;
+ --ws-money-switch-on: #32905a;
+ --ws-money-switch-off: #bcc3c8;
+ --ws-money-switch-w: 64px;
+ --ws-money-switch-h: 36px;
+ --ws-money-switch-knob: 30px;
+}
+@media(max-width:760px){
+ .ui-settings-theme,
+.ui-money-theme {--ws-content-x:16px;--ws-fs-h1:26px;--ws-fs-h2:22px;--ws-fs-md:16px;--ws-fs-control:16px;--ws-money-tab-size:18px;}
+}
+
+/* Shared floating supplementary help. */
+:root {--ws-help-width:360px;--ws-help-gap:8px;--ws-help-target:44px;--ws-help-glyph:24px;--ws-help-z:1000;}
