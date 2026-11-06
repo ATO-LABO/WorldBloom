@@ -122,9 +122,24 @@ def compile_draft(value):
     if d["protagonist"] == d["antagonist"]:
         _bad("antagonist", "主人公とは別の人物を選んでください")
     for i, item in enumerate(d["items"]):
-        _object(item, "name holder", f"items.{i}")
+        path = f"items.{i}"
+        if not isinstance(item, dict) or set(item) not in ({"name", "holder"}, {"name", "holders"}):
+            _bad(path, "品物には name と holder または holders を指定してください")
         item["name"] = _text(item["name"], f"items.{i}.name")
-        _reference(item["holder"], people, f"items.{i}.holder")
+        if "holder" in item:
+            _reference(item["holder"], people, path + ".holder")
+        else:
+            _array(item["holders"], path + ".holders", 0, 8)
+            holders = set()
+            for j, holder in enumerate(item["holders"]):
+                hp = path + f".holders.{j}"
+                _object(holder, "person count", hp)
+                _reference(holder["person"], people, hp + ".person")
+                if type(holder["count"]) is not int or not 1 <= holder["count"] <= 10000:
+                    _bad(hp + ".count", "所持数は1〜10000の整数で指定してください")
+                if holder["person"] in holders:
+                    _bad(path + ".holders", "同じ人物の所持を重複して指定できません")
+                holders.add(holder["person"])
     items = _unique(d["items"], "items")
     facts = d.get("facts", [])
     _array(facts, "facts", 0, 8)
@@ -212,7 +227,10 @@ def compile_draft(value):
         subject = {"id": p["name"], "description": p["description"], "personality": p["personality"],
                    "traits": {key: .5 for key in TRAITS}, "base": 50,
                    "range": {"zones": sorted(zones), "entry": p["entry"]},
-                   "inventory": {item["name"]: 1 for item in d["items"] if item["holder"] == p["name"]},
+                   "inventory": {item["name"]: (1 if item.get("holder") == p["name"] else
+                                  next((h["count"] for h in item.get("holders", []) if h["person"] == p["name"]), 0))
+                                 for item in d["items"]
+                                 if item.get("holder") == p["name"] or any(h["person"] == p["name"] for h in item.get("holders", []))},
                    "goal": (subject_goal(p["goal"]) if "description" in p["goal"]
                             else p["goal"] if p["goal"]["target"] else {}),
                    "relations": {r["person"]: {key: r[key] for key in ("affinity", "awareness", "label")} for r in p["relations"]},
@@ -221,7 +239,7 @@ def compile_draft(value):
     return d, world, subjects
 
 
-def validate(repo, value):
+def validate(repo, value, *, allow_initial_goal_achieved=False):
     d, world, subjects = compile_draft(value)
     check_alignment(d)
     # Reuse the exact World/Subject/Simulation construction used by preview.
@@ -246,8 +264,8 @@ def validate(repo, value):
                     expression = f"holds({person['name']!r}, {goal['target']!r}) and zone({person['name']!r}) == {goal['deliver_to']!r}"
                 else:
                     expression = None
-                if expression and compile_predicate(expression).evaluate(initial_world.namespace(
-                        initial_subjects[person['name']], list(initial_subjects.values()), turn=1, day=1)):
+                if (not allow_initial_goal_achieved and expression and compile_predicate(expression).evaluate(initial_world.namespace(
+                        initial_subjects[person['name']], list(initial_subjects.values()), turn=1, day=1))):
                     _bad(f'people.{i}.goal.conditions', '開始時点で目標を達成しています。開始位置・所持品・関係・達成条件を見直してください')
         except (ValueError, KeyError, TypeError, OSError) as error:
             if isinstance(error, ConfigError):
