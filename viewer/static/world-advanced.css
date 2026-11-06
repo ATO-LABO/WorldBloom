@@ -2,7 +2,7 @@
 .wa-layout{height:100%;flex:1;min-height:0;overflow:hidden}
 .wa-main{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 .wa-body{display:grid;grid-template-columns:var(--ws-aside-w) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:var(--ws-space-5);flex:1;min-width:0;min-height:0;overflow:auto;align-content:start}
-.wa-body>[data-advanced-sections]{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:var(--ws-space-2)}
+.wa-body>[data-advanced-sections]{grid-column:1/-1}
 .wa-body:has(>[data-advanced-sections][hidden]){grid-template-rows:minmax(0,1fr)}
 .wa-body:has(>.ux-advanced-list[hidden])>.wa-reading{grid-column:1/-1}
 .wa-body>.ux-advanced-list{width:var(--ws-aside-w);flex:none}

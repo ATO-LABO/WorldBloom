@@ -2,6 +2,15 @@
 import html
 import json
 from urllib.parse import quote
+from viewer import ui
+
+
+def checks_navigation(world_id, active):
+    base='/worlds/'+quote(world_id,safe='')
+    entries=(('checks','確認の概要',base+'#screen=checks'),('routes','結末までの経路',base+'#screen=routes'),('goal','調査の条件',base+'/goal'),('review','世界のレビュー',base+'?view=review'))
+    return ui.tabs(''.join(ui.button(label,href=href,attrs={
+        'data-checks-tab':key,'data-screen':key if key in ('checks','routes') else None,
+        'aria-current':'page' if key==active else None}) for key,label,href in entries),label='確認・調査の切り替え')
 
 SECTIONS = (
     ('overview', '概要と物語の前提'),

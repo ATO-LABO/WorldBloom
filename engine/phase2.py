@@ -245,6 +245,8 @@ def configure_phase2(
             raise ValueError(
                 f"Trial grants must be a non-empty mapping at index {index}"
             )
+        if type(trial.get("transfer_item", False)) is not bool or trial.get("transfer_item") and "item" not in grants:
+            raise ValueError("transfer_item requires an item reward and a boolean value")
         unknown_grants = set(grants) - {"fact", "item"}
         if unknown_grants:
             raise ValueError(
@@ -1181,6 +1183,8 @@ def trial_options(
             required_item is not None
             and not subject.has_item(str(required_item))
         ):
+            continue
+        if trial.get("transfer_item") and not world.subjects[giver].has_item(str(trial["grants"]["item"])):
             continue
         result.append(trial)
     return result

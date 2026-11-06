@@ -2497,6 +2497,8 @@ class VerbEngine:
         granted_item = grants.get("item")
         if granted_item is not None:
             item = str(granted_item)
+            if trial.get("transfer_item"):
+                giver.remove_item(item, 1)
             actor.add_item(item, 1)
             granted["item"] = item
 
