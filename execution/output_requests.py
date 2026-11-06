@@ -24,6 +24,11 @@ FIELDS = {"schema_version", "request_id", "kind", "config_id", "run_id", "select
 FACT_FIELDS = FIELDS | {"fact_refs"}
 
 
+def supports_story_v2(backend, model):
+    """Return whether a model is the deliberately narrow Story v2 runtime."""
+    return backend == "ollama" and isinstance(model, str) and model.startswith("gemma4:")
+
+
 def normalize(request):
     if not isinstance(request, dict):
         raise ConfigError("request", "未対応の生成要求項目があります")
@@ -37,9 +42,14 @@ def normalize(request):
         raise ConfigError("pipeline", "新版の本文生成要求が必要です")
     if version == 2 and (request.get("pipeline") != "story_v1" or request.get("kind") != "narrate"):
         raise ConfigError("pipeline", "未対応の生成方式です")
-    if (version != 3 and "fact_refs" in request) or (version == 3 and
-            (request.get("pipeline") != "facts_v1" or "story_refs" in request)):
+    if version == 3 and request.get("pipeline") not in ("facts_v1", "story_v2"):
+        raise ConfigError("pipeline", "未対応の生成方式です")
+    if version != 3 and "fact_refs" in request:
         raise ConfigError("pipeline", "事実保持経路の版と入力参照が不正です")
+    if version == 3 and request.get("pipeline") == "facts_v1" and "story_refs" in request:
+        raise ConfigError("pipeline", "事実保持経路に骨格参照は指定できません")
+    if version == 3 and request.get("pipeline") == "story_v2" and "fact_refs" in request:
+        raise ConfigError("pipeline", "Story v2 に事実入力参照は指定できません")
     doc = {"schema_version": version}
     for key in ("request_id", "config_id", "run_id"):
         doc[key] = identifier(request.get(key), key)
@@ -64,6 +74,8 @@ def normalize(request):
     doc["backend"], doc["model"] = backend, _model(request["model"])
     if (backend == "none" and doc["model"] is not None) or (backend != "none" and doc["model"] is None):
         raise ConfigError("model", "生成方式に対応する明示モデルを指定してください")
+    if version == 3 and request.get("pipeline") == "story_v2" and not supports_story_v2(backend, doc["model"]):
+        raise ConfigError("model", "Story v2 は Ollama の gemma4: タグ付きモデルだけを利用できます")
     limits = request.get("limits")
     if (not isinstance(limits, dict) or set(limits) !=
         {"max_calls", "call_timeout_seconds", "wall_seconds", "max_saved_response_bytes"}
@@ -107,7 +119,29 @@ def normalize(request):
                    for k in ("material_sha256","plan_sha256","confirmation_sha256")):
                 raise ConfigError("story_refs", "骨格のSHAが不正です")
         doc.update(pipeline="story_v1", story_refs=deepcopy(refs), synopsis_refs={})
-    if version == 3:
+    if version == 3 and request.get("pipeline") == "story_v2":
+        import re
+        refs = request.get("story_refs")
+        if not isinstance(refs, dict) or set(refs) != set(doc["candidate_ids"]) or request.get("synopsis_refs"):
+            raise ConfigError("story_refs", "候補ごとの骨格参照を指定してください")
+        for cid, ref in refs.items():
+            if ref is None:
+                if doc["kind"] != "synopsize":
+                    raise ConfigError("story_refs", "上映には確認済みの骨格が必要です")
+                continue
+            if not isinstance(ref, dict) or set(ref) != {"material_id", "material_sha256", "plan_id", "plan_sha256", "confirmation_sha256"}:
+                raise ConfigError("story_refs", "素材・構成案・確認の版が必要です")
+            identifier(ref["material_id"]); identifier(ref["plan_id"])
+            if any(not isinstance(ref[k], str) or not re.fullmatch("[0-9a-f]{64}", ref[k])
+                   for k in ("material_sha256", "plan_sha256")):
+                raise ConfigError("story_refs", "骨格のSHAが不正です")
+            if ref["confirmation_sha256"] is not None and (not isinstance(ref["confirmation_sha256"], str)
+                    or not re.fullmatch("[0-9a-f]{64}", ref["confirmation_sha256"])):
+                raise ConfigError("story_refs", "確認記録のSHAが不正です")
+            if doc["kind"] == "narrate" and ref["confirmation_sha256"] is None:
+                raise ConfigError("story_refs", "上映には確認済みの骨格が必要です")
+        doc.update(pipeline="story_v2", story_refs=deepcopy(refs), synopsis_refs={})
+    if version == 3 and request.get("pipeline") == "facts_v1":
         import re
         refs = request.get("fact_refs")
         if not isinstance(refs, dict) or set(refs) != set(doc["candidate_ids"]) or request.get("synopsis_refs"):
@@ -140,7 +174,7 @@ def eligible(store, request):
                         and "facts_v1" in (prior.get("pipeline"), request.get("pipeline"))):
                     continue
                 # A crash before receipt must first be reconciled, never treated as missing.
-                if item is not None and item["status"] in ("ok", "prompt_only") and request.get("pipeline") == "story_v1":
+                if item is not None and item["status"] in ("ok", "prompt_only") and request.get("pipeline") in ("story_v1", "story_v2"):
                     if (prior.get("story_refs") or {}).get(cid) != request["story_refs"][cid]:
                         continue
                 if item is not None and item["status"] in ("ok", "prompt_only") and request.get("pipeline") == "facts_v1":
@@ -203,11 +237,16 @@ def admit(jobs, request, *, settings_path=None):
                 raise ConfigError("candidate_ids", "到達済みで原記録が一致する候補だけ生成できます")
             if request["kind"] == "narrate" and not scene and cid not in adopted:
                 raise ConfigError("candidate_ids", "上映対象は固定選定版の採用候補だけです")
-        if request.get("pipeline") == "story_v1":
+        if request.get("pipeline") in ("story_v1", "story_v2"):
             from execution.story_store import StoryStore
             story_store = StoryStore(jobs.configs.control)
             for cid in request["candidate_ids"]:
-                story_store.resolve(request["story_refs"][cid], binding={
+                ref = request["story_refs"][cid]
+                if ref is None:
+                    if story_store.current(request["run_id"], cid) is not None:
+                        raise ConfigError("story_refs", "構成案が更新されています。画面を開き直してください", code="conflict")
+                    continue
+                story_store.resolve(ref, require_confirmation=request["kind"] == "narrate", binding={
                     "run_id": request["run_id"], "candidate_id": cid,
                     "source_log_sha256": by_id[cid]["source_log_sha256"],
                     "config_sha256": sha256(canonical(config)),
@@ -268,20 +307,44 @@ def prepare(configs, job, plan):
         "runtime-manifest.json": canonical(runtime), "selection.json": canonical(plan["selection"]),
         "source-plan.json": canonical(plan)})
     refs = {}
+    resolved_story_refs = {}
 
-    if request.get("pipeline") == "story_v1":
+    if request.get("pipeline") in ("story_v1", "story_v2"):
         from execution.story_store import StoryStore
+        from execution.story_service import organize
         story_store = StoryStore(configs.control)
         for cid in plan["candidate_ids"]:
             source = next(c for c in plan["candidates"] if c["candidate_id"] == cid)
-            material, story_plan, confirmation = story_store.resolve(request["story_refs"][cid], binding={
+            binding = {
                 "run_id": request["run_id"], "candidate_id": cid,
                 "source_log_sha256": source["source_log_sha256"],
                 "config_sha256": plan["config_sha256"],
-                "input_manifest_sha256": plan["input_manifest_sha256"]})
+                "input_manifest_sha256": plan["input_manifest_sha256"]}
+            ref = request["story_refs"][cid]
+            if ref is None:
+                raw = blobs["inputs/candidates/" + cid + "/layers.jsonl"]
+                project_prefix = "projects/" + config["project_id"] + "/"
+                template_prefix = "templates/" + config["template_id"] + "/"
+                story_inputs = {}
+                for entry in inputs["files"]:
+                    path = entry["path"]
+                    if path.startswith(project_prefix):
+                        story_path = "project/" + path[len(project_prefix):]
+                    elif path.startswith(template_prefix):
+                        story_path = "template/" + path[len(template_prefix):]
+                    else:
+                        continue
+                    story_inputs[story_path] = blobs["inputs/" + path]
+                current = organize(configs.control, configs.repo, raw, story_inputs, binding,
+                                   require_existing_match=True)
+                ref = story_store.reference(current["plan"]["plan_id"], require_confirmation=False)
+            material, story_plan, confirmation = story_store.resolve(
+                ref, require_confirmation=request["kind"] == "narrate", binding=binding)
             prefix = "inputs/story/" + cid + "/"
-            blobs.update({prefix+"materials.json":canonical(material),prefix+"plan.json":canonical(story_plan),
-                          prefix+"confirmation.json":canonical(confirmation)})
+            blobs.update({prefix+"materials.json":canonical(material),prefix+"plan.json":canonical(story_plan)})
+            if confirmation is not None:
+                blobs[prefix+"confirmation.json"] = canonical(confirmation)
+            resolved_story_refs[cid] = ref
     store = OutputStore(configs.control)
     if request.get("pipeline") == "facts_v1":
         from execution.fact_store import FactStore
@@ -296,7 +359,7 @@ def prepare(configs, job, plan):
             from gapengine.fact_contract import packet
             blobs["inputs/facts/" + cid + "/packet.json"] = canonical(packet(package, request["kind"]))
     for cid in plan["candidate_ids"]:
-        if request.get("pipeline") in ("story_v1", "facts_v1"):
+        if request.get("pipeline") in ("story_v1", "story_v2", "facts_v1"):
             continue
         ref = request["synopsis_refs"][cid]
         refs[cid] = ref
@@ -304,13 +367,19 @@ def prepare(configs, job, plan):
             continue
         prior = store.request(ref["output_id"])
         item = store.sink(ref["output_id"], cid).current()
-        if (prior["kind"] != "synopsize" or prior["run_id"] != request["run_id"]
+        if (prior.get("pipeline") == "story_v2" or prior["kind"] != "synopsize" or prior["run_id"] != request["run_id"]
             or prior.get("input_manifest_sha256") != plan["input_manifest_sha256"] or item is None
             or item["status"] != "ok" or item["attempt_id"] != ref["attempt_id"]
             or item["text_sha256"] != ref["text_sha256"]):
             raise ConfigError("synopsis_refs", "固定候補・入力・あらすじ版が一致しません")
         raw = verified(contained(store.folder(ref["output_id"]), item["text_ref"]), ref["text_sha256"])
         blobs["inputs/synopses/" + cid + ".txt"] = raw
+    if request.get("pipeline") in ("story_v1", "story_v2"):
+        # The offline builder reads source-plan.json, so it must use the exact
+        # resolved reference written into the eventual output, not the nullable
+        # UI request that admitted a first synopsis.
+        resolved_request = {**request, "story_refs": {cid: resolved_story_refs[cid] for cid in plan["candidate_ids"]}}
+        blobs["source-plan.json"] = canonical({**plan, "request": resolved_request})
     # Prompt construction must execute from the captured runtime too. Importing
     # builders from a mutable checkout could otherwise mix two code versions.
     with tempfile.TemporaryDirectory(prefix="wb-output-prompts-") as temp:
@@ -331,8 +400,9 @@ def prepare(configs, job, plan):
         **{k: plan[k] for k in ("publication_revision", "candidates_sha256", "selection_sha256",
                                 "input_manifest_sha256", "config_sha256", "settings_provenance")},
         "runtime_manifest_sha256": sha256(canonical(runtime))}
-    if output.get("pipeline") == "story_v1":
-        output["story_refs"] = {cid:request["story_refs"][cid] for cid in plan["candidate_ids"]}
+    if output.get("pipeline") in ("story_v1", "story_v2"):
+        output["story_refs"] = {cid:resolved_story_refs[cid] if output["pipeline"] == "story_v2" else request["story_refs"][cid]
+                                for cid in plan["candidate_ids"]}
     if output.get("pipeline") == "facts_v1":
         output["fact_refs"] = {cid:request["fact_refs"][cid] for cid in plan["candidate_ids"]}
     store.create(output, prompts, artifacts=blobs)

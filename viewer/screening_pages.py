@@ -155,10 +155,13 @@ def reader(work, draft, works, query, job_store, names, usage_html=""):
         body += '<div class="sc-prose">' + E(draft['text']) + '</div>'
     else:
         body += '<div class="sc-empty"><h3>' + E(view.LABELS.get(draft['status'], draft['status'])) + '</h3><p>この稿には読める本文がありません。</p>' + link(record, '生成記録を確認する →') + '</div>'
-    if draft["request"].get("pipeline") == "story_v1":
+    if draft["request"].get("pipeline") in ("story_v1", "story_v2"):
         body += '<p>' + link(f'/stories/outputs/{U(oid)}/{U(cid)}','固定した骨格・検査結果・採否を確認 →') + '</p><p>本文の採否はレビュー待ちです。参照の検査は物語の正しさを保証しません。</p>'
+    if draft.get("review_state") == "pending":
+        body += '<p class="ui-notice ui-notice--warning">要確認：このStory v2稿は、ログとの意味的な照合と人による採否が未確認です。</p>'
     summary = view.synopsis(OutputStore(job_store.configs.control), draft, cid)
-    body += '</section><section role="tabpanel" id="sc-panel-synopsis" aria-labelledby="sc-tab-synopsis" data-sc-panel="synopsis" hidden><h3>この稿に使ったあらすじ</h3><div class="sc-prose">' + E(summary) + '</div></section>'
+    synopsis_title = '同じ骨格から作ったあらすじ' if draft["request"].get("pipeline") == "story_v2" else 'この稿に使ったあらすじ'
+    body += '</section><section role="tabpanel" id="sc-panel-synopsis" aria-labelledby="sc-tab-synopsis" data-sc-panel="synopsis" hidden><h3>' + E(synopsis_title) + '</h3><div class="sc-prose">' + E(summary) + '</div></section>'
     body += '<section role="tabpanel" id="sc-panel-info" aria-labelledby="sc-tab-info" data-sc-panel="info" hidden><h3>生成情報</h3><dl class="sc-info">'
     for name, value in (("状態", view.LABELS.get(draft['status'], draft['status'])), ("作成日時", draft['date']), ("候補", cid), ("生成版", oid), ("試行", draft['entry'].get('attempt_id') or '未開始'), ("モデル", draft['request'].get('model') or '指定なし')):
         body += f'<dt>{E(name)}</dt><dd>{E(value)}</dd>'

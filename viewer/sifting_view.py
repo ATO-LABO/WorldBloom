@@ -3,6 +3,8 @@ import math
 from collections import Counter
 from execution.provenance import ConfigError, contained
 from execution.output_store import OutputStore, verified
+from execution.output_requests import supports_story_v2
+from execution.output_settings import resolve_generation
 from viewer import data, pages, workbench_pages as wb, output_pages, world_usage_badge
 
 
@@ -22,6 +24,11 @@ def load(handler, run_id, *, query=None, grid=False):
     record = next((r for r in history if r["run_id"] == run_id), {})
     busy = [j for j in (store.list() if store else []) if j.get("run_id") == run_id and j.get("state") in wb.RUNNING_STATES]
     running = bool(busy) or record.get("state") in wb.RUNNING_STATES
+    try:
+        generation = resolve_generation(getattr(handler.server, "settings_path", None))
+        story_v2 = supports_story_v2(generation["backend"], generation["model"])
+    except ConfigError:
+        story_v2 = False
     config = None
     if record.get("config_id") and store:
         try:
@@ -37,7 +44,7 @@ def load(handler, run_id, *, query=None, grid=False):
         outputs = []  # Older read-only job stores have no output ledger.
     except (ConfigError, OSError, ValueError, KeyError, TypeError):
         outputs, output_error = [], True
-    synopsis, statuses, output_links = {}, {}, {}
+    synopsis, statuses, output_links, synopsis_story_refs, v2_synopsis = {}, {}, {}, {}, set()
     for output in sorted(outputs, key=lambda o: o["output_id"]):
         kind = output["request"].get("kind")
         for entry in output.get("entries", []):
@@ -46,10 +53,37 @@ def load(handler, run_id, *, query=None, grid=False):
             output_links[cid] = f'/outputs/{pages._url_segment(output["output_id"])}#entry-{pages._url_segment(cid)}'
             if kind == "synopsize" and entry.get("status") == "ok" and entry.get("text_ref"):
                 try:
+                    if cid in v2_synopsis and output["request"].get("pipeline") != "story_v2":
+                        continue
                     output_store = OutputStore(store.configs.control)
-                    synopsis[cid] = verified(contained(output_store.folder(output["output_id"]), entry["text_ref"]), entry["text_sha256"]).decode("utf-8")
+                    if output["request"].get("pipeline") in ("story_v1", "story_v2"):
+                        from execution.story_service import read_story_output
+                        result = read_story_output(output_store, output["output_id"], cid)
+                        text = result["text"] if result else None
+                    else:
+                        text = verified(contained(output_store.folder(output["output_id"]), entry["text_ref"]), entry["text_sha256"]).decode("utf-8")
+                    if not isinstance(text, str) or not text.strip():
+                        raise ConfigError("story", "あらすじを読み込めません")
+                    synopsis[cid] = text
+                    if output["request"].get("pipeline") == "story_v2":
+                        synopsis_story_refs[cid] = (output["request"].get("story_refs") or {}).get(cid)
+                        v2_synopsis.add(cid)
                 except (ConfigError, OSError, UnicodeDecodeError):
                     statuses[cid][kind] = "unreadable"
+    synopsis_old = set()
+    if synopsis_story_refs and store:
+        try:
+            from execution.story_store import StoryStore
+            stories = StoryStore(store.configs.control)
+            for cid, ref in synopsis_story_refs.items():
+                current = stories.current(run_id, cid)
+                if current and ref is not None:
+                    now = stories.reference(current["plan"]["plan_id"], require_confirmation=False)
+                    if not (isinstance(ref, dict) and all(now.get(key) == ref.get(key) for key in
+                                                         ("material_id", "material_sha256", "plan_id", "plan_sha256"))):
+                        synopsis_old.add(cid)
+        except (ConfigError, OSError, ValueError, KeyError, TypeError):
+            pass
     # Legacy summaries belong to the verified representative, never every candidate in its cell.
     if legacy:
         for cell, text in data.synopsis_texts(repo, root).items():
@@ -74,7 +108,7 @@ def load(handler, run_id, *, query=None, grid=False):
         c = dict(candidate)
         cid, cell = c["candidate_id"], c.get("cell_key", "")
         state = states.get(cid, {})
-        c.update(state=state.get("state", "unclassified"), note=state.get("note", ""), synopsis=synopsis.get(cid, ""))
+        c.update(state=state.get("state", "unclassified"), note=state.get("note", ""), synopsis=synopsis.get(cid, "") or "", synopsis_old=cid in synopsis_old, synopsis_needs_review=cid in v2_synopsis)
         c["label"] = c.get("title") or wb._short_id(cid)
         q = c.get("quality")
         c["quality_text"] = f"{q:.4f}" if isinstance(q, (int, float)) and math.isfinite(q) else "—"
@@ -91,8 +125,14 @@ def load(handler, run_id, *, query=None, grid=False):
             c["usage_html"] = world_usage_badge.badge_html(counts, usage_patches)
         c["status"] = statuses.get(cid, {})
         c["output_href"] = output_links.get(cid, "")
-        c["synopsis_state"] = "あらすじあり" if c["synopsis"] else {"error":"あらすじ生成に失敗", "unknown":"あらすじ生成の結果不明", "running":"あらすじ生成中", "unreadable":"あらすじを読み込めません"}.get(c["status"].get("synopsize"), "あらすじ未生成")
-        c["can_synopsis"] = bool(c.get("screenable") and not running and not output_error and not c["synopsis"] and c["status"].get("synopsize") not in ("ok", "unknown", "running", "pending", "unreadable"))
+        c["synopsis_state"] = ("旧骨格のあらすじ" if c["synopsis_old"] else "あらすじあり・要確認" if c["synopsis_needs_review"] else "あらすじあり") if c["synopsis"] else {"error":"あらすじ生成に失敗", "unknown":"あらすじ生成の結果不明", "running":"あらすじ生成中", "unreadable":"あらすじを読み込めません"}.get(c["status"].get("synopsize"), "あらすじ未生成")
+        status = c["status"].get("synopsize")
+        has_current_synopsis = (cid in v2_synopsis and not c["synopsis_old"]) if story_v2 else bool(c["synopsis"])
+        blocked = {"unknown", "running", "pending", "unreadable"}
+        if not story_v2:
+            blocked.add("ok")
+        c["can_synopsis"] = bool(c.get("screenable") and not running and not output_error
+                                 and not has_current_synopsis and status not in blocked)
         target = c.get("ending") or c.get("target_ending")
         c["ending_text"] = endings.get(target, str(target)) if isinstance(target, str) else ("設定した結末に到達" if c.get("reached") else "設定した結末には未到達")
         items.append(c)

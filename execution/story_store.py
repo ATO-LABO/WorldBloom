@@ -171,21 +171,25 @@ class StoryStore:
             raise ConfigError("plan", "確認記録が一致しません", code="snapshot_changed")
         return doc
 
-    def reference(self, plan_id):
+    def reference(self, plan_id, *, require_confirmation=True):
         plan = self.plan(plan_id)
-        confirmation = self.confirmation(plan_id)
+        confirmation = self.confirmation(plan_id, required=require_confirmation)
         return {"material_id": plan["material_ref"]["material_id"],
             "material_sha256": plan["material_ref"]["content_sha256"],
             "plan_id": plan_id, "plan_sha256": sha256(canonical(plan)),
-            "confirmation_sha256": sha256(canonical(confirmation))}
+            # Synopsis generation deliberately remains stable if a user confirms
+            # the same plan after it has been admitted.
+            "confirmation_sha256": (sha256(canonical(confirmation))
+                                    if require_confirmation else None)}
 
-    def resolve(self, ref, *, binding=None):
+    def resolve(self, ref, *, binding=None, require_confirmation=True):
         if not isinstance(ref, dict) or set(ref) != {"material_id", "material_sha256", "plan_id", "plan_sha256", "confirmation_sha256"}:
             raise ConfigError("story_refs", "素材・構成案・確認の版を指定してください")
         material, material_blobs = self._read("materials", ref["material_id"])
         plan = self.plan(ref["plan_id"])
-        confirmation = self.confirmation(ref["plan_id"])
-        if self.reference(ref["plan_id"]) != ref or plan["material_ref"]["material_id"] != material["material_id"]:
+        confirmation = self.confirmation(ref["plan_id"], required=require_confirmation)
+        expected = self.reference(ref["plan_id"], require_confirmation=require_confirmation)
+        if expected != ref or plan["material_ref"]["material_id"] != material["material_id"]:
             raise ConfigError("story_refs", "確認済み骨格と一致しません", code="snapshot_changed")
         current = self.current(material["source_binding"]["run_id"], material["source_binding"]["candidate_id"])
         if not current or current["plan"]["plan_id"] != plan["plan_id"]:
