@@ -38,7 +38,7 @@ class WorldCreateTests(unittest.TestCase):
         status, markup = self.get('/worlds/original')
         self.assertEqual(status,200)
         self.assertIn('星が地上へ降りる街。',markup)
-        self.assertIn('data-screen="story"',markup)
+        self.assertIn('data-screen="overview" data-settings-category="overview"',markup)
         self.assertIn('data-world-prototype',markup)
         self.assertNotIn('data-quick-start',markup)
         with self.assertRaises(ConfigError):

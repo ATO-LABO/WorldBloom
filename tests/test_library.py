@@ -534,11 +534,12 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('data-advanced-save', body)
         self.assertIn('href="/worlds/momotaro"', body)
 
-    def test_world_detail_page_has_four_sections(self):
+    def test_world_detail_page_links_file_settings_from_shared_navigation(self):
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        for section in ('roles','canon','actions','files'):
+        for section in ('roles','canon','actions'):
             self.assertIn(f'data-advanced-section="{section}"',body)
+        self.assertIn('href="/worlds/momotaro?view=advanced#files" data-settings-category="files"', body)
         self.assertNotIn('class="tab-input"',body)
 
     def test_world_detail_action_catalog(self):
