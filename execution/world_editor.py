@@ -192,7 +192,7 @@ def save(store, ident, body):
                 return {'valid':True,'conditions':len(runtime.concerns.conditions) if runtime.concerns else 0}
             person_values.write_changes(store, ident, files, candidate)
             saved, revision = _read(store, ident)
-            return _model(ident, saved, revision)
+            return _model(ident, saved, revision, _base(store, ident) / "world.yaml")
         elif operation == "file":
             if not isinstance(target, str) or target not in files:
                 _bad("target", "登録された世界・人物ファイルを指定してください")

@@ -42,13 +42,15 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertEqual(before, self.configs.get('cfg-test'))
         self.assertEqual(self.fake.submitted, [])
 
-    def test_genre_usage_and_existing_editor_are_accessible(self):
+    def test_old_genre_tab_uses_default_and_world_settings_stay_accessible(self):
         status, body, _ = self.get_status('/configs?tab=genres&item=romance')
         self.assertEqual(status, 200)
-        self.assertIn('data-gs-panel="genres">', body)
-        self.assertIn('href="/genres/romance"', body)
-        self.assertIn('使っている世界', body)
-        self.assertIn('href="/worlds/romance"', body)
+        self.assertEqual(self.initial(body)['tab'], 'output')
+        self.assertNotIn('data-gs-panel="genres"', body)
+        status, body, _ = self.get_status('/worlds/romance?view=advanced#genres')
+        self.assertEqual(status, 200)
+        self.assertIn('data-advanced-section="genres"', body)
+        self.assertIn('href="/worlds/romance?view=advanced#genres"', body)
 
     def test_save_round_trip_is_reflected_without_config_mutation(self):
         before = self.configs.get('cfg-test')
@@ -71,8 +73,7 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertIsNone(self.initial(body)['view'])
         self.assertIn('settings.json を読めません', body)
         self.assertNotIn('data-gs-output', body)
-        # WB-COMPUTE-001: nav gained a 4th tab ("計算").
-        self.assertEqual(body.count('data-gs-tab='), 4)
+        self.assertEqual(set(re.findall(r'data-gs-tab="([^"]+)"', body)), {'output', 'compute', 'configs'})
         self.assertIn('まだ登録されていません', body)
 
     def test_assets_are_served(self):
