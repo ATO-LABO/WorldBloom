@@ -1,14 +1,17 @@
 import unittest
 from copy import deepcopy
 from pathlib import Path
-from html.parser import HTMLParser
 import test_home_workspace as fixtures
 from viewer.creation_workflow import render
 from execution.world_drafts import mock_response,parse_response,validate
 from execution.provenance import ConfigError
 
 class PrepareTests(unittest.TestCase):
-    setUp=fixtures.HomeWorkspaceTests.setUp
+    def setUp(self):
+        fixture = fixtures.HomeWorkspaceTests()
+        self.addCleanup(fixture.doCleanups)
+        fixture.setUp()
+        self.store, self.jobs = fixture.store, fixture.jobs
 
     def test_preparation_has_only_requested_fields_in_order_and_accessible_help(self):
         text=render(self.store,self.jobs)

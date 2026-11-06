@@ -17,7 +17,11 @@ class Nodes(HTMLParser):
 
 
 class FooterTests(unittest.TestCase):
-    setUp=home_fixtures.HomeWorkspaceTests.setUp
+    def setUp(self):
+        fixture = home_fixtures.HomeWorkspaceTests()
+        self.addCleanup(fixture.doCleanups)
+        fixture.setUp()
+        self.store, self.jobs = fixture.store, fixture.jobs
 
     def test_normal_footer_only_saves_or_progresses_without_hidden_clone_or_export(self):
         page=render(self.store,self.jobs); parsed=Nodes(); parsed.feed(page)
