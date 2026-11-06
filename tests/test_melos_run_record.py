@@ -18,6 +18,7 @@ from execution.melos_run_record import publish_saved_run_record, describe_saved_
 from execution.provenance import canonical
 from gapengine.genome import Genome
 from gapengine.melos_choice_provider import MelosChoiceProvider
+from test_melos_adapter import bind_approved_trial_world
 
 
 @unittest.skipUnless(os.environ.get('MELOS_APPROVED_ADAPTER_DIR') and os.environ.get('MELOS_INPUT_DIR'),
@@ -29,7 +30,8 @@ class MelosRunRecordTests(unittest.TestCase):
         sys.path.insert(0, str(folder))
         import melos_runner
         cls.base = melos_runner
-        root = Path(os.environ['MELOS_INPUT_DIR']); cls.base.ROOT = root.parent
+        root = Path(os.environ['MELOS_INPUT_DIR'])
+        bind_approved_trial_world(cls, cls.base, root)
         cls.inputs = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in sorted(root.rglob('*.yaml'))}
         cls.sources = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
