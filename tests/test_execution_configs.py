@@ -32,7 +32,7 @@ class ConfigTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
-        install_current_worlds(self.repo, "romance", "detective", "momotaro")
+        install_current_worlds(self.repo, "romance", "detective", "momotaro", "momotaro_plus2")
         self.store = ConfigStore(self.repo, self.base / "control", self.base / "runs")
         self.spec = {"label": "確認用", "project_id": "romance", "template_id": "romance",
                      "evolution": {"generations": 1, "population": 2, "seeds": 1, "keep": "all"}}

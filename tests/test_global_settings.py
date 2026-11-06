@@ -42,15 +42,15 @@ class GlobalSettingsTests(unittest.TestCase):
         self.assertEqual(before, self.configs.get('cfg-test'))
         self.assertEqual(self.fake.submitted, [])
 
-    def test_old_genre_tab_uses_default_and_world_settings_stay_accessible(self):
+    def test_old_genre_tab_uses_default_and_current_action_settings_are_accessible(self):
         status, body, _ = self.get_status('/configs?tab=genres&item=romance')
         self.assertEqual(status, 200)
         self.assertEqual(self.initial(body)['tab'], 'output')
         self.assertNotIn('data-gs-panel="genres"', body)
-        status, body, _ = self.get_status('/worlds/romance?view=advanced#genres')
+        status, body, _ = self.get_status('/worlds/romance?view=actions')
         self.assertEqual(status, 200)
-        self.assertIn('data-advanced-section="genres"', body)
-        self.assertIn('href="/worlds/romance?view=advanced#genres"', body)
+        self.assertIn('data-as-tab="types"', body)
+        self.assertIn('href="/worlds/romance?view=actions"', body)
 
     def test_save_round_trip_is_reflected_without_config_mutation(self):
         before = self.configs.get('cfg-test')
