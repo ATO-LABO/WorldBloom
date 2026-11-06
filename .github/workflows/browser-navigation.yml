@@ -1,0 +1,56 @@
+name: browser-navigation
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'viewer/**'
+      - 'engine/**'
+      - 'execution/library.py'
+      - 'projects/momotaro_plus3_new/**'
+      - 'scripts/browser_checks/**'
+      - '.github/workflows/browser-navigation.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'viewer/**'
+      - 'engine/**'
+      - 'execution/library.py'
+      - 'projects/momotaro_plus3_new/**'
+      - 'scripts/browser_checks/**'
+      - '.github/workflows/browser-navigation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  saved-world-navigation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Install fixed browser-check dependencies
+        run: |
+          python -m pip install --no-cache-dir -r scripts/browser_checks/requirements.txt
+      - name: Provide Japanese fonts from the official Ubuntu packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-match 'Noto Sans CJK JP'
+      - name: Compare baseline and repaired navigation on loopback only
+        run: python -B scripts/browser_checks/world_description.py --output "$RUNNER_TEMP/browser-navigation"
+      - name: Preserve screenshots and explicit check results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-navigation-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/browser-navigation
+          if-no-files-found: error
+          retention-days: 7

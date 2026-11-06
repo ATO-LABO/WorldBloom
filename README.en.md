@@ -42,7 +42,7 @@ Read the full article: [WorldBloom's Creative Philosophy](https://www.atom-box.j
 
 ## How it works, in brief
 
-Characters are represented by seven layers (ability, perception, resources, phase, identity, objective, and foreshadowing) plus vitality. The genome is a **strategy vector of 9 scalars**, rather than a sequence of actions. Simulations run with fixed seeds, and only those that reach the fixed ending are kept in a MAP-Elites grid (leading categories I–VI × volatility). **No LLM is involved in generating events.** A human reads the synopses in the grid and chooses which paths the LLM will turn into full prose.
+Characters are represented by seven layers (ability, perception, resources, phase, identity, objective, and foreshadowing) plus vitality. The genome is a **strategy vector of 9 scalars**, rather than a sequence of actions. Simulations run with fixed seeds, and only those that reach the fixed ending are kept in a MAP-Elites grid (leading categories I–VI × volatility). **The base simulation generates events without an LLM.** If the optional rationality layer (κ > 0) is enabled, Ollama or Jev judgments adjust candidate weights; they do not directly write the event sequence. A human reads the synopses in the grid and chooses which paths the LLM will turn into full prose.
 
 WorldBloom extracts and rebuilds ideas from StorySim, another project by the same author that simulates worlds and characters and turns interesting logs into stories. It is not a fork.
 
@@ -50,6 +50,8 @@ For more detail, see [How WorldBloom Works](https://www.atom-box.jp/worldbloom/h
 
 ## What you can do
 
+- **Build a world in three stages**: prepare a draft, edit its contents, then review and adopt it as a new world. Save and resume drafts, and review optional AI generation or refinement changes before applying them.
+- **Edit the world’s conditions**: inspect people, places, items and acquisition methods, time, actions, and ending conditions, then save the world for an experiment.
 - **Explore and select in the QD grid (Sifting / Screening)**: choose paths from the leading-category × volatility grid and generate their synopses and prose.
 - **World self-expansion**: have the system propose additions to the world from experiment results, approve or reject them, and compare results with and without the expansion.
 - **Visualize lineage and turning points**: see in graphs how strategies change across generations and where the story takes a different turn.
@@ -59,12 +61,16 @@ For operational features such as GPU coordination and progress displays, see [Us
 
 ## Try it
 
+This README describes the current repository source. Windows downloads contain the version attached to [Releases](https://github.com/ATO-LABO/WorldBloom/releases) and may not include every newer source feature. The public viewer displays saved samples.
+
 **Detailed instructions: [Documentation](https://ato-labo.github.io/WorldBloom/docs/en/) ([Installation](https://ato-labo.github.io/WorldBloom/docs/en/getting-started/install/) / [Quickstart](https://ato-labo.github.io/WorldBloom/docs/en/getting-started/quickstart/)).**
 
 - **A. Use the executable (Windows)**: extract [WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) and open `WorldBloom-Studio.exe`. You can choose a world, run GA experiments, sift through results, and generate synopses and prose. Running GA experiments also requires a separate installation of Python 3.12 or later and PyYAML.
 - **B. Browse without installing anything**: the [Public Viewer](https://ato-labo.github.io/WorldBloom/) lets you read the grids, synopses, and prose from three experiments: Momotaro, romance, and detective fiction.
 - **C. Run from source**: use `git clone`, then `pip install -r requirements.txt` (Python 3.12 or later). The [Installation](https://ato-labo.github.io/WorldBloom/docs/en/getting-started/install/) guide covers opening the bundled `samples/` in the viewer, running the GA yourself, and other setup steps.
-  Regression testing covers Python 3.12 and 3.13 on Ubuntu and Windows.
+  Regression testing targets Python 3.12 and 3.13 on Ubuntu and Windows.
+
+**World-file compatibility**: the current source edits and runs only the new format (`world_format_version: 1`). Start with the bundled 桃太郎＋3 (Momotaro +3, `projects/momotaro_plus3_new`) or a world confirmed through the creation screen. Legacy worlds are not converted automatically. Preserve their original files and past run outputs; see [Create a World](https://ato-labo.github.io/WorldBloom/docs/en/usage/create-world/).
 
 See [Usage](https://ato-labo.github.io/WorldBloom/docs/en/usage/create-world/) for running evolution, regenerating synopses or prose, configuring LLM backends, and using GPU Guard. The [Reference](https://ato-labo.github.io/WorldBloom/docs/en/reference/cli/) covers command arguments and all settings.json fields. For help with problems, see [Troubleshooting](https://ato-labo.github.io/WorldBloom/docs/en/guides/troubleshooting/). Developer information, including regression tests and the determinism contract, is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (Japanese).
 
@@ -108,7 +114,7 @@ execution/   Settings, jobs, and permission boundaries for managing evolution/ou
 viewer/      HTTP viewer (standard library only): grid, synopses, prose, and run management
 scripts/     Scripts for evolution, synopses, narration, random baselines, static publishing, sample packing, etc.
 templates/   Genre templates: action graphs, modulation rules, canon priors, QD axes, foreshadowing libraries
-projects/    Initial world and character states (seven layers): momotaro / detective / romance
+projects/    Initial world and character states; momotaro_plus3_new is the current-format example; legacy worlds are retained
 samples/     Minimal viewer-ready samples (three experiments, generated by scripts/pack_samples.py)
 tests/       Regression tests (unittest)
 docs/        Design documents, implementation plans, and disclosures

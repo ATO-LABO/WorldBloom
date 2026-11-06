@@ -1,5 +1,5 @@
 ---
-ja_rev: "b8203f9d75d0"
+ja_rev: "0aec573c83ad"
 ---
 # Rationality layer and Jev
 
@@ -28,7 +28,7 @@ Jev only reports probabilities on a coarse 0.01 grid. Its 0.00 doesn't mean "tru
 
 ## Enabling Jev
 
-The "計算" (Compute) tab of ⚙ 全体設定 (Global settings) has a "合理性の判定器（Jev）" (Rationality judge (Jev)) block. Enter your TypeSafe API key and press "キーを保存" (Save key); before saving, it sends one real judgment call with that key to verify it, and only saves if that succeeds. Once valid, the status changes to "有効（jev-1.13.0、確認した日付）" (Enabled (jev-1.13.0, verified on <date>)). The key is stored only in `settings.json` — it never appears on screen, in the API, or in any experiment record.
+Under "AIの設定" (AI settings) in ⚙ 全体設定 (Global settings), the "合理性の判定器（Jev）" (Rationality judge (Jev)) tab sits alongside "使用するAI" (AI provider) and "生成の上限" (Generation limits). Enter your TypeSafe API key and press "キーを保存" (Save key); before saving, it sends one real judgment call with that key to verify it, and only saves if that succeeds. Once valid, the status changes to "有効（jev-1.13.0、確認した日付）" (Enabled (jev-1.13.0, verified on <date>)). The key is stored only in `settings.json` — it never appears on screen, in the API, or in any experiment record.
 
 Which judge an experiment uses is chosen per run in the "合理性" (Rationality) section of [Run Settings](../usage/run-settings.md#04). A new config defaults to Jev with κ=0.45 whenever a verified key is on file (duplicating a config keeps its own saved judge and κ). Only when κ is above 0 and Jev is selected does each judgment call send the protagonist's goal, possessions, companions, and candidate-action descriptions to TypeSafe. Trying to run a config still set to Jev without a registered API key is rejected up front.
 
