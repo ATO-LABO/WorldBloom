@@ -846,22 +846,98 @@ def _draft_store(handler):
     return store
 
 
+def _native_revision(handler, token, action, request_id=None):
+    from execution.draft_native import NativeStore
+    from execution.native_revisions import NativeRevisions
+    jobs=_require_job_store(handler); revisions=NativeRevisions(NativeStore(jobs.configs.repo,jobs.configs.control))
+    if handler.command=='GET':result=revisions.get(token,request_id)
+    else:
+        body=_boundary_body(handler)
+        expected={'revision','request_id','target','instruction'} if action=='revise' else {'revision','request_id'} if action=='apply-revision' else {'request_id'}
+        if not isinstance(body,dict) or set(body)!=expected:raise ConfigError('request','修正候補の入力項目を確認してください',code='bad_request')
+        if action=='revise':
+            provider=getattr(_draft_store(handler).provider,'native_revise',None)
+            result=revisions.propose(token,body['revision'],body['request_id'],body['target'],body['instruction'],provider)
+        elif action=='apply-revision':result=revisions.apply(token,body['revision'],body['request_id'])
+        else:result=revisions.cancel(token,body['request_id'])
+    handler._send_json(HTTPStatus.OK,result)
+
+
+def _native_drafts(handler, token=None, action=None):
+    from execution.draft_native import NativeStore
+    jobs=_require_job_store(handler);store=NativeStore(jobs.configs.repo,jobs.configs.control)
+    if handler.command=='GET':
+        result=store.get(token) if token else {'workspaces':store.list()}
+    else:
+        body=_boundary_body(handler)
+        expected={'create':{'request_id','source'},'save':{'revision','request_id','buffer'},'check':{'revision'},'publish':{'revision','digest'},'export':{'revision'},'fork':{'new_id','request_id'}}[action]
+        if not isinstance(body,dict) or set(body)!=expected and not (action=='export' and set(body)=={'revision','original'}):raise ConfigError('request','下書きの入力項目を確認してください',code='bad_request')
+        if action=='create':
+            source=body['source']
+            if not isinstance(source,dict) or set(source) not in ({'world_id'},{'zip_base64'}):raise ConfigError('source','元世界またはZIPを指定してください')
+            result=store.create(token,body['request_id'],**source)
+        elif action=='save':result=store.save(token,body['revision'],body['request_id'],body['buffer'])
+        elif action=='check':result=store.check(token,body['revision'])
+        elif action=='publish':result=store.publish(token,body['revision'],body['digest'])
+        elif action=='fork':result=store.fork(token,body['new_id'],body['request_id'])
+        else:result=store.export(token,body['revision'],body.get('original',False))
+    handler._send_json(HTTPStatus.OK,result)
+
+
+def _draft_forms(handler):
+    from execution.draft_native import proposal_forms
+    body=_boundary_body(handler)
+    if not isinstance(body,dict) or set(body) not in ({'draft'},{'draft','edits'}):raise ConfigError('request','下案と編集項目を指定してください',code='bad_request')
+    handler._send_json(HTTPStatus.OK,proposal_forms(body['draft'],body.get('edits')))
+
+
+def _draft_workspace(handler, token=None):
+    from execution.draft_workspaces import WorkspaceStore
+    jobs=_require_job_store(handler)
+    return WorkspaceStore(jobs.configs.repo,jobs.configs.control)
+
+
+def _workspace_get(handler, token=None):
+    store=_draft_workspace(handler)
+    handler._send_json(HTTPStatus.OK,store.get(token) if token else {'workspaces':store.list()})
+
+
+def _workspace_save(handler, token):
+    body=_boundary_body(handler)
+    required={'revision','request_id','content'}
+    if not isinstance(body,dict) or not required<=body.keys() or set(body)-required-{'source_world_id','source_workspace_id'}:
+        raise ConfigError('request','下書き保存の入力項目を確認してください',code='bad_request')
+    handler._send_json(HTTPStatus.OK,_draft_workspace(handler).save(token,body['revision'],body['request_id'],body['content'],**{k:body[k] for k in ['source_world_id','source_workspace_id'] if k in body}))
+
+
 def _world_draft_get(handler, token):
     handler._send_json(HTTPStatus.OK, _draft_store(handler).get(token))
+
+
+def _world_draft_revision_get(handler,token,request_id):
+    from execution.draft_revisions import get
+    handler._send_json(HTTPStatus.OK,get(_draft_store(handler),token,request_id))
 
 
 def _world_draft_post(handler, token=None, action=None):
     body = _boundary_body(handler)
     expected = {"request_id", "name", "overview"} if token is None else {
-        "cancel": set(), "validate": {"revision", "draft"}, "adopt": {"revision"},
+        "stage": {"name","overview","draft"}, "cancel": set(), "validate": {"revision", "draft"}, "adopt": {"revision"},
         "revise": {"revision", "draft", "target", "instruction", "request_id"},
         "apply-revision": {"revision", "request_id", "draft"}}[action]
+    if token is None and isinstance(body,dict) and 'settings' in body:expected=expected|{'settings'}
+    if (token is None or action=='stage') and isinstance(body,dict) and 'authoring' in body:expected=expected|{'authoring'}
+    if action == 'stage' and isinstance(body,dict) and 'validation_mode' in body:expected=expected|{'validation_mode'}
     if action == 'apply-revision' and isinstance(body,dict) and 'candidate' in body:expected=expected|{'candidate'}
     if not isinstance(body, dict) or set(body) != expected:
         raise ConfigError("request", "下案への入力項目を確認してください", code="bad_request")
+    if token is None and 'settings' in body and not isinstance(body['settings'],dict):
+        raise ConfigError('settings','実行設定は対応する項目のJSONで指定してください',code='bad_request')
     store = _draft_store(handler)
     if token is None:
-        result = store.create(body["request_id"], body["name"], body["overview"])
+        result = store.create(body["request_id"], body["name"], body["overview"], **({k:body[k] for k in ['settings','authoring'] if k in body}))
+    elif action == "stage":
+        result = store.stage(token,body["name"],body["overview"],body["draft"],**({k:body[k] for k in ['authoring','validation_mode'] if k in body}))
     elif action == "cancel":
         result = store.cancel(token)
     elif action == "validate":
@@ -1320,9 +1396,15 @@ def _resolve(parts, method):
     if method == "POST":
         if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "action-usage" and parts[4] in ("check", "save"):
             return _action_usage_post, (parts[2], parts[4])
+        if len(parts)==4 and parts[:2]==['api','native-world-drafts'] and parts[3] in ('revise','apply-revision','cancel-revision'):return _native_revision,(parts[2],parts[3])
+        if parts==['api','world-draft-forms']:return _draft_forms,()
+        if len(parts)==4 and parts[:2]==['api','native-world-drafts'] and parts[3] in ('create','save','check','publish','export','fork'):
+            return _native_drafts,(parts[2],parts[3])
+        if len(parts)==3 and parts[:2]==['api','world-draft-workspaces']:
+            return _workspace_save,(parts[2],)
         if parts == ["api", "world-drafts"]:
             return _world_draft_post, ()
-        if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("cancel", "validate", "adopt", "revise", "apply-revision"):
+        if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("stage", "cancel", "validate", "adopt", "revise", "apply-revision"):
             return _world_draft_post, (parts[2], parts[3])
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-pressure":
             return _time_pressure_post, (parts[2], "save")
@@ -1373,6 +1455,14 @@ def _resolve(parts, method):
         return _action_usage_get, (parts[2],)
     if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3:] == ["action-usage", "status"]:
         return _action_usage_get, (parts[2], "status")
+    if len(parts)==5 and parts[:2]==['api','world-drafts'] and parts[3]=='revisions':return _world_draft_revision_get,(parts[2],parts[4])
+    if len(parts)==5 and parts[:2]==['api','native-world-drafts'] and parts[3]=='revisions':return _native_revision,(parts[2],'status',parts[4])
+    if parts==['api','native-world-drafts']:return _native_drafts,()
+    if len(parts)==3 and parts[:2]==['api','native-world-drafts']:return _native_drafts,(parts[2],)
+    if parts==['api','world-draft-workspaces']:
+        return _workspace_get,()
+    if head=='api' and len(parts)==3 and parts[1]=='world-draft-workspaces':
+        return _workspace_get,(parts[2],)
     if head == "api" and len(parts) == 3 and parts[1] == "world-drafts":
         return _world_draft_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "time-pressure":

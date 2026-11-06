@@ -280,7 +280,7 @@
           if(current.type==='befriend'||current.type==='survive'){
             const number=this.control(this.node('input'));number.type='number';
             const field=current.type==='befriend'?'threshold':'day';
-            number.min=current.type==='befriend'?'0.01':'1';number.max=current.type==='befriend'?'1':'7';number.step=current.type==='befriend'?'0.05':'1';
+            number.min=current.type==='befriend'?'0.01':'1';number.max=current.type==='befriend'?'1':String(this.draft.settings?.time?.days||7);number.step=current.type==='befriend'?'0.05':'1';
             number.value=current[field]===undefined?'':String(current[field]);
             number.addEventListener('input',()=>{if(!number.disabled){current[field]=number.value===''?null:Number(number.value);commit();}});
             row.append(this.field(current.type==='befriend'?'双方の親しさ（0より大きく1以下）':'生存する日数（1〜7日）',number));

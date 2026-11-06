@@ -1,0 +1,41 @@
+(()=>{'use strict';
+const root=document.querySelector('[data-native-draft]');if(!root||!window.WorldBloomDraftForms)return;
+const $=s=>root.querySelector('[data-native-'+s+']'),uuid=()=>crypto.randomUUID().replaceAll('-',''),copy=v=>structuredClone(v);
+const fingerprint=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,x[k]])):x);
+let record=null,id=null,buffer=null,saved=null,busy=false,unknown=false,receipt=null,editor=null,section='time',captured=null,attemptedId=null;
+let ai=null;
+const notice=text=>$('notice').textContent=text,error=text=>$('error').textContent=text;
+function dirty(){return !!buffer&&fingerprint(buffer)!==saved}
+function controls(){for(const el of root.querySelectorAll('input,select,button,textarea'))el.disabled=el.dataset.nativeLocked==='true'||busy||unknown;$('status').disabled=busy;$('fork').disabled=busy||!record;$('publish').disabled=busy||unknown||dirty()||!receipt||!$('confirm').checked;ai?.controls();}
+async function api(path,body){const response=await fetch('/api/native-world-drafts'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-WorldBloom-Client':'1'},body:JSON.stringify(body)});const r=await response.json();if(!response.ok){const e=new Error(r.message||'下書きを確認できません');e.known=response.status<500;e.status=response.status;throw e;}return r;}
+function fail(e){if(e.known)attemptedId=null;unknown=!e.known;error(e.message);if(unknown)notice('通信結果が不明です。再送せず「保存結果を確認」を押してください。入力は残っています。');controls();}
+function carry(){const u=new URL(location.href);if(id)u.searchParams.set('native_draft',id);history.replaceState(history.state,'',u.pathname+u.search+u.hash);}
+async function refresh(){const r=await api('');$('list').replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='選択してください';$('list').append(placeholder);for(const row of r.workspaces){const o=document.createElement('option');o.value=row.workspace_id;o.textContent=(row.name||'名称未定')+' ／ '+new Date(row.updated_at*1000).toLocaleString();o.disabled=!!row.unsupported;$('list').append(o);}if(id)$('list').value=id;}
+function render(){
+ root.classList.toggle('is-native-active',!!record);$('editor').hidden=!record;const proposal=document.querySelector('[data-world-draft]');if(proposal)proposal.hidden=!!record;
+ if(!record)return;$('summary').textContent=record.name+' ／ 原本 '+record.file_count+'ファイル ／ 変更対象のないファイルは原文を保持';
+ $('tabs').replaceChildren();for(const [value,label]of [['time','時間'],['events','予定'],['actions','行動の制限'],['people','人物の目的・優先事項']]){const b=document.createElement('button');b.type='button';b.className='ui-button';b.textContent=label;b.setAttribute('aria-current',section===value?'page':'false');b.addEventListener('click',()=>{section=value;render()});$('tabs').append(b);}
+ ai?.refresh();$('fields').replaceChildren();if(record.model){editor=new WorldBloomDraftForms.Editor($('fields'),{model:record.model,edits:buffer.edits,native:true,onChange:edits=>{buffer.edits=edits;ai?.changed();receipt=null;$('confirm').checked=false;notice('フォームに未保存の変更があります。未完成でも下書き保存できます。');controls();}});editor.render(section);}else{$('fields').textContent=record.parse_error+' 原本は保持しています。フォーム編集・世界への保存は停止しています。';}
+ controls();
+}
+function show(r){$('source').open=false;record=r;id=r.workspace_id;buffer=copy(r.buffer);saved=fingerprint(buffer);unknown=false;receipt=null;$('confirm').checked=false;carry();render();notice('下書きを読み込みました。AI・実行・世界への保存は開始していません。');}
+function leave(){return !dirty()||window.confirm('現在の未保存変更を置き換えて別の下書きを開きますか？')}
+async function run(fn){if(busy||unknown)return;busy=true;controls();error('');try{await fn();}catch(e){fail(e)}finally{busy=false;controls();}}
+$('refresh').addEventListener('click',()=>run(refresh));
+$('open').addEventListener('click',()=>{if(!leave())return;const selected=$('list').value||id;if(selected)run(async()=>show(await api('/'+selected)))});
+$('import-world').addEventListener('click',()=>{if(!$('world').value||!leave())return;run(async()=>{attemptedId=uuid();captured=null;show(await api('/'+attemptedId+'/create',{request_id:uuid(),source:{world_id:$('world').value}}));attemptedId=null;await refresh();})});
+$('import-zip').addEventListener('click',()=>{const file=$('zip').files?.[0];if(!file||!leave())return;if(file.size>10*1024*1024){error('ZIPは10MB以内にしてください');return;}run(async()=>{const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));attemptedId=uuid();captured=null;show(await api('/'+attemptedId+'/create',{request_id:uuid(),source:{zip_base64:btoa(binary)}}));attemptedId=null;await refresh();})});
+$('save').addEventListener('click',()=>run(async()=>{if(!record)return;captured=fingerprint(buffer);const r=await api('/'+id+'/save',{revision:record.revision,request_id:uuid(),buffer});record=r;saved=fingerprint(r.buffer);unknown=false;receipt=null;notice('下書きを保存しました。元世界は変更していません。');}));
+$('status').addEventListener('click',async()=>{if(!(attemptedId||id)||busy)return;busy=true;controls();try{const r=await api('/'+(attemptedId||id));if(attemptedId||!record){show(r);attemptedId=null;}else if(captured&&fingerprint(r.buffer)===captured){record=r;saved=fingerprint(r.buffer);unknown=false;notice(r.published_world?'新しい世界の保存済み記録を確認しました。元世界は変更していません。':'送信した版の保存を確認しました。現在の入力を保持しています。');}else{unknown=false;notice('保存済みの版を確認しました。入力と自動で置き換えません。競合があれば別の下書きとして複製できます。');}error('');}catch(e){fail(e)}finally{busy=false;controls();}});
+$('check').addEventListener('click',()=>{if(dirty()){notice('先に下書きを保存してください。');return;}run(async()=>{receipt=await api('/'+id+'/check',{revision:record.revision});notice(receipt.note+' '+(receipt.warnings||[]).map(w=>w.message).join(' / '));})});
+$('confirm').addEventListener('change',controls);
+$('publish').addEventListener('click',()=>{if(!receipt||dirty()||!$('confirm').checked)return;run(async()=>{const r=await api('/'+id+'/publish',{revision:record.revision,digest:receipt.digest});notice('新しい世界として保存しました。実行は開始していません。');const link=document.createElement('a');link.href='/worlds/'+encodeURIComponent(r.world_id);link.textContent='保存した新しい世界を開く →';$('notice').append(' ',link);receipt=null;$('confirm').checked=false;})});
+$('export').addEventListener('click',()=>{if(dirty()){notice('先に下書きを保存してください。');return;}run(async()=>{const r=await api('/'+id+'/export',{revision:record.revision});const binary=atob(r.zip_base64),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0)),a=document.createElement('a'),url=URL.createObjectURL(new Blob([bytes],{type:'application/zip'}));a.href=url;a.download=r.name;a.click();URL.revokeObjectURL(url);notice('下書きの全ファイルと関連基本ルールをZIPへ出力しました。');})});
+$('export-original').addEventListener('click',()=>run(async()=>{const r=await api('/'+id+'/export',{revision:record.revision,original:true});const a=document.createElement('a'),u=URL.createObjectURL(new Blob([Uint8Array.from(atob(r.zip_base64),c=>c.charCodeAt(0))],{type:'application/zip'}));a.href=u;a.download=r.name;a.click();URL.revokeObjectURL(u);notice('保全した原本をZIPへ出力しました。未対応の内容も保持しています。');}));
+$('fork').addEventListener('click',()=>{if(!record||busy)return;if(unknown&&!window.confirm('先の処理結果は未確定です。現在の内容を別の下書きへ保存しますか？'))return;unknown=false;run(async()=>{const oldId=id,r=await api('/'+oldId+'/fork',{new_id:uuid(),request_id:uuid()});const savedFork=await api('/'+r.workspace_id+'/save',{revision:r.revision,request_id:uuid(),buffer});show(savedFork);await refresh();})});
+$('back').addEventListener('click',()=>{if(!leave())return;record=null;buffer=null;saved=null;receipt=null;render();notice('新規下案の入力へ戻りました。保存した下書きは一覧から再開できます。')});
+window.addEventListener('beforeunload',e=>{if(dirty()||busy||unknown){e.preventDefault();e.returnValue='';}});
+ai=window.WorldBloomNativeAI?.connect(root,{get:()=>({record,buffer,dirty:dirty(),busy,unknown}),load:show,api,controls});
+const requested=new URLSearchParams(location.search).get('native_draft');if(requested&&/^[a-f0-9]{32}$/.test(requested)){id=requested;notice('保存した既存設定の下書きがあります。「再開する」で読み込めます。');$('source').open=true;}
+refresh().catch(()=>notice('一覧を取得できません。「一覧を更新」で確認できます。'));controls();
+})();

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 import sys
 import time
@@ -68,6 +69,11 @@ STATIC_FILES = {
     "world-create.css": "text/css; charset=utf-8",
     "world-draft.css": "text/css; charset=utf-8",
     "world-draft.js": "application/javascript; charset=utf-8",
+    "draft-native.css": "text/css; charset=utf-8",
+    "draft-native.js": "application/javascript; charset=utf-8",
+    "draft-native-ai.js": "application/javascript; charset=utf-8",
+    "draft-authoring.js": "application/javascript; charset=utf-8",
+    "draft-settings-forms.js": "application/javascript; charset=utf-8",
     "draft-goal-editor.js": "application/javascript; charset=utf-8",
     "draft-workspace.js": "application/javascript; charset=utf-8",
     "draft-editing.js": "application/javascript; charset=utf-8",
@@ -424,7 +430,19 @@ class ViewerHandler(BaseHTTPRequestHandler):
             raise BadRequest("invalid Content-Length") from error
         if length < 1:
             raise BadRequest("empty request body")
-        if length > MAX_POST_BYTES:
+        path = urlsplit(self.path).path
+        limit = MAX_POST_BYTES
+        if re.fullmatch(r"/api/native-world-drafts/[a-f0-9]{32}/create", path):
+            limit = 14 * 1024 * 1024
+        elif re.fullmatch(r"/api/native-world-drafts/[a-f0-9]{32}/save", path):
+            limit = 2 * 1024 * 1024
+        elif (
+            path in ("/api/world-draft-forms", "/api/world-drafts")
+            or re.fullmatch(r"/api/world-draft-workspaces/[a-f0-9]{32}", path)
+            or re.fullmatch(r"/api/world-drafts/[a-f0-9]{32}/(stage|validate|revise|apply-revision)", path)
+        ):
+            limit = 1024 * 1024
+        if length > limit:
             raise BadRequest("request body is too large")
 
         try:

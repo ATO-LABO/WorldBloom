@@ -1,0 +1,16 @@
+[data-native-draft]{flex:0 0 auto;max-height:40dvh;overflow:auto}
+[data-native-draft].is-native-active{flex:1 1 auto;max-height:none;overflow:hidden}
+[data-native-editor]{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+[data-world-draft][hidden],[data-native-draft][hidden]{display:none!important}
+.native-content{flex:1;min-width:0;min-height:0;overflow:auto}
+.native-picker{max-height:calc(var(--ws-space-6) * 8);overflow:auto}
+[data-native-fields] fieldset{margin-block:var(--ws-space-4);padding:var(--ws-space-3);border:1px solid var(--ws-line)}
+[data-native-fields] details{margin-block:var(--ws-space-4)}
+@media(max-width:760px),(max-height:650px){
+ [data-native-draft].is-native-active{overflow:auto}
+ [data-native-editor]{display:block;flex:0 0 auto;overflow:visible}
+ .native-content{height:45dvh;min-height:160px;max-height:55dvh}
+ [data-native-editor] .ui-footer{flex-wrap:wrap;position:sticky;bottom:0}
+}
+
+[data-native-ai] pre{white-space:pre-wrap;overflow-wrap:anywhere}

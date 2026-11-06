@@ -46,6 +46,11 @@ def scope_paths(draft,target):
 
 
 def scoped_candidate(base,candidate,target):
+    if base.get('settings') != candidate.get('settings'):
+        fail('settings','この項目のAI修正では実行設定を変更できません')
+    priorities=lambda d:{p['name']:p['commitments'] for p in d['people'] if 'commitments' in p}
+    if priorities(base) != priorities(candidate):
+        fail('commitments','この項目のAI修正では人物の優先度・必須指定を変更できません')
     paths=scope_paths(base,target)
     if paths is None:return
     permitted=deepcopy(base)
@@ -165,7 +170,9 @@ def preview(store, token, revision, draft, target, instruction, request_id):
                    "state": "generating", "changes": [], "candidate": None, "errors": {}}
         atomic_json(path, request)
     try:
-        response = revise(record["name"], record["overview"], deepcopy(proposal), target, instruction)
+        context_revise=getattr(store.provider,'revise_with_context',None)
+        if record.get('authoring') is not None and context_revise is None:fail('authoring','制作メモを含むAI修正が接続されていません')
+        response = context_revise(record['name'],record['overview'],deepcopy(proposal),target,instruction,deepcopy(record['authoring'])) if record.get('authoring') is not None else revise(record["name"], record["overview"], deepcopy(proposal), target, instruction)
         candidate, changes = patch_draft(proposal, response)
         candidate, _, _, _ = validate(store.repo, candidate)
         scoped_candidate(proposal,candidate,target)
@@ -224,3 +231,10 @@ def apply(store, token, revision, request_id, draft, candidate=None):
         request.update(state="applied", applied_revision=result["revision"])
         atomic_json(path, request)
     return store.get(token)
+
+
+def get(store,token,request_id):
+    """Read-only recovery of an explicit revision request; no provider call."""
+    store._path(token);store._path(request_id)
+    try:return read_json(store.root/'revisions'/token/(request_id+'.json'))
+    except FileNotFoundError:fail('request_id','修正案が見つかりません','not_found')
