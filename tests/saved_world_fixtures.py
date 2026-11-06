@@ -16,7 +16,7 @@ def current_world_yaml(definition, *, template="momotaro"):
     return yaml.safe_dump(initialize(world), allow_unicode=True, sort_keys=False)
 
 
-def install_current_worlds(repo, *project_ids):
+def install_current_worlds(repo, *project_ids, template=None):
     """Prepare explicitly selected, disposable copies of ordinary worlds."""
     repo = Path(repo)
     if repo.resolve() == Path(__file__).resolve().parents[1]:
@@ -29,7 +29,7 @@ def install_current_worlds(repo, *project_ids):
             continue
         for field in RETIRED_FIELDS:
             world.pop(field, None)
-        world_text = current_world_yaml(world, template=ident)
+        world_text = current_world_yaml(world, template=template or ident)
         path.write_bytes(world_text.encode("utf-8"))
 
 

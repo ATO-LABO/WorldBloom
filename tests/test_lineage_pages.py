@@ -20,7 +20,7 @@ single-node immigrant cell.
 
 from __future__ import annotations
 
-from frozen_world import evolve_frozen
+from frozen_world import evolve_frozen, run_frozen
 import json
 import re
 import shutil
@@ -67,6 +67,15 @@ class LineagePageTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls.temporary.cleanup()
+
+    def setUp(self):
+        # Replay this historical fixture explicitly, then exercise the real
+        # viewer against its persisted report. The viewer admits no old input.
+        from gapengine.lineage import build_lineage_report
+        experiment = self.repository.experiment("exp1")
+        for cell in ("II|high", "III|mid"):
+            (experiment / "lineage" / (cell.replace("|", "-") + "-cache.json")).unlink(missing_ok=True)
+            run_frozen(build_lineage_report, self.repository, experiment, cell)
 
     def test_cell_page_links_to_lineage(self) -> None:
         rendered = pages.cell_page(self.repository, "exp1", "II|high", view="digest")

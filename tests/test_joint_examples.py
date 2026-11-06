@@ -17,6 +17,20 @@ ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('examples_launcher',ROOT/'tools/local_launcher.py')
 launcher=importlib.util.module_from_spec(spec);spec.loader.exec_module(launcher)
 
+RUN_FROZEN_EXAMPLES = """
+from types import SimpleNamespace
+
+from engine.world import World
+from engine.yaml_cache import load_yaml
+from scripts import run_joint_examples as examples
+
+def load_frozen_world(path):
+    return World(load_yaml(path), path)
+
+examples.World = SimpleNamespace(from_yaml=load_frozen_world)
+examples.main()
+"""
+
 
 class JointExampleTests(unittest.TestCase):
     def test_repeated_cli_preserves_existing_evidence(self):
@@ -38,9 +52,17 @@ class JointExampleTests(unittest.TestCase):
     def test_packaged_examples_run_without_the_source_checkout(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);workspace=launcher.prepare(ROOT,root/'state')
-            checked=subprocess.run([sys.executable,'-B','scripts/run_joint_examples.py','--out',str(root/'results')],
-                cwd=workspace,env=dict(os.environ,PYTHONPATH=str(workspace),PYTHONNOUSERSITE='1'),
-                capture_output=True,text=True,encoding='utf8',timeout=60)
+            options = dict(cwd=workspace, env=dict(os.environ, PYTHONPATH=str(workspace),
+                PYTHONNOUSERSITE='1', PYTHONUTF8='1'), capture_output=True, text=True, encoding='utf8', timeout=60)
+            denied = subprocess.run([sys.executable, '-B', 'scripts/run_joint_examples.py',
+                '--out', str(root/'rejected'), '--example', 'voyage'], **options)
+            self.assertNotEqual(denied.returncode, 0)
+            self.assertIn('旧世界形式', denied.stderr)
+            self.assertFalse((root/'rejected').exists())
+
+            # Keep replaying the shipped historical engine examples explicitly.
+            checked = subprocess.run([sys.executable, '-B', '-c', RUN_FROZEN_EXAMPLES,
+                '--out', str(root/'results')], **options)
             self.assertEqual(checked.returncode,0,checked.stdout+checked.stderr)
             reports=json.loads(checked.stdout)
             self.assertEqual({r['project'] for r in reports},{'joint_voyage_example','joint_repair_example','joint_festival_example'})
