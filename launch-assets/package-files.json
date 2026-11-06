@@ -688,7 +688,7 @@
   "tests/test_http_failure_diagnostics.py": "eeb84e715d25320e9ae04a73483cf7cfafd0ea9733431f6ff1a24c4a4cbcb4b4",
   "tests/test_independent_api.py": "43fa04b0e05d4d1af4f30799dfc097d04fdc4a5a6964c765a949cf5e6033719c",
   "tests/test_independent_http_boundary.py": "ae9b1bd6f9b128abebc80ca3c75a0a465413a6a8afc62a0f6fe928aaf271a39a",
-  "tests/test_independent_jobs.py": "41ae3074c08360aebcd7a95d7cf69e3428ee18e2d921227b1648bc69ffa0035d",
+  "tests/test_independent_jobs.py": "fa3833a7d1237d19a72a7a9bff9917adef46964aa9d8485914d1218b8782d069",
   "tests/test_item_registration.py": "e194c1aed49026053f586df354a8cc971d100799e13b953e1af476184ae79d18",
   "tests/test_items_workspace.py": "04dc36540ea1d42cd423da45c577036ea21da97290d449d59955f255004540c4",
   "tests/test_jev_judge.py": "9b7c634ea0089b5bdba09f6a390b68125a3343fbcc6c3ec6bcfa82a849182d93",
