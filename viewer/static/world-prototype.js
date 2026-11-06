@@ -323,7 +323,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     const events=sortedEvents();
     const filtered=eventDay==null?events:events.filter(e=>Number(e.day)===eventDay);
     if(!filtered.length)return '<p class="wp-muted">予定された出来事はありません。</p>';
-    const rows=filtered.map(e=>`<tr><td>${esc(e.day)}</td><td>${esc(e.slot||'日の初め')}</td><td>${esc(e.label||e.id)}</td><td>${esc((e.targets||[]).join('、'))}</td><td>${eventSummary(e)}</td>${model.editable?`<td class="wp-state-action"><button data-edit="event:${e.__index}" aria-label="編集" title="編集">✎</button><button data-edit="remove-event:${e.__index}" aria-label="削除" title="削除">✕</button></td>`:''}</tr>`).join('');
+    const rows=filtered.map(e=>`<tr><td>${esc(e.day)}</td><td>${esc(e.slot||'日の初め')}</td><td>${esc(e.label||e.id)}</td><td>${esc((e.targets||[]).join('、'))}</td><td>${eventSummary(e)}</td>${model.editable?`<td class="wp-state-action"><button data-edit="event:${Number(e.__index)}" aria-label="編集" title="編集">✎</button><button data-edit="remove-event:${Number(e.__index)}" aria-label="削除" title="削除">✕</button></td>`:''}</tr>`).join('');
     return `<table class="wp-state wp-events"><thead><tr><th>日</th><th>時間帯</th><th>名前</th><th>対象</th><th>内容</th>${model.editable?'<th class="wp-state-action" aria-label="操作"></th>':''}</tr></thead><tbody>${rows}</tbody></table>`;
   }
   function timeScreen(){
@@ -431,7 +431,9 @@ if(typeof module !== 'undefined' && module.exports) module.exports={...WorldRela
     if(!w.target_ending?.length)missing.push('目標の結末');
     if(people.some(p=>!p.range?.entry))missing.push('人物の初期位置');
     const next=root.querySelector('[data-next]');
-    next.href=missing.length?`/worlds/${encodeURIComponent(model.id)}#screen=people`:model.configUrl;
+    const configParams=new URLSearchParams({project:model.id});
+    if(model.genre)configParams.set('template',model.genre);
+    next.href=missing.length?`/worlds/${encodeURIComponent(model.id)}#screen=people`:`/configs/new?${configParams}`;
     next.textContent=missing.length?'未設定の項目を確認 →':'実行条件を決める →';
     if(model.editable)document.getElementById('wp-message').textContent=missing.length?'未設定：'+missing.join('・'):'編集した項目ごとに保存できます。';
     content.scrollTop=screen==='routes'?0:(scrolls[screen]||0);
