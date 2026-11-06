@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 import test_workbench_pages as fixtures
 from execution.output_settings import write_api_key, write_output_settings
+from viewer.global_settings import collection_panel, compute_panel
 
 class GlobalSettingsTests(unittest.TestCase):
     setUp = fixtures.WorkbenchTests.setUp
@@ -81,6 +82,33 @@ class GlobalSettingsTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertIn(content_type, headers['Content-Type'])
             self.assertTrue(body)
+
+class SettingsTabRenderTests(unittest.TestCase):
+    def test_compute_tabs_share_one_numeric_save(self):
+        settings = dict(processes=2, cpu_count=8, default=4, thermal_enabled=True,
+                        pause_at=80, pause_min=60, pause_max=95, pause_default=85)
+        body = compute_panel(settings, False, {"available": False})
+        self.assertEqual(body.count('class="ui-tabs"'), 1)
+        self.assertIn('aria-controls="gs-compute-panel-parallel"', body)
+        self.assertIn('aria-controls="gs-compute-panel-gpu"', body)
+        self.assertIn('aria-controls="gs-compute-panel-jev"', body)
+        self.assertEqual(body.count('data-gs-compute-save '), 1)
+        self.assertIn('data-gs-jev-key-save', body)
+
+    def test_saved_configs_keep_deep_links_and_actions(self):
+        item = dict(config_id="cfg-a", label="保存版 A", project_id="a", template_id="base",
+                    evolution=dict(generations=2, population=3, seeds=4))
+        body = collection_panel([item], {"a": "世界 A"}, "cfg-a", show_detail=True)
+        self.assertRegex(body, r'aria-selected="true" aria-controls="gs-configs-panel-detail"')
+        self.assertIn('/configs?tab=configs&amp;item=cfg-a', body)
+        self.assertIn('/configs/new?from=cfg-a', body)
+        self.assertIn('/configs/cfg-a/start', body)
+
+    def test_empty_saved_configs_disable_detail_tab(self):
+        body = collection_panel([], {}, None, show_detail=True)
+        self.assertRegex(body, r'aria-controls="gs-configs-panel-detail" tabindex="-1" disabled')
+        self.assertIn('まだ保存版がありません', body)
+
 
 if __name__ == '__main__':
     unittest.main()

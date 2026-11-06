@@ -119,6 +119,8 @@ GENERATION_REASON_LABELS = {
     "invalid_model": "モデル名が不正です",
     "model_missing": "そのモデルは見つかりません",
     "server_unreachable": "サーバーに接続できません",
+    "catalog_unavailable": "モデル一覧を取得できません",
+    "invalid_response": "モデル一覧の応答形式が不正です",
 }
 
 # WB-JEV-002: the config form's κ slider section. Description/note text is
