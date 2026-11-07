@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tarfile
 import zipfile
-from collect_release_licenses import collect as collect_licenses, RUNTIME_PACKAGES
+from collect_release_licenses import collect as collect_licenses, RUNTIME_PACKAGES, WHEEL_NOTICE_OUTPUT, WHEEL_NOTICE_SHA
 
 SOURCE_SHA = '36bb15c383ed35c615b5505425c905cb2a612eb4'
 SOURCE_TREE = '5fa313918481dfbc35e34b0d10be33693a6c831e'
@@ -165,6 +165,10 @@ def verify(root):
     required_licenses = {'CPython', 'Microsoft.Web.WebView2'} | RUNTIME_PACKAGES
     if not required_licenses.issubset({entry['package'] for entry in licenses}):
         raise ValueError('required third-party license inventory incomplete')
+    if not any(entry.get('package') == 'setuptools' and entry.get('version') == '84.2.1'
+               and entry.get('file') == WHEEL_NOTICE_OUTPUT and entry.get('sha256') == WHEEL_NOTICE_SHA
+               for entry in licenses):
+        raise ValueError('required original vendored wheel notice inventory missing')
     for entry in licenses:
         target = root / 'THIRD_PARTY_LICENSES' / safe_name(entry['file'])
         if not target.is_file() or sha(target.read_bytes()) != entry['sha256']:

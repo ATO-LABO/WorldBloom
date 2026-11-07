@@ -12,12 +12,13 @@ import sys
 import zipfile
 
 RUNTIME_PACKAGES = {'pywebview', 'pyyaml', 'pythonnet', 'clr-loader', 'cffi',
-                    'pycparser', 'bottle', 'proxy-tools', 'typing-extensions', 'pyinstaller'}
+                    'pycparser', 'bottle', 'proxy-tools', 'typing-extensions', 'pyinstaller', 'setuptools'}
 PROXY_COMMIT = 'db43f1e35d4f90a65c5a4d56d9e9af88212ec6e6'
 PROXY_CODE_BLOB = 'ea266c8f49da949ec6199a616609637c9aab3fb8'
 PROXY_LICENSE_BLOB = '078411c7399fbc0454f36cbe8c8cdbaaba7ebc95'
 WHEEL_NOTICE = 'setuptools/_vendor/wheel-0.46.3.dist-info/licenses/license.txt'
 WHEEL_NOTICE_SHA = '30c23618679108f3e8ea1d2a658c7ca417bdfc891c98ef1a89fa4ff0c9828654'
+WHEEL_NOTICE_OUTPUT = 'setuptools/84.2.1/wheel-0.46.3-LICENSE.txt'
 ARCHIVES = {'.zip', '.egg', '.whl', '.jar', '.pyz', '.pkg'}
 
 
@@ -172,14 +173,12 @@ def observed_distribution(dist, values):
     return False
 
 
-def omit_known_unbundled_wheel(name, version, file, data, proof):
+def retained_wheel_notice(name, version, file, data):
     if name == 'setuptools' and normalized(file) == WHEEL_NOTICE:
         if version != '84.2.1' or digest(data) != WHEEL_NOTICE_SHA:
             raise ValueError('vendored wheel notice differs from reviewed exact version/bytes')
-        if not proof or not proof['wheel_absent']:
-            raise ValueError('vendored wheel may be distributed; original notice requires publication review')
-        return True
-    return False
+        return WHEEL_NOTICE_OUTPUT
+    return None
 
 
 def proxy_notice(dist):
@@ -203,7 +202,7 @@ def collect(destination, build=None):
     inventory = []
     proof, values = toc_evidence(build) if build is not None else (None, set())
     closure = {'scope': 'observed frozen distribution plus declared runtime/bootloader' if proof else 'declared runtime/bootloader preflight only',
-               'proof': proof, 'excluded_distributions': [], 'omitted_notices': []}
+               'proof': proof, 'excluded_distributions': [], 'omitted_notices': [], 'retained_notices': []}
 
     def save(name, version, relative, data, **extra):
         target = destination / relative
@@ -231,6 +230,9 @@ def collect(destination, build=None):
             closure['excluded_distributions'].append({'package': name, 'version': dist.version,
                 'reason': 'no installed file referenced by complete TOCs' if proof else 'not in declared preflight scope'})
         paths = notice_files(dist)
+        if name == 'setuptools' and dist.version == '84.2.1' and not any(
+                normalized(file) == WHEEL_NOTICE for file in paths):
+            raise ValueError('required original setuptools vendored wheel notice missing')
         if selected and name == 'proxy-tools' and not paths:
             data, provenance = proxy_notice(dist)
             save(name, dist.version, 'proxy-tools/0.1.0/upstream-LICENSE.txt', data, **provenance)
@@ -245,12 +247,16 @@ def collect(destination, build=None):
             # Preflight omits build-only distributions, not notices within selected packages.
             if not selected and proof is None:
                 continue
-            if omit_known_unbundled_wheel(name, dist.version, file, data, proof):
-                closure['omitted_notices'].append({'package': name, 'version': dist.version,
-                    'original_path': str(file), 'sha256': digest(data),
-                    'reason': 'exact vendored wheel code/metadata/data absent from all TOCs and inspected archives'})
-                continue
-            if selected:
+            retained = retained_wheel_notice(name, dist.version, file, data)
+            if retained:
+                # Keep the original notice even when a future TOC reports absence.
+                # This conservative notice policy does not remove any runtime code.
+                save(name, dist.version, retained, data, installed_path=str(file),
+                     bundled_component='wheel 0.46.3')
+                closure['retained_notices'].append({'package': name, 'version': dist.version,
+                    'original_path': str(file), 'file': retained, 'sha256': digest(data),
+                    'reason': 'original vendored wheel notice retained; no absence-based omission'})
+            elif selected:
                 save(name, dist.version, f'{name}/{dist.version}/{index}-{source.name}', data,
                      installed_path=str(file))
     (destination / 'inventory.json').write_text(json.dumps(inventory, indent=2) + '\n', encoding='utf-8')

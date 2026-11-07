@@ -26,3 +26,17 @@ The controller's scan entry point reviews only that exact notice hash at
 explicit known notice paths, after running the unchanged original guard.
 Other email/secret/path verdicts and Gitleaks remain unchanged.
 A changed Python notice must be reviewed again; it is not generically exempt.
+
+The official setuptools 84.2.1 wheel includes the original wheel 0.46.3 MIT
+notice at setuptools/_vendor/wheel-0.46.3.dist-info/licenses/LICENSE.txt.
+Official archive:
+https://files.pythonhosted.org/packages/ef/55/6dc6d6bb953bdfc52519a0059592c52b6e3b8ad51cf8256dffceb55b0610/setuptools-84.2.1-py3-none-any.whl
+Archive SHA256: ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2
+Notice: 1,107 bytes; SHA256 30c23618679108f3e8ea1d2a658c7ca417bdfc891c98ef1a89fa4ff0c9828654
+Its sole email match is a public author's MIT copyright attribution.
+The collector always preserves this original notice, including when TOCs
+report no wheel references. The deterministic output path is
+setuptools/84.2.1/wheel-0.46.3-LICENSE.txt within THIRD_PARTY_LICENSES.
+The publication entry point binds each known placement to this specific hash;
+CPython and wheel notice paths/hashes cannot be interchanged. No generic
+notice/email exemption or dependency removal is introduced.

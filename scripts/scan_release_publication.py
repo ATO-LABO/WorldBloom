@@ -1,5 +1,5 @@
-"""Run the unchanged source guard with one exact reviewed public-notice decision.
-Only the email verdict for known CPython notice placements can be reviewed here.
+"""Run the unchanged source guard with exact reviewed public-notice decisions.
+Only the email verdict for known CPython and vendored wheel notice placements can be reviewed here.
 The original bytes, every other guard verdict, and Gitleaks remain unchanged.
 """
 import argparse
@@ -17,6 +17,18 @@ NOTICE_PATHS = frozenset({
     'verify-WorldBloom-Studio/THIRD_PARTY_LICENSES/CPython/LICENSE.txt',
     'THIRD_PARTY_LICENSES/CPython/LICENSE.txt',
 })
+
+WHEEL_NOTICE_SHA256 = '30c23618679108f3e8ea1d2a658c7ca417bdfc891c98ef1a89fa4ff0c9828654'
+WHEEL_NOTICE_PATHS = frozenset({
+    'setuptools/84.2.1/wheel-0.46.3-LICENSE.txt',
+    'license-source/setuptools/84.2.1/wheel-0.46.3-LICENSE.txt',
+    'WorldBloom-Studio/THIRD_PARTY_LICENSES/setuptools/84.2.1/wheel-0.46.3-LICENSE.txt',
+    'verify-WorldBloom-Studio/THIRD_PARTY_LICENSES/setuptools/84.2.1/wheel-0.46.3-LICENSE.txt',
+    'THIRD_PARTY_LICENSES/setuptools/84.2.1/wheel-0.46.3-LICENSE.txt',
+})
+# Each placement is bound to its own reviewed bytes; never combine separate sets.
+REVIEWED_NOTICE_HASHES = {**dict.fromkeys(NOTICE_PATHS, NOTICE_SHA256),
+                          **dict.fromkeys(WHEEL_NOTICE_PATHS, WHEEL_NOTICE_SHA256)}
 
 
 def load_guard(path):
@@ -42,12 +54,12 @@ def reviewed_notice_guard(guard):
         except guard.PublicationError as error:
             # Always run the original checker first. Earlier credential checks
             # still reject. This exact .txt notice has no later JSON-field check.
-            if (name not in NOTICE_PATHS
+            if (name not in REVIEWED_NOTICE_HASHES
                     or str(error) != 'Publication blocked: email-needs-publication-review: ' + name
-                    or hashlib.sha256(data).hexdigest() != NOTICE_SHA256):
+                    or hashlib.sha256(data).hexdigest() != REVIEWED_NOTICE_HASHES[name]):
                 raise
-            # Official Windows notice, unchanged, with one public bzip2 author
-            # contact. No file bytes are transformed, removed, or replaced.
+            # Exact official redistribution notice with reviewed public attribution.
+            # No file bytes are transformed, removed, or replaced.
     guard.check_content = check_content
     try:
         yield guard

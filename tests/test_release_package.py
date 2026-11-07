@@ -12,6 +12,22 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import package_release as package
 
+def wheel_notice_fixture():
+    import os
+    import importlib.metadata
+    override = os.environ.get('WORLDBLOOM_TEST_WHEEL_NOTICE')
+    if override:
+        data = Path(override).read_bytes()
+    else:
+        dist = importlib.metadata.distribution('setuptools')
+        if dist.version != '84.2.1':
+            raise ValueError('Test requires the exact official setuptools 84.2.1 wheel notice')
+        data = Path(dist.locate_file('setuptools/_vendor/wheel-0.46.3.dist-info/licenses/LICENSE.txt')).read_bytes()
+    if package.sha(data) != '30c23618679108f3e8ea1d2a658c7ca417bdfc891c98ef1a89fa4ff0c9828654':
+        raise ValueError('Test wheel notice differs from official original bytes')
+    return data
+
+
 class ReleasePackageTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -43,6 +59,12 @@ class ReleasePackageTests(unittest.TestCase):
             path.write_text('Fixture license')
             inventory.append({'package': name, 'version': 'fixture', 'file': name + '/LICENSE.txt',
                               'sha256': package.sha(path.read_bytes())})
+        original_wheel = wheel_notice_fixture()
+        path = self.root / 'THIRD_PARTY_LICENSES' / package.WHEEL_NOTICE_OUTPUT
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(original_wheel)
+        inventory.append({'package': 'setuptools', 'version': '84.2.1',
+                          'file': package.WHEEL_NOTICE_OUTPUT, 'sha256': package.WHEEL_NOTICE_SHA})
         (self.root / 'THIRD_PARTY_LICENSES/inventory.json').write_text(json.dumps(inventory))
         (self.root / 'THIRD_PARTY_LICENSES/closure-proof.json').write_text(json.dumps({
             'scope': 'observed frozen distribution plus declared runtime/bootloader',
@@ -204,6 +226,20 @@ class ReleasePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'inventory incomplete'):
             package.verify(self.root)
 
+    def test_original_wheel_notice_cannot_be_removed_from_package_or_inventory(self):
+        path = self.root / 'THIRD_PARTY_LICENSES' / package.WHEEL_NOTICE_OUTPUT
+        path.unlink()
+        package.write_manifest(self.root)
+        with self.assertRaisesRegex(ValueError, 'license checksum'):
+            package.verify(self.root)
+        path.write_bytes(wheel_notice_fixture())
+        inventory_path = self.root / 'THIRD_PARTY_LICENSES/inventory.json'
+        rows = [row for row in json.loads(inventory_path.read_text()) if row['file'] != package.WHEEL_NOTICE_OUTPUT]
+        inventory_path.write_text(json.dumps(rows))
+        package.write_manifest(self.root)
+        with self.assertRaisesRegex(ValueError, 'vendored wheel notice inventory missing'):
+            package.verify(self.root)
+
     def test_missing_closure_proof_is_rejected(self):
         (self.root / 'THIRD_PARTY_LICENSES/closure-proof.json').write_text('{}')
         package.write_manifest(self.root)
@@ -279,29 +315,25 @@ class LicenseClosureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'complete Studio'):
             self.licenses.toc_evidence(self.build)
 
-    def test_wheel_module_data_metadata_and_case_aliases_prevent_omission(self):
+    def test_wheel_module_data_metadata_and_case_aliases_are_recorded(self):
         for value in ('wheel', 'Wheel.bdist_wheel', 'setuptools._vendor.WHEEL',
                       r'C:\venv\WHEEL\data', 'WHEEL-0.46.3.dist-info/METADATA'):
             with self.subTest(value=value):
                 self.toc('Analysis-00.toc', [value])
                 proof, _ = self.licenses.toc_evidence(self.build)
                 self.assertFalse(proof['wheel_absent'])
-                with patch.object(self.licenses, 'digest', return_value=self.licenses.WHEEL_NOTICE_SHA):
-                    with self.assertRaisesRegex(ValueError, 'may be distributed'):
-                        self.licenses.omit_known_unbundled_wheel('setuptools', '84.2.1',
-                            self.licenses.WHEEL_NOTICE, b'fixture', proof)
+                self.assertEqual(self.licenses.retained_wheel_notice('setuptools', '84.2.1',
+                    self.licenses.WHEEL_NOTICE, wheel_notice_fixture()), self.licenses.WHEEL_NOTICE_OUTPUT)
 
-    def test_exact_wheel_version_bytes_and_absence_proof_are_all_required(self):
-        omit = self.licenses.omit_known_unbundled_wheel
-        args = ('setuptools', '84.2.1', self.licenses.WHEEL_NOTICE, b'fixture')
+    def test_exact_wheel_version_bytes_and_source_path_required(self):
+        retained = self.licenses.retained_wheel_notice
+        args = ('setuptools', '84.2.1', self.licenses.WHEEL_NOTICE, wheel_notice_fixture())
+        self.assertEqual(retained(*args), self.licenses.WHEEL_NOTICE_OUTPUT)
         with self.assertRaisesRegex(ValueError, 'exact version/bytes'):
-            omit(*args, {'wheel_absent': True})
-        with patch.object(self.licenses, 'digest', return_value=self.licenses.WHEEL_NOTICE_SHA):
-            with self.assertRaisesRegex(ValueError, 'publication review'):
-                omit(*args, None)
-            self.assertTrue(omit(*args, {'wheel_absent': True}))
-            with self.assertRaisesRegex(ValueError, 'exact version/bytes'):
-                omit('setuptools', '0.0.0', args[2], args[3], {'wheel_absent': True})
+            retained(args[0], args[1], args[2], args[3] + b' ')
+        with self.assertRaisesRegex(ValueError, 'exact version/bytes'):
+            retained(args[0], '0.0.0', args[2], args[3])
+        self.assertIsNone(retained(args[0], args[1], 'unknown/LICENSE.txt', args[3]))
 
     def test_unclassified_archives_and_nested_jars_fail_closed(self):
         for suffix, member in (('.zip', 'unknown.py'), ('.jar', 'nested.zip')):
@@ -352,6 +384,13 @@ class LicenseClosureTests(unittest.TestCase):
             path = root / file
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('unchanged original fixture notice' if file.endswith('.txt') else '# fixture')
+        if name == 'setuptools':
+            version = '84.2.1'
+            file = 'setuptools/_vendor/wheel-0.46.3.dist-info/licenses/LICENSE.txt'
+            target = root / file
+            target.parent.mkdir(parents=True)
+            target.write_bytes(wheel_notice_fixture())
+            files.append(file)
         return SimpleNamespace(metadata={'Name': name}, version=version, files=files,
                                locate_file=lambda file: root / str(file))
 
@@ -381,6 +420,35 @@ class LicenseClosureTests(unittest.TestCase):
         proof = json.loads((self.base / 'notices/closure-proof.json').read_text())
         self.assertEqual(len(proof['proof']['toc_files']), 4)
         self.assertIn('build-only-example', [r['package'] for r in proof['excluded_distributions']])
+
+    def test_wheel_notice_is_retained_with_and_without_observed_wheel(self):
+        installed = [self.fake_dist(n) for n in sorted(self.licenses.RUNTIME_PACKAGES)]
+        python = self.base / 'python'
+        python.mkdir()
+        (python / 'LICENSE.txt').write_text('CPython fixture notice')
+        for index, observed in enumerate((False, True)):
+            self.toc('Analysis-00.toc', ['setuptools._vendor.wheel'] if observed else ['webview'])
+            output = self.base / ('retained-' + str(index))
+            with patch.object(self.licenses.importlib.metadata, 'distributions', return_value=installed), patch.object(self.licenses.sys, 'base_prefix', str(python)):
+                rows = self.licenses.collect(output, self.build)
+            self.assertEqual((output / self.licenses.WHEEL_NOTICE_OUTPUT).read_bytes(), wheel_notice_fixture())
+            row = next(row for row in rows if row['file'] == self.licenses.WHEEL_NOTICE_OUTPUT)
+            self.assertEqual(row['sha256'], self.licenses.WHEEL_NOTICE_SHA)
+            self.assertEqual(row['installed_path'], 'setuptools/_vendor/wheel-0.46.3.dist-info/licenses/LICENSE.txt')
+            proof = json.loads((output / 'closure-proof.json').read_text())
+            self.assertEqual(proof['omitted_notices'], [])
+            self.assertEqual(proof['retained_notices'][0]['file'], self.licenses.WHEEL_NOTICE_OUTPUT)
+
+    def test_missing_required_original_wheel_notice_rejected(self):
+        installed = [self.fake_dist(n) for n in sorted(self.licenses.RUNTIME_PACKAGES)]
+        dist = next(dist for dist in installed if dist.metadata['Name'] == 'setuptools')
+        dist.files = [file for file in dist.files if 'wheel-0.46.3' not in file]
+        python = self.base / 'python'
+        python.mkdir()
+        (python / 'LICENSE.txt').write_text('CPython fixture notice')
+        with patch.object(self.licenses.importlib.metadata, 'distributions', return_value=installed), patch.object(self.licenses.sys, 'base_prefix', str(python)):
+            with self.assertRaisesRegex(ValueError, 'wheel notice missing'):
+                self.licenses.collect(self.base / 'missing')
 
     def test_proxy_fallback_checks_exact_code_version_and_original_notice(self):
         from types import SimpleNamespace
@@ -507,6 +575,44 @@ class ReviewedNoticeTests(unittest.TestCase):
             for name in ('../CPython/LICENSE.txt', 'control/LICENSE.txt'):
                 with self.subTest(name=name), self.assertRaises(self.guard.PublicationError):
                     self.guard.check_name(name)
+
+    def test_original_wheel_notice_at_known_paths_and_pairing_cannot_be_swapped(self):
+        data = wheel_notice_fixture()
+        with self.scanner.reviewed_notice_guard(self.guard):
+            for path in self.scanner.WHEEL_NOTICE_PATHS:
+                self.guard.check_content(path, data)
+                with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                    self.guard.check_content(path, self.notice)
+                with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                    self.guard.check_content(path, data + b' ')
+            for path in self.scanner.NOTICE_PATHS:
+                with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                    self.guard.check_content(path, data)
+            with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                self.guard.check_content('setuptools/84.2.1/13-LICENSE.txt', data)
+            token = ('gh' + 'p_' + 'A' * 36).encode()
+            with self.assertRaisesRegex(self.guard.PublicationError, 'github-token'):
+                self.guard.check_content('setuptools/84.2.1/wheel-0.46.3-LICENSE.txt', data + token)
+
+    def test_both_original_notices_in_zip_do_not_exempt_other_files(self):
+        archive = self.base / 'both-notices.zip'
+        with zipfile.ZipFile(archive, 'w') as zip_file:
+            zip_file.writestr('THIRD_PARTY_LICENSES/CPython/LICENSE.txt', self.notice)
+            zip_file.writestr('THIRD_PARTY_LICENSES/setuptools/84.2.1/wheel-0.46.3-LICENSE.txt', wheel_notice_fixture())
+        with self.scanner.reviewed_notice_guard(self.guard):
+            self.assertEqual(self.guard.check_publication(archive), 2)
+            with zipfile.ZipFile(archive, 'a') as zip_file:
+                zip_file.writestr('ZZ-other.txt', ('fixture' + chr(64) + 'fixture.invalid').encode())
+            with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                self.guard.check_publication(archive)
+
+    def test_unknown_wheel_verdict_is_not_accepted(self):
+        path = 'setuptools/84.2.1/wheel-0.46.3-LICENSE.txt'
+        error = self.guard.PublicationError('Publication blocked: unknown-future-rule: ' + path)
+        with patch.object(self.guard, 'check_content', side_effect=error):
+            with self.scanner.reviewed_notice_guard(self.guard):
+                with self.assertRaisesRegex(self.guard.PublicationError, 'unknown-future-rule'):
+                    self.guard.check_content(path, wheel_notice_fixture())
 
     def test_all_workflow_guard_calls_use_reviewed_entrypoint(self):
         import yaml
