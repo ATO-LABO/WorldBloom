@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1700,7 +1700,7 @@
 
 
 <h1 id="generate-text">Generate Text<a class="headerlink" href="#generate-text" title="Permanent link">&para;</a></h1>
-<p>Generating the events themselves never involves an LLM. The LLM only comes in at two stages: turning candidates adopted in <a href="../../concepts/sifting/">Sifting</a> into a <strong>synopsis</strong>, and turning that synopsis into <strong>prose</strong>. Before generating, choose an LLM connection under ⚙ 全体設定 (Global settings) (see <a href="../llm-backends/">LLM Backends</a>).</p>
+<p>This page covers generating synopses and prose from experiment results. Synopses use representative grid candidates; prose uses candidates adopted in <a href="../../concepts/sifting/">Sifting</a>. Check <a href="../settings/#output-settings">AI settings</a> before starting. AI is also used for optional world-draft generation/refinement and rationality judging when κ&gt;0. GA exploration and text generation are separate stages.</p>
 <h2 id="kinds">Kinds<a class="headerlink" href="#kinds" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1781,10 +1781,10 @@
 <li><strong>問題を解消してから『未生成・失敗分を生成』で新規要求できます</strong> (Once the problem is fixed, you can re-request via "Generate ungenerated/failed items"): when the cause is clear (e.g. a config mistake) and it's safe to just redo it</li>
 <li><strong>結果不明です。二重生成の可能性を確認したうえで『結果不明の候補を確認して再生成』から明示的に再生成してください</strong> (Result unknown. After checking for possible duplicate generation, explicitly regenerate via "Review unknown-result candidates and regenerate"): when success/failure couldn't be confirmed after the LLM call. Since the same content might get generated twice, this requires an explicit, confirmed action</li>
 <li><strong>保存障害。LLM は再送せず『復旧』で保存済み証跡から復元します</strong> (Save failure. The LLM is not re-sent; use "Recover" to restore from the saved evidence): when generation itself succeeded but saving it failed. This restores from saved evidence without calling the LLM again</li>
-<li><strong>上限に達しました。上限を見直した新しい設定版で新規要求してください</strong> (Limit reached. Re-request under a new settings version with a revised limit): when a limit such as generation count was hit. Here, "settings version" refers not to the GA run settings but to "生成の上限" (Generation limit) under the "文章生成" (Text generation) tab of ⚙ <strong>全体設定</strong> (Global settings) (see <a href="../settings/#output-settings">Settings</a>). Saving a revised value creates a new settings version, which is used for generation requests from then on</li>
+<li><strong>上限に達しました。上限を見直した新しい設定版で新規要求してください</strong> (Limit reached. Re-request under a new settings version with a revised limit): when a limit such as generation count was hit. Here, "settings version" refers not to the GA run settings but to "生成の上限" (Generation limit) under ⚙ <strong>全体設定</strong> (Global settings) → "AIの設定" (AI settings) (see <a href="../settings/#output-settings">Settings</a>). Saving a revised value creates a new settings version, which is used for generation requests from then on</li>
 </ul>
 <h2 id="reusing-text-generation-settings-across-experiments">Reusing text-generation settings across experiments<a class="headerlink" href="#reusing-text-generation-settings-across-experiments" title="Permanent link">&para;</a></h2>
-<p>Text-generation settings (backend, model name, limits, etc.) are stored separately from run settings (the GA config), under the "文章生成" (Text generation) section of ⚙ <strong>全体設定</strong> (Global settings) (see <a href="../settings/">Settings</a>). There is no per-experiment generation config, so generating from a different experiment reuses the same settings as-is. To change them, open ⚙ 全体設定 (Global settings) before generating.</p>
+<p>Text-generation settings (backend, model name, limits, etc.) are stored separately from run settings (the GA config), under the "AIの設定" (AI settings) section of ⚙ <strong>全体設定</strong> (Global settings) (see <a href="../settings/">Settings</a>). There is no per-experiment generation config, so generating from a different experiment reuses the same settings as-is. Before generating, check "使用するAI" (AI to use) and "生成の上限" (Generation limit). You can select Gemma 4 and change limits on that screen; configure other models under <code>output</code> in <a href="../../reference/settings-json/">settings.json</a>.</p>
 
 
 
@@ -1885,10 +1885,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

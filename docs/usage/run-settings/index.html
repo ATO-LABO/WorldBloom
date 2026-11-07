@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1038,6 +1038,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        世界の条件と実行設定の違い
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1723,6 +1734,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        世界の条件と実行設定の違い
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1879,10 +1901,12 @@
 <li><strong>ジャンル</strong>: 新規作成時のみ選べます（複製時は複製元と同じ）</li>
 <li><strong>乱数の開始値</strong>（seed_base、既定 0）・<strong>進化の乱数</strong>（ga_seed、既定 1）</li>
 <li>並列数（GA を同時に何プロセスで進めるか）はここではなく <strong>⚙ 全体設定の「計算」</strong> で指定します（<a href="../settings/">設定</a>を参照）</li>
-<li><strong>実行時間の上限</strong>（execution_limits.wall_seconds、既定 3600秒）: この秒数を超えると実行を打ち切ります。κ（合理性判定、上記）を使う場合は既定で 21600 秒に引き上がります</li>
+<li><strong>実行時間の上限</strong>（execution_limits.wall_seconds、既定 3600秒）: この秒数を超えると実行を打ち切ります。新規作成時に Ollama の合理性判定が選ばれる場合は既定で 21600 秒に引き上がります（Jev は3600秒）</li>
 </ul>
 <h2 id="_3">実行開始<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>保存すると、その設定の実行条件画面（<code>/configs/&lt;設定ID&gt;</code>）に進みます。「この条件で実行へ →」を押すと実行画面（<code>/jobs</code>）が開き、「この設定で GA を回す」を押すと実行が始まります。実行中は世代の進捗バーが表示され、実行を止めても<strong>閉じた世代までの結果は残ります</strong>。実行が終わったら、同じ画面から「同じ設定でもう一度回す」で再実行できます。</p>
+<h2 id="_4">世界の条件と実行設定の違い<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>行動の許可、人物・時間帯の制約、体力、品物・装備、金銭、主人公の目標は<strong>世界設定</strong>で編集します。この画面の GA の規模・乱数・保存方法とは別です。基本ルール（旧画面の「ジャンル」）は世界が参照するテンプレートです。新形式の同梱世界は「桃太郎＋3」（<code>momotaro_plus3_new</code>）で、基本ルールは <code>momotaro_plus3</code> です。旧世界用の設定はそのままでは新しく実行できません。</p>
 
 
 
@@ -1983,10 +2007,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

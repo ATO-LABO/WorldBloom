@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -400,6 +400,17 @@
     <span class="md-ellipsis">
       
         Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-platforms-and-saved-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source platforms and saved data
       
     </span>
   </a>
@@ -1614,6 +1625,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#source-platforms-and-saved-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source platforms and saved data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#if-windows-smartscreen-warns-you" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1667,8 +1689,8 @@
 <li>git is optional (without it, some provenance info in run output is simply left blank)</li>
 </ul>
 <div class="admonition tip">
-<p class="admonition-title">Pick your LLM backend in ⚙ 全体設定 (Global settings) first</p>
-<p>A GA experiment itself does not need an LLM at all — only synopsis/text generation does. If you plan to use generation, open the app's <strong>⚙ 全体設定 (Global settings)</strong> screen first and choose a backend (Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない (no generation; save prompts only)) and a model name. With no settings at all, the default backend is llama-server (codex-cli in the v1.0.0-viewer release). Only claude-cli works with no model set (it falls back to <code>claude-sonnet-5</code>); every other backend requires you to set one yourself. Ollama and llama-server themselves are not bundled with WorldBloom; install them separately. See <a href="../../usage/llm-backends/">LLM Backends</a>.</p>
+<p class="admonition-title">AI features need a configured backend</p>
+<p>The base GA simulation runs without an LLM, except when you enable the optional rationality layer. AI-assisted world creation and refinement, synopsis generation, and prose generation need a backend and model. See <strong>⚙ 全体設定 (Global settings)</strong> and <a href="../../usage/llm-backends/">LLM Backends</a> for the current screen. Ollama and model weights are not bundled. Configurations that use an external service send the generation input to that service.</p>
 </div>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Studio (full-featured)</label><label for="__tabbed_1_2">Viewer (read-only)</label><label for="__tabbed_1_3">From source</label></div>
 <div class="tabbed-content">
@@ -1699,7 +1721,7 @@
 cd WorldBloom
 pip install -r requirements.txt
 </code></pre></div>
-<p>Open the bundled <code>samples/</code> (three sample experiments) read-only:</p>
+<p>Open the bundled <code>samples/</code> (three sample experiments). Use a copy if you need to preserve the originals, because selection controls can write to these files:</p>
 <div class="highlight"><pre><span></span><code>python viewer/server.py --runs samples --port 5401
 </code></pre></div>
 <p>Open <code>http://127.0.0.1:5401/</code>. This mode has no run controls or config editing, but Sifting's selection checkboxes still write — directly to each experiment's <code>selection.json</code> under <code>runs</code>, bypassing job management (no <code>--control</code> flag).</p>
@@ -1710,10 +1732,13 @@ pip install -r requirements.txt
 </div>
 </div>
 </div>
+<h2 id="source-platforms-and-saved-data">Source platforms and saved data<a class="headerlink" href="#source-platforms-and-saved-data" title="Permanent link">&para;</a></h2>
+<p>Run management is supported on Windows and Linux. Linux additionally requires Linux 5.3+ pidfds, child-process supervision support, and <code>/proc</code> in the same PID namespace. Jobs are refused when those facilities are unavailable. The Windows EXE and source-based Linux setup are separate installation routes.</p>
+<p>Only new-format worlds containing <code>world_format_version: 1</code> can be edited and run by the current source. Use the bundled 桃太郎＋3 (Momotaro +3, <code>projects/momotaro_plus3_new</code>) or a world confirmed through the creation screen. Do not overwrite legacy worlds or run outputs; retain the original code and Python environment separately when needed. Adding a version number by hand is not a format conversion.</p>
 <h2 id="if-windows-smartscreen-warns-you">If Windows SmartScreen warns you<a class="headerlink" href="#if-windows-smartscreen-warns-you" title="Permanent link">&para;</a></h2>
-<p>The distributed exe files are unsigned, so SmartScreen may warn on first launch. Click "More info" then "Run anyway".</p>
+<p>Unsigned builds may trigger Windows SmartScreen on first launch. Verify that the download came from this repository’s official Release and, where published, that its checksum matches. Do not run files from an unknown source or with a mismatched checksum, and do not bypass warnings automatically.</p>
 <h2 id="where-the-downloads-actually-live">Where the downloads actually live<a class="headerlink" href="#where-the-downloads-actually-live" title="Permanent link">&para;</a></h2>
-<p>Distributed builds are on <a href="https://github.com/ATO-LABO/WorldBloom/releases">GitHub Releases</a>. As of this writing the latest tag is <code>v1.1.0</code>, with two attached files: <code>WorldBloom-portable.zip</code> (Viewer) and <code>WorldBloom-Studio-portable.zip</code> (Studio).</p>
+<p>Distributed builds are on <a href="https://github.com/ATO-LABO/WorldBloom/releases">GitHub Releases</a>. Check each Release for the attached ZIP versions, changes, and requirements. Updating the source does not rebuild or update the EXE downloads.</p>
 
 
 
@@ -1814,10 +1839,10 @@ pip install -r requirements.txt
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

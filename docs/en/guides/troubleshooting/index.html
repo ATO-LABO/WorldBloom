@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1515,6 +1515,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#a-world-is-rejected-as-a-legacy-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A world is rejected as a legacy format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draft-saving-or-ai-refinement-stops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draft saving or AI refinement stops
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1657,6 +1679,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#a-world-is-rejected-as-a-legacy-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A world is rejected as a legacy format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draft-saving-or-ai-refinement-stops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draft saving or AI refinement stops
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1691,7 +1735,7 @@
 <tr>
 <td>Windows SmartScreen warns you</td>
 <td>The distributed exe is unsigned</td>
-<td>Click "More info" then "Run anyway". See <a href="../../getting-started/install/">Install</a></td>
+<td>Verify the official Release source and any published checksum; do not run unknown files. See <a href="../../getting-started/install/">Install</a></td>
 </tr>
 <tr>
 <td><code>pywebview の読み込みに失敗しました。配布フォルダが壊れている可能性があります。展開し直してください。</code> (Failed to load pywebview. The distribution folder may be corrupted. Please re-extract it.)</td>
@@ -1751,8 +1795,8 @@
 <tbody>
 <tr>
 <td>モデルを指定してください (Please specify a model)</td>
-<td>No model name entered in ⚙ 全体設定 (Global settings) (no backend other than <code>claude-cli</code> fills this in automatically)</td>
-<td>Enter a model name under the "文章生成" (Text generation) tab in ⚙ 全体設定 (Global settings). See <a href="../../usage/llm-backends/#model-defaults">LLM Backends</a></td>
+<td>The saved generation settings have no model name (only <code>claude-cli</code> fills this in automatically)</td>
+<td>Check the saved backend under ⚙ 全体設定 (Global settings) → AIの設定 (AI settings) → 使用するAI (AI to use). Select and save Gemma 4 on that screen; configure other models under <code>output</code> in <a href="../../reference/settings-json/">settings.json</a>. Also check that the model is installed and reachable. See <a href="../../usage/llm-backends/#model-defaults">LLM Backends</a></td>
 </tr>
 <tr>
 <td>実行ファイルが見つかりません (Executable not found)</td>
@@ -1762,7 +1806,7 @@
 <tr>
 <td>資格情報がありません (No credentials)</td>
 <td><code>anthropic</code> / <code>openai</code> is selected but no API key is saved</td>
-<td>Save a key under the "APIキー" (API key) field in ⚙ 全体設定 (Global settings)</td>
+<td>Configure credentials for the selected backend. See <a href="../../usage/llm-backends/">LLM Backends</a> for differences between the current screen and CLI</td>
 </tr>
 <tr>
 <td>そのモデルは見つかりません (That model was not found)</td>
@@ -1801,6 +1845,10 @@
 </tr>
 </tbody>
 </table>
+<h2 id="a-world-is-rejected-as-a-legacy-format">A world is rejected as a legacy format<a class="headerlink" href="#a-world-is-rejected-as-a-legacy-format" title="Permanent link">&para;</a></h2>
+<p>The current source edits and runs only new-format worlds. Choose 桃太郎＋3 (Momotaro +3, <code>momotaro_plus3_new</code>) or a world confirmed through the creation screen. Legacy worlds are not converted automatically. Do not add only a version number to force them through validation; keep their original files and past run outputs.</p>
+<h2 id="draft-saving-or-ai-refinement-stops">Draft saving or AI refinement stops<a class="headerlink" href="#draft-saving-or-ai-refinement-stops" title="Permanent link">&para;</a></h2>
+<p>For a conflict (409), compare the latest saved version with your local input and use the save-as-separate-copy option when appropriate. If a save outcome is uncertain, inspect the saved state rather than resending blindly. If validation rejects an AI candidate, inspect the reason instead of adopting only a partial request. See <a href="../../usage/create-world/">Create a World</a>.</p>
 
 
 
@@ -1901,10 +1949,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

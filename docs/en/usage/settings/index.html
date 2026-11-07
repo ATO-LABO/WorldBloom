@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1049,7 +1049,7 @@
   <a href="#output-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Text generation
+        AI settings
       
     </span>
   </a>
@@ -1072,17 +1072,6 @@
     <span class="md-ellipsis">
       
         Saved run-setting versions
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#genres" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Genres
       
     </span>
   </a>
@@ -1617,7 +1606,7 @@
   <a href="#output-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Text generation
+        AI settings
       
     </span>
   </a>
@@ -1646,17 +1635,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#genres" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Genres
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1678,56 +1656,13 @@
 
 
 <h1 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h1>
-<p>Open this from <strong>⚙ 全体設定</strong> (Global settings) at the top right of the screen (or <code>/configs</code>). Changes here aren't tied to a specific world — they're <strong>shared across every world</strong>. The underlying file is at the repository root when running from source, or <code>app/settings.json</code> (inside the <code>app</code> folder next to the exe) in the distributed exe build. See <a href="../../reference/settings-json/">settings.json</a> for the full file spec. There are four tabs.</p>
-<h2 id="output-settings">Text generation<a class="headerlink" href="#output-settings" title="Permanent link">&para;</a></h2>
-<p>Settings used for <a href="../generate-text/">generating synopses/text</a>.</p>
-<table>
-<thead>
-<tr>
-<th>Item</th>
-<th>Contents</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>生成方式 (Backend)</td>
-<td>Claude Code CLI / Codex CLI / Anthropic API / OpenAI API / ローカル Ollama (Local Ollama) / ローカルLLM（llama-server） (Local LLM (llama-server)) / 生成しない（プロンプト保存のみ） (Don't generate (prompts only))</td>
-<td><code>llama-server</code> (<code>codex-cli</code> in the v1.0.0-viewer distributed build)</td>
-</tr>
-<tr>
-<td>モデル (Model)</td>
-<td>Model name to use</td>
-<td><code>claude-cli</code> falls back to <code>claude-sonnet-5</code> when left empty. Every other backend requires it (see <a href="../llm-backends/#model-defaults">LLM Backends</a>)</td>
-</tr>
-<tr>
-<td>APIキー (API key)</td>
-<td>Shown only when Anthropic API / OpenAI API is chosen. A saved value is never shown on screen</td>
-<td>—</td>
-</tr>
-<tr>
-<td>候補数の上限 (Candidate count limit)</td>
-<td>Max candidates handled per generation action</td>
-<td><code>none</code> is 0, everything else is 1</td>
-</tr>
-<tr>
-<td>1件の待ち時間 (Per-item timeout)</td>
-<td>Timeout (seconds) per candidate</td>
-<td>900 seconds for Ollama/llama-server, 180 seconds for everything else</td>
-</tr>
-<tr>
-<td>全体の待ち時間 (Overall timeout)</td>
-<td>Timeout (seconds) for the whole generation job</td>
-<td>3600 seconds for Ollama/llama-server, 240 seconds for everything else</td>
-</tr>
-<tr>
-<td>応答の保存上限 (Response save limit, advanced)</td>
-<td>Max bytes of the LLM's response to save</td>
-<td>128000 bytes</td>
-</tr>
-</tbody>
-</table>
-<p>The "接続を確認" (Check connection) button only checks the backend/runtime — it doesn't generate anything. Saved settings apply to generation jobs started after the save (jobs already in progress are unaffected).</p>
+<p>Open this from <strong>⚙ 全体設定</strong> (Global settings) at the top right of the screen (or <code>/configs</code>). Changes here aren't tied to a specific world — they're <strong>shared across every world</strong>. The underlying file is at the repository root when running from source, or <code>app/settings.json</code> (inside the <code>app</code> folder next to the exe) in the distributed exe build. See <a href="../../reference/settings-json/">settings.json</a> for the full file spec. The left menu contains AI settings, Computation, and Saved run settings.</p>
+<h2 id="output-settings">AI settings<a class="headerlink" href="#output-settings" title="Permanent link">&para;</a></h2>
+<p>Check the connection used for <a href="../create-world/">world drafts</a> and <a href="../generate-text/">synopsis/prose generation</a>. The current screen contains “使用するAI” (AI to use), “生成の上限” (Generation limits), and “合理性の判定器（Jev）” (Rationality judge).</p>
+<p>The AI tab shows the saved destination and Gemma 4 installation status. “Gemma 4を選ぶ” selects an edit; <strong>the destination changes only after “設定を保存” (Save settings)</strong>. On the PC running Ollama, run <code>ollama pull gemma4:e4b-it-qat</code>, then refresh installation status. The status check neither generates text nor downloads a model.</p>
+<p>For other supported backends/models, see <a href="../llm-backends/">LLM Backends</a> and <a href="../../reference/settings-json/">settings.json</a>. A different saved model is not silently switched to Gemma. Gemma uses a model-specific option profile, preserving other models' base settings.</p>
+<p>Generation limits let you change the selected backend's AI-call cap, per-call timeout, overall timeout and saved-response size limit. Saved settings apply to newly started generation, not running jobs. Check the saved values, particularly when using a world-generation strategy with multiple model calls.</p>
+<p>In the Jev tab, save a TypeSafe API key. Saving first sends one real judging question to validate the key. Experiments using Jev with κ&gt;0 send protagonist situation text to <code>api.typesafe.ai</code>. Keys are not displayed on screen or in experiment records. Choose the judge and κ per experiment in <a href="../run-settings/#04">Run Settings</a>.</p>
 <h2 id="compute">Compute<a class="headerlink" href="#compute" title="Permanent link">&para;</a></h2>
 <p>Settings for how much this PC parallelizes GA experiments.</p>
 <table>
@@ -1747,11 +1682,9 @@
 </tbody>
 </table>
 <p>On a development machine (20 cores), measurements showed speed plateauing around 8 processes. Applies to GA experiments started after the save.</p>
-<p><strong>合理性の判定器（Jev）(Rationality judge (Jev))</strong>: the same tab has a block for registering a TypeSafe API key. Enter the key and press "キーを保存" (Save key); before saving, it sends one real judgment call with that key to verify it, and only saves if that succeeds (the status then reads "有効（jev-1.13.0、確認した日付）", "Enabled (jev-1.13.0, verified on <date>)"). The key is stored only in <code>settings.json</code> — it never appears on screen, in the API, or in any experiment record. Which experiments use Jev is chosen per run in the "合理性" (Rationality) section of <a href="../run-settings/#04">Run Settings</a>. See <a href="../../concepts/rationality-layer/">Rationality Layer and Jev</a> for the full picture.</p>
+<p>The “GPU ガード” (GPU guard) tab controls temperature checks before local text generation. At the threshold, generation waits for an 8°C drop, for up to ten minutes. See <a href="../gpu-guard/">GPU Guard</a>.</p>
 <h2 id="saved-run-setting-versions">Saved run-setting versions<a class="headerlink" href="#saved-run-setting-versions" title="Permanent link">&para;</a></h2>
 <p>A list of previously saved <a href="../run-settings/">run settings</a>. Saved versions can't be edited (use "複製して調整", Duplicate and adjust, to duplicate one if you want different contents). Each entry shows its world, genre, run size (generations × population × seeds), creation time, and duplication source.</p>
-<h2 id="genres">Genres<a class="headerlink" href="#genres" title="Permanent link">&para;</a></h2>
-<p>A list of registered genres (templates). For each genre you can see which worlds use it and its config files (action links, situational conventions, action effects, progression rules, candidate classification axes). Edit via "ジャンルを編集" (Edit genre) (see <a href="../create-world/#advanced-settings">Create a World</a>).</p>
 
 
 
@@ -1852,10 +1785,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

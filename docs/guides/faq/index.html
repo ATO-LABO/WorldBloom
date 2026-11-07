@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1833,15 +1833,15 @@
 
 <h1 id="faq">FAQ<a class="headerlink" href="#faq" title="Permanent link">&para;</a></h1>
 <h2 id="ga-llm">GA 実験（進化）に LLM は必要ですか？<a class="headerlink" href="#ga-llm" title="Permanent link">&para;</a></h2>
-<p>いいえ。GA 実験そのもの（世界のシミュレーション、遺伝子の進化、QD 格子への蓄積）に LLM は関与しません。LLM を使うのは、格子に残った候補を人が選んだあとの<a href="../../usage/generate-text/">あらすじ・本文の生成</a>だけです。生成をせず結果だけ見たい場合は、⚙ 設定で接続先を「生成しない」（<code>none</code>）にすれば、プロンプトの保存だけを行い実際の生成はしません。詳しくは<a href="../../usage/llm-backends/">LLM バックエンド</a>を参照してください。</p>
+<p>必須ではありません。基本のGAシミュレーション・進化・QD格子への蓄積はLLMなしで動きます。任意の<a href="../../concepts/rationality-layer/">合理性層</a>（κ &gt; 0）ではOllamaまたはJevが候補行動を判定し、その重みに反映します。LLMを使うのは、実行前のAIによる<a href="../../usage/create-world/">世界作成・精緻化</a>と、実行後の<a href="../../usage/generate-text/">あらすじ・本文生成</a>です。保存済みの結果を見るだけなら生成は不要です。CLIの文章生成では <code>--backend none</code> でプロンプト保存だけを行えます。画面の設定と対応する接続先は<a href="../../usage/llm-backends/">LLM バックエンド</a>を参照してください。</p>
 <h2 id="llm">なぜ出来事の生成に LLM を使わないのですか？<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h2>
 <p>出来事の列（誰が何をしたか）を LLM に直接書かせると、なぜその展開になったのかを機械的に追跡できなくなります。WorldBloom は出来事の生成をシミュレーションと乱数だけに限ることで、<a href="../../concepts/determinism/">決定論</a>を保証し、ある物語がどの世代のどの親から、どんな分岐で生まれたかを<a href="../../concepts/sifting/#compare-lineage-turning">系譜・転機</a>として機械的に示せるようにしています。詳しくは<a href="../../concepts/overview/">全体の流れ</a>を参照してください。</p>
 <h2 id="ga">GA を使う意味は？<a class="headerlink" href="#ga" title="Permanent link">&para;</a></h2>
 <p>方針（遺伝子）を進化させずに、無作為な個体だけで走らせても物語は生成できます（<code>scripts/random_baseline.py</code>）。<a href="../../concepts/personality-growth/">性格の成長</a>とその第3軸を有効にした条件で、評価回数（400回）を揃えて比べた実測（乱数の種5通り）では、GA の方が到達率（平均0.132 対 0.061）・占有マス数（平均17.0 対 13.4）・QD スコア（平均4.80 対 3.47）・最高の質（平均0.429 対 0.382）のいずれも上回りました。ただし性格の成長・第3軸を使わない条件（18マスの格子）では、GA と無作為の差はほとんど出ませんでした（占有マス数7.2対7.2、QDスコア2.12対2.21）。試行はそれぞれ5回のみで検定は行っておらず、性格の成長・第3軸ありの条件はマスの上限自体も18から54に増えているため、GAが上回った理由を探索対象の増加とマス数上限の増加とに切り分けられていません。詳しくは<a href="../../concepts/personality-growth/#ga-vs-random">性格の成長</a>を参照してください。</p>
 <h2 id="gpu-pc">GPU が無い PC でも使えますか？<a class="headerlink" href="#gpu-pc" title="Permanent link">&para;</a></h2>
-<p>はい。GA 実験（進化）自体は GPU を必要としません。GPU が必要になるのは、あらすじ・本文の生成にローカル LLM（Ollama や llama-server）を使う場合だけです。GPU が無ければ、外部 API（Anthropic / OpenAI）や CLI 経由（Claude Code / Codex CLI）の接続先を使うか、生成をせずプロンプトの保存だけに留めることもできます。詳しくは<a href="../../usage/llm-backends/">LLM バックエンド</a>・<a href="../../usage/gpu-guard/">GPU ガード</a>を参照してください。</p>
+<p>はい。GA 実験（進化）自体は GPU を必要としません。ローカルLLMの速度や必要メモリはモデルと実行環境に依存します。CPUで動かせるモデルもありますが、大きなモデルの生成にはGPUが実用上必要になる場合があります。GPU が無ければ、外部 API（Anthropic / OpenAI）や CLI 経由（Claude Code / Codex CLI）の接続先を使うか、生成をせずプロンプトの保存だけに留めることもできます。詳しくは<a href="../../usage/llm-backends/">LLM バックエンド</a>・<a href="../../usage/gpu-guard/">GPU ガード</a>を参照してください。</p>
 <h2 id="_1">結果が毎回同じなのはなぜですか？<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p>WorldBloom の個体評価は<a href="../../concepts/determinism/">決定論</a>を設計の前提にしているためです。同じ世界・遺伝子・乱数の種・前例表・エンジンのコードなら、出力ログはバイト単位で一致します。逆に、エンジンのコード自体を変更すると、同じ設定でも別の物語になります。</p>
+<p>WorldBloom の個体評価は<a href="../../concepts/determinism/">決定論</a>を設計の前提にしているためです。同じPythonバージョン・世界・遺伝子・乱数の種・前例表・エンジンのコードなら、出力ログはバイト単位で一致します。逆に、エンジンのコード自体を変更すると、同じ設定でも別の物語になります。</p>
 <h2 id="_2">自分の物語世界を作れますか？<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>はい。地名・経路・登場人物の初期状態などの「世界」と、そのジャンルの文法（行動グラフ・正典・伏線ライブラリ・QD の軸）を宣言する「テンプレート」を用意すれば、桃太郎・恋愛・探偵以外の世界も作れます。手順は<a href="../../usage/create-world/">世界を作る</a>を参照してください。</p>
 <h2 id="storysim">StorySim との関係は？<a class="headerlink" href="#storysim" title="Permanent link">&para;</a></h2>
@@ -1851,7 +1851,7 @@
 <h2 id="_4">英語の物語は作れますか？<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>画面（Viewer / Studio の UI）は日本語のみです。同梱の桃太郎・恋愛・探偵のテンプレートも、地名・人物名・述語の対象名・伏線の説明文まで日本語で書かれています。英語の世界・テンプレートを自作すること自体は、述語や YAML の構造が日本語に依存していないため妨げられませんが、公式に用意された英語テンプレートはありません。</p>
 <h2 id="windows-maclinux">Windows 以外（Mac/Linux）でも使えますか？<a class="headerlink" href="#windows-maclinux" title="Permanent link">&para;</a></h2>
-<p>配布版 exe（Viewer / Studio）は Windows 向けのビルドのみです。Mac/Linux では、リポジトリを clone して Python から動かす方法（<a href="../../getting-started/install/">インストール</a>のソース版の手順）を使ってください。</p>
+<p>配布版exe（Viewer / Studio）はWindows向けです。ソース版のジョブ管理はWindows/Linuxに対応し、Linuxにはプロセス監視の要件があります。macOSでのジョブ実行は対応対象ではありません。ブラウザーからの公開サンプル閲覧は利用できます。詳しくは<a href="../../getting-started/install/">インストール</a>を参照してください。</p>
 <h2 id="studio">公開ビューアと配布版 Studio の違いは？<a class="headerlink" href="#studio" title="Permanent link">&para;</a></h2>
 <p><a href="https://ato-labo.github.io/WorldBloom/">公開ビューア</a>とインストール不要の Windows 版 <code>WorldBloom.exe</code> は、あらかじめ生成済みの実験（桃太郎・恋愛・探偵）を閲覧するだけの読み取り専用です。自分で GA 実験を実行し、Sifting・あらすじ・本文生成まで行うには <code>WorldBloom-Studio.exe</code>（別途 Python が必要）か、ソースから動かす方法を使ってください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照してください。</p>
 
@@ -1954,10 +1954,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

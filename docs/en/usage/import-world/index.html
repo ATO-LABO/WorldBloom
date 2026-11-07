@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -945,10 +945,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-goes-in-the-zip" class="md-nav__link">
+  <a href="#zip-contents" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What goes in the ZIP
+        ZIP contents
       
     </span>
   </a>
@@ -967,10 +967,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#name-and-genre" class="md-nav__link">
+  <a href="#after-import" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Name and genre
+        After import
       
     </span>
   </a>
@@ -978,21 +978,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#after-importing" class="md-nav__link">
+  <a href="#errors-or-connection-loss" class="md-nav__link">
     <span class="md-ellipsis">
       
-        After importing
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#if-you-hit-an-error" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        If you hit an error
+        Errors or connection loss
       
     </span>
   </a>
@@ -1658,10 +1647,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-goes-in-the-zip" class="md-nav__link">
+  <a href="#zip-contents" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What goes in the ZIP
+        ZIP contents
       
     </span>
   </a>
@@ -1680,10 +1669,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#name-and-genre" class="md-nav__link">
+  <a href="#after-import" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Name and genre
+        After import
       
     </span>
   </a>
@@ -1691,21 +1680,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#after-importing" class="md-nav__link">
+  <a href="#errors-or-connection-loss" class="md-nav__link">
     <span class="md-ellipsis">
       
-        After importing
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#if-you-hit-an-error" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        If you hit an error
+        Errors or connection loss
       
     </span>
   </a>
@@ -1744,85 +1722,26 @@
 
 
 <h1 id="import-a-world-from-zip">Import a World from ZIP<a class="headerlink" href="#import-a-world-from-zip" title="Permanent link">&para;</a></h1>
-<p>You can import a world set up by an AI (Codex, Claude Code, Gemini, etc.) into
-WorldBloom as a ZIP file. It's the third creation method on
-<a href="../create-world/">Create a World</a>'s "new world" screen.</p>
+<p>Import world settings as an <strong>editable, reviewable draft</strong>, rather than immediately creating a runnable world. ZIPs prepared with an AI tool can also be used.</p>
 <h2 id="entry-point">Entry point<a class="headerlink" href="#entry-point" title="Permanent link">&para;</a></h2>
-<p>From the home screen (<strong>choose a world</strong>), go to <strong>＋ Create a new world</strong> →
-"<strong>Import from ZIP</strong>", and pick a ZIP file that bundles <code>world.yaml</code> and
-<code>subjects/*.yaml</code>.</p>
-<h2 id="what-goes-in-the-zip">What goes in the ZIP<a class="headerlink" href="#what-goes-in-the-zip" title="Permanent link">&para;</a></h2>
-<p>The spec for building the ZIP lives at
-<a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md"><code>docs/world-import-guide.md</code></a>
-(GitHub). Hand that document to an AI tool as-is and ask it to follow it, and
-it will produce a compatible ZIP.</p>
+<p>From the world list, choose “新しい世界を作成” (Create a new world), then “ZIPから始める” (Start from ZIP). Select a file and click “ZIPから下書きを作る” (Create a draft from ZIP). Import does not modify the original ZIP or call AI.</p>
+<h2 id="zip-contents">ZIP contents<a class="headerlink" href="#zip-contents" title="Permanent link">&para;</a></h2>
+<p>Include exactly one <code>world.yaml</code> and <code>subjects/*.yaml</code> in the world folder. Related files and fields unsupported by the forms are preserved. A shared enclosing folder is supported. Unrelated files outside the world folder, unsafe paths, duplicate filenames, encrypted entries and symbolic links are rejected. Required template dependencies are checked as well.</p>
+<p>For file-format background, see <a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md"><code>docs/world-import-guide.md</code></a>. That document describes an older import flow; use the limits below for the current draft importer rather than its older capacity and screen instructions.</p>
 <h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
 <ul>
-<li>256KB per file</li>
-<li>47KB for the ZIP itself</li>
-<li>200 files at most</li>
-<li>2MB total after decompression</li>
+<li>ZIP archive: up to 10MB.</li>
+<li>Archive entries, including directories: up to 1000.</li>
+<li>Extracted contents, including related files: up to 8MB.</li>
+<li>Parsed world/character YAML: up to 256KB per file.</li>
 </ul>
-<p>Exceeding any of these fails at upload time.</p>
-<h2 id="name-and-genre">Name and genre<a class="headerlink" href="#name-and-genre" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Display name</strong>: if the form's "world name" field is left blank, the
-  <code>name</code> from the ZIP's <code>world.yaml</code> is used. If you type something in the
-  form, it overrides the ZIP's value.</li>
-<li><strong>Genre</strong>: follows the ZIP's own specification. If <code>world.yaml</code> sets
-  <code>gapengine</code> (<code>action_graph</code>/<code>effects</code>), the world is imported with that
-  genre; if it's omitted, the world is imported <strong>without a genre set</strong>.</li>
-</ul>
-<h2 id="after-importing">After importing<a class="headerlink" href="#after-importing" title="Permanent link">&para;</a></h2>
-<p>The imported world takes you straight to its
-<a href="../create-world/#world-settings">world settings screen</a>.</p>
-<ul>
-<li><strong>If the genre is unset</strong>: pick one from the genre row on the "世界の概要"
-  (overview) tab. <strong>Do this before running anything.</strong> A GA experiment will
-  still run even if you don't -- picking a genre in the run settings is
-  enough for that -- but this world's own foreshadowing
-  (<code>gapengine.effects</code>) then stays silently empty for the whole run.</li>
-<li>Check the content via the run settings' "validate" step, or through each
-  tab of the world settings screen.</li>
-</ul>
-<h2 id="if-you-hit-an-error">If you hit an error<a class="headerlink" href="#if-you-hit-an-error" title="Permanent link">&para;</a></h2>
-<p>Common messages and their causes (see chapter 8 of
-<a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md"><code>docs/world-import-guide.md</code></a>
-for the full list):</p>
-<table>
-<thead>
-<tr>
-<th>Message</th>
-<th>Cause</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ZIPにworld.yamlがありません</code></td>
-<td><code>world.yaml</code> isn't at the ZIP's top level (or the top level of a single wrapping folder)</td>
-</tr>
-<tr>
-<td><code>&lt;path&gt;: 対象外のファイル名です</code></td>
-<td>a file under <code>subjects/</code> doesn't match the naming rule</td>
-</tr>
-<tr>
-<td><code>ZIPは47KB以内にしてください</code></td>
-<td>the ZIP itself is too large</td>
-</tr>
-<tr>
-<td><code>ZIPのジャンル「&lt;id&gt;」（templates/&lt;id&gt;/）がありません...</code></td>
-<td>the specified genre doesn't exist</td>
-</tr>
-<tr>
-<td><code>名前を入力してください（ZIPのnameも空です）</code></td>
-<td>both the form's display name and the ZIP's <code>world.yaml</code> name are blank</td>
-</tr>
-</tbody>
-</table>
+<h2 id="after-import">After import<a class="headerlink" href="#after-import" title="Permanent link">&para;</a></h2>
+<p>Edit through the three-stage <a href="../create-world/">Create a World</a> workflow. Original settings are preserved while supported fields are edited. Review the name, characters, places, time and rule support. Resolve invalid formats or missing dependencies according to validation messages.</p>
+<p>At “③ 確認して採用” (Review and adopt), run “設定と実行入力を確認” (Check settings and execution inputs), including defaults and unsupported details. No new world is created until you check the confirmation and adopt. An adopted import draft becomes read-only; continue editing from the created world's settings. Import and adoption do not start GA.</p>
+<h2 id="errors-or-connection-loss">Errors or connection loss<a class="headerlink" href="#errors-or-connection-loss" title="Permanent link">&para;</a></h2>
+<p>Messages identify oversized archives, missing/multiple <code>world.yaml</code> files, duplicate names, entries outside the world folder and malformed YAML. Correct the issue before importing again. For uncertain submission outcomes, use the result-check action and inspect saved state before retrying, to avoid duplicate worlds.</p>
 <h2 id="not-available-in-the-read-only-viewer">Not available in the read-only Viewer<a class="headerlink" href="#not-available-in-the-read-only-viewer" title="Permanent link">&para;</a></h2>
-<p>The distributed <strong>Viewer exe</strong> (read-only viewer) rejects every write, so it
-can't even open this screen. Import from the <strong>Studio exe</strong>, or from a server
-started with <code>--control</code>.</p>
+<p>Use writable Studio or a source server started with <code>--control</code>. Viewer cannot save or import worlds.</p>
 
 
 
@@ -1923,10 +1842,10 @@ started with <code>--control</code>.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

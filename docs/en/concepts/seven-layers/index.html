@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -658,7 +658,7 @@
   <a href="#no-llm-in-simulation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        No LLM is involved in generating events
+        The event engine and rationality evaluation
       
     </span>
   </a>
@@ -1760,7 +1760,7 @@
   <a href="#no-llm-in-simulation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        No LLM is involved in generating events
+        The event engine and rationality evaluation
       
     </span>
   </a>
@@ -1835,7 +1835,7 @@
 </tr>
 </tbody>
 </table>
-<p>On top of this there's <strong>vitality</strong>. It transitions <code>alive</code> → <code>downed</code> → <code>revived</code> / <code>dead</code>, and a downed character can return to <code>revived</code> via rescue by an ally or self-recovery. Death only happens when the winning side's action or item carries <code>lethal</code>. This lets a "pseudo death and revival" arise naturally as part of the story.</p>
+<p>On top of this there's <strong>vitality</strong>. It transitions <code>alive</code> → <code>downed</code> → <code>revived</code> / <code>dead</code>, and a downed character can return to <code>revived</code> via rescue by an ally or self-recovery. Combat death follows the lethality settings. Separately, enabling <code>stamina.zero_behavior: death</code> makes zero stamina a cause of death. This lets a "pseudo death and revival" arise naturally as part of the story.</p>
 <h2 id="identity-layer">Identity layer<a class="headerlink" href="#identity-layer" title="Permanent link">&para;</a></h2>
 <p><code>identity_true</code> (true identity) and <code>identity_displayed</code> (displayed identity) are held separately. The <code>disguise</code> action splits the two apart, and until <code>identity_seen</code> (exposed) is set — through repeated <code>observe</code> or a <code>confront</code> — every other character can only treat this character by the name in <code>identity_displayed</code>. The relationship matrix, hostility checks, and role priors for action candidates are all read against the true identity once exposed, or the displayed identity otherwise (<code>perceived_name</code>). The moment of exposure switches the other party's stance to the value for the true identity, which is why a reveal scene works as a turning point in the story. A world template can pre-declare an initial relationship toward the disguised identity (e.g. affinity toward "a traveling merchant").</p>
 <h2 id="phase-layer">Phase layer<a class="headerlink" href="#phase-layer" title="Permanent link">&para;</a></h2>
@@ -1845,7 +1845,7 @@
 <h2 id="resource-layer">Resource layer<a class="headerlink" href="#resource-layer" title="Permanent link">&para;</a></h2>
 <p>Three things: possessions <code>inventory</code>, reputation <code>reputation</code>, and drawable relationship capital (bonds). <code>sacrifice</code> and <code>grand_gesture</code> (a large gift or public act) are ways to spend assets or bonds in exchange for ability modifiers or identity-passage conditions. Reputation rises through <code>donate</code>, drops sharply when a <code>pledge</code> is broken, and can move either way with <code>grand_gesture</code> since it's a public act whose success or failure is visible.</p>
 <h2 id="vitality-transitions">Vitality transitions<a class="headerlink" href="#vitality-transitions" title="Permanent link">&para;</a></h2>
-<p>An <code>alive</code> character who loses to a non-lethal action becomes <code>downed</code>. The only action available while downed is <code>rest</code>, but they automatically recover to <code>revived</code> after a set number of turns, or immediately via a present ally's <code>rescue</code> action. The number of turns before automatic recovery is shortened by the count of present allies whose <code>stance</code> is at or above a threshold (it's the headcount of qualifying allies that matters, not the graded strength of any one relationship). <code>dead</code> only happens through <code>lethal_chance</code>, when the winning side's action or item carries <code>lethal</code> — an ordinary defeat only downs the character. A character the template marks <code>lethal_exempt</code> is protected even from lethal actions (a genre-level convention, not the engine steering toward an ending). This mechanism lets a high-volatility turn — "downed, then saved by an ally, then the tables turn" — arise from the ordinary rules rather than as a special-cased event.</p>
+<p>An <code>alive</code> character who loses to a non-lethal action becomes <code>downed</code>. The only action available while downed is <code>rest</code>, but they automatically recover to <code>revived</code> after a set number of turns, or immediately via a present ally's <code>rescue</code> action. The number of turns before automatic recovery is shortened by the count of present allies whose <code>stance</code> is at or above a threshold (it's the headcount of qualifying allies that matters, not the graded strength of any one relationship). Combat death follows settings including <code>lethal_chance</code> and the winning side's <code>lethal</code> actions or items — an ordinary defeat only downs the character. A character the template marks <code>lethal_exempt</code> is protected even from lethal actions (a genre-level convention, not the engine steering toward an ending). This mechanism lets a high-volatility turn — "downed, then saved by an ally, then the tables turn" — arise from the ordinary rules rather than as a special-cased event.</p>
 <h2 id="the-relationship-matrix-stance-bonds">The relationship matrix (stance / bonds)<a class="headerlink" href="#the-relationship-matrix-stance-bonds" title="Permanent link">&para;</a></h2>
 <p>Relationships between characters are represented by a single matrix, <code>world.relations[a][b] = {affinity, awareness}</code>. <strong>stance(a, b)</strong> is "how a sees b" (reading affinity in that direction); <strong>bonds(a)</strong> is "the relationship capital a can draw on" (the sum of the positive parts of affinity from others). Reading the same matrix both ways avoids holding bonds in the resource layer and stance in relationships as two separate things.</p>
 <h2 id="combat-is-resolved-as-a-difference-game">Combat is resolved as a "difference game"<a class="headerlink" href="#combat-is-resolved-as-a-difference-game" title="Permanent link">&para;</a></h2>
@@ -1858,8 +1858,8 @@
 <span class="w">    </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">鬼退治を果たし、宝を村へ持ち帰った</span>
 </code></pre></div>
 <p>This same vocabulary is passed to the LLM's synopsis prompt as the same dictionary.</p>
-<h2 id="no-llm-in-simulation">No LLM is involved in generating events<a class="headerlink" href="#no-llm-in-simulation" title="Permanent link">&para;</a></h2>
-<p>Each turn, the protagonist enumerates the action candidates possible at that moment, multiplies the base weight (from temperament and world state) by the <a href="../genome/">genome</a>'s multipliers, and draws once. Candidates that don't satisfy an action's premise (e.g. observe before neutralizing) never even make it into the candidate list, so causal consistency is guaranteed by construction. No LLM enters here at all — the sequence of events is purely a simulation result. Given the same world, the same genome, and the same random seed, the log matches byte for byte (see <a href="../determinism/">Determinism</a> for details).</p>
+<h2 id="no-llm-in-simulation">The event engine and rationality evaluation<a class="headerlink" href="#no-llm-in-simulation" title="Permanent link">&para;</a></h2>
+<p>Each turn, the protagonist enumerates the action candidates possible at that moment, multiplies the base weight (from temperament and world state) by the <a href="../genome/">genome</a>'s multipliers, and draws once. Candidates that don't satisfy an action's premise (e.g. observe before neutralizing) never even make it into the candidate list, so causal consistency is guaranteed by construction. The engine generates the events themselves. Enabling rationality κ does call an evaluator (Ollama or Jev) to adjust candidate weights. Normal κ=0 execution does not make this external judgment. Given the same world, genome, random seed, precedent table, and rationality verdict table, the log matches byte for byte (see <a href="../determinism/">Determinism</a> for details).</p>
 
 
 
@@ -1960,10 +1960,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

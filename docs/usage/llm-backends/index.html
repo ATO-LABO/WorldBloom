@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1102,6 +1102,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#gemma-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gemma 4とモデル別プロファイル
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ollama" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1681,6 +1692,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#gemma-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gemma 4とモデル別プロファイル
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ollama" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1756,7 +1778,7 @@
 
 
 <h1 id="llm">LLM バックエンド<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h1>
-<p>あらすじ・本文の<a href="../generate-text/">文章を生成する</a>ときにだけ LLM を使います。GA 実験そのものは LLM を必要としません。接続先は ⚙ <a href="../settings/">設定</a>の「文章生成」タブで選びます。</p>
+<p>AIは、任意の世界下書きの生成・修正と、<a href="../generate-text/">あらすじ・本文の生成</a>に使います。GAの探索と文章化は別工程ですが、κ&gt;0の合理性判定では選択した判定器も呼び出します。接続先の保存状態は ⚙ <a href="../settings/">設定</a>の「AIの設定」で確認できます。</p>
 <h2 id="_1">選べる接続先<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1806,8 +1828,8 @@
 </table>
 <p>既定の接続先は <code>llama-server</code> です（配布版 v1.0.0-viewer では <code>codex-cli</code>）。Ollama・llama-server 本体は WorldBloom に同梱されていないため、別途インストールが必要です。</p>
 <h3 id="model-defaults">モデル名は誰が決めるか<a class="headerlink" href="#model-defaults" title="Permanent link">&para;</a></h3>
-<p><strong>⚙ 設定の画面から使う場合</strong>は、<code>claude-cli</code> だけモデル未入力でも <code>claude-sonnet-5</code> が使われます。それ以外の接続先はモデル名の入力が必須です（未入力のまま接続を確認しようとすると「モデルを指定してください」と表示されます）。</p>
-<p>**CLI（<code>scripts/synopsize.py</code> / <code>scripts/narrate.py</code> を直接実行する場合）**は、<code>settings.json</code> に <code>model</code> を書かなければ、接続先ごとに次の既定値が使われます。</p>
+<p><strong>現在の設定画面</strong>は保存済みの接続先の確認とGemma 4の選択を中心にしています。任意のバックエンド・モデルを使う場合は <code>settings.json</code> の <code>output.default_backend</code> と接続先ごとの設定を確認してください。設定APIのモデル指定では <code>claude-cli</code> だけ空欄時に <code>claude-sonnet-5</code> を使用し、他の生成方式では明示的なモデル名が必要です。</p>
+<p><strong>CLI（<code>scripts/synopsize.py</code> / <code>scripts/narrate.py</code> を直接実行する場合）</strong>は、<code>settings.json</code> に <code>model</code> を書かなければ、接続先ごとに次の既定値が使われます。</p>
 <table>
 <thead>
 <tr>
@@ -1843,6 +1865,9 @@
 </tbody>
 </table>
 <p>同梱サンプル（<code>samples/</code>）・提出物の生成条件は <code>qwen3.5:9b-q4_K_M</code>（Ollama）です。既定値の <code>qwen3.6:35b</code> など、より大きなモデルに切り替えると生成条件が変わります。</p>
+<h2 id="gemma-4">Gemma 4とモデル別プロファイル<a class="headerlink" href="#gemma-4" title="Permanent link">&para;</a></h2>
+<p>「AIの設定」でGemma 4を選び保存すると、Ollamaの <code>gemma4:e4b-it-qat</code> と対応するモデル別設定を使用します。導入はOllamaを動かしているPCで <code>ollama pull gemma4:e4b-it-qat</code> を実行してください。導入状況の再確認だけでは生成先は変更しません。</p>
+<p><code>output.&lt;backend&gt;.model_options.&lt;model&gt;</code> は、そのモデルを選んだときだけ <code>think</code> と <code>options</code> を適用する仕組みです。Gemma向けの設定を、別のOllamaモデルへ一律に適用しないために使います。</p>
 <h2 id="ollama">Ollama を使う場合<a class="headerlink" href="#ollama" title="Permanent link">&para;</a></h2>
 <ol>
 <li><a href="https://ollama.com">Ollama</a> をインストールします</li>
@@ -1851,6 +1876,7 @@
 <p>ソースから動かす場合、<code>settings.json</code> に直接書くこともできます。</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"default_backend"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ollama"</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"ollama"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"qwen3.5:9b-q4_K_M"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>
@@ -1890,9 +1916,9 @@
 <li>ノート PC の GPU は連続生成で86℃に達することがあります。長時間連続実行する場合は休止を挟んでください</li>
 </ul>
 <h2 id="cli-claude-cli-codex-cli">CLI 接続先（claude-cli / codex-cli）<a class="headerlink" href="#cli-claude-cli-codex-cli" title="Permanent link">&para;</a></h2>
-<p><code>claude</code> または <code>codex</code> コマンドが PATH にあれば使えます。実行ファイルが見つからない場合、⚙ 設定の「接続を確認」は失敗と表示されます。</p>
+<p><code>claude</code> または <code>codex</code> コマンドが PATH にあれば使えます。実行ファイルが見つからない場合は利用できません。各CLIの認証も事前に済ませてください。</p>
 <h2 id="api-anthropic-openai">API 接続先（anthropic / openai）<a class="headerlink" href="#api-anthropic-openai" title="Permanent link">&para;</a></h2>
-<p>APIキーが必要です。⚙ 設定の「APIキー」欄から個別に保存します（保存済みの値は画面に表示されません）。</p>
+<p>APIキーが必要です。現在のAI画面は汎用APIキー入力欄を表示しないため、<code>settings.json</code> の接続先設定を確認してください。キーを公開リポジトリや世界ZIPに含めないでください。</p>
 <h2 id="none">生成しない（none）<a class="headerlink" href="#none" title="Permanent link">&para;</a></h2>
 <p>LLM を呼び出さず、生成に使うプロンプトだけを保存します。接続先を用意する前に、あらすじ・本文生成の対象や候補数を確認したいときに使えます。</p>
 
@@ -1995,10 +2021,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

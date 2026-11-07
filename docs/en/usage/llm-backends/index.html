@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1102,6 +1102,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#gemma-4-and-model-specific-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gemma 4 and model-specific profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#using-ollama" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1681,6 +1692,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#gemma-4-and-model-specific-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gemma 4 and model-specific profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#using-ollama" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1756,7 +1778,7 @@
 
 
 <h1 id="llm-backends">LLM Backends<a class="headerlink" href="#llm-backends" title="Permanent link">&para;</a></h1>
-<p>An LLM is only used when <a href="../generate-text/">generating text</a> (synopsis/prose). The GA experiment itself never needs one. Pick the backend under the "文章生成" (Text generation) tab of ⚙ <a href="../settings/">Settings</a>.</p>
+<p>AI supports optional world-draft generation/refinement and <a href="../generate-text/">synopsis/prose generation</a>. GA exploration and prose generation are separate, but rationality judging with κ&gt;0 also calls the chosen judge. Check the saved generation destination in “AIの設定” (AI settings) under ⚙ <a href="../settings/">Settings</a>.</p>
 <h2 id="available-backends">Available backends<a class="headerlink" href="#available-backends" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1806,7 +1828,7 @@
 </table>
 <p>The default backend is <code>llama-server</code> (<code>codex-cli</code> in the v1.0.0-viewer distributed build). Ollama and llama-server itself are not bundled with WorldBloom and must be installed separately.</p>
 <h3 id="model-defaults">Who decides the model name<a class="headerlink" href="#model-defaults" title="Permanent link">&para;</a></h3>
-<p><strong>When using the ⚙ 全体設定 (Global settings) screen</strong>, only <code>claude-cli</code> falls back to <code>claude-sonnet-5</code> when the model field is empty. Every other backend requires you to enter a model name (trying to check the connection with it empty shows "モデルを指定してください", Please specify a model).</p>
+<p><strong>The current settings screen</strong> focuses on inspecting the saved destination and selecting Gemma 4. For another backend/model, configure <code>output.default_backend</code> and the backend section in <code>settings.json</code>. The settings API allows <code>claude-cli</code> to use <code>claude-sonnet-5</code> when the model is empty; other generation backends require an explicit model name.</p>
 <p><strong>On the CLI</strong> (running <code>scripts/synopsize.py</code> / <code>scripts/narrate.py</code> directly), if <code>settings.json</code> has no <code>model</code> set, each backend falls back to:</p>
 <table>
 <thead>
@@ -1843,6 +1865,9 @@
 </tbody>
 </table>
 <p>The bundled samples (<code>samples/</code>) and the submission were generated with <code>qwen3.5:9b-q4_K_M</code> (Ollama). Switching to a larger model such as the default <code>qwen3.6:35b</code> changes the generation conditions.</p>
+<h2 id="gemma-4-and-model-specific-profiles">Gemma 4 and model-specific profiles<a class="headerlink" href="#gemma-4-and-model-specific-profiles" title="Permanent link">&para;</a></h2>
+<p>Selecting Gemma 4 in AI settings and saving uses Ollama's <code>gemma4:e4b-it-qat</code> and its model-specific profile. Run <code>ollama pull gemma4:e4b-it-qat</code> on the PC hosting Ollama. Refreshing installation status alone does not change the saved generation destination.</p>
+<p><code>output.&lt;backend&gt;.model_options.&lt;model&gt;</code> applies <code>think</code> and <code>options</code> only when that model is selected. This keeps Gemma's settings from being applied indiscriminately to other Ollama models.</p>
 <h2 id="using-ollama">Using Ollama<a class="headerlink" href="#using-ollama" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Install <a href="https://ollama.com">Ollama</a></li>
@@ -1851,6 +1876,7 @@
 <p>When running from source, you can also write this directly in <code>settings.json</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"default_backend"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ollama"</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"ollama"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"qwen3.5:9b-q4_K_M"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"base_url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://localhost:11434"</span><span class="p">,</span>
@@ -1890,9 +1916,9 @@
 <li>A laptop GPU can reach 86°C under sustained generation. Take breaks during long continuous runs</li>
 </ul>
 <h2 id="cli-backends-claude-cli-codex-cli">CLI backends (claude-cli / codex-cli)<a class="headerlink" href="#cli-backends-claude-cli-codex-cli" title="Permanent link">&para;</a></h2>
-<p>These work as long as the <code>claude</code> or <code>codex</code> command is on PATH. If the executable isn't found, "接続を確認" (Check connection) in ⚙ 全体設定 (Global settings) reports failure.</p>
+<p>The <code>claude</code> or <code>codex</code> executable must be on PATH and authenticated in advance. A missing executable cannot be used.</p>
 <h2 id="api-backends-anthropic-openai">API backends (anthropic / openai)<a class="headerlink" href="#api-backends-anthropic-openai" title="Permanent link">&para;</a></h2>
-<p>These need an API key. Save it separately under the "APIキー" (API key) field in ⚙ 全体設定 (Global settings) (a saved value is never shown on screen).</p>
+<p>An API key is required. The current AI screen does not expose a generic API-key input, so check the corresponding backend section in <code>settings.json</code>. Never include keys in public repositories or world ZIP files.</p>
 <h2 id="dont-generate-none">Don't generate (none)<a class="headerlink" href="#dont-generate-none" title="Permanent link">&para;</a></h2>
 <p>Doesn't call the LLM at all — only saves the prompts that would be used for generation. Useful for checking the target scope and candidate count for synopsis/text generation before you've set up a backend.</p>
 
@@ -1995,10 +2021,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

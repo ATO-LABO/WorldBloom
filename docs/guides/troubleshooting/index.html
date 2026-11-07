@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1515,6 +1515,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        旧世界形式と表示されたら
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下書きの保存やAI精緻化が止まったら
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1657,6 +1679,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        旧世界形式と表示されたら
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下書きの保存やAI精緻化が止まったら
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1691,7 +1735,7 @@
 <tr>
 <td>Windows SmartScreen の警告が出る</td>
 <td>配布版 exe は署名されていない</td>
-<td>「詳細情報」→「実行」の順にクリックしてください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照</td>
+<td>公式Releaseの入手元と公開チェックサムを確認し、不明なファイルは実行しないでください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照</td>
 </tr>
 <tr>
 <td><code>pywebview の読み込みに失敗しました。配布フォルダが壊れている可能性があります。展開し直してください。</code></td>
@@ -1738,7 +1782,7 @@
 </tbody>
 </table>
 <h2 id="viewer-403">Viewer（閲覧専用ビルド）で操作すると 403 になる<a class="headerlink" href="#viewer-403" title="Permanent link">&para;</a></h2>
-<p>WorldBloom.exe（閲覧専用ビルド）は、採用・選定チェックボックスなど画面上の操作要素は表示されますが、書き込み系の操作（POST）はすべてサーバー側で <code>403 read-only build</code> として拒否します。**これは仕様どおりの挙動です。**編集・実行するには WorldBloom-Studio.exe を使ってください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照してください。</p>
+<p>WorldBloom.exe（閲覧専用ビルド）は、採用・選定チェックボックスなど画面上の操作要素は表示されますが、書き込み系の操作（POST）はすべてサーバー側で <code>403 read-only build</code> として拒否します。<strong>これは仕様どおりの挙動です。</strong>編集・実行するには WorldBloom-Studio.exe を使ってください。詳しくは<a href="../../getting-started/install/">インストール</a>を参照してください。</p>
 <h2 id="llm">LLM 生成が失敗する<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1751,8 +1795,8 @@
 <tbody>
 <tr>
 <td>モデルを指定してください</td>
-<td>⚙ 設定でモデル名が未入力（<code>claude-cli</code> 以外はどの接続先でも自動では決まらない）</td>
-<td>⚙ 設定の「文章生成」タブでモデル名を入力してください。<a href="../../usage/llm-backends/#model-defaults">LLM バックエンド</a>を参照</td>
+<td>保存済みの生成設定にモデル名がない（<code>claude-cli</code> 以外は自動では決まらない）</td>
+<td>⚙ 全体設定 → AIの設定 → 使用するAIで保存済みの生成先を確認してください。Gemma 4は画面で選択・保存し、他モデルは <a href="../../reference/settings-json/">settings.json</a> の <code>output</code> を設定します。モデルの導入・接続も確認してください。<a href="../../usage/llm-backends/#model-defaults">LLM バックエンド</a>を参照</td>
 </tr>
 <tr>
 <td>実行ファイルが見つかりません</td>
@@ -1762,7 +1806,7 @@
 <tr>
 <td>資格情報がありません</td>
 <td><code>anthropic</code> / <code>openai</code> を選んでいるが APIキーが未保存</td>
-<td>⚙ 設定の「APIキー」欄からキーを保存してください</td>
+<td>利用する接続先の資格情報を対応する設定に保存してください。現行画面とCLIの違いは<a href="../../usage/llm-backends/">LLM バックエンド</a>を参照</td>
 </tr>
 <tr>
 <td>そのモデルは見つかりません</td>
@@ -1801,6 +1845,10 @@
 </tr>
 </tbody>
 </table>
+<h2 id="_4">旧世界形式と表示されたら<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>現行ソースは新形式の世界だけを編集・実行します。「桃太郎＋3」（<code>momotaro_plus3_new</code>）または新規作成で確定した世界を選んでください。旧世界は自動変換しません。形式番号だけを追加して実行を通そうとせず、原本と過去の実行結果を保持してください。</p>
+<h2 id="ai">下書きの保存やAI精緻化が止まったら<a class="headerlink" href="#ai" title="Permanent link">&para;</a></h2>
+<p>競合（409）では最新の保存版と手元の入力を比較し、別のコピーとして保存する選択肢を使ってください。保存結果が不明なときは保存済み状態を確認し、無条件で再送しないでください。AI候補が検査で拒否された場合も、要求の一部だけを採用せず理由を確認してください。操作手順は<a href="../../usage/create-world/">世界を作る</a>を参照してください。</p>
 
 
 
@@ -1901,10 +1949,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

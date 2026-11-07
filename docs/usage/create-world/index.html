@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -914,16 +914,50 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="新しい世界を作る">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIを使う場合
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
   <a href="#world-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        世界設定画面（世界ごとのタブ）
+        世界設定画面
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="世界設定画面">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        体力と所持金
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1644,16 +1678,50 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="新しい世界を作る">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIを使う場合
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
   <a href="#world-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        世界設定画面（世界ごとのタブ）
+        世界設定画面
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="世界設定画面">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        体力と所持金
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1724,67 +1792,87 @@
 <h1 id="_1">世界を作る<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <p>「世界」は、GA 実験の元になる舞台設定（人物・場所・時間・目標の結末）一式です。この画面で作った世界を使って、<a href="../run-settings/">実行設定</a>から GA 実験を回します。</p>
 <h2 id="_2">新しい世界を作る<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>ホーム画面（<strong>世界を選ぶ</strong>）の <strong>＋ 新しい世界を作る</strong> から開きます。</p>
-<p>作成方法は3通りから選びます。</p>
+<p>世界一覧の「新しい世界を作成」から始めます。カードには保存済みの概要、人物数、場所数、期間、主人公・敵役が表示され、世界名や人物で検索できます。</p>
+<p>入口は4つあります。</p>
 <ul>
-<li><strong>新しく作る</strong>: 空の世界から始めます。ジャンルは共通の基本ルール（<code>basic</code>）が初期値になり、あとから変更できます。</li>
-<li><strong>既存の世界から作る</strong>: 一覧から作成元の世界を選び、その世界の設定をコピーします。作成元の世界自体は変わりません。コピー時はジャンルも一覧（検索ボックス付き）から選び直せます。</li>
-<li><strong>ZIPから取り込む</strong>: AI（Codex・Claude Code・Gemini など）に作らせた <code>world.yaml</code>・<code>subjects/*.yaml</code> 一式をZIPで取り込みます。詳しくは<a href="../import-world/">世界を ZIP から取り込む</a>を参照してください。</li>
+<li><strong>既存の世界から始める</strong>: 元の世界を選び、関連ファイルやフォーム未対応の項目を保持した別の下書きを作ります。元の世界は変更しません。</li>
+<li><strong>ZIPから始める</strong>: ZIPから下書きを作ります。<a href="../import-world/">取り込み手順</a>を参照してください。</li>
+<li><strong>保存した下書きを再開</strong>: 内容と編集段階を読み込みます。再開だけではAIへの相談・検証・採用は行いません。</li>
+<li><strong>新規作成</strong>: 名前・概要から下書きを用意します。未完成の入力も保存できます。</li>
 </ul>
-<p>共通の入力項目:</p>
-<ul>
-<li><strong>世界の名前</strong>（必須、120文字まで。「ZIPから取り込む」のときだけ空欄可 — 空欄ならZIPの <code>world.yaml</code> の <code>name</code> を使います）</li>
-<li><strong>世界の概要</strong>（任意、8000文字まで。「新しく作る」のときだけ入力欄が出ます）</li>
-<li><strong>詳細設定</strong>を開くと <strong>世界ID</strong> が編集できます。半角英数字・ハイフン・アンダースコアのみ（1〜96文字）で、既定では <code>world-</code> に続けてランダムな12文字が自動入力されます</li>
-</ul>
-<p>作成すると、その世界の<strong>世界設定画面</strong>（次項）に進みます。人物・場所・初期物語はこの時点では空で、あとから設定します。</p>
-<h2 id="world-settings">世界設定画面（世界ごとのタブ）<a class="headerlink" href="#world-settings" title="Permanent link">&para;</a></h2>
-<p>世界を開く（またはホームの世界カードから「世界を開く」）と、次の5つのタブで設定を確認・編集します。</p>
+<p>作成は次の3段階です。</p>
+<ol>
+<li><strong>① 下書きを用意</strong>: 名前（120文字まで）と概要（8000文字まで）を入力します。任意のジャンルや「世界の脅威への対応」は制作の手がかりで、選択するだけでは生成や実行条件の設定は行いません。</li>
+<li><strong>② 内容を整える</strong>: 人物・関係・場所・持ち物・時間・目標などを手入力で整えます。AIへの相談は任意です。項目を指定して修正案を作り、差分を確認して「この案を下書きに採用」で反映します。新規下書きでは世界全体の別案も依頼できますが、現在の手修正は別の保存済み下書きに残します。</li>
+<li><strong>③ 確認して採用</strong>: 「設定と実行入力を確認」で検証し、未設定項目・初期値・非対応の詳細を読みます。確認チェックを入れて新しい世界として保存します。採用は元の世界への上書きやGA実行ではありません。検証成功も結末への到達や面白さを保証しません。</li>
+</ol>
+<h3 id="ai">AIを使う場合<a class="headerlink" href="#ai" title="Permanent link">&para;</a></h3>
+<p><a href="../settings/#output-settings">AIの設定</a>を先に確認してください。AI入力は明示的に開始したときだけ実行されます。目的を解釈 → 世界設定を生成 → 内容を確認、という3段階の方式では最大3回のAI呼出しが表示されます。画面の3段階の編集手順とは別の処理です。</p>
+<p>AIが待機中でも手入力・下書き保存・採用はできます。ソース版で実AIを利用するには、接続先・モデル・費用を確認したうえでサーバー起動時に <code>--control</code> と <code>--world-draft-live</code> を指定します。設定画面でモデルを保存するだけでは待機モードは解除されません。</p>
+<p>通信が途切れたり結果が不明になった場合は「AI入力の状態を確認」で送信済みの結果を確認します。自動再送は行いません。手入力に戻ったり別の下書きへ移った後に、古い結果で現在の入力を上書きしない仕組みです。</p>
+<h2 id="world-settings">世界設定画面<a class="headerlink" href="#world-settings" title="Permanent link">&para;</a></h2>
+<p>保存した世界を「世界を開く」から開くと、共通のカテゴリで設定を確認・編集できます。</p>
 <table>
 <thead>
 <tr>
-<th>タブ</th>
+<th>カテゴリ</th>
 <th>内容</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>世界の概要</td>
-<td>名前・概要の編集。ジャンルが未設定の世界はここから選べます（<a href="../import-world/">ZIPから取り込む</a>で作った世界など）。世界の自己拡張（下記）で承認済み・提案中の変更点があれば、ここに表示されます</td>
+<td>概要と物語の前提</td>
+<td>世界の名前・概要・役割・結末、拡張の提案</td>
 </tr>
 <tr>
-<td>登場人物</td>
-<td>人物ごとのパラメータ（9指標）や初期位置などを確認・編集。<strong>人物関係図</strong>（下記）もここから開きます</td>
+<td>話の説明</td>
+<td>初期物語の導入文・開始時点の状態</td>
 </tr>
 <tr>
-<td>場所</td>
-<td>場所（ゾーン）の一覧と、場所どうしのつながり</td>
+<td>登場人物と関係</td>
+<td>人物の設定・初期位置・数値、相関図・関係表</td>
 </tr>
 <tr>
-<td>初期物語</td>
-<td>導入文（開始時点の状況）の編集</td>
+<td>場所と移動</td>
+<td>場所とつながり</td>
 </tr>
 <tr>
-<td>時間</td>
-<td>実行日数・1日の時間帯の区切り。<strong>予定イベント</strong>（下記）の確認・編集もここで行います</td>
+<td>持ち物と情報</td>
+<td>開始時点の所持・知識と入手方法</td>
+</tr>
+<tr>
+<td>時間と出来事</td>
+<td>期間・時間帯・予定イベント</td>
+</tr>
+<tr>
+<td>行動設定</td>
+<td>行動の種類や使用条件</td>
+</tr>
+<tr>
+<td>世界のルール</td>
+<td>状態・条件、目標、対処、計画、金銭など</td>
+</tr>
+<tr>
+<td>確認・調査</td>
+<td>確認の概要、結末までの経路、調査の条件、世界のレビュー</td>
+</tr>
+<tr>
+<td>設定ファイル</td>
+<td>YAMLの直接編集</td>
 </tr>
 </tbody>
 </table>
-<p>世界画面のサイドバーには、ジャンルを問わず常に「最短経路を調査」（結末までの段取りの一例を最大3本表示する読み取り専用の機能）が並びます。道筋層（<code>route.yaml</code>）を持たないジャンルや、目標が「品物を手に入れて届ける」型でないジャンルでは、開くと非対応の案内が表示されます。詳しくは<a href="../../concepts/route-layer/#route-paths-survey">道筋層</a>を参照してください。</p>
-<p>編集は項目ごとに保存できます。保存しても、その世界で<strong>過去に実行した結果は変わりません</strong>（次回以降の実行から新しい設定が使われます）。</p>
-<p>画面下部のフッターには、未設定の項目（登場人物・場所・主人公・敵役・目標の結末・人物の初期位置のいずれか）があれば「未設定の項目を確認 →」、すべて揃っていれば「実行条件を決める →」（<a href="../run-settings/">実行設定</a>へ）のボタンが出ます。</p>
-<p>閲覧専用の Viewer では、この画面は表示のみで保存ボタンは機能しません（Studio でのみ編集できます）。</p>
+<p>「話の説明」から「初期物語」を開き、導入文や開始時点の状態を確認できます。「概要と物語の前提」内の「初期物語」カードや「導入文を編集」も引き続き使えます。既存の <code>#screen=story</code> URLにも対応しています。</p>
+<p>「確認・調査」の「結末までの経路」は、結末までの段取りを最大3本調べる読み取り専用の機能です。道筋層や目標の形式によっては非対応です。<a href="../../concepts/route-layer/#route-paths-survey">道筋層</a>を参照してください。</p>
+<p>項目ごとに保存します。保存しても<strong>過去の実行結果は変わりません</strong>。下部には不足があれば「未設定の項目を確認 →」、揃っていれば「実行条件を決める →」（<a href="../run-settings/">実行設定</a>）が表示されます。閲覧専用のViewerでは編集できません。</p>
+<h3 id="_3">体力と所持金<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<p>「行動設定」から体力管理の設定を確認できます。有効な世界では、最大体力・開始時点の体力・休息や睡眠の回復量、行動ごとの消費量の増減を設定します。体力管理を無効にしても設定値は保持され、時間・場所・負傷・死亡の条件は残ります。</p>
+<p>通貨を設定した世界では、人物の「開始所持金」から金額を編集できます。通貨が未設定なら先に金銭設定へ進みます。これらも以後の実行の初期設定です。</p>
 <h2 id="advanced-settings">詳細設定・設定ファイルの編集窓口<a class="headerlink" href="#advanced-settings" title="Permanent link">&para;</a></h2>
-<p>世界設定画面の左メニュー下にある「詳細設定・設定ファイル ↗」から、より踏み込んだ編集に進めます。4つの区画があります。</p>
-<ul>
-<li><strong>役割と結末</strong>: 主人公・敵役などの役割、目標の結末の設定</li>
-<li><strong>状況ごとの定石</strong>: ジャンルが持つ定石（何がどんな状況で起きやすいか）を、この世界の人物に当てはめて確認</li>
-<li><strong>行動図鑑</strong>: 人物が選べる行動の一覧</li>
-<li><strong>設定ファイル</strong>: 世界フォルダ内の YAML ファイルを直接編集</li>
-</ul>
-<p>テンプレート（ジャンル）自体の編集は、ホームの「ジャンル」タブ→ジャンルを開く、または「＋ 新しいジャンルを作る」から行います。ジャンルは複数の世界で共有される、行動とその結果を決める共通ルールです。既存のジャンルは「複製して編集」で複製してから変更できます（元のジャンルを使っている他の世界には影響しません）。</p>
+<p>左メニューの「世界のルール」や「設定ファイル」から詳細編集へ進めます。役割と結末、状態・条件、達成・失敗・判定期間、目的と対処、目的の分解と再計画、金銭設定、状況ごとの定石、行動図鑑などを確認できます。</p>
+<p>ジャンル（テンプレート）は複数の世界が共有する行動と結果のルールです。ジャンルの管理画面では既存のものを「複製して編集」してから変更します。元のジャンルを利用する世界へ意図しない変更を及ぼさないようにしてください。</p>
 <h2 id="relationship-workspace">人物関係図<a class="headerlink" href="#relationship-workspace" title="Permanent link">&para;</a></h2>
-<p>「登場人物」タブには「一覧」「相関図」「関係表」の3つの表示があります。</p>
+<p>「登場人物と関係」には「一覧」「相関図」「関係表」の3つの表示があります。</p>
 <ul>
 <li><strong>相関図</strong>: 人物どうしの関係を有向グラフとして表示します。人物は所属（<code>affiliation</code>。未設定なら開始時の居場所）ごとに色分けされ、主人公の所属を起点にグループが並びます。「全体」（登場人物すべて）と「人物フォーカス」（1人を選び、直接関係／2段階／すべて、から表示範囲を絞る）を切り替えられ、「好意」「反感」「中立」や所属でも絞り込めます。人物をクリックすると詳細パネルが開き、所属・直接関係の人数・概要・主な関係（上位6件）を確認できます。「関係を数値で確認」（折りたたみ）で、<code>affinity</code>（親しさ）・<code>awareness</code>（認知）を含む数値付きの一覧に切り替えられます</li>
 <li><strong>関係表</strong>: 相関図とは別のタブで、人物×人物の行列として全員の関係を一望できます</li>
@@ -1793,11 +1881,11 @@
 </ul>
 <p>相関図で設定に不備（関係の形式が壊れているなど）があれば、「設定の確認」（折りたたみ）に件数と内容が表示されます。</p>
 <h2 id="scheduled-events">予定イベントと強制行動<a class="headerlink" href="#scheduled-events" title="Permanent link">&para;</a></h2>
-<p>「時間」タブでは、実行日数・1日の時間帯に加えて、世界の<strong>予定イベント</strong>（<code>scheduled_events</code>）を確認・編集できます。予定イベントは、指定した日・時間帯に自動で起きる出来事（対象・効果・ラベル）です。</p>
+<p>「時間と出来事」では、実行日数・1日の時間帯に加えて、世界の<strong>予定イベント</strong>（<code>scheduled_events</code>）を確認・編集できます。予定イベントは、指定した日・時間帯に自動で起きる出来事（対象・効果・ラベル）です。</p>
 <p>このうち<strong>強制行動</strong>（<code>force_action</code>）を持つイベントは、その時間帯の対象の行動そのものを、指定した動詞・引数へ強制的に差し替えます（例: 3日目の朝、主人公を強制的に「道中」へ移動させる）。画面のフォームは、動詞ごとに指定できる引数の種類・個数を案内します。詳しい仕様（バリデーションの規則など）は<a href="../../reference/templates/#scheduled-events">テンプレート</a>を参照してください。</p>
 <h2 id="world-expansion">世界の自己拡張<a class="headerlink" href="#world-expansion" title="Permanent link">&para;</a></h2>
 <p>GA 実験を回す中で、人物の行動が同じ場所で何度も「空振り」する（例: 調べても何も出てこない）ことが続くと、WorldBloom はその世界に足りない要素（場所・品・事実など）を自動的に提案します。この提案は世界設定を直接書き換えず、<strong>承認するまで反映されません</strong>。</p>
-<p>世界設定画面の「世界の概要」タブ、および該当する実験の結果画面に、提案ごとのカードが表示されます。カードには次の情報があります。</p>
+<p>世界設定画面の「概要と物語の前提」、および該当する実験の結果画面に、提案ごとのカードが表示されます。カードには次の情報があります。</p>
 <ul>
 <li><strong>何が増えるか</strong>: 追加される場所・品・事実の内容（例: 「場所『◯◯』を『△△』の一部として足す」）</li>
 <li><strong>きっかけ</strong>: どの実験のどの場所でどの行動が何回中何回空振りしたか</li>
@@ -1906,10 +1994,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

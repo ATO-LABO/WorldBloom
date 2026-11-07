@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1427,6 +1427,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#current-world-format-and-optional-mechanics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current world format and optional mechanics
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1879,6 +1890,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#current-world-format-and-optional-mechanics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current world format and optional mechanics
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1901,6 +1923,7 @@
 
 <h1 id="templates">Templates<a class="headerlink" href="#templates" title="Permanent link">&para;</a></h1>
 <p>A "genre" (<code>templates/&lt;genre&gt;/</code>) defines a world's grammar, and a "world" (<code>projects/&lt;world&gt;/</code>) defines a concrete setting that uses that grammar. A genre can be shared across multiple worlds (e.g. <code>templates/momotaro_plus2</code> is referenced from <code>projects/momotaro_plus2</code>).</p>
+<p>For current-format requirements and the runnable sample, see “Current world format and optional mechanics” at the end of this page.</p>
 <h2 id="layout-of-templatesgenre">Layout of <code>templates/&lt;genre&gt;/</code><a class="headerlink" href="#layout-of-templatesgenre" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2197,6 +2220,14 @@
 <span class="nt">range</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">zones</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">村</span><span class="p p-Indicator">],</span><span class="nt"> entry</span><span class="p">:</span><span class="w"> </span><span class="nv">村</span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>Everything except <code>traits</code> (fixed disposition, outside the GA's reach) is a seven layers initial value. <code>relations</code> is the initial value of the relation matrix <code>world.relations[a][b] = {affinity, awareness}</code>, readable from the predicate evaluator as <code>stance(a,b) = affinity(a→b)</code>.</p>
+<h2 id="current-world-format-and-optional-mechanics">Current world format and optional mechanics<a class="headerlink" href="#current-world-format-and-optional-mechanics" title="Permanent link">&para;</a></h2>
+<p>Current execution and editing entry points require <code>world_format_version: 1</code>. <code>action_usage</code> contains <code>version: 2</code>, <code>engine_contract: normal_turn_v2</code>, <code>catalog_version: 1</code>, and <code>enabled</code>. Entries are references such as <code>verb:move</code>, <code>recipe:&lt;item name&gt;</code>, and <code>response:&lt;response ID&gt;</code>; <code>verb:rest</code> is required. <code>mechanics</code> contains <code>version: 1</code> and boolean <code>stamina_management</code> and <code>budgeted_purchases</code> fields. Classification categories alone do not grant actions.</p>
+<p>The bundled current sample is <strong><code>projects/momotaro_plus3_new</code> + <code>templates/momotaro_plus3</code></strong>. Legacy worlds remain on disk but cannot be run, edited, or adopted unchanged. A ZIP can still be retained in a draft; while format errors remain, that draft cannot pass validation, be adopted, or run. Older YAML fragments on this page explain individual fields, rather than forming complete loadable worlds. Create new worlds through the UI; do not overwrite legacy originals to migrate them.</p>
+<ul>
+<li><strong>Stamina</strong>: world <code>stamina</code> contains <code>default_max</code> (default 10), <code>default_recover_per_slot</code> (1), <code>exhausted_ratio</code> (0.2), <code>default_action_cost</code> (1), and <code>passive_recovery</code> (false). A person's <code>stamina</code> contains <code>max</code>, <code>current</code>, and <code>recover_per_slot</code>. <code>action_cost_adjustments</code> supplies per-verb cost adjustments. <code>zero_behavior: rest</code> forces rest at zero; <code>death</code> makes zero stamina an independent cause of death. Omitting it adds neither behavior. Disabling stamina management disables these stamina constraints.</li>
+<li><strong>Equipment and item effects</strong>: an item's <code>modifier</code> represents its ability effect. The editor's strength value is saved as <code>modifier.value</code>. Acquisition channels, holders, relationship changes on giving, and whether an item can be an objective are separate settings.</li>
+<li><strong>Money</strong>: <code>economy.version: 1</code> stores <code>preset</code>, <code>name</code>, <code>unit</code>, and <code>asset</code> under <code>currency</code>, and <code>name</code> and <code>amount</code> under <code>reference_prices.meal</code>. A person's balance is the inventory quantity of the currency asset. Yen, dollar, yuan, euro, and custom currency are display choices, not automatic exchange rates. <code>budgeted_purchases</code> controls purchase balance checks and payment. Disabling it does not turn explicitly unknown-price or non-tradable items into free goods.</li>
+</ul>
 
 
 
@@ -2297,10 +2328,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

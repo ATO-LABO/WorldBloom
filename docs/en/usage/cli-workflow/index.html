@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1658,25 +1658,25 @@
 <h1 id="cli-workflow">CLI Workflow<a class="headerlink" href="#cli-workflow" title="Permanent link">&para;</a></h1>
 <p>How to go from a GA experiment to synopsis/text generation using only the command line, without the Studio screens. See <a href="../../reference/cli/">CLI</a> for the full list of arguments.</p>
 <h2 id="1-run-a-ga-experiment">1. Run a GA experiment<a class="headerlink" href="#1-run-a-ga-experiment" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>python scripts/evolve.py --project projects/momotaro --template templates/momotaro \
+<div class="highlight"><pre><span></span><code>python scripts/evolve.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 \
   --out &lt;output dir&gt;/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
 </code></pre></div>
 <ul>
-<li><code>--project</code> / <code>--template</code> can be any of the bundled <code>basic</code> / <code>momotaro</code> / <code>momotaro_plus</code> / <code>momotaro_plus2</code> / <code>detective</code> / <code>romance</code> (the full list is under <code>templates/</code>; <code>basic</code> holds the shared base rules and is rarely specified on its own as a genre)</li>
+<li>The bundled current-format example is <code>--project projects/momotaro_plus3_new --template templates/momotaro_plus3</code>. Legacy worlds such as <code>momotaro</code>, <code>momotaro_plus2</code>, <code>detective</code>, and <code>romance</code> remain on disk but cannot run unchanged through the current loader. For a newly created world, use its corresponding settings.</li>
 <li>An output directory outside the repository is recommended (<code>.gitignore</code> ignores <code>runs/</code>, but you shouldn't keep a large volume of experiment output inside the repository anyway)</li>
 <li>Adding <code>--personality-growth</code> enables <a href="../../concepts/personality-growth/">personality growth</a> (off by default). When it's on and the genre's <code>qd.yaml</code> declares <code>arc_bins</code>, the <code>selection.json</code> cell keys below can become three-part (e.g. <code>I|low|small</code>)</li>
-<li>Rough time cost: scales close to linearly with generations × population × seeds. The default size (20 generations × 100 population × 3 seeds) takes about an hour on 20 cores as a guideline (the process count is set under "Compute" in <a href="../settings/">Settings</a>)</li>
+<li>Runtime depends on generations, population, seeds, and world complexity. Start with a small run and scale up based on measured time. Set CLI concurrency with <code>--processes</code>.</li>
 <li>On completion, the grid (archive) is written to <code>&lt;output dir&gt;/exp1/archive.json</code>. <code>cells=&lt;count&gt;</code> is the number of representative individuals that reached the ending and stayed in the grid</li>
 </ul>
 <p>You can also run a control experiment that measures the reach rate and diversity produced by purely random policies.</p>
-<div class="highlight"><pre><span></span><code>python scripts/random_baseline.py --project projects/momotaro --template templates/momotaro --out &lt;output dir&gt;/baseline
+<div class="highlight"><pre><span></span><code>python scripts/random_baseline.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 --out &lt;output dir&gt;/baseline
 </code></pre></div>
 <h2 id="2-generate-synopsistext">2. Generate synopsis/text<a class="headerlink" href="#2-generate-synopsistext" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>python scripts/synopsize.py --archive &lt;output dir&gt;/exp1/archive.json --runs &lt;output dir&gt;/exp1 \
-  --out &lt;output dir&gt;/exp1/synopses.json --backend ollama --project projects/momotaro --template templates/momotaro
+  --out &lt;output dir&gt;/exp1/synopses.json --backend ollama --project projects/momotaro_plus3_new --template templates/momotaro_plus3
 
 python scripts/narrate.py --archive &lt;output dir&gt;/exp1/archive.json --selection &lt;output dir&gt;/exp1/selection.json \
-  --out &lt;output dir&gt;/exp1/stories --backend ollama --project projects/momotaro --template templates/momotaro
+  --out &lt;output dir&gt;/exp1/stories --backend ollama --project projects/momotaro_plus3_new --template templates/momotaro_plus3
 </code></pre></div>
 <ul>
 <li><code>--backend</code> can be <code>claude-cli</code> / <code>codex-cli</code> / <code>anthropic</code> / <code>openai</code> / <code>ollama</code> / <code>llama-server</code> / <code>none</code> (see <a href="../llm-backends/#model-defaults">LLM Backends</a>). <code>none</code> skips the LLM call entirely and only saves the prompts</li>
@@ -1788,10 +1788,10 @@ python scripts/narrate.py --archive &lt;output dir&gt;/exp1/archive.json --selec
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1526,6 +1526,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#2026-11-07-current-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-11-07 (current source)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2026-09-28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1656,6 +1667,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#2026-11-07-current-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-11-07 (current source)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2026-09-28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1765,6 +1787,16 @@
 
 <h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
 <p>The main changes that matter from a user's point of view, in date order. This isn't a list of individual commits. Get the latest release artifacts from <a href="https://github.com/ATO-LABO/WorldBloom/releases">GitHub Releases</a>.</p>
+<h2 id="2026-11-07-current-source">2026-11-07 (current source)<a class="headerlink" href="#2026-11-07-current-source" title="Permanent link">&para;</a></h2>
+<p>This section describes source changes, which may differ from the EXE version available in Releases.</p>
+<ul>
+<li>World creation now has three stages: prepare a draft, edit its contents, then review and adopt it. Saving, resuming, importing, and optional AI refinement are connected. The internal AI stages, interpreting goals, generating settings, and reviewing content, are a separate process. Generating and adopting a candidate remain separate; unconfirmed content does not overwrite an existing world.</li>
+<li>Editing screens for people, places, items and acquisition, time, actions, and ending conditions use shared screen components and save controls.</li>
+<li>Global settings are reorganized. AI settings contain the generation backend and limits shared by world drafts, synopses, and prose; Jev has a separate tab and save action. A model-specific Gemma profile is also available. See <a href="../../usage/settings/">Settings</a> and <a href="../../usage/llm-backends/">LLM Backends</a>.</li>
+<li>Fixed the world-settings “話の説明” (Story description) entry to open the initial story. Deep-link restoration and the selected menu now agree, while existing <code>#screen=story</code> links remain supported.</li>
+<li>World files use a single new format. The current runnable example is 桃太郎＋3 (Momotaro +3, <code>momotaro_plus3_new</code>). Legacy files remain on disk but are excluded from current editing and execution. They are not converted automatically.</li>
+<li>The bilingual public docs and README are updated to distinguish current source behavior, saved worlds, and previously distributed builds.</li>
+</ul>
 <h2 id="2026-09-28">2026-09-28<a class="headerlink" href="#2026-09-28" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Added <a href="../../concepts/personality-growth/">personality growth</a>: an opt-in mechanism (default off; run settings "03. Save &amp; evolution", or <code>--personality-growth</code> on the CLI) where the protagonist's personality shifts slightly, within a single run only, in response to events (wins, losses, allies, betrayal, etc.). When enabled, the QD map can also gain a third axis, "personality change" (none/small/large)</li>
@@ -1891,10 +1923,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

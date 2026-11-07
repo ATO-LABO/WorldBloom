@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1526,6 +1526,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#2026-11-07" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-11-07（現行ソース）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2026-09-28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1656,6 +1667,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#2026-11-07" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-11-07（現行ソース）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2026-09-28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1765,6 +1787,16 @@
 
 <h1 id="_1">変更履歴<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <p>利用者から見て意味のある主な変更を日付順にまとめます。個々のコミットの一覧ではありません。最新のリリース物は <a href="https://github.com/ATO-LABO/WorldBloom/releases">GitHub Releases</a> から取得できます。</p>
+<h2 id="2026-11-07">2026-11-07（現行ソース）<a class="headerlink" href="#2026-11-07" title="Permanent link">&para;</a></h2>
+<p>この節はソース版の変更です。配布EXEのバージョンと同一とは限りません。</p>
+<ul>
+<li>世界の作成を「下書きを用意 → 内容を整える → 確認して採用」の3段階に整理。保存・再開・取込と任意のAI精緻化を接続。AI内部の「目的を解釈 → 設定生成 → 内容確認」は別の処理。候補の生成と採用を分け、確認前の内容で既存世界を上書きしない</li>
+<li>人物・場所・持ち物と入手方法・時間・行動・結末などの編集画面を統一。共通の画面部品と保存導線を利用</li>
+<li>全体設定を整理。「AIの設定」で世界下書き・あらすじ・本文が共有する生成先と生成の上限を扱い、Jevは独立したタブと保存操作に分離。Gemma用のモデル別プロファイルを追加。詳しくは<a href="../../usage/settings/">設定</a>と<a href="../../usage/llm-backends/">LLM バックエンド</a>を参照</li>
+<li>世界設定の「話の説明」から初期物語を表示できるよう修正。URLからの復元と選択中メニュー表示を揃え、既存の <code>#screen=story</code> リンクも保持</li>
+<li>世界ファイルを新形式に統一。現行の実行用サンプルは「桃太郎＋3」（<code>momotaro_plus3_new</code>）。旧形式は保存されたままですが、現行の編集・実行対象から外れます。自動変換は行いません</li>
+<li>公開ドキュメントとREADMEの日英を現行実装に合わせて更新。新規生成、保存済み世界、既存の配布版を区別</li>
+</ul>
 <h2 id="2026-09-28">2026-09-28<a class="headerlink" href="#2026-09-28" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../concepts/personality-growth/">性格の成長</a>を追加。物語の中で起きた出来事（勝敗・仲間・裏切りなど）に応じて、主人公の性格がそのランの中でだけわずかに変わる任意の機能（既定オフ、実行設定「03. 保存と進化」または CLI の <code>--personality-growth</code>）。有効時は QD 格子に3つ目の軸「性格の変化」（なし／小／大）も追加できる</li>
@@ -1891,10 +1923,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

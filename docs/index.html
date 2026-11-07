@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -366,6 +366,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        現行ソースでの作業
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -377,7 +388,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         このサイトの構成
@@ -1590,6 +1601,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        現行ソースでの作業
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1601,7 +1623,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         このサイトの構成
@@ -1633,13 +1655,16 @@
 
 <h1 id="worldbloom">WorldBloom ドキュメント<a class="headerlink" href="#worldbloom" title="Permanent link">&para;</a></h1>
 <p>物語の<strong>設定と結末を先に決める</strong>と、そのあいだの道のりを何千通りもシミュレーションで試し、結末にたどり着いたものの中から面白い展開を選べるツールです。遺伝的アルゴリズム（GA）でシミュレーションを回し、選ばれた展開だけを LLM が文章にします。</p>
+<h2 id="_1">現行ソースでの作業<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p><a href="usage/create-world/">世界を作る</a>では、「下書きを用意 → 内容を整える → 確認して採用」の3段階を進め、途中の保存・再開や任意のAI精緻化を行えます。確定した世界の条件を編集してから実験を実行し、<a href="usage/read-results/">結果を選ぶ</a>・<a href="usage/generate-text/">文章を生成する</a>へ進みます。</p>
+<p>現行ソースで編集・実行できるのは新形式の世界です。最初の実行には「桃太郎＋3」（<code>momotaro_plus3_new</code>）を使います。旧世界と過去の結果は保持し、形式を自動で書き換えません。配布EXEの内容は各Releaseに従い、ソース版の変更履歴とは区別してください。</p>
 <h2 id="3">3つの試し方<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
 <ol>
 <li><strong>公開ビューア（インストール不要）</strong>: <a href="https://ato-labo.github.io/WorldBloom/">https://ato-labo.github.io/WorldBloom/</a> を開くだけ。桃太郎・恋愛・探偵の3実験を閲覧できます。</li>
 <li><strong>配布版 exe（Windows）</strong>: 閲覧専用の Viewer、GA実験の実行から文章生成まで行える Studio の2種類。→ <a href="getting-started/install/">インストール</a></li>
 <li><strong>ソースから</strong>: リポジトリを clone して Python から動かす。→ <a href="getting-started/install/">インストール</a></li>
 </ol>
-<h2 id="_1">このサイトの構成<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<h2 id="_2">このサイトの構成<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>はじめに</strong>: 導入と最初の一周（クイックスタート）</li>
 <li><strong>概念</strong>: 7層構造・遺伝子・QD 格子・Sifting・決定論の考え方</li>
@@ -1732,10 +1757,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

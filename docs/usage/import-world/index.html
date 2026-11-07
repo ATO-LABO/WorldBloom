@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -970,7 +970,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        名前とジャンル
+        取り込み後
       
     </span>
   </a>
@@ -981,18 +981,7 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        取り込み後
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        エラーが出たら
+        エラーや通信切断が起きたら
       
     </span>
   </a>
@@ -1683,7 +1672,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        名前とジャンル
+        取り込み後
       
     </span>
   </a>
@@ -1694,18 +1683,7 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        取り込み後
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        エラーが出たら
+        エラーや通信切断が起きたら
       
     </span>
   </a>
@@ -1744,78 +1722,26 @@
 
 
 <h1 id="zip">世界を ZIP から取り込む<a class="headerlink" href="#zip" title="Permanent link">&para;</a></h1>
-<p>AI（Codex・Claude Code・Gemini など）に作らせた世界設定を、ZIPファイルとして
-WorldBloom に取り込めます。<a href="../create-world/">世界を作る</a>の「新しい世界を作る」画面に
-ある3つ目の作成方法です。</p>
+<p>世界設定のZIPを、直接実行する世界ではなく<strong>編集・確認できる下書き</strong>として取り込みます。AIツールで作成したものも利用できます。</p>
 <h2 id="_1">入口<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p>ホーム画面（<strong>世界を選ぶ</strong>）の <strong>＋ 新しい世界を作る</strong> →「<strong>ZIPから取り込む</strong>」を選び、
-<code>world.yaml</code> と <code>subjects/*.yaml</code> をまとめたZIPファイルを選択します。</p>
+<p>世界一覧 →「新しい世界を作成」→「ZIPから始める」でファイルを選び、「ZIPから下書きを作る」を押します。原本ZIPは変更せず、取り込みだけではAIを呼びません。</p>
 <h2 id="zip_1">ZIPに入れるもの<a class="headerlink" href="#zip_1" title="Permanent link">&para;</a></h2>
-<p>ZIPの作り方の仕様書は
-<a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md"><code>docs/world-import-guide.md</code></a>
-（GitHub）です。この文書をAIツールにそのまま渡して依頼すると、互換性のあるZIPを
-作ってもらえます。</p>
+<p>世界フォルダには <code>world.yaml</code> を1つと <code>subjects/*.yaml</code> を入れます。関連ファイルやフォーム未対応の項目も保持します。世界が共通フォルダの中にある構成も利用できます。世界フォルダ外の余計な項目、危険なパス、重複ファイル名、暗号化された項目やシンボリックリンクは取り込めません。必要なテンプレート依存関係も検査します。</p>
+<p>ファイル形式の参考は <a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md"><code>docs/world-import-guide.md</code></a> です。ただし同文書に記載された旧取り込みの容量・画面手順ではなく、現在の下書き取り込みには以下の上限が適用されます。</p>
 <h2 id="_2">上限<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
-<li>1ファイルあたり256KB以内</li>
-<li>ZIP本体は47KB以内</li>
-<li>ファイル数は200件以内</li>
-<li>展開後の合計サイズは2MB以内</li>
+<li>ZIP本体: 10MB以内</li>
+<li>ZIP内: ディレクトリを含め1000項目以内</li>
+<li>展開後: 関連ファイル込みで8MB以内</li>
+<li>読み取る世界・人物のYAML: 各256KB以内</li>
 </ul>
-<p>超えるとアップロード時点でエラーになります。</p>
-<h2 id="_3">名前とジャンル<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>表示名</strong>: フォームの「世界の名前」欄が空欄なら、ZIPの <code>world.yaml</code> の <code>name</code> を
-  使います。フォームに入力すれば、その値で上書きされます。</li>
-<li><strong>ジャンル</strong>: ZIPの指定に従います。<code>world.yaml</code> に <code>gapengine</code>（<code>action_graph</code>・
-  <code>effects</code>）を書けばそのジャンルで取り込まれ、書かなければ<strong>未設定</strong>で取り込まれます。</li>
-</ul>
-<h2 id="_4">取り込み後<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p>取り込んだ世界は、そのまま<a href="../create-world/#world-settings">世界設定画面</a>に進みます。</p>
-<ul>
-<li><strong>ジャンルが未設定の場合</strong>: 「世界の概要」タブのジャンル行から選べます。<strong>実行前に必ず
-  選んでください</strong>。選ばなくても実行設定でジャンルを指定すればGA実験自体は動きますが、
-  この世界の伏線（<code>gapengine.effects</code>）だけは黙って空のまま実行されます。</li>
-<li>内容の確認は、実行設定の「検証」、または世界設定画面の各タブで行ってください。</li>
-</ul>
-<h2 id="_5">エラーが出たら<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<p>主なメッセージと原因です（詳しくは
-<a href="https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md"><code>docs/world-import-guide.md</code></a>
-の8章を参照）。</p>
-<table>
-<thead>
-<tr>
-<th>メッセージ</th>
-<th>原因</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ZIPにworld.yamlがありません</code></td>
-<td><code>world.yaml</code> がZIP直下（または単一の共通フォルダ直下）にない</td>
-</tr>
-<tr>
-<td><code>&lt;path&gt;: 対象外のファイル名です</code></td>
-<td><code>subjects/</code> 配下のファイル名が規則外</td>
-</tr>
-<tr>
-<td><code>ZIPは47KB以内にしてください</code></td>
-<td>ZIP本体が大きすぎる</td>
-</tr>
-<tr>
-<td><code>ZIPのジャンル「&lt;id&gt;」（templates/&lt;id&gt;/）がありません...</code></td>
-<td>指定したジャンルが存在しない</td>
-</tr>
-<tr>
-<td><code>名前を入力してください（ZIPのnameも空です）</code></td>
-<td>フォームの表示名も <code>world.yaml</code> の <code>name</code> も空</td>
-</tr>
-</tbody>
-</table>
+<h2 id="_3">取り込み後<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p><a href="../create-world/">世界を作る</a>の3段階の下書き画面で編集します。元の世界設定を保持し、対応している項目だけを変更します。名前や人物、場所、時間、ルールの対応状況を確認してください。形式の不備や必要な依存関係の不足は、検証時の案内に従って解消します。</p>
+<p>「③ 確認して採用」で「設定と実行入力を確認」を実行し、初期値や未対応の詳細も確認します。確認チェックを入れて採用するまで新しい世界は作成されません。採用済みの取込下書きは閲覧専用になり、以後の編集は作成した世界の設定から行います。取り込みや採用だけではGA実験は始まりません。</p>
+<h2 id="_4">エラーや通信切断が起きたら<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>容量超過、<code>world.yaml</code> が複数ある・存在しない、ファイル名の重複、世界フォルダ外の項目、YAMLの不備などが表示されます。エラーを直してから取り込んでください。送信結果が不明な場合は結果確認の操作を使い、重複した世界を作らないよう保存済みの状態を先に確認します。</p>
 <h2 id="viewer">閲覧専用の Viewer では使えません<a class="headerlink" href="#viewer" title="Permanent link">&para;</a></h2>
-<p>配布版の <strong>Viewer exe</strong>（読み取り専用ビューア）はすべての書き込みを拒否するため、
-この画面自体を開けません。取り込みは <strong>Studio exe</strong> または <code>--control</code> 付きで
-起動したサーバーから行ってください。</p>
+<p>書き込み可能なStudioまたは <code>--control</code> 付きのソース版が必要です。Viewerは保存・取り込みを行いません。</p>
 
 
 
@@ -1916,10 +1842,10 @@ WorldBloom に取り込めます。<a href="../create-world/">世界を作る</a
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

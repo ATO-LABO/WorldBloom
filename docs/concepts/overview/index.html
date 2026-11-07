@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1626,13 +1626,13 @@
 <tr>
 <td>1. 設定と結末を固定する</td>
 <td>地名・経路・登場人物の初期状態（世界）と、そこで使えるジャンルの文法（テンプレート）を用意し、目指す<a href="../fixed-ending/">結末</a>を先に決める</td>
-<td>人（世界を作る）</td>
+<td>人（必要に応じて AI の世界案生成・調整を使い、内容を確認して採用する）</td>
 <td><a href="../../usage/create-world/">世界を作る</a>・<a href="../fixed-ending/">結末固定</a></td>
 </tr>
 <tr>
 <td>2. 遺伝子を持つ主人公でシミュレーションする</td>
 <td>主人公は「戦略ベクトル」（<a href="../genome/">遺伝子</a>、9個の数値）を持ち、<a href="../seven-layers/">7層構造</a>で表された世界の状態から、その都度候補行動を選ぶ。これを固定シードの集合で何百体・何世代も走らせる</td>
-<td>GA（遺伝的アルゴリズム）とシミュレーション。LLM は関与しない</td>
+<td>GA（遺伝的アルゴリズム）とシミュレーション。κ&gt;0 では合理性判定器も使う</td>
 <td><a href="../genome/">遺伝子（Genome）</a>・<a href="../determinism/">決定論</a></td>
 </tr>
 <tr>
@@ -1657,7 +1657,7 @@
 </table>
 <h2 id="3">押さえておきたい3点<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>出来事の生成に LLM は関与しません。</strong> 行動候補の列挙も、遺伝子による重み付けも、実際にどの行動が選ばれるかも、すべてシミュレーションとその乱数だけで決まります（詳しくは<a href="../seven-layers/#no-llm-in-simulation">7層構造</a>）。LLM が触れるのは、格子に残った出来事の列を人が選んだあとの文章化だけです。</li>
+<li><strong>出来事はエンジンが生成します。</strong> κ=0 では外部の合理性判定なしで行動を選びます。κ&gt;0 では Ollama または Jev の判定が候補の重みに影響します（<a href="../rationality-layer/">合理性層</a>）。LLM はこの任意の判定に加え、実行前の<a href="../../usage/create-world/">世界案の生成・調整</a>と、選んだ出来事の文章化にも使えます。</li>
 <li><strong>進化させているのは行動の並びではなく、方針（遺伝子）です。</strong> 主人公は9個の数値だけを世代ごとに交叉・突然変異させます。実際の行動は、その方針と世界の状態から都度選ばれます。</li>
 <li><strong>面白いかどうかを判断するのは常に人です。</strong> GA は「結末に届いたか」「質と多様性」までしか見ません。どの候補を本文化するかは、Sifting の画面で人が決めます。</li>
 </ul>
@@ -1761,10 +1761,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

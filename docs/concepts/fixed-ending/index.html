@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1681,7 +1681,7 @@
 <p>WorldBloom は「面白い出来事が起きるように世界を調整する」のではなく、<strong>先に結末を1つ固定し、そこにたどり着く道のりだけを進化で探す</strong>という順序を取ります。世界の作り方や登場人物の初期状態を、結末に都合よく寄せることはしません。</p>
 <h2 id="_2">結末は述語で書く<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>結末は、<a href="../seven-layers/#predicates">7層構造が共有する述語の語彙</a>を使った条件式（<code>when</code>）として、世界の定義に書きます。</p>
-<p>実物（<code>projects/momotaro_plus2/world.yaml</code>）の形式で示すと、<code>ending:</code> はこのようなリストです。<code>when</code> は述語文字列か <code>{agent, goal}</code> のどちらかの形式を取れます。</p>
+<p>旧世界（<code>projects/momotaro_plus2/world.yaml</code>）を説明用に引用すると、<code>ending:</code> はこのようなリストです。<code>when</code> は述語文字列か <code>{agent, goal}</code> のどちらかの形式を取れます。</p>
 <div class="highlight"><pre><span></span><code><span class="nt">ending</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">homecoming_shared</span>
 <span class="w">    </span><span class="nt">when</span><span class="p">:</span><span class="w"> </span><span class="s">"holds(桃太郎,</span><span class="nv"> </span><span class="s">鬼ヶ島の宝物)</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">zone(桃太郎)</span><span class="nv"> </span><span class="s">==</span><span class="nv"> </span><span class="s">'村'</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">'還元'</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">phase"</span>
@@ -1694,11 +1694,12 @@
 
 <span class="nt">target_ending</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">homecoming</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">homecoming_shared</span><span class="p p-Indicator">]</span>
 </code></pre></div>
+<p>現行の <code>projects/momotaro_plus3_new/world.yaml</code> は、目標結末として <code>purpose_mvz6xmq3_1</code>（<code>zone("桃太郎") == "村" and holds("桃太郎", "鬼ヶ島の宝物")</code>）を指定しています。上の旧世界はそのまま実行するための例ではありません。現在の世界形式は<a href="../../reference/templates/">テンプレート</a>を参照してください。</p>
 <p><code>holds</code>（所持）・<code>zone</code>（居場所）・<code>stance</code>（関係性）などの述語を組み合わせるだけで、恋愛（相互の stance がしきい値以上）や探偵（<code>confront</code> で正解を言い当てる）の結末も同じ仕組みで書けます。1つの世界に複数の結末候補を書いておき、そのうち <code>target_ending</code> に指定したものだけが実際の到達判定に使われます。</p>
 <h2 id="_3">到達判定のタイミング<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>判定は <code>layers.jsonl</code> に記録された <code>ending</code> イベントを見ます。あるランで、<code>target_ending</code> に指定した ID の <code>ending</code> イベントが1件でも記録されていれば、そのランは「到達した」と判定されます。ランが早期に打ち切られるのは、主人公の生命状態が <code>dead</code>（死亡）になった時点のみです。</p>
 <h2 id="_4">到達しなかった個体の扱い<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p>固定結末に届かなかったランは、<a href="../qd-map/">QD 格子</a>のアーカイブには入りません。世界側を結末に合わせて曲げない代わりに、**アーカイブは到達ランだけの「入場ゲート」**として働きます。ただし到達しなかったランも無駄にはならず、結末の条件式のうちどこまで満たしたか（連言のうち成立した割合や、しきい値までの近さ)を測る「整形適応度」を持ち、次世代の親を選ぶときにだけ使われます（アーカイブには漏れません）。</p>
+<p>固定結末に届かなかったランは、<a href="../qd-map/">QD 格子</a>のアーカイブには入りません。世界側を結末に合わせて曲げない代わりに、<strong>アーカイブは到達ランだけの「入場ゲート」</strong>として働きます。ただし到達しなかったランも無駄にはならず、結末の条件式のうちどこまで満たしたか（連言のうち成立した割合や、しきい値までの近さ)を測る「整形適応度」を持ち、次世代の親を選ぶときにだけ使われます（アーカイブには漏れません）。</p>
 <h2 id="_5">到達率<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>同じ遺伝子でも、複数の固定シードで走らせた結果、結末に届くランと届かないランが混在します。「到達率」は2つの粒度で記録されます。1つは<strong>エリート個体の到達率</strong>（その個体を複数シードで走らせたうち到達した割合）で、QD 格子の各セルのエリートに付き、同点のタイブレークに使われます（<a href="../../reference/glossary/"><code>gapengine/qd.py</code></a>）。もう1つは<strong>世代全体の到達率</strong>（その世代の全個体・全シードのうち到達した割合）で、<code>summary.json</code> に記録され、世代を追った推移のグラフに使われます。世界側を結末へ拘束しない設計上、到達率は一般に低く出ます——これは探索が最大化しようとする目標ではなく、あくまでアーカイブに入るための条件です。GA の選択圧が世代を重ねるごとに到達率を押し上げていくこと自体が、「結末固定」という設計の実際の効き目です。</p>
 
@@ -1801,10 +1802,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

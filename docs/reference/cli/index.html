@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1892,7 +1892,7 @@ options:
                         always refused.
 </code></pre></div>
 <p>例:</p>
-<div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">scripts</span><span class="p">/</span><span class="n">evolve</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-project</span> <span class="n">projects</span><span class="p">/</span><span class="n">momotaro_plus2</span> <span class="p">-</span><span class="n">-template</span> <span class="n">templates</span><span class="p">/</span><span class="n">momotaro_plus2</span> <span class="p">`</span>
+<div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">scripts</span><span class="p">/</span><span class="n">evolve</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-project</span> <span class="n">projects</span><span class="p">/</span><span class="n">momotaro_plus3_new</span> <span class="p">-</span><span class="n">-template</span> <span class="n">templates</span><span class="p">/</span><span class="n">momotaro_plus3</span> <span class="p">`</span>
   <span class="p">-</span><span class="n">-out</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">runs</span><span class="p">/</span><span class="n">my-exp</span> <span class="p">-</span><span class="n">-generations</span> <span class="n">20</span> <span class="p">-</span><span class="n">-population</span> <span class="n">100</span> <span class="p">-</span><span class="n">-seeds</span> <span class="n">3</span>
 </code></pre></div>
 <p>出力先はリポジトリの外（ローカル）の <code>runs/&lt;experiment&gt;/</code> に置いてください（詳しくは<a href="../run-outputs/">実行結果のファイル</a>）。</p>
@@ -2043,18 +2043,23 @@ options:
   --include-prompts     Include raw prompts only after reviewing their publication content.
 </code></pre></div>
 <h2 id="viewerserverpy">viewer/server.py — 画面を起動する<a class="headerlink" href="#viewerserverpy" title="Permanent link">&para;</a></h2>
-<p><code>--control</code> を付けない既定状態では、書き込み系のAPIはすべて拒否される閲覧専用として動きます（詳しくは<a href="../http-api/">HTTP API</a>）。</p>
+<p><code>--control</code> を付けない既定状態では、世界の編集やGA実行などの管理機能は使えません。ただし、候補の選定は保存できるため、完全な書込禁止モードではありません。すべてのPOSTを拒否する配布Viewerの <code>read_only</code> 設定とは異なります（詳しくは<a href="../http-api/">HTTP API</a>）。</p>
 <div class="highlight"><pre><span></span><code>usage: server.py [-h] --runs RUNS [--host HOST] [--port PORT] [--control CONTROL] [--repo REPO]
+                 [--world-draft-mock | --world-draft-live]
 
 View WorldBloom experiment archives.
 
 options:
-  -h, --help         show this help message and exit
-  --runs RUNS        Root containing WorldBloom experiment directories.
-  --host HOST        Listen address; defaults to loopback only.
+  -h, --help          show this help message and exit
+  --runs RUNS         Root containing WorldBloom experiment directories.
+  --host HOST         Listen address; defaults to loopback only.
   --port PORT
-  --control CONTROL  Enable persistent configuration/job APIs at this control root.
+  --control CONTROL   Enable persistent configuration/job APIs at this control root.
   --repo REPO
+  --world-draft-mock  Use an explicitly labelled fixed mock for new-world proposals; never call an
+                      LLM.
+  --world-draft-live  Opt in to real generation using existing output settings. Requires prior
+                      approval for provider/model/cost.
 </code></pre></div>
 <p>例（フル機能で起動）:</p>
 <div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">viewer</span><span class="p">/</span><span class="n">server</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-runs</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">runs</span> <span class="p">-</span><span class="n">-control</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">control</span>
@@ -2159,10 +2164,10 @@ options:
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

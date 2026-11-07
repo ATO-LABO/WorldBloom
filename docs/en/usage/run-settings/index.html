@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1038,6 +1038,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#world-conditions-versus-run-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        World conditions versus run settings
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1723,6 +1734,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#world-conditions-versus-run-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        World conditions versus run settings
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1879,10 +1901,12 @@
 <li><strong>ジャンル (Genre)</strong>: only selectable when creating new (fixed to match the source when duplicating)</li>
 <li><strong>乱数の開始値 (seed_base, default 0)</strong> / <strong>進化の乱数 (ga_seed, default 1)</strong></li>
 <li>The process count (how many processes run the GA concurrently) is set not here but under <strong>⚙ 全体設定 (Global settings) → 計算 (Compute)</strong> (see <a href="../settings/">Settings</a>)</li>
-<li><strong>実行時間の上限 (execution_limits.wall_seconds, default 3600 seconds)</strong>: the run is cut off past this many seconds. This default rises to 21600 seconds when using κ (rationality judgment, above)</li>
+<li><strong>実行時間の上限 (execution_limits.wall_seconds, default 3600 seconds)</strong>: the run is cut off past this many seconds. For a new config using Ollama rationality, the default rises to 21600 seconds; Jev keeps 3600 seconds</li>
 </ul>
 <h2 id="starting-a-run">Starting a run<a class="headerlink" href="#starting-a-run" title="Permanent link">&para;</a></h2>
 <p>Saving takes you to that config's run-condition screen (<code>/configs/&lt;config ID&gt;</code>). Clicking "この条件で実行へ →" (Proceed to run with these conditions →) opens the run screen (<code>/jobs</code>), and clicking "この設定で GA を回す" (Run the GA with this config) starts it. While running, a per-generation progress bar is shown, and <strong>results through the last completed generation are kept even if you stop the run</strong>. Once a run finishes, you can re-run it from the same screen via "同じ設定でもう一度回す" (Run again with the same config).</p>
+<h2 id="world-conditions-versus-run-settings">World conditions versus run settings<a class="headerlink" href="#world-conditions-versus-run-settings" title="Permanent link">&para;</a></h2>
+<p>Action permissions, actor/time-slot constraints, stamina, items/equipment, money, and the protagonist's goal are edited in <strong>world settings</strong>, separately from this screen's GA scale, seeds, and retention policy. “基本ルール” (Basic rules, formerly “genre”) identifies the template referenced by the world. The current-format bundled world is Momotaro +3 (<code>momotaro_plus3_new</code>), using <code>momotaro_plus3</code> basic rules. Saved configurations for legacy worlds cannot start a new run unchanged.</p>
 
 
 
@@ -1983,10 +2007,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

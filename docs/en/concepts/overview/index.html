@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1626,13 +1626,13 @@
 <tr>
 <td>1. Fix the setting and the ending</td>
 <td>Prepare the place names, routes, and characters' starting state (the world) and the genre's grammar (the template) it uses, and decide the <a href="../fixed-ending/">ending</a> to aim for up front</td>
-<td>A person (building the world)</td>
+<td>A person (optionally using AI draft generation/refinement, reviewing and adopting the result)</td>
 <td><a href="../../usage/create-world/">Create a World</a>, <a href="../fixed-ending/">Fixed Ending</a></td>
 </tr>
 <tr>
 <td>2. Simulate with a protagonist that carries a genome</td>
 <td>The protagonist carries a "strategy vector" (<a href="../genome/">genome</a>, 9 numbers) and picks a candidate action each time from the world state represented by the <a href="../seven-layers/">Seven Layers</a>. This runs hundreds of individuals across many generations, over a fixed set of seeds</td>
-<td>The GA (genetic algorithm) and the simulation. No LLM is involved</td>
+<td>The GA (genetic algorithm) and simulation; a rationality evaluator also participates when κ&gt;0</td>
 <td><a href="../genome/">Genome</a>, <a href="../determinism/">Determinism</a></td>
 </tr>
 <tr>
@@ -1657,7 +1657,7 @@
 </table>
 <h2 id="three-things-worth-remembering">Three things worth remembering<a class="headerlink" href="#three-things-worth-remembering" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>No LLM is involved in generating events.</strong> Enumerating action candidates, weighting them by the genome, and which action actually gets chosen — all of it is decided purely by the simulation and its random draws (see <a href="../seven-layers/#no-llm-in-simulation">Seven Layers</a>). The LLM only touches the sequence of events a person has already picked from the grid, turning it into prose.</li>
+<li><strong>The engine generates events.</strong> At κ=0, actions are selected without an external rationality evaluator. At κ&gt;0, Ollama or Jev judgments affect candidate weights (see <a href="../rationality-layer/">Rationality Layer</a>). Beyond this optional evaluation, LLMs can also help <a href="../../usage/create-world/">generate and refine worlds</a> before a run and turn selected events into prose afterward.</li>
 <li><strong>What's being evolved is the policy (genome), not the sequence of actions.</strong> The protagonist crosses over and mutates only 9 numbers, generation to generation. The actual actions are chosen each time from that policy and the world state.</li>
 <li><strong>Whether something is interesting is always judged by a person.</strong> The GA only looks as far as "did it reach the ending" and "quality and diversity." Which candidates get turned into text is decided by a person on the Sifting screen.</li>
 </ul>
@@ -1761,10 +1761,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

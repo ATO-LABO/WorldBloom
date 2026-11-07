@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1658,25 +1658,25 @@
 <h1 id="cli">CLI での作業手順<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
 <p>Studio 画面を使わず、コマンドラインだけで GA 実験からあらすじ・本文の生成まで一周する手順です。引数の一覧は<a href="../../reference/cli/">CLI</a>を参照してください。</p>
 <h2 id="1-ga">1. GA 実験を回す<a class="headerlink" href="#1-ga" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>python scripts/evolve.py --project projects/momotaro --template templates/momotaro \
+<div class="highlight"><pre><span></span><code>python scripts/evolve.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 \
   --out &lt;出力先&gt;/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
 </code></pre></div>
 <ul>
-<li><code>--project</code> / <code>--template</code> は同梱の <code>basic</code> / <code>momotaro</code> / <code>momotaro_plus</code> / <code>momotaro_plus2</code> / <code>detective</code> / <code>romance</code> が使えます（<code>templates/</code> 配下の一覧。<code>basic</code> は共通の基本ルールで、それ単体をジャンルとして指定することはあまりありません）</li>
+<li>現行形式の同梱例は <code>--project projects/momotaro_plus3_new --template templates/momotaro_plus3</code> です。旧 <code>momotaro</code>・<code>momotaro_plus2</code>・<code>detective</code>・<code>romance</code> などはディスクに残っていますが、現行ローダーではそのまま実行できません。新規作成した世界では、その世界に対応する設定を使ってください。</li>
 <li>出力先はリポジトリ外を推奨します（<code>.gitignore</code> は <code>runs/</code> を無視しますが、リポジトリ内に大量の実験出力を置くべきではありません）</li>
 <li><code>--personality-growth</code> を付けると<a href="../../concepts/personality-growth/">性格の成長</a>が有効になります（既定オフ）。有効かつジャンルの <code>qd.yaml</code> に <code>arc_bins</code> があれば、下記の <code>selection.json</code> のセルキーが3項（例 <code>I|low|small</code>）になることがあります</li>
-<li>所要時間の目安: 世代数×個体数×seed数にほぼ比例します。既定の規模（20世代×100個体×3seed）は20コアで約1時間が目安です（並列数は<a href="../settings/">設定</a>の「計算」で指定します）</li>
+<li>所要時間は世代数・個体数・seed数と世界の複雑さに依存します。まず小さい規模で動作を確認し、実測に応じて増やしてください。CLIの並列数は <code>--processes</code> で指定します。</li>
 <li>完了すると <code>&lt;出力先&gt;/exp1/archive.json</code> に格子（アーカイブ）が書き出されます。<code>cells=&lt;件数&gt;</code> は結末に到達して格子に残った代表個体の数です</li>
 </ul>
 <p>無作為な方針だけで結末に届く割合と多様性を測る対照実験も行えます。</p>
-<div class="highlight"><pre><span></span><code>python scripts/random_baseline.py --project projects/momotaro --template templates/momotaro --out &lt;出力先&gt;/baseline
+<div class="highlight"><pre><span></span><code>python scripts/random_baseline.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 --out &lt;出力先&gt;/baseline
 </code></pre></div>
 <h2 id="2">2. あらすじ・本文を生成する<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>python scripts/synopsize.py --archive &lt;出力先&gt;/exp1/archive.json --runs &lt;出力先&gt;/exp1 \
-  --out &lt;出力先&gt;/exp1/synopses.json --backend ollama --project projects/momotaro --template templates/momotaro
+  --out &lt;出力先&gt;/exp1/synopses.json --backend ollama --project projects/momotaro_plus3_new --template templates/momotaro_plus3
 
 python scripts/narrate.py --archive &lt;出力先&gt;/exp1/archive.json --selection &lt;出力先&gt;/exp1/selection.json \
-  --out &lt;出力先&gt;/exp1/stories --backend ollama --project projects/momotaro --template templates/momotaro
+  --out &lt;出力先&gt;/exp1/stories --backend ollama --project projects/momotaro_plus3_new --template templates/momotaro_plus3
 </code></pre></div>
 <ul>
 <li><code>--backend</code> は <code>claude-cli</code> / <code>codex-cli</code> / <code>anthropic</code> / <code>openai</code> / <code>ollama</code> / <code>llama-server</code> / <code>none</code> から選べます（<a href="../llm-backends/#model-defaults">LLM バックエンド</a>を参照）。<code>none</code> を指定すると LLM を呼び出さず、プロンプトだけを保存します</li>
@@ -1788,10 +1788,10 @@ python scripts/narrate.py --archive &lt;出力先&gt;/exp1/archive.json --select
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

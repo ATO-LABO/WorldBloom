@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1893,7 +1893,7 @@ options:
                         always refused.
 </code></pre></div>
 <p>Example:</p>
-<div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">scripts</span><span class="p">/</span><span class="n">evolve</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-project</span> <span class="n">projects</span><span class="p">/</span><span class="n">momotaro_plus2</span> <span class="p">-</span><span class="n">-template</span> <span class="n">templates</span><span class="p">/</span><span class="n">momotaro_plus2</span> <span class="p">`</span>
+<div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">scripts</span><span class="p">/</span><span class="n">evolve</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-project</span> <span class="n">projects</span><span class="p">/</span><span class="n">momotaro_plus3_new</span> <span class="p">-</span><span class="n">-template</span> <span class="n">templates</span><span class="p">/</span><span class="n">momotaro_plus3</span> <span class="p">`</span>
   <span class="p">-</span><span class="n">-out</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">runs</span><span class="p">/</span><span class="n">my-exp</span> <span class="p">-</span><span class="n">-generations</span> <span class="n">20</span> <span class="p">-</span><span class="n">-population</span> <span class="n">100</span> <span class="p">-</span><span class="n">-seeds</span> <span class="n">3</span>
 </code></pre></div>
 <p>Point the output directory somewhere outside the repository (local), not inside it (see <a href="../run-outputs/">Run Outputs</a>).</p>
@@ -2044,18 +2044,23 @@ options:
   --include-prompts     Include raw prompts only after reviewing their publication content.
 </code></pre></div>
 <h2 id="viewerserverpy-start-the-screens">viewer/server.py — start the screens<a class="headerlink" href="#viewerserverpy-start-the-screens" title="Permanent link">&para;</a></h2>
-<p>Without <code>--control</code>, it runs as a read-only viewer where every write API is rejected (see <a href="../http-api/">HTTP API</a>).</p>
+<p>Without <code>--control</code>, management features such as world editing and GA execution are unavailable. Candidate selection can still be saved, so this is not a fully write-protected mode. It differs from the distributed Viewer’s <code>read_only</code> setting, which rejects all POST requests (see <a href="../http-api/">HTTP API</a>).</p>
 <div class="highlight"><pre><span></span><code>usage: server.py [-h] --runs RUNS [--host HOST] [--port PORT] [--control CONTROL] [--repo REPO]
+                 [--world-draft-mock | --world-draft-live]
 
 View WorldBloom experiment archives.
 
 options:
-  -h, --help         show this help message and exit
-  --runs RUNS        Root containing WorldBloom experiment directories.
-  --host HOST        Listen address; defaults to loopback only.
+  -h, --help          show this help message and exit
+  --runs RUNS         Root containing WorldBloom experiment directories.
+  --host HOST         Listen address; defaults to loopback only.
   --port PORT
-  --control CONTROL  Enable persistent configuration/job APIs at this control root.
+  --control CONTROL   Enable persistent configuration/job APIs at this control root.
   --repo REPO
+  --world-draft-mock  Use an explicitly labelled fixed mock for new-world proposals; never call an
+                      LLM.
+  --world-draft-live  Opt in to real generation using existing output settings. Requires prior
+                      approval for provider/model/cost.
 </code></pre></div>
 <p>Example (starting with full functionality):</p>
 <div class="highlight"><pre><span></span><code><span class="n">python</span> <span class="n">viewer</span><span class="p">/</span><span class="n">server</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-runs</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">runs</span> <span class="p">-</span><span class="n">-control</span> <span class="p">../</span><span class="n">WorldBloom-data</span><span class="p">/</span><span class="n">control</span>
@@ -2160,10 +2165,10 @@ options:
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

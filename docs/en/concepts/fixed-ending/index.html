@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1681,7 +1681,7 @@
 <p>Rather than "adjusting the world so interesting events happen," WorldBloom works the other way around: <strong>fix a single ending first, and use evolution only to search for paths that reach it.</strong> It never leans how the world is built or the characters' starting state toward what's convenient for that ending.</p>
 <h2 id="an-ending-is-written-as-a-predicate">An ending is written as a predicate<a class="headerlink" href="#an-ending-is-written-as-a-predicate" title="Permanent link">&para;</a></h2>
 <p>An ending is written into the world's definition as a condition expression (<code>when</code>), using the <a href="../seven-layers/#predicates">predicate vocabulary shared with the Seven Layers</a>.</p>
-<p>Shown in the real (<code>projects/momotaro_plus2/world.yaml</code>) shape, <code>ending:</code> is a list like this. <code>when</code> can be either a predicate string or an <code>{agent, goal}</code> form.</p>
+<p>Using the legacy world (<code>projects/momotaro_plus2/world.yaml</code>) as an explanatory example, <code>ending:</code> is a list like this. <code>when</code> can be either a predicate string or an <code>{agent, goal}</code> form.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">ending</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">homecoming_shared</span>
 <span class="w">    </span><span class="nt">when</span><span class="p">:</span><span class="w"> </span><span class="s">"holds(桃太郎,</span><span class="nv"> </span><span class="s">鬼ヶ島の宝物)</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">zone(桃太郎)</span><span class="nv"> </span><span class="s">==</span><span class="nv"> </span><span class="s">'村'</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">'還元'</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">phase"</span>
@@ -1694,6 +1694,7 @@
 
 <span class="nt">target_ending</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">homecoming</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">homecoming_shared</span><span class="p p-Indicator">]</span>
 </code></pre></div>
+<p>The current <code>projects/momotaro_plus3_new/world.yaml</code> targets <code>purpose_mvz6xmq3_1</code>, with condition <code>zone("桃太郎") == "村" and holds("桃太郎", "鬼ヶ島の宝物")</code>. The legacy example above is not a runnable current world. See <a href="../../reference/templates/">Templates</a> for the current format.</p>
 <p>Combining predicates like <code>holds</code> (possession), <code>zone</code> (location), and <code>stance</code> (relationship) is enough to write endings for romance (mutual stance above a threshold) or detective stories (naming the culprit correctly with <code>confront</code>) using the same mechanism. A world can list multiple candidate endings, and only the one(s) named in <code>target_ending</code> are actually used for the reach check.</p>
 <h2 id="when-reaching-is-checked">When reaching is checked<a class="headerlink" href="#when-reaching-is-checked" title="Permanent link">&para;</a></h2>
 <p>The check looks at the <code>ending</code> events recorded in <code>layers.jsonl</code>. If a run records even one <code>ending</code> event whose ID is in <code>target_ending</code>, that run is judged to have "reached" it. The only case a run is cut off early is when the protagonist's vitality becomes <code>dead</code>.</p>
@@ -1801,10 +1802,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

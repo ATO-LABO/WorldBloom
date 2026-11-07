@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -1383,6 +1383,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#world-drafts-refinements-and-world-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        World drafts, refinements, and world conditions
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1679,6 +1690,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#world-drafts-refinements-and-world-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        World drafts, refinements, and world conditions
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1706,7 +1728,7 @@
 </div>
 <h2 id="when-its-enabled">When it's enabled<a class="headerlink" href="#when-its-enabled" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Starting with just <code>python viewer/server.py --runs &lt;runs&gt;</code> (no <code>--control</code>), there's no <code>job_store</code>, so <code>/api/...</code> returns <code>503 unavailable</code> for <strong>GET as well as POST</strong>. The only exceptions are <code>GET /api/status/local</code> and <code>POST /api/status/local/preload</code>/<code>POST /api/status/local/unload</code>, which never go through <code>job_store</code> and always work.</li>
+<li>Starting with just <code>python viewer/server.py --runs &lt;runs&gt;</code> (no <code>--control</code>), there's no <code>job_store</code>, so <code>/api/...</code> returns <code>503 unavailable</code> for <strong>GET as well as POST</strong>. <code>GET /api/status/local</code> and <code>POST /api/status/local/preload</code>/<code>POST /api/status/local/unload</code> do not require <code>job_store</code>. Neither does the world route survey, <code>GET /api/worlds/&lt;id&gt;/routes</code> (see below).</li>
 <li>Starting with <code>--control &lt;control&gt;</code> enables <code>ConfigStore</code> and <code>JobStore</code>, making the config/job/generation APIs in the table below available.</li>
 <li>The distributed <strong>Viewer exe</strong> (the read-only viewer) rejects every POST outright with <code>403 "read-only build"</code>, via <code>viewer/app_desktop.py</code>'s <code>_ReadOnlyHandler.do_POST</code>, even if <code>--control</code> is passed (to prevent writes into <code>samples/</code>). The adopt/select checkboxes on screen are still clickable in this build in appearance, but clicking them returning 403 is by design. The <strong>Studio exe</strong> has no such restriction and runs with full functionality.</li>
 </ul>
@@ -1768,7 +1790,7 @@
 <tr>
 <td>GET</td>
 <td><code>/api/settings/output</code></td>
-<td>Current values on the ⚙ 全体設定 (Global settings) "文章生成" (Text generation) tab</td>
+<td>Current generation backend and limits used by ⚙ 全体設定 (Global settings) → AIの設定 (AI settings)</td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1943,6 +1965,75 @@
 </tbody>
 </table>
 <p>There's more beyond this — <code>viewer/run_catalog.py</code> (<code>/api/runs</code>, <code>/api/selected</code>) and <code>viewer/workbench_pages.py</code> (mostly GET routes for screen display) — but these are all internal APIs matching UI operations on screen. See each file's <code>dispatch()</code>/<code>_resolve()</code> for the exact list.</p>
+<h2 id="world-drafts-refinements-and-world-conditions">World drafts, refinements, and world conditions<a class="headerlink" href="#world-drafts-refinements-and-world-conditions" title="Permanent link">&para;</a></h2>
+<p>These internal APIs are also handled by <code>viewer/library_pages.py</code>. Updating a draft and adopting it as a world are separate operations.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/world-draft-generation</code></td>
+<td>World-generation availability under current settings</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/world-drafts</code></td>
+<td>Request world-draft generation</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/world-drafts/&lt;token&gt;</code></td>
+<td>Draft state and content</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/world-drafts/&lt;token&gt;/{stage,cancel,validate,adopt}</code></td>
+<td>Stage edited content, cancel, validate, or adopt a draft as a world</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/world-drafts/&lt;token&gt;/refine</code></td>
+<td>Create a draft-refinement candidate</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/world-drafts/&lt;token&gt;/refinements/&lt;request_id&gt;</code></td>
+<td>Get a candidate (<code>capabilities</code> lists supported operations)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/world-drafts/&lt;token&gt;/{apply-refinement,cancel-refinement,save-refinement-input}</code></td>
+<td>Apply/cancel a candidate or save input</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/worlds/&lt;id&gt;/action-usage</code></td>
+<td>Read action and mechanics settings</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/worlds/&lt;id&gt;/action-usage/{check,save}</code></td>
+<td>Validate/save action and mechanics settings</td>
+</tr>
+<tr>
+<td>GET / POST</td>
+<td><code>/api/worlds/&lt;id&gt;/route-goal</code></td>
+<td>Read/save goal settings</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/worlds/&lt;id&gt;/route-goal/validate</code></td>
+<td>Validate goal settings</td>
+</tr>
+</tbody>
+</table>
+<p>Refinement requests carry <code>revision</code>, <code>request_id</code>, <code>mode</code>, <code>prompt</code>, <code>preset</code>, and <code>targets</code>. Applying a candidate requires <code>revision</code>, <code>request_id</code>, <code>candidate_id</code>, <code>candidate_hash</code>, and <code>acknowledged_warnings</code>, preventing overwrites of stale drafts. A refinement supports at most 16 operations, with neither partial application nor automatic publication as a world. Supported areas include character descriptions, places, routes, items, schedules, and action constraints. Adding characters, changing goals, renaming/deleting entities, and adding forced actions are unsupported.</p>
 
 
 
@@ -2043,10 +2134,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>
