@@ -52,7 +52,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -B release-source/scripts/publication_guard.py "$env:RUNNER_TEMP/license-preflight"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build both executables from fixed application source
+      - name: Build Studio executable from fixed application source
         shell: pwsh
         run: |
           python -B controller/scripts/build_windows_release.py --source release-source --output "$env:RUNNER_TEMP/worldbloom-build"
@@ -61,12 +61,12 @@ jobs:
         shell: pwsh
         run: |
           $result = @{}
-          foreach ($name in @('WorldBloom', 'WorldBloom-Studio')) {
+          foreach ($name in @('WorldBloom-Studio')) {
             $result[$name] = (Get-AuthenticodeSignature "$env:RUNNER_TEMP/worldbloom-build/dist/$name.exe").Status.ToString()
             if ($result[$name] -ne 'NotSigned') { throw 'Unexpected signature state' }
           }
           $result | ConvertTo-Json | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/signatures.json"
-      - name: Assemble manifests and verify both final ZIPs
+      - name: Assemble manifests and verify the Studio ZIP
         shell: pwsh
         run: |
           python -B controller/scripts/package_release.py build --source release-source --build "$env:RUNNER_TEMP/worldbloom-build" --output "$env:RUNNER_TEMP/worldbloom-candidate" --signatures "$env:RUNNER_TEMP/signatures.json"
@@ -77,30 +77,33 @@ jobs:
         shell: pwsh
         run: |
           & controller/scripts/windows_release_smoke.ps1 -Candidates "$env:RUNNER_TEMP/worldbloom-candidate" -Output "$env:RUNNER_TEMP/worldbloom-smoke" -Packager "$env:GITHUB_WORKSPACE/controller/scripts/package_release.py" -PayloadValidator "$env:GITHUB_WORKSPACE/controller/scripts/validate_release_payload.py"
-      - name: Scan the final payload before any artifact upload
+      - name: Stage the exact public artifact file set
         shell: pwsh
         run: |
+          python -B controller/scripts/stage_release_evidence.py --temp "$env:RUNNER_TEMP" --output "$env:RUNNER_TEMP/upload-evidence"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Scan every staged file and extracted payload before any artifact upload
+        shell: pwsh
+        run: |
+          foreach ($file in (Get-ChildItem -Recurse -File "$env:RUNNER_TEMP/upload-evidence")) {
+            python -B release-source/scripts/publication_guard.py $file.FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          python -B release-source/scripts/publication_guard.py "$env:RUNNER_TEMP/worldbloom-candidate/WorldBloom-Studio"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $archive = "$env:RUNNER_TEMP/gitleaks_8.30.1_windows_x64.zip"
           Invoke-WebRequest 'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip' -OutFile $archive
           if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'd29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e') { throw 'Gitleaks checksum mismatch' }
           Expand-Archive $archive "$env:RUNNER_TEMP/gitleaks-verified"
-          foreach ($mode in @('WorldBloom', 'WorldBloom-Studio')) {
-            & "$env:RUNNER_TEMP/gitleaks-verified/gitleaks.exe" dir "$env:RUNNER_TEMP/worldbloom-candidate/$mode" --redact=100 --no-banner
+          foreach ($folder in @('upload-evidence', 'worldbloom-candidate/WorldBloom-Studio')) {
+            & "$env:RUNNER_TEMP/gitleaks-verified/gitleaks.exe" dir "$env:RUNNER_TEMP/$folder" --redact=100 --no-banner
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: Upload already scanned candidates and measured evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-candidate-unpublished
-          path: |
-            ${{ runner.temp }}/worldbloom-candidate/*-portable.zip
-            ${{ runner.temp }}/worldbloom-candidate/SHA256SUMS.txt
-            ${{ runner.temp }}/worldbloom-candidate/package-result.json
-            ${{ runner.temp }}/worldbloom-smoke/smoke-result.json
-            ${{ runner.temp }}/worldbloom-smoke/*-payload-check/payload-result.json
-            ${{ runner.temp }}/worldbloom-build/build-commands.json
-            ${{ runner.temp }}/pip-install-report.json
-            ${{ runner.temp }}/build-requirements-resolved.txt
+          path: ${{ runner.temp }}/upload-evidence/
           if-no-files-found: error
           retention-days: 7
 
@@ -127,7 +130,11 @@ jobs:
           cd candidate-evidence/worldbloom-candidate
           sha256sum --check SHA256SUMS.txt
           cd ../..
-          for mode in WorldBloom WorldBloom-Studio; do
+          find candidate-evidence -type f -print0 | while IFS= read -r -d '' file; do
+            python -B scripts/publication_guard.py "$file"
+          done
+          gitleaks dir candidate-evidence --redact=100 --no-banner
+          for mode in WorldBloom-Studio; do
             python -B scripts/package_release.py extract "candidate-evidence/worldbloom-candidate/$mode-portable.zip" "scan/$mode"
             python -B scripts/publication_guard.py "scan/$mode" "candidate-evidence/worldbloom-candidate/$mode-portable.zip"
             gitleaks dir "scan/$mode" --redact=100 --no-banner

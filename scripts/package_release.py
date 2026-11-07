@@ -16,14 +16,14 @@ import subprocess
 import sys
 import tarfile
 import zipfile
-from collect_release_licenses import collect as collect_licenses
+from collect_release_licenses import collect as collect_licenses, RUNTIME_PACKAGES
 
 SOURCE_SHA = '36bb15c383ed35c615b5505425c905cb2a612eb4'
 SOURCE_TREE = '5fa313918481dfbc35e34b0d10be33693a6c831e'
 PACKAGES = ('viewer', 'execution', 'gapengine', 'engine', 'scripts',
             'templates', 'projects', 'samples')
 SOURCE_PATHS = (*PACKAGES, 'requirements.txt', 'LICENSE')
-MODES = ('WorldBloom', 'WorldBloom-Studio')
+MODES = ('WorldBloom-Studio',)
 REQUIRED_FILES = ('app/requirements.txt', 'app/LICENSE', 'app/viewer/app_desktop.py',
                   'app/viewer/server.py', 'app/scripts/evolve.py',
                   'app/engine/action_types.json', 'app/engine/story_genres.json')
@@ -70,7 +70,7 @@ def strings(value):
 
 def check_tocs(build):
     pyz = sorted(build.rglob('PYZ-00.toc'))
-    if len(pyz) != 2:
+    if len(pyz) != len(MODES):
         raise ValueError('require one PYZ-00.toc for each executable')
     critical_stdlib = {'statistics', 'zoneinfo', 'http.server', 'multiprocessing', 'urllib.request'}
     for path in pyz:
@@ -155,8 +155,14 @@ def verify(root):
         raise ValueError('required CPython license missing')
     if not (root / 'THIRD_PARTY_LICENSES/inventory.json').is_file():
         raise ValueError('required license inventory missing')
+    closure = json.loads((root / 'THIRD_PARTY_LICENSES/closure-proof.json').read_text(encoding='utf-8'))
+    proof = closure.get('proof')
+    if (closure.get('scope') != 'observed frozen distribution plus declared runtime/bootloader'
+            or not proof or not {'Analysis-00.toc', 'PYZ-00.toc', 'PKG-00.toc', 'EXE-00.toc'}.issubset(
+                {PurePosixPath(row['file']).name for row in proof.get('toc_files', [])})):
+        raise ValueError('complete third-party license closure proof required')
     licenses = json.loads((root / 'THIRD_PARTY_LICENSES/inventory.json').read_text(encoding='utf-8'))
-    required_licenses = {'CPython', 'Microsoft.Web.WebView2', 'pywebview', 'pyyaml', 'pythonnet', 'pyinstaller'}
+    required_licenses = {'CPython', 'Microsoft.Web.WebView2'} | RUNTIME_PACKAGES
     if not required_licenses.issubset({entry['package'] for entry in licenses}):
         raise ValueError('required third-party license inventory incomplete')
     for entry in licenses:
@@ -184,11 +190,16 @@ def zip_bundle(root, destination):
 def extract_verified(archive_path, destination):
     destination.mkdir(parents=True, exist_ok=False)
     with zipfile.ZipFile(archive_path) as archive:
-        names = archive.namelist()
+        entries = archive.infolist()
+        # ZipInfo.filename normalizes backslashes on Windows and truncates NULs.
+        # Validate the original archive name, before normalization can hide it.
+        names = [item.orig_filename for item in entries]
+        for name in names:
+            safe_name(name)
         if len({name.casefold() for name in names}) != len(names):
             raise ValueError('duplicate ZIP paths')
-        for item in archive.infolist():
-            path = safe_name(item.filename)
+        for item in entries:
+            path = safe_name(item.orig_filename)
             if item.is_dir() or ((item.external_attr >> 16) & 0o170000) == 0o120000:
                 raise ValueError('unexpected directory/link in ZIP')
             target = destination / path
@@ -203,13 +214,13 @@ def build(args):
         raise ValueError('output must be outside source')
     signatures = json.loads(args.signatures.read_text(encoding='utf-8-sig'))
     if signatures != {mode: 'NotSigned' for mode in MODES}:
-        raise ValueError('both signatures must be measured as NotSigned')
+        raise ValueError('Studio signature must be measured as NotSigned')
     check_tocs(args.build)
     args.output.mkdir(parents=True)
     packages = {dist.metadata['Name']: dist.version for dist in importlib.metadata.distributions()}
     summaries = []
     licenses = args.output / 'license-source'
-    license_inventory = collect_licenses(licenses)
+    license_inventory = collect_licenses(licenses, args.build)
     print(json.dumps({'third_party_license_inventory': license_inventory}))
     for mode in MODES:
         root = args.output / mode

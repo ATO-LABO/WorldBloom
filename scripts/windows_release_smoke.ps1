@@ -63,7 +63,7 @@ function Cleanup-OwnedTree($Owned) {
              tracked_identity_count=$Owned.Count}
 }
 
-foreach ($mode in @('WorldBloom', 'WorldBloom-Studio')) {
+foreach ($mode in @('WorldBloom-Studio')) {
     $owned = @{}
     $process = $null
     $failure = $null
@@ -121,10 +121,7 @@ foreach ($mode in @('WorldBloom', 'WorldBloom-Studio')) {
         $home = Invoke-WebRequest "http://127.0.0.1:$port/" -TimeoutSec 10
         if ($home.StatusCode -ne 200) { throw 'Home response failed' }
         $row.http_home = 200
-        if ($mode -eq 'WorldBloom') {
-            $post = Invoke-WebRequest "http://127.0.0.1:$port/selection" -Method Post -SkipHttpErrorCheck -TimeoutSec 10
-            if ($post.StatusCode -ne 403) { throw 'Viewer did not reject write request' }
-        } elseif (-not (Test-Path (Join-Path $folder 'runs')) -or -not (Test-Path (Join-Path $folder 'control'))) {
+        if (-not (Test-Path (Join-Path $folder 'runs')) -or -not (Test-Path (Join-Path $folder 'control'))) {
             throw 'Studio did not initialize disposable runtime directories'
         }
         $row.stage = 'graceful-shutdown'

@@ -46,7 +46,7 @@ def main():
     output.mkdir(parents=True)
     modules = hidden_stdlib(source)
     commands = []
-    for mode in ('WorldBloom', 'WorldBloom-Studio'):
+    for mode in ('WorldBloom-Studio',):
         command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--onefile',
             '--windowed', '--name', mode, '--collect-all', 'webview', '--collect-all',
             'yaml', '--icon', str(source / 'viewer/worldbloom.ico'), '--distpath',
