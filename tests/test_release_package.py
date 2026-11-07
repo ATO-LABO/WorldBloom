@@ -627,5 +627,157 @@ class ReviewedNoticeTests(unittest.TestCase):
         self.assertEqual(checked, 6)
 
 
+class StructuredArchiveTests(unittest.TestCase):
+    setUp = ReviewedNoticeTests.setUp
+
+    def archive(self, name='candidate.zip', entries=None, compression=zipfile.ZIP_DEFLATED):
+        path = self.base / name
+        with zipfile.ZipFile(path, 'w', compression=compression) as archive:
+            for filename, data in (entries or [('readme.txt', b'public fixture')]):
+                archive.writestr(filename, data)
+        return path
+
+    def check(self, path):
+        with self.scanner.reviewed_notice_guard(self.guard), self.scanner.structured_archive_guard(self.guard):
+            return self.guard.check_publication(path)
+
+    def test_directory_zip_uses_canonical_entry_api_and_preserves_original_bytes(self):
+        # This reproduces the API mismatch, not the unavailable real run-4 bytes.
+        archive = self.archive(entries=[('THIRD_PARTY_LICENSES/CPython/LICENSE.txt', self.notice),
+            ('THIRD_PARTY_LICENSES/setuptools/84.2.1/wheel-0.46.3-LICENSE.txt', wheel_notice_fixture())],
+            compression=zipfile.ZIP_STORED)
+        before = archive.read_bytes()
+        with self.scanner.reviewed_notice_guard(self.guard):
+            with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review: candidate.zip'):
+                self.guard.check_publication(self.base)
+        self.assertEqual(self.check(archive), 2)
+        self.assertEqual(self.check(self.base), 1)
+        self.assertEqual(archive.read_bytes(), before)
+
+    def test_deflated_utf8_entries_are_checked(self):
+        archive = self.archive(entries=[('app/日本語.txt', b'public fixture')])
+        self.assertEqual(self.check(archive), 1)
+
+    def test_zip_written_by_actual_packager_is_accepted(self):
+        payload = self.base / 'payload'
+        payload.mkdir()
+        (payload / 'readme.txt').write_text('public fixture')
+        archive = self.base / 'packager-output.zip'
+        package.zip_bundle(payload, archive)
+        self.assertEqual(self.check(archive), 1)
+
+    def test_other_directory_file_is_not_skipped_after_zip(self):
+        self.archive('A-candidate.zip')
+        (self.base / 'Z-other.txt').write_text('fixture' + chr(64) + 'fixture.invalid')
+        with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+            self.check(self.base)
+
+    def test_unknown_email_and_secret_in_zip_entries_are_rejected(self):
+        for index, data in enumerate((('fixture' + chr(64) + 'fixture.invalid').encode(),
+                                     ('gh' + 'p_' + 'A' * 36).encode())):
+            archive = self.archive(str(index) + '.zip', [('other.txt', data)])
+            with self.assertRaises(self.guard.PublicationError):
+                self.check(archive)
+
+    def test_zip_filename_metadata_is_not_a_notice_exception(self):
+        filename = 'fixture' + chr(64) + 'fixture.invalid'
+        archive = self.archive(entries=[(filename, b'public fixture')])
+        with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+            self.check(archive)
+
+    def test_comments_and_extra_fields_rejected_without_interpreting_them(self):
+        for kind in ('archive-comment', 'entry-comment', 'extra'):
+            archive = self.base / (kind + '.zip')
+            info = zipfile.ZipInfo('public.txt')
+            if kind == 'entry-comment': info.comment = b'unreviewed metadata'
+            if kind == 'extra': info.extra = b'\xfe\xca\x04\x00data'
+            with zipfile.ZipFile(archive, 'w') as zip_file:
+                zip_file.writestr(info, b'public fixture')
+                if kind == 'archive-comment': zip_file.comment = b'unreviewed metadata'
+            with self.subTest(kind=kind), self.assertRaises(self.guard.PublicationError):
+                self.check(archive)
+
+    def test_encryption_and_unknown_compression_rejected(self):
+        for field in ('encrypted', 'method'):
+            archive = self.archive(field + '.zip')
+            data = bytearray(archive.read_bytes())
+            central = data.index(b'PK\x01\x02')
+            if field == 'encrypted':
+                struct.pack_into('<H', data, 6, 1)
+                struct.pack_into('<H', data, central + 8, 1)
+            else:
+                struct.pack_into('<H', data, 8, 99)
+                struct.pack_into('<H', data, central + 10, 99)
+            archive.write_bytes(data)
+            with self.subTest(field=field), self.assertRaises(self.guard.PublicationError):
+                self.check(archive)
+
+    def test_unsafe_raw_names_aliases_duplicates_and_links_rejected(self):
+        cases = [('../escape',), ('app/back\\slash',), ('app/nul\x00hidden',),
+                 ('app/NUL.txt',), ('app//x',), ('app/x', 'APP/X')]
+        for index, names in enumerate(cases):
+            archive = self.base / ('unsafe-' + str(index) + '.zip')
+            with zipfile.ZipFile(archive, 'w') as zip_file:
+                for name in names:
+                    info = zipfile.ZipInfo('placeholder');info.filename = name;info.orig_filename = name
+                    zip_file.writestr(info, b'fixture')
+            with self.subTest(names=names), self.assertRaises(self.guard.PublicationError):
+                self.check(archive)
+        linked = self.base / 'linked.zip'
+        with zipfile.ZipFile(linked, 'w') as zip_file:
+            info = zipfile.ZipInfo('link');info.external_attr = 0o120777 << 16
+            zip_file.writestr(info, b'target')
+        with self.assertRaises(self.guard.PublicationError): self.check(linked)
+
+    def test_prefix_trailer_and_mismatched_local_header_are_rejected(self):
+        original = self.archive().read_bytes()
+        variants = [b'prefix' + original, original + b'trailer']
+        changed = bytearray(original);changed[30] ^= 1;variants.append(bytes(changed))
+        for index, data in enumerate(variants):
+            path = self.base / ('structure-' + str(index) + '.zip');path.write_bytes(data)
+            with self.subTest(index=index), self.assertRaises(self.guard.PublicationError):
+                self.check(path)
+
+    def test_bytes_hidden_inside_declared_compressed_range_are_rejected(self):
+        hidden = ('fixture' + chr(64) + 'fixture.invalid').encode()
+        for method in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+            path = self.archive('hidden-' + str(method) + '.zip', compression=method)
+            data = bytearray(path.read_bytes())
+            central = struct.unpack_from('<I', data, len(data) - 6)[0]
+            original_size = struct.unpack_from('<I', data, 18)[0]
+            data[central:central] = hidden
+            shifted = central + len(hidden)
+            struct.pack_into('<I', data, 18, original_size + len(hidden))
+            struct.pack_into('<I', data, shifted + 20, original_size + len(hidden))
+            struct.pack_into('<I', data, len(data) - 6, shifted)
+            path.write_bytes(data)
+            with self.subTest(method=method), self.assertRaises(self.guard.PublicationError):
+                self.check(path)
+
+    def test_corrupt_crc_payload_is_rejected(self):
+        path = self.archive(compression=zipfile.ZIP_STORED)
+        data = bytearray(path.read_bytes());name_len = struct.unpack_from('<H', data, 26)[0]
+        data[30 + name_len] ^= 1;path.write_bytes(data)
+        with self.assertRaisesRegex(self.guard.PublicationError, 'invalid-release-zip-payload'):
+            self.check(path)
+
+    def test_unknown_and_nested_archive_formats_are_rejected(self):
+        nested = self.archive('nested-input.zip').read_bytes()
+        for index, (name, data) in enumerate((('inner.zip', nested), ('inner.gz', b'\x1f\x8bcompressed'),
+                                            ('inner.dat', b'\xfd7zXZ\0opaque'))):
+            path = self.archive('nested-' + str(index) + '.zip', [(name, data)])
+            with self.subTest(name=name), self.assertRaisesRegex(self.guard.PublicationError, 'nested-or-unsupported-archive'):
+                self.check(path)
+        path = self.base / 'not-really.zip';path.write_text('unknown archive format')
+        with self.assertRaises(self.guard.PublicationError): self.check(path)
+
+    def test_guard_callbacks_restore_after_rejected_archive(self):
+        content, publication = self.guard.check_content, self.guard.check_publication
+        path = self.base / 'invalid.zip';path.write_bytes(b'not a zip')
+        with self.assertRaises(self.guard.PublicationError): self.check(path)
+        self.assertIs(self.guard.check_content, content)
+        self.assertIs(self.guard.check_publication, publication)
+
+
 if __name__ == '__main__':
     unittest.main()
