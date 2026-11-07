@@ -835,5 +835,81 @@ class PowerShellVariableTests(unittest.TestCase):
         self.assertIn('$row.http_home = 200', smoke)
 
 
+
+class PayloadEncodingTests(unittest.TestCase):
+    def setUp(self):
+        import validate_release_payload
+        self.payload = validate_release_payload
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.output = Path(self.tmp.name)
+
+    def test_explicit_utf8_preserves_isolation_and_ignores_encoding_environment(self):
+        import os
+        self.assertEqual(self.payload.isolated_python()[1:], ['-I', '-B', '-X', 'utf8'])
+        with patch.dict(os.environ, {'PYTHONUTF8': '0', 'PYTHONIOENCODING': 'ascii', 'LC_ALL': 'C'}):
+            state = self.payload.check_child_encoding(self.output)
+        self.assertEqual(state['utf8_mode'], 1)
+        self.assertEqual(state['isolated'], 1)
+        self.assertEqual(state['ignore_environment'], 1)
+
+    def test_japanese_help_survives_pipe_and_bytes_are_preserved(self):
+        import os
+        text = '\u65e5\u672c\u8a9e'
+        code = "import argparse; p=argparse.ArgumentParser(description=" + repr(text) + "); p.parse_args(['--help'])"
+        with patch.dict(os.environ, {'PYTHONUTF8': '0', 'PYTHONIOENCODING': 'ascii', 'LC_ALL': 'C'}):
+            stdout, stderr = self.payload.run_checked(self.payload.isolated_python() + ['-c', code], self.output, 'help', 30)
+        self.assertIn(text, stdout)
+        self.assertEqual(stderr, '')
+        self.assertEqual((self.output / 'help.stdout.log').read_bytes(), stdout.encode('utf-8'))
+
+    def test_nonzero_exit_retains_raw_diagnostics_without_printing_them(self):
+        import contextlib
+        import io
+        import subprocess
+        raw = b'ModuleNotFoundError: private diagnostic \xff'
+        result = subprocess.CompletedProcess(['fixture'], 1, b'private stdout', raw)
+        printed = io.StringIO()
+        with patch.object(self.payload.subprocess, 'run', return_value=result), contextlib.redirect_stdout(printed):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.payload.run_checked(['fixture'], self.output, 'help', 30)
+        self.assertEqual((self.output / 'help.stderr.log').read_bytes(), raw)
+        self.assertNotIn('private', printed.getvalue())
+        diagnostic = json.loads(printed.getvalue())
+        self.assertEqual(diagnostic['stderr_exception_markers'], ['ModuleNotFoundError'])
+        self.assertEqual(diagnostic['returncode'], 1)
+
+    def test_timeout_keeps_original_failure_and_partial_bytes(self):
+        import contextlib
+        import io
+        import subprocess
+        error = subprocess.TimeoutExpired(['fixture'], 30, output=b'partial', stderr=b'detail')
+        with patch.object(self.payload.subprocess, 'run', side_effect=error), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(subprocess.TimeoutExpired) as caught:
+                self.payload.run_checked(['fixture'], self.output, 'help', 30)
+        self.assertIs(caught.exception, error)
+        self.assertEqual((self.output / 'help.stdout.log').read_bytes(), b'partial')
+        self.assertTrue(json.loads((self.output / 'help.failure.json').read_text())['timeout'])
+
+    def test_wrong_child_encoding_and_isolation_are_rejected(self):
+        state = {'stdout': 'utf-8', 'stderr': 'utf-8', 'utf8_mode': 1, 'isolated': 1, 'ignore_environment': 1}
+        for key, value in [('stdout', 'cp1252'), ('stderr', 'ascii'), ('utf8_mode', 0), ('isolated', 0), ('ignore_environment', 0)]:
+            with self.subTest(key=key), patch.object(self.payload, 'run_checked', return_value=(json.dumps({**state, key: value}), '')):
+                with self.assertRaisesRegex(ValueError, 'encoding/isolation'):
+                    self.payload.check_child_encoding(self.output)
+
+    def test_cli_flags_timeouts_and_success_gates_are_not_relaxed(self):
+        source = (ROOT / 'scripts/validate_release_payload.py').read_text()
+        self.assertIn("run_checked(command + ['--help'], args.output, 'help', 30)", source)
+        self.assertIn("run_checked(ga_command, args.output, 'ga', 120)", source)
+        self.assertIn('assert flag in help_stdout', source)
+        self.assertIn('assert isinstance(archive, dict)', source)
+        self.assertIn("'--kappa', '0', '--world-expansion', 'off'", source)
+        # No failure diagnostics are added to the public artifact allowlist.
+        stage = (ROOT / 'scripts/stage_release_evidence.py').read_text()
+        self.assertNotIn('.stderr.log', stage)
+        self.assertNotIn('.stdout.log', stage)
+
+
 if __name__ == '__main__':
     unittest.main()
