@@ -106,7 +106,7 @@ foreach ($mode in @('WorldBloom-Studio')) {
             foreach ($listener in $listeners) {
                 try {
                     $response = Invoke-WebRequest "http://127.0.0.1:$($listener.LocalPort)/version" -TimeoutSec 3
-                    if ($response.StatusCode -eq 200 -and $response.Content -match '36bb15c383ed35c615b5505425c905cb2a612eb4') {
+                    if ($response.StatusCode -eq 200 -and $response.Content -match '3ce8fbf376e25eaea533bdc69c6a8c80e121e390') {
                         $port = $listener.LocalPort
                         $row.source_version_verified = $true
                         break

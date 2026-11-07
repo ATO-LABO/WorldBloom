@@ -18,8 +18,13 @@ import tarfile
 import zipfile
 from collect_release_licenses import collect as collect_licenses, RUNTIME_PACKAGES, WHEEL_NOTICE_OUTPUT, WHEEL_NOTICE_SHA
 
-SOURCE_SHA = '36bb15c383ed35c615b5505425c905cb2a612eb4'
-SOURCE_TREE = '5fa313918481dfbc35e34b0d10be33693a6c831e'
+SOURCE_SHA = '3ce8fbf376e25eaea533bdc69c6a8c80e121e390'
+SOURCE_TREE = '81f0ec4d67d75fdde91cbc92c72a248686a61e86'
+SOURCE_DATE = '2026-11-07'
+RELEASE_TAG = 'v2.0.0'
+# Exact source verified: main tests 42371391047 and CodeQL 42371391054 passed;
+# original High findings #102-105 individually Fixed, not dismissed.
+VERIFIED_MAIN_OPEN_HIGH_ALERTS = 0
 PACKAGES = ('viewer', 'execution', 'gapengine', 'engine', 'scripts',
             'templates', 'projects', 'samples')
 SOURCE_PATHS = (*PACKAGES, 'requirements.txt', 'LICENSE')
@@ -113,6 +118,8 @@ def export_source(source, output):
                 raise ValueError('source archive file missing')
             target.write_bytes(stream.read())
     date = git(source, 'show', '-s', '--format=%cs', SOURCE_SHA).decode().strip()
+    if date != SOURCE_DATE:
+        raise ValueError('source commit date differs from approved release source')
     (output / 'VERSION.txt').write_text(f'{SOURCE_SHA} {date}\n', encoding='utf-8')
     (output / 'settings.json').write_text('{}\n', encoding='utf-8')
 
@@ -144,7 +151,7 @@ def verify(root):
         if not (root / name).is_file():
             raise ValueError('missing required file: ' + name)
     version = (root / 'app/VERSION.txt').read_text(encoding='utf-8').strip()
-    if version != SOURCE_SHA + ' 2026-11-07':
+    if version != SOURCE_SHA + ' ' + SOURCE_DATE:
         raise ValueError('missing or incorrect VERSION.txt')
     if json.loads((root / 'app/settings.json').read_text(encoding='utf-8')) != {}:
         raise ValueError('package must contain only fresh public default settings')
@@ -176,13 +183,17 @@ def verify(root):
     info = json.loads((root / 'build-info.json').read_text(encoding='utf-8'))
     if info['source_sha'] != SOURCE_SHA or info['source_tree'] != SOURCE_TREE:
         raise ValueError('wrong source provenance')
+    if info.get('release_tag') != RELEASE_TAG:
+        raise ValueError('wrong or missing release tag metadata')
+    if info.get('known_high_codeql_alerts') != 0:
+        raise ValueError('integrated main security verification is not complete')
     if info['mode'] not in MODES or info['authenticode_status'] != 'NotSigned':
         raise ValueError('unexpected mode or signing state')
     executables = sorted(p.name for p in root.glob('*.exe'))
     if executables != [info['mode'] + '.exe']:
         raise ValueError('wrong executable file list')
     pe_x64(root / executables[0])
-    return {'files': len(expected), 'source_sha': SOURCE_SHA, 'mode': info['mode'],
+    return {'files': len(expected), 'source_sha': SOURCE_SHA, 'release_tag': RELEASE_TAG, 'mode': info['mode'],
             'manifest_sha256': sha((root / 'MANIFEST.json').read_bytes())}
 
 def zip_bundle(root, destination):
@@ -212,6 +223,8 @@ def extract_verified(archive_path, destination):
     return verify(destination)
 
 def build(args):
+    if VERIFIED_MAIN_OPEN_HIGH_ALERTS != 0:
+        raise ValueError('integrated main security verification has not been recorded')
     if args.output.exists():
         raise ValueError('output exists; refusing overwrite')
     if args.output.resolve().is_relative_to(args.source.resolve()):
@@ -232,22 +245,30 @@ def build(args):
         shutil.copytree(licenses, root / 'THIRD_PARTY_LICENSES')
         export_source(args.source, root / 'app')
         shutil.copyfile(args.build / 'dist' / (mode + '.exe'), root / (mode + '.exe'))
-        info = {'source_sha': SOURCE_SHA, 'source_tree': SOURCE_TREE, 'mode': mode,
+        info = {'source_sha': SOURCE_SHA, 'source_tree': SOURCE_TREE, 'release_tag': RELEASE_TAG, 'mode': mode,
                 'authenticode_status': signatures[mode], 'python': sys.version,
                 'packages': packages, 'builder_commit': os.environ.get('GITHUB_SHA'),
                 'workflow_run': os.environ.get('GITHUB_RUN_ID'),
                 'workflow_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
                 'runner_image': os.environ.get('ImageVersion'),
                 'windows_gui_smoke': 'pending; see separate smoke-result.json',
-                'known_high_codeql_alerts': 4, 'license_inventory': license_inventory}
+                'known_high_codeql_alerts': VERIFIED_MAIN_OPEN_HIGH_ALERTS,
+                'residual_filesystem_risks': ['TOCTOU', 'external hardlinks'],
+                'manual_validation': 'Windows 10/11 GUI, real LLM and GPU not performed',
+                'license_inventory': license_inventory}
         (root / 'build-info.json').write_text(json.dumps(info, indent=2) + '\n', encoding='utf-8')
         (root / 'README.txt').write_text(
-            f'{mode}: unsigned Windows x64 candidate\n'
+            f'{mode} {RELEASE_TAG}: unsigned Windows x64 distribution\n'
             'Extract the entire ZIP into a new folder; keep app/ next to the EXE.\n'
             'Windows 10/11 and WebView2 are required. Studio also needs Python 3.12/3.13\n'
             'with PyYAML available under python -I. No model or credentials are bundled.\n'
             'Old worlds are not automatically converted. Keep prior data and versions.\n'
-            'Four High CodeQL findings remain unresolved. This is not security clearance.\n'
+            'The four previously reported High CodeQL findings were fixed in the verified source.\n'
+            'This is not general security clearance: local-writer TOCTOU and hardlink risks remain.\n'
+            'Use current-format Studio projects in trusted, owner-controlled local folders.\n'
+            'Retained calendar CLI inputs are outside that support boundary pending hardening.\n'
+            'Manual Windows 10/11 GUI, real LLM and GPU validation have not been performed.\n'
+            'Keep previous runs, control, settings, and project data; do not overwrite them.\n'
             'Check the official source and SHA-256. A hash is not a code signature.\n'
             'Do not disable Windows security protections to run an unknown file.\n', encoding='utf-8')
         write_manifest(root)

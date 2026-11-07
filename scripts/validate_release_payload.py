@@ -71,7 +71,7 @@ def main():
     from viewer import app_desktop, version
     from execution.provenance import code_snapshot
     assert app_desktop._looks_like_app_root(app)
-    assert version.current()['sha'] == '36bb15c383ed35c615b5505425c905cb2a612eb4'
+    assert version.current()['sha'] == '3ce8fbf376e25eaea533bdc69c6a8c80e121e390'
     assert version.current()['source'] == 'VERSION.txt'
     blobs, provenance = code_snapshot(app)
     assert 'requirements.txt' in blobs and any(p.startswith('scripts/') for p in blobs)

@@ -41,7 +41,7 @@ class ReleasePackageTests(unittest.TestCase):
             (directory / 'placeholder.txt').write_text('fixture')
         for name in package.REQUIRED_FILES:
             (self.root / name).write_text('{}' if name.endswith('.json') else 'fixture')
-        (self.root / 'app/VERSION.txt').write_text(package.SOURCE_SHA + ' 2026-11-07\n')
+        (self.root / 'app/VERSION.txt').write_text(package.SOURCE_SHA + ' ' + package.SOURCE_DATE + '\n')
         (self.root / 'app/settings.json').write_text('{}\n')
         binary = bytearray(128)
         binary[:2] = b'MZ'
@@ -50,7 +50,8 @@ class ReleasePackageTests(unittest.TestCase):
         struct.pack_into('<H', binary, 84, 0x8664)
         (self.root / 'WorldBloom-Studio.exe').write_bytes(binary)
         self.info = {'source_sha': package.SOURCE_SHA, 'source_tree': package.SOURCE_TREE,
-                     'mode': 'WorldBloom-Studio', 'authenticode_status': 'NotSigned'}
+                     'mode': 'WorldBloom-Studio', 'authenticode_status': 'NotSigned',
+                     'release_tag': package.RELEASE_TAG, 'known_high_codeql_alerts': 0}
         self.write_info()
         inventory = []
         for name in sorted({'CPython', 'Microsoft.Web.WebView2'} | package.RUNTIME_PACKAGES):
@@ -114,6 +115,65 @@ class ReleasePackageTests(unittest.TestCase):
         package.write_manifest(self.root)
         with self.assertRaisesRegex(ValueError, 'provenance'):
             package.verify(self.root)
+
+    def test_wrong_or_missing_release_tag_rejected(self):
+        for value in (None, 'v2.0.0-rc.1', 'v1.2.0'):
+            with self.subTest(value=value):
+                self.info['release_tag'] = value
+                self.write_info()
+                package.write_manifest(self.root)
+                with self.assertRaisesRegex(ValueError, 'release tag'):
+                    package.verify(self.root)
+
+    def test_incomplete_main_security_verification_rejected(self):
+        for value in (None, 4):
+            with self.subTest(value=value):
+                self.info['known_high_codeql_alerts'] = value
+                self.write_info()
+                package.write_manifest(self.root)
+                with self.assertRaisesRegex(ValueError, 'security verification'):
+                    package.verify(self.root)
+
+    def test_semver_must_not_replace_version_source_sha(self):
+        (self.root / 'app/VERSION.txt').write_text(package.RELEASE_TAG + ' ' + package.SOURCE_DATE)
+        package.write_manifest(self.root)
+        with self.assertRaisesRegex(ValueError, 'VERSION.txt'):
+            package.verify(self.root)
+
+    def test_build_refuses_unrecorded_main_security_result(self):
+        with patch.object(package, 'VERIFIED_MAIN_OPEN_HIGH_ALERTS', None):
+            with self.assertRaisesRegex(ValueError, 'has not been recorded'):
+                package.build(None)
+
+    def test_source_pin_agrees_across_runtime_checks(self):
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/release-build.yml').read_text())
+        checkouts = [step for step in workflow['jobs']['windows-candidate']['steps']
+                     if step.get('uses', '').startswith('actions/checkout@')]
+        source = next(step for step in checkouts if step['with'].get('path') == 'release-source')
+        self.assertEqual(source['with']['ref'], package.SOURCE_SHA)
+        self.assertIn(package.SOURCE_SHA, (ROOT / 'scripts/windows_release_smoke.ps1').read_text())
+        self.assertIn(package.SOURCE_SHA, (ROOT / 'scripts/validate_release_payload.py').read_text())
+        self.assertEqual(package.RELEASE_TAG, 'v2.0.0')
+
+    def test_existing_extract_destination_preserves_prior_data(self):
+        destination = self.base / 'existing-install'
+        destination.mkdir()
+        prior = destination / 'prior-user-data.txt'
+        prior.write_bytes(b'owned existing data')
+        with self.assertRaises(FileExistsError):
+            package.extract_verified(self.base / 'unused.zip', destination)
+        self.assertEqual(prior.read_bytes(), b'owned existing data')
+        self.assertEqual(list(destination.iterdir()), [prior])
+
+    def test_build_existing_output_preserves_prior_data(self):
+        from types import SimpleNamespace
+        prior = self.base / 'prior-user-data.txt'
+        prior.write_bytes(b'owned existing data')
+        with patch.object(package, 'VERIFIED_MAIN_OPEN_HIGH_ALERTS', 0):
+            with self.assertRaisesRegex(ValueError, 'refusing overwrite'):
+                package.build(SimpleNamespace(output=self.base))
+        self.assertEqual(prior.read_bytes(), b'owned existing data')
 
     def test_private_settings_rejected(self):
         (self.root / 'app/settings.json').write_text('{"output":{"model":"private"}}')
@@ -272,7 +332,7 @@ class ReleasePackageTests(unittest.TestCase):
         workflow = yaml.safe_load((ROOT / '.github/workflows/release-build.yml').read_text())
         self.assertEqual(workflow['permissions'], {'contents': 'read'})
         events = workflow.get('on', workflow.get(True))
-        self.assertEqual(events, {'push': {'branches': ['codex/windows-release-20261107']}})
+        self.assertEqual(events, {'push': {'branches': ['codex/windows-v2-release-20261107']}})
         for job in workflow['jobs'].values():
             self.assertLessEqual(job['timeout-minutes'], 30)
             self.assertNotIn('permissions', job)
