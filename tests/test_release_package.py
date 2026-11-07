@@ -229,7 +229,7 @@ class ReleasePackageTests(unittest.TestCase):
         self.assertEqual(steps[first_upload]['with']['path'], '${{ runner.temp }}/upload-evidence/')
         self.assertNotIn('pip-install-report.json', steps[first_upload]['with']['path'])
         self.assertIn('upload-evidence', steps[scan]['run'])
-        self.assertIn('publication_guard.py $file.FullName', steps[scan]['run'])
+        self.assertIn('scan_release_publication.py --guard release-source/scripts/publication_guard.py $file.FullName', steps[scan]['run'])
 
     def test_workflow_never_publishes_or_expands_token_permissions(self):
         import yaml
@@ -413,6 +413,112 @@ class LicenseClosureTests(unittest.TestCase):
         self.assertIn("for mode in ('WorldBloom-Studio',)", build)
         self.assertIn("@('WorldBloom-Studio')", smoke)
         self.assertNotIn("$mode -eq 'WorldBloom'", smoke)
+
+
+class ReviewedNoticeTests(unittest.TestCase):
+    def setUp(self):
+        import os
+        import scan_release_publication as scanner
+        self.scanner = scanner
+        # On Windows the installed runtime supplies the exact original fixture.
+        # Linux reviewers supply the same official archive bytes, never a rewrite.
+        path = Path(os.environ.get('WORLDBLOOM_TEST_CPYTHON_NOTICE', str(Path(sys.base_prefix) / 'LICENSE.txt')))
+        self.notice = path.read_bytes()
+        self.assertEqual(package.sha(self.notice), scanner.NOTICE_SHA256)
+        self.guard_path = Path(os.environ.get('WORLDBLOOM_TEST_GUARD', str(ROOT / 'scripts/publication_guard.py')))
+        self.guard = scanner.load_guard(self.guard_path)
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.base = Path(self.temp.name)
+
+    def test_exact_official_notice_all_known_placements_and_original_bytes(self):
+        original = self.guard.check_content
+        with self.scanner.reviewed_notice_guard(self.guard):
+            for name in self.scanner.NOTICE_PATHS:
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                        original(name, self.notice)
+                    before = bytes(self.notice)
+                    self.guard.check_content(name, self.notice)
+                    self.assertEqual(self.notice, before)
+                    self.assertEqual(package.sha(self.notice), self.scanner.NOTICE_SHA256)
+        self.assertIs(self.guard.check_content, original)
+
+    def test_modified_notice_and_unknown_paths_still_rejected(self):
+        with self.scanner.reviewed_notice_guard(self.guard):
+            for name in ('LICENSE.txt', 'other/CPython/LICENSE.txt', 'CPython/license.txt',
+                         'WorldBloom/THIRD_PARTY_LICENSES/CPython/LICENSE.txt'):
+                with self.subTest(name=name), self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                    self.guard.check_content(name, self.notice)
+            with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                self.guard.check_content('CPython/LICENSE.txt', self.notice + b' ')
+
+    def test_other_email_secret_fields_and_tokens_still_rejected(self):
+        # Synthetic, non-sensitive fixtures are assembled to exercise detection;
+        # no actual credentials or private contact data are embedded in tests.
+        email = ('fixture' + chr(64) + 'fixture.invalid').encode()
+        token = ('gh' + 'p_' + 'A' * 36).encode()
+        field = json.dumps({'pass' + 'word': 'synthetic-regression-value'}).encode()
+        with self.scanner.reviewed_notice_guard(self.guard):
+            for name, data, rule in [('CPython/LICENSE.txt', email, 'email-needs-publication-review'),
+                                     ('CPython/LICENSE.txt', self.notice + token, 'github-token'),
+                                     ('other.txt', token, 'github-token'),
+                                     ('other.json', field, 'credential'),
+                                     ('other.json', json.dumps({'pass' + 'word': 123}).encode(), 'nonempty-credential-field')]:
+                with self.subTest(name=name, rule=rule), self.assertRaisesRegex(self.guard.PublicationError, rule):
+                    self.guard.check_content(name, data)
+
+    def test_unknown_original_verdict_is_never_accepted(self):
+        name = 'CPython/LICENSE.txt'
+        error = self.guard.PublicationError('Publication blocked: unknown-future-rule: ' + name)
+        with patch.object(self.guard, 'check_content', side_effect=error):
+            with self.scanner.reviewed_notice_guard(self.guard):
+                with self.assertRaisesRegex(self.guard.PublicationError, 'unknown-future-rule'):
+                    self.guard.check_content(name, self.notice)
+        self.assertTrue(all(path.endswith('.txt') for path in self.scanner.NOTICE_PATHS))
+
+    def test_directory_and_zip_scans_continue_after_reviewed_notice(self):
+        root = self.base / 'files'
+        notice_path = root / 'CPython/LICENSE.txt'
+        notice_path.parent.mkdir(parents=True)
+        notice_path.write_bytes(self.notice)
+        extra = root / 'ZZ-other.txt'
+        with self.scanner.reviewed_notice_guard(self.guard):
+            self.assertEqual(self.guard.check_publication(root), 1)
+            extra.write_bytes(('fixture' + chr(64) + 'fixture.invalid').encode())
+            with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                self.guard.check_publication(root)
+            archive = self.base / 'package.zip'
+            with zipfile.ZipFile(archive, 'w') as zip_file:
+                zip_file.writestr('THIRD_PARTY_LICENSES/CPython/LICENSE.txt', self.notice)
+            self.assertEqual(self.guard.check_publication(archive), 1)
+            with zipfile.ZipFile(archive, 'a') as zip_file:
+                zip_file.writestr('ZZ-other.txt', extra.read_bytes())
+            with self.assertRaisesRegex(self.guard.PublicationError, 'email-needs-publication-review'):
+                self.guard.check_publication(archive)
+        self.assertEqual(notice_path.read_bytes(), self.notice)
+
+    def test_original_guard_identity_and_path_guards_remain_enforced(self):
+        changed = self.base / 'guard.py'
+        changed.write_bytes(self.guard_path.read_bytes() + b'\n')
+        with self.assertRaisesRegex(ValueError, 'differs from'):
+            self.scanner.load_guard(changed)
+        with self.scanner.reviewed_notice_guard(self.guard):
+            for name in ('../CPython/LICENSE.txt', 'control/LICENSE.txt'):
+                with self.subTest(name=name), self.assertRaises(self.guard.PublicationError):
+                    self.guard.check_name(name)
+
+    def test_all_workflow_guard_calls_use_reviewed_entrypoint(self):
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/release-build.yml').read_text())
+        checked = 0
+        for job in workflow['jobs'].values():
+            for step in job['steps']:
+                for line in step.get('run', '').splitlines():
+                    if 'python -B ' in line and 'publication_guard.py' in line:
+                        self.assertIn('scan_release_publication.py --guard ', line)
+                        checked += 1
+        self.assertEqual(checked, 6)
 
 
 if __name__ == '__main__':

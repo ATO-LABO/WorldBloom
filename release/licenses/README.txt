@@ -14,3 +14,15 @@ The sdist setup.py metadata says MIT while this upstream notice says BSD.
 The original BSD notice is preserved, not replaced by a license template.
 This records the provenance discrepancy and does not assert legal certainty.
 The fallback requires exact version, code blob, and license blob matches.
+
+The actual Python 3.12.10 Windows LICENSE.txt is copied without changes
+from the runner's installed runtime. It is not replaced with source LICENSE.
+Its 36,874 original bytes match the official Windows embeddable archive:
+https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip
+Archive SHA256: 4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3
+LICENSE.txt SHA256: e502c6b880ff58d614901495a9009c136539cd0b1e2a2abb8fc00b934c203419
+Its sole email match is a public bzip2 author's attribution contact.
+The controller's scan entry point reviews only that exact notice hash at
+explicit known notice paths, after running the unchanged original guard.
+Other email/secret/path verdicts and Gitleaks remain unchanged.
+A changed Python notice must be reviewed again; it is not generically exempt.

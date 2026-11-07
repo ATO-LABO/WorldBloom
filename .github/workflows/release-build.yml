@@ -50,7 +50,7 @@ jobs:
         run: |
           python -B controller/scripts/collect_release_licenses.py --output "$env:RUNNER_TEMP/license-preflight"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -B release-source/scripts/publication_guard.py "$env:RUNNER_TEMP/license-preflight"
+          python -B controller/scripts/scan_release_publication.py --guard release-source/scripts/publication_guard.py "$env:RUNNER_TEMP/license-preflight"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build Studio executable from fixed application source
         shell: pwsh
@@ -71,7 +71,7 @@ jobs:
         run: |
           python -B controller/scripts/package_release.py build --source release-source --build "$env:RUNNER_TEMP/worldbloom-build" --output "$env:RUNNER_TEMP/worldbloom-candidate" --signatures "$env:RUNNER_TEMP/signatures.json"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -B release-source/scripts/publication_guard.py "$env:RUNNER_TEMP/worldbloom-candidate"
+          python -B controller/scripts/scan_release_publication.py --guard release-source/scripts/publication_guard.py "$env:RUNNER_TEMP/worldbloom-candidate"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Launch extracted Windows executables in disposable directories
         shell: pwsh
@@ -86,10 +86,10 @@ jobs:
         shell: pwsh
         run: |
           foreach ($file in (Get-ChildItem -Recurse -File "$env:RUNNER_TEMP/upload-evidence")) {
-            python -B release-source/scripts/publication_guard.py $file.FullName
+            python -B controller/scripts/scan_release_publication.py --guard release-source/scripts/publication_guard.py $file.FullName
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          python -B release-source/scripts/publication_guard.py "$env:RUNNER_TEMP/worldbloom-candidate/WorldBloom-Studio"
+          python -B controller/scripts/scan_release_publication.py --guard release-source/scripts/publication_guard.py "$env:RUNNER_TEMP/worldbloom-candidate/WorldBloom-Studio"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $archive = "$env:RUNNER_TEMP/gitleaks_8.30.1_windows_x64.zip"
           Invoke-WebRequest 'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip' -OutFile $archive
@@ -131,12 +131,12 @@ jobs:
           sha256sum --check SHA256SUMS.txt
           cd ../..
           find candidate-evidence -type f -print0 | while IFS= read -r -d '' file; do
-            python -B scripts/publication_guard.py "$file"
+            python -B scripts/scan_release_publication.py --guard scripts/publication_guard.py "$file"
           done
           gitleaks dir candidate-evidence --redact=100 --no-banner
           for mode in WorldBloom-Studio; do
             python -B scripts/package_release.py extract "candidate-evidence/worldbloom-candidate/$mode-portable.zip" "scan/$mode"
-            python -B scripts/publication_guard.py "scan/$mode" "candidate-evidence/worldbloom-candidate/$mode-portable.zip"
+            python -B scripts/scan_release_publication.py --guard scripts/publication_guard.py "scan/$mode" "candidate-evidence/worldbloom-candidate/$mode-portable.zip"
             gitleaks dir "scan/$mode" --redact=100 --no-banner
           done
       - name: Preserve scanned candidate without publishing or tagging
