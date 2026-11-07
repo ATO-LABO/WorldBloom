@@ -779,5 +779,61 @@ class StructuredArchiveTests(unittest.TestCase):
         self.assertIs(self.guard.check_publication, publication)
 
 
+class PowerShellVariableTests(unittest.TestCase):
+    # Automatic/read-only names are case-insensitive. Mutable preferences such
+    # as ErrorActionPreference are intentionally not classified as reserved.
+    RESERVED = {name.casefold() for name in (
+        'args', 'ConsoleFileName', 'EnabledExperimentalFeatures', 'Error', 'Event',
+        'EventArgs', 'EventSubscriber', 'ExecutionContext', 'false', 'foreach',
+        'HOME', 'Host', 'input', 'IsCoreCLR', 'IsLinux', 'IsMacOS', 'IsWindows',
+        'LASTEXITCODE', 'Matches', 'MyInvocation', 'NestedPromptLevel', 'null',
+        'PID', 'PROFILE', 'PSBoundParameters', 'PSCommandPath', 'PSCulture',
+        'PSDebugContext', 'PSEdition', 'PSHOME', 'PSItem', 'PSScriptRoot',
+        'PSSenderInfo', 'PSStyle', 'PSUICulture', 'PSVersionTable', 'PWD',
+        'Sender', 'ShellId', 'StackTrace', 'switch', 'this', 'true', '_')}
+
+    @classmethod
+    def written_names(cls, source):
+        import re
+        variable = r'\$(?:\{([A-Za-z_][A-Za-z0-9_:]*)\}|([A-Za-z_][A-Za-z0-9_:]*))'
+        patterns = [variable + r'(?:\[[^\r\n]*\]|\.[A-Za-z_][A-Za-z0-9_]*)*\s*(?:[+*/%\-]?=(?!=)|\+\+|--)',
+                    r'\bforeach\s*\(\s*' + variable + r'\s+in\b']
+        names = set()
+        for pattern in patterns:
+            for match in re.finditer(pattern, source, re.I):
+                name = next(part for part in match.groups() if part is not None)
+                parts = name.casefold().split(':')
+                if len(parts) == 1 or parts[0] in {'global', 'script', 'local', 'private'}:
+                    names.add(parts[-1])
+        return names
+
+    def test_reserved_name_detection_is_case_insensitive(self):
+        self.assertEqual(self.written_names("$home = 1; $HoMe = 2; ${HOME} = 3; $global:PiD += 1; foreach ($hOsT in @()) {}") & self.RESERVED,
+                         {'home', 'pid', 'host'})
+        self.assertEqual(self.written_names("$homeResponse = 1; $ErrorActionPreference = 'Stop'; $env:HOME = 'fixture'") & self.RESERVED, set())
+
+    def test_smoke_and_workflow_do_not_assign_reserved_variables(self):
+        import yaml
+        sources = [('smoke', (ROOT / 'scripts/windows_release_smoke.ps1').read_text())]
+        workflow = yaml.safe_load((ROOT / '.github/workflows/release-build.yml').read_text())
+        sources.extend((step['name'], step.get('run', '')) for job in workflow['jobs'].values()
+                       for step in job['steps'] if step.get('shell') == 'pwsh')
+        for name, source in sources:
+            with self.subTest(source=name):
+                self.assertEqual(self.written_names(source) & self.RESERVED, set())
+        # Function and script parameter bindings were also reviewed explicitly.
+        smoke = sources[0][1]
+        for parameter in ('Candidates', 'Output', 'Packager', 'PayloadValidator', 'Record', 'Owned'):
+            self.assertNotIn(parameter.casefold(), self.RESERVED)
+        self.assertEqual(self.written_names(smoke.replace('$homeResponse', '$home')) & self.RESERVED, {'home'})
+
+    def test_home_response_rename_preserves_the_existing_assertions(self):
+        smoke = (ROOT / 'scripts/windows_release_smoke.ps1').read_text()
+        self.assertNotRegex(smoke, r'(?i)\$home\b')
+        self.assertIn('$homeResponse = Invoke-WebRequest "http://127.0.0.1:$port/" -TimeoutSec 10', smoke)
+        self.assertIn("if ($homeResponse.StatusCode -ne 200) { throw 'Home response failed' }", smoke)
+        self.assertIn('$row.http_home = 200', smoke)
+
+
 if __name__ == '__main__':
     unittest.main()

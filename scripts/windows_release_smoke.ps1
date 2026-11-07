@@ -118,8 +118,8 @@ foreach ($mode in @('WorldBloom-Studio')) {
         } while ([DateTime]::UtcNow -lt $deadline)
         if (-not $port -or -not $row.native_window_observed -or -not $row.webview2_renderer_observed) { throw 'HTTP/version, native window, and owned WebView2 renderer were not all observed' }
         $row.stage = 'http-mode'
-        $home = Invoke-WebRequest "http://127.0.0.1:$port/" -TimeoutSec 10
-        if ($home.StatusCode -ne 200) { throw 'Home response failed' }
+        $homeResponse = Invoke-WebRequest "http://127.0.0.1:$port/" -TimeoutSec 10
+        if ($homeResponse.StatusCode -ne 200) { throw 'Home response failed' }
         $row.http_home = 200
         if (-not (Test-Path (Join-Path $folder 'runs')) -or -not (Test-Path (Join-Path $folder 'control'))) {
             throw 'Studio did not initialize disposable runtime directories'
