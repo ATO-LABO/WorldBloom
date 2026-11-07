@@ -16,6 +16,7 @@ import unittest
 from unittest.mock import patch
 
 from saved_world_fixtures import install_current_worlds
+from http_failure_diagnostics import record_http_timeout
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution.provenance import ConfigError, atomic_json, read_json
@@ -113,7 +114,16 @@ if mode == "fail":
 
     def started(self, job):
         marker = self.configs.runs / job["run_id"] / "started.json"
-        until(marker.exists)
+        try:
+            until(marker.exists)
+        except AssertionError:
+            try:
+                record_http_timeout(evidence=os.environ.get("WB_REGRESSION_EVIDENCE_DIR"),
+                    job_folder=self.jobs.root / job["job_id"], run_root=marker.parent,
+                    last_http=job, http_status=None, probe=worker.probe)
+            except Exception:
+                pass  # Diagnostics must not replace the original startup assertion.
+            raise
         return marker.parent
 
     def test_success_reconnect_and_fixed_manifest(self):
