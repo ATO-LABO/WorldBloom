@@ -1,0 +1,21 @@
+/* Modal geometry; shared ui tokens/components retain the visual contract. */
+.cr-enabled .cw-edit {grid-template-columns:var(--ws-side-w) minmax(0,1fr);}
+.cr-enabled [data-cw-ai] {display:none;}
+.cr-launcher {position:fixed;right:var(--ws-space-5);bottom:calc(var(--ws-bar-h) + var(--ws-space-5));z-index:20;border-radius:var(--ws-control-h);min-width:var(--ws-control-h);min-height:var(--ws-control-h);}
+.cr-launcher[hidden] {display:none;}
+.cr-dialog {width:min(960px,calc(100vw - var(--ws-space-6)));max-width:none;max-height:calc(100dvh - var(--ws-space-6));padding:0;}
+.cr-dialog[open] {display:flex;flex-direction:column;}
+.cr-top,.cr-actions {display:flex;gap:var(--ws-space-3);justify-content:space-between;align-items:center;padding:var(--ws-space-4) var(--ws-space-5);flex:none;}
+.cr-top {border-bottom:1px solid var(--ws-line);}
+.cr-actions {border-top:1px solid var(--ws-line);flex-wrap:wrap;}
+.cr-body {overflow:auto;min-height:0;padding:var(--ws-space-5);}
+.cr-presets {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ws-space-3);margin-block:var(--ws-space-4);}
+.cr-presets[hidden] {display:none;}
+.cr-dialog .ui-tabs {display:flex;gap:var(--ws-space-3);}
+.cr-dialog [aria-pressed=true] {background:var(--ws-advance);color:var(--ws-surface);}
+.cr-diff {display:grid;grid-template-columns:1fr 1fr;gap:var(--ws-space-4);}
+.cr-diff>div {min-width:0;padding:var(--ws-space-3);background:var(--ws-panel-bg);}
+.cr-dialog pre {white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--ws-fs-sm);}
+.cr-change {margin-block:var(--ws-space-4);}
+.cr-warning {display:flex;gap:var(--ws-space-3);padding:var(--ws-space-3);background:var(--ws-warning-bg);}
+@media(max-width:760px){.cr-enabled .cw-edit{display:flex;}.cr-dialog{width:calc(100vw - var(--ws-space-4));max-height:calc(100dvh - var(--ws-space-4));}.cr-presets{grid-template-columns:1fr 1fr;}.cr-diff{grid-template-columns:1fr;}.cr-top,.cr-actions,.cr-body{padding:var(--ws-space-3);}.cr-actions>.ui-button{flex:1 1 auto;white-space:normal;}}

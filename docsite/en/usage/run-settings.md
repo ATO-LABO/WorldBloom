@@ -1,5 +1,5 @@
 ---
-ja_rev: "2c4361c01aba"
+ja_rev: "67e8f9180338"
 ---
 # Run Settings
 
@@ -80,8 +80,12 @@ A collapsible section after 04 (and, when route shows, after 05 too), with these
 - **ジャンル (Genre)**: only selectable when creating new (fixed to match the source when duplicating)
 - **乱数の開始値 (seed_base, default 0)** / **進化の乱数 (ga_seed, default 1)**
 - The process count (how many processes run the GA concurrently) is set not here but under **⚙ 全体設定 (Global settings) → 計算 (Compute)** (see [Settings](settings.md))
-- **実行時間の上限 (execution_limits.wall_seconds, default 3600 seconds)**: the run is cut off past this many seconds. This default rises to 21600 seconds when using κ (rationality judgment, above)
+- **実行時間の上限 (execution_limits.wall_seconds, default 3600 seconds)**: the run is cut off past this many seconds. For a new config using Ollama rationality, the default rises to 21600 seconds; Jev keeps 3600 seconds
 
 ## Starting a run
 
 Saving takes you to that config's run-condition screen (`/configs/<config ID>`). Clicking "この条件で実行へ →" (Proceed to run with these conditions →) opens the run screen (`/jobs`), and clicking "この設定で GA を回す" (Run the GA with this config) starts it. While running, a per-generation progress bar is shown, and **results through the last completed generation are kept even if you stop the run**. Once a run finishes, you can re-run it from the same screen via "同じ設定でもう一度回す" (Run again with the same config).
+
+## World conditions versus run settings
+
+Action permissions, actor/time-slot constraints, stamina, items/equipment, money, and the protagonist's goal are edited in **world settings**, separately from this screen's GA scale, seeds, and retention policy. “基本ルール” (Basic rules, formerly “genre”) identifies the template referenced by the world. The current-format bundled world is Momotaro +3 (`momotaro_plus3_new`), using `momotaro_plus3` basic rules. Saved configurations for legacy worlds cannot start a new run unchanged.

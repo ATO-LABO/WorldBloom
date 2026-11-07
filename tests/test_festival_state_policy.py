@@ -8,15 +8,20 @@ from unittest.mock import patch
 
 from engine.actions import Action
 from engine.sim import Simulation
+from festival_fixture import load_frozen_festival
 from gapengine.festival_policy import build_policies
-from scripts.cultural_festival_probe import load, source_manifest
+from scripts.cultural_festival_probe import source_manifest
 from scripts.cultural_festival_state_search import run
 from scripts.cultural_festival_trial import run_trial
 
 
 class StatePolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch('scripts.cultural_festival_state_search.load', load_frozen_festival))
+        self.enterContext(patch('scripts.cultural_festival_trial.load', load_frozen_festival))
+
     def fixture(self):
-        world, people = load()
+        world, people = load_frozen_festival()
         sim = Simulation(0, world, people, Path('/tmp/unused'))
         policies = build_policies(world.slot_contract)
         for person in people.values():
@@ -99,7 +104,7 @@ class StatePolicyTests(unittest.TestCase):
             self.assertEqual(first['audit']['decision_checks'],88)
             self.assertFalse(first['ga_evolution']);self.assertEqual(first['jev_calls'],0)
             for name in ('蒼','紗季','蓮','灯'):
-                audits=json.loads((root/'first'/f'decision-audit-{name}.json').read_text())
+                audits=json.loads((root/'first'/f'decision-audit-{name}.json').read_text(encoding='utf-8'))
                 self.assertEqual(len(audits),22)
                 self.assertTrue(all(a['positive_count']>1 for a in audits))
 

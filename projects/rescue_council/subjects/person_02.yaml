@@ -1,0 +1,34 @@
+{
+  "id": "イサ",
+  "description": "船長イサは航路変更の判断権を持つ。帰還用燃料を残すことを必須とする。ナギの仕事を信頼している。",
+  "personality": "船長イサは航路変更の判断権を持つ。帰還用燃料を残すことを必須とする。ナギの仕事を信頼している。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.5,
+    "curiosity": 0.5,
+    "diligence": 0.5,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "帰還船の操舵室"
+    ],
+    "entry": "帰還船の操舵室"
+  },
+  "verbs": [
+    "rest",
+    "review_proposal",
+    "decide_proposal"
+  ],
+  "knowledge": [],
+  "goal": {
+    "description": "船長イサは航路変更の判断権を持つ。帰還用燃料を残すことを必須とする。ナギの仕事を信頼している。"
+  },
+  "relations": {
+    "ナギ": {
+      "affinity": 0.8,
+      "awareness": 1
+    }
+  }
+}

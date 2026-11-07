@@ -1,0 +1,44 @@
+{
+  "id": "通信士",
+  "description": "通信士",
+  "personality": "通信士",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "機関室",
+      "通路",
+      "通信室"
+    ],
+    "entry": "機関室"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "inspect_response"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {
+    "予備電池": 1
+  },
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "beacon_sent",
+      "priority": 10,
+      "required": true
+    }
+  ]
+}

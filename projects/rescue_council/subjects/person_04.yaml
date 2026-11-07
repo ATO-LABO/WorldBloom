@@ -1,0 +1,35 @@
+{
+  "id": "トワ",
+  "description": "通信士トワは救難信号の位置を知る。ナギとは不仲だが、遭難者を救うことを望む。",
+  "personality": "通信士トワは救難信号の位置を知る。ナギとは不仲だが、遭難者を救うことを望む。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.5,
+    "curiosity": 0.5,
+    "diligence": 0.5,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "帰還船の操舵室"
+    ],
+    "entry": "帰還船の操舵室"
+  },
+  "verbs": [
+    "rest",
+    "review_proposal"
+  ],
+  "knowledge": [
+    "救難座標"
+  ],
+  "goal": {
+    "description": "通信士トワは救難信号の位置を知る。ナギとは不仲だが、遭難者を救うことを望む。"
+  },
+  "relations": {
+    "ナギ": {
+      "affinity": -0.6,
+      "awareness": 1
+    }
+  }
+}

@@ -1,0 +1,471 @@
+{
+  "name": "改革の承認から実施・失敗確定まで",
+  "overview": "真壁は生活制度局の官僚。婚姻を国家が権利配分の資格として使う制度を廃止し、婚姻の有無にかかわらず保障を受けられる改革案を省内へ持ち込む。恋愛や共同生活の禁止は提案していない。",
+  "initial_story": "真壁は生活制度局の官僚。婚姻を国家が権利配分の資格として使う制度を廃止し、婚姻の有無にかかわらず保障を受けられる改革案を省内へ持ち込む。恋愛や共同生活の禁止は提案していない。",
+  "time": {
+    "days": 3,
+    "slots": [
+      "持込",
+      "意見交換",
+      "修正",
+      "再審査",
+      "判断",
+      "予備一",
+      "予備二",
+      "予備三"
+    ]
+  },
+  "protagonist": "真壁",
+  "antagonist": "片瀬",
+  "zones": [
+    {
+      "name": "生活制度局の会議室"
+    }
+  ],
+  "routes": {
+    "生活制度局の会議室": []
+  },
+  "facts": [
+    {
+      "id": "移行費用試算",
+      "label": "現行の婚姻に基づく保障を移し替えるには、移行期の追加財源が必要である。",
+      "sources": []
+    },
+    {
+      "id": "implementation_report",
+      "values": [
+        "pending",
+        "implemented"
+      ],
+      "sources": []
+    }
+  ],
+  "ending": [
+    {
+      "id": "approved",
+      "label": "最初の承認",
+      "when": "proposal_decided(\"main\", \"approved\")"
+    },
+    {
+      "id": "rejected",
+      "label": "最初の却下",
+      "when": "proposal_decided(\"main\", \"rejected\")"
+    },
+    {
+      "id": "deferred",
+      "label": "最初の保留",
+      "when": "proposal_decided(\"main\", \"deferred\")"
+    },
+    {
+      "id": "implementation_observed",
+      "label": "施行期間の観測終了",
+      "when": "turn >= 24"
+    }
+  ],
+  "target_ending": "implementation_observed",
+  "deliberation": {
+    "version": 1,
+    "state": {
+      "検討段階": "持込前",
+      "婚姻制度": "存続",
+      "給付資格": "婚姻",
+      "移行保障": "なし",
+      "財源": "既存枠",
+      "保障状態": "維持"
+    },
+    "proposals": [
+      {
+        "id": "main",
+        "title": "婚姻制度廃止案の最初の審査",
+        "place": "生活制度局の会議室",
+        "proposer": "真壁",
+        "authority": "片瀬",
+        "reviewers": [
+          "片瀬",
+          "有村",
+          "瀬尾"
+        ],
+        "required_support": [
+          "有村",
+          "瀬尾"
+        ],
+        "quorum": 3,
+        "alternatives": [
+          {
+            "id": "original",
+            "label": "原案",
+            "terms": {
+              "婚姻資格": "廃止",
+              "移行保障": "なし",
+              "財源": "既存枠",
+              "移行時期": "一括"
+            },
+            "statement": "婚姻を権利の条件にする制度を廃止します。婚姻の有無にかかわらず、本人を単位に保障を受けられる形へ移します。"
+          },
+          {
+            "id": "protected",
+            "label": "保障と財源を加えた修正案",
+            "terms": {
+              "婚姻資格": "廃止",
+              "移行保障": "公費保障",
+              "財源": "追加財源",
+              "移行時期": "一括"
+            },
+            "statement": "廃止の方針は変えません。移行によって保障を失う人への公費保障と、その追加財源を案に入れます。"
+          },
+          {
+            "id": "staged",
+            "label": "段階移行の修正案",
+            "terms": {
+              "婚姻資格": "廃止",
+              "移行保障": "公費保障",
+              "財源": "追加財源",
+              "移行時期": "段階"
+            },
+            "statement": "廃止を最終方針に据えたまま、移行を段階に分けます。旧制度に頼る人への公費保障と追加財源も案に入れます。"
+          }
+        ],
+        "initial": "original",
+        "profiles": {
+          "真壁": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [],
+            "support_line": "婚姻に左右されない保障を実現したい。",
+            "oppose_line": "婚姻資格を残す案には同意しない。",
+            "unknown_line": "判断に必要な情報がまだありません。今回は保留にしてください。"
+          },
+          "片瀬": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [],
+            "support_line": "移行期の保障が入りました。この内容なら、正式な検討に進めることに賛成です。",
+            "oppose_line": "婚姻の廃止だけでは進められません。いま婚姻を頼りに暮らしている人の保障を、先に案へ書いてください。",
+            "unknown_line": "判断に必要な情報がまだありません。今回は保留にしてください。",
+            "evidence_trust": {
+              "有村": 0.9,
+              "瀬尾": 0.9
+            }
+          },
+          "有村": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [
+              "移行費用試算"
+            ],
+            "support_line": "試算を踏まえた財源が入りました。予算担当として、検討に進めることに同意します。",
+            "oppose_line": "移行の費用が既存枠に収まりません。追加財源を案に含めてください。",
+            "unknown_line": "判断に必要な情報がまだありません。今回は保留にしてください。",
+            "evidence_trust": {
+              "片瀬": 0.9,
+              "瀬尾": 0.9
+            }
+          },
+          "瀬尾": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [],
+            "support_line": "婚姻の有無で権利を分けない方針には賛成します。",
+            "oppose_line": "婚姻による区別が残るなら、支持できません。",
+            "unknown_line": "判断に必要な情報がまだありません。今回は保留にしてください。",
+            "evidence_trust": {
+              "片瀬": 0.9,
+              "有村": 0.9
+            }
+          }
+        },
+        "outcomes": {
+          "approved": {
+            "検討段階": "正式検討へ"
+          },
+          "rejected": {
+            "検討段階": "差戻し"
+          },
+          "deferred": {
+            "検討段階": "判断保留"
+          }
+        },
+        "decision_lines": {
+          "approved": "この版を正式な検討会へ進めます。廃止を決めたのではありません。保障と財源を含む案として、次の審査にかけます。",
+          "rejected": "この版は差し戻します。必要な同意がそろっていません。婚姻制度の扱いは、まだ変わりません。",
+          "deferred": "判断に必要な情報がそろっていないため、この版の判断を保留します。"
+        },
+        "requires_state": {
+          "検討段階": "持込前"
+        },
+        "request_line": "この版で、最初の判断をお願いします。",
+        "choice_policy": {
+          "version": 2,
+          "trust": {
+            "片瀬": 0.9,
+            "有村": 0.9,
+            "瀬尾": 0.7
+          },
+          "evidence_threshold": 0.6,
+          "alternative_requires": {
+            "protected": [
+              "移行費用試算"
+            ],
+            "staged": [
+              "移行費用試算"
+            ]
+          },
+          "amendment_deadline": 7,
+          "revision_steps": 2
+        },
+        "concern_projections": {
+          "original": {
+            "requires": [],
+            "effects": [
+              {
+                "kind": "state",
+                "key": "給付資格",
+                "value": "個人"
+              },
+              {
+                "kind": "state",
+                "key": "移行保障",
+                "value": "なし"
+              },
+              {
+                "kind": "state",
+                "key": "財源",
+                "value": "既存枠"
+              },
+              {
+                "kind": "state",
+                "key": "保障状態",
+                "value": "失保障"
+              }
+            ]
+          },
+          "protected": {
+            "requires": [],
+            "effects": [
+              {
+                "kind": "state",
+                "key": "給付資格",
+                "value": "個人"
+              },
+              {
+                "kind": "state",
+                "key": "移行保障",
+                "value": "公費保障"
+              },
+              {
+                "kind": "state",
+                "key": "財源",
+                "value": "追加財源"
+              },
+              {
+                "kind": "state",
+                "key": "保障状態",
+                "value": "維持"
+              }
+            ]
+          },
+          "staged": {
+            "requires": [],
+            "effects": [
+              {
+                "kind": "state",
+                "key": "給付資格",
+                "value": "個人"
+              },
+              {
+                "kind": "state",
+                "key": "移行保障",
+                "value": "公費保障"
+              },
+              {
+                "kind": "state",
+                "key": "財源",
+                "value": "追加財源"
+              },
+              {
+                "kind": "state",
+                "key": "保障状態",
+                "value": "維持"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "equal_eligibility",
+        "label": "婚姻の有無で給付資格を分けない",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "state",
+          "key": "給付資格",
+          "equals": "個人"
+        }
+      },
+      {
+        "id": "transition_guarantee",
+        "label": "移行によって保障を失う人を出さない",
+        "mode": "maintain",
+        "visibility": "public",
+        "test": {
+          "kind": "state",
+          "key": "保障状態",
+          "equals": "維持"
+        }
+      },
+      {
+        "id": "budget_secured",
+        "label": "移行の追加財源を確保する",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "state",
+          "key": "財源",
+          "equals": "追加財源"
+        }
+      },
+      {
+        "id": "rollout_closed",
+        "label": "改革の実施機会が閉じられた",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "rollout",
+          "equals": "closed"
+        }
+      }
+    ]
+  },
+  "truth": {
+    "implementation_report": "pending"
+  },
+  "responses": {
+    "version": 1,
+    "state": {
+      "implementation_stage": "pending",
+      "rollout": "open"
+    },
+    "locations": {
+      "implementation_stage": "生活制度局の会議室",
+      "rollout": "生活制度局の会議室"
+    },
+    "signals": [
+      {
+        "fact": "implementation_report",
+        "condition": "equal_eligibility",
+        "key": "implementation_stage",
+        "danger_values": [
+          "pending"
+        ],
+        "max_age": 30,
+        "threshold": 0.5,
+        "deadline": 23
+      }
+    ],
+    "actions": [
+      {
+        "id": "implement",
+        "label": "承認された移行措置を施行する",
+        "condition": "equal_eligibility",
+        "signal": "implementation_report",
+        "zone": "生活制度局の会議室",
+        "actors": [
+          "真壁"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "implementation_stage": "pending"
+        },
+        "authorization": {
+          "proposal": "main",
+          "status": "approved"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "implementation_stage",
+            "value": "implemented"
+          },
+          {
+            "kind": "state",
+            "key": "給付資格",
+            "value": "個人"
+          },
+          {
+            "kind": "state",
+            "key": "移行保障",
+            "value": "公費保障"
+          },
+          {
+            "kind": "state",
+            "key": "財源",
+            "value": "追加財源"
+          },
+          {
+            "kind": "state",
+            "key": "保障状態",
+            "value": "維持"
+          }
+        ]
+      }
+    ],
+    "channels": [],
+    "events": [
+      {
+        "id": "funding_closes",
+        "turn": 23,
+        "unless": {
+          "implementation_stage": "implemented"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "rollout",
+            "value": "closed"
+          }
+        ]
+      }
+    ],
+    "windows": []
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "equal_eligibility",
+        "success": {
+          "condition": "equal_eligibility"
+        },
+        "failure": {
+          "all": [
+            {
+              "condition": "rollout_closed"
+            },
+            {
+              "not": {
+                "condition": "equal_eligibility"
+              }
+            }
+          ]
+        },
+        "period": {
+          "start": 1,
+          "end": 24
+        }
+      }
+    ]
+  }
+}

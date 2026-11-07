@@ -1,0 +1,39 @@
+{
+  "id": "アオ",
+  "description": "アオは秘密の避難先について相談する。",
+  "personality": "アオは秘密の避難先について相談する。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "相談室"
+    ],
+    "entry": "相談室"
+  },
+  "verbs": [
+    "rest",
+    "submit_proposal",
+    "present_proposal",
+    "amend_proposal",
+    "request_decision"
+  ],
+  "knowledge": [
+    "避難先"
+  ],
+  "goal": {
+    "description": "避難先を守って支援を得る"
+  },
+  "relations": {},
+  "beliefs": {
+    "secret_kept": {
+      "value": "true",
+      "confidence": 1.0
+    }
+  }
+}

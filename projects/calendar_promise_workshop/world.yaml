@@ -1,0 +1,77 @@
+name: 期限と休息を考えて納品する
+time:
+  days: 1
+  slots:
+  - 09:00
+protagonist: 職人
+antagonist: 依頼人
+zones:
+- name: 工房
+- name: 資材置場
+routes:
+  工房:
+  - to: 資材置場
+    cost: 1
+  資材置場:
+  - to: 工房
+    cost: 1
+ending:
+- id: observed
+  when: 'False'
+  label: Observation only
+target_ending: observed
+scheduled_events: []
+slot_execution:
+  mode: calendar_promises_v2
+  contract: contract.yaml
+  subjects:
+  - id: 職人
+    path: subjects/ada.yaml
+  - id: 依頼人
+    path: subjects/bo.yaml
+planning:
+  version: 1
+  actors:
+  - 職人
+  max_depth: 12
+  max_nodes: 2048
+concerns:
+  version: 2
+  conditions:
+  - id: 納品の約束履行
+    label: 納品の約束履行
+    mode: achieve
+    visibility: observed
+    test:
+      kind: promise
+      promise: 注文01
+      version: 1
+      statuses:
+      - fulfilled
+  - id: 納品の約束履行の失効
+    label: 約束が履行できなくなった
+    mode: achieve
+    visibility: observed
+    test:
+      kind: promise
+      promise: 注文01
+      version: 1
+      statuses:
+      - breached
+      - cancelled
+      - renegotiated
+goal_rules:
+  version: 2
+  definitions:
+  - condition: 納品の約束履行
+    success:
+      condition: 納品の約束履行
+    failure:
+      condition: 納品の約束履行の失効
+    period:
+      start:
+        date: '2026-11-01'
+        time: 08:00
+      end:
+        date: '2026-11-01'
+        time: 09:08

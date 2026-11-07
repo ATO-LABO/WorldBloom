@@ -1,0 +1,284 @@
+{
+  "name": "宇宙船の予備電池を巡る交渉",
+  "overview": "通信士は救難信号を送るために予備電池を必要とする。補給係は修理工具との交換を自分の優先順位で判断する。",
+  "initial_story": "通信士が補給室へ来た。予備電池は補給係が保管しており、その在庫は公表されている。",
+  "time": {
+    "days": 2,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6",
+      "時点7",
+      "時点8"
+    ]
+  },
+  "protagonist": "通信士",
+  "antagonist": "補給係",
+  "zones": [
+    {
+      "name": "補給室"
+    }
+  ],
+  "routes": {},
+  "movement": {
+    "action_weight": 0
+  },
+  "items": [
+    {
+      "name": "予備電池"
+    },
+    {
+      "name": "修理工具",
+      "lootable": true,
+      "modifier": {
+        "id": "craft_value",
+        "base": 2
+      }
+    }
+  ],
+  "facts": [
+    {
+      "id": "raid_notice",
+      "values": [
+        "ongoing",
+        "repelled",
+        "completed"
+      ],
+      "sources": []
+    }
+  ],
+  "truth": {
+    "raid_notice": "ongoing"
+  },
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "food_taken",
+        "label": "通信士が予備電池を得る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "通信士",
+          "item": "予備電池",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "village_safe",
+        "label": "補給室が被害を受けない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "damage",
+          "equals": "no"
+        }
+      },
+      {
+        "id": "keep_craft",
+        "label": "通信士が修理工具を手放さない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "通信士",
+          "item": "修理工具",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "stock_food",
+        "label": "補給係が食料を保有する",
+        "mode": "maintain",
+        "visibility": "public",
+        "test": {
+          "kind": "inventory",
+          "actor": "補給係",
+          "item": "予備電池",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "keeper_paid",
+        "label": "補給係が修理工具を得る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "補給係",
+          "item": "修理工具",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "beacon_sent",
+        "label": "救難信号を送る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "beacon",
+          "equals": "sent"
+        }
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "food_taken",
+        "success": {
+          "condition": "food_taken"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 12
+        }
+      },
+      {
+        "condition": "keeper_paid",
+        "success": {
+          "condition": "keeper_paid"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 12
+        }
+      },
+      {
+        "condition": "beacon_sent",
+        "success": {
+          "condition": "beacon_sent"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 12
+        }
+      }
+    ]
+  },
+  "responses": {
+    "version": 2,
+    "state": {
+      "raid": "ongoing",
+      "damage": "no",
+      "store": "stocked",
+      "beacon": "unsent"
+    },
+    "locations": {
+      "raid": "補給室",
+      "damage": "補給室",
+      "store": "補給室",
+      "beacon": "補給室"
+    },
+    "signals": [],
+    "actions": [
+      {
+        "id": "take_battery",
+        "label": "備蓄を強引に開けて予備電池を取る",
+        "condition": "food_taken",
+        "signal": null,
+        "zone": "補給室",
+        "actors": [
+          "通信士"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "raid": "ongoing",
+          "store": "stocked"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "raid",
+            "value": "completed"
+          },
+          {
+            "kind": "state",
+            "key": "damage",
+            "value": "yes"
+          },
+          {
+            "kind": "state",
+            "key": "store",
+            "value": "empty"
+          },
+          {
+            "kind": "inventory",
+            "actor": "補給係",
+            "item": "予備電池",
+            "value": 0
+          },
+          {
+            "kind": "inventory",
+            "actor": "通信士",
+            "item": "予備電池",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "id": "send_beacon",
+        "label": "予備電池を使って救難信号を送る",
+        "condition": "beacon_sent",
+        "signal": null,
+        "zone": "補給室",
+        "actors": [
+          "通信士"
+        ],
+        "requires": [],
+        "items": {
+          "予備電池": 1
+        },
+        "cost": 1,
+        "steps": 1,
+        "preconditions": {
+          "beacon": "unsent"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "通信士",
+            "item": "予備電池",
+            "value": 0
+          },
+          {
+            "kind": "state",
+            "key": "beacon",
+            "value": "sent"
+          }
+        ]
+      }
+    ],
+    "channels": [],
+    "events": [],
+    "windows": []
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 16",
+      "label": "襲撃をめぐる観測の終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": []
+}

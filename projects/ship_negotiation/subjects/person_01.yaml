@@ -1,0 +1,56 @@
+{
+  "id": "通信士",
+  "description": "通信士",
+  "personality": "通信士",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "補給室"
+    ],
+    "entry": "補給室"
+  },
+  "verbs": [
+    "rest",
+    "respond",
+    "negotiate"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {
+    "修理工具": 1
+  },
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "food_taken",
+      "priority": 9,
+      "required": false
+    },
+    {
+      "condition": "village_safe",
+      "priority": 8,
+      "required": false
+    },
+    {
+      "condition": "keep_craft",
+      "priority": 3,
+      "required": false
+    },
+    {
+      "condition": "beacon_sent",
+      "priority": 10,
+      "required": true
+    }
+  ]
+}

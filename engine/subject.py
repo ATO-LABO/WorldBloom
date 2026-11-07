@@ -55,6 +55,7 @@ class Goal:
     deliver_to: str | None = None
     obstacles: list[str] = field(default_factory=list)
     outcome: str | None = None
+    description: str = ""
 
 
 @dataclass
@@ -92,6 +93,9 @@ class Subject:
     policy: Any | None = None
     initial_relations: dict[str, dict[str, float]] = field(default_factory=dict)
     tags: list[str] = field(default_factory=list)
+    # None means unspecified (legacy world-owned values may still apply).
+    # An explicit [] is a personal decision to value none of the registered conditions.
+    commitments: list[dict[str, Any]] | None = None
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> Subject:
@@ -239,6 +243,7 @@ class Subject:
                 for value in raw_goal.get("obstacles", [])
             ),
             outcome=raw_goal.get("outcome"),
+            description=str(raw_goal.get("description", "")),
         )
 
         raw_identity = raw.get("identity", {}) or {}
@@ -284,7 +289,10 @@ class Subject:
                 f"Subject {subject_id} has a negative inventory count"
             )
 
-        return cls(
+        from engine.concerns import validate_commitments
+        commitments = validate_commitments(raw['commitments']) if 'commitments' in raw else None
+
+        person = cls(
             id=subject_id,
             traits=traits,
             base=float(raw.get("base", 0.0)),
@@ -350,7 +358,10 @@ class Subject:
                 str(value)
                 for value in raw.get("tags", []) or []
             ],
+            commitments=commitments,
         )
+        person._stamina_recovery_authored = 'recover_per_slot' in raw_stamina
+        return person
 
     def update_belief(
         self,
@@ -461,12 +472,19 @@ class Subject:
         return updates
 
     def change_stamina(self, amount: float) -> float:
+        if not getattr(self, 'stamina_enabled', True): return 0.0
+        meter=getattr(self,'_stamina_meter',None)
+        if amount < 0 and meter is not None:
+            amount = -meter['cost'] if not meter['paid'] else 0.0
+            meter['paid'] = True
         before = self.stamina
         self.stamina = round(
             _clamp(self.stamina + float(amount), 0.0, self.stamina_max),
             4,
         )
-        return round(self.stamina - before, 4)
+        delta=round(self.stamina-before,4)
+        if meter is not None and delta < 0: meter['spent'] -= delta
+        return delta
 
     def change_stress(self, amount: float) -> float:
         before = self.stress

@@ -1,0 +1,187 @@
+[
+  {
+    "id": "出演-蒼-offer",
+    "actor": "蒼",
+    "at": 480,
+    "verb": "offer",
+    "terms": {
+      "promise_id": "出演-蒼",
+      "version": 1,
+      "proposer": "蒼",
+      "promisor": "蒼",
+      "beneficiary": "紗季",
+      "acceptance_parties": [
+        "蒼",
+        "紗季"
+      ],
+      "place": "体育館",
+      "start": 900,
+      "deadline": 915,
+      "grace_until": null,
+      "requirements": [
+        {
+          "task_id": "stage-ao",
+          "units": 1,
+          "contribution_by": "蒼"
+        }
+      ]
+    }
+  },
+  {
+    "id": "出演-蒼-accept-蒼",
+    "actor": "蒼",
+    "at": 482,
+    "verb": "accept",
+    "promise_id": "出演-蒼",
+    "version": 1,
+    "terms_hash": "0761a9168644b65d7c92d967bf68accb831106ff2d613eb6344abc0395956843"
+  },
+  {
+    "id": "出演-蒼-accept-紗季",
+    "actor": "紗季",
+    "at": 484,
+    "verb": "accept",
+    "promise_id": "出演-蒼",
+    "version": 1,
+    "terms_hash": "0761a9168644b65d7c92d967bf68accb831106ff2d613eb6344abc0395956843"
+  },
+  {
+    "id": "出演-蓮-offer",
+    "actor": "蓮",
+    "at": 486,
+    "verb": "offer",
+    "terms": {
+      "promise_id": "出演-蓮",
+      "version": 1,
+      "proposer": "蓮",
+      "promisor": "蓮",
+      "beneficiary": "紗季",
+      "acceptance_parties": [
+        "蓮",
+        "紗季"
+      ],
+      "place": "体育館",
+      "start": 900,
+      "deadline": 915,
+      "grace_until": null,
+      "requirements": [
+        {
+          "task_id": "stage-ren",
+          "units": 1,
+          "contribution_by": "蓮"
+        }
+      ]
+    }
+  },
+  {
+    "id": "出演-蓮-accept-蓮",
+    "actor": "蓮",
+    "at": 488,
+    "verb": "accept",
+    "promise_id": "出演-蓮",
+    "version": 1,
+    "terms_hash": "da88200684b10edda5c5b94fc8af70003ad1ccc10dad95f62e3445d4f1cfb083"
+  },
+  {
+    "id": "出演-蓮-accept-紗季",
+    "actor": "紗季",
+    "at": 490,
+    "verb": "accept",
+    "promise_id": "出演-蓮",
+    "version": 1,
+    "terms_hash": "da88200684b10edda5c5b94fc8af70003ad1ccc10dad95f62e3445d4f1cfb083"
+  },
+  {
+    "id": "進行-紗季-offer",
+    "actor": "紗季",
+    "at": 492,
+    "verb": "offer",
+    "terms": {
+      "promise_id": "進行-紗季",
+      "version": 1,
+      "proposer": "紗季",
+      "promisor": "紗季",
+      "beneficiary": "悠",
+      "acceptance_parties": [
+        "紗季",
+        "悠"
+      ],
+      "place": "体育館",
+      "start": 900,
+      "deadline": 915,
+      "grace_until": null,
+      "requirements": [
+        {
+          "task_id": "stage-saki",
+          "units": 1,
+          "contribution_by": "紗季"
+        }
+      ]
+    }
+  },
+  {
+    "id": "進行-紗季-accept-紗季",
+    "actor": "紗季",
+    "at": 494,
+    "verb": "accept",
+    "promise_id": "進行-紗季",
+    "version": 1,
+    "terms_hash": "9e6b36775f5c154aef6258fe75fd346ecd1249c0a2aa0e202292f1d6c076752c"
+  },
+  {
+    "id": "進行-紗季-accept-悠",
+    "actor": "悠",
+    "at": 496,
+    "verb": "accept",
+    "promise_id": "進行-紗季",
+    "version": 1,
+    "terms_hash": "9e6b36775f5c154aef6258fe75fd346ecd1249c0a2aa0e202292f1d6c076752c"
+  },
+  {
+    "id": "展示-写真-offer",
+    "actor": "蒼",
+    "at": 498,
+    "verb": "offer",
+    "terms": {
+      "promise_id": "展示-写真",
+      "version": 1,
+      "proposer": "蒼",
+      "promisor": "蒼",
+      "beneficiary": "灯",
+      "acceptance_parties": [
+        "蒼",
+        "灯"
+      ],
+      "place": "展示室",
+      "start": 525,
+      "deadline": 840,
+      "grace_until": null,
+      "requirements": [
+        {
+          "task_id": "photo-handoff",
+          "units": 1,
+          "contribution_by": "蒼",
+          "delivered_to": "灯"
+        }
+      ]
+    }
+  },
+  {
+    "id": "展示-写真-accept-蒼",
+    "actor": "蒼",
+    "at": 500,
+    "verb": "accept",
+    "promise_id": "展示-写真",
+    "version": 1,
+    "terms_hash": "64baee0bd667b97a33e2a7ce40aa24ead8ce73fad86af05f6d89075a0ab063fb"
+  },
+  {
+    "id": "展示-写真-accept-灯",
+    "actor": "灯",
+    "at": 502,
+    "verb": "accept",
+    "promise_id": "展示-写真",
+    "version": 1,
+    "terms_hash": "64baee0bd667b97a33e2a7ce40aa24ead8ce73fad86af05f6d89075a0ab063fb"
+  }
+]

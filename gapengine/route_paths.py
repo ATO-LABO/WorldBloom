@@ -26,6 +26,10 @@ written to.
 
 from __future__ import annotations
 
+from engine.economy import purchasable
+from engine.income import labor_plan, advance_labor_stock, quantity_asset, needed_quantity
+from engine.phase2 import trial_options
+
 import math
 import yaml
 from pathlib import Path
@@ -385,21 +389,7 @@ def _enumerate_routes(
 
 
 def _needed_qty(item: str, best_kinds: dict[str, set], world: World) -> int:
-    consumers = [
-        world.recipes[product][item]
-        for product in best_kinds.get("has_item", ())
-        if product in world.recipes and item in world.recipes[product]
-    ]
-    # Phase B: a priced (buy) item's currency is a "consumer" the same way a
-    # recipe's material is -- e.g. 街 labor must gather all 3 小判 a 鉄砲
-    # costs, not just 1.
-    consumers += [
-        int(world.items[product]["price"][item])
-        for product in best_kinds.get("has_item", ())
-        if world.items.get(product, {}).get("price")
-        and item in world.items[product]["price"]
-    ]
-    return max(consumers, default=1)
+    return needed_quantity(item, best_kinds, world)
 
 
 def _fight_rounds(subject: Subject, holder: Subject, world: World) -> float:
@@ -470,18 +460,27 @@ def _apply_has_item_leaf(
 
     price = definition.get("price")
     shop_zone = definition.get("shop_zone")
-    if price and shop_zone:
-        for currency, qty in sorted(price.items()):
+    if purchasable(definition,world.mechanics_enabled('budgeted_purchases')):
+        for currency, qty in sorted((price or {}).items()) if world.mechanics_enabled('budgeted_purchases') else []:
             subject.remove_item(currency, int(qty))
         subject.add_item(item, 1)
         return {"kind": "buy", "text": f"{shop_zone}で{item}を買う", "cost": 1.0}
 
     for source in definition.get("sources", []) or []:
+        if source.get('type') == 'labor' and not world.action_enabled('labor'):
+            continue
         if source.get("type") in ("investigate", "labor") and source.get("zone") == subject.zone:
             needed = _needed_qty(item, best_kinds, world)
             deficit = max(1, needed - subject.inventory.get(item, 0))
             per_action = max(1, int(source.get("count", 1) or 1))
             actions = math.ceil(deficit / per_action)
+            if source.get("type") == "labor":
+                actions = labor_plan(item, definition, subject, subject.zone, deficit)
+                if actions is None:
+                    continue
+                advance_labor_stock(subject, world, actions)
+                label = f"{subject.zone}で働いて{item}を得る" + (f" ×{actions}" if actions > 1 else "")
+                return {"kind": "labor", "text": label, "cost": float(actions), "count": actions}
             subject.add_item(item, deficit)
             verb_label = "働く" if source.get("type") == "labor" else "調べる"
             label = f"{subject.zone}で{item}を{verb_label}" + (f" ×{actions}" if actions > 1 else "")
@@ -489,21 +488,42 @@ def _apply_has_item_leaf(
             return {"kind": kind, "text": label, "cost": float(actions), "count": actions}
 
     trial = next(
-        (t for t in world.trials if (t.get("grants") or {}).get("item") == item), None
+        (t for t in trial_options(world, subject) if (t.get("grants") or {}).get("item") == item
+         and t.get("item_amount", 1) >= max(1, _needed_qty(item, best_kinds, world) - subject.inventory.get(item, 0))), None
     )
     if trial is not None:
         giver_id = str(trial.get("giver", ""))
-        subject.add_item(item, 1)
+        amount = trial.get("item_amount", 1)
+        if trial.get("transfer_item"):
+            world.subjects[giver_id].remove_item(item, amount)
+        subject.add_item(item, amount)
+        subject.phase.add(f"trial:{trial['id']}")
         return {"kind": "trial", "text": f"{giver_id}から{item}を受け取る（試練）", "cost": 1.0}
 
     holder_id = world.holder(item)
     if holder_id is not None and holder_id in world.subjects:
         holder = world.subjects[holder_id]
+        quantity = 1
+        if quantity_asset(world, item):
+            deficit = max(1, _needed_qty(item, best_kinds, world) - subject.inventory.get(item, 0))
+            present = {person.id for person in world.present_subjects(subject.zone, include_downed=False)}
+            permitted = (holder_id in best_kinds.get("win_fight", ()) and holder_id != subject.id
+                         and holder_id in present and "fight" in subject.verbs
+                         and world.action_enabled("fight")
+                         and world.permission("fight", world.target_role(subject, holder)) >= 1.0
+                         and definition.get("lootable", False) and not definition.get("vehicle", False)
+                         and holder.has_item(item, deficit))
+            if not permitted:
+                return {"kind": "unavailable", "text": f"{item}の入手条件を満たしていません", "cost": INF}
+            quantity = holder.inventory[item]
         rounds = _fight_rounds(subject, holder, world)
         cost = 1.0 if rounds == INF else rounds
-        holder.remove_item(item, 1)
-        subject.add_item(item, 1)
+        holder.remove_item(item, quantity)
+        subject.add_item(item, quantity)
         return {"kind": "fight", "text": f"{holder_id}から{item}を奪う", "cost": cost}
+
+    if quantity_asset(world, item):
+        return {"kind": "unavailable", "text": f"{item}の入手条件を満たしていません", "cost": INF}
 
     # Should not happen once _leaf_tags has already gated this item as
     # actionable -- a defensive, still-costed fallback rather than a crash.
@@ -643,7 +663,7 @@ def walk(
         if leaves:
             best_choice: tuple[float, tuple[str, Any], list] | None = None
             for tag in leaves:
-                zone = _leaf_zone(tag, world)
+                zone = _leaf_zone(tag, world, subject, _needed_qty(str(tag[1]), best_kinds, world))
                 if zone is None or zone == subject.zone:
                     distance = 0
                     path = []
@@ -658,7 +678,7 @@ def walk(
             if best_choice is not None:
                 distance, tag, path = best_choice
                 if distance > 0:
-                    hop = _hop_toward(subject, world, _leaf_zone(tag, world))
+                    hop = _hop_toward(subject, world, _leaf_zone(tag, world, subject, _needed_qty(str(tag[1]), best_kinds, world)))
                     if hop is not None:
                         action = {"kind": "move", "zone": hop["zone"], "text": f"{hop['zone']}へ移動", "cost": hop["cost"]}
                 else:

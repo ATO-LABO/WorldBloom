@@ -2,19 +2,28 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 import yaml
 
 from engine.actions import Action
 from engine.log import LayersWriter
 from engine.sim import Simulation
 from engine.world import World
-from scripts.cultural_festival_probe import PROJECT, input_manifest, load
+from execution.configs import ConfigStore
+from execution.provenance import ConfigError
+from festival_fixture import load_frozen_festival
+from saved_world_fixtures import current_world_yaml
+from scripts.cultural_festival_probe import PROJECT, ROOT, input_manifest
 from scripts.cultural_festival_trial import FestivalPolicy, run_trial
 
 
 class SlotRuntimeTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch('scripts.cultural_festival_trial.load', load_frozen_festival))
+
     def test_pattern0_native_events_knowledge_and_replay(self):
         before = input_manifest()
         with tempfile.TemporaryDirectory() as tmp:
@@ -60,7 +69,7 @@ class SlotRuntimeTests(unittest.TestCase):
         self.assertEqual(before, input_manifest())
 
     def test_remote_delivery_waits_for_completion_and_is_private(self):
-        world, people = load()
+        world, people = load_frozen_festival()
         sim = Simulation(0, world, people, Path('/tmp/unused'))
         runtime = sim.slot_runtime
         with tempfile.TemporaryDirectory() as tmp, LayersWriter(Path(tmp) / 'layers.jsonl') as writer:
@@ -81,7 +90,7 @@ class SlotRuntimeTests(unittest.TestCase):
             PLANS = deepcopy(FestivalPolicy.PLANS)
             PLANS['蒼']['13:30'] = ('exhibit_help', ())
             PLANS['蒼']['14:00'] = ('exhibit_help', ())
-        world, people = load()
+        world, people = load_frozen_festival()
         with tempfile.TemporaryDirectory() as tmp:
             sim = Simulation(0, world, people, Path(tmp),
                 policies={name: BoundaryPolicy(world.slots) for name in people})
@@ -93,7 +102,7 @@ class SlotRuntimeTests(unittest.TestCase):
             self.assertEqual(arrivals[0], {'slot': '15:30', 'zone': '体育館'})
 
     def test_candidates_adjacent_closed_gate_and_known_request_only(self):
-        world, people = load()
+        world, people = load_frozen_festival()
         sim = Simulation(0, world, people, Path('/tmp/unused'))
         runtime = sim.slot_runtime
         self.assertFalse(any(a.verb == 'move' for a, _ in runtime.candidates(people['蒼'])))
@@ -109,7 +118,7 @@ class SlotRuntimeTests(unittest.TestCase):
         class DeclinePolicy(FestivalPolicy):
             PLANS = deepcopy(FestivalPolicy.PLANS)
             PLANS['蒼']['14:30'] = ('dialogue', ('紗季', '出演', 'decline', 'room'))
-        world, people = load()
+        world, people = load_frozen_festival()
         with tempfile.TemporaryDirectory() as tmp:
             sim = Simulation(0, world, people, Path(tmp),
                 policies={name: DeclinePolicy(world.slots) for name in people})
@@ -129,8 +138,24 @@ class SlotRuntimeTests(unittest.TestCase):
             mutate(invalid)
             with self.assertRaises(ValueError):
                 World(invalid, PROJECT / 'world.yaml')
-        world, people = load(legacy=True)
+        world, people = load_frozen_festival(legacy=True)
         self.assertIsNone(Simulation(0, world, people, Path('/tmp/unused')).slot_runtime)
+
+    def test_studio_rejects_serialized_slot_mode(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            repo = base / 'repo'
+            project = repo / 'projects/festival'
+            shutil.copytree(PROJECT, project)
+            shutil.copytree(ROOT / 'templates/momotaro', repo / 'templates/momotaro')
+            world = project / 'world.yaml'
+            world.write_bytes(current_world_yaml(yaml.safe_load(world.read_bytes())).encode('utf-8'))
+            with self.assertRaisesRegex(ValueError, '実行方式'):
+                World.from_yaml(world)
+            store = ConfigStore(repo, base / 'control', base / 'runs')
+            with self.assertRaises(ConfigError) as caught:
+                store.preview({'label': 'Slot mode', 'project_id': 'festival', 'template_id': 'momotaro'})
+            self.assertEqual(caught.exception.code, 'unsupported')
 
 
 if __name__ == '__main__':

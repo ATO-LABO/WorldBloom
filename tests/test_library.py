@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import yaml
 
+from saved_world_fixtures import current_world_yaml, install_current_worlds
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution.library import MAX_ZIP_ENTRIES, MAX_ZIP_TOTAL, LibraryStore, zip_to_files
@@ -47,6 +48,7 @@ class LibraryStoreTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
+        install_current_worlds(self.repo, "momotaro", "momotaro_plus3")
         self.store = LibraryStore(self.repo)
         self.configs = ConfigStore(self.repo, Path(self.temp.name) / "control", Path(self.temp.name) / "runs")
 
@@ -178,6 +180,7 @@ class ZipImportTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
+        install_current_worlds(self.repo, "momotaro", "momotaro_plus3")
         self.store = LibraryStore(self.repo)
         self.configs = ConfigStore(self.repo, Path(self.temp.name) / "control", Path(self.temp.name) / "runs")
 
@@ -302,19 +305,19 @@ class ZipImportTests(unittest.TestCase):
 
     def _momotaro_files(self):
         base = ROOT / "projects/momotaro"
-        files = {"world.yaml": (base / "world.yaml").read_text(encoding="utf-8")}
+        files = {"world.yaml": current_world_yaml(yaml.safe_load((base / "world.yaml").read_bytes()))}
         for path in sorted((base / "subjects").glob("*.yaml")):
             files[f"subjects/{path.name}"] = path.read_text(encoding="utf-8")
         return files
 
     def test_import_world_uses_zip_name_when_form_name_is_blank(self):
-        files = {"world.yaml": "name: ZIPの名前\noverview: x"}
+        files = {"world.yaml": current_world_yaml({"name": "ZIPの名前", "overview": "x"})}
         self.store.import_world("imported1", files=files, name="")
         world = yaml.safe_load((self.repo / "projects/imported1/world.yaml").read_text(encoding="utf-8"))
         self.assertEqual(world["name"], "ZIPの名前")
 
     def test_import_world_form_name_overrides_zip_name(self):
-        files = {"world.yaml": "name: ZIPの名前"}
+        files = {"world.yaml": current_world_yaml({"name": "ZIPの名前"})}
         self.store.import_world("imported2", files=files, name="フォームの名前")
         world = yaml.safe_load((self.repo / "projects/imported2/world.yaml").read_text(encoding="utf-8"))
         self.assertEqual(world["name"], "フォームの名前")
@@ -326,24 +329,22 @@ class ZipImportTests(unittest.TestCase):
         self.assertIn("name", ctx.exception.field_errors)
         self.assertFalse((self.repo / "projects/imported3").exists())
 
-    def test_import_world_without_gapengine_leaves_genre_unset(self):
-        files = {"world.yaml": "name: x"}
-        self.store.import_world("imported4", files=files, name="")
-        world = yaml.safe_load((self.repo / "projects/imported4/world.yaml").read_text(encoding="utf-8"))
-        self.assertNotIn("gapengine", world)
-        genres = {w["id"]: w["genre"] for w in self.store.worlds()}
-        self.assertIsNone(genres["imported4"])
+    def test_import_world_rejects_current_world_without_rule_references(self):
+        for value in (None, {}):
+            with self.subTest(value=value):
+                files = {"world.yaml": current_world_yaml({"name": "x", "gapengine": value})}
+                with self.assertRaises(ConfigError) as error:
+                    self.store.import_world("no-rules", files=files, name="")
+                self.assertIn("zip_base64" if value == {} else "world_format_version", error.exception.field_errors)
+                self.assertFalse((self.repo / "projects/no-rules").exists())
 
-    def test_import_world_with_null_gapengine_does_not_persist_a_literal_null(self):
-        files = {"world.yaml": "name: x\ngapengine: null\n"}
-        self.store.import_world("imported4b", files=files, name="")
-        raw = (self.repo / "projects/imported4b/world.yaml").read_text(encoding="utf-8")
-        self.assertNotIn("gapengine", raw)
-        world = yaml.safe_load(raw)
-        self.assertNotIn("gapengine", world)
+    def test_import_world_rejects_legacy_world(self):
+        with self.assertRaisesRegex(ConfigError, "旧世界形式"):
+            self.store.import_world("old-world", files={"world.yaml": "name: x"}, name="")
+        self.assertFalse((self.repo / "projects/old-world").exists())
 
     def test_import_world_with_valid_gapengine_is_kept(self):
-        files = {"world.yaml": "name: x\ngapengine:\n  action_graph: templates/momotaro/action_graph.yaml\n  effects: templates/momotaro/effects.yaml\n"}
+        files = {"world.yaml": current_world_yaml({"name": "x"})}
         self.store.import_world("imported5", files=files, name="")
         world = yaml.safe_load((self.repo / "projects/imported5/world.yaml").read_text(encoding="utf-8"))
         self.assertEqual(world["gapengine"], {"action_graph": "templates/momotaro/action_graph.yaml",
@@ -399,7 +400,7 @@ class ZipImportTests(unittest.TestCase):
         # CRLF source ("\r\n") into "\r\r\n" -- a blank line inside every
         # folded/literal YAML block scalar. subjects/ must go through
         # write_bytes() instead, so a CRLF-authored file round-trips exactly.
-        files = {"world.yaml": "name: x", "subjects/01_a.yaml": "id: a\r\ndescription: |\r\n  line one\r\n  line two\r\n"}
+        files = {"world.yaml": current_world_yaml({"name": "x"}), "subjects/01_a.yaml": "id: a\r\ndescription: |\r\n  line one\r\n  line two\r\n"}
         self.store.import_world("imported-crlf", files=files, name="")
         written = (self.repo / "projects/imported-crlf/subjects/01_a.yaml").read_bytes()
         self.assertEqual(written, files["subjects/01_a.yaml"].encode("utf-8"))
@@ -427,6 +428,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
+        install_current_worlds(self.repo, "momotaro", "momotaro_plus3")
         self.control = self.base / "control"
         self.runs = self.base / "runs"
         self.runs.mkdir()
@@ -448,7 +450,7 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.addCleanup(self.server.shutdown)
 
     def http(self, method, path, body, *, client_header=True):
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=30)
         headers = {"Content-Type": "application/json"}
         if client_header:
             headers["X-WorldBloom-Client"] = "1"
@@ -489,36 +491,38 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         status, body = self.get("/worlds")
         self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertIn('role="tablist" aria-label="ライブラリー"', body)
-        self.assertIn('id="genres"', body)
+        self.assertNotIn('data-home-tab="genres"', body)
+        self.assertNotIn('data-home-tab="genres"', body)
         self.assertIn('href="/worlds/new"', body)
-        self.assertIn('href="/genres/new"', body)
+        self.assertNotIn('href="/genres/new"', body)
         self.assertIn('class="world-card"', body)
 
-    def test_home_is_worlds_hub(self):
+    def test_home_selects_purpose_before_worlds_hub(self):
         status, body = self.get("/")
         self.assertEqual(status, 200, body)
+        self.assertIn('href="/worlds?mode=create"', body)
+        self.assertIn('href="/worlds?mode=review"', body)
+        self.assertNotIn('class="world-card"', body)
+        status, body = self.get("/worlds?mode=create")
+        self.assertEqual(status, 200, body)
         self.assertIn("桃太郎", body)
-        self.assertIn('role="tablist" aria-label="ライブラリー"', body)
-        self.assertIn('id="genres"', body)
+        self.assertNotIn('data-home-tab="genres"', body)
+        self.assertNotIn('data-home-tab="genres"', body)
         self.assertIn('href="/worlds/new"', body)
-        self.assertIn('href="/genres/new"', body)
+        self.assertNotIn('href="/genres/new"', body)
         self.assertIn('class="world-card"', body)
         # The lead names the engine/genre/world layering; the genre tab's own
         # lead explains what a genre is, once, without a redundant <h2>.
         self.assertIn("世界を開いて、人物や場所、物語の始まりを確かめましょう", body)
-        self.assertIn("ジャンルは、行動とその結果を決める共通のルール", body)
+        self.assertNotIn('data-home-tab="genres"', body)
         self.assertEqual(body.count("<h2>ジャンル</h2>"), 0)
 
-    def test_genres_live_on_settings_page(self):
-        # ⚙ 設定 (/configs) remains the genre editing surface; WB-UI-023
-        # additionally surfaces a read/browse copy on the home hub's ジャンル
-        # tab (test_home_is_worlds_hub), so this only pins /configs itself.
+    def test_genres_are_absent_from_global_settings(self):
         status, body = self.get("/configs")
         self.assertEqual(status, 200, body)
-        self.assertIn('id="genres"', body)
-        self.assertIn('href="/genres/new"', body)
-        self.assertIn('href="/genres/momotaro"', body)
+        self.assertNotIn('data-home-tab="genres"', body)
+        self.assertNotIn('href="/genres/new"', body)
+        self.assertNotIn('data-gs-tab="genres"', body)
 
     def test_world_detail_page(self):
         status, body = self.get("/worlds/momotaro?view=advanced")
@@ -529,11 +533,12 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn('data-advanced-save', body)
         self.assertIn('href="/worlds/momotaro"', body)
 
-    def test_world_detail_page_has_four_sections(self):
+    def test_world_detail_page_links_file_settings_from_shared_navigation(self):
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        for section in ('roles','canon','actions','files'):
+        for section in ('roles','canon','actions'):
             self.assertIn(f'data-advanced-section="{section}"',body)
+        self.assertIn('href="/worlds/momotaro?view=advanced#files" data-settings-category="files"', body)
         self.assertNotIn('class="tab-input"',body)
 
     def test_world_detail_action_catalog(self):
@@ -548,14 +553,13 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
         self.assertIn("<dl class=\"world-summary\">", body)
 
     def test_world_detail_overview_intro(self):
-        # WB-UI-024: the 概要 tab leads with a one-sentence auto-generated
-        # introduction, not just a bare metadata line.
+        # The advanced view uses the saved world's settings and navigation.
         status, body = self.get("/worlds/momotaro?view=advanced")
         self.assertEqual(status, 200, body)
-        self.assertIn('世界の詳細設定', body)
-        self.assertIn('href="/worlds/momotaro"', body)
+        self.assertIn('data-world-advanced', body)
+        self.assertIn('href="/worlds/momotaro#screen=overview"', body)
         self.assertIn('&quot;days&quot;: 16', body)
-        self.assertIn('href="/genres/momotaro"', body)
+        self.assertNotIn('data-gs-tab="genres"', body)
 
     def test_world_detail_page_has_canon_and_readout(self):
         # WB-EXPLAIN-canon: the 初期物語 tab surfaces the canon precedent
@@ -584,13 +588,14 @@ class LibraryHttpBoundaryTests(unittest.TestCase):
     def test_new_forms(self):
         status, body = self.get("/worlds/new?from=momotaro&genre=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-world-create', body)
-        self.assertIn('name="mode" value="copy" checked', body)
-        self.assertIn('<option value="momotaro" selected>', body)
+        self.assertIn('data-creation-workflow', body)
+        self.assertIn('data-cw-screen="world-import"', body)
+        self.assertIn('data-cw-source value="momotaro"', body)
+        self.assertIn('value="momotaro" data-cw-world-option checked', body)
 
         status, body = self.get("/genres/new?from=momotaro")
         self.assertEqual(status, 200, body)
-        self.assertIn('data-genre-new', body)
+        self.assertNotIn('data-genre-new', body)
 
     def test_unknown_world_is_404(self):
         status, body = self.get("/worlds/no-such-world")
@@ -765,7 +770,7 @@ class LibraryGuidanceTests(unittest.TestCase):
         self.assertNotIn('href="/worlds/new"', body)
 
     def test_world_detail_without_control_is_read_only(self):
-        status, body = self.get("/worlds/momotaro?view=advanced")
+        status, body = self.get("/worlds/momotaro_plus3_new?view=advanced")
         self.assertEqual(status, 200, body)
         self.assertIn('data-world-advanced', body)
         self.assertNotIn('data-action="save-file"', body)

@@ -1,0 +1,517 @@
+{
+  "name": "メロス：婚礼・増水・帰還を共通計画で扱う",
+  "overview": "出発と人質の約束は初期背景。婚礼を済ませ、増水による経路の変化と疲労に対処し、帰還の証拠を示して王の判断を求める。",
+  "initial_story": "メロスは妹の婚礼を済ませて期限までに戻ると約束した。友は王宮で待っている。王は帰還の証拠を確かめてから判断する。",
+  "time": {
+    "days": 3,
+    "slots": [
+      "00:00",
+      "01:30",
+      "03:00",
+      "04:30",
+      "06:00",
+      "07:30",
+      "09:00",
+      "10:30",
+      "12:00",
+      "13:30",
+      "15:00",
+      "16:30",
+      "18:00",
+      "19:30",
+      "21:00",
+      "22:30"
+    ]
+  },
+  "protagonist": "メロス",
+  "antagonist": "王",
+  "zones": [
+    {
+      "name": "王宮"
+    },
+    {
+      "name": "峠"
+    },
+    {
+      "name": "西岸"
+    },
+    {
+      "name": "東岸"
+    },
+    {
+      "name": "村"
+    },
+    {
+      "name": "泉"
+    }
+  ],
+  "routes": {
+    "王宮": [
+      {
+        "to": "峠",
+        "cost": 1
+      }
+    ],
+    "峠": [
+      {
+        "to": "王宮",
+        "cost": 1
+      },
+      {
+        "to": "西岸",
+        "cost": 1
+      },
+      {
+        "to": "泉",
+        "cost": 1
+      }
+    ],
+    "西岸": [
+      {
+        "to": "峠",
+        "cost": 1
+      },
+      {
+        "to": "東岸",
+        "cost": 1,
+        "requires_conditions": [
+          "bridge_open"
+        ]
+      }
+    ],
+    "東岸": [
+      {
+        "to": "村",
+        "cost": 1
+      },
+      {
+        "to": "西岸",
+        "cost": 1,
+        "requires_conditions": [
+          "bridge_open"
+        ]
+      },
+      {
+        "to": "泉",
+        "cost": 2,
+        "requires_conditions": [
+          "crossing_ready"
+        ]
+      }
+    ],
+    "村": [
+      {
+        "to": "東岸",
+        "cost": 1
+      }
+    ],
+    "泉": [
+      {
+        "to": "峠",
+        "cost": 1
+      },
+      {
+        "to": "東岸",
+        "cost": 2,
+        "requires_conditions": [
+          "crossing_ready"
+        ]
+      }
+    ]
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "items": [],
+  "facts": [
+    {
+      "id": "帰還の証拠",
+      "sources": []
+    }
+  ],
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "friend_saved",
+        "label": "友を救う判断を受ける",
+        "test": {
+          "kind": "state",
+          "key": "裁定",
+          "equals": "赦免"
+        },
+        "visibility": "public",
+        "mode": "achieve"
+      },
+      {
+        "id": "wedding_done",
+        "label": "妹の婚礼を済ませる",
+        "test": {
+          "kind": "state",
+          "key": "婚礼",
+          "equals": "完了"
+        },
+        "visibility": "observed",
+        "mode": "achieve"
+      },
+      {
+        "id": "bridge_open",
+        "label": "橋を通れる",
+        "test": {
+          "kind": "state",
+          "key": "橋",
+          "equals": "健在"
+        },
+        "visibility": "observed",
+        "mode": "achieve"
+      },
+      {
+        "id": "crossing_ready",
+        "label": "代わりの渡河手段がある",
+        "test": {
+          "kind": "state",
+          "key": "渡河手段",
+          "equals": "準備済み"
+        },
+        "visibility": "observed",
+        "mode": "achieve"
+      },
+      {
+        "id": "return_proven",
+        "label": "帰還の証拠を持つ",
+        "test": {
+          "kind": "knowledge",
+          "fact": "帰還の証拠",
+          "actors": [
+            "メロス"
+          ],
+          "rule": "all"
+        },
+        "visibility": "observed",
+        "mode": "achieve"
+      },
+      {
+        "id": "judgment_denied",
+        "label": "王が赦免を拒んだ",
+        "test": {
+          "kind": "state",
+          "key": "裁定",
+          "equals": "拒否"
+        },
+        "visibility": "public",
+        "mode": "achieve"
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "friend_saved",
+        "success": {
+          "all": [
+            {
+              "condition": "wedding_done"
+            },
+            {
+              "condition": "friend_saved"
+            }
+          ]
+        },
+        "failure": {
+          "condition": "judgment_denied"
+        },
+        "period": {
+          "start": 1,
+          "end": 44
+        }
+      }
+    ]
+  },
+  "responses": {
+    "version": 2,
+    "state": {
+      "婚礼": "未了",
+      "橋": "健在",
+      "渡河手段": "未準備"
+    },
+    "locations": {
+      "婚礼": [
+        "村",
+        "王宮"
+      ],
+      "橋": [
+        "西岸",
+        "東岸"
+      ],
+      "渡河手段": [
+        "東岸",
+        "西岸"
+      ]
+    },
+    "signals": [],
+    "channels": [],
+    "windows": [],
+    "actions": [
+      {
+        "id": "wedding",
+        "label": "妹と婿の婚礼の支度を済ませる",
+        "condition": "wedding_done",
+        "signal": null,
+        "zone": "村",
+        "actors": [
+          "メロス"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "婚礼": "未了"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "婚礼",
+            "value": "完了"
+          }
+        ]
+      },
+      {
+        "id": "prepare_crossing",
+        "label": "流れを調べて渡河の準備をする",
+        "condition": "crossing_ready",
+        "signal": null,
+        "zone": "東岸",
+        "actors": [
+          "メロス"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 2,
+        "steps": 2,
+        "preconditions": {
+          "橋": "流失"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "渡河手段",
+            "value": "準備済み"
+          }
+        ]
+      },
+      {
+        "id": "report_return",
+        "label": "婚礼を済ませた帰還を記録する",
+        "condition": "return_proven",
+        "signal": null,
+        "zone": "王宮",
+        "actors": [
+          "メロス"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 0,
+        "steps": 1,
+        "preconditions": {
+          "婚礼": "完了"
+        },
+        "effects": [
+          {
+            "kind": "knowledge",
+            "actor": "メロス",
+            "fact": "帰還の証拠",
+            "value": true
+          }
+        ]
+      }
+    ],
+    "events": [
+      {
+        "id": "river_rises",
+        "turn": 8,
+        "unless": {},
+        "effects": [
+          {
+            "kind": "state",
+            "key": "橋",
+            "value": "流失"
+          }
+        ]
+      }
+    ]
+  },
+  "planning": {
+    "version": 1,
+    "actors": [
+      "メロス"
+    ],
+    "max_depth": 20,
+    "max_nodes": 4096
+  },
+  "action_timing": {
+    "version": 1,
+    "rules": [
+      {
+        "verb": "move",
+        "duration": 1,
+        "interruptible": false
+      },
+      {
+        "verb": "respond",
+        "duration": "work_steps",
+        "interruptible": true
+      },
+      {
+        "verb": "rest",
+        "duration": 1,
+        "interruptible": true
+      },
+      {
+        "verb": "submit_proposal",
+        "duration": 1,
+        "interruptible": false
+      },
+      {
+        "verb": "present_proposal",
+        "duration": 1,
+        "interruptible": false
+      },
+      {
+        "verb": "review_proposal",
+        "duration": 1,
+        "interruptible": false
+      },
+      {
+        "verb": "amend_proposal",
+        "duration": 1,
+        "interruptible": false
+      },
+      {
+        "verb": "request_decision",
+        "duration": 1,
+        "interruptible": false
+      },
+      {
+        "verb": "decide_proposal",
+        "duration": 1,
+        "interruptible": false
+      },
+      {
+        "verb": "await_response",
+        "duration": "protocol_steps",
+        "interruptible": false
+      },
+      {
+        "verb": "share_knowledge",
+        "duration": 1,
+        "interruptible": false
+      }
+    ]
+  },
+  "social_planning": {
+    "version": 1,
+    "proposals": [
+      {
+        "proposal": "return_review",
+        "requires": [
+          "wedding_done",
+          "return_proven"
+        ],
+        "reopen": false
+      }
+    ],
+    "requests": []
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 48",
+      "label": "共通実行の観測終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": [],
+  "deliberation": {
+    "version": 1,
+    "state": {
+      "裁定": "未判断"
+    },
+    "proposals": [
+      {
+        "id": "return_review",
+        "title": "約束の履行と友の赦免",
+        "place": "王宮",
+        "proposer": "メロス",
+        "authority": "王",
+        "reviewers": [
+          "王"
+        ],
+        "required_support": [
+          "王"
+        ],
+        "quorum": 1,
+        "alternatives": [
+          {
+            "id": "kept",
+            "label": "帰還の確認を求める",
+            "terms": {
+              "約束": "履行"
+            },
+            "statement": "婚礼を済ませ、約束の期限までに戻った。友の赦免を求める。"
+          }
+        ],
+        "initial": "kept",
+        "profiles": {
+          "メロス": {
+            "weights": {
+              "約束": {
+                "履行": 10
+              }
+            },
+            "minimum": 1,
+            "constraints": {},
+            "requires": [],
+            "support_line": "約束の履行を認める。",
+            "oppose_line": "約束の履行を認められない。",
+            "unknown_line": "帰還の証拠がまだ足りない。"
+          },
+          "王": {
+            "weights": {
+              "約束": {
+                "履行": 10
+              }
+            },
+            "minimum": 1,
+            "constraints": {},
+            "requires": [
+              "帰還の証拠"
+            ],
+            "support_line": "約束の履行を認める。",
+            "oppose_line": "約束の履行を認められない。",
+            "unknown_line": "帰還の証拠がまだ足りない。"
+          }
+        },
+        "outcomes": {
+          "approved": {
+            "裁定": "赦免"
+          },
+          "rejected": {
+            "裁定": "拒否"
+          },
+          "deferred": {
+            "裁定": "保留"
+          }
+        },
+        "decision_lines": {
+          "approved": "帰還の証拠を確認した。友を赦免する。",
+          "rejected": "要求を認めない。",
+          "deferred": "証拠が足りないため保留する。"
+        },
+        "requires_state": {},
+        "request_line": "証拠を踏まえた判断を求める。"
+      }
+    ]
+  }
+}

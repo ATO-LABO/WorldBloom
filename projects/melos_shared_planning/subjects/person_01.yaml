@@ -1,0 +1,58 @@
+{
+  "id": "メロス",
+  "description": "メロス",
+  "personality": "自分の条件をもとに判断する",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "王宮",
+      "峠",
+      "西岸",
+      "東岸",
+      "村",
+      "泉"
+    ],
+    "entry": "王宮"
+  },
+  "verbs": [
+    "move",
+    "respond",
+    "rest",
+    "submit_proposal",
+    "present_proposal",
+    "review_proposal",
+    "amend_proposal",
+    "request_decision",
+    "decide_proposal",
+    "await_response",
+    "share_knowledge"
+  ],
+  "beliefs": {
+    "bridge_open": {
+      "value": "true",
+      "confidence": 1
+    }
+  },
+  "knowledge": [],
+  "inventory": {},
+  "goal": {},
+  "stamina": {
+    "max": 10,
+    "current": 10,
+    "recover_per_slot": 3
+  },
+  "commitments": [
+    {
+      "condition": "friend_saved",
+      "priority": 10,
+      "required": false
+    }
+  ]
+}

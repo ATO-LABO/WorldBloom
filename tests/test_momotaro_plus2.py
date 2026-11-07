@@ -29,6 +29,7 @@ from engine.actions import Action, candidates
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.verbs import VerbEngine
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.genome import Genome
 from gapengine.knowledge_text import (
@@ -44,7 +45,7 @@ TEMPLATE = ROOT / "templates" / "momotaro_plus2"
 
 
 def load_fixture() -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(
+    world = load_frozen_world(
         PROJECT / "world.yaml",
         action_graph_path=TEMPLATE / "action_graph.yaml",
     )
@@ -79,7 +80,7 @@ class WorldLoadTests(unittest.TestCase):
         # identical test).
         import yaml
 
-        world = World.from_yaml(
+        world = load_frozen_world(
             PROJECT / "world.yaml",
             action_graph_path=TEMPLATE / "action_graph.yaml",
         )

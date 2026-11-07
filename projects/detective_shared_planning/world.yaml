@@ -1,0 +1,272 @@
+name: 白椿館の密室（既存物語・共通計画版）
+time:
+  days: 8
+  slots:
+  - 朝
+  - 昼
+  - 夕方
+  - 夜
+protagonist: 探偵
+antagonist: 容疑者甲
+zones:
+- name: 玄関広間
+  note: 来客が集まり、各室へ通じる捜査の起点
+- name: 書斎
+  note: 被害者が発見され、赤い糸屑と蝋が残された現場
+- name: 食堂
+  note: 容疑者と証人が事件前に顔を合わせた部屋
+- name: 温室
+  note: 雨に濡れた足跡が残るガラス張りの庭
+- name: 客室
+  note: 証言と時刻表を照合して事件を再構成する部屋
+routes:
+  玄関広間:
+  - to: 書斎
+  - to: 食堂
+  - to: 温室
+  書斎:
+  - to: 玄関広間
+  - to: 客室
+  食堂:
+  - to: 玄関広間
+  - to: 客室
+  温室:
+  - to: 玄関広間
+  - to: 客室
+  客室:
+  - to: 書斎
+  - to: 食堂
+  - to: 温室
+movement:
+  action_weight: 0.6
+  hop_decay: 0.7
+  destination_weights:
+    玄関広間: 1.0
+    書斎: 1.3
+    食堂: 1.0
+    温室: 1.3
+    客室: 1.1
+stamina:
+  default_max: 10
+  default_recover_per_slot: 1.0
+  exhausted_ratio: 0.2
+companionship:
+  threshold: 0.6
+  weight: 2.0
+permission:
+  restricted_weight: 0.15
+gapengine:
+  action_graph: templates/detective/action_graph.yaml
+  effects: templates/detective/effects.yaml
+awareness_per_encounter: 0.12
+pulls:
+  gather: 1.2
+  pursue: 0.8
+  pursue_from_day: 3
+items: []
+facts:
+- id: culprit
+  label: 白椿館の事件の真犯人は{value}だ
+  values:
+  - 容疑者甲
+  - 容疑者乙
+  - 容疑者丙
+  secrecy: 0.35
+  share_min_affinity: 0.6
+  act_threshold: 0.7
+- id: weapon
+  label: 犯行に用いられた手段は{value}だ
+  values:
+  - 燭台
+  - ペーパーナイフ
+  - 彫像
+  secrecy: 0.25
+  share_min_affinity: 0.6
+- id: evidence_01_red_thread
+  label: 書斎の窓辺に一人の容疑者の上着と同じ赤い糸屑が落ちていた
+  secrecy: 0.1
+  share_min_affinity: -0.5
+  decoy: true
+  sources:
+  - type: investigate
+    zone: 書斎
+    count: 1
+  implies:
+    fact: culprit
+    value: $innocent:1
+    confidence: 0.72
+- id: evidence_02_muddy_footprint
+  label: 温室からもう一人の容疑者の靴型に似た濡れた足跡が続いていた
+  secrecy: 0.1
+  share_min_affinity: -0.5
+  decoy: true
+  sources:
+  - type: investigate
+    zone: 温室
+    count: 1
+  implies:
+    fact: culprit
+    value: $innocent:2
+    confidence: 0.72
+- id: evidence_03_weapon_trace
+  label: 傷口と現場の痕跡を照合すると犯行手段を特定できる
+  secrecy: 0.15
+  share_min_affinity: -0.5
+  sources:
+  - type: investigate
+    zone: 書斎
+    count: 1
+  implies:
+    fact: weapon
+    value: $truth
+    confidence: 0.74
+- id: evidence_04_first_alibi
+  label: 証人壱の記録は真犯人ではない一人の事件時刻を裏づける
+  secret_of: 証人壱
+  secrecy: 0.2
+  share_min_affinity: -0.5
+  sources:
+  - type: investigate
+    agent: 証人壱
+    count: 2
+  refutes:
+    fact: culprit
+    value: $innocent:1
+    confidence: 0.75
+- id: evidence_05_second_alibi
+  label: 証人弐の時計と配膳記録はもう一人の無実を裏づける
+  secret_of: 証人弐
+  secrecy: 0.2
+  share_min_affinity: -0.5
+  sources:
+  - type: investigate
+    agent: 証人弐
+    count: 2
+  refutes:
+    fact: culprit
+    value: $innocent:2
+    confidence: 0.75
+- id: evidence_06_weapon_exclusion
+  label: 客室の破片は候補となった犯行手段の一つを否定する
+  secrecy: 0.25
+  share_min_affinity: -0.5
+  sources:
+  - type: investigate
+    zone: 客室
+    count: 2
+  refutes:
+    fact: weapon
+    value: $innocent:1
+    confidence: 0.65
+truth:
+  culprit:
+    candidates:
+      容疑者甲: 1
+      容疑者乙: 1
+      容疑者丙: 1
+    known_by:
+    - $truth
+  weapon:
+    candidates:
+      燭台: 1
+      ペーパーナイフ: 1
+      彫像: 1
+    known_by: []
+default_strength_prior: 50
+contest:
+  tau: 10.0
+  epsilon: 5.0
+vitality:
+  revive_after: 4
+  ally_speedup: 1
+  revive_base_penalty: 2
+  lethal_exempt: []
+grief:
+  stress: 0.8
+  affinity_to_killer: -0.4
+ending:
+- id: shared_goal
+  when: objective_achieved('inquiry_solved')
+  label: 探偵は証拠を組み直し、白椿館の真犯人を指摘した
+target_ending:
+- shared_goal
+concerns:
+  version: 2
+  conditions:
+  - id: inquiry_solved
+    label: 証拠をもとに事件を解決する
+    mode: achieve
+    visibility: observed
+    test:
+      kind: state
+      key: native_exposed
+      equals: done
+  - id: known_person_1
+    label: 所在を知っている人物
+    mode: achieve
+    visibility: observed
+    test:
+      kind: zone
+      actor: 容疑者甲
+      equals: 書斎
+  - id: known_person_2
+    label: 所在を知っている人物
+    mode: achieve
+    visibility: observed
+    test:
+      kind: zone
+      actor: 容疑者乙
+      equals: 温室
+  - id: known_person_3
+    label: 所在を知っている人物
+    mode: achieve
+    visibility: observed
+    test:
+      kind: zone
+      actor: 容疑者丙
+      equals: 食堂
+goal_rules:
+  version: 1
+  definitions:
+  - condition: inquiry_solved
+    success:
+      condition: inquiry_solved
+    failure:
+      constant: false
+    period:
+      start: 1
+      end: 32
+responses:
+  version: 2
+  state:
+    native_exposed: pending
+  locations:
+    native_exposed: 玄関広間
+  signals: []
+  actions: []
+  channels: []
+  events: []
+  windows: []
+planning:
+  version: 1
+  actors:
+  - 探偵
+  max_depth: 24
+  max_nodes: 1024
+native_planning:
+  version: 1
+  outcomes:
+  - key: native_exposed
+    verb: confront
+    match:
+      actor: 探偵
+      fact: culprit
+      result: exposed
+    value: done
+  inquiry_facts:
+  - evidence_01_red_thread
+  - evidence_02_muddy_footprint
+  - evidence_03_weapon_trace
+  - evidence_04_first_alibi
+  - evidence_05_second_alibi
+  - evidence_06_weapon_exclusion

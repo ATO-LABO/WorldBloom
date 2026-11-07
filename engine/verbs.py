@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from engine.economy import purchasable
+
 import random
 from typing import Any, TYPE_CHECKING
 
@@ -9,6 +11,7 @@ from engine import vitality
 from engine.actions import Action, evidence_replay_order
 from engine.contest import resolve, strength
 from engine.phase2 import (
+    available_verbs,
     apply_effect,
     dedicated_plant_options,
     disguise_options,
@@ -21,13 +24,15 @@ from engine.phase2 import (
     trial_options,
 )
 from engine.subject import BeliefAbout
+from engine.deliberation import VERBS as DELIBERATION_VERBS
+from engine.responses import VERBS as RESPONSE_VERBS
 
 if TYPE_CHECKING:
     from engine.subject import Subject
     from engine.world import World
 
 
-HANDLED_VERBS = frozenset(
+HANDLED_VERBS = DELIBERATION_VERBS | RESPONSE_VERBS | frozenset(
     {
         "move",
         "rest",
@@ -43,6 +48,7 @@ HANDLED_VERBS = frozenset(
         "give_item",
         "persuade",
         "pledge",
+        "start_relationship",
         "negotiate",
         "concede",
         "craft",
@@ -59,6 +65,7 @@ HANDLED_VERBS = frozenset(
         "donate",
         "labor",
         "buy",
+        "await_response",
     }
 )
 
@@ -71,14 +78,56 @@ class VerbEngine:
         self.rng = rng
         self._ally_gained: set[tuple[str, str]] = set()
 
-    def execute(
+    def execute(self, actor, action, *, turn, day, notify=True):
+        from engine.action_usage import denial
+        denied=denial(self.world,actor,action,turn,day)
+        if denied: return 'invalid', {'reason':denied,'verb':action.verb}, []
+        from engine.stamina import cost_scope,required_cost,settle,refresh_fatigue
+        from engine.stamina import forced_rest,resolve_zero
+        prepaid=self.world.action_timing is not None and self.world.action_timing.prepaid(actor,action)
+        if not prepaid:
+            deaths=resolve_zero(self.world,actor)
+            if deaths:return 'dead',{'reason':'stamina_zero'},deaths
+            if actor.vitality=='dead':return 'invalid',{'reason':'actor_dead'},[]
+            action=forced_rest(self.world,actor) or action
+        if not self.world.action_enabled(action.verb):
+            return self._execute(actor,action,turn=turn,day=day,notify=notify)
+        if required_cost(self.world,actor,action) > actor.stamina:
+            return 'invalid',{'reason':'insufficient_stamina'},[]
+        with cost_scope(self.world,actor,action):
+            result,details,markers=self._execute(actor,action,turn=turn,day=day,notify=notify)
+            if result not in {'invalid','failed'}: settle(actor)
+            meter=getattr(actor,'_stamina_meter',None)
+            if meter is not None: details['stamina_cost']=meter['spent']
+            refresh_fatigue(self.world,actor)
+            markers.extend(resolve_zero(self.world,actor))
+            if action.meta.get('stamina_forced_rest'):details['forced_by']='stamina_zero'
+            return result,details,markers
+
+    def _execute(
         self,
         actor: Subject,
         action: Action,
         *,
         turn: int,
         day: int,
+        notify: bool = True,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        from engine.action_usage import denial
+        denied=denial(self.world,actor,action,turn,day)
+        if denied: return 'invalid', {'reason':denied,'verb':action.verb}, []
+        if not self.world.action_enabled(action.verb):
+            return "invalid", {"reason": "genre_disabled", "verb": action.verb}, []
+        joint = getattr(self.world,'joint_activities',None)
+        if joint is not None and joint.sim is not None:
+            if action.verb=='leave_activity': return joint.planning.execute(actor,action)
+            if action.verb in {'join_activity','decline_activity','leave_activity','await_activity'}:
+                if notify and self.world.planner is not None:self.world.planner.before_action(self.world,actor)
+                result,details,markers=joint.planning.execute(actor,action)
+                if notify and self.world.planner is not None:self.world.planner.after_action(self.world,actor,action,result,details,turn)
+                return result,details,markers
+            if joint.bookings.is_busy(actor.id,joint.kernel.now):
+                return 'invalid',{'reason':'actor_in_joint_activity'},[]
         handler = (
             getattr(self, "_" + action.verb)
             if action.verb in HANDLED_VERBS
@@ -86,8 +135,11 @@ class VerbEngine:
         )
         if handler is None:
             return "invalid", {"reason": "unknown_verb"}, []
+        if notify and self.world.planner is not None:
+            self.world.planner.before_action(self.world, actor)
 
-        if self.world.action_graph_enabled and action.args:
+        if (self.world.action_graph_enabled and action.args
+                and action.verb not in DELIBERATION_VERBS | (RESPONSE_VERBS - {'request_response'})):
             target = self.world.subjects.get(str(action.args[0]))
             if target is not None and target.id != actor.id:
                 role = self.world.target_role(actor, target)
@@ -122,12 +174,64 @@ class VerbEngine:
                         [],
                     )
 
+        from engine.objective_actions import review_transaction, enabled as objective_actions_enabled
+        objective_choice = None
+        if (action.meta.get('goal_plan') and self.world.planner is not None
+                and (action.verb == 'move' or getattr(self.world,'native_planning',None) is not None
+                     and (action.meta['goal_plan'].get('steps') or action.meta['goal_plan'].get('status')=='condition_met'))):
+            validation = self.world.planner.validate(self.world, actor, action, turn)
+            if validation['excluded']:
+                return 'invalid', {'reason': 'plan_no_longer_justified', 'planning_validation': validation}, []
+        if action.verb in {'negotiate', 'concede', 'give_item'}:
+            if objective_actions_enabled(self.world, actor) and (
+                    action.verb not in available_verbs(self.world, actor, turn=turn, day=day)
+                    or not self.world.genre_allows(action.verb)):
+                return 'invalid', {'reason': 'transaction_verb_unavailable'}, []
+            objective_choice = review_transaction(self.world, actor, action, turn)
+            if objective_choice and objective_choice['excluded'] and not (
+                    action.verb == 'concede' and action.args and self.world.offers.get((action.args[0], actor.id), {}).get('objective_goal')):
+                return 'invalid', {'reason': 'own_objective_conflict', 'objective_choice': objective_choice}, []
+
+        from engine.stamina import required_cost, extra_cost
+        if required_cost(self.world, actor, action) > actor.stamina:
+            return 'invalid', {'reason':'insufficient_stamina'}, []
+        extra = extra_cost(self.world, actor, action)
         result, details, markers = handler(
             actor,
             action,
             turn=turn,
             day=day,
         )
+        if result not in {'invalid','failed'} and extra:
+            paid = -actor.change_stamina(-extra)
+            details['stamina_cost'] = paid
+            self._update_exhausted(actor)
+        if result not in {'invalid','failed'}:
+            from engine.stamina import settle
+            settle(actor)
+            from engine.stamina import resolve_zero
+            markers.extend(resolve_zero(self.world,actor))
+            if getattr(actor,'_stamina_meter',None) is not None: self._update_exhausted(actor)
+        if objective_choice is not None:
+            details['objective_choice'] = {**objective_choice,
+                'alternatives': action.meta.get('objective_choice', {}).get('alternatives', [])}
+            if result == 'refused':
+                details['objective_choice']['answer'] = 'refuse'
+        elif action.meta.get('objective_choice'):
+            details['objective_choice'] = action.meta['objective_choice']
+        if getattr(self.world,'social_planner',None) is not None:
+            self.world.social_planner.after_action(self.world,actor,action,result,details,turn)
+        if notify and self.world.responses is not None:
+            self.world.responses.after_action(self.world, actor, action, result, details, turn)
+        if notify and self.world.native_planning is not None:
+            self.world.native_planning.after_action(self.world,actor,action,result,details,turn)
+        if notify and self.world.planner is not None:
+            self.world.planner.after_action(self.world, actor, action, result, details, turn)
+        if notify and self.world.goal_rules is not None:
+            markers.extend(self.world.goal_rules.record(self.world, turn))
+            details['objective_outcomes'] = self.world.goal_rules.report(self.world)
+            if 'world_report' in details.get('response', {}):
+                details['response']['world_report'] = self.world.concerns.world_report(self.world)
         markers.extend(
             plant_from_action(
                 self.world,
@@ -140,8 +244,44 @@ class VerbEngine:
         )
         return result, details, markers
 
+    def _deliberation_action(self, actor, action, *, turn, day):
+        if self.world.deliberation is None:
+            return "invalid", {"reason": "deliberation_not_configured"}, []
+        if not self.world.genre_allows(action.verb):
+            return "invalid", {"reason": "deliberation_genre_not_allowed"}, []
+        if action.verb not in available_verbs(self.world, actor, turn=turn, day=day):
+            return "invalid", {"reason": "deliberation_verb_not_available"}, []
+        social=self.world.social_planner
+        if social is not None and action.args and action.args[0] in social.proposals and action.verb in {'submit_proposal','amend_proposal'}:
+            if any(self.world.concerns.evaluate(self.world,cid)['state']!='true' for cid in social.proposals[action.args[0]]['requires']):
+                return 'failed',{'reason':'proposal_prerequisite_not_met'},[]
+        return self.world.deliberation.execute(self.world, actor.id, action.verb, action.args, turn=turn)
+
+    _submit_proposal = _deliberation_action
+    _present_proposal = _deliberation_action
+    _review_proposal = _deliberation_action
+    _amend_proposal = _deliberation_action
+    _request_decision = _deliberation_action
+    _decide_proposal = _deliberation_action
+
+    def _response_action(self, actor, action, *, turn, day):
+        social=getattr(self.world,'social_planner',None)
+        if social is not None and (action.verb=='await_response' or
+                action.verb=='request_response' and social.request_binding(actor.id,action.args) is not None or
+                action.verb=='answer_response' and action.args and action.args[0] in social.requests):
+            return social.execute(self.world,actor,action,turn,day)
+        if self.world.responses is None:
+            return 'invalid', {'reason': 'responses_not_configured'}, []
+        return self.world.responses.execute(self.world, actor, action, turn, day)
+
+    _respond = _response_action
+    _inspect_response = _response_action
+    _request_response = _response_action
+    _answer_response = _response_action
+    _await_response = _response_action
+
     def _present(self, actor: Subject) -> list[Subject]:
-        return self.world.present_subjects(actor.zone)
+        return self.world.present_subjects(actor.zone,**({'observer':actor} if self.world.joint_activities is not None else {}))
 
     def _target(
         self,
@@ -153,8 +293,11 @@ class VerbEngine:
         if not action.args:
             return None
         target = self.world.subjects.get(str(action.args[0]))
-        if target is None or target.id == actor.id or target.zone != actor.zone:
+        if (target is None or target.id == actor.id or target.zone != actor.zone
+                or getattr(actor, 'in_transit', False) or getattr(target, 'in_transit', False)):
             return None
+        joint=getattr(self.world,'joint_activities',None)
+        if joint is not None and not joint.co_present(actor.id,target.id): return None
         allowed = {"alive", "revived", "downed"} if allow_downed else {
             "alive",
             "revived",
@@ -220,11 +363,16 @@ class VerbEngine:
         ]
 
     def _update_exhausted(self, actor: Subject) -> None:
+        if not self.world.mechanics_enabled('stamina_management'):
+            actor.exhausted = False
+            return
         threshold = (
             actor.stamina_max * self.world.stamina["exhausted_ratio"]
         )
         if actor.stamina < threshold:
             actor.exhausted = True
+        elif self.world.action_usage is not None:
+            actor.exhausted = False
 
     def _move(
         self,
@@ -235,13 +383,32 @@ class VerbEngine:
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         destination = str(action.args[0])
-        path = self.world.reachable_paths(actor).get(destination)
+        traveler=actor
+        if self.world.action_timing is not None and self.world.action_timing.prepaid(actor,action):
+            from copy import copy
+            traveler=copy(actor);traveler.stamina+=self.world.action_timing.completing['cost']
+        path = self.world.reachable_paths(traveler,actual=True).get(destination)
+        if traveler is not actor:
+            from engine.world import PathInfo
+            route=self.world.action_timing.completing['route'];edges=[]
+            if any(z not in actor.range_zones or z in self.world._excluded_zones(actor) for z in route[1:]):
+                return 'invalid',{'reason':'route_conditions_changed','dest':destination},[]
+            for origin,target in zip(route,route[1:]):
+                edge=next((r for r in self.world.routes[origin] if r.destination==target),None)
+                if edge is None or not self.world._route_allowed(traveler,edge,actual=True):
+                    return 'invalid',{'reason':'route_conditions_changed','dest':destination},[]
+                edges.append(edge)
+            path=PathInfo(destination,sum(r.cost for r in edges),len(edges),tuple(route))
         if path is None:
             return "invalid", {"reason": "unreachable", "dest": destination}, []
 
         origin = actor.zone
         actor.zone = destination
-        actor.change_stamina(-path.cost)
+        if self.world.joint_activities is not None: actor.shared_container=None
+        if self.world.action_timing is not None:
+            actor.in_transit = False
+        if self.world.action_timing is None or not self.world.action_timing.prepaid(actor, action):
+            actor.change_stamina(-path.cost)
         self._update_exhausted(actor)
 
         present = self._present(actor)
@@ -284,6 +451,8 @@ class VerbEngine:
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         recovered = actor.change_stamina(actor.stamina_recover)
+        if self.world.action_usage is not None:
+            self._update_exhausted(actor)
         return "rested", {"stamina_delta": recovered}, []
 
     def _gather_items(
@@ -356,11 +525,12 @@ class VerbEngine:
                     continue
                 actor.gather_progress[progress_key] = 0
                 actor.gathered[gathered_key] = already + 1
-                actor.add_item(item, 1)
+                amount = source.get("amount", 1)
+                actor.add_item(item, amount)
                 gathered.append(
                     {
                         "item": item,
-                        "count": 1,
+                        "count": amount,
                         "source": actor.zone,
                     }
                 )
@@ -391,7 +561,7 @@ class VerbEngine:
         markers: list[dict[str, Any]] = []
         present_ids = {
             subject.id
-            for subject in self.world.present_subjects(actor.zone)
+            for subject in self._present(actor)
         }
         for fact, definition in sorted(self.world.facts.items()):
             if definition.get("values") is not None:
@@ -1311,6 +1481,8 @@ class VerbEngine:
             )
         elif topic != "雑談":
             target.knowledge.add(topic)
+            if self.world.concerns is not None:
+                details['concern_observations'] = self.world.concerns.observe_disclosure(self.world,actor.id,target.id,topic)
             marker_details: dict[str, Any] = {
                 "fact": topic,
                 "from": actor.id,
@@ -1462,6 +1634,20 @@ class VerbEngine:
         )
 
 
+    def _start_relationship(self, actor, action, *, turn, day):
+        target = self._target(actor, action)
+        if target is None or target.vitality not in {"alive", "revived"}:
+            return "invalid", {"reason": "target_not_present"}, []
+        if self.world.relations.stance(actor.id, target.id) < 0.6 or self.world.relations.stance(target.id, actor.id) < 0.6:
+            return "invalid", {"reason": "affinity_too_low"}, []
+        key = self.world.pledge_key(actor.id, target.id)
+        if key in self.world.romantic_relationships:
+            return "invalid", {"reason": "already_dating"}, []
+        self.world.romantic_relationships[key] = {"parties": list(key), "status": "dating", "turn": turn}
+        actor.phase.add(f"交際:{target.id}")
+        target.phase.add(f"交際:{actor.id}")
+        return "relationship_started", {"target": target.id, "status": "dating", "parties": list(key)}, []
+
     def _pledge(
         self,
         actor: Subject,
@@ -1521,28 +1707,35 @@ class VerbEngine:
         day: int,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         holder = self._target(actor, action)
-        objective = actor.goal.target
+        from engine.objective_actions import item_goal, offered_assets
+        cid = action.meta.get('objective_goal')
+        if self.world.planner is not None and action.meta.get('planning_root'):
+            objective = action.meta.get('objective')
+        else:
+            objective = item_goal(self.world, actor, cid, turn) if cid is not None else actor.goal.target
         if holder is None:
             return "invalid", {"reason": "target_not_present"}, []
         if (
             objective is None
             or not actor.objective_claimant
-            or self.world.holder(objective) != holder.id
+            or (not holder.has_item(objective) if cid is not None else self.world.holder(objective) != holder.id)
         ):
             return "invalid", {"reason": "objective_unavailable"}, []
 
-        assets = {
-            item: count
-            for item, count in sorted(actor.inventory.items())
-            if count > 0
-            and item != objective
-            and self.world.items[item].get("lootable", False)
-        }
+        assets = offered_assets(self.world, actor, objective)
         self.world.offers[(actor.id, holder.id)] = {
             "turn": turn,
             "objective": objective,
             "assets": assets,
         }
+        timing=self.world.action_timing
+        if timing is not None and 'concede' in timing.rules:
+            self.world.offers[(actor.id,holder.id)]['expires_at']=turn+timing.rules['concede']['duration']+1
+        if cid is not None:
+            self.world.offers[(actor.id, holder.id)].update(objective_goal=cid, status='pending')
+        if action.meta.get('planning_root'):
+            self.world.offers[(actor.id, holder.id)]['planning_root'] = action.meta['planning_root']
+            self.world.offers[(actor.id, holder.id)]['planning_stock'] = self.world.planner.view(self.world, actor).get(('inventory', holder.id, objective))
         self.world.relations.change(
             holder.id,
             actor.id,
@@ -1576,10 +1769,23 @@ class VerbEngine:
         if offer is None:
             return "invalid", {"reason": "offer_unavailable"}, []
         objective = str(offer.get("objective", ""))
+        from engine.objective_actions import offer_valid, review_transaction
+        if offer.get('objective_goal') is not None:
+            if not offer_valid(self.world, claimant, offer, turn):
+                return 'invalid', {'reason': 'offer_expired_or_objective_unavailable'}, []
+            if any(claimant.inventory.get(i, 0) < n for i, n in offer.get('assets', {}).items()):
+                offer['status'] = 'refused'
+                return 'refused', {'claimant': claimant.id, 'objective': objective,
+                                   'reason': 'original_payment_unavailable'}, []
+            review = review_transaction(self.world, actor, action, turn)
+            if review and review['excluded']:
+                offer['status'] = 'refused'
+                return 'refused', {'claimant': claimant.id, 'objective': objective,
+                                   'reason': 'own_conditions_or_resources', 'objective_choice': review}, []
         if (
             not objective
-            or self.world.holder(objective) != actor.id
-            or claimant.goal.target != objective
+            or (not actor.has_item(objective) if offer.get('objective_goal') is not None else self.world.holder(objective) != actor.id)
+            or not offer_valid(self.world, claimant, offer, turn)
         ):
             return "invalid", {"reason": "objective_unavailable"}, []
 
@@ -1597,9 +1803,23 @@ class VerbEngine:
             claimant.id,
         )
         if stance < self.world.negotiate_threshold and not attractive:
+            if offer.get('objective_goal') is not None:
+                offer['status'] = 'refused'
+                return 'refused', {'claimant': claimant.id, 'objective': objective, 'reason': 'offer_insufficient'}, []
             return "invalid", {"reason": "offer_insufficient"}, []
 
         mode = "trade" if attractive else "goodwill"
+        if offer.get('objective_goal') is not None:
+            from engine.objective_actions import settlement_effects, assess
+            payment = dict(raw_assets) if mode == 'trade' else {}
+            effects = settlement_effects(self.world, claimant, claimant, actor, objective, payment)
+            consent = (self.world.planner.consent(self.world, claimant, offer, effects, turn)
+                       if offer.get('planning_root') and self.world.planner is not None else
+                       assess(self.world, claimant, effects, turn, condition=offer['objective_goal']))
+            if consent['excluded']:
+                offer['status'] = 'refused'
+                return 'refused', {'claimant': claimant.id, 'objective': objective,
+                                   'reason': 'claimant_consent_no_longer_valid'}, []
         if not actor.remove_item(objective, 1):
             return "invalid", {"reason": "objective_unavailable"}, []
         claimant.add_item(objective, 1)
@@ -1731,13 +1951,13 @@ class VerbEngine:
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         item = str(action.args[0])
         definition = self.world.items.get(item, {})
-        price = definition.get("price")
+        price = definition.get("price") or {}
         shop_zone = definition.get("shop_zone")
-        if not price or shop_zone is None:
+        if not purchasable(definition,self.world.mechanics_enabled('budgeted_purchases')):
             return "invalid", {"reason": "not_for_sale", "item": item}, []
         if actor.zone != shop_zone:
             return "invalid", {"reason": "wrong_zone", "zone": shop_zone}, []
-        if not all(
+        if self.world.mechanics_enabled('budgeted_purchases') and not all(
             actor.inventory.get(currency, 0) >= int(required)
             for currency, required in price.items()
         ):
@@ -1748,7 +1968,7 @@ class VerbEngine:
             )
 
         spent: dict[str, int] = {}
-        for currency, required in sorted(price.items()):
+        for currency, required in sorted(price.items()) if self.world.mechanics_enabled('budgeted_purchases') else []:
             count = int(required)
             actor.remove_item(currency, count)
             spent[currency] = count
@@ -1862,7 +2082,8 @@ class VerbEngine:
         lethal_roll: float | None = None
         lethal_chance: float | None = None
         if (
-            hostile_at_start
+            self.world.vitality.get('allow_death', True)
+            and hostile_at_start
             and lethal_modifiers
             and loser.id not in self.world.vitality["lethal_exempt"]
         ):
@@ -2318,7 +2539,7 @@ class VerbEngine:
 
         giver = self.world.subjects[str(trial["giver"])]
         grants = trial["grants"]
-        granted: dict[str, str] = {}
+        granted: dict[str, Any] = {}
 
         granted_fact = grants.get("fact")
         if granted_fact is not None:
@@ -2330,8 +2551,13 @@ class VerbEngine:
         granted_item = grants.get("item")
         if granted_item is not None:
             item = str(granted_item)
-            actor.add_item(item, 1)
+            amount = trial.get("item_amount", 1)
+            if trial.get("transfer_item"):
+                giver.remove_item(item, amount)
+            actor.add_item(item, amount)
             granted["item"] = item
+            if "item_amount" in trial:
+                granted["item_amount"] = amount
 
         self.world.relations.change(
             actor.id,

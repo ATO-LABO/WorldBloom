@@ -1,0 +1,65 @@
+{
+  "id": "通信士",
+  "description": "通信士",
+  "personality": "通信士",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "操舵室",
+      "保管庫",
+      "観測室",
+      "船外",
+      "補給室"
+    ],
+    "entry": "操舵室"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "negotiate"
+  ],
+  "beliefs": {
+    "battery_stored": {
+      "value": "true",
+      "confidence": 1
+    }
+  },
+  "goal": {},
+  "inventory": {
+    "修理工具": 1,
+    "繋留索": 1
+  },
+  "stamina": {
+    "max": 50,
+    "current": 50,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "beacon_sent",
+      "priority": 10,
+      "required": true
+    },
+    {
+      "condition": "ship_safe",
+      "priority": 9,
+      "required": true
+    },
+    {
+      "condition": "tool_retained",
+      "priority": 3,
+      "required": false
+    }
+  ],
+  "knowledge": [
+    "flight_manual"
+  ]
+}

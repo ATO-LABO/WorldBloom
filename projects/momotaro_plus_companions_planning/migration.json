@@ -1,0 +1,34 @@
+{
+  "source": "momotaro_plus_shared_planning",
+  "target": "momotaro_plus_companions_planning",
+  "planning_actors": [
+    "桃太郎",
+    "犬",
+    "猿",
+    "キジ"
+  ],
+  "legacy_supporting_actors": [
+    "おじいさん",
+    "おばあさん",
+    "鬼",
+    "鬼の弟"
+  ],
+  "authored_assumptions": [
+    "Mobile declared companions prioritize accompaniment and rescue when their own affinity reaches the existing companionship threshold.",
+    "This is an authored purpose, not inferred from the old treasure goal or personality.",
+    "Below that threshold they wait; no acceptance or gift is forced.",
+    "Temporary separation and downing can be repaired; death is terminal once observed.",
+    "Existing routes, boat ownership, range and rescue permissions remain binding; no automatic group transport is added."
+  ],
+  "source_sha256": {
+    "world.yaml": "f3c58df15af10c6bb0a10bc9064dbdfe765076f3e33212ee87dd9fe37fe9ea83",
+    "subjects/01_ojiisan.yaml": "d57e1e7044349876f1d776643d72da4d58928357df33c39774fc3199ae666337",
+    "subjects/02_obaasan.yaml": "56ff6c2bbb0042bd5ff28ceb0b0d16991462232af7d73c5f02c4234fd715d8b3",
+    "subjects/03_momotaro.yaml": "a0bdf3847d98be8cf32c48f76ad76fef070839a38fce62ebfa629a8b9f1b296b",
+    "subjects/04_inu.yaml": "e292179322c858590a43e2934247275ffbd0241ed109d21309f4834e2f995bd0",
+    "subjects/05_saru.yaml": "c569270143484d64f2f28eddced9060222e120cbef5b1b3fdc7b320027173f5e",
+    "subjects/06_kiji.yaml": "193063b49fc78339673371d68926ce3a6cec0a72a05580de7ccbbb72fb10e1ed",
+    "subjects/07_oni.yaml": "8607c532471ea657bd6bd80528cd809899ad3a1cb45ade11cedea540f867c0b3",
+    "subjects/08_oni_no_otouto.yaml": "13c4f22ab9bc9e4fa8ea1382b950ab2edda9f50a0c204bca2f2f81f9f248333c"
+  }
+}

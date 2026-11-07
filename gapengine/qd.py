@@ -8,7 +8,7 @@ import statistics
 from collections import Counter, deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence, TYPE_CHECKING
+from typing import Any, Iterable, Mapping, NamedTuple, Sequence, TYPE_CHECKING
 from engine.predicate import Namespace, Predicate, conjuncts
 
 from gapengine.genome import Genome
@@ -298,6 +298,12 @@ def _decision_target(row: Mapping[str, Any]) -> str:
 def _repetition_penalty(
     decisions: Sequence[Mapping[str, Any]],
 ) -> float:
+    return 0.05 * _repetition_count(decisions)
+
+
+def _repetition_count(
+    decisions: Sequence[Mapping[str, Any]],
+) -> int:
     penalty_count = 0
     run_key: tuple[str, str] | None = None
     run_length = 0
@@ -310,7 +316,7 @@ def _repetition_penalty(
             run_length = 1
         if run_length == 3:
             penalty_count += 1
-    return 0.05 * penalty_count
+    return penalty_count
 
 
 def _completed_prerequisite_chains(
@@ -397,10 +403,59 @@ def _dangling_effects(
     return 0
 
 
-def quality(
+class QualityCounts(NamedTuple):
+    """Unnormalized observations, including penalty counts and denominator."""
+
+    objective_changes: int
+    affinity_change: float
+    revived: int
+    strength_reversals: int
+    learning: int
+    dramatic_turns: int
+    completed_chains: int
+    repetition_runs: int
+    protagonist_decisions: int
+    stalls: int
+    dangling_effects: int
+
+
+class QualityMetrics(NamedTuple):
+    """The seven capped metrics in their historical summation order."""
+
+    objective_changes: float
+    affinity_change: float
+    revived: float
+    strength_reversals: float
+    learning: float
+    dramatic_turns: float
+    completed_chains: float
+
+
+class QualityPenalties(NamedTuple):
+    repetition: float
+    stalls: float
+    dangling_effects: float
+
+
+class QualityBreakdown(NamedTuple):
+    """Read-only score observations; no log or metadata references are retained."""
+
+    counts: QualityCounts
+    metrics: QualityMetrics
+    penalties: QualityPenalties
+    aggregate: float
+    penalized_total: float
+    total: float
+
+
+def quality_breakdown(
     rows: Sequence[Mapping[str, Any]],
     world_meta: Mapping[str, Any],
-) -> float:
+) -> QualityBreakdown:
+    """Expose the existing structural score without changing log interpretation.
+
+    See docs/quality-log-contract.md for field semantics and filtering differences.
+    """
     protagonist = str(
         world_meta.get("protagonist") or _protagonist(rows) or ""
     )
@@ -508,27 +563,57 @@ def quality(
                 )
 
     completed_chains = _completed_prerequisite_chains(rows)
-    metrics = (
+    strength_reversals = _sign_flips(strength_diffs)
+    metrics = QualityMetrics(
         min(1.0, objective_changes / 2.0),
         min(1.0, affinity_change / 3.0),
         min(1.0, revived / 2.0),
-        min(1.0, _sign_flips(strength_diffs) / 2.0),
+        min(1.0, strength_reversals / 2.0),
         min(1.0, learning / 3.0),
         min(1.0, dramatic_turns / 2.0),
         min(1.0, completed_chains / 2.0),
     )
     score = sum(metrics) / len(metrics)
+    aggregate = score
 
-    score -= _repetition_penalty(protagonist_decisions)
+    repetition_runs = _repetition_count(protagonist_decisions)
+    repetition_penalty = 0.05 * repetition_runs
+    score -= repetition_penalty
+    stalls = 0
+    stall_penalty = 0.0
     if protagonist_decisions:
         stalls = sum(
             row.get("verb") in {"rest", "withdraw"}
             for row in protagonist_decisions
         )
-        score -= (stalls / len(protagonist_decisions)) * 0.3
+        stall_penalty = (stalls / len(protagonist_decisions)) * 0.3
+        score -= stall_penalty
 
-    score -= 0.05 * _dangling_effects(rows)
-    return round(min(1.0, max(0.0, score)), 12)
+    dangling_effects = _dangling_effects(rows)
+    dangling_penalty = 0.05 * dangling_effects
+    score -= dangling_penalty
+    return QualityBreakdown(
+        counts=QualityCounts(
+            objective_changes, affinity_change, revived, strength_reversals,
+            learning, dramatic_turns, completed_chains, repetition_runs,
+            len(protagonist_decisions), stalls, dangling_effects,
+        ),
+        metrics=metrics,
+        penalties=QualityPenalties(
+            repetition_penalty, stall_penalty, dangling_penalty,
+        ),
+        aggregate=aggregate,
+        penalized_total=score,
+        total=round(min(1.0, max(0.0, score)), 12),
+    )
+
+
+def quality(
+    rows: Sequence[Mapping[str, Any]],
+    world_meta: Mapping[str, Any],
+) -> float:
+    """Compatible float score; use quality_breakdown() for named observations."""
+    return quality_breakdown(rows, world_meta).total
 
 
 def antagonist_quality(

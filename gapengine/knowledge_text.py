@@ -189,6 +189,8 @@ def _load_rationality_yaml(template_dir: Path) -> dict[str, Any]:
 
 
 def _goal_line(subject: Subject) -> str:
+    if subject.goal.description:
+        return f"目的: {subject.goal.description}"
     if subject.goal.target is None:
         return "目的: なし"
     if subject.goal.deliver_to:

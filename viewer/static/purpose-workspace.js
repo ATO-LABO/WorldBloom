@@ -248,13 +248,27 @@
     }
     snapshot() {return {mode:this.mode,world:this.world,note:this.note,history:this.history,selected:this.selected};}
   }
-  const api={validate,validateReceipt,validateIndependent,validateRunRecord,validateExecutionPlan,verifyRunRecord,recordIntegrity,canonical,summarize,melosObservationCounts,State,MAX_BYTES};
+  const NOTE_KEY='worldbloom-work-note-v1:';
+  function readWorkNote(id){
+    const key=NOTE_KEY+encodeURIComponent(id);
+    for(const name of ['localStorage','sessionStorage'])try{const store=global[name],value=store&&store.getItem(key);if(typeof value==='string')return value.slice(0,3000);}catch(_){}
+    try{const old=JSON.parse(global.sessionStorage.getItem(KEY)||'{}');return old.world===id&&typeof old.note==='string'?old.note.slice(0,3000):'';}catch(_){return '';}
+  }
+  function writeWorkNote(id,value){
+    for(const name of ['localStorage','sessionStorage'])try{const store=global[name];if(store){store.setItem(NOTE_KEY+encodeURIComponent(id),String(value).slice(0,3000));return true;}}catch(_){}
+    return false;
+  }
+  function receiptInWorld(receipt,id,aliases=[]){return !id||receipt.kind==='common_run_record'||receipt.world===id||aliases.includes(receipt.world);}
+  const api={readWorkNote,writeWorkNote,receiptInWorld,validate,validateReceipt,validateIndependent,validateRunRecord,validateExecutionPlan,verifyRunRecord,recordIntegrity,canonical,summarize,melosObservationCounts,State,MAX_BYTES};
   if (typeof module !== 'undefined' && module.exports) module.exports=api;
   global.WorldBloomPurpose=api;
   if (typeof document==='undefined') return;
   let saved={}, storageOK=true;
   try {saved=JSON.parse(sessionStorage.getItem(KEY)||'{}')||{};} catch (_) {storageOK=false;}
   const state=new State(saved), root=document.querySelector('[data-purpose-root]');
+  const scopedWorld=root?.dataset?.worldReview||'';let worldAliases=[];try{worldAliases=JSON.parse(root?.dataset?.worldAliases||'[]');}catch(_){}
+  if(scopedWorld){state.world=scopedWorld;state.switchMode('review');}
+  const assertWorld=receipt=>{if(!receiptInWorld(receipt,scopedWorld,worldAliases))fail('別の世界の結果です。対象の世界を開いて読み込んでください。');};
   const q=s=>root&&root.querySelector(s);
   const status=q('[data-purpose-status]'), result=q('[data-purpose-result]'), history=q('[data-purpose-history]');
   const file=q('[data-purpose-file]'), importButton=q('[data-purpose-import]'), cancelButton=q('[data-purpose-cancel]');
@@ -265,6 +279,7 @@
     try {
       // Other pages own only purpose; an old BFCache page must not erase receipts.
       const fresh=JSON.parse(sessionStorage.getItem(KEY)||'{}')||{};
+      if(root&&scopedWorld){for(const receipt of new State(fresh).history)if(!state.history.some(r=>r.id===receipt.id))state.history.push(receipt);}
       const value=root?state.snapshot():{...fresh,mode:state.mode};
       sessionStorage.setItem(KEY,JSON.stringify(value));storageOK=true;
     } catch (_) {storageOK=false;}
@@ -274,36 +289,45 @@
       notice.textContent=storageOK?'':'再訪時の目的保持が使えません';
   }
   function renderMode() {
-    for (const el of document.querySelectorAll('[data-purpose]')) el.value=state.mode;
+    for (const el of document.querySelectorAll('[data-purpose-label]')) el.textContent=state.mode==='review'?'既存物語レビュー':'物語制作';
     for (const panel of document.querySelectorAll('[data-purpose-panel]')) panel.hidden=panel.dataset.purposePanel!==state.mode;
     document.documentElement.dataset.purposeMode=state.mode;
+    for(const el of document.querySelectorAll('[data-purpose-current]')) el.textContent='目的：'+(state.mode==='review'?'既存物語レビュー':'物語制作');
+    for(const el of document.querySelectorAll('[data-purpose-carry]')) {
+      const url=new URL(el.getAttribute('href'),location.href);url.searchParams.set('mode',state.mode);
+      el.setAttribute('href',url.pathname+url.search+url.hash);
+    }
   }
-  function setMode(mode) {state.switchMode(mode);persist();renderMode();}
-  for (const el of document.querySelectorAll('[data-purpose]')) el.addEventListener('change',()=>setMode(el.value));
+  function setMode(mode) {
+    state.switchMode(mode);
+    if(!root&&location.href){const url=new URL(location.href);if(url.pathname!=='/'){
+      url.searchParams.set('mode',state.mode);global.history.replaceState(global.history.state,'',url.pathname+url.search+url.hash);
+    }}
+    persist();renderMode();
+  }
+  // Only the initial choice links start a purpose; the header is read-only.
   for (const el of document.querySelectorAll('[data-purpose-link]')) el.addEventListener('click',()=>setMode(el.dataset.purposeLink));
   const requested=new URLSearchParams(location.search).get('mode');
-  if(root&&MODES.includes(requested)) {
-    state.switchMode(requested);
-    const url=new URL(location.href);url.searchParams.delete('mode');
-    global.history.replaceState(global.history.state,'',url.pathname+url.search+url.hash);
+  if(MODES.includes(requested)) {
+    state.switchMode(scopedWorld?'review':requested);
   }
   renderMode();persist();
   global.addEventListener('pageshow',event=>{
     if(!event.persisted)return;
-    try {const fresh=JSON.parse(sessionStorage.getItem(KEY)||'{}')||{};state.switchMode(fresh.mode);renderMode();}
-    catch(_){storageOK=false;}
+    renderMode();
   });
   if (!root) return;
   const world=q('[data-purpose-world]'), note=q('[data-purpose-note]'), run=q('[data-purpose-run]');
   world.value=state.world;
   if(world.value!==state.world) {const missing=document.createElement('option');missing.value=state.world;missing.textContent=state.world+'（現在の一覧にはありません）';world.append(missing);world.value=state.world;}
-  note.value=state.note;
-  function updateInputs() {state.world=world.value;state.note=note.value; if(run)run.href='/jobs'+(state.world?'?world='+encodeURIComponent(state.world):'');persist();}
+  note.value=scopedWorld?readWorkNote(scopedWorld):state.note;
+  function updateInputs() {state.world=world.value;state.note=note.value;if(scopedWorld)writeWorkNote(scopedWorld,note.value); if(run)run.href=state.world?'/jobs?world='+encodeURIComponent(state.world):'/worlds';persist();}
   world.addEventListener('change',updateInputs);note.addEventListener('input',updateInputs);updateInputs();
   function element(tag,text,parent) {const el=document.createElement(tag);if(text!==undefined) el.textContent=text;if(parent)parent.append(el);return el;}
   function renderCommonRecord(wrapper){
     const r=wrapper.record,p=r.execution_plan;
     const integrity=recordIntegrity(r);
+    if(scopedWorld)element('p','この共通記録だけでは世界の一致を確認できません。この世界の独立試行の集計には含めません。',result);
     element('h3',r.run_id+' · 読み込んだ単回RunRecord',result);
     if(r.observations.contract_fixture===true)element('p','契約テスト用のfixtureです。物語の実走行結果ではありません。',result);
     element('p','設定上の目標、実際の終端、観測範囲を別々に表示します。この単回記録から独立試行の結末分布を集計しません。',result);
@@ -340,8 +364,10 @@
   }
   function renderResult() {
     copyEpoch++;if(copyStatus)copyStatus.textContent='';if(copyFallback){copyFallback.hidden=true;copyFallback.value='';}
-    history.replaceChildren();state.history.forEach((r,i)=>{const opt=element('option',r.world+' · '+r.id,history);opt.value=String(i);});
-    history.value=String(state.selected);history.disabled=!state.history.length;result.replaceChildren();
+    const visible=state.history.map((r,i)=>({r,i})).filter(({r})=>receiptInWorld(r,scopedWorld,worldAliases));
+    if(scopedWorld&&!visible.some(({i})=>i===state.selected))state.selected=visible[0]?.i??-1;
+    history.replaceChildren();visible.forEach(({r,i})=>{const opt=element('option',r.world+' · '+r.id,history);opt.value=String(i);});
+    history.value=String(state.selected);history.disabled=!visible.length;result.replaceChildren();
     const r=state.history[state.selected];if(!r)return;
     if(r.kind==='common_run_record'){renderCommonRecord(r);return;}
     if(r.schema==='worldbloom_independent_v2'){
@@ -389,7 +415,7 @@
   function copyUI(){if(copyButton)copyButton.disabled=!state.history[state.selected];}
   api.acceptSavedResult=async function(raw){
     const token=state.begin();if(token===null)throw new Error('結果の読込中です。');busyUI();
-    try {const receipt=await verifyRunRecord(raw);if(token!==state.generation)return false;state.complete(token,receipt);renderResult();copyUI();persist();return true;}
+    try {const receipt=await verifyRunRecord(raw);if(token!==state.generation)return false;assertWorld(receipt);state.complete(token,receipt);renderResult();copyUI();persist();return true;}
     catch(error){if(token===state.generation)state.cancel();throw error;}
     finally{busyUI();}
   };
@@ -422,6 +448,7 @@
         let receipt=validateReceipt(JSON.parse(current.result));
         if(receipt.kind==='common_run_record'||receipt.schema==='worldbloom_independent_v2')receipt=await verifyRunRecord(receipt);
         if(token!==state.generation)return;
+        assertWorld(receipt);
         if(state.complete(token,receipt)){renderResult();copyUI();persist();status.textContent='保存済み結果を読み込みました。新規実行は行っていません。';}
       }
       catch(e){if(token!==state.generation)return;state.cancel();status.textContent=e.message+' 過去結果は保持しています。';}
@@ -438,7 +465,6 @@
     if(event.persisted){
       try {
         const fresh=new State(JSON.parse(sessionStorage.getItem(KEY)||'{}'));
-        state.switchMode(fresh.mode);
         for(const receipt of fresh.history) if(!state.history.some(r=>r.id===receipt.id))state.history.push(receipt);
         renderMode();renderResult();copyUI();
       }catch(_){storageOK=false;}

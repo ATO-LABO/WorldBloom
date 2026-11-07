@@ -1,5 +1,7 @@
 ---
 sources:
+  - "execution/world_refinements.py"
+  - "execution/refinement_contract.py"
   - "viewer/job_api.py"
   - "viewer/server.py"
   - "viewer/app_desktop.py"
@@ -8,7 +10,7 @@ sources:
   - "viewer/library_pages.py"
   - "viewer/run_catalog.py"
   - "gapengine/route_paths.py"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # HTTP API
 
@@ -17,7 +19,7 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 
 ## 有効になる条件
 
-- `python viewer/server.py --runs <runs>` だけで起動すると、`--control` が無いため `job_store` が無く、`/api/...` は**書き込み系（POST）だけでなく GET も含めて `503 unavailable` になります**。例外は `GET /api/status/local` と `POST /api/status/local/preload`・`POST /api/status/local/unload` の3つだけで、これらは `job_store` を経由せず常に使えます。
+- `python viewer/server.py --runs <runs>` だけで起動すると、`--control` が無いため `job_store` が無く、`/api/...` は**書き込み系（POST）だけでなく GET も含めて `503 unavailable` になります**。`GET /api/status/local` と `POST /api/status/local/preload`・`POST /api/status/local/unload` は `job_store` を経由しません。世界の経路調査 `GET /api/worlds/<id>/routes` も `job_store` 不要です（下表参照）。
 - `--control <control>` を付けて起動すると、`ConfigStore`・`JobStore` が有効になり、下表の設定・ジョブ・生成APIが使えます。
 - 配布版 **Viewer exe**（読み取り専用ビューア）は `--control` を渡していても、`viewer/app_desktop.py` の `_ReadOnlyHandler.do_POST` がすべての POST を **403 "read-only build"** で即座に拒否します（`samples/` への書き込みを防ぐため）。画面上の採用・選定チェックボックスはこのビルドでも見た目上クリックできますが、押すと403になるのは仕様です。**Studio exe** はこの制限を持たず、フル機能で動作します。
 
@@ -38,7 +40,7 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 | POST | `/api/configs/preview` | 実行設定を保存せずプレビュー（規模・ETA等） |
 | POST | `/api/configs` | 実行設定を保存 |
 | POST | `/api/configs/<id>/duplicate` | 実行設定を複製（実装は `viewer/workbench_pages.py`） |
-| GET | `/api/settings/output` | ⚙設定「文章生成」タブの現在値 |
+| GET | `/api/settings/output` | ⚙ 全体設定「AIの設定」で扱う生成先と上限の現在値 |
 | POST | `/api/settings/output` | 文章生成の設定を更新（backend/model/limits） |
 | POST | `/api/settings/output/api-key` | anthropic/openai の APIキーを保存（書き込み専用、読み出しは不可） |
 | GET | `/api/settings/output/models` | 選択可能なモデルの一覧（ollama/llama-serverは実サーバーへ問い合わせ） |
@@ -82,3 +84,23 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 | POST | `/api/runs/<rid>/world-patch` | 世界の自己拡張パッチの提案・確認（`propose`/`check`。`job_store` 必須、`viewer/run_catalog.py`） |
 
 これ以外にも `viewer/run_catalog.py`（`/api/runs`・`/api/selected`）・`viewer/workbench_pages.py`（主に画面表示用のGET）がありますが、いずれも画面のUI操作に対応する内部APIです。正確な一覧は各ファイルの `dispatch()`/`_resolve()` を参照してください。
+
+## 世界案・調整と世界条件
+
+次も `viewer/library_pages.py` が扱う内部APIです。下案の変更と公開世界への採用は別操作です。
+
+| メソッド | パス | 用途 |
+|---|---|---|
+| GET | `/api/world-draft-generation` | 現在の設定による世界案生成の利用可否 |
+| POST | `/api/world-drafts` | 世界案の生成要求 |
+| GET | `/api/world-drafts/<token>` | 下案の状態・内容 |
+| POST | `/api/world-drafts/<token>/{stage,cancel,validate,adopt}` | 編集した下案の登録・取消・検証・世界への採用 |
+| POST | `/api/world-drafts/<token>/refine` | 下案の調整候補を作成 |
+| GET | `/api/world-drafts/<token>/refinements/<request_id>` | 調整候補の取得（`capabilities` は対応操作一覧） |
+| POST | `/api/world-drafts/<token>/{apply-refinement,cancel-refinement,save-refinement-input}` | 候補の反映・取消・入力保存 |
+| GET | `/api/worlds/<id>/action-usage` | 行動・機能設定の取得 |
+| POST | `/api/worlds/<id>/action-usage/{check,save}` | 行動・機能設定の検証・保存 |
+| GET / POST | `/api/worlds/<id>/route-goal` | 目標設定の取得・保存 |
+| POST | `/api/worlds/<id>/route-goal/validate` | 目標設定の検証 |
+
+調整要求は `revision`・`request_id`・`mode`・`prompt`・`preset`・`targets` を持ちます。反映には `revision`・`request_id`・`candidate_id`・`candidate_hash`・`acknowledged_warnings` が必要で、古い下案への上書きを防ぎます。調整は最大16操作で、部分反映や世界への自動公開はしません。対応範囲は人物の説明、場所、経路、品物、予定、行動の制約です。人物の追加、目標変更、改名・削除、強制行動の追加などは未対応として扱います。

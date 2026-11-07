@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from execution import genre_editor
 from execution.library import LibraryStore
@@ -114,6 +115,52 @@ class StorageBoundaryTests(unittest.TestCase):
         repository = RunRepository(self.repo)
         with self.assertRaises(ForbiddenPath):
             repository.safe_path(self.repo, "../outside/canary.txt")
+
+    def test_contained_accepts_the_configured_root_itself(self):
+        for relative in ("", "."):
+            with self.subTest(relative=relative):
+                self.assertEqual(contained(self.repo, relative), self.repo)
+
+    def test_contained_lexical_check_rejects_a_prefix_sibling_before_io(self):
+        sibling = self.repo.with_name(self.repo.name + "-other") / "canary.txt"
+        original = os.path.abspath
+        def normalize(path):
+            return str(sibling) if Path(path) == self.repo / "world.yaml" else original(path)
+        with patch("execution.provenance.os.path.abspath", side_effect=normalize), \
+             patch("execution.provenance._checked_root") as check_root:
+            with self.assertRaises(ConfigError):
+                contained(self.repo, "world.yaml")
+            check_root.assert_not_called()
+        self.assertEqual((self.outside / "canary.txt").read_text(), "fixture-only")
+
+    def test_contained_accepts_a_configured_root_with_lexical_parent_segments(self):
+        (self.repo / "nested").mkdir()
+        root = self.repo / "nested" / ".."
+        result = contained(root, "world.yaml")
+        self.assertEqual(result, root / "world.yaml")
+        self.assertEqual(result.relative_to(root), Path("world.yaml"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows case-insensitive paths")
+    def test_contained_preserves_windows_root_case(self):
+        root = self.repo / "MiXeDRoot"
+        root.mkdir()
+        for spelling in (root, Path(str(root).swapcase())):
+            with self.subTest(root=spelling):
+                result = contained(spelling, "CaSe.yaml")
+                self.assertEqual(str(result.parent), str(spelling))
+                result.write_text("fixture-only", encoding="utf-8")
+                self.assertEqual((root / "CaSe.yaml").read_text(), "fixture-only")
+
+    @unittest.skipUnless(os.name == "nt", "Windows drives and UNC paths")
+    def test_contained_rejects_other_drive_and_unc_before_io(self):
+        other = "Z:" if self.repo.drive.upper() != "Z:" else "Y:"
+        values = (other + "canary.txt", other + "/canary.txt", "//host/share/canary.txt",
+                  "\\canary.txt", "\\\\?\\" + other + "\\canary.txt")
+        with patch("execution.provenance._checked_root") as check_root:
+            for relative in values:
+                with self.subTest(relative=relative), self.assertRaises(ConfigError):
+                    contained(self.repo, relative)
+            check_root.assert_not_called()
 
     def test_static_allowlist_blocks_external_names(self):
         from viewer.data import MissingResource

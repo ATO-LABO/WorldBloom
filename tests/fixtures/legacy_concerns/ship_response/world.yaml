@@ -1,0 +1,221 @@
+{
+  "name": "故障区画への対応",
+  "overview": "乗員が故障の被害を受けない",
+  "initial_story": "乗員が故障の被害を受けない",
+  "time": {
+    "days": 2,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6",
+      "時点7",
+      "時点8"
+    ]
+  },
+  "protagonist": "航海士",
+  "antagonist": "通信士",
+  "zones": [
+    {
+      "name": "船橋"
+    },
+    {
+      "name": "通路"
+    },
+    {
+      "name": "機関区画"
+    }
+  ],
+  "routes": {
+    "船橋": [
+      {
+        "to": "通路",
+        "cost": 1
+      }
+    ],
+    "通路": [
+      {
+        "to": "船橋",
+        "cost": 1
+      },
+      {
+        "to": "機関区画",
+        "cost": 1
+      }
+    ],
+    "機関区画": [
+      {
+        "to": "通路",
+        "cost": 1
+      }
+    ]
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "facts": [
+    {
+      "id": "danger_report",
+      "values": [
+        "active",
+        "resolved"
+      ],
+      "sources": []
+    }
+  ],
+  "truth": {
+    "danger_report": "active"
+  },
+  "concerns": {
+    "version": 1,
+    "conditions": [
+      {
+        "id": "crew_safe",
+        "label": "乗員が故障の被害を受けない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "protected",
+          "equals": "yes"
+        }
+      }
+    ],
+    "commitments": {
+      "航海士": [
+        {
+          "condition": "crew_safe",
+          "priority": 10,
+          "required": true
+        }
+      ],
+      "機関士": [
+        {
+          "condition": "crew_safe",
+          "priority": 8,
+          "required": true
+        }
+      ]
+    }
+  },
+  "responses": {
+    "version": 1,
+    "state": {
+      "danger": "active",
+      "protected": "yes"
+    },
+    "locations": {
+      "danger": "機関区画",
+      "protected": "機関区画"
+    },
+    "signals": [
+      {
+        "fact": "danger_report",
+        "condition": "crew_safe",
+        "key": "danger",
+        "danger_values": [
+          "active"
+        ],
+        "max_age": 30,
+        "threshold": 0.4,
+        "deadline": 12
+      }
+    ],
+    "actions": [
+      {
+        "id": "secure",
+        "label": "故障箇所を修理する",
+        "condition": "crew_safe",
+        "signal": "danger_report",
+        "zone": "機関区画",
+        "actors": [
+          "航海士",
+          "機関士"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "danger": "active"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "danger",
+            "value": "resolved"
+          },
+          {
+            "kind": "state",
+            "key": "protected",
+            "value": "yes"
+          }
+        ]
+      }
+    ],
+    "channels": [
+      {
+        "from": "航海士",
+        "to": "機関士",
+        "delay": 2
+      },
+      {
+        "from": "機関士",
+        "to": "航海士",
+        "delay": 2
+      }
+    ],
+    "events": [
+      {
+        "id": "damage",
+        "turn": 13,
+        "unless": {
+          "danger": "resolved"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "protected",
+            "value": "no"
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "condition": "crew_safe",
+        "start": 1,
+        "end": 16,
+        "mode": "continuous"
+      }
+    ]
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 16",
+      "label": "観測期間の終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": [
+    {
+      "id": "first_report",
+      "label": "危険の知らせが届く",
+      "day": 1,
+      "slot": "時点1",
+      "targets": [
+        "通信士"
+      ],
+      "force_action": {
+        "verb": "share_knowledge",
+        "args": [
+          "航海士",
+          "danger_report"
+        ]
+      }
+    }
+  ]
+}

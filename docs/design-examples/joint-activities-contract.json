@@ -1,0 +1,666 @@
+{
+  "format": "worldbloom_joint_activity_design_examples_v1",
+  "status": "design_only",
+  "note": "Proposed contract examples. They are not accepted runtime world.yaml inputs and do not prove execution.",
+  "limits": {
+    "participants_per_segment": 16,
+    "roles_per_definition": 8,
+    "definitions": 32,
+    "workflow_nodes": 32,
+    "candidate_role_assignments": 256
+  },
+  "definitions": [
+    {
+      "id": "cross_water",
+      "provider": "joint_move",
+      "revision": 1,
+      "roles": [
+        {
+          "id": "pilot",
+          "min": 1,
+          "max": 1,
+          "requires": {
+            "verbs": [
+              "move"
+            ],
+            "facts": [],
+            "vitalities": [
+              "alive",
+              "revived"
+            ]
+          }
+        },
+        {
+          "id": "passenger",
+          "min": 0,
+          "max": 3,
+          "requires": {
+            "verbs": [
+              "move"
+            ],
+            "facts": [],
+            "vitalities": [
+              "alive",
+              "revived"
+            ]
+          }
+        }
+      ],
+      "duration": {
+        "unit": "logical_step",
+        "mode": "fixed",
+        "units": 1
+      },
+      "location_policy": "together_at_start",
+      "resources": [
+        {
+          "key": "vessel",
+          "binding": {
+            "kind": "inventory",
+            "owner_role": "pilot",
+            "item": "boat"
+          },
+          "quantity": 1,
+          "exclusive": true,
+          "capacity": {
+            "unit": "people",
+            "maximum": 4
+          },
+          "settlement": "retain"
+        }
+      ],
+      "costs": [
+        {
+          "role": "pilot",
+          "per_unit": {
+            "numerator": 2,
+            "denominator": 1
+          }
+        },
+        {
+          "role": "passenger",
+          "per_unit": {
+            "numerator": 0,
+            "denominator": 1
+          }
+        }
+      ],
+      "progress": null,
+      "interruption": {
+        "voluntary_exit": "at_safe_stop",
+        "forced_exit": "settle_in_transit_zone"
+      },
+      "effects": {
+        "on_start": {
+          "kind": "enter_transit",
+          "actors": "participants",
+          "zone_binding": "transit_zone"
+        },
+        "on_complete": {
+          "kind": "joint_arrival",
+          "actors": "participants",
+          "destination_binding": "destination"
+        }
+      },
+      "bindings_required": [
+        "origin",
+        "destination",
+        "transit_zone"
+      ],
+      "rechecks": [
+        "route_conditions",
+        "role_eligibility",
+        "own_commitments",
+        "resource_present_and_accessible"
+      ]
+    },
+    {
+      "id": "replace_component",
+      "provider": "joint_work",
+      "revision": 1,
+      "roles": [
+        {
+          "id": "technician",
+          "min": 1,
+          "max": 1,
+          "requires": {
+            "verbs": [
+              "respond"
+            ],
+            "facts": [
+              "diagnosis_record"
+            ],
+            "vitalities": [
+              "alive",
+              "revived"
+            ]
+          }
+        },
+        {
+          "id": "holder",
+          "min": 1,
+          "max": 1,
+          "requires": {
+            "verbs": [
+              "respond"
+            ],
+            "facts": [],
+            "vitalities": [
+              "alive",
+              "revived"
+            ]
+          }
+        }
+      ],
+      "duration": {
+        "unit": "minute",
+        "mode": "remaining_work",
+        "max_units": 20
+      },
+      "location_policy": "task_location",
+      "resources": [
+        {
+          "key": "workbench",
+          "binding": {
+            "kind": "existing_task_resource",
+            "task": "replacement"
+          },
+          "quantity": 1,
+          "exclusive": true,
+          "settlement": "retain"
+        },
+        {
+          "key": "replacement_cell",
+          "binding": {
+            "kind": "inventory",
+            "owner_binding": "material_owner",
+            "item": "replacement_cell"
+          },
+          "quantity": 1,
+          "exclusive": true,
+          "settlement": "consume_on_complete"
+        }
+      ],
+      "costs": [
+        {
+          "role": "technician",
+          "per_unit": {
+            "numerator": 1,
+            "denominator": 10
+          }
+        },
+        {
+          "role": "holder",
+          "per_unit": {
+            "numerator": 1,
+            "denominator": 20
+          }
+        }
+      ],
+      "progress": {
+        "task": "replacement",
+        "model": "fixed_group_rate",
+        "per_unit": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "required_roles": [
+          "technician",
+          "holder"
+        ],
+        "preserve_on_interrupt": true
+      },
+      "interruption": {
+        "voluntary_exit": "at_boundary",
+        "forced_exit": "retain_work_then_close_segment"
+      },
+      "effects": {
+        "on_start": null,
+        "on_complete": {
+          "kind": "task_units_receipt",
+          "task": "replacement",
+          "units": 1
+        }
+      },
+      "bindings_required": [
+        "target",
+        "target_revision",
+        "material_owner"
+      ],
+      "rechecks": [
+        "task_dependencies",
+        "received_knowledge",
+        "role_eligibility",
+        "own_commitments",
+        "resources"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "id": "repair_equipment",
+      "authority": "existing_task_ledger",
+      "target_binding": "target",
+      "tasks": [
+        {
+          "id": "diagnosis",
+          "units": 1,
+          "minutes_per_unit": 10,
+          "execution": {
+            "kind": "individual",
+            "verb": "work"
+          },
+          "dependencies": [],
+          "completion_artifact": {
+            "fact": "diagnosis_record",
+            "initial_audience": "actual_worker"
+          }
+        },
+        {
+          "id": "replacement",
+          "units": 1,
+          "minutes_per_unit": 20,
+          "execution": {
+            "kind": "joint",
+            "definition": "replace_component"
+          },
+          "dependencies": [
+            "diagnosis"
+          ],
+          "knowledge_gate": {
+            "role": "technician",
+            "fact": "diagnosis_record",
+            "source": "actual_disclosure"
+          }
+        },
+        {
+          "id": "verification",
+          "units": 1,
+          "minutes_per_unit": 5,
+          "execution": {
+            "kind": "individual",
+            "verb": "work"
+          },
+          "dependencies": [
+            "replacement"
+          ],
+          "completion_effect": {
+            "kind": "declared_state",
+            "key": "equipment_status",
+            "value": "repaired"
+          }
+        }
+      ],
+      "complete_when_tasks": [
+        "diagnosis",
+        "replacement",
+        "verification"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "accepted_crossing",
+      "clock": {
+        "unit": "logical_step",
+        "start": 0,
+        "end": 7
+      },
+      "definition": "cross_water",
+      "bindings": {
+        "origin": "coast",
+        "destination": "island",
+        "transit_zone": "sea_route"
+      },
+      "instance": {
+        "id": "voyage-1",
+        "definition_revision": 1,
+        "terms_revision": 1,
+        "earliest_start": 1,
+        "expires_at": 1,
+        "roles": {
+          "pilot": [
+            "traveler"
+          ],
+          "passenger": [
+            "dog",
+            "monkey",
+            "bird"
+          ]
+        },
+        "initial_agreement": {
+          "source": "authored_initial_terms",
+          "accepted_by": [
+            "traveler",
+            "dog",
+            "monkey",
+            "bird"
+          ],
+          "known_by": [
+            "traveler",
+            "dog",
+            "monkey",
+            "bird"
+          ]
+        }
+      },
+      "initial": {
+        "zones": {
+          "traveler": "coast",
+          "dog": "coast",
+          "monkey": "coast",
+          "bird": "coast"
+        },
+        "inventory": {
+          "traveler": {
+            "boat": 1
+          }
+        },
+        "energy": {
+          "traveler": {
+            "numerator": 10,
+            "denominator": 1
+          },
+          "dog": {
+            "numerator": 10,
+            "denominator": 1
+          },
+          "monkey": {
+            "numerator": 10,
+            "denominator": 1
+          },
+          "bird": {
+            "numerator": 10,
+            "denominator": 1
+          }
+        },
+        "vehicle_access": {
+          "owner": "traveler",
+          "allowed_people": [
+            "traveler",
+            "dog",
+            "monkey",
+            "bird"
+          ],
+          "capacity": 4
+        },
+        "people": {
+          "traveler": {
+            "verbs": [
+              "move"
+            ],
+            "facts": [],
+            "vitality": "alive"
+          },
+          "dog": {
+            "verbs": [
+              "move"
+            ],
+            "facts": [],
+            "vitality": "alive"
+          },
+          "monkey": {
+            "verbs": [
+              "move"
+            ],
+            "facts": [],
+            "vitality": "alive"
+          },
+          "bird": {
+            "verbs": [
+              "move"
+            ],
+            "facts": [],
+            "vitality": "alive"
+          }
+        }
+      },
+      "expected": {
+        "start": 1,
+        "finish": 2,
+        "busy_interval": {
+          "start": 1,
+          "finish": 2
+        },
+        "zones_after": {
+          "traveler": "island",
+          "dog": "island",
+          "monkey": "island",
+          "bird": "island"
+        },
+        "energy_spent": {
+          "traveler": {
+            "numerator": 2,
+            "denominator": 1
+          },
+          "dog": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "monkey": {
+            "numerator": 0,
+            "denominator": 1
+          },
+          "bird": {
+            "numerator": 0,
+            "denominator": 1
+          }
+        },
+        "retained_items": {
+          "traveler": {
+            "boat": 1
+          }
+        },
+        "shared_completion_receipts": 1,
+        "world_goal_automatically_achieved": false
+      },
+      "kind": "complete_input_blueprint"
+    },
+    {
+      "id": "repair_with_handover",
+      "clock": {
+        "unit": "minute",
+        "start": 0,
+        "end": 60
+      },
+      "workflow": "repair_equipment",
+      "bindings": {
+        "target": "life_support",
+        "target_revision": 1,
+        "material_owner": "technician"
+      },
+      "initial": {
+        "equipment_status": "broken",
+        "progress_effort_minutes": {
+          "diagnosis": 0,
+          "replacement": 0,
+          "verification": 0
+        },
+        "facts_received": {
+          "analyst": [],
+          "technician": [],
+          "assistant": []
+        },
+        "inventory": {
+          "technician": {
+            "replacement_cell": 1
+          }
+        }
+      },
+      "timeline": [
+        {
+          "at": 0,
+          "kind": "individual_start",
+          "actor": "analyst",
+          "task": "diagnosis",
+          "finish": 10
+        },
+        {
+          "at": 10,
+          "kind": "individual_complete",
+          "actor": "analyst",
+          "task": "diagnosis",
+          "fact": "diagnosis_record"
+        },
+        {
+          "at": 12,
+          "kind": "actual_disclosure",
+          "from": "analyst",
+          "to": "technician",
+          "fact": "diagnosis_record",
+          "source": "existing_communication_provider"
+        },
+        {
+          "at": 12,
+          "kind": "joint_start",
+          "instance": "replace-1",
+          "definition": "replace_component",
+          "roles": {
+            "technician": [
+              "technician"
+            ],
+            "holder": [
+              "assistant"
+            ]
+          },
+          "initial_agreement": "authored_initial_terms_for_this_exact_target_and_terms",
+          "finish": 32
+        },
+        {
+          "at": 32,
+          "kind": "joint_complete",
+          "instance": "replace-1",
+          "task": "replacement"
+        },
+        {
+          "at": 32,
+          "kind": "individual_start",
+          "actor": "technician",
+          "task": "verification",
+          "finish": 37
+        },
+        {
+          "at": 37,
+          "kind": "individual_complete",
+          "actor": "technician",
+          "task": "verification"
+        }
+      ],
+      "expected": {
+        "replacement_work": {
+          "numerator": 20,
+          "denominator": 1
+        },
+        "replacement_energy_spent": {
+          "technician": {
+            "numerator": 2,
+            "denominator": 1
+          },
+          "assistant": {
+            "numerator": 1,
+            "denominator": 1
+          }
+        },
+        "replacement_cell_consumed": 1,
+        "equipment_repaired_at": 37,
+        "analyst_busy_during_replacement": false,
+        "progress_owner_count": 1,
+        "repair_effect_count": 1
+      },
+      "kind": "workflow_trace_blueprint"
+    },
+    {
+      "id": "interrupted_replacement",
+      "clock": {
+        "unit": "minute",
+        "start": 0,
+        "end": 60
+      },
+      "definition": "replace_component",
+      "target": "life_support",
+      "initial": {
+        "diagnosis_completed": true,
+        "diagnosis_received_by": [
+          "technician",
+          "substitute"
+        ],
+        "remaining_replacement_work": {
+          "numerator": 20,
+          "denominator": 1
+        }
+      },
+      "timeline": [
+        {
+          "at": 12,
+          "kind": "joint_start",
+          "instance": "replace-a",
+          "roles": {
+            "technician": [
+              "technician"
+            ],
+            "holder": [
+              "assistant"
+            ]
+          }
+        },
+        {
+          "at": 19,
+          "kind": "required_role_leaves",
+          "instance": "replace-a",
+          "actor": "technician"
+        },
+        {
+          "at": 20,
+          "kind": "joint_start",
+          "instance": "replace-b",
+          "roles": {
+            "technician": [
+              "substitute"
+            ],
+            "holder": [
+              "assistant"
+            ]
+          },
+          "new_valid_agreement": true,
+          "agreement_source": "authored_initial_terms_for_the_backup_segment"
+        },
+        {
+          "at": 33,
+          "kind": "joint_complete",
+          "instance": "replace-b"
+        }
+      ],
+      "expected": {
+        "old_segment_status": "interrupted",
+        "retained_work_at_19": {
+          "numerator": 7,
+          "denominator": 1
+        },
+        "old_segment_energy_spent": {
+          "technician": {
+            "numerator": 7,
+            "denominator": 10
+          },
+          "assistant": {
+            "numerator": 7,
+            "denominator": 20
+          }
+        },
+        "remaining_work_at_resume": {
+          "numerator": 13,
+          "denominator": 1
+        },
+        "new_segment_duration": 13,
+        "final_replacement_work": {
+          "numerator": 20,
+          "denominator": 1
+        },
+        "old_segment_reopened": false,
+        "new_input_and_resource_checks_required": true,
+        "material_consumed_total": 1
+      },
+      "kind": "interruption_trace_blueprint",
+      "extends_case": "repair_with_handover"
+    }
+  ]
+}

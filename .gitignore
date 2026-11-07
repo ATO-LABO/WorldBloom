@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.local-user/
 *.pyc
 .pytest_cache/
 

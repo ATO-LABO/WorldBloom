@@ -1,0 +1,35 @@
+{
+  "id": "レム",
+  "description": "機関士レムは燃料残量を知る。自船が帰還できる案に限って同意する。",
+  "personality": "機関士レムは燃料残量を知る。自船が帰還できる案に限って同意する。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.5,
+    "curiosity": 0.5,
+    "diligence": 0.5,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "帰還船の操舵室"
+    ],
+    "entry": "帰還船の操舵室"
+  },
+  "verbs": [
+    "rest",
+    "review_proposal"
+  ],
+  "knowledge": [
+    "燃料残量"
+  ],
+  "goal": {
+    "description": "機関士レムは燃料残量を知る。自船が帰還できる案に限って同意する。"
+  },
+  "relations": {
+    "ナギ": {
+      "affinity": 0,
+      "awareness": 1
+    }
+  }
+}

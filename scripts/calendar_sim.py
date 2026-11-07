@@ -1,4 +1,7 @@
-"""Run an explicitly configured minute-calendar project without action search.
+"""Run a minute-calendar project with explicit situation commands.
+
+Worlds declaring planning/calendar objectives select later actions through the
+shared goal planner; other worlds retain explicit-command execution.
 
 Freeze creates a new immutable input closure and stops. Running it is a
 separate explicit invocation with the frozen world path and choices JSON.

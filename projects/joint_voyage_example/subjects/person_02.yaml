@@ -1,0 +1,43 @@
+{
+  "id": "犬",
+  "description": "犬",
+  "personality": "犬",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.5,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.2
+  },
+  "range": {
+    "zones": [
+      "coast",
+      "island",
+      "sea"
+    ],
+    "entry": "coast"
+  },
+  "verbs": [
+    "move",
+    "respond",
+    "rest",
+    "share_knowledge"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {},
+  "knowledge": [],
+  "stamina": {
+    "max": 10,
+    "current": 10,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "arrived",
+      "priority": 8,
+      "required": false
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "combat",
+    "name": "戦闘",
+    "description": "戦う行動を選択肢に加えます。負傷や戦闘不能を扱い、戦闘による死亡を許可するかは下の「生死あり」で選べます。",
+    "actions": [
+      "fight"
+    ],
+    "enabled": true
+  },
+  {
+    "id": "romance",
+    "name": "恋愛",
+    "description": "互いの親密度が高いときに、交際する行動を選べます。親密度だけで自動的に交際が始まることはありません。",
+    "actions": [
+      "start_relationship"
+    ],
+    "enabled": true
+  },
+  {
+    "id": "economy",
+    "name": "金銭・資産",
+    "description": "働いて資産を得て、世界の基準価格と支払いに使える資産を照合して購入します。支払った資産は減り、不足していると買えません。外すと購入時の資産確認・支払いを省きます。販売場所や入手条件は残ります。",
+    "actions": [
+      "labor"
+    ],
+    "features": [
+      "budgeted_purchases"
+    ],
+    "enabled": true
+  },
+  {
+    "id": "stamina",
+    "name": "体力管理",
+    "description": "行動で体力を消費し、休息で回復します。体力不足でできない行動や、疲労の影響を扱います。外すと消費・回復・体力不足による制約を省きます。時間や場所、負傷・死亡の条件は別に扱います。",
+    "actions": [],
+    "features": [
+      "stamina_management"
+    ],
+    "enabled": true
+  }
+]

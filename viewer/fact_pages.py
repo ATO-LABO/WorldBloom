@@ -24,8 +24,8 @@ def context(handler):
 
 def document(handler, title, body, initial=None):
     doc = pages.document(title, '<section class="fact-workspace" data-facts="' + E(json.dumps(initial or {}, ensure_ascii=False)) + '">' + body + '</section>',
-                         phase="sifting", job_store=wb._job_store(handler))
-    handler._send_html(doc.replace("</head>", '<link rel="stylesheet" href="/static/fact-workspace.css"><script src="/static/fact-workspace.js" defer></script></head>'))
+                         phase="sifting", job_store=wb._job_store(handler), page_class="form-workspace", stylesheets=('fact-workspace.css',), scripts=('fact-workspace.js',))
+    handler._send_html(doc)
 
 
 def config_id(handler, rid, query):

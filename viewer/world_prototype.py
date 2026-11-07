@@ -7,16 +7,30 @@ from urllib.parse import quote
 
 from engine.actions import FORCE_ARG_KINDS
 from viewer import data, pages
+from viewer.settings_navigation import navigation, checks_navigation
 
 
 def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=None, experiments=(), expansion_html="", genres=()):
     """Render saved settings in the shared production shell. Rendering never writes."""
+    from engine.action_types import features, for_world, label
+    from engine.economy import PRESETS, summary
+    from engine.person_presentation import stamina_map
+    from engine.stamina_catalog import catalog as stamina_catalog
+    repo = job_store.configs.repo if job_store is not None else data.ROOT
+    selected = for_world(world_yaml, repo / "projects" / world["id"] / "world.yaml")
+    from viewer.world_review import work_note
     model = {
         "id": world["id"], "name": world.get("name") or world["id"],
         "world": world_yaml, "people": subjects,
         "overview": world_yaml.get("overview") or "", "intro": world_yaml.get("initial_story") or "",
         "editable": job_store is not None and revision is not None, "revision": revision,
         "genre": world.get("genre"),
+        "action_types": selected, "action_type_label": label(selected),
+        "mechanic_features": sorted(features(world_yaml)),
+        "time_basic_version": 1, "person_balance_version": 1,
+        "stamina_action_catalog": stamina_catalog(world_yaml),
+        "person_stamina": stamina_map(world_yaml, subjects),
+        "economy_state": summary(world_yaml, subjects), "economy_presets": list(PRESETS),
         "genres": [{"id": g["id"], "name": g.get("name") or g["id"]} for g in genres],
         # WB-TIMEEVENT-001: verb -> argument kinds for the time screen's
         # force_action form (same shape execution/world_editor.py._model()
@@ -29,16 +43,14 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
         config += "&template=" + quote(world["genre"], safe="")
     people_ids = {p.get("id") for p in subjects}
     missing = []
-    if not world.get("genre"): missing.append("ジャンル")
     if not subjects: missing.append("登場人物")
     if not world_yaml.get("zones"): missing.append("場所")
     if not world_yaml.get("protagonist") or world_yaml["protagonist"] not in people_ids: missing.append("主人公")
     if not world_yaml.get("antagonist") or world_yaml["antagonist"] not in people_ids: missing.append("敵役")
     if not world_yaml.get("target_ending"): missing.append("目標の結末")
     if any(not (p.get("range") or {}).get("entry") for p in subjects): missing.append("人物の初期位置")
-    model["configUrl"] = config
     payload = json.dumps(model, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-    next_href = f"/worlds/{wid}?view=advanced" if missing else config
+    next_href = f"/worlds/{wid}#screen=people" if missing else config
     next_label = "未設定の項目を確認 →" if missing else "実行条件を決める →"
     status = ("未設定：" + "・".join(missing)) if missing else "編集した項目ごとに保存できます。"
     if not model["editable"]: status = "閲覧モード · 保存には実行管理の設定が必要です。"
@@ -64,32 +76,23 @@ def render(world, world_yaml, subjects, *, job_store=None, pin=None, revision=No
     # world-prototype.js's overview screen appends into itself, so it lands
     # inside "世界の概要" instead. Omitted entirely when there's nothing to
     # show (0 approved and 0 proposed), same as before.
+    note_template = '<template id="wp-work-note">'+work_note(world["id"])+'</template>'
     expansion_template = f'<template id="wp-expansion">{expansion_html}</template>' if expansion_html else ""
     body = f'''
     <div class="wp" data-world-prototype>
-      <nav class="wp-nav" aria-label="世界設定">
-        <button type="button" data-screen="overview" aria-current="page">世界の概要</button>
-        <button type="button" data-screen="people">登場人物</button>
-        <button type="button" data-screen="places">場所</button>
-        <button type="button" data-screen="story">初期物語</button>
-        <button type="button" data-screen="time">時間</button>
-        <button type="button" data-screen="routes">結末までの経路を調査</button>
-        <a href="/worlds/{wid}/goal">経路の目標を入力・検証</a>
-        <div class="wp-preview"><strong>世界設定</strong><br>変更は次の実行から使われます。<a href="/worlds/{wid}?view=advanced">詳細設定・設定ファイル ↗</a></div>
+      <nav class="wp-nav ui-nav" aria-label="世界設定">
+        {navigation(world['id'],buttons=True)}
       </nav>
       <div class="wp-content" id="wp-content"></div>
+      <template id="wp-check-tabs">{checks_navigation(world["id"], "checks")}</template>
       {expansion_template}
+      {note_template}
       <footer class="wp-footer"><span id="wp-message" role="status">{html.escape(status)}</span><a class="wp-primary" data-next href="{html.escape(next_href, quote=True)}" {"hidden" if not model["editable"] else ""}>{next_label}</a>{rationality_hint}{saved}</footer>
       <dialog class="wp-dialog" aria-labelledby="wp-dialog-title"><form id="wp-form"><div class="wp-section-head"><h2 id="wp-dialog-title">編集</h2><button type="button" data-close aria-label="閉じる">×</button></div><p class="wp-muted" id="wp-dialog-desc">保存すると世界設定を更新します。過去の実行結果は変わりません。</p><div id="wp-fields"></div><div class="wp-dialog-actions"><button type="button" data-close>キャンセル</button><button class="wp-primary is-confirm" type="submit" id="wp-dialog-submit">保存する</button></div></form></dialog>
       <script type="application/json" id="wp-data">{payload}</script>
       <noscript>この表示にはJavaScriptが必要です。<a href="/worlds/{wid}?view=advanced">詳細設定を開く</a></noscript>
     </div>'''
     doc = pages.document(model["name"], body, world={"id": world["id"], "name": model["name"]},
-                         phase="world", page_class="world-prototype", job_store=job_store, pin=pin)
-    doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/world-prototype.css">'
-                      '<link rel="stylesheet" href="/static/time-settings.css">'
-                      '<script src="/static/time-settings.js" defer></script>'
-                      '<script src="/static/world-prototype.js" defer></script>'
-                      '<script src="/static/world-expansion.js" defer></script></head>')
+                         phase="world", page_class="world-prototype", job_store=job_store, pin=pin, stylesheets=('world-prototype.css','time-settings.css','time-basic.css','world-condition-settings.css','items-workspace.css'), scripts=('ui-settings-frame.js','ui-help.js','genre-controls.js','items-workspace.js','time-basic.js','time-settings.js','person-commitments-editor.js','world-prototype.js','world-expansion.js','world-notes.js'))
     doc = doc.replace('data-wb="world-picker"', 'data-wb="world-picker" aria-label="世界"')
     return doc

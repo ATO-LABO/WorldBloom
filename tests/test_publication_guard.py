@@ -43,6 +43,14 @@ class PublicationGuardTests(unittest.TestCase):
         self.assertNotIn(value, str(caught.exception))
         guard.check_content('example.txt', b'user@example.com 123+writer@users.noreply.github.com')
 
+    def test_source_map_name_and_public_author_domain_do_not_grant_an_exemption(self):
+        for name in ('assets/javascripts/bundle.c21346df.min.js.map',
+                     'assets/javascripts/workers/search.a7633da7.min.js.map'):
+            with self.subTest(name=name), self.assertRaises(guard.PublicationError):
+                guard.check_content(name, b'/* Copyright author@squidfunk.com */')
+            with self.subTest(name=name), self.assertRaises(guard.PublicationError):
+                guard.check_content(name, b'/* Copyright private-writer@gmail.com */')
+
     def test_nul_byte_cannot_hide_private_text(self):
         with self.assertRaises(guard.PublicationError):
             guard.check_content('story.md', ('\0writer' + '@gmail.com').encode())

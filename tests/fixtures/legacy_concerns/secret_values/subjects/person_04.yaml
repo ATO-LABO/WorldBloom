@@ -1,0 +1,29 @@
+{
+  "id": "レン",
+  "description": "レンは秘密の避難先について相談する。",
+  "personality": "レンは秘密の避難先について相談する。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "外の広場"
+    ],
+    "entry": "外の広場"
+  },
+  "verbs": [
+    "rest",
+    "share_knowledge"
+  ],
+  "knowledge": [],
+  "goal": {
+    "description": "避難先を守って支援を得る"
+  },
+  "relations": {},
+  "beliefs": {}
+}

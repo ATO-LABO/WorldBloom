@@ -8,6 +8,7 @@ from unittest.mock import patch
 import unittest
 import yaml
 import test_library as fixtures
+from test_creation_footer import Nodes
 from execution.library import MAX_ZIP_BYTES, LibraryStore
 from execution.provenance import ConfigError
 
@@ -38,7 +39,7 @@ class WorldCreateTests(unittest.TestCase):
         status, markup = self.get('/worlds/original')
         self.assertEqual(status,200)
         self.assertIn('星が地上へ降りる街。',markup)
-        self.assertIn('data-screen="story"',markup)
+        self.assertIn('data-screen="overview" data-settings-category="overview"',markup)
         self.assertIn('data-world-prototype',markup)
         self.assertNotIn('data-quick-start',markup)
         with self.assertRaises(ConfigError):
@@ -62,11 +63,13 @@ class WorldCreateTests(unittest.TestCase):
         self.assertIn('夜明け前、まだ誰もいない。',markup)
 
     def test_original_needs_no_source_worlds(self):
-        store=LibraryStore(self.repo)
         with patch.object(LibraryStore,'worlds',return_value=[]):
-            status,markup=self.get('/worlds/new')
+            status,markup=self.get('/worlds/new?method=manual')
             self.assertEqual(status,200)
-            self.assertIn('作成元の世界がまだありません',markup)
+            self.assertIn('まだ世界がありません',markup)
+            self.assertIn('data-cw-enter="new"',markup)
+            self.assertIn('data-cw-prepare',markup)
+            self.assertNotIn('data-cw-world-option',markup)
             self.assertEqual(self.create()[0],201)
 
     def test_incomplete_source_preview_does_not_block_original_creation(self):
@@ -74,9 +77,9 @@ class WorldCreateTests(unittest.TestCase):
         world = yaml.safe_load(store.read('world', 'momotaro', 'world.yaml'))
         world.update(time=3, zones=5)
         store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True))
-        self.assertEqual(self.get('/worlds/new')[0], 200)
+        self.assertEqual(self.get('/worlds/new?method=manual')[0], 200)
         with patch.object(LibraryStore, 'read', side_effect=ConfigError('world_id', 'missing', code='not_found')):
-            self.assertEqual(self.get('/worlds/new')[0], 200)
+            self.assertEqual(self.get('/worlds/new?method=manual')[0], 200)
         self.assertEqual(self.create()[0], 201)
 
     def test_legacy_and_explicit_copy_preserve_source(self):
@@ -123,22 +126,34 @@ class WorldCreateTests(unittest.TestCase):
         self.create(name='<img src=x onerror=alert(1)>',overview='<script>alert(1)</script>')
         status,markup=self.get('/worlds/new?from=original')
         self.assertEqual(status,200)
-        self.assertIn('name="mode" value="copy" checked',markup)
+        self.assertIn('data-cw-source value="original"',markup)
+        self.assertIn('value="original" data-cw-world-option checked',markup)
         self.assertNotIn('<img src=x',markup)
         self.assertNotIn('<script>alert(1)',markup)
-        status,markup=self.get('/worlds/new')
-        self.assertIn('name="mode" value="new" checked',markup)
-        for asset in ('world-create.js','world-create.css'):
+        self.assertIn('&lt;img src=x onerror=alert(1)&gt;',markup)
+        self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;',markup)
+        status,markup=self.get('/worlds/new?method=manual')
+        self.assertEqual(status,200)
+        self.assertIn('data-cw-source value=""',markup)
+        self.assertIn('data-cw-prepare',markup)
+        for asset in ('creation-workflow.js','creation-workflow.css'):
+            self.assertIn('/static/'+asset,markup)
             self.assertEqual(self.get('/static/'+asset)[0],200)
 
-    def test_copy_mode_notes_that_expansions_are_not_duplicated(self):
-        # WB-WORLDGROW-001 段階5d: patches/ is excluded from a world copy
-        # (execution/library.py's LibraryStore._publish_world), so the copy
-        # screen says so and points at the genre-asset route back in instead.
-        self.create()
-        status, markup = self.get('/worlds/new?from=original')
-        self.assertEqual(status, 200)
-        self.assertIn('拡張は複製されません。ジャンルの資産から取り込めます。', markup)
+    def test_copy_api_does_not_duplicate_world_expansions(self):
+        source = self.repo / 'projects/momotaro'
+        expansion_stack = source / 'patches/stack.json'
+        expansion_stack.parent.mkdir(exist_ok=True)
+        expansion_stack.write_bytes(b'{"source": "test stack"}')
+        status, payload = self.http('POST', '/api/worlds', {
+            'mode': 'copy', 'world_id': 'without-patches', 'name': '複製',
+            'from_world_id': 'momotaro', 'template_id': 'momotaro',
+        })
+        self.assertEqual(status, 201, payload)
+        copied = self.repo / 'projects/without-patches'
+        self.assertTrue((copied / 'world.yaml').is_file())
+        self.assertFalse((copied / 'patches').exists())
+        self.assertEqual(expansion_stack.read_bytes(), b'{"source": "test stack"}')
 
     def test_basic_rules_accept_a_configured_original(self):
         self.create()
@@ -169,7 +184,7 @@ class WorldImportTests(unittest.TestCase):
 
     def import_body(self, **changes):
         body = {'mode': 'import', 'world_id': 'imported', 'name': '',
-                'zip_base64': _zip_b64({'world.yaml': 'name: ZIPの世界'})}
+                'zip_base64': _zip_b64({'world.yaml': fixtures.current_world_yaml({'name': 'ZIPの世界'})})}
         body.update(changes)
         return body
 
@@ -180,7 +195,7 @@ class WorldImportTests(unittest.TestCase):
         store = LibraryStore(self.repo)
         world = yaml.safe_load(store.read('world', 'imported', 'world.yaml'))
         self.assertEqual(world['name'], 'ZIPの世界')
-        self.assertNotIn('gapengine', world)
+        self.assertEqual(world['gapengine']['action_graph'], 'templates/momotaro/action_graph.yaml')
 
     def test_import_rejects_unexpected_keys(self):
         body = self.import_body()
@@ -204,30 +219,37 @@ class WorldImportTests(unittest.TestCase):
         self.assertEqual(status, 403, payload)
         self.assertFalse((self.repo / 'projects/imported').exists())
 
-    def test_new_form_offers_import_mode(self):
-        status, markup = self.get('/worlds/new')
+    def test_creation_workspace_offers_zip_import_on_its_own_screen(self):
+        status, markup = self.get('/worlds/new?screen=zip-import')
         self.assertEqual(status, 200, markup)
-        self.assertIn('name="mode" value="import"', markup)
-        self.assertIn('data-zip-input', markup)
+        self.assertIn('data-cw-enter="zip-import"', markup)
+        parsed = Nodes()
+        parsed.feed(markup)
+        [upload] = [(attrs, parents) for tag, attrs, parents in parsed.nodes
+                    if tag == 'input' and 'data-cw-zip' in attrs]
+        attrs, parents = upload
+        self.assertEqual(attrs.get('type'), 'file')
+        self.assertIn('.zip', attrs.get('accept', '').split(','))
+        self.assertTrue(any(parent.get('data-cw-screen') == 'zip-import'
+                            for _, parent in parents))
+        self.assertIn('data-cw-import-zip', markup)
 
-    def test_import_without_genre_then_pick_one_via_edit_then_preview_succeeds(self):
-        # End-to-end: import a genre-less ZIP over HTTP, pick a genre via the
-        # world-settings "genre" edit operation, then confirm the resulting
-        # world.yaml actually drives a successful ConfigStore.preview() --
-        # not just that the two writes individually look right.
+    def test_import_current_world_then_switch_rules_and_preview(self):
+        # The imported world must have a valid template before switching it.
         base = self.repo / 'projects/momotaro'
         entries = {'world.yaml': (base / 'world.yaml').read_text(encoding='utf-8')}
         for path in sorted((base / 'subjects').glob('*.yaml')):
             entries[f'subjects/{path.name}'] = path.read_text(encoding='utf-8')
         world = yaml.safe_load(entries['world.yaml'])
-        del world['gapengine']
+        world['gapengine'] = {'action_graph': 'templates/basic/action_graph.yaml',
+                              'effects': 'templates/basic/effects.yaml'}
         entries['world.yaml'] = yaml.safe_dump(world, allow_unicode=True, sort_keys=False)
 
         status, payload = self.http('POST', '/api/worlds', self.import_body(
             world_id='e2e-genre-pick', zip_base64=_zip_b64(entries)))
         self.assertEqual(status, 201, payload)
         store = LibraryStore(self.repo)
-        self.assertIsNone(store._genre_of('e2e-genre-pick', yaml.safe_load(store.read('world', 'e2e-genre-pick', 'world.yaml'))))
+        self.assertEqual(store._genre_of('e2e-genre-pick', yaml.safe_load(store.read('world', 'e2e-genre-pick', 'world.yaml'))), 'basic')
 
         from execution.world_editor import snapshot
         revision = snapshot(store, 'e2e-genre-pick')['revision']

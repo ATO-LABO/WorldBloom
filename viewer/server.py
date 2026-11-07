@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 import sys
 import time
@@ -33,6 +34,7 @@ from viewer.data import (
 
 MAX_POST_BYTES = 64 * 1024
 STATIC_FILES = {
+    "ui-tabs.js": "application/javascript; charset=utf-8",
     "purpose-independent.js": "application/javascript; charset=utf-8",
     "purpose-workspace.js": "application/javascript; charset=utf-8",
     "purpose-workspace.css": "text/css; charset=utf-8",
@@ -42,20 +44,65 @@ STATIC_FILES = {
     "story-workspace.js":"application/javascript; charset=utf-8",
     "review-workspace.css": "text/css; charset=utf-8",
     "review-workspace.js": "application/javascript; charset=utf-8",
+    "world-advanced.css": "text/css; charset=utf-8",
+    "time-basic.js": "application/javascript; charset=utf-8",
+    "world-condition-settings.css": "text/css; charset=utf-8",
+    "time-basic.css": "text/css; charset=utf-8",
+    "economy-settings.js": "application/javascript; charset=utf-8",
+    "ui-settings-frame.js": "application/javascript; charset=utf-8",
+    "ui-help.js": "application/javascript; charset=utf-8",
+    "genre-controls.js": "application/javascript; charset=utf-8",
+    "items-workspace.js": "application/javascript; charset=utf-8",
+    "items-workspace.css": "text/css; charset=utf-8",
     "world-advanced.js": "application/javascript; charset=utf-8",
+    "person-commitments-editor.js": "application/javascript; charset=utf-8",
+    "objectives-editor.js": "application/javascript; charset=utf-8",
+    "planning-editor.js": "application/javascript; charset=utf-8",
+    "planning-workspace.js": "application/javascript; charset=utf-8",
+    "planning-workspace.css": "text/css; charset=utf-8",
+    "concerns-editor.js": "application/javascript; charset=utf-8",
+    "responses-editor.js": "application/javascript; charset=utf-8",
     "home-workspace.css": "text/css; charset=utf-8",
+    "world-review.css": "text/css; charset=utf-8",
+    "world-notes.js": "application/javascript; charset=utf-8",
     "home-workspace.js": "application/javascript; charset=utf-8",
     "world-create.css": "text/css; charset=utf-8",
+    "world-draft.css": "text/css; charset=utf-8",
+    "world-draft.js": "application/javascript; charset=utf-8",
+    "draft-native.css": "text/css; charset=utf-8",
+    "draft-native.js": "application/javascript; charset=utf-8",
+    "draft-native-ai.js": "application/javascript; charset=utf-8",
+    "draft-authoring.js": "application/javascript; charset=utf-8",
+    "draft-settings-forms.js": "application/javascript; charset=utf-8",
+    "draft-goal-editor.js": "application/javascript; charset=utf-8",
+    "creation-workflow.css": "text/css; charset=utf-8",
+    "creation-refinement.css": "text/css; charset=utf-8",
+    "creation-workflow-model.js": "application/javascript; charset=utf-8",
+    "creation-conflict.js": "application/javascript; charset=utf-8",
+    "creation-prepare.js": "application/javascript; charset=utf-8",
+    "creation-generation.js": "application/javascript; charset=utf-8",
+    "creation-world-picker.js": "application/javascript; charset=utf-8",
+    "creation-workflow-list.js": "application/javascript; charset=utf-8",
+    "creation-workflow.js": "application/javascript; charset=utf-8",
+    "creation-refinement.js": "application/javascript; charset=utf-8",
+    "draft-workspace.js": "application/javascript; charset=utf-8",
+    "draft-editing.js": "application/javascript; charset=utf-8",
+    "draft-workspace.css": "text/css; charset=utf-8",
+    "draft-editing.css": "text/css; charset=utf-8",
     "genre-workspace.css": "text/css; charset=utf-8",
     "genre-workspace.js": "application/javascript; charset=utf-8",
     "world-create.js": "application/javascript; charset=utf-8",
     "global-settings.css": "text/css; charset=utf-8",
+    "ui-tabs.js": "application/javascript; charset=utf-8",
+    "gemma-setup.js": "application/javascript; charset=utf-8",
     "global-settings.js": "application/javascript; charset=utf-8",
     "generation.css": "text/css; charset=utf-8",
     "generation.js": "application/javascript; charset=utf-8",
     "screening-workspace.css": "text/css; charset=utf-8",
     "screening-workspace.js": "application/javascript; charset=utf-8",
     "app.css": "text/css; charset=utf-8",
+    "ui-tokens.css": "text/css; charset=utf-8",
+    "ui.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
     "local-status.js": "application/javascript; charset=utf-8",
     "workbench.js": "text/javascript; charset=utf-8",
@@ -236,11 +283,15 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return
         job_store = getattr(self.server, "job_store", None)
         if not parts:
-            self._send_html(pages.index_page(self.repository, job_store=job_store))
+            from viewer import purpose_pages
+            self._send_html(purpose_pages.landing(job_store))
             return
         if parts == ["modes"]:
-            from viewer import purpose_pages
-            self._send_html(purpose_pages.render(self.repository, job_store=job_store))
+            self.send_response(302)
+            mode=parse_qs(urlsplit(self.path).query).get("mode",[None])[0]
+            destinations = {"create": "/worlds?mode=create", "review": "/worlds?mode=review"}
+            self.send_header("Location", destinations.get(mode, "/worlds"))
+            self.end_headers()
             return
         if parts == ["version"]:
             from viewer import version
@@ -265,7 +316,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
             from viewer import lineage_river
             query = parse_qs(urlsplit(self.path).query)
             html = lineage_river.river_page(self.repository, parts[1], selected_cell=query.get("cell", [None])[0] or None, job_store=job_store)
-            self._send_html(html.replace("</head>", '<link rel="stylesheet" href="/static/run-workspace.css"></head>'))
+            self._send_html(html)
             return
         if len(parts) == 3 and parts[0] == "exp" and parts[2] == "compare":
             query = parse_qs(urlsplit(self.path).query)
@@ -389,7 +440,19 @@ class ViewerHandler(BaseHTTPRequestHandler):
             raise BadRequest("invalid Content-Length") from error
         if length < 1:
             raise BadRequest("empty request body")
-        if length > MAX_POST_BYTES:
+        path = urlsplit(self.path).path
+        limit = MAX_POST_BYTES
+        if re.fullmatch(r"/api/native-world-drafts/[a-f0-9]{32}/create", path):
+            limit = 14 * 1024 * 1024
+        elif re.fullmatch(r"/api/native-world-drafts/[a-f0-9]{32}/save", path):
+            limit = 2 * 1024 * 1024
+        elif (
+            path in ("/api/world-draft-forms", "/api/world-drafts")
+            or re.fullmatch(r"/api/world-draft-workspaces/[a-f0-9]{32}", path)
+            or re.fullmatch(r"/api/world-drafts/[a-f0-9]{32}/(stage|validate|revise|apply-revision|save-refinement-input)", path)
+        ):
+            limit = 1024 * 1024
+        if length > limit:
             raise BadRequest("request body is too large")
 
         try:
@@ -596,6 +659,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--control", type=Path, help="Enable persistent configuration/job APIs at this control root.")
     parser.add_argument("--repo", type=Path, default=ROOT)
+    drafts = parser.add_mutually_exclusive_group()
+    drafts.add_argument("--world-draft-mock", action="store_true", help="Use an explicitly labelled fixed mock for new-world proposals; never call an LLM.")
+    drafts.add_argument("--world-draft-live", action="store_true", help="Opt in to real generation using existing output settings. Requires prior approval for provider/model/cost.")
     return parser
 
 
@@ -616,6 +682,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("execution API requires a loopback host")
         server.job_store = JobStore(ConfigStore(args.repo, args.control, args.runs))
         server.settings_path = args.repo / "settings.json"
+        from execution.world_drafts import DraftStore, existing_provider, mock_response
+        mode = "mock" if args.world_draft_mock else "live" if args.world_draft_live else "waiting"
+        server.job_store.world_draft_mode = mode
+        provider = mock_response if mode == "mock" else existing_provider(server.settings_path) if mode == "live" else None
+        server.world_drafts = DraftStore(args.repo, args.control, provider, mode)
         server.repository = RunRepository(args.runs, control_root=args.control, jobs=server.job_store)
 
     host, port = server.server_address[:2]

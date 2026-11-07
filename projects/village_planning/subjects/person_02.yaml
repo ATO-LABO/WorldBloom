@@ -1,0 +1,43 @@
+{
+  "id": "村の商人",
+  "description": "村の商人",
+  "personality": "村の商人",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "商店"
+    ],
+    "entry": "商店"
+  },
+  "verbs": [
+    "rest",
+    "concede"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {},
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "keeper_paid",
+      "priority": 10,
+      "required": false
+    },
+    {
+      "condition": "stock_battery",
+      "priority": 5,
+      "required": false
+    }
+  ]
+}

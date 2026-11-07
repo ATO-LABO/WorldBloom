@@ -1,0 +1,49 @@
+[
+  {
+    "id": "agree-offer",
+    "actor": "職人",
+    "at": 480,
+    "verb": "offer",
+    "terms": {
+      "promise_id": "注文01",
+      "version": 1,
+      "proposer": "職人",
+      "promisor": "職人",
+      "beneficiary": "依頼人",
+      "acceptance_parties": [
+        "職人",
+        "依頼人"
+      ],
+      "place": "工房",
+      "start": 486,
+      "deadline": 548,
+      "grace_until": null,
+      "requirements": [
+        {
+          "task_id": "納品",
+          "units": 1,
+          "contribution_by": "職人",
+          "delivered_to": "依頼人"
+        }
+      ]
+    }
+  },
+  {
+    "id": "agree-maker",
+    "actor": "職人",
+    "at": 482,
+    "verb": "accept",
+    "promise_id": "注文01",
+    "version": 1,
+    "terms_hash": "a313ddd7d45fdb2653d1220ae7a743c382c1b514d9563438c14a3335be15fb89"
+  },
+  {
+    "id": "agree-receiver",
+    "actor": "依頼人",
+    "at": 484,
+    "verb": "accept",
+    "promise_id": "注文01",
+    "version": 1,
+    "terms_hash": "a313ddd7d45fdb2653d1220ae7a743c382c1b514d9563438c14a3335be15fb89"
+  }
+]

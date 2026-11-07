@@ -1,10 +1,10 @@
-[data-goal-editor]{max-width:980px;margin:auto;padding:24px}
-[data-goal-editor] label{display:block;margin:14px 0}
-[data-goal-editor] select,[data-goal-editor] input{max-width:100%;padding:8px;font:inherit}
-[data-goal-editor] fieldset{margin:16px 0;padding:16px;border:1px solid var(--ws-control-line,#bbb)}
-.goal-condition{display:flex;flex-wrap:wrap;gap:12px;border-bottom:1px solid #ddd}
+[data-goal-editor]{max-width:980px;margin:auto;padding:var(--ws-space-5)}
+[data-goal-editor] label{display:block;margin:var(--ws-space-3) 0}
+[data-goal-editor] select,[data-goal-editor] input{max-width:100%;padding:var(--ws-space-2);font:inherit}
+[data-goal-editor] fieldset{margin:var(--ws-space-4) 0;padding:var(--ws-space-4);border:1px solid var(--ws-control-line,#bbb)}
+.goal-condition{display:flex;flex-wrap:wrap;gap:var(--ws-space-3);border-bottom:1px solid var(--ws-line)}
 .goal-condition label{flex:1;min-width:140px}
-.goal-actions{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
-.goal-actions button{padding:10px 16px}
-[data-goal-error]{color:#a33}
-[data-goal-result] ol{line-height:1.8}
+.goal-actions{display:flex;flex-wrap:wrap;gap:var(--ws-space-2);margin:var(--ws-space-4) 0}
+.goal-actions button{padding:var(--ws-space-2) var(--ws-space-4)}
+[data-goal-error]{color:var(--ws-danger)}
+[data-goal-result] ol{line-height:var(--ws-line-height)}

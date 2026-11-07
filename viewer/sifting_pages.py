@@ -47,8 +47,8 @@ def shell(handler, v, active, title, body, footer, *, step=1, initial=None):
     if "data-generation" not in content:
         content += generation_pages.surface(modal=True)
     doc = pages.document(title, content, phase="sifting", world=v.get("world"), run=v.get("name") or None, output_run=rid or None,
-                         job_store=wb._job_store(handler), page_class="run-observer")
-    handler._send_html(doc.replace('</head>', generation_pages.ASSETS + '<link rel="stylesheet" href="/static/run-workspace.css"><link rel="stylesheet" href="/static/sifting-workspace.css"><script src="/static/sifting-actions.js" defer></script><script src="/static/sifting-workspace.js" defer></script></head>'))
+                         job_store=wb._job_store(handler), page_class="run-observer", stylesheets=('run-workspace.css','generation.css','sifting-workspace.css'), scripts=('generation.js','sifting-actions.js','sifting-workspace.js'))
+    handler._send_html(doc)
 
 
 def inspector():

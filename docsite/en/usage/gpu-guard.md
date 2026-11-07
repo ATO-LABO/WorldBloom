@@ -1,5 +1,5 @@
 ---
-ja_rev: "3e449cf631bc"
+ja_rev: "1805d02e72a8"
 ---
 # GPU Guard
 
@@ -14,7 +14,7 @@ With `gpu_guard` configured, the following happen automatically before generatio
 - **Auto-start / auto-stop**: if `llama-server`'s `base_url` already responds, that instance (started by a human) is used as-is and never stopped. If there's no response and `launch` (the startup command) is configured, it's started automatically, waiting up to `startup_seconds` (default 180) for it to come up. Once generation finishes, only a server it started itself is stopped automatically. If a server was left over from a previous crash, whichever side next acquires the lease shuts it down automatically
 - **Thermal guard**: checks GPU temperature (`nvidia-smi`) before each generation; if it's at or above `pause_at` (default 78°C), it waits at `poll_seconds` (default 15 second) intervals until it drops to `resume_at` (default 70°C) or below. If it's still not down after `max_wait_seconds` (default 600 seconds), it stops waiting and continues with generation anyway (this does not count as a failure). On environments where temperature can't be read, it never waits at all. Setting `thermal.enabled` explicitly to `false` disables the thermal guard entirely (enabled by default)
 
-The "計算" (Compute) tab of Settings also lets you toggle the thermal guard on/off and set "一時停止する温度" (the pause temperature, `pause_at`, 50–95°C). `resume_at` can't be set directly from the screen — it auto-follows `pause_at`, keeping the default gap (78→70, 8°C; lowering `pause_at` lowers `resume_at` by the same 8°C).
+The “GPU ガード” (GPU guard) tab under “計算” (Compute) in the Settings left menu also lets you toggle the thermal guard on/off and set "一時停止する温度" (the pause temperature, `pause_at`, 50–95°C). `resume_at` can't be set directly from the screen — it auto-follows `pause_at`, keeping the default gap (78→70, 8°C; lowering `pause_at` lowers `resume_at` by the same 8°C).
 
 ## Writing settings.json
 

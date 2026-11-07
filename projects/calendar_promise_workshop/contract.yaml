@@ -1,0 +1,75 @@
+version: 3
+calendar:
+  schema_version: 1
+  period:
+    start_date: '2026-11-01'
+    end_date: '2026-11-01'
+  normal:
+    bands:
+    - id: day
+      name: Day
+      start: 08:00
+      end: '10:00'
+      overnight: false
+      interval_minutes: 17
+    weekdays: {}
+    holidays: []
+  specials: []
+timezone: UTC
+start_time: 08:00
+end_time: '10:00'
+travel_minutes:
+  工房:
+    資材置場: 10
+  資材置場:
+    工房: 10
+roles:
+  職人:
+  - 加工担当
+  依頼人:
+  - 受取担当
+tasks:
+  部材加工:
+    label: 部材加工
+    place: 資材置場
+    units: 3
+    minutes_per_unit: 10
+    dependencies: []
+    resource: 工作台
+    roles:
+    - 加工担当
+    materials_per_unit:
+      基材: 1
+    operation: work
+  納品:
+    label: 納品
+    place: 工房
+    units: 1
+    minutes_per_unit: 2
+    dependencies:
+    - 部材加工
+    resource: 受渡台
+    roles:
+    - 加工担当
+    materials_per_unit: {}
+    operation: deliver
+materials:
+  基材: 3
+facility_hours: {}
+appraisal:
+  fulfilled: 0.05
+  unexplained_breach: -0.05
+assumptions:
+- Initial offer and both acceptances are explicit situation setup; later physical
+  choices use the shared goal planner.
+- The planner sees only received agreement terms and observed work.
+initial_task_knowledge:
+  職人:
+  - 部材加工
+  - 納品
+  依頼人: []
+energy:
+  move_per_minute: 0.2
+  work_per_minute: 0.2
+  rest_per_minute: 0.4
+  rest_minutes: 10

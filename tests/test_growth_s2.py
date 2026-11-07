@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from saved_world_fixtures import install_current_worlds
 from test_viewer import _write_json, _write_jsonl
 
 from gapengine.scenes import SPECIAL_PRIORITY, describe_row, extract_scenes, growth_event_text
@@ -376,6 +377,7 @@ class ExecutionConfigGrowthToggleTests(unittest.TestCase):
                     ignore=shutil.ignore_patterns("__pycache__"),
                 )
             shutil.copyfile(root / "requirements.txt", repo / "requirements.txt")
+            install_current_worlds(repo, "momotaro")
             store = ConfigStore(repo, base / "control", base / "runs")
             spec = {
                 "label": "growth-toggle", "project_id": "momotaro", "template_id": "momotaro",

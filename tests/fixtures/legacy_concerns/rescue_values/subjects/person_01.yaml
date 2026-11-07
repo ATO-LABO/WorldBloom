@@ -1,0 +1,31 @@
+{
+  "id": "ナギ",
+  "description": "航法士ナギは帰還中の船で救難信号を受け、予定航路を外れて救助する案を持ち込む。",
+  "personality": "航法士ナギは帰還中の船で救難信号を受け、予定航路を外れて救助する案を持ち込む。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "帰還船の操舵室"
+    ],
+    "entry": "帰還船の操舵室"
+  },
+  "verbs": [
+    "rest",
+    "submit_proposal",
+    "present_proposal",
+    "amend_proposal",
+    "request_decision"
+  ],
+  "knowledge": [],
+  "goal": {
+    "description": "航法士ナギは帰還中の船で救難信号を受け、予定航路を外れて救助する案を持ち込む。"
+  },
+  "relations": {}
+}

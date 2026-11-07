@@ -1,0 +1,36 @@
+name: 古い手紙と丘の灯台（実モデル試験）
+overview: 説明用の架空の設定。海辺の町で、配達人と灯台守の二人が登場する。場所は港と丘の灯台の二か所。古い手紙は灯台守が持っている。主人公の配達人は、その手紙を受け取り丘の灯台へ届けたい。相手役は慎重な灯台守。二人の名前、人物像、関係と短い導入を考える。人物二人、場所二か所、品物一つ、港と灯台を往復できる経路だけの小さな下案にする。
+initial_story: カズキが古い手紙を丘の灯台へ届けようとしている。
+protagonist: カズキ
+antagonist: サトシ
+time:
+  days: 7
+  slots:
+  - 朝
+  - 昼
+  - 夕方
+  - 夜
+zones:
+- name: 港
+  note: 配達人が活動する海辺の町の拠点
+- name: 丘の灯台
+  note: 灯台守が住む高台にある施設
+routes:
+  丘の灯台:
+  - to: 港
+  港:
+  - to: 丘の灯台
+items:
+- name: 古い手紙
+  lootable: true
+gapengine:
+  action_graph: templates/basic/action_graph.yaml
+  effects: templates/basic/effects.yaml
+ending:
+- id: goal_attained
+  label: 主人公が目標の品を届けた
+  when:
+    agent: カズキ
+    goal: attained
+target_ending:
+- goal_attained

@@ -1,0 +1,51 @@
+{
+  "id": "鬼",
+  "description": "鬼",
+  "personality": "鬼",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "村"
+    ],
+    "entry": "村"
+  },
+  "verbs": [
+    "rest",
+    "respond",
+    "negotiate"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {
+    "工芸品": 1
+  },
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "food_taken",
+      "priority": 10,
+      "required": true
+    },
+    {
+      "condition": "village_safe",
+      "priority": 8,
+      "required": false
+    },
+    {
+      "condition": "keep_craft",
+      "priority": 3,
+      "required": false
+    }
+  ]
+}

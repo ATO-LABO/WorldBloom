@@ -1,0 +1,49 @@
+[
+  {
+    "id": "agree-offer",
+    "actor": "整備士",
+    "at": 480,
+    "verb": "offer",
+    "terms": {
+      "promise_id": "復旧協定",
+      "version": 1,
+      "proposer": "整備士",
+      "promisor": "整備士",
+      "beneficiary": "通信員",
+      "acceptance_parties": [
+        "整備士",
+        "通信員"
+      ],
+      "place": "操舵室",
+      "start": 486,
+      "deadline": 560,
+      "grace_until": null,
+      "requirements": [
+        {
+          "task_id": "復旧資材の引渡",
+          "units": 1,
+          "contribution_by": "整備士",
+          "delivered_to": "通信員"
+        }
+      ]
+    }
+  },
+  {
+    "id": "agree-maker",
+    "actor": "整備士",
+    "at": 482,
+    "verb": "accept",
+    "promise_id": "復旧協定",
+    "version": 1,
+    "terms_hash": "92866d3507be16f792ecabdff877575e95eec6e87d1da686ecdeb169c32e3f3f"
+  },
+  {
+    "id": "agree-receiver",
+    "actor": "通信員",
+    "at": 484,
+    "verb": "accept",
+    "promise_id": "復旧協定",
+    "version": 1,
+    "terms_hash": "92866d3507be16f792ecabdff877575e95eec6e87d1da686ecdeb169c32e3f3f"
+  }
+]

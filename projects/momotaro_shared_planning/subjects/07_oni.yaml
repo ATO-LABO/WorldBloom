@@ -1,0 +1,61 @@
+id: 鬼
+traits:
+  social: 0.3
+  stubbornness: 0.8
+  curiosity: 0.2
+  diligence: 0.6
+  temper: 0.8
+base: 80
+modifiers: []
+beliefs_about:
+  桃太郎:
+    known_modifiers: []
+    base_estimate: 50
+    identity_seen: false
+    observe_progress: 0.0
+knowledge: []
+inventory:
+  鬼ヶ島の宝物: 1
+  金棒: 1
+reputation: 0.0
+phase: []
+verbs:
+- guard
+- fight
+- concede
+- rest
+identity:
+  'true': 鬼ヶ島の鬼の頭領
+  displayed: 鬼
+goal:
+  target: 鬼ヶ島の宝物
+  deliver_to: null
+  obstacles:
+  - 桃太郎
+  outcome: null
+relations:
+  桃太郎:
+    affinity: -0.5
+    awareness: 0.6
+  旅の商人:
+    affinity: 0.0
+    awareness: 0.0
+  犬:
+    affinity: -0.3
+    awareness: 0.3
+  猿:
+    affinity: -0.3
+    awareness: 0.3
+  キジ:
+    affinity: -0.3
+    awareness: 0.3
+stamina:
+  max: 12
+  recover_per_slot: 1.0
+range:
+  zones:
+  - 鬼ヶ島
+  entry: 鬼ヶ島
+companions: []
+ally_value: 0
+objective_claimant: true

@@ -1,5 +1,5 @@
 ---
-reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 
 # インストール
@@ -10,8 +10,8 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 - Studio には **Python 3.12 以上**が PATH に必要（`pip install pyyaml`）。Viewer は不要
 - git は無くても動く（無い場合、実行の来歴に一部情報が記録されないだけ）
 
-!!! tip "文章生成（LLM）は最初に ⚙ 設定で選ぶ"
-    GA 実験そのものは LLM 無しで動きます。LLM が必要になるのは、あらすじ・本文の生成だけです。生成を使う場合は、最初にアプリの **⚙ 設定** 画面で接続先（Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない（プロンプト保存のみ））とモデル名を選んでください。何も設定していないときの既定の接続先は llama-server です（配布版 v1.0.0-viewer では codex-cli）。モデル名は claude-cli だけ未入力でも動きます（`claude-sonnet-5` が使われます）が、それ以外の接続先は必ず選ぶ必要があります。Ollama や llama-server 本体は WorldBloom に含まれていないので、別途インストールしてください。詳しくは [LLM バックエンド](../usage/llm-backends.md#model-defaults) を参照してください。
+!!! tip "AI機能は接続先の設定が必要"
+    基本のGAシミュレーションはLLMなしで動きます（任意の合理性層を有効にする場合を除きます）。AIを使った世界の新規作成・精緻化、あらすじ・本文の生成には接続先とモデルの設定が必要です。現行画面の **⚙ 全体設定** と[LLM バックエンド](../usage/llm-backends.md)を確認してください。OllamaやモデルはWorldBloomには同梱されません。外部サービスを使う設定では、そのサービスへ生成対象の情報が送られます。
 
 === "Studio（フル機能）"
 
@@ -43,7 +43,7 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
     pip install -r requirements.txt
     ```
 
-    同梱の `samples/`（桃太郎・探偵・恋愛の3実験）を閲覧専用で開く:
+    同梱の `samples/`（桃太郎・探偵・恋愛の3実験）を開く（選定を書き込む可能性があるため、元データを保管する場合はコピーを使ってください）:
 
     ```
     python viewer/server.py --runs samples --port 5401
@@ -59,10 +59,16 @@ reviewed: "72aaeae8379271e99357be2f967fa0cff3901a8d"
 
     実験の実行・あらすじ/本文の生成をコマンドラインから直接行う手順は [CLI での作業手順](../usage/cli-workflow.md) を参照してください。
 
+## ソース版のOSと保存データ
+
+WindowsとLinuxで実行管理を利用できます。LinuxではPython 3.12以上に加え、Linux 5.3以上のpidfd、子プロセス監視機能、同じPID名前空間の`/proc`が必要です。利用できない環境ではジョブを受け付けません。Windows配布EXEとLinuxのソース起動は別の導入方法です。
+
+現行ソースで編集・実行できる世界は`world_format_version: 1`を含む新形式だけです。同梱の「桃太郎＋3」（`projects/momotaro_plus3_new`）または新規作成画面から確定した世界を使ってください。旧世界のファイルや実行結果を上書きせず、必要なら元の版のコードとPython環境を別に保持してください。形式番号だけを手書きで足しても変換にはなりません。
+
 ## SmartScreen の警告が出た場合
 
-配布版 exe は署名されていないため、初回起動時に Windows SmartScreen の警告が出ることがあります。「詳細情報」→「実行」の順にクリックしてください。
+未署名の配布版では、初回起動時にWindows SmartScreenの警告が出ることがあります。入手元がこのリポジトリの公式Releaseであることと、公開されている場合はチェックサムを確認してください。不明な配布元や一致しないファイルは実行せず、警告を無条件に回避しないでください。
 
 ## 実際のダウンロード先
 
-配布版は [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases) から入手できます。現時点の最新版はタグ `v1.1.0` で、`WorldBloom-portable.zip`（Viewer）と `WorldBloom-Studio-portable.zip`（Studio）の2つが添付されています。
+配布版は [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases) から入手できます。添付ZIPの対応バージョン・変更内容・動作条件は各Releaseで確認してください。ソース版の更新だけではEXEは更新されません。

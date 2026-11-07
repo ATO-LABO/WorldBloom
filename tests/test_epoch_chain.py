@@ -26,6 +26,7 @@ from unittest import mock
 
 import yaml
 
+from saved_world_fixtures import install_current_worlds
 from execution.configs import ConfigStore
 from execution.epoch_chain import IDLE_EPOCHS, EpochChain
 from execution.provenance import ConfigError
@@ -110,6 +111,7 @@ class EpochChainTestBase(unittest.TestCase):
         shutil.copyfile(ROOT / "requirements.txt", self.repo / "requirements.txt")
         self.project = self.repo / "projects" / "momotaro"
         self.template_dir = self.repo / "templates" / "momotaro"
+        install_current_worlds(self.repo, "momotaro")
         self.store = ConfigStore(self.repo, base / "control", base / "runs")
         self.jobs = FakeJobStore(self.store)
         self.chain = EpochChain(self.jobs)
@@ -1103,6 +1105,7 @@ class HeavyRealChainEndToEndTest(unittest.TestCase):
             (base / "settings.json").write_text(json.dumps({"output": {"default_backend": "codex-cli",
                 "codex-cli": {"limits": {"wall_seconds": 600}}}}), encoding="utf-8")
 
+            install_current_worlds(repo, "momotaro")
             store = ConfigStore(repo, base / "control", base / "runs")
             store.save({"label": "e2e", "project_id": "momotaro", "template_id": "momotaro",
                         "evolution": {"generations": 2, "population": 12, "seeds": 2, "seed_base": 31, "ga_seed": 29,

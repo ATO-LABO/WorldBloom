@@ -1,0 +1,42 @@
+{
+  "id": "機関士",
+  "description": "過電流を止めるため、機関室の電源を停止しようとする機関士。",
+  "personality": "危険を放置しない",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "機関室",
+      "通路",
+      "通信室"
+    ],
+    "entry": "機関室"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "inspect_response"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {},
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": [
+    {
+      "condition": "power_lost",
+      "priority": 10,
+      "required": true
+    }
+  ]
+}

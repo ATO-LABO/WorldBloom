@@ -1,0 +1,266 @@
+{
+  "name": "秘密を守って助けを求める",
+  "overview": "記録官アオは、秘密の避難先を漏らさず支援を得る方法を相談する。",
+  "initial_story": "記録官アオは、秘密の避難先を漏らさず支援を得る方法を相談する。",
+  "time": {
+    "days": 1,
+    "slots": [
+      "持込",
+      "意見交換",
+      "修正",
+      "再審査",
+      "判断",
+      "予備一",
+      "予備二",
+      "予備三"
+    ]
+  },
+  "protagonist": "アオ",
+  "antagonist": "サキ",
+  "zones": [
+    {
+      "name": "相談室"
+    },
+    {
+      "name": "外の広場"
+    }
+  ],
+  "routes": {
+    "相談室": [],
+    "外の広場": []
+  },
+  "facts": [
+    {
+      "id": "避難先",
+      "label": "保護対象者の秘密の避難先。",
+      "sources": []
+    }
+  ],
+  "ending": [
+    {
+      "id": "approved",
+      "label": "最初の承認",
+      "when": "proposal_decided(\"main\", \"approved\")"
+    },
+    {
+      "id": "rejected",
+      "label": "最初の却下",
+      "when": "proposal_decided(\"main\", \"rejected\")"
+    },
+    {
+      "id": "deferred",
+      "label": "最初の保留",
+      "when": "proposal_decided(\"main\", \"deferred\")"
+    }
+  ],
+  "target_ending": [
+    "approved",
+    "rejected",
+    "deferred"
+  ],
+  "deliberation": {
+    "version": 1,
+    "state": {
+      "連絡判断": "未決定",
+      "支援": "未確保"
+    },
+    "proposals": [
+      {
+        "id": "main",
+        "title": "秘密を守って助けを求める",
+        "place": "相談室",
+        "proposer": "アオ",
+        "authority": "サキ",
+        "reviewers": [
+          "サキ",
+          "ユラ"
+        ],
+        "required_support": [
+          "ユラ"
+        ],
+        "quorum": 2,
+        "alternatives": [
+          {
+            "id": "full",
+            "label": "全文を送る案",
+            "terms": {
+              "連絡": "全文"
+            },
+            "statement": "支援を頼むため、記録をそのまま商人へ送る案を出します。"
+          },
+          {
+            "id": "redacted",
+            "label": "避難先を伏せる案",
+            "terms": {
+              "連絡": "必要部分だけ"
+            },
+            "statement": "避難先を伏せた記録に修正します。支援に必要な情報だけを伝えます。"
+          }
+        ],
+        "initial": "full",
+        "profiles": {
+          "アオ": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [],
+            "support_line": "避難先を伏せた内容なら、支援の相談に進められます。",
+            "oppose_line": "避難先を商人に知られる内容には同意できません。",
+            "unknown_line": "秘密が守られるか判断する情報が足りません。"
+          },
+          "サキ": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [],
+            "support_line": "避難先を伏せた内容なら、支援の相談に進められます。",
+            "oppose_line": "避難先を商人に知られる内容には同意できません。",
+            "unknown_line": "秘密が守られるか判断する情報が足りません。",
+            "evidence_trust": {
+              "ユラ": 0.9
+            }
+          },
+          "ユラ": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [],
+            "support_line": "避難先を伏せた内容なら、支援の相談に進められます。",
+            "oppose_line": "避難先を商人に知られる内容には同意できません。",
+            "unknown_line": "秘密が守られるか判断する情報が足りません。",
+            "evidence_trust": {
+              "サキ": 0.9
+            }
+          }
+        },
+        "outcomes": {
+          "approved": {
+            "連絡判断": "連絡内容承認"
+          },
+          "rejected": {
+            "連絡判断": "差戻し"
+          },
+          "deferred": {
+            "連絡判断": "保留"
+          }
+        },
+        "decision_lines": {
+          "approved": "この連絡内容を承認します。まだ記録を送ったわけではありません。",
+          "rejected": "この内容での連絡は認めません。",
+          "deferred": "秘密の扱いを確認するまで保留します。"
+        },
+        "requires_state": {
+          "連絡判断": "未決定"
+        },
+        "request_line": "この内容で判断をお願いします。",
+        "choice_policy": {
+          "version": 2,
+          "trust": {
+            "サキ": 0.9,
+            "ユラ": 0.9
+          },
+          "evidence_threshold": 0.6,
+          "alternative_requires": {},
+          "amendment_deadline": 7,
+          "revision_steps": 2
+        },
+        "concern_projections": {
+          "full": {
+            "requires": [],
+            "effects": [
+              {
+                "kind": "knowledge",
+                "actor": "レン",
+                "fact": "避難先",
+                "value": true
+              },
+              {
+                "kind": "state",
+                "key": "支援",
+                "value": "確保"
+              }
+            ]
+          },
+          "redacted": {
+            "requires": [],
+            "effects": [
+              {
+                "kind": "state",
+                "key": "支援",
+                "value": "確保"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "concerns": {
+    "version": 1,
+    "conditions": [
+      {
+        "id": "secret_kept",
+        "label": "商人に避難先を知られない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "knowledge",
+          "fact": "避難先",
+          "actors": [
+            "レン"
+          ],
+          "rule": "none"
+        }
+      },
+      {
+        "id": "help_received",
+        "label": "支援を確保する",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "state",
+          "key": "支援",
+          "equals": "確保"
+        }
+      }
+    ],
+    "commitments": {
+      "アオ": [
+        {
+          "condition": "secret_kept",
+          "priority": 3,
+          "required": true
+        },
+        {
+          "condition": "help_received",
+          "priority": 2,
+          "required": false
+        }
+      ],
+      "サキ": [
+        {
+          "condition": "secret_kept",
+          "priority": 3,
+          "required": true
+        },
+        {
+          "condition": "help_received",
+          "priority": 2,
+          "required": false
+        }
+      ],
+      "ユラ": [
+        {
+          "condition": "secret_kept",
+          "priority": 3,
+          "required": true
+        },
+        {
+          "condition": "help_received",
+          "priority": 2,
+          "required": false
+        }
+      ]
+    }
+  }
+}

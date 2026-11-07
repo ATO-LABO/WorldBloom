@@ -1,0 +1,39 @@
+{
+  "id": "真壁",
+  "description": "真壁は生活制度局の官僚。婚姻を国家が権利配分の資格として使う制度を廃止し、婚姻の有無にかかわらず保障を受けられる改革案を省内へ持ち込む。恋愛や共同生活の禁止は提案していない。",
+  "personality": "真壁は生活制度局の官僚。婚姻を国家が権利配分の資格として使う制度を廃止し、婚姻の有無にかかわらず保障を受けられる改革案を省内へ持ち込む。恋愛や共同生活の禁止は提案していない。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "生活制度局の会議室"
+    ],
+    "entry": "生活制度局の会議室"
+  },
+  "verbs": [
+    "rest",
+    "submit_proposal",
+    "present_proposal",
+    "amend_proposal",
+    "request_decision",
+    "respond",
+    "inspect_response"
+  ],
+  "knowledge": [],
+  "goal": {
+    "description": "真壁は生活制度局の官僚。婚姻を国家が権利配分の資格として使う制度を廃止し、婚姻の有無にかかわらず保障を受けられる改革案を省内へ持ち込む。恋愛や共同生活の禁止は提案していない。"
+  },
+  "relations": {},
+  "beliefs": {
+    "implementation_report": {
+      "value": "pending",
+      "confidence": 1
+    }
+  }
+}

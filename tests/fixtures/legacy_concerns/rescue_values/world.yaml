@@ -1,0 +1,318 @@
+{
+  "name": "守りたい条件で考える救助航路",
+  "overview": "航法士ナギは帰還中の船で救難信号を受け、予定航路を外れて救助する案を持ち込む。",
+  "initial_story": "航法士ナギは帰還中の船で救難信号を受け、予定航路を外れて救助する案を持ち込む。",
+  "time": {
+    "days": 1,
+    "slots": [
+      "持込",
+      "意見交換",
+      "修正",
+      "再審査",
+      "判断",
+      "予備一",
+      "予備二",
+      "予備三"
+    ]
+  },
+  "protagonist": "ナギ",
+  "antagonist": "イサ",
+  "zones": [
+    {
+      "name": "帰還船の操舵室"
+    }
+  ],
+  "routes": {
+    "帰還船の操舵室": []
+  },
+  "facts": [
+    {
+      "id": "燃料残量",
+      "label": "短い救助航路なら帰還用の燃料を残せる。",
+      "sources": []
+    },
+    {
+      "id": "救難座標",
+      "label": "近傍に遭難船がある。",
+      "sources": []
+    }
+  ],
+  "ending": [
+    {
+      "id": "approved",
+      "label": "最初の承認",
+      "when": "proposal_decided(\"main\", \"approved\")"
+    },
+    {
+      "id": "rejected",
+      "label": "最初の却下",
+      "when": "proposal_decided(\"main\", \"rejected\")"
+    },
+    {
+      "id": "deferred",
+      "label": "最初の保留",
+      "when": "proposal_decided(\"main\", \"deferred\")"
+    }
+  ],
+  "target_ending": [
+    "approved",
+    "rejected",
+    "deferred"
+  ],
+  "deliberation": {
+    "version": 1,
+    "state": {
+      "航路判断": "変更前",
+      "遭難者": "未救助"
+    },
+    "proposals": [
+      {
+        "id": "main",
+        "title": "帰還船の救助航路",
+        "place": "帰還船の操舵室",
+        "proposer": "ナギ",
+        "authority": "イサ",
+        "reviewers": [
+          "イサ",
+          "レム",
+          "トワ"
+        ],
+        "required_support": [
+          "レム",
+          "トワ"
+        ],
+        "quorum": 3,
+        "alternatives": [
+          {
+            "id": "direct",
+            "label": "最短到着の救助案",
+            "terms": {
+              "救助": "実施",
+              "帰還燃料": "未確保",
+              "航路": "直行"
+            },
+            "statement": "予定を変えて救助に向かいたい。まず直行する案を出します。"
+          },
+          {
+            "id": "reserve",
+            "label": "帰還燃料を残す救助案",
+            "terms": {
+              "救助": "実施",
+              "帰還燃料": "確保",
+              "航路": "短距離"
+            },
+            "statement": "帰還用の燃料を残せる短い航路に修正します。救助へ向かう方針は変えません。"
+          }
+        ],
+        "initial": "direct",
+        "profiles": {
+          "ナギ": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [],
+            "support_line": "救助に向かいたい。",
+            "oppose_line": "見捨てる案には同意できない。",
+            "unknown_line": "判断に必要な情報がまだありません。今回は保留にしてください。"
+          },
+          "イサ": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [],
+            "support_line": "帰還の余地が残るなら、この航路を承認できます。",
+            "oppose_line": "ナギの判断は信頼している。それでも、帰れなくなる航路は認められない。",
+            "unknown_line": "判断に必要な情報がまだありません。今回は保留にしてください。",
+            "evidence_trust": {
+              "レム": 0.9,
+              "トワ": 0.9
+            }
+          },
+          "レム": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [
+              "燃料残量"
+            ],
+            "support_line": "燃料残量を踏まえると、この航路なら帰還できます。",
+            "oppose_line": "その案では帰還用燃料を確保できません。",
+            "unknown_line": "判断に必要な情報がまだありません。今回は保留にしてください。",
+            "evidence_trust": {
+              "イサ": 0.9,
+              "トワ": 0.9
+            }
+          },
+          "トワ": {
+            "weights": {},
+            "constraints": {},
+            "minimum": 0,
+            "requires": [
+              "救難座標"
+            ],
+            "support_line": "救難座標は確認できています。救助に賛成します。",
+            "oppose_line": "救助しない案には反対です。",
+            "unknown_line": "判断に必要な情報がまだありません。今回は保留にしてください。",
+            "evidence_trust": {
+              "イサ": 0.9,
+              "レム": 0.9
+            }
+          }
+        },
+        "outcomes": {
+          "approved": {
+            "航路判断": "救助航路承認"
+          },
+          "rejected": {
+            "航路判断": "変更却下"
+          },
+          "deferred": {
+            "航路判断": "判断保留"
+          }
+        },
+        "decision_lines": {
+          "approved": "修正した救助航路を承認する。まだ救助は済んでいない。これから向かう。",
+          "rejected": "この航路変更は却下する。帰還を保証できる案を持ってきてほしい。",
+          "deferred": "情報が足りない。航路変更の判断は保留する。"
+        },
+        "requires_state": {
+          "航路判断": "変更前"
+        },
+        "request_line": "この版で、最初の判断をお願いします。",
+        "choice_policy": {
+          "version": 2,
+          "trust": {
+            "イサ": 0.9,
+            "レム": 0.9,
+            "トワ": 0.9
+          },
+          "evidence_threshold": 0.6,
+          "alternative_requires": {
+            "reserve": [
+              "燃料残量"
+            ]
+          },
+          "amendment_deadline": 7,
+          "revision_steps": 2
+        },
+        "concern_projections": {
+          "direct": {
+            "requires": [
+              "燃料残量"
+            ],
+            "effects": [
+              {
+                "kind": "vitality",
+                "actor": "レム",
+                "value": "dead"
+              },
+              {
+                "kind": "state",
+                "key": "遭難者",
+                "value": "救助済"
+              }
+            ]
+          },
+          "reserve": {
+            "requires": [
+              "燃料残量"
+            ],
+            "effects": [
+              {
+                "kind": "vitality",
+                "actor": "レム",
+                "value": "alive"
+              },
+              {
+                "kind": "state",
+                "key": "遭難者",
+                "value": "救助済"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "concerns": {
+    "version": 1,
+    "conditions": [
+      {
+        "id": "crew_alive",
+        "label": "レムの命を守る",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "vitality",
+          "actor": "レム",
+          "allowed": [
+            "alive",
+            "downed",
+            "revived"
+          ]
+        }
+      },
+      {
+        "id": "survivors_helped",
+        "label": "遭難者を救助する",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "state",
+          "key": "遭難者",
+          "equals": "救助済"
+        }
+      }
+    ],
+    "commitments": {
+      "ナギ": [
+        {
+          "condition": "crew_alive",
+          "priority": 3,
+          "required": true
+        },
+        {
+          "condition": "survivors_helped",
+          "priority": 2,
+          "required": false
+        }
+      ],
+      "イサ": [
+        {
+          "condition": "crew_alive",
+          "priority": 3,
+          "required": true
+        },
+        {
+          "condition": "survivors_helped",
+          "priority": 2,
+          "required": false
+        }
+      ],
+      "レム": [
+        {
+          "condition": "crew_alive",
+          "priority": 3,
+          "required": true
+        },
+        {
+          "condition": "survivors_helped",
+          "priority": 2,
+          "required": false
+        }
+      ],
+      "トワ": [
+        {
+          "condition": "crew_alive",
+          "priority": 3,
+          "required": true
+        },
+        {
+          "condition": "survivors_helped",
+          "priority": 2,
+          "required": false
+        }
+      ]
+    }
+  }
+}

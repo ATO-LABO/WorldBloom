@@ -1,0 +1,48 @@
+{
+  "id": "機関士",
+  "description": "機関士",
+  "personality": "機関士",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "船橋",
+      "通路",
+      "機関区画"
+    ],
+    "entry": "船橋"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "inspect_response",
+    "answer_response",
+    "share_knowledge"
+  ],
+  "beliefs": {},
+  "goal": {
+    "description": "乗員が故障の被害を受けない"
+  },
+  "relations": {
+    "航海士": {
+      "affinity": 0.6,
+      "awareness": 1
+    },
+    "通信士": {
+      "affinity": 0.6,
+      "awareness": 1
+    }
+  },
+  "stamina": {
+    "max": 10,
+    "current": 10,
+    "recover_per_slot": 1
+  }
+}

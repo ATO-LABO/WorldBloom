@@ -1,11 +1,16 @@
 usage: server.py [-h] --runs RUNS [--host HOST] [--port PORT] [--control CONTROL] [--repo REPO]
+                 [--world-draft-mock | --world-draft-live]
 
 View WorldBloom experiment archives.
 
 options:
-  -h, --help         show this help message and exit
-  --runs RUNS        Root containing WorldBloom experiment directories.
-  --host HOST        Listen address; defaults to loopback only.
+  -h, --help          show this help message and exit
+  --runs RUNS         Root containing WorldBloom experiment directories.
+  --host HOST         Listen address; defaults to loopback only.
   --port PORT
-  --control CONTROL  Enable persistent configuration/job APIs at this control root.
+  --control CONTROL   Enable persistent configuration/job APIs at this control root.
   --repo REPO
+  --world-draft-mock  Use an explicitly labelled fixed mock for new-world proposals; never call an
+                      LLM.
+  --world-draft-live  Opt in to real generation using existing output settings. Requires prior
+                      approval for provider/model/cost.

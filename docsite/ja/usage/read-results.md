@@ -1,17 +1,17 @@
 ---
 sources:
-  - "viewer/pages.py"
-  - "viewer/sifting_pages.py"
-  - "viewer/compare_pages.py"
-  - "viewer/lineage_pages.py"
-  - "viewer/server.py"
-  - "viewer/explanation_ui.py"
-  - "gapengine/scenes.py"
-  - "viewer/epoch_view.py"
-  - "viewer/run_workspace.py"
-  - "viewer/run_browse.py"
-  - "gapengine/qd.py"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+- viewer/pages.py
+- viewer/sifting_pages.py
+- viewer/compare_pages.py
+- viewer/lineage_pages.py
+- viewer/server.py
+- viewer/explanation_ui.py
+- gapengine/scenes.py
+- viewer/epoch_view.py
+- viewer/run_workspace.py
+- viewer/run_browse.py
+- gapengine/qd.py
+reviewed: 2e70a9b216b7b2a80a4228a10a928148060e8fc8
 ---
 # 結果を読む
 

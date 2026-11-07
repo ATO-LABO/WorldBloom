@@ -32,6 +32,8 @@ _ROLE_LABELS = {"hostile": "敵", "neutral": "中立", "ally": "味方"}
 # (an item, an effect id, a display name, ...), so no role/permission ever
 # applies to them and the permission line would be a meaningless "allow" x3.
 _TARGETLESS_VERBS = frozenset({
+    "respond", "inspect_response", "answer_response", "await_response",
+    "submit_proposal", "present_proposal", "review_proposal", "amend_proposal", "request_decision", "decide_proposal",
     "train", "rest", "withdraw", "craft", "guard", "rethink",
     "plant", "payoff", "disguise", "donate", "labor", "buy",
 })
@@ -255,6 +257,9 @@ def catalog_panel_html(world: dict, repo: Path) -> str:
 
     facts = world_facts(engine_world)
     subject_union, subject_by_verb = _subject_verb_index(repo, world["id"])
+    for verb in engine_world.global_action_grants():
+        subject_union.add(verb)
+        subject_by_verb[verb] = [str(s.get('id')) for s in world_graph.load_subjects(repo / 'projects' / world['id']) if s.get('id')]
 
     grouped: dict[str, list[str]] = {}
     counts = {"active": 0, "pruned": 0, "unused": 0, "unimplemented": 0}

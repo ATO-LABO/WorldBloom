@@ -1,0 +1,48 @@
+{
+  "id": "桃太郎",
+  "description": "桃太郎",
+  "personality": "桃太郎",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "旅先",
+      "峠",
+      "村"
+    ],
+    "entry": "旅先"
+  },
+  "verbs": [
+    "rest",
+    "move",
+    "respond",
+    "inspect_response",
+    "request_response",
+    "answer_response"
+  ],
+  "beliefs": {},
+  "goal": {
+    "description": "村が被害を受けない"
+  },
+  "relations": {
+    "犬": {
+      "affinity": 0.6,
+      "awareness": 1
+    },
+    "知らせ人": {
+      "affinity": 0.6,
+      "awareness": 1
+    }
+  },
+  "stamina": {
+    "max": 10,
+    "current": 10,
+    "recover_per_slot": 1
+  }
+}

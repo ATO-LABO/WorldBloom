@@ -1,0 +1,363 @@
+{
+  "name": "設計を引き継いで文化祭の展示を作る",
+  "time": {
+    "days": 1,
+    "slots": [
+      "08:00"
+    ]
+  },
+  "protagonist": "委員長",
+  "antagonist": "制作担当",
+  "zones": [
+    {
+      "name": "Bench"
+    },
+    {
+      "name": "Store"
+    }
+  ],
+  "routes": {
+    "Bench": [
+      {
+        "to": "Store",
+        "cost": 1
+      }
+    ],
+    "Store": [
+      {
+        "to": "Bench",
+        "cost": 1
+      }
+    ]
+  },
+  "ending": [
+    {
+      "id": "observed",
+      "when": "False",
+      "label": "Observation only"
+    }
+  ],
+  "target_ending": "observed",
+  "scheduled_events": [],
+  "slot_execution": {
+    "mode": "calendar_promises_v2",
+    "contract": "contract.yaml",
+    "subjects": [
+      {
+        "id": "委員長",
+        "path": "subjects/person_01.yaml"
+      },
+      {
+        "id": "制作担当",
+        "path": "subjects/person_02.yaml"
+      }
+    ]
+  },
+  "joint_activities": {
+    "version": 1,
+    "definitions": [
+      {
+        "id": "assemble_display",
+        "provider": "joint_work",
+        "revision": 1,
+        "roles": [
+          {
+            "id": "technician",
+            "min": 1,
+            "max": 1,
+            "requires": {
+              "verbs": [
+                "respond"
+              ],
+              "facts": [
+                "design_record"
+              ],
+              "vitalities": [
+                "alive",
+                "revived"
+              ]
+            },
+            "label": "組立担当"
+          },
+          {
+            "id": "holder",
+            "min": 1,
+            "max": 1,
+            "requires": {
+              "verbs": [
+                "respond"
+              ],
+              "facts": [],
+              "vitalities": [
+                "alive",
+                "revived"
+              ]
+            },
+            "label": "補助担当"
+          }
+        ],
+        "duration": {
+          "unit": "minute",
+          "mode": "remaining_work",
+          "max_units": 20
+        },
+        "location_policy": "task_location",
+        "resources": [
+          {
+            "key": "workbench",
+            "binding": {
+              "kind": "existing_task_resource",
+              "task": "assembly"
+            },
+            "quantity": 1,
+            "exclusive": true,
+            "settlement": "retain"
+          }
+        ],
+        "costs": [
+          {
+            "role": "technician",
+            "per_unit": {
+              "numerator": 1,
+              "denominator": 10
+            }
+          },
+          {
+            "role": "holder",
+            "per_unit": {
+              "numerator": 1,
+              "denominator": 20
+            }
+          }
+        ],
+        "progress": {
+          "task": "assembly",
+          "model": "fixed_group_rate",
+          "per_unit": {
+            "numerator": 1,
+            "denominator": 1
+          },
+          "required_roles": [
+            "technician",
+            "holder"
+          ],
+          "preserve_on_interrupt": true
+        },
+        "interruption": {
+          "voluntary_exit": "at_boundary",
+          "forced_exit": "retain_work_then_close_segment"
+        },
+        "effects": {
+          "on_start": null,
+          "on_complete": {
+            "kind": "task_units_receipt",
+            "task": "assembly",
+            "units": 1
+          }
+        },
+        "bindings_required": [
+          "target",
+          "target_revision"
+        ],
+        "rechecks": [
+          "task_dependencies",
+          "received_knowledge",
+          "role_eligibility",
+          "own_commitments",
+          "resources"
+        ],
+        "label": "二人で展示を組み立てる"
+      }
+    ],
+    "workflows": [
+      {
+        "id": "repair_equipment",
+        "authority": "existing_task_ledger",
+        "target_binding": "target",
+        "tasks": [
+          {
+            "id": "design",
+            "units": 1,
+            "minutes_per_unit": 10,
+            "execution": {
+              "kind": "individual",
+              "verb": "work"
+            },
+            "dependencies": [],
+            "completion_artifact": {
+              "fact": "design_record",
+              "initial_audience": "actual_worker"
+            },
+            "place": "Bench",
+            "label": "設計"
+          },
+          {
+            "id": "assembly",
+            "units": 1,
+            "minutes_per_unit": 20,
+            "execution": {
+              "kind": "joint",
+              "definition": "assemble_display"
+            },
+            "dependencies": [
+              "design"
+            ],
+            "knowledge_gate": {
+              "role": "technician",
+              "fact": "design_record",
+              "source": "actual_disclosure"
+            },
+            "place": "Bench",
+            "label": "組み立て"
+          },
+          {
+            "id": "inspection",
+            "units": 1,
+            "minutes_per_unit": 5,
+            "execution": {
+              "kind": "individual",
+              "verb": "work"
+            },
+            "dependencies": [
+              "assembly"
+            ],
+            "completion_effect": {
+              "kind": "declared_state",
+              "key": "display_status",
+              "value": "ready"
+            },
+            "place": "Bench",
+            "label": "点検"
+          }
+        ],
+        "complete_when_tasks": [
+          "design",
+          "assembly",
+          "inspection"
+        ]
+      }
+    ],
+    "instances": [
+      {
+        "id": "diagnose",
+        "definition_id": "work_design",
+        "definition_revision": 1,
+        "terms_revision": 1,
+        "roles": {
+          "worker": [
+            "制作担当"
+          ]
+        },
+        "bindings": {
+          "target": "display",
+          "target_revision": 1
+        },
+        "earliest_start": 480,
+        "expires_at": 540,
+        "initial_agreement": {
+          "source": "authored_initial_terms",
+          "accepted_by": [
+            "制作担当"
+          ],
+          "known_by": [
+            "制作担当"
+          ]
+        }
+      },
+      {
+        "id": "exchange",
+        "definition_id": "assemble_display",
+        "definition_revision": 1,
+        "terms_revision": 1,
+        "roles": {
+          "technician": [
+            "委員長"
+          ],
+          "holder": [
+            "制作担当"
+          ]
+        },
+        "bindings": {
+          "target": "display",
+          "target_revision": 1
+        },
+        "earliest_start": 492,
+        "expires_at": 540,
+        "initial_agreement": {
+          "source": "authored_initial_terms",
+          "accepted_by": [
+            "委員長",
+            "制作担当"
+          ],
+          "known_by": [
+            "委員長",
+            "制作担当"
+          ]
+        }
+      },
+      {
+        "id": "verify",
+        "definition_id": "work_inspection",
+        "definition_revision": 1,
+        "terms_revision": 1,
+        "roles": {
+          "worker": [
+            "制作担当"
+          ]
+        },
+        "bindings": {
+          "target": "display",
+          "target_revision": 1
+        },
+        "earliest_start": 512,
+        "expires_at": 540,
+        "initial_agreement": {
+          "source": "authored_initial_terms",
+          "accepted_by": [
+            "制作担当"
+          ],
+          "known_by": [
+            "制作担当"
+          ]
+        }
+      }
+    ]
+  },
+  "overview": "設計、二人での組み立て、点検を、設備修理と同じ実行処理で進める。",
+  "facts": [
+    {
+      "id": "design_record",
+      "sources": []
+    }
+  ],
+  "responses": {
+    "version": 2,
+    "state": {
+      "display_status": "unfinished"
+    },
+    "locations": {
+      "display_status": "Bench"
+    },
+    "signals": [],
+    "actions": [],
+    "channels": [],
+    "events": [],
+    "windows": []
+  },
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "work_verified",
+        "label": "確認まで終える",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "display_status",
+          "equals": "ready"
+        }
+      }
+    ]
+  }
+}

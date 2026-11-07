@@ -1,0 +1,470 @@
+{
+  "name": "流された丸太と村の防柵",
+  "overview": "桃太郎は防柵の完成を目的に丸太と縄の調達を組み立てる。丸太の流失後、捜索と回収の手順を組み直す。",
+  "initial_story": "桃太郎は村にいる。縄の準備と、山の貯木場の丸太の回収が必要だ。",
+  "time": {
+    "days": 3,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6",
+      "時点7",
+      "時点8"
+    ]
+  },
+  "protagonist": "桃太郎",
+  "antagonist": "村の商人",
+  "zones": [
+    {
+      "name": "村"
+    },
+    {
+      "name": "山の貯木場"
+    },
+    {
+      "name": "川辺"
+    },
+    {
+      "name": "下流"
+    },
+    {
+      "name": "商店"
+    },
+    {
+      "name": "山の見張り台"
+    }
+  ],
+  "routes": {
+    "村": [
+      {
+        "to": "山の貯木場",
+        "cost": 1
+      }
+    ],
+    "山の貯木場": [
+      {
+        "to": "村",
+        "cost": 1
+      },
+      {
+        "to": "川辺",
+        "cost": 1
+      },
+      {
+        "to": "商店",
+        "cost": 1
+      }
+    ],
+    "川辺": [
+      {
+        "to": "山の貯木場",
+        "cost": 1
+      },
+      {
+        "to": "下流",
+        "cost": 1
+      }
+    ],
+    "下流": [
+      {
+        "to": "川辺",
+        "cost": 1
+      }
+    ],
+    "商店": [
+      {
+        "to": "山の貯木場",
+        "cost": 1
+      }
+    ],
+    "山の見張り台": []
+  },
+  "movement": {
+    "action_weight": 0
+  },
+  "items": [
+    {
+      "name": "丸太"
+    },
+    {
+      "name": "彫り物",
+      "lootable": true,
+      "modifier": {
+        "id": "craft_value",
+        "base": 2
+      }
+    },
+    {
+      "name": "縄"
+    }
+  ],
+  "facts": [
+    {
+      "id": "flight_manual",
+      "sources": []
+    },
+    {
+      "id": "battery_location",
+      "sources": []
+    }
+  ],
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "beacon_sent",
+        "label": "防柵を完成させる",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "beacon",
+          "equals": "sent"
+        }
+      },
+      {
+        "id": "battery_owned",
+        "label": "防柵用の丸太を持つ",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "桃太郎",
+          "item": "丸太",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "battery_stored",
+        "label": "丸太は山の貯木場にある",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "battery",
+          "equals": "stored"
+        }
+      },
+      {
+        "id": "ship_safe",
+        "label": "村の安全を損なわない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "safety",
+          "equals": "safe"
+        }
+      },
+      {
+        "id": "stock_battery",
+        "label": "村の商人が丸太を持つ",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "inventory",
+          "actor": "村の商人",
+          "item": "丸太",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "keeper_paid",
+        "label": "村の商人が彫り物を得る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "村の商人",
+          "item": "彫り物",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "supply_station",
+        "label": "村の商人が商店にいる",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "zone",
+          "actor": "村の商人",
+          "equals": "商店"
+        }
+      },
+      {
+        "id": "tool_retained",
+        "label": "桃太郎が彫り物を保つ",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "桃太郎",
+          "item": "彫り物",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "rope_owned",
+        "label": "縄を用意する",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "桃太郎",
+          "item": "縄",
+          "minimum": 1
+        }
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "beacon_sent",
+        "success": {
+          "condition": "beacon_sent"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 20
+        }
+      },
+      {
+        "condition": "keeper_paid",
+        "success": {
+          "condition": "keeper_paid"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 20
+        }
+      }
+    ]
+  },
+  "responses": {
+    "version": 2,
+    "state": {
+      "battery": "stored",
+      "beacon": "unsent",
+      "safety": "safe"
+    },
+    "locations": {
+      "battery": "山の見張り台",
+      "beacon": "村",
+      "safety": [
+        "村",
+        "山の貯木場",
+        "川辺",
+        "下流",
+        "商店",
+        "山の見張り台"
+      ]
+    },
+    "signals": [],
+    "actions": [
+      {
+        "id": "retrieve_store",
+        "label": "山の貯木場で丸太を回収する",
+        "condition": "battery_owned",
+        "signal": null,
+        "zone": "山の貯木場",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 3,
+        "preconditions": {
+          "battery": "stored"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "丸太",
+            "value": 1
+          },
+          {
+            "kind": "state",
+            "key": "battery",
+            "value": "recovered"
+          }
+        ]
+      },
+      {
+        "id": "scan_debris",
+        "label": "流された丸太の位置を川辺で調べる",
+        "condition": "battery_stored",
+        "signal": null,
+        "zone": "川辺",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [
+          "flight_manual"
+        ],
+        "items": {},
+        "cost": 2,
+        "steps": 2,
+        "preconditions": {
+          "battery": "adrift"
+        },
+        "effects": [
+          {
+            "kind": "knowledge",
+            "actor": "桃太郎",
+            "fact": "battery_location",
+            "value": true
+          },
+          {
+            "kind": "state",
+            "key": "battery",
+            "value": "located"
+          }
+        ]
+      },
+      {
+        "id": "recover_space",
+        "label": "下流で丸太を縄で引き上げる",
+        "condition": "battery_owned",
+        "signal": null,
+        "zone": "下流",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [
+          "battery_location"
+        ],
+        "items": {
+          "縄": 1
+        },
+        "cost": 2,
+        "steps": 2,
+        "preconditions": {
+          "battery": "located"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "丸太",
+            "value": 1
+          },
+          {
+            "kind": "state",
+            "key": "battery",
+            "value": "recovered"
+          }
+        ]
+      },
+      {
+        "id": "send_beacon",
+        "label": "丸太と縄を使って防柵を組み立てる",
+        "condition": "beacon_sent",
+        "signal": null,
+        "zone": "村",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [],
+        "items": {
+          "丸太": 1,
+          "縄": 1
+        },
+        "cost": 1,
+        "steps": 1,
+        "preconditions": {
+          "beacon": "unsent"
+        },
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "丸太",
+            "value": 0
+          },
+          {
+            "kind": "state",
+            "key": "beacon",
+            "value": "sent"
+          },
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "縄",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "id": "make_rope",
+        "label": "防柵と回収作業に使う縄を用意する",
+        "condition": "rope_owned",
+        "signal": null,
+        "zone": "村",
+        "actors": [
+          "桃太郎"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 2,
+        "steps": 1,
+        "preconditions": {},
+        "effects": [
+          {
+            "kind": "inventory",
+            "actor": "桃太郎",
+            "item": "縄",
+            "value": 1
+          }
+        ]
+      }
+    ],
+    "channels": [],
+    "events": [
+      {
+        "id": "battery_accident",
+        "turn": 4,
+        "unless": {
+          "battery": "recovered"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "battery",
+            "value": "adrift"
+          }
+        ]
+      }
+    ],
+    "windows": []
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 24",
+      "label": "再計画の観測終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": [],
+  "planning": {
+    "version": 1,
+    "actors": [
+      "桃太郎"
+    ],
+    "max_depth": 10,
+    "max_nodes": 512
+  }
+}

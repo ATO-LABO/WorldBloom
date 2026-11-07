@@ -7,7 +7,6 @@ from execution.output_requests import eligible
 from execution.output_store import OutputStore
 from viewer import pages, workbench_pages as wb
 
-ASSETS = '<link rel="stylesheet" href="/static/generation.css"><script src="/static/generation.js" defer></script>'
 E = pages._escape
 
 
@@ -78,5 +77,5 @@ def render_job(handler, job):
     body = '<main class="gen-page">' + surface({"job":job}) + fallback + '</main>'
     doc = pages.document(title, body, phase="sifting" if job["kind"] == "synopsize" else "stage",
                          run=wb._resolve_run_name(handler, rid), output_run=rid,
-                         job_store=wb._job_store(handler), page_class="run-observer")
-    handler._send_html(doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">' + ASSETS + '</head>'))
+                         job_store=wb._job_store(handler), page_class="run-observer", stylesheets=('run-workspace.css','generation.css'), scripts=('generation.js',))
+    handler._send_html(doc)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from engine.economy import purchasable
+
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
@@ -32,6 +34,17 @@ class Action:
 # and drive scheduled_events.force_action (world.py load-time check,
 # world_editor.py save-time check, and the world-prototype.js form).
 FORCE_ARG_KINDS: dict[str, tuple[str, ...]] = {
+    "await_response": ("text", "text", "text", "text"),
+    "respond": ("text",),
+    "inspect_response": ("fact",),
+    "request_response": ("subject", "text"),
+    "answer_response": ("text", "enum:accept|refuse"),
+    "submit_proposal": ("text", "text", "text"),
+    "present_proposal": ("text", "subject", "text"),
+    "review_proposal": ("text", "text"),
+    "amend_proposal": ("text", "text", "text"),
+    "decide_proposal": ("text", "text"),
+    "request_decision": ("text", "text"),
     "move": ("zone",),
     "rest": (),
     "investigate": ("zone",),
@@ -46,6 +59,7 @@ FORCE_ARG_KINDS: dict[str, tuple[str, ...]] = {
     "give_item": ("subject", "item"),
     "persuade": ("subject",),
     "pledge": ("subject",),
+    "start_relationship": ("subject",),
     "negotiate": ("subject",),
     "concede": ("subject",),
     "craft": ("item",),
@@ -71,7 +85,7 @@ def _action_key(candidate: tuple[Action, float]) -> tuple[str, tuple[str, ...]]:
 
 
 def _present(subject: Subject, world: World) -> list[Subject]:
-    return world.present_subjects(subject.zone)
+    return world.present_subjects(subject.zone,**({'observer':subject} if getattr(world,'joint_activities',None) is not None else {}))
 
 
 def _is_hostile(actor: Subject, target: Subject, world: World) -> bool:
@@ -247,10 +261,12 @@ def _missing_price_currency(subject: Subject, world: World) -> set[str]:
     """Phase B: the ``buy`` analogue of ``_missing_recipe_materials`` --
     currencies still short for some not-yet-bought priced item."""
 
+    if not world.mechanics_enabled('budgeted_purchases'):
+        return set()
     missing: set[str] = set()
     for product, definition in sorted(world.items.items()):
         price = definition.get("price")
-        if not price or subject.has_item(product):
+        if not purchasable(definition,True) or not price or subject.has_item(product):
             continue
         for currency, required in sorted(price.items()):
             if subject.inventory.get(currency, 0) < int(required):
@@ -318,11 +334,11 @@ def _buy_ready_destinations(subject: Subject, world: World) -> set[str]:
     destinations: set[str] = set()
     for item, definition in sorted(world.items.items()):
         price = definition.get("price")
-        if not price or subject.has_item(item):
+        if not purchasable(definition,world.mechanics_enabled('budgeted_purchases')) or subject.has_item(item):
             continue
-        if not all(
+        if world.mechanics_enabled('budgeted_purchases') and not all(
             subject.inventory.get(currency, 0) >= int(required)
-            for currency, required in price.items()
+            for currency, required in (price or {}).items()
         ):
             continue
         shop_zone = definition.get("shop_zone")
@@ -427,7 +443,7 @@ def _movement_candidates(
             * destination_weights[destination]
             / total
         )
-        if subject.exhausted:
+        if world.mechanics_enabled('stamina_management') and subject.exhausted:
             weight *= 0.3
         candidates_out.append(
             (
@@ -497,7 +513,7 @@ def _labor_candidates(
     subject: Subject,
     world: World,
 ) -> list[tuple[Action, float]]:
-    if "labor" not in subject.verbs or not _labor_zone_eligible(subject, world):
+    if not world.action_enabled('labor') or not _labor_zone_eligible(subject, world):
         return []
     return [
         (
@@ -713,7 +729,7 @@ def _sacrifice_candidates(
 
     allies = [
         target
-        for target in world.present_subjects(subject.zone)
+        for target in _present(subject,world)
         if target.id != subject.id
         and target.vitality in {"alive", "revived"}
         and world.relations.stance(target.id, subject.id)
@@ -790,6 +806,7 @@ def _mislead_candidates(
             )
 
         for fact_id, belief in sorted(subject.beliefs.items()):
+            if fact_id not in world.facts: continue  # A concern belief is not a transmissible fact.
             definition = world.facts.get(fact_id, {})
             values = [
                 str(value)
@@ -1017,6 +1034,7 @@ def _share_candidates(
 
         for fact_id, belief in sorted(subject.beliefs.items()):
             target_belief = target.beliefs.get(fact_id)
+            if fact_id not in world.facts: continue  # A concern belief is not a transmissible fact.
             if (
                 target_belief is not None
                 and target_belief.value == belief.value
@@ -1192,6 +1210,22 @@ def _persuade_candidates(
     )
 
 
+def _relationship_candidates(subject, world, present):
+    if not world.action_enabled("start_relationship"):
+        return []
+    result = []
+    for target in _living_targets(subject, present):
+        key = world.pledge_key(subject.id, target.id)
+        if key in world.romantic_relationships:
+            continue
+        if world.relations.stance(subject.id, target.id) < 0.6 or world.relations.stance(target.id, subject.id) < 0.6:
+            continue
+        if _permission_weight(subject, target, "start_relationship", world) <= 0:
+            continue
+        result.append((Action("start_relationship", (target.id,)), 0.15 + subject.traits["social"] * 0.15))
+    return result
+
+
 def _pledge_candidates(
     subject: Subject,
     world: World,
@@ -1326,8 +1360,8 @@ def _concede_candidates(
         objective = str(offer.get("objective", ""))
         if (
             not objective
-            or world.holder(objective) != subject.id
-            or claimant.goal.target != objective
+            or (not subject.has_item(objective) if offer.get('objective_goal') is not None else world.holder(objective) != subject.id)
+            or not _offer_matches_goal(world, claimant, offer)
         ):
             continue
 
@@ -1390,10 +1424,10 @@ def _craft_candidates(
 
 def _can_buy(subject: Subject, item: str, world: World) -> bool:
     definition = world.items[item]
-    price = definition["price"]
-    if subject.zone != definition.get("shop_zone"):
+    price = definition.get("price") or {}
+    if not purchasable(definition,world.mechanics_enabled('budgeted_purchases')) or subject.zone != definition.get("shop_zone"):
         return False
-    return all(
+    return not world.mechanics_enabled('budgeted_purchases') or bool(price) and all(
         subject.inventory.get(currency, 0) >= int(required)
         for currency, required in price.items()
     )
@@ -1411,7 +1445,7 @@ def _buy_candidates(
             1.0 + subject.traits["diligence"],
         )
         for item, definition in sorted(world.items.items())
-        if definition.get("price") and _can_buy(subject, item, world)
+        if definition.get("shop_zone") is not None and _can_buy(subject, item, world)
     ]
 
 
@@ -1824,6 +1858,12 @@ def candidates(
 
     if subject.vitality == "dead":
         return []
+    timing = world.action_timing
+    if timing is not None and 'work_duration' in timing.pending.get(subject.id,{}):return []
+    from engine.stamina import forced_rest,zero_behavior
+    if subject.stamina<=0 and zero_behavior(world)=='death':return []
+    rest=forced_rest(world,subject)
+    if rest is not None:return [(rest,1.0)]
     if subject.vitality == "downed":
         return [(Action("rest"), 1.0)]
 
@@ -1835,10 +1875,15 @@ def candidates(
         turn=int(sim.turn),
         day=int(sim.day),
     )
+    from engine.action_constraints import rules as action_rules
+    if any(rule['actors'] is not None for rule in action_rules(world).values()):
+        from copy import copy
+        subject = copy(subject)
+        subject.verbs = set(allowed_verbs)
     weighted: list[tuple[Action, float]] = []
     weighted.extend(_movement_candidates(subject, world, sim, present))
 
-    if "rest" in subject.verbs and subject.stamina_max > 0.0:
+    if world.mechanics_enabled("stamina_management") and "rest" in subject.verbs and subject.stamina_max > 0.0:
         ratio = subject.stamina / subject.stamina_max
         rest_weight = max(
             0.05,
@@ -1846,7 +1891,7 @@ def candidates(
             * 2.0
             * (1.0 - ratio) ** 2,
         )
-        if subject.exhausted:
+        if world.mechanics_enabled('stamina_management') and subject.exhausted:
             rest_weight *= 2.0
         weighted.append(
             (
@@ -1877,6 +1922,7 @@ def candidates(
     weighted.extend(_give_candidates(subject, world, present))
     weighted.extend(_persuade_candidates(subject, world, present))
     weighted.extend(_pledge_candidates(subject, world, present))
+    weighted.extend(_relationship_candidates(subject, world, present))
     weighted.extend(_negotiate_candidates(subject, world, present))
     weighted.extend(_concede_candidates(subject, world, present))
     weighted.extend(_craft_candidates(subject, world))
@@ -1905,14 +1951,49 @@ def candidates(
     )
     weighted.extend(_trial_candidates(subject, world))
     weighted.extend(_donate_candidates(subject, world))
+    if world.responses is not None:
+        weighted.extend(world.responses.candidates(world, subject, sim.turn, sim.day))
+    if world.deliberation is not None:
+        weighted.extend(
+            (Action(verb, args), weight)
+            for verb, args, weight in (world.social_planner.deliberation_candidates(world,subject,sim.turn)
+                if getattr(world,'social_planner',None) else world.deliberation.candidates(world, subject.id, turn=sim.turn))
+        )
+    if getattr(world,'social_planner',None) is not None:
+        weighted.extend(world.social_planner.peer_candidates(world,subject,int(sim.turn),int(sim.day)))
 
+    from engine.objective_actions import augment_and_rank
+    weighted = augment_and_rank(world, subject,
+        [(a, w) for a, w in weighted if a.verb in allowed_verbs and world.genre_allows(a.verb)],
+        present, int(sim.turn), allowed_verbs, int(sim.day))
+    if world.planner is not None and world.planner.owns(subject):
+        planned = world.planner.candidates(world, subject, int(sim.turn), int(sim.day))
+        if getattr(world,'native_planning',None) is not None:
+            weighted = [] # Explicit native migration: do not mix an unrelated legacy choice.
+        if getattr(world,'joint_activities',None) is not None and planned:
+            weighted = []  # Explicit joint worlds use the same purpose-led search, including individual operators.
+        weighted.extend(planned)
+
+    from engine.action_constraints import denial as constraint_denial
+    from engine.stamina import required_cost
+    weighted = [(a,w) for a,w in weighted if required_cost(world, subject, a) <= subject.stamina]
     return sorted(
         (
             (action, float(weight))
             for action, weight in weighted
-            if weight > 0.0
-            and action.verb in allowed_verbs
-            and world.genre_allows(action.verb)
+            if weight > 0.0 and world.action_usage_allows(action.verb, action.args)
+            and not constraint_denial(world, subject, action.verb, action.args, int(sim.turn))
+            and ((action.verb in allowed_verbs and world.genre_allows(action.verb))
+                 or getattr(world,'joint_activities',None) is not None
+                 and action.verb in {'join_activity','await_activity'} and action.meta.get('joint_segment'))
         ),
         key=_action_key,
     )
+
+
+def _offer_matches_goal(world, claimant, offer):
+    # Legacy offers retain their old lifetime; new offers are checked with the
+    # current clock by the shared transaction adapter and at execution.
+    if offer.get('objective_goal') is None:
+        return claimant.goal.target == offer.get('objective')
+    return offer.get('status', 'pending') == 'pending'

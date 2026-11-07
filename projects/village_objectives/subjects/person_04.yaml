@@ -1,0 +1,33 @@
+{
+  "id": "倉番",
+  "description": "倉番",
+  "personality": "倉番",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "村"
+    ],
+    "entry": "村"
+  },
+  "verbs": [
+    "rest"
+  ],
+  "beliefs": {},
+  "goal": {},
+  "inventory": {
+    "食料袋": 1
+  },
+  "stamina": {
+    "max": 20,
+    "current": 20,
+    "recover_per_slot": 1
+  },
+  "commitments": []
+}

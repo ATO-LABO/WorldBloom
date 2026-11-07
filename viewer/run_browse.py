@@ -21,7 +21,7 @@ def navigation(active, *, world=None, config=None, store=None, status_href=None)
     """The same four destinations on every execution page."""
     from viewer import workbench_pages as wb
     world_id = (world or {}).get("id")
-    conditions = f'/jobs?world={U(world_id)}' if world_id else '/jobs'
+    conditions = f'/jobs?world={U(world_id)}' if world_id else '/worlds'
     settings = f'/configs/new?project={U(world_id)}' if world_id else '/configs/new'
     if config:
         conditions = f'/configs/{U(config["config_id"])}'
@@ -51,12 +51,11 @@ def _document(handler, title, active, body, *, world=None, config=None, footer="
                + chain_strip + '<div class="rb-content">' + body + '</div>' + summary
                + ('<footer class="rw-footer rb-footer">' + footer + '</footer>' if footer else '') + '</div></div>')
     doc = pages.document(title, content, phase="run", world=world, job_store=store,
-                         pin=data.pinned_target(store), page_class="run-observer")
+                         pin=data.pinned_target(store), page_class="run-observer", stylesheets=('run-workspace.css',), scripts=('epoch-chain.js',) if chain_strip else ())
     # WB-WORLDGROW-001 段階5c-2: the script is only ever needed when the
     # strip is actually present -- keeps every page with no active chain
     # byte-identical to before this stage.
-    epoch_script = '<script src="/static/epoch-chain.js" defer></script>' if chain_strip else ""
-    doc = doc.replace('</head>', '<link rel="stylesheet" href="/static/run-workspace.css">' + epoch_script + '</head>')
+
     handler._send_html(doc)
 
 
@@ -176,5 +175,5 @@ def history(handler, records, generation_jobs):
             '<section class="rb-history-section"><h2>履歴</h2>' + cards(completed, "条件に一致する実行履歴はありません") + '</section>'
             '<div class="rb-output-history">' + output_pages.render_generation_jobs_section(generation_jobs) + '</div>')
     if not records:
-        body += '<p><a class="rw-primary" href="/jobs">実行条件を確認 →</a></p>'
+        body += '<p><a class="rw-primary" href="/worlds">世界を選んで実行条件へ →</a></p>'
     _document(handler, "実行履歴", "history", body)

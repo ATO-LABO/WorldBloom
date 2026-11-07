@@ -1,0 +1,42 @@
+{
+  "id": "有村",
+  "description": "有村は予算担当。移行費用の試算を知っている。保障に必要な財源が案に含まれなければ同意しない。",
+  "personality": "有村は予算担当。移行費用の試算を知っている。保障に必要な財源が案に含まれなければ同意しない。",
+  "base": 50,
+  "traits": {
+    "social": 0.5,
+    "stubbornness": 0.5,
+    "curiosity": 0.5,
+    "diligence": 0.5,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "生活制度局の会議室"
+    ],
+    "entry": "生活制度局の会議室"
+  },
+  "verbs": [
+    "rest",
+    "review_proposal"
+  ],
+  "knowledge": [
+    "移行費用試算"
+  ],
+  "goal": {
+    "description": "有村は予算担当。移行費用の試算を知っている。保障に必要な財源が案に含まれなければ同意しない。"
+  },
+  "relations": {
+    "真壁": {
+      "affinity": 0,
+      "awareness": 1
+    }
+  },
+  "commitments": [
+    {
+      "condition": "budget_secured",
+      "priority": 2,
+      "required": true
+    }
+  ]
+}

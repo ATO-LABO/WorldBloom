@@ -11,6 +11,15 @@ from execution.library import LibraryStore
 from execution.provenance import contained, identifier, read_json
 from viewer import data, pages, purpose_pages
 
+# The catalogue parses every saved world and subject. Use the same safe
+# constructors through LibYAML when available; retain the Python safe fallback.
+_SAFE_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def _saved_yaml(text):
+    return yaml.load(text, Loader=_SAFE_YAML_LOADER)
+
+
 def E(value):
     return html.escape(str(value if value is not None else ""), quote=True)
 
@@ -20,7 +29,7 @@ U = pages._url_segment
 def world_details(store, world):
     """Do not infer stories or overwrite a deliberately blank overview."""
     try:
-        value = yaml.safe_load(store.read("world", world["id"], "world.yaml"))
+        value = _saved_yaml(store.read("world", world["id"], "world.yaml"))
         value = value if isinstance(value, dict) else {}
     except (ValueError, OSError, yaml.YAMLError):
         value = {}
@@ -85,7 +94,7 @@ def world_people(store, world_id):
         if not rel.startswith("subjects/"):
             continue
         try:
-            subject = yaml.safe_load(store.read("world", world_id, rel))
+            subject = _saved_yaml(store.read("world", world_id, rel))
             if isinstance(subject, dict) and subject.get("id"):
                 names.append(str(subject["id"]))
         except (ValueError, OSError, yaml.YAMLError):
@@ -93,21 +102,41 @@ def world_people(store, world_id):
     return " ".join(names)
 
 
-def world_card(store, world, genres):
+def world_card(store, world, genres, *, selection=False, selected_world=None):
     wid = world["id"]
-    genre = world.get("genre") or ""
-    genre_name = genres.get(genre, {}).get("name") or genre or "ジャンル未設定"
+    from engine.action_types import for_world, label
+    try:
+        definition = yaml.safe_load(store.read("world", wid, "world.yaml")) or {}
+        selected = for_world(definition, store.repo / "projects" / wid / "world.yaml")
+    except (OSError, ValueError, TypeError, AttributeError, yaml.YAMLError):
+        selected = []
+    genre, genre_name = " ".join(selected), label(selected)
     description, places, period = world_details(store, world)
     protagonist = world.get("protagonist") or "未設定"
     antagonist = world.get("antagonist") or "未設定"
     name = world.get("name") or wid
     search = " ".join(str(v) for v in (name, wid, genre_name, protagonist, antagonist, description, world_people(store, wid)))
-    return (f'<article class="world-card" data-home-card data-search="{E(search)}" data-genre="{E(genre)}">'
-            f'<span class="hl-tag">{E(genre_name)}</span><h2>{E(name)}</h2>'
-            f'<p class="hl-description">{E(description)}</p>'
+    heading = 'h3' if selection else 'h2'
+    extra = (f' data-cw-world-card data-world-id="{E(wid)}" data-world-name="{E(name)}"'
+             f' data-selected="{str(wid == selected_world).lower()}"') if selection else ''
+    classes = 'world-card ui-settings-card' if selection else 'world-card'
+    if selection:
+        checked = ' checked' if wid == selected_world else ''
+        action = (f'<p class="ui-hint cw-world-id">世界ID: {E(wid)}</p>'
+                  '<label class="hl-open ui-button cw-world-choice">'
+                  f'<input type="radio" name="source-world" value="{E(wid)}" data-cw-world-option{checked}'
+                  f' aria-label="{E(name)}（ID: {E(wid)}）を元の世界として選択">'
+                  f'<span data-cw-world-label>{"選択中" if checked else "この世界を選ぶ"}</span></label>')
+    else:
+        action = f'<a class="hl-open" data-home-world data-purpose-carry href="/worlds/{U(wid)}" aria-label="{E(name)}の世界を開く">世界を開く →</a>'
+    heading_focus = ' tabindex="0" aria-label="世界名（長い場合はスクロールできます）"' if selection and len(name) > 60 else ''
+    description_focus = ' tabindex="0" aria-label="概要（長い場合はスクロールできます）"' if selection and len(description) > 200 else ''
+    return (f'<article class="{classes}" data-home-card data-search="{E(search)}" data-genre="{E(genre)}"{extra}>'
+            f'<span class="hl-tag">{E(genre_name)}</span><{heading}{heading_focus}>{E(name)}</{heading}>'
+            f'<p class="hl-description"{description_focus}>{E(description)}</p>'
             f'<p class="hl-facts">人物 {E(world["subjects"])}人 <span>・</span> 場所 {places}か所 <span>・</span> {E(period)}</p>'
             f'<p class="hl-roles">主人公 <strong>{E(protagonist)}</strong><span>／</span>敵役 <strong>{E(antagonist)}</strong></p>'
-            f'<a class="hl-open" href="/worlds/{U(wid)}" aria-label="{E(name)}の世界を開く">世界を開く →</a></article>')
+            + action + '</article>')
 
 
 def genre_card(genre, worlds, editable):
@@ -128,37 +157,15 @@ def render(repository, *, job_store=None):
     store = LibraryStore(job_store.configs.repo if job_store else data.ROOT)
     notice = ""
     try:
-        worlds, genres = store.worlds(), store.genres()
+        worlds = store.worlds()
     except (ValueError, OSError, KeyError, TypeError):
-        worlds, genres = [], []
-        notice = '<p class="hl-notice" role="status">世界の一覧を読み込めませんでした。保存場所を確認してから、ページを開き直してください。</p>'
-    genre_map = {g["id"]: g for g in genres}
-    world_map = {w["id"]: w.get("name") or w["id"] for w in worlds}
-    options = {w.get("genre") or "": genre_map.get(w.get("genre"), {}).get("name") or w.get("genre") or "ジャンル未設定" for w in worlds}
-    select = "".join(f'<option value="{E(key or "__unset__")}">{E(value)}</option>' for key, value in sorted(options.items()))
-    create = '<a class="hl-primary" href="/worlds/new">＋ 新しい世界を作る</a>' if job_store else '<span class="hl-readonly">閲覧専用</span>'
-    new_genre = '<a class="hl-open hl-new-genre" href="/genres/new">＋ 新しいジャンルを作る</a>' if job_store else ""
-    cards = "".join(world_card(store, w, genre_map) for w in worlds)
-    genre_cards = "".join(genre_card(g, world_map, job_store is not None) for g in genres)
-    body = purpose_pages.choices() + ('<div class="hl-shell" data-home-library><header class="hl-heading"><div><h1>世界を選ぶ</h1>'
-            '<p>世界を開いて、人物や場所、物語の始まりを確かめましょう。</p></div>' + create + '</header>'
-            + notice + recent_execution(job_store)
-            + '<div class="hl-toolbar"><div class="hl-tabs" role="tablist" aria-label="ライブラリー">'
-            f'<button id="hl-world-tab" role="tab" aria-selected="true" aria-controls="worlds" data-home-tab="worlds">世界 <span>{len(worlds)}</span></button>'
-            f'<button id="hl-genre-tab" role="tab" aria-selected="false" aria-controls="genres" tabindex="-1" data-home-tab="genres">ジャンル <span>{len(genres)}</span></button></div>'
-            '<div class="hl-filters"><label><span class="hl-sr">世界名・人物で検索</span><input data-home-search type="search" placeholder="世界名・人物で検索"></label>'
-            '<label data-home-genre-label><span class="hl-sr">ジャンルで絞り込み</span><select data-home-genre><option value="">すべてのジャンル</option>'
-            + select + '</select></label><span class="hl-count" data-home-count role="status" aria-live="polite">'
-            f'{len(worlds)}件</span></div></div><div class="hl-scroll">'
-            '<section id="worlds" role="tabpanel" aria-labelledby="hl-world-tab"><div class="hl-grid">' + cards + '</div>'
-            + ('' if worlds else '<div class="hl-empty"><h2>まだ世界がありません</h2><p>新しい世界を作るところから始めましょう。</p></div>')
-            + '</section><section id="genres" role="tabpanel" aria-labelledby="hl-genre-tab" hidden>'
-            '<div class="hl-genre-intro"><p>ジャンルは、行動とその結果を決める共通のルールです。</p>' + new_genre + '</div>'
-            '<div class="hl-grid">' + genre_cards + '</div>'
-            + ('' if genres else '<div class="hl-empty"><h2>ジャンルがありません</h2></div>')
-            + '</section><div class="hl-empty" data-home-empty hidden><h2>条件に合うものがありません</h2>'
-            '<p>検索する言葉やジャンルを変えてみてください。</p><button type="button" data-home-reset>絞り込みを解除</button></div></div>'
+        worlds = []
+        notice = '<p class="hl-notice" role="status">世界の一覧を読み込めませんでした。</p>'
+    create = '<a class="hl-primary" data-purpose-carry href="/worlds/new">＋ 新しい世界を作る</a>' if job_store else '<span class="hl-readonly">閲覧専用</span>'
+    cards = "".join(world_card(store, w, {}) for w in worlds)
+    body = ('<div class="hl-shell" data-home-library><nav class="hl-purpose"><a href="/">← 目的を選び直す</a><span data-purpose-current>目的：物語制作</span></nav><header class="hl-heading"><div><h1>世界を選ぶ</h1>'
+            '<p>世界を開いて、人物や場所、物語の始まりを確かめましょう。</p></div>'+create+'</header>'+notice+recent_execution(job_store)
+            +'<div class="hl-toolbar"><div class="hl-filters"><label><span class="hl-sr">世界名・人物で検索</span><input data-home-search type="search" placeholder="世界名・人物で検索"></label><span class="hl-count" data-home-count role="status" aria-live="polite">'+str(len(worlds))+'件</span></div></div><div class="hl-scroll"><section id="worlds"><div class="hl-grid">'+cards+'</div>'
+            +('' if worlds else '<div class="hl-empty"><h2>まだ世界がありません</h2></div>')+'</section><div class="hl-empty" data-home-empty hidden><h2>条件に合うものがありません</h2><p>検索する言葉を変えてみてください。</p><button type="button" data-home-reset>絞り込みを解除</button></div></div>'
             '<footer class="hl-footer">世界の設定を編集しても、保存済みの実行結果は変わりません。</footer></div>')
-    doc = pages.document("世界を選ぶ", body, phase="world", job_store=job_store,
-                         show_phase_band=False, is_home=True, page_class="home-library")
-    return doc.replace("</head>", '<link rel="stylesheet" href="/static/home-workspace.css"><script src="/static/home-workspace.js" defer></script></head>')
+    return pages.document("世界を選ぶ", body, phase="world", job_store=job_store, show_phase_band=False, is_home=True, page_class="home-library", stylesheets=('home-workspace.css',), scripts=('home-workspace.js',))

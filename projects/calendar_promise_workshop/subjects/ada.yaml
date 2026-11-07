@@ -1,0 +1,34 @@
+id: 職人
+traits:
+  social: 0.5
+  stubbornness: 0.5
+  curiosity: 0.5
+  diligence: 0.7
+  temper: 0.2
+base: 50
+knowledge: []
+inventory: {}
+verbs:
+- move
+- respond
+- rest
+stamina:
+  max: 6
+  current: 6
+  recover_per_slot: 1
+range:
+  zones:
+  - 工房
+  - 資材置場
+  entry: 工房
+relations:
+  依頼人:
+    affinity: 0.2
+    awareness: 0.5
+goal:
+  outcome: observation_finished
+objective_claimant: false
+commitments:
+- condition: 納品の約束履行
+  priority: 9
+  required: false

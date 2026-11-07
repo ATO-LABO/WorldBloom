@@ -1,0 +1,363 @@
+{
+  "name": "宇宙船の生命維持装置を直す",
+  "time": {
+    "days": 1,
+    "slots": [
+      "08:00"
+    ]
+  },
+  "protagonist": "Ada",
+  "antagonist": "Bo",
+  "zones": [
+    {
+      "name": "Bench"
+    },
+    {
+      "name": "Store"
+    }
+  ],
+  "routes": {
+    "Bench": [
+      {
+        "to": "Store",
+        "cost": 1
+      }
+    ],
+    "Store": [
+      {
+        "to": "Bench",
+        "cost": 1
+      }
+    ]
+  },
+  "ending": [
+    {
+      "id": "observed",
+      "when": "False",
+      "label": "Observation only"
+    }
+  ],
+  "target_ending": "observed",
+  "scheduled_events": [],
+  "slot_execution": {
+    "mode": "calendar_promises_v2",
+    "contract": "contract.yaml",
+    "subjects": [
+      {
+        "id": "Ada",
+        "path": "subjects/ada.yaml"
+      },
+      {
+        "id": "Bo",
+        "path": "subjects/bo.yaml"
+      }
+    ]
+  },
+  "joint_activities": {
+    "version": 1,
+    "definitions": [
+      {
+        "id": "replace_component",
+        "provider": "joint_work",
+        "revision": 1,
+        "roles": [
+          {
+            "id": "technician",
+            "min": 1,
+            "max": 1,
+            "requires": {
+              "verbs": [
+                "respond"
+              ],
+              "facts": [
+                "diagnosis_record"
+              ],
+              "vitalities": [
+                "alive",
+                "revived"
+              ]
+            },
+            "label": "交換担当"
+          },
+          {
+            "id": "holder",
+            "min": 1,
+            "max": 1,
+            "requires": {
+              "verbs": [
+                "respond"
+              ],
+              "facts": [],
+              "vitalities": [
+                "alive",
+                "revived"
+              ]
+            },
+            "label": "保持担当"
+          }
+        ],
+        "duration": {
+          "unit": "minute",
+          "mode": "remaining_work",
+          "max_units": 20
+        },
+        "location_policy": "task_location",
+        "resources": [
+          {
+            "key": "workbench",
+            "binding": {
+              "kind": "existing_task_resource",
+              "task": "replacement"
+            },
+            "quantity": 1,
+            "exclusive": true,
+            "settlement": "retain"
+          }
+        ],
+        "costs": [
+          {
+            "role": "technician",
+            "per_unit": {
+              "numerator": 1,
+              "denominator": 10
+            }
+          },
+          {
+            "role": "holder",
+            "per_unit": {
+              "numerator": 1,
+              "denominator": 20
+            }
+          }
+        ],
+        "progress": {
+          "task": "replacement",
+          "model": "fixed_group_rate",
+          "per_unit": {
+            "numerator": 1,
+            "denominator": 1
+          },
+          "required_roles": [
+            "technician",
+            "holder"
+          ],
+          "preserve_on_interrupt": true
+        },
+        "interruption": {
+          "voluntary_exit": "at_boundary",
+          "forced_exit": "retain_work_then_close_segment"
+        },
+        "effects": {
+          "on_start": null,
+          "on_complete": {
+            "kind": "task_units_receipt",
+            "task": "replacement",
+            "units": 1
+          }
+        },
+        "bindings_required": [
+          "target",
+          "target_revision"
+        ],
+        "rechecks": [
+          "task_dependencies",
+          "received_knowledge",
+          "role_eligibility",
+          "own_commitments",
+          "resources"
+        ],
+        "label": "二人で部品を交換する"
+      }
+    ],
+    "workflows": [
+      {
+        "id": "repair_equipment",
+        "authority": "existing_task_ledger",
+        "target_binding": "target",
+        "tasks": [
+          {
+            "id": "diagnosis",
+            "units": 1,
+            "minutes_per_unit": 10,
+            "execution": {
+              "kind": "individual",
+              "verb": "work"
+            },
+            "dependencies": [],
+            "completion_artifact": {
+              "fact": "diagnosis_record",
+              "initial_audience": "actual_worker"
+            },
+            "place": "Bench",
+            "label": "診断"
+          },
+          {
+            "id": "replacement",
+            "units": 1,
+            "minutes_per_unit": 20,
+            "execution": {
+              "kind": "joint",
+              "definition": "replace_component"
+            },
+            "dependencies": [
+              "diagnosis"
+            ],
+            "knowledge_gate": {
+              "role": "technician",
+              "fact": "diagnosis_record",
+              "source": "actual_disclosure"
+            },
+            "place": "Bench",
+            "label": "部品交換"
+          },
+          {
+            "id": "verification",
+            "units": 1,
+            "minutes_per_unit": 5,
+            "execution": {
+              "kind": "individual",
+              "verb": "work"
+            },
+            "dependencies": [
+              "replacement"
+            ],
+            "completion_effect": {
+              "kind": "declared_state",
+              "key": "equipment_status",
+              "value": "repaired"
+            },
+            "place": "Bench",
+            "label": "動作確認"
+          }
+        ],
+        "complete_when_tasks": [
+          "diagnosis",
+          "replacement",
+          "verification"
+        ]
+      }
+    ],
+    "instances": [
+      {
+        "id": "diagnose",
+        "definition_id": "work_diagnosis",
+        "definition_revision": 1,
+        "terms_revision": 1,
+        "roles": {
+          "worker": [
+            "Bo"
+          ]
+        },
+        "bindings": {
+          "target": "equipment",
+          "target_revision": 1
+        },
+        "earliest_start": 480,
+        "expires_at": 540,
+        "initial_agreement": {
+          "source": "authored_initial_terms",
+          "accepted_by": [
+            "Bo"
+          ],
+          "known_by": [
+            "Bo"
+          ]
+        }
+      },
+      {
+        "id": "exchange",
+        "definition_id": "replace_component",
+        "definition_revision": 1,
+        "terms_revision": 1,
+        "roles": {
+          "technician": [
+            "Ada"
+          ],
+          "holder": [
+            "Bo"
+          ]
+        },
+        "bindings": {
+          "target": "equipment",
+          "target_revision": 1
+        },
+        "earliest_start": 492,
+        "expires_at": 540,
+        "initial_agreement": {
+          "source": "authored_initial_terms",
+          "accepted_by": [
+            "Ada",
+            "Bo"
+          ],
+          "known_by": [
+            "Ada",
+            "Bo"
+          ]
+        }
+      },
+      {
+        "id": "verify",
+        "definition_id": "work_verification",
+        "definition_revision": 1,
+        "terms_revision": 1,
+        "roles": {
+          "worker": [
+            "Bo"
+          ]
+        },
+        "bindings": {
+          "target": "equipment",
+          "target_revision": 1
+        },
+        "earliest_start": 512,
+        "expires_at": 540,
+        "initial_agreement": {
+          "source": "authored_initial_terms",
+          "accepted_by": [
+            "Bo"
+          ],
+          "known_by": [
+            "Bo"
+          ]
+        }
+      }
+    ]
+  },
+  "overview": "診断、共同交換、動作確認を同じ作業記録でつなぐ。診断内容は実際の情報共有で次の担当へ渡す。",
+  "facts": [
+    {
+      "id": "diagnosis_record",
+      "sources": []
+    }
+  ],
+  "responses": {
+    "version": 2,
+    "state": {
+      "equipment_status": "broken"
+    },
+    "locations": {
+      "equipment_status": "Bench"
+    },
+    "signals": [],
+    "actions": [],
+    "channels": [],
+    "events": [],
+    "windows": []
+  },
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "work_verified",
+        "label": "確認まで終える",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "equipment_status",
+          "equals": "repaired"
+        }
+      }
+    ]
+  }
+}

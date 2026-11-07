@@ -41,7 +41,7 @@ class WorldEditorTests(unittest.TestCase):
             self.assertNotIn('プレビュー用の例文',html)
             self.assertNotIn('元の世界設定には保存されません',html)
             self.assertIn('/worlds/momotaro?view=advanced',html)
-            for screen in ('overview','people','places','story','time'):
+            for screen in ('overview','people','places','items','time','checks'):
                 self.assertIn(f'data-screen="{screen}"',html)
         self.assertEqual(before,self.current()['revision'])
         status,html=self.get('/worlds/momotaro?view=advanced')
@@ -54,7 +54,7 @@ class WorldEditorTests(unittest.TestCase):
         original=deepcopy(self.current()['world'])
         subjects={p:p.read_bytes() for p in (self.repo/'projects/momotaro/subjects').glob('*.yaml')}
         edits=[('overview',{'name':'新しい桃太郎','text':'概要'},None),
-               ('intro',{'text':'始まり'},None),('time',{'days':8,'slots':['朝','夜']},None),
+               ('intro',{'text':'始まり'},None),
                ('place',{'note':'新しい村の説明'},'村'),
                ('route',{'item':'船','cost':2.5},{'from':'海','index':1}),
                ('add-place',{'name':'港','description':'新しい港'},None)]
@@ -62,11 +62,28 @@ class WorldEditorTests(unittest.TestCase):
             status,result=self.submit(operation,values,target)
             self.assertEqual(status,200,result)
             self.assertEqual(result,self.current())
+
+        revision=self.current()['revision']
+        status,inspection=self.submit('time-basic-inspect',{},revision=revision)
+        self.assertEqual(status,200,inspection)
+        settings={**inspection['current'],'days':8,'slots':['朝','夜']}
+        status,preview=self.submit('time-basic-check',{'settings':settings},revision=revision)
+        self.assertEqual(status,200,preview)
+        self.assertTrue(preview['can_apply'],preview)
+        self.assertTrue(preview['warnings'],preview)
+        self.assertEqual(self.current()['revision'],revision)
+        status,result=self.submit('time-basic',{'settings':settings,'confirmation':preview['confirmation']},
+                                  revision=revision)
+        self.assertEqual(status,200,result)
+        self.assertEqual(result.pop('time_backup')['before_revision'],revision)
+        self.assertEqual(result,self.current())
+
         world=self.current()['world']
         for key in original:
             if key not in ('name','overview','initial_story','time','zones','routes'):
                 self.assertEqual(original[key],world[key],key)
         self.assertEqual(world['time']['days'],8)
+        self.assertEqual(world['time']['slots'],['朝','夜'])
         self.assertEqual(world['zones'][0]['note'],'新しい村の説明')
         self.assertEqual(world['zones'][-1],{'name':'港','note':'新しい港'})
         self.assertEqual(world['routes']['海'][1]['cost'],2.5)
@@ -192,18 +209,14 @@ class WorldEditorTests(unittest.TestCase):
         world = self.current()['world']
         self.assertNotIn('..', yaml.safe_dump(world))
 
-    def test_genre_operation_survives_non_dict_gapengine(self):
-        # A world.yaml with a corrupt/non-mapping gapengine (e.g. imported
-        # with "gapengine: something-else") must not 500 when a genre is
-        # picked afterward; the corrupt value is simply replaced.
+    def test_invalid_rule_reference_cannot_replace_current_world(self):
         store = LibraryStore(self.repo)
-        world = yaml.safe_load(store.read('world', 'momotaro', 'world.yaml'))
+        original = store.read('world', 'momotaro', 'world.yaml')
+        world = yaml.safe_load(original)
         world['gapengine'] = 'not-a-mapping'
-        store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
-        status, result = self.submit('genre', {'template_id': 'basic'})
-        self.assertEqual(status, 200, result)
-        saved = yaml.safe_load((self.repo / 'projects/momotaro/world.yaml').read_text(encoding='utf-8'))
-        self.assertEqual(saved['gapengine']['action_graph'], 'templates/basic/action_graph.yaml')
+        with self.assertRaisesRegex(ConfigError, '共通ルール参照'):
+            store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True))
+        self.assertEqual(store.read('world', 'momotaro', 'world.yaml'), original)
 
     def test_failed_atomic_save_preserves_original(self):
         store=LibraryStore(self.repo)

@@ -1,0 +1,226 @@
+{
+  "name": "食料を奪うか、品物と交換するか",
+  "overview": "鬼は食料が必要だが、村の無事と工芸品のどちらを大切にするかで手段が変わる。倉番も自分の条件で交換を判断する。",
+  "initial_story": "鬼が工芸品を携えて村の倉へ来た。倉番が食料袋を保管していることは公表されている。",
+  "time": {
+    "days": 2,
+    "slots": [
+      "時点1",
+      "時点2",
+      "時点3",
+      "時点4",
+      "時点5",
+      "時点6",
+      "時点7",
+      "時点8"
+    ]
+  },
+  "protagonist": "鬼",
+  "antagonist": "倉番",
+  "zones": [
+    {
+      "name": "村"
+    }
+  ],
+  "routes": {},
+  "movement": {
+    "action_weight": 0
+  },
+  "items": [
+    {
+      "name": "食料袋"
+    },
+    {
+      "name": "工芸品",
+      "lootable": true,
+      "modifier": {
+        "id": "craft_value",
+        "base": 2
+      }
+    }
+  ],
+  "facts": [
+    {
+      "id": "raid_notice",
+      "values": [
+        "ongoing",
+        "repelled",
+        "completed"
+      ],
+      "sources": []
+    }
+  ],
+  "truth": {
+    "raid_notice": "ongoing"
+  },
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "food_taken",
+        "label": "鬼が食料袋を得る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "鬼",
+          "item": "食料袋",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "village_safe",
+        "label": "村が被害を受けない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "state",
+          "key": "damage",
+          "equals": "no"
+        }
+      },
+      {
+        "id": "keep_craft",
+        "label": "鬼が工芸品を手放さない",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "鬼",
+          "item": "工芸品",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "stock_food",
+        "label": "倉番が食料を保有する",
+        "mode": "maintain",
+        "visibility": "public",
+        "test": {
+          "kind": "inventory",
+          "actor": "倉番",
+          "item": "食料袋",
+          "minimum": 1
+        }
+      },
+      {
+        "id": "keeper_paid",
+        "label": "倉番が工芸品を得る",
+        "mode": "achieve",
+        "visibility": "observed",
+        "test": {
+          "kind": "inventory",
+          "actor": "倉番",
+          "item": "工芸品",
+          "minimum": 1
+        }
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "food_taken",
+        "success": {
+          "condition": "food_taken"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 12
+        }
+      },
+      {
+        "condition": "keeper_paid",
+        "success": {
+          "condition": "keeper_paid"
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 12
+        }
+      }
+    ]
+  },
+  "responses": {
+    "version": 2,
+    "state": {
+      "raid": "ongoing",
+      "damage": "no",
+      "store": "stocked"
+    },
+    "locations": {
+      "raid": "村",
+      "damage": "村",
+      "store": "村"
+    },
+    "signals": [],
+    "actions": [
+      {
+        "id": "raid_store",
+        "label": "村に攻め入り食料袋を奪う",
+        "condition": "food_taken",
+        "signal": null,
+        "zone": "村",
+        "actors": [
+          "鬼"
+        ],
+        "requires": [],
+        "items": {},
+        "cost": 1,
+        "steps": 2,
+        "preconditions": {
+          "raid": "ongoing",
+          "store": "stocked"
+        },
+        "effects": [
+          {
+            "kind": "state",
+            "key": "raid",
+            "value": "completed"
+          },
+          {
+            "kind": "state",
+            "key": "damage",
+            "value": "yes"
+          },
+          {
+            "kind": "state",
+            "key": "store",
+            "value": "empty"
+          },
+          {
+            "kind": "inventory",
+            "actor": "倉番",
+            "item": "食料袋",
+            "value": 0
+          },
+          {
+            "kind": "inventory",
+            "actor": "鬼",
+            "item": "食料袋",
+            "value": 1
+          }
+        ]
+      }
+    ],
+    "channels": [],
+    "events": [],
+    "windows": []
+  },
+  "ending": [
+    {
+      "id": "observation_complete",
+      "when": "turn >= 16",
+      "label": "襲撃をめぐる観測の終了"
+    }
+  ],
+  "target_ending": "observation_complete",
+  "scheduled_events": []
+}

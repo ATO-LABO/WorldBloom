@@ -1,0 +1,113 @@
+{
+  "version": 3,
+  "calendar": {
+    "schema_version": 1,
+    "period": {
+      "start_date": "2026-11-01",
+      "end_date": "2026-11-01"
+    },
+    "normal": {
+      "bands": [
+        {
+          "id": "day",
+          "name": "Daytime display",
+          "start": "09:00",
+          "end": "10:00",
+          "overnight": false,
+          "interval_minutes": 17
+        }
+      ],
+      "weekdays": {},
+      "holidays": []
+    },
+    "specials": []
+  },
+  "timezone": "UTC",
+  "start_time": "08:00",
+  "end_time": "09:00",
+  "travel_minutes": {
+    "Bench": {
+      "Store": 10
+    },
+    "Store": {
+      "Bench": 10
+    }
+  },
+  "roles": {
+    "委員長": [
+      "maker"
+    ],
+    "制作担当": [
+      "maker"
+    ]
+  },
+  "tasks": {
+    "design": {
+      "label": "design",
+      "place": "Bench",
+      "units": 1,
+      "minutes_per_unit": 10,
+      "dependencies": [],
+      "resource": "bench-tool",
+      "roles": [
+        "maker"
+      ],
+      "materials_per_unit": {},
+      "operation": "work"
+    },
+    "assembly": {
+      "label": "assembly",
+      "place": "Bench",
+      "units": 1,
+      "minutes_per_unit": 20,
+      "dependencies": [
+        "design"
+      ],
+      "resource": "bench-tool",
+      "roles": [
+        "maker"
+      ],
+      "materials_per_unit": {},
+      "operation": "work"
+    },
+    "inspection": {
+      "label": "inspection",
+      "place": "Bench",
+      "units": 1,
+      "minutes_per_unit": 5,
+      "dependencies": [
+        "assembly"
+      ],
+      "resource": "bench-tool",
+      "roles": [
+        "maker"
+      ],
+      "materials_per_unit": {},
+      "operation": "work"
+    }
+  },
+  "materials": {
+    "blank": 3
+  },
+  "facility_hours": {},
+  "appraisal": {
+    "fulfilled": 0.05,
+    "unexplained_breach": -0.05
+  },
+  "assumptions": [
+    "Explicit acceptance input in an independent workshop; no action search.",
+    "One worker makes three units and hands them to a named receiver."
+  ],
+  "initial_task_knowledge": {
+    "委員長": [
+      "design",
+      "assembly",
+      "inspection"
+    ],
+    "制作担当": [
+      "design",
+      "assembly",
+      "inspection"
+    ]
+  }
+}

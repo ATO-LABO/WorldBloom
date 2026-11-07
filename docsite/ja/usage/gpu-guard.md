@@ -4,7 +4,7 @@ sources:
   - "viewer/pages.py"
   - "viewer/global_settings.py"
   - "execution/evolution_settings.py"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # GPU ガード
 
@@ -19,7 +19,7 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 - **自動起動・自動停止**: `llama-server` の `base_url` に既に応答があれば、それ（人が起動したもの）をそのまま使い、止めません。応答が無く `launch`（起動コマンド）が設定されていれば自動で起動し、`startup_seconds`（既定180秒）まで起動を待ちます。生成が終われば、自分が起動したサーバーだけを自動で停止します。前回異常終了して残ったサーバーがあれば、次にリースを取った側が自動で終了させます
 - **熱ガード**: 各生成の前に GPU 温度（`nvidia-smi`）を確認し、`pause_at`（既定78℃）以上なら `resume_at`（既定70℃）以下に下がるまで `poll_seconds`（既定15秒）間隔で一時的に待ちます。`max_wait_seconds`（既定600秒）を過ぎても下がらない場合は、それ以上は待たずに生成を続行します（失敗にはしません）。温度が読めない環境ではそもそも待ちません。`thermal.enabled` を明示的に `false` にすると熱ガード自体を無効化できます（既定は有効）
 
-⚙ 全体設定の「計算」タブからも、熱ガードのオン/オフと「一時停止する温度」（`pause_at`、50〜95℃）を指定できます。`resume_at` は画面からは直接指定できず、既定の差（78℃→70℃、8℃）を保ったまま `pause_at` に自動で追従します（`pause_at` を下げれば `resume_at` もその8℃下に下がります）。
+⚙ 全体設定の左メニュー「計算」→「GPU ガード」タブからも、熱ガードのオン/オフと「一時停止する温度」（`pause_at`、50〜95℃）を指定できます。`resume_at` は画面からは直接指定できず、既定の差（78℃→70℃、8℃）を保ったまま `pause_at` に自動で追従します（`pause_at` を下げれば `resume_at` もその8℃下に下がります）。
 
 ## settings.json の書き方
 

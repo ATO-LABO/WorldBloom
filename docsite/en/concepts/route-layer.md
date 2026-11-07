@@ -1,11 +1,11 @@
 ---
-ja_rev: "b3a45c266c26"
+ja_rev: "856f0e370752"
 ---
 # Route Layer
 
 The protagonist basically walks the straightest path to the ending. Straying from it (a detour) should, in principle, have a cause — a bodily need, missing information, a mistaken belief, a feeling. The **route layer** classifies each of the protagonist's GA-generated decisions by what it means relative to the ending, reins in unreasoned detours with weight ρ, and lets a motive table supply reasons for the ones that do have them. It leaves the seven layers themselves untouched, acting as one more multiplier when [Policy](genome.md) decides a candidate's weight.
 
-Only genres with a `route.yaml` support it. Currently that's just 桃太郎＋2 (Peach Boy+2, `momotaro_plus2`) — other genres have no route layer at all, and it doesn't appear on screen for them.
+Only genres with a `route.yaml` support it. The bundled templates `momotaro_plus2` and `momotaro_plus3` have this file. The current world `momotaro_plus3_new` references `momotaro_plus3`. Basic rules without `route.yaml` have no route layer, and it does not appear on screen for them.
 
 ## Classifying actions
 

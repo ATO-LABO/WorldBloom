@@ -1,0 +1,325 @@
+{
+  "name": "仲間と一隻で海を渡る",
+  "protagonist": "桃太郎",
+  "antagonist": "雉",
+  "time": {
+    "days": 2,
+    "slots": [
+      "朝",
+      "昼",
+      "夕",
+      "夜"
+    ]
+  },
+  "zones": [
+    {
+      "name": "coast"
+    },
+    {
+      "name": "island"
+    },
+    {
+      "name": "sea"
+    }
+  ],
+  "routes": {
+    "coast": [
+      {
+        "to": "island",
+        "cost": 1,
+        "requires_item": "boat"
+      }
+    ],
+    "island": [],
+    "sea": []
+  },
+  "items": [
+    {
+      "name": "boat",
+      "access": {
+        "mode": "owner",
+        "allow": [
+          "companions"
+        ]
+      }
+    }
+  ],
+  "facts": [],
+  "ending": [
+    {
+      "id": "stop",
+      "when": "turn >= 8",
+      "label": "stop"
+    }
+  ],
+  "target_ending": "stop",
+  "responses": {
+    "version": 2,
+    "state": {
+      "weather": "calm"
+    },
+    "locations": {
+      "weather": [
+        "coast",
+        "sea",
+        "island"
+      ]
+    },
+    "signals": [],
+    "actions": [],
+    "channels": [],
+    "events": [],
+    "windows": []
+  },
+  "planning": {
+    "version": 1,
+    "actors": [
+      "桃太郎",
+      "犬",
+      "猿",
+      "雉"
+    ],
+    "max_depth": 12,
+    "max_nodes": 256
+  },
+  "concerns": {
+    "version": 2,
+    "conditions": [
+      {
+        "id": "arrived",
+        "label": "全員で島へ到着する",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "zone",
+          "actor": "桃太郎",
+          "equals": "island"
+        }
+      },
+      {
+        "id": "together",
+        "label": "仲間と離れずに進む",
+        "mode": "maintain",
+        "visibility": "observed",
+        "test": {
+          "kind": "co_location",
+          "actor": "桃太郎",
+          "target": "犬"
+        }
+      },
+      {
+        "id": "arrived_1",
+        "label": "犬が島に着く",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "zone",
+          "actor": "犬",
+          "equals": "island"
+        }
+      },
+      {
+        "id": "arrived_2",
+        "label": "猿が島に着く",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "zone",
+          "actor": "猿",
+          "equals": "island"
+        }
+      },
+      {
+        "id": "arrived_3",
+        "label": "雉が島に着く",
+        "mode": "achieve",
+        "visibility": "public",
+        "test": {
+          "kind": "zone",
+          "actor": "雉",
+          "equals": "island"
+        }
+      }
+    ]
+  },
+  "goal_rules": {
+    "version": 1,
+    "definitions": [
+      {
+        "condition": "arrived",
+        "success": {
+          "all": [
+            {
+              "condition": "arrived"
+            },
+            {
+              "condition": "together"
+            },
+            {
+              "condition": "arrived_1"
+            },
+            {
+              "condition": "arrived_2"
+            },
+            {
+              "condition": "arrived_3"
+            }
+          ]
+        },
+        "failure": {
+          "constant": false
+        },
+        "period": {
+          "start": 1,
+          "end": 8
+        }
+      }
+    ]
+  },
+  "joint_activities": {
+    "version": 1,
+    "definitions": [
+      {
+        "id": "cross_water",
+        "provider": "joint_move",
+        "revision": 1,
+        "roles": [
+          {
+            "id": "pilot",
+            "min": 1,
+            "max": 1,
+            "requires": {
+              "verbs": [
+                "move"
+              ],
+              "facts": [],
+              "vitalities": [
+                "alive",
+                "revived"
+              ]
+            },
+            "label": "操船"
+          },
+          {
+            "id": "passenger",
+            "min": 0,
+            "max": 3,
+            "requires": {
+              "verbs": [
+                "move"
+              ],
+              "facts": [],
+              "vitalities": [
+                "alive",
+                "revived"
+              ]
+            },
+            "label": "同乗"
+          }
+        ],
+        "duration": {
+          "unit": "logical_step",
+          "mode": "fixed",
+          "units": 1
+        },
+        "location_policy": "together_at_start",
+        "resources": [
+          {
+            "key": "vessel",
+            "binding": {
+              "kind": "inventory",
+              "owner_role": "pilot",
+              "item": "boat"
+            },
+            "quantity": 1,
+            "exclusive": true,
+            "capacity": {
+              "unit": "people",
+              "maximum": 4
+            },
+            "settlement": "retain"
+          }
+        ],
+        "costs": [
+          {
+            "role": "pilot",
+            "per_unit": {
+              "numerator": 2,
+              "denominator": 1
+            }
+          },
+          {
+            "role": "passenger",
+            "per_unit": {
+              "numerator": 0,
+              "denominator": 1
+            }
+          }
+        ],
+        "progress": null,
+        "interruption": {
+          "voluntary_exit": "at_safe_stop",
+          "forced_exit": "settle_in_transit_zone"
+        },
+        "effects": {
+          "on_start": {
+            "kind": "enter_transit",
+            "actors": "participants",
+            "zone_binding": "transit_zone"
+          },
+          "on_complete": {
+            "kind": "joint_arrival",
+            "actors": "participants",
+            "destination_binding": "destination"
+          }
+        },
+        "bindings_required": [
+          "origin",
+          "destination",
+          "transit_zone"
+        ],
+        "rechecks": [
+          "route_conditions",
+          "role_eligibility",
+          "own_commitments",
+          "resource_present_and_accessible"
+        ],
+        "label": "仲間と海を渡る"
+      }
+    ],
+    "workflows": [],
+    "instances": [
+      {
+        "id": "segment",
+        "definition_id": "cross_water",
+        "definition_revision": 1,
+        "terms_revision": 1,
+        "earliest_start": 1,
+        "expires_at": 6,
+        "roles": {
+          "pilot": [
+            "桃太郎"
+          ],
+          "passenger": [
+            "犬",
+            "猿",
+            "雉"
+          ]
+        },
+        "bindings": {
+          "origin": "coast",
+          "destination": "island",
+          "transit_zone": "sea"
+        },
+        "known_by": [
+          "桃太郎",
+          "犬",
+          "猿",
+          "雉"
+        ]
+      }
+    ]
+  },
+  "overview": "各人物が全員での到着を目的に参加を選び、合意後に一隻を共有する。",
+  "initial_story": "桃太郎たちは海岸に集まり、船を一緒に使う提案を聞いた。まだ参加の返答はしていない。"
+}

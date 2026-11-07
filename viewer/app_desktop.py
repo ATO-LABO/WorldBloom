@@ -121,9 +121,22 @@ def _show_error(message: str) -> None:
     """windowed builds have no console; report failures in a webview window."""
 
     body = html.escape(message).replace("\n", "<br>")
+    # Startup errors may appear before the HTTP server exists, so inline the
+    # same shared styles instead of depending on /static URLs or a second theme.
+    try:
+        app_root = resolve_app_root()
+        static = app_root / "viewer/static" if app_root is not None else Path(__file__).with_name("static")
+        styles = "\n".join((static / name).read_text(encoding="utf-8")
+                           for name in ("ui-tokens.css", "ui.css"))
+    except (OSError, UnicodeError):
+        styles = ""  # Missing/corrupt assets must not hide the original error.
+    document = ('<!doctype html><html lang="ja"><head><meta charset="utf-8">'
+                '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                f'<style>{styles}</style></head><body><main class="ui-screen ui-startup-error">'
+                f'<h1>WorldBloomを起動できませんでした</h1><p>{body}</p></main></body></html>')
     webview.create_window(
         APP_NAME,
-        html=f"<div style='font-family:sans-serif;padding:24px;line-height:1.6'>{body}</div>",
+        html=document,
         width=760,
         height=380,
     )

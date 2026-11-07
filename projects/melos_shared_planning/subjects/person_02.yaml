@@ -1,0 +1,34 @@
+{
+  "id": "王",
+  "description": "王",
+  "personality": "自分の条件をもとに判断する",
+  "base": 50,
+  "traits": {
+    "social": 0.6,
+    "stubbornness": 0.2,
+    "curiosity": 0.5,
+    "diligence": 0.8,
+    "temper": 0.5
+  },
+  "range": {
+    "zones": [
+      "王宮"
+    ],
+    "entry": "王宮"
+  },
+  "verbs": [
+    "rest",
+    "review_proposal",
+    "decide_proposal"
+  ],
+  "beliefs": {},
+  "knowledge": [],
+  "inventory": {},
+  "goal": {},
+  "stamina": {
+    "max": 50,
+    "current": 50,
+    "recover_per_slot": 4
+  },
+  "commitments": []
+}

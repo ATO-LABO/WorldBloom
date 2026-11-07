@@ -1,5 +1,5 @@
 ---
-ja_rev: "147603325915"
+ja_rev: "ee675332fa3a"
 ---
 # settings.json
 
@@ -137,3 +137,9 @@ Items switched via environment variables rather than `settings.json` (only ones 
 ```
 
 Once an API key is saved from the Settings screen, its value is no longer shown on screen after that (only the `has_api_key` boolean is returned).
+
+## Per-model options
+
+`output.<backend>.model_options` is an object keyed by model name. Each entry contains a boolean `think` and an `options` object. A matching entry replaces the backend-wide `think` and `options` for the selected model without changing other models. Backend request defaults are subsequently merged at dispatch time.
+
+The settings screen's Gemma 4 profile (`profile: gemma4-e4b-qat`) is only for Ollama's `gemma4:e4b-it-qat`. It saves `think: false` and `options: {num_ctx: 8192, temperature: 1.0, top_p: 0.95, top_k: 64, use_mmap: true}` for that model only. It does not download the model. Text and world-draft generation resolve the selected model's settings.

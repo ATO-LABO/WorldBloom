@@ -1,9 +1,9 @@
 ---
-ja_rev: "e4768d5b342b"
+ja_rev: "8d569e91f3b9"
 ---
 # LLM Backends
 
-An LLM is only used when [generating text](generate-text.md) (synopsis/prose). The GA experiment itself never needs one. Pick the backend under the "文章生成" (Text generation) tab of ⚙ [Settings](settings.md).
+AI supports optional world-draft generation/refinement and [synopsis/prose generation](generate-text.md). GA exploration and prose generation are separate, but rationality judging with κ>0 also calls the chosen judge. Check the saved generation destination in “AIの設定” (AI settings) under ⚙ [Settings](settings.md).
 
 ## Available backends
 
@@ -21,7 +21,7 @@ The default backend is `llama-server` (`codex-cli` in the v1.0.0-viewer distribu
 
 ### Who decides the model name { #model-defaults }
 
-**When using the ⚙ 全体設定 (Global settings) screen**, only `claude-cli` falls back to `claude-sonnet-5` when the model field is empty. Every other backend requires you to enter a model name (trying to check the connection with it empty shows "モデルを指定してください", Please specify a model).
+**The current settings screen** focuses on inspecting the saved destination and selecting Gemma 4. For another backend/model, configure `output.default_backend` and the backend section in `settings.json`. The settings API allows `claude-cli` to use `claude-sonnet-5` when the model is empty; other generation backends require an explicit model name.
 
 **On the CLI** (running `scripts/synopsize.py` / `scripts/narrate.py` directly), if `settings.json` has no `model` set, each backend falls back to:
 
@@ -36,6 +36,12 @@ The default backend is `llama-server` (`codex-cli` in the v1.0.0-viewer distribu
 
 The bundled samples (`samples/`) and the submission were generated with `qwen3.5:9b-q4_K_M` (Ollama). Switching to a larger model such as the default `qwen3.6:35b` changes the generation conditions.
 
+## Gemma 4 and model-specific profiles
+
+Selecting Gemma 4 in AI settings and saving uses Ollama's `gemma4:e4b-it-qat` and its model-specific profile. Run `ollama pull gemma4:e4b-it-qat` on the PC hosting Ollama. Refreshing installation status alone does not change the saved generation destination.
+
+`output.<backend>.model_options.<model>` applies `think` and `options` only when that model is selected. This keeps Gemma's settings from being applied indiscriminately to other Ollama models.
+
 ## Using Ollama
 
 1. Install [Ollama](https://ollama.com)
@@ -46,6 +52,7 @@ When running from source, you can also write this directly in `settings.json`.
 ```json
 {
   "output": {
+    "default_backend": "ollama",
     "ollama": {
       "model": "qwen3.5:9b-q4_K_M",
       "base_url": "http://localhost:11434",
@@ -95,11 +102,11 @@ Notes:
 
 ## CLI backends (claude-cli / codex-cli)
 
-These work as long as the `claude` or `codex` command is on PATH. If the executable isn't found, "接続を確認" (Check connection) in ⚙ 全体設定 (Global settings) reports failure.
+The `claude` or `codex` executable must be on PATH and authenticated in advance. A missing executable cannot be used.
 
 ## API backends (anthropic / openai)
 
-These need an API key. Save it separately under the "APIキー" (API key) field in ⚙ 全体設定 (Global settings) (a saved value is never shown on screen).
+An API key is required. The current AI screen does not expose a generic API-key input, so check the corresponding backend section in `settings.json`. Never include keys in public repositories or world ZIP files.
 
 ## Don't generate (none)
 

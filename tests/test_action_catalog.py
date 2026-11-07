@@ -8,9 +8,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import shutil
+import yaml
 import tempfile
 import unittest
 
+from frozen_world import load_frozen_world
 from engine.world import World
 from viewer import action_catalog
 
@@ -19,19 +22,39 @@ ROOT = Path(__file__).resolve().parents[1]
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
-def _world(project_id, genre_id):
+def _world(project_id, genre_id, repo):
     return World.from_yaml(
-        ROOT / "projects" / project_id / "world.yaml",
-        action_graph_path=ROOT / "templates" / genre_id / "action_graph.yaml",
+        repo / "projects" / project_id / "world.yaml",
+        action_graph_path=repo / "templates" / genre_id / "action_graph.yaml",
     )
 
 
 class ActionCatalogTests(unittest.TestCase):
     def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name)
+        from engine.world_format import initialize, RETIRED_FIELDS
+        from engine.action_usage import references
+        for name in ("momotaro", "romance", "detective"):
+            shutil.copytree(ROOT / "projects" / name, self.repo / "projects" / name)
+            shutil.copytree(ROOT / "templates" / name, self.repo / "templates" / name)
+            path = self.repo / "projects" / name / "world.yaml"
+            historical = load_frozen_world(path, action_graph_path=self.repo / "templates" / name / "action_graph.yaml")
+            raw = yaml.safe_load(path.read_bytes())
+            for key in RETIRED_FIELDS:
+                raw.pop(key, None)
+            raw.setdefault("gapengine", {"action_graph": f"templates/{name}/action_graph.yaml",
+                                         "effects": f"templates/{name}/effects.yaml"})
+            current = initialize(raw)
+            # Preserve this test's declared action availability in explicit form.
+            current["action_usage"]["enabled"] = sorted(ref for ref in references(historical)
+                if not ref.startswith("verb:") or historical.action_enabled(ref[5:]))
+            path.write_text(yaml.safe_dump(current, allow_unicode=True), encoding="utf-8")
         self.catalog = action_catalog._load_catalog()
-        self.momotaro = _world("momotaro", "momotaro")
-        self.romance = _world("romance", "romance")
-        self.detective = _world("detective", "detective")
+        self.momotaro = _world("momotaro", "momotaro", self.repo)
+        self.romance = _world("romance", "romance", self.repo)
+        self.detective = _world("detective", "detective", self.repo)
 
     # ------------------------------------------------------------ coverage
 
@@ -61,19 +84,19 @@ class ActionCatalogTests(unittest.TestCase):
     # ------------------------------------------------------------- status
 
     def test_momotaro_fight_is_active_and_steal_credit_is_unimplemented(self):
-        union, _ = action_catalog._subject_verb_index(ROOT, "momotaro")
+        union, _ = action_catalog._subject_verb_index(self.repo, "momotaro")
         self.assertEqual(action_catalog._verb_status("fight", self.momotaro, union), "active")
         self.assertEqual(
             action_catalog._verb_status("steal_credit", self.momotaro, union), "unimplemented",
         )
 
     def test_romance_prunes_fight_and_leaves_rethink_unused(self):
-        union, _ = action_catalog._subject_verb_index(ROOT, "romance")
+        union, _ = action_catalog._subject_verb_index(self.repo, "romance")
         self.assertEqual(action_catalog._verb_status("fight", self.romance, union), "pruned")
         self.assertEqual(action_catalog._verb_status("rethink", self.romance, union), "unused")
 
     def test_detective_activates_rethink(self):
-        union, _ = action_catalog._subject_verb_index(ROOT, "detective")
+        union, _ = action_catalog._subject_verb_index(self.repo, "detective")
         self.assertEqual(action_catalog._verb_status("rethink", self.detective, union), "active")
 
     # -------------------------------------------------------- node lookup
@@ -93,7 +116,7 @@ class ActionCatalogTests(unittest.TestCase):
 
     def test_panel_renders_for_momotaro(self):
         world = {"id": "momotaro", "genre": "momotaro"}
-        html = action_catalog.catalog_panel_html(world, ROOT)
+        html = action_catalog.catalog_panel_html(world, self.repo)
         self.assertIn("未実装（構想のみ）", html)
         self.assertIn("0.6", html)  # companionship_threshold filled in
         self.assertIn("catalog-kinds", html)

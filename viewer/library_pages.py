@@ -13,6 +13,7 @@ import hashlib
 import json
 from http import HTTPStatus
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import yaml
 
@@ -123,19 +124,8 @@ GENRE_LEAD = (
 
 
 def render_genres_section(genres, *, heading=True):
-    # Genres are grammar shared across worlds: this section also appears on
-    # the ⚙ 設定 page (/configs) and, since WB-UI-023, on the home hub's
-    # ジャンル tab (rendered without its own heading there).
-    genre_table = (
-        '<div class="grid-wrap"><table class="wb-table"><thead><tr>'
-        "<th>ID</th><th>ファイル</th><th>使っている世界</th><th>操作</th>"
-        f'</tr></thead><tbody>{"".join(_genre_row(g) for g in genres)}</tbody></table></div>'
-    ) if genres else "<p>ジャンルがありません。</p>"
-    head = "<h2>ジャンル</h2>" if heading else ""
-    return (
-        f'<section class="card" id="genres">{head}{GENRE_LEAD}' + genre_table
-        + '<p><a href="/genres/new">新しいジャンルを作る</a></p></section>'
-    )
+    from viewer.action_type_pages import panel
+    return panel()
 
 
 def render_home_tabs(worlds, genres, *, can_create):
@@ -558,8 +548,11 @@ def _worlds_new(handler):
         source = next((w for w in worlds if w["id"] == from_id), None)
         genre_id = source["genre"] if source and source["genre"] in genre_ids else None
     from viewer import world_create
+    method = query.get("method", [None])[0]
+    if method not in (None, "manual", "ai"):
+        raise ConfigError("method", "作成方法を選んでください", code="bad_request")
     handler._send_html(world_create.render(store, job_store, from_id=from_id,
-        genre_id=genre_id, copy_mode="from" in query))
+        genre_id=genre_id, copy_mode="from" in query, method=method))
 
 
 def _world_experiments(repository, world_name):
@@ -676,6 +669,14 @@ def _worlds_detail(handler, world_id):
     if world is None:
         raise ConfigError("world_id", "世界がありません", code="not_found")
     label = world["name"] or world_id
+    if _query(handler).get("view") == ["review"]:
+        from viewer.world_review import render
+        handler._send_html(render(world,job_store=job_store))
+        return
+    if _query(handler).get("view") == ["actions"]:
+        from viewer import action_settings
+        handler._send_html(action_settings.render(world, store, job_store))
+        return
     if _query(handler).get("view") != ["advanced"]:
         from execution.world_editor import snapshot
         from viewer import world_prototype
@@ -725,6 +726,20 @@ def _route_goal_post(handler, world_id, action):
     handler._send_json(HTTPStatus.OK, result)
 
 
+def _time_pressure_get(handler, world_id):
+    from execution.time_pressure_settings import snapshot
+    handler._send_json(HTTPStatus.OK, snapshot(_route_goal_store(handler), world_id))
+
+
+def _time_pressure_post(handler, world_id, action):
+    from execution import time_pressure_settings
+    body = _boundary_body(handler)
+    if action != "validate":
+        _require_job_store(handler)
+    handler._send_json(HTTPStatus.OK, getattr(time_pressure_settings, action)(
+        _route_goal_store(handler), world_id, body))
+
+
 def _time_settings_get(handler, world_id):
     from execution.time_settings import snapshot
     handler._send_json(HTTPStatus.OK, snapshot(_route_goal_store(handler), world_id))
@@ -767,15 +782,17 @@ def _worlds_routes(handler, world_id):
 
 
 def _genres_new(handler):
-    job_store = _job_store(handler)
-    if job_store is None:
-        handler._send_html(_guidance_page(phase="world"))
-        return
-    from viewer import genre_pages
-    genre_pages.new(handler)
+    from viewer.action_type_pages import show
+    show(handler)
 
 
 def _genres_detail(handler, genre_id):
+    from engine.action_types import catalog
+    if genre_id in {g["id"] for g in catalog()}:
+        from viewer.action_type_pages import show
+        show(handler, genre_id)
+        return
+
     if _job_store(handler) is None:
         handler._send_html(_guidance_page(phase="world"))
         return
@@ -820,6 +837,194 @@ def _file_body(body):
     return path, content
 
 
+def _draft_store(handler):
+    jobs = _require_job_store(handler)
+    store = getattr(handler.server, "world_drafts", None)
+    if store is None:
+        from execution.world_drafts import DraftStore
+        store = DraftStore(jobs.configs.repo, jobs.configs.control)
+    return store
+
+
+def _native_revision(handler, token, action, request_id=None):
+    from execution.draft_native import NativeStore
+    from execution.native_revisions import NativeRevisions
+    jobs=_require_job_store(handler); revisions=NativeRevisions(NativeStore(jobs.configs.repo,jobs.configs.control))
+    if handler.command=='GET':result=revisions.get(token,request_id)
+    else:
+        body=_boundary_body(handler)
+        expected={'revision','request_id','target','instruction'} if action=='revise' else {'revision','request_id'} if action=='apply-revision' else {'request_id'}
+        if not isinstance(body,dict) or set(body)!=expected:raise ConfigError('request','修正候補の入力項目を確認してください',code='bad_request')
+        if action=='revise':
+            provider=getattr(_draft_store(handler).provider,'native_revise',None)
+            result=revisions.propose(token,body['revision'],body['request_id'],body['target'],body['instruction'],provider)
+        elif action=='apply-revision':result=revisions.apply(token,body['revision'],body['request_id'])
+        else:result=revisions.cancel(token,body['request_id'])
+    handler._send_json(HTTPStatus.OK,result)
+
+
+def _native_drafts(handler, token=None, action=None):
+    from execution.draft_native import NativeStore
+    jobs=_require_job_store(handler);store=NativeStore(jobs.configs.repo,jobs.configs.control)
+    if handler.command=='GET':
+        result=store.get(token) if token else {'workspaces':store.list()}
+    else:
+        body=_boundary_body(handler)
+        expected={'create':{'request_id','source'},'save':{'revision','request_id','buffer'},'check':{'revision'},'publish':{'revision','digest'},'export':{'revision'},'fork':{'new_id','request_id'}}[action]
+        if not isinstance(body,dict) or set(body)!=expected and not (action=='export' and set(body)=={'revision','original'}):raise ConfigError('request','下書きの入力項目を確認してください',code='bad_request')
+        if action=='create':
+            source=body['source']
+            if not isinstance(source,dict) or set(source) not in ({'world_id'},{'zip_base64'}):raise ConfigError('source','元世界またはZIPを指定してください')
+            result=store.create(token,body['request_id'],**source)
+        elif action=='save':result=store.save(token,body['revision'],body['request_id'],body['buffer'])
+        elif action=='check':result=store.check(token,body['revision'])
+        elif action=='publish':result=store.publish(token,body['revision'],body['digest'])
+        elif action=='fork':result=store.fork(token,body['new_id'],body['request_id'])
+        else:result=store.export(token,body['revision'],body.get('original',False))
+    handler._send_json(HTTPStatus.OK,result)
+
+
+def _draft_forms(handler):
+    from execution.draft_native import proposal_forms
+    body=_boundary_body(handler)
+    if not isinstance(body,dict) or set(body) not in ({'draft'},{'draft','edits'}):raise ConfigError('request','下案と編集項目を指定してください',code='bad_request')
+    handler._send_json(HTTPStatus.OK,proposal_forms(body['draft'],body.get('edits')))
+
+
+def _draft_workspace(handler, token=None):
+    from execution.draft_workspaces import WorkspaceStore
+    jobs=_require_job_store(handler)
+    return WorkspaceStore(jobs.configs.repo,jobs.configs.control)
+
+
+def _workspace_get(handler, token=None):
+    store=_draft_workspace(handler)
+    handler._send_json(HTTPStatus.OK,store.get(token) if token else {'workspaces':store.list()})
+
+
+def _workspace_save(handler, token):
+    body=_boundary_body(handler)
+    required={'revision','request_id','content'}
+    if not isinstance(body,dict) or not required<=body.keys() or set(body)-required-{'source_world_id','source_workspace_id'}:
+        raise ConfigError('request','下書き保存の入力項目を確認してください',code='bad_request')
+    handler._send_json(HTTPStatus.OK,_draft_workspace(handler).save(token,body['revision'],body['request_id'],body['content'],**{k:body[k] for k in ['source_world_id','source_workspace_id'] if k in body}))
+
+
+def _world_draft_get(handler, token):
+    handler._send_json(HTTPStatus.OK, _draft_store(handler).get(token))
+
+
+def _world_draft_generation_status(handler):
+    from execution.draft_generation_status import availability
+    from viewer.job_api import boundary
+    boundary(handler, client_header=False, body_required=False)
+    handler._send_json(HTTPStatus.OK, availability(_draft_store(handler)))
+
+
+def _world_refinement_get(handler, token, request_id):
+    from execution.world_refinements import Refinements
+    from execution.refinement_contract import capabilities
+    from viewer.job_api import boundary
+    boundary(handler, client_header=False, body_required=False)
+    store = _draft_store(handler)
+    store.get(token)
+    result = capabilities() if request_id == 'capabilities' else Refinements(store).get(token, request_id)
+    handler._send_json(HTTPStatus.OK, result)
+
+
+def _world_refinement_post(handler, token, action):
+    from execution.world_refinements import Refinements
+    body = _boundary_body(handler)
+    fields = {
+        'refine': {'revision', 'request_id', 'mode', 'prompt', 'preset', 'targets'},
+        'apply-refinement': {'revision', 'request_id', 'candidate_id', 'candidate_hash', 'acknowledged_warnings'},
+        'cancel-refinement': {'request_id'},
+        'save-refinement-input': {'revision','draft'},
+    }
+    if not isinstance(body, dict) or set(body) != fields[action]:
+        raise ConfigError('request', 'Invalid refinement request fields', code='bad_request')
+    store = _draft_store(handler)
+    planner = None
+    if action == 'refine':
+        factory = getattr(store.provider, 'refinement_factory', None)
+        if callable(factory):
+            class LazyPlanner:
+                def decompose(self, *args):
+                    self.delegate = factory()
+                    method = getattr(self.delegate, 'decompose', None)
+                    return method(*args) if callable(method) else None
+                def __call__(self, *args):
+                    if not hasattr(self, 'delegate'): self.delegate = factory()
+                    return self.delegate(*args)
+                def review(self, *args):
+                    reviewer = getattr(self.delegate, 'review', None)
+                    if not callable(reviewer): raise ConfigError('alignment', 'Refinement audit unavailable', code='unavailable')
+                    return reviewer(*args)
+                @property
+                def raw_generation(self):
+                    return getattr(getattr(self, 'delegate', None), 'raw_generation', None)
+                @property
+                def raw_requirements(self):
+                    return getattr(getattr(self, 'delegate', None), 'raw_requirements', None)
+                @property
+                def raw_review(self):
+                    return getattr(getattr(self, 'delegate', None), 'raw_review', None)
+                @property
+                def provenance(self):
+                    return getattr(getattr(self, 'delegate', None), 'provenance', {})
+            planner = LazyPlanner()
+    service = Refinements(store, planner)
+    if action == 'refine':
+        result = service.preview(token, body['revision'], body['request_id'],
+            mode=body['mode'], prompt=body['prompt'], preset=body['preset'], targets=body['targets'])
+    elif action == 'save-refinement-input':
+        result = service.save_input(token, body['revision'], body['draft'])
+    elif action == 'cancel-refinement':
+        result = service.cancel(token, body['request_id'])
+    else:
+        result = service.apply(token, body['request_id'], body['revision'], body['candidate_id'],
+            body['candidate_hash'], acknowledged_warnings=body['acknowledged_warnings'])
+    handler._send_json(HTTPStatus.OK, result)
+
+
+def _world_draft_revision_get(handler,token,request_id):
+    from execution.draft_revisions import get
+    handler._send_json(HTTPStatus.OK,get(_draft_store(handler),token,request_id))
+
+
+def _world_draft_post(handler, token=None, action=None):
+    body = _boundary_body(handler)
+    expected = {"request_id", "name", "overview"} if token is None else {
+        "stage": {"name","overview","draft"}, "cancel": set(), "validate": {"revision", "draft"}, "adopt": {"revision"},
+        "revise": {"revision", "draft", "target", "instruction", "request_id"},
+        "apply-revision": {"revision", "request_id", "draft"}}[action]
+    if token is None and isinstance(body,dict) and 'settings' in body:expected=expected|{'settings'}
+    if token is None and isinstance(body,dict) and 'strategy' in body:expected=expected|{'strategy'}
+    if (token is None or action=='stage') and isinstance(body,dict) and 'authoring' in body:expected=expected|{'authoring'}
+    if action == 'stage' and isinstance(body,dict) and 'validation_mode' in body:expected=expected|{'validation_mode'}
+    if action == 'apply-revision' and isinstance(body,dict) and 'candidate' in body:expected=expected|{'candidate'}
+    if not isinstance(body, dict) or set(body) != expected:
+        raise ConfigError("request", "下案への入力項目を確認してください", code="bad_request")
+    if token is None and 'settings' in body and not isinstance(body['settings'],dict):
+        raise ConfigError('settings','実行設定は対応する項目のJSONで指定してください',code='bad_request')
+    store = _draft_store(handler)
+    if token is None:
+        result = store.create(body["request_id"], body["name"], body["overview"], **({k:body[k] for k in ['settings','authoring','strategy'] if k in body}))
+    elif action == "stage":
+        result = store.stage(token,body["name"],body["overview"],body["draft"],**({k:body[k] for k in ['authoring','validation_mode'] if k in body}))
+    elif action == "cancel":
+        result = store.cancel(token)
+    elif action == "validate":
+        result = store.update(token, body["revision"], body["draft"])
+    elif action == "revise":
+        result = store.revise(token, body["revision"], body["draft"], body["target"], body["instruction"], body["request_id"])
+    elif action == "apply-revision":
+        result = store.apply_revision(token, body["revision"], body["request_id"], body["draft"], body.get('candidate'))
+    else:
+        result = store.adopt(token, body["revision"])
+    handler._send_json(HTTPStatus.OK, result)
+
+
 def _create_world(handler):
     job_store = _require_job_store(handler)
     body = _boundary_body(handler)
@@ -852,6 +1057,29 @@ def _create_world(handler):
     handler._send_json(HTTPStatus.CREATED, {"world_id": world_id})
 
 
+def _action_usage_get(handler, world_id, operation=None):
+    jobs = _require_job_store(handler)
+    from execution import action_usage_settings as settings
+    store = LibraryStore(jobs.configs.repo)
+    if operation == 'status':
+        query = parse_qs(urlsplit(handler.path).query)
+        result = settings.status(store,world_id,query.get('request_id',[''])[0])
+    else:result = settings.view(store,world_id)
+    handler._send_json(HTTPStatus.OK,result)
+
+
+
+def _action_usage_post(handler, world_id, operation):
+    body = _boundary_body(handler)
+    jobs = _require_job_store(handler)
+    from execution import action_usage_settings as settings
+    store = LibraryStore(jobs.configs.repo)
+    result = settings.save(store,world_id,body) if operation=='save' else settings.check(store,world_id,body)
+    if operation=='check':result={k:v for k,v in result.items() if k!='candidate'}
+    handler._send_json(HTTPStatus.OK,result)
+
+
+
 def _edit_world(handler, world_id):
     body = _boundary_body(handler)
     jobs = _require_job_store(handler)
@@ -868,21 +1096,9 @@ def _save_world_basics(handler, world_id):
 
 
 def _create_genre(handler):
-    job_store = _require_job_store(handler)
-    body = _boundary_body(handler)
-    store = LibraryStore(job_store.configs.repo)
-    if set(body) == {"template_id", "from_template_id"}:
-        template_id = store.create_genre(body["template_id"], from_id=body["from_template_id"])
-    else:
-        from execution.genre_editor import create
-        expected = {"mode", "template_id", "name", "description"}
-        if body.get("mode") == "copy": expected.add("from_template_id")
-        if set(body) != expected or body.get("mode") not in ("new", "copy"):
-            raise ConfigError("request", "作成方法と入力項目を確認してください", code="bad_request")
-        if body["mode"] == "copy" and not isinstance(body.get("from_template_id"), str):
-            raise ConfigError("from_template_id", "複製元を選んでください", code="bad_request")
-        template_id = create(store, body["template_id"], name=body["name"], description=body["description"], from_id=body.get("from_template_id"))
-    handler._send_json(HTTPStatus.CREATED, {"template_id": template_id})
+    _require_job_store(handler)
+    _boundary_body(handler)
+    raise ConfigError("genre", "ジャンルの新規作成は利用できません。世界の概要で用意されたジャンルを選んでください", code="forbidden")
 
 
 def _save_world_file(handler, world_id):
@@ -1251,7 +1467,28 @@ def _import_patch_action(handler, world_id):
 # --------------------------------------------------------------------------
 
 def _resolve(parts, method):
+    if method == 'GET' and parts == ['api', 'world-draft-generation']:
+        return _world_draft_generation_status, ()
     if method == "POST":
+        if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "action-usage" and parts[4] in ("check", "save"):
+            return _action_usage_post, (parts[2], parts[4])
+        if len(parts)==4 and parts[:2]==['api','native-world-drafts'] and parts[3] in ('revise','apply-revision','cancel-revision'):return _native_revision,(parts[2],parts[3])
+        if parts==['api','world-draft-forms']:return _draft_forms,()
+        if len(parts)==4 and parts[:2]==['api','native-world-drafts'] and parts[3] in ('create','save','check','publish','export','fork'):
+            return _native_drafts,(parts[2],parts[3])
+        if len(parts)==3 and parts[:2]==['api','world-draft-workspaces']:
+            return _workspace_save,(parts[2],)
+        if parts == ["api", "world-drafts"]:
+            return _world_draft_post, ()
+        if (len(parts) == 4 and parts[:2] == ["api", "world-drafts"]
+                and parts[3] in ("refine", "apply-refinement", "cancel-refinement", "save-refinement-input")):
+            return _world_refinement_post, (parts[2], parts[3])
+        if len(parts) == 4 and parts[:2] == ["api", "world-drafts"] and parts[3] in ("stage", "cancel", "validate", "adopt", "revise", "apply-revision"):
+            return _world_draft_post, (parts[2], parts[3])
+        if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-pressure":
+            return _time_pressure_post, (parts[2], "save")
+        if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3:] == ["time-pressure", "validate"]:
+            return _time_pressure_post, (parts[2], "validate")
         if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings":
             return _time_settings_post, (parts[2], "save")
         if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3] == "time-settings" and parts[4] in ("validate", "archive_design", "finalize"):
@@ -1293,6 +1530,24 @@ def _resolve(parts, method):
     if method != "GET" or not parts:
         return None
     head = parts[0]
+    if len(parts) == 4 and parts[:2] == ["api", "worlds"] and parts[3] == "action-usage":
+        return _action_usage_get, (parts[2],)
+    if len(parts) == 5 and parts[:2] == ["api", "worlds"] and parts[3:] == ["action-usage", "status"]:
+        return _action_usage_get, (parts[2], "status")
+    if len(parts) == 5 and parts[:2] == ["api", "world-drafts"] and parts[3] == "refinements":
+        return _world_refinement_get, (parts[2], parts[4])
+    if len(parts)==5 and parts[:2]==['api','world-drafts'] and parts[3]=='revisions':return _world_draft_revision_get,(parts[2],parts[4])
+    if len(parts)==5 and parts[:2]==['api','native-world-drafts'] and parts[3]=='revisions':return _native_revision,(parts[2],'status',parts[4])
+    if parts==['api','native-world-drafts']:return _native_drafts,()
+    if len(parts)==3 and parts[:2]==['api','native-world-drafts']:return _native_drafts,(parts[2],)
+    if parts==['api','world-draft-workspaces']:
+        return _workspace_get,()
+    if head=='api' and len(parts)==3 and parts[1]=='world-draft-workspaces':
+        return _workspace_get,(parts[2],)
+    if head == "api" and len(parts) == 3 and parts[1] == "world-drafts":
+        return _world_draft_get, (parts[2],)
+    if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "time-pressure":
+        return _time_pressure_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "time-settings":
         return _time_settings_get, (parts[2],)
     if head == "api" and len(parts) == 4 and parts[1] == "worlds" and parts[3] == "route-goal":

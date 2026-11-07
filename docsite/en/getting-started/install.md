@@ -1,5 +1,5 @@
 ---
-ja_rev: "cabb4e302efb"
+ja_rev: "012bd8d3858f"
 ---
 
 # Install
@@ -13,8 +13,8 @@ ja_rev: "cabb4e302efb"
 - Studio needs **Python 3.12+** on PATH (`pip install pyyaml`); Viewer does not
 - git is optional (without it, some provenance info in run output is simply left blank)
 
-!!! tip "Pick your LLM backend in ⚙ 全体設定 (Global settings) first"
-    A GA experiment itself does not need an LLM at all — only synopsis/text generation does. If you plan to use generation, open the app's **⚙ 全体設定 (Global settings)** screen first and choose a backend (Ollama / llama-server / claude-cli / codex-cli / Anthropic API / OpenAI API / 生成しない (no generation; save prompts only)) and a model name. With no settings at all, the default backend is llama-server (codex-cli in the v1.0.0-viewer release). Only claude-cli works with no model set (it falls back to `claude-sonnet-5`); every other backend requires you to set one yourself. Ollama and llama-server themselves are not bundled with WorldBloom; install them separately. See [LLM Backends](../usage/llm-backends.md).
+!!! tip "AI features need a configured backend"
+    The base GA simulation runs without an LLM, except when you enable the optional rationality layer. AI-assisted world creation and refinement, synopsis generation, and prose generation need a backend and model. See **⚙ 全体設定 (Global settings)** and [LLM Backends](../usage/llm-backends.md) for the current screen. Ollama and model weights are not bundled. Configurations that use an external service send the generation input to that service.
 
 === "Studio (full-featured)"
 
@@ -46,7 +46,7 @@ ja_rev: "cabb4e302efb"
     pip install -r requirements.txt
     ```
 
-    Open the bundled `samples/` (three sample experiments) read-only:
+    Open the bundled `samples/` (three sample experiments). Use a copy if you need to preserve the originals, because selection controls can write to these files:
 
     ```
     python viewer/server.py --runs samples --port 5401
@@ -62,10 +62,16 @@ ja_rev: "cabb4e302efb"
 
     For running experiments and generation directly from the command line, see [CLI Workflow](../usage/cli-workflow.md).
 
+## Source platforms and saved data
+
+Run management is supported on Windows and Linux. Linux additionally requires Linux 5.3+ pidfds, child-process supervision support, and `/proc` in the same PID namespace. Jobs are refused when those facilities are unavailable. The Windows EXE and source-based Linux setup are separate installation routes.
+
+Only new-format worlds containing `world_format_version: 1` can be edited and run by the current source. Use the bundled 桃太郎＋3 (Momotaro +3, `projects/momotaro_plus3_new`) or a world confirmed through the creation screen. Do not overwrite legacy worlds or run outputs; retain the original code and Python environment separately when needed. Adding a version number by hand is not a format conversion.
+
 ## If Windows SmartScreen warns you
 
-The distributed exe files are unsigned, so SmartScreen may warn on first launch. Click "More info" then "Run anyway".
+Unsigned builds may trigger Windows SmartScreen on first launch. Verify that the download came from this repository’s official Release and, where published, that its checksum matches. Do not run files from an unknown source or with a mismatched checksum, and do not bypass warnings automatically.
 
 ## Where the downloads actually live
 
-Distributed builds are on [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases). As of this writing the latest tag is `v1.1.0`, with two attached files: `WorldBloom-portable.zip` (Viewer) and `WorldBloom-Studio-portable.zip` (Studio).
+Distributed builds are on [GitHub Releases](https://github.com/ATO-LABO/WorldBloom/releases). Check each Release for the attached ZIP versions, changes, and requirements. Updating the source does not rebuild or update the EXE downloads.

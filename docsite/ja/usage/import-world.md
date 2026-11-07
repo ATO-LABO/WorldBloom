@@ -1,71 +1,45 @@
 ---
 sources:
-  - "viewer/world_create.py"
-  - "viewer/library_pages.py"
-  - "execution/library.py"
-  - "execution/world_editor.py"
-  - "docs/world-import-guide.md"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+- viewer/world_create.py
+- viewer/library_pages.py
+- execution/library.py
+- execution/world_editor.py
+- docs/world-import-guide.md
+- viewer/creation_workflow.py
+- execution/draft_native.py
+reviewed: 2e70a9b216b7b2a80a4228a10a928148060e8fc8
 ---
 # 世界を ZIP から取り込む
 
-AI（Codex・Claude Code・Gemini など）に作らせた世界設定を、ZIPファイルとして
-WorldBloom に取り込めます。[世界を作る](create-world.md)の「新しい世界を作る」画面に
-ある3つ目の作成方法です。
+世界設定のZIPを、直接実行する世界ではなく**編集・確認できる下書き**として取り込みます。AIツールで作成したものも利用できます。
 
 ## 入口
 
-ホーム画面（**世界を選ぶ**）の **＋ 新しい世界を作る** →「**ZIPから取り込む**」を選び、
-`world.yaml` と `subjects/*.yaml` をまとめたZIPファイルを選択します。
+世界一覧 →「新しい世界を作成」→「ZIPから始める」でファイルを選び、「ZIPから下書きを作る」を押します。原本ZIPは変更せず、取り込みだけではAIを呼びません。
 
 ## ZIPに入れるもの
 
-ZIPの作り方の仕様書は
-[`docs/world-import-guide.md`](https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md)
-（GitHub）です。この文書をAIツールにそのまま渡して依頼すると、互換性のあるZIPを
-作ってもらえます。
+世界フォルダには `world.yaml` を1つと `subjects/*.yaml` を入れます。関連ファイルやフォーム未対応の項目も保持します。世界が共通フォルダの中にある構成も利用できます。世界フォルダ外の余計な項目、危険なパス、重複ファイル名、暗号化された項目やシンボリックリンクは取り込めません。必要なテンプレート依存関係も検査します。
+
+ファイル形式の参考は [`docs/world-import-guide.md`](https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md) です。ただし同文書に記載された旧取り込みの容量・画面手順ではなく、現在の下書き取り込みには以下の上限が適用されます。
 
 ## 上限
 
-- 1ファイルあたり256KB以内
-- ZIP本体は47KB以内
-- ファイル数は200件以内
-- 展開後の合計サイズは2MB以内
-
-超えるとアップロード時点でエラーになります。
-
-## 名前とジャンル
-
-- **表示名**: フォームの「世界の名前」欄が空欄なら、ZIPの `world.yaml` の `name` を
-  使います。フォームに入力すれば、その値で上書きされます。
-- **ジャンル**: ZIPの指定に従います。`world.yaml` に `gapengine`（`action_graph`・
-  `effects`）を書けばそのジャンルで取り込まれ、書かなければ**未設定**で取り込まれます。
+- ZIP本体: 10MB以内
+- ZIP内: ディレクトリを含め1000項目以内
+- 展開後: 関連ファイル込みで8MB以内
+- 読み取る世界・人物のYAML: 各256KB以内
 
 ## 取り込み後
 
-取り込んだ世界は、そのまま[世界設定画面](create-world.md#world-settings)に進みます。
+[世界を作る](create-world.md)の3段階の下書き画面で編集します。元の世界設定を保持し、対応している項目だけを変更します。名前や人物、場所、時間、ルールの対応状況を確認してください。形式の不備や必要な依存関係の不足は、検証時の案内に従って解消します。
 
-- **ジャンルが未設定の場合**: 「世界の概要」タブのジャンル行から選べます。**実行前に必ず
-  選んでください**。選ばなくても実行設定でジャンルを指定すればGA実験自体は動きますが、
-  この世界の伏線（`gapengine.effects`）だけは黙って空のまま実行されます。
-- 内容の確認は、実行設定の「検証」、または世界設定画面の各タブで行ってください。
+「③ 確認して採用」で「設定と実行入力を確認」を実行し、初期値や未対応の詳細も確認します。確認チェックを入れて採用するまで新しい世界は作成されません。採用済みの取込下書きは閲覧専用になり、以後の編集は作成した世界の設定から行います。取り込みや採用だけではGA実験は始まりません。
 
-## エラーが出たら
+## エラーや通信切断が起きたら
 
-主なメッセージと原因です（詳しくは
-[`docs/world-import-guide.md`](https://github.com/ATO-LABO/WorldBloom/blob/main/docs/world-import-guide.md)
-の8章を参照）。
-
-| メッセージ | 原因 |
-|---|---|
-| `ZIPにworld.yamlがありません` | `world.yaml` がZIP直下（または単一の共通フォルダ直下）にない |
-| `<path>: 対象外のファイル名です` | `subjects/` 配下のファイル名が規則外 |
-| `ZIPは47KB以内にしてください` | ZIP本体が大きすぎる |
-| `ZIPのジャンル「<id>」（templates/<id>/）がありません...` | 指定したジャンルが存在しない |
-| `名前を入力してください（ZIPのnameも空です）` | フォームの表示名も `world.yaml` の `name` も空 |
+容量超過、`world.yaml` が複数ある・存在しない、ファイル名の重複、世界フォルダ外の項目、YAMLの不備などが表示されます。エラーを直してから取り込んでください。送信結果が不明な場合は結果確認の操作を使い、重複した世界を作らないよう保存済みの状態を先に確認します。
 
 ## 閲覧専用の Viewer では使えません
 
-配布版の **Viewer exe**（読み取り専用ビューア）はすべての書き込みを拒否するため、
-この画面自体を開けません。取り込みは **Studio exe** または `--control` 付きで
-起動したサーバーから行ってください。
+書き込み可能なStudioまたは `--control` 付きのソース版が必要です。Viewerは保存・取り込みを行いません。

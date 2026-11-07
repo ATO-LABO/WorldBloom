@@ -1,0 +1,561 @@
+name: 文化祭の約束と準備を共通計画で選ぶ
+time:
+  days: 1
+  slots:
+  - 08:00
+  - 09:00
+  - '12:00'
+  - '14:30'
+  - '15:00'
+  - '15:15'
+  - '17:00'
+protagonist: 蒼
+antagonist: 紗季
+zones:
+- name: 自宅
+- name: 校門
+- name: 部室
+- name: 体育館
+- name: 展示室
+- name: 教室
+- name: 実行委員室
+- name: 放送室
+routes:
+  自宅:
+  - to: 校門
+    cost: 1
+  校門:
+  - to: 教室
+    cost: 1
+  - to: 自宅
+    cost: 1
+  - to: 部室
+    cost: 1
+  部室:
+  - to: 体育館
+    cost: 1
+  - to: 実行委員室
+    cost: 1
+  - to: 展示室
+    cost: 1
+  - to: 教室
+    cost: 1
+  - to: 校門
+    cost: 1
+  体育館:
+  - to: 展示室
+    cost: 1
+  - to: 放送室
+    cost: 1
+  - to: 部室
+    cost: 1
+  展示室:
+  - to: 体育館
+    cost: 1
+  - to: 教室
+    cost: 1
+  - to: 部室
+    cost: 1
+  教室:
+  - to: 展示室
+    cost: 1
+  - to: 校門
+    cost: 1
+  - to: 部室
+    cost: 1
+  実行委員室:
+  - to: 部室
+    cost: 1
+  放送室:
+  - to: 体育館
+    cost: 1
+movement:
+  action_weight: 1
+  hop_decay: 1
+items:
+- name: 台本
+- name: 衣装
+  sources:
+  - type: investigate
+    zone: 部室
+    count: 1
+    max: 1
+- name: 校門通行可
+  note: 8時開門を表すschema用フラグ。物語上の所持品ではない。
+facts:
+- id: 共通予定
+  label: 9時部室集合、12時体育館リハ、14時30分袖集合、15時開演、17時片付け終了
+  share_min_affinity: 0.0
+  sources: []
+- id: 台詞骨子習得
+  label: 蒼は台詞骨子を習得している
+  share_min_affinity: 0.0
+  sources: []
+- id: 共同展示未完成
+  label: 蒼と灯の共同展示パネルは未完成
+  share_min_affinity: 0.0
+  sources: []
+- id: 終盤短縮希望
+  label: 蓮は終盤の一台詞を短くしたい
+  share_min_affinity: 0.0
+  sources: []
+- id: 音響手順
+  label: 紗季は体育館の音響確認手順を知っている
+  share_min_affinity: 0.0
+  sources: []
+truth: {}
+scheduled_events:
+- id: schedule-0
+  day: 1
+  slot: 09:00
+  label: 集合
+  targets: []
+- id: schedule-1
+  day: 1
+  slot: '12:00'
+  label: リハーサル
+  targets: []
+- id: schedule-2
+  day: 1
+  slot: '14:30'
+  label: 袖集合
+  targets: []
+- id: schedule-3
+  day: 1
+  slot: '15:00'
+  label: 二人芝居「帰り道の約束」開演（15分）
+  targets: []
+- id: schedule-4
+  day: 1
+  slot: '17:00'
+  label: 片付け終了
+  targets: []
+ending:
+- id: observation_finished
+  when: turn > 23
+  label: 観測終了
+target_ending: observation_finished
+stamina:
+  default_max: 100
+  default_recover_per_slot: 1
+companionship:
+  threshold: 0.6
+  weight: 1
+slot_execution:
+  mode: calendar_promises_v2
+  contract: contract.yaml
+  subjects:
+  - id: 蒼
+    path: subjects/01_蒼.yaml
+  - id: 紗季
+    path: subjects/02_紗季.yaml
+  - id: 蓮
+    path: subjects/03_蓮.yaml
+  - id: 灯
+    path: subjects/04_灯.yaml
+  - id: 悠
+    path: subjects/05_悠.yaml
+  - id: 実
+    path: subjects/06_実.yaml
+overview: 文化祭当日の朝。蒼は出演の準備と共同展示の約束を両立させたい。六人はそれぞれの目的と実際に受け取った情報から行動を選ぶ。
+planning:
+  version: 1
+  actors:
+  - 蒼
+  - 紗季
+  - 蓮
+  - 灯
+  - 悠
+  - 実
+  max_depth: 18
+  max_nodes: 4096
+deliberation:
+  version: 1
+  state:
+    台詞相談結果: pending
+  proposals:
+  - id: line-change
+    title: 終盤の一台詞を短くする相談
+    place: 部室
+    proposer: 蓮
+    authority: 蒼
+    reviewers:
+    - 蒼
+    required_support:
+    - 蒼
+    quorum: 1
+    alternatives:
+    - id: short
+      label: 終盤の一台詞を短縮
+      terms:
+        台詞: 短縮
+      statement: 終盤の一台詞を短くしたい。確認して返答してほしい。
+    initial: short
+    profiles:
+      蓮:
+        weights: {}
+        constraints: {}
+        minimum: 0
+        requires: []
+        support_line: 短縮案を確認しました。
+        oppose_line: 元の台詞を残したいです。
+        unknown_line: 今は判断を保留します。
+      蒼:
+        weights: {}
+        constraints: {}
+        minimum: 0
+        requires: []
+        support_line: 短縮案を確認しました。
+        oppose_line: 元の台詞を残したいです。
+        unknown_line: 今は判断を保留します。
+    requires_state: {}
+    outcomes:
+      approved:
+        台詞相談結果: approved
+      rejected:
+        台詞相談結果: rejected
+      deferred:
+        台詞相談結果: deferred
+    decision_lines:
+      approved: 台詞の相談へ返答した。
+      rejected: 台詞の相談へ返答した。
+      deferred: 台詞の相談へ返答した。
+    request_line: 台詞の短縮について返答がほしい。
+social_planning:
+  version: 1
+  proposals:
+  - proposal: line-change
+    requires: []
+    reopen: false
+  requests: []
+action_timing:
+  version: 1
+  rules:
+  - verb: await_response
+    duration: protocol_steps
+    interruptible: false
+  - verb: submit_proposal
+    duration: 1
+    interruptible: false
+  - verb: present_proposal
+    duration: 1
+    interruptible: false
+  - verb: review_proposal
+    duration: 1
+    interruptible: false
+  - verb: amend_proposal
+    duration: 1
+    interruptible: false
+  - verb: request_decision
+    duration: 1
+    interruptible: false
+  - verb: decide_proposal
+    duration: 1
+    interruptible: false
+concerns:
+  version: 2
+  conditions:
+  - id: 出演-蒼-失効
+    label: 出演-蒼が履行不能と分かった
+    test:
+      kind: promise
+      promise: 出演-蒼
+      version: 1
+      statuses:
+      - breached
+      - cancelled
+      - renegotiated
+    mode: achieve
+    visibility: observed
+  - id: 出演-蒼
+    label: 出演の約束を守る
+    test:
+      kind: promise
+      promise: 出演-蒼
+      version: 1
+      statuses:
+      - fulfilled
+    mode: achieve
+    visibility: observed
+  - id: 出演-蓮-失効
+    label: 出演-蓮が履行不能と分かった
+    test:
+      kind: promise
+      promise: 出演-蓮
+      version: 1
+      statuses:
+      - breached
+      - cancelled
+      - renegotiated
+    mode: achieve
+    visibility: observed
+  - id: 出演-蓮
+    label: 相手役として出演する
+    test:
+      kind: promise
+      promise: 出演-蓮
+      version: 1
+      statuses:
+      - fulfilled
+    mode: achieve
+    visibility: observed
+  - id: 進行-紗季-失効
+    label: 進行-紗季が履行不能と分かった
+    test:
+      kind: promise
+      promise: 進行-紗季
+      version: 1
+      statuses:
+      - breached
+      - cancelled
+      - renegotiated
+    mode: achieve
+    visibility: observed
+  - id: 進行-紗季
+    label: 開演時刻を守る
+    test:
+      kind: promise
+      promise: 進行-紗季
+      version: 1
+      statuses:
+      - fulfilled
+    mode: achieve
+    visibility: observed
+  - id: 展示-写真-失効
+    label: 展示-写真が履行不能と分かった
+    test:
+      kind: promise
+      promise: 展示-写真
+      version: 1
+      statuses:
+      - breached
+      - cancelled
+      - renegotiated
+    mode: achieve
+    visibility: observed
+  - id: 展示-写真
+    label: 共同展示への責任を果たす
+    test:
+      kind: promise
+      promise: 展示-写真
+      version: 1
+      statuses:
+      - fulfilled
+    mode: achieve
+    visibility: observed
+  - id: 衣装が整う
+    label: 衣装が整う
+    test:
+      kind: task
+      task: costume-ready
+      minimum: 1
+    mode: achieve
+    visibility: observed
+  - id: 主役の稽古済み
+    label: 主役の稽古済み
+    test:
+      kind: task
+      task: practice-ready
+      minimum: 1
+    mode: achieve
+    visibility: observed
+  - id: 準備不足を避ける
+    label: 不十分な出来を見せないための準備
+    test:
+      kind: task
+      task: practice-ready
+      minimum: 1
+    mode: achieve
+    visibility: observed
+  - id: 音響を整える
+    label: 演劇準備を整える
+    test:
+      kind: task
+      task: sound-ready
+      minimum: 1
+    mode: achieve
+    visibility: observed
+  - id: 共同展示完成
+    label: 共同展示パネルを完成させる
+    test:
+      kind: task
+      task: panel-photo
+      minimum: 1
+    mode: achieve
+    visibility: observed
+  - id: 会場調整
+    label: 会場を調整する
+    test:
+      kind: task
+      task: venue-ready
+      minimum: 1
+    mode: achieve
+    visibility: observed
+  - id: 放送準備
+    label: 案内放送を準備する
+    test:
+      kind: task
+      task: broadcast-ready
+      minimum: 1
+    mode: achieve
+    visibility: observed
+  - id: 台詞相談-approved
+    label: 台詞相談の実際のapproved
+    test:
+      kind: state
+      key: 台詞相談結果
+      equals: approved
+    mode: achieve
+    visibility: observed
+  - id: 台詞相談-rejected
+    label: 台詞相談の実際のrejected
+    test:
+      kind: state
+      key: 台詞相談結果
+      equals: rejected
+    mode: achieve
+    visibility: observed
+  - id: 台詞相談-deferred
+    label: 台詞相談の実際のdeferred
+    test:
+      kind: state
+      key: 台詞相談結果
+      equals: deferred
+    mode: achieve
+    visibility: observed
+  - id: 台詞短縮を相談
+    label: 終盤の一台詞の短縮を相談する
+    test:
+      kind: state
+      key: 台詞相談結果
+      equals: approved
+    mode: achieve
+    visibility: observed
+goal_rules:
+  version: 2
+  definitions:
+  - condition: 出演-蒼
+    success:
+      condition: 出演-蒼
+    failure:
+      condition: 出演-蒼-失効
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '15:15'
+  - condition: 出演-蓮
+    success:
+      condition: 出演-蓮
+    failure:
+      condition: 出演-蓮-失効
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '15:15'
+  - condition: 進行-紗季
+    success:
+      condition: 進行-紗季
+    failure:
+      condition: 進行-紗季-失効
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '15:15'
+  - condition: 展示-写真
+    success:
+      condition: 展示-写真
+    failure:
+      condition: 展示-写真-失効
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '14:00'
+  - condition: 準備不足を避ける
+    success:
+      all:
+      - condition: 衣装が整う
+      - condition: 準備不足を避ける
+    failure:
+      constant: false
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '15:00'
+  - condition: 音響を整える
+    success:
+      condition: 音響を整える
+    failure:
+      constant: false
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '15:00'
+  - condition: 共同展示完成
+    success:
+      condition: 共同展示完成
+    failure:
+      constant: false
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '14:00'
+  - condition: 会場調整
+    success:
+      condition: 会場調整
+    failure:
+      constant: false
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '12:00'
+  - condition: 放送準備
+    success:
+      condition: 放送準備
+    failure:
+      constant: false
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '14:30'
+  - condition: 台詞短縮を相談
+    success:
+      any:
+      - condition: 台詞短縮を相談
+      - condition: 台詞相談-rejected
+      - condition: 台詞相談-deferred
+    failure:
+      constant: false
+    period:
+      start:
+        date: '2026-10-15'
+        time: 08:45
+      end:
+        date: '2026-10-15'
+        time: '12:00'

@@ -454,7 +454,10 @@ def validate(store, ident, body):
     validation, preview = evaluate(body["settings"], world["world"])
     if _read(store, ident)[3] != revision:
         _bad("revision", "検証中に設定が更新されました。再読み込みしてください", "conflict")
+    from execution.time_basic import inspect_design
+    report = inspect_design(body['settings'],world['world'],world['people'],world_editor._base(store,ident)/'world.yaml')
     return {"revision": revision, "validation": validation, "preview": preview,
+            "execution_check": report,
             "engine_supported": False, "execution_ready": False, "unsupported_reason": UNSUPPORTED}
 
 

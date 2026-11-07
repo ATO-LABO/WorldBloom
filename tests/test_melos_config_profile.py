@@ -13,6 +13,7 @@ from execution.configs import ConfigStore, evolution_defaults, normalize
 from execution.melos_factory import approved_catalogs
 from execution.provenance import ConfigError, canonical, sha256
 from gapengine.genome import Genome
+from saved_world_fixtures import install_current_worlds
 
 
 def profile():
@@ -125,21 +126,34 @@ class ProfileCaptureTests(unittest.TestCase):
             undo()
         self.assertFalse(self.store.control.exists())
 
+    def _save_current_config(self):
+        source = Path(__file__).resolve().parents[1]
+        for area in ("projects", "templates"):
+            shutil.copytree(source / area / "momotaro", self.repo / area / "momotaro")
+        install_current_worlds(self.repo, "momotaro")
+        return self.store.save({'label': 'ordinary', 'project_id': 'momotaro',
+                                'template_id': 'momotaro'}, config_id='ordinary')
+
     def test_no_name_dispatch_and_profile_transition_requires_fresh_capture(self):
-        legacy = spec(); legacy.pop('execution_profile')
-        self.store.save(legacy, config_id='legacy')
-        old, old_manifest, _ = self.store._bundle('legacy')
-        self.assertNotIn('execution_profile', old)
-        self.assertFalse(any(r['path'].endswith('/scenario.yaml') for r in old_manifest['files']))
+        unprofiled = spec()
+        unprofiled.pop('execution_profile')
+        with self.assertRaisesRegex(ConfigError, '旧世界形式'):
+            self.store.save(unprofiled, config_id='unprofiled')
+        self._save_current_config()
         with self.assertRaises(ConfigError):
-            self.store.save(spec(), config_id='bad-parent', parent_config_id='legacy')
-        changed = self.store.duplicate('legacy', {'execution_profile': profile()}, new_id='profile')
+            self.store.save(spec(), config_id='bad-parent', parent_config_id='ordinary')
+        changed = self.store.duplicate('ordinary', spec(), new_id='profile')
         self.assertIsNone(changed['parent_config_id'])
         _, manifest, _ = self.store._bundle('profile')
         self.assertEqual(len(manifest['files']), 9)
-        disabled = self.store.duplicate('profile', {'execution_profile': None}, new_id='legacy-again')
+        with self.assertRaisesRegex(ConfigError, '旧世界形式'):
+            self.store.duplicate('profile', {'execution_profile': None}, new_id='unprofiled')
+        disabled = self.store.duplicate('profile', {'execution_profile': None,
+            'project_id': 'momotaro', 'template_id': 'momotaro'}, new_id='ordinary-again')
         self.assertIsNone(disabled['parent_config_id'])
         self.assertNotIn('execution_profile', disabled)
+        _, normal_manifest, _ = self.store._bundle('ordinary-again')
+        self.assertFalse(any(r['path'].endswith('/scenario.yaml') for r in normal_manifest['files']))
 
     def test_same_profile_duplicate_retains_frozen_inputs_and_changed_profile_cannot_reuse(self):
         self.store.save(spec(), config_id='profile')
@@ -148,10 +162,9 @@ class ProfileCaptureTests(unittest.TestCase):
         self.assertEqual(duplicate['execution_profile'], profile())
         self.assertEqual(duplicate['parent_config_id'], 'profile')
         self.assertEqual(self.store._bundle('copy')[1], self.store._bundle('profile')[1])
-        legacy = spec(); legacy.pop('execution_profile')
-        self.store.save(legacy, config_id='legacy')
+        self._save_current_config()
         with self.assertRaises(ConfigError):
-            self.store.duplicate('legacy', {'execution_profile': profile()}, new_id='must-recapture')
+            self.store.duplicate('ordinary', spec(), new_id='must-recapture')
 
     def test_ga_prepare_rejected_before_any_runtime_or_output_creation(self):
         self.store.save(spec(), config_id='profile')
