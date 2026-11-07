@@ -1,0 +1,5 @@
+# Official PyPI project releases checked on 2026-11-07.
+# Direct dependencies are pinned. Transitives are recorded, not fully hash-locked.
+PyInstaller==6.22.3
+pywebview==6.2.1
+PyYAML==6.0.3
