@@ -361,6 +361,16 @@ def save(store, ident, body):
             if errors:_bad('time',' / '.join(e['message'] for e in errors[:8]))
             if warnings:_bad('time','時間の基本設定で影響を確認してから適用してください。'+' / '.join(w['message'] for w in warnings[:5]))
             updated['time']=candidate['time']
+            # Keep runtime validation in the time operation. A genre edit must
+            # not share this data-flow boundary with user-selected file paths.
+            if world.get('goal_rules') is not None:
+                from engine.world import World
+                from engine.subject import Subject
+                try:
+                    runtime = World(updated, _base(store, ident)/'world.yaml')
+                    runtime.bind_subjects({p['id']:Subject.from_definition(p) for _,p in people})
+                except (ValueError,KeyError,TypeError) as error:
+                    _bad('time', '達成・失敗の判定期間を含めて時間の範囲を確認してください。'+str(error))
         elif operation == "place":
             if not isinstance(target, str) or names.count(target) != 1:
                 _bad("target", "場所を一意に特定できません")
@@ -552,14 +562,6 @@ def save(store, ident, body):
                     events[target] = base_event
                 updated["scheduled_events"] = events
         _validate_rel("world", rel)
-        if operation == 'time' and world.get('goal_rules') is not None:
-            from engine.world import World
-            from engine.subject import Subject
-            try:
-                runtime = World(updated, _base(store, ident)/'world.yaml')
-                runtime.bind_subjects({p['id']:Subject.from_definition(p) for _,p in people})
-            except (ValueError,KeyError,TypeError) as error:
-                _bad('time', '達成・失敗の判定期間を含めて時間の範囲を確認してください。'+str(error))
         if operation == 'time':
             if dependency(_base(store,ident))[1]!=time_dependency_hash:raise ConfigError('revision','保存前に目標または期限の参照が変わりました',code='conflict')
             if slot_refs.snapshot(store,ident,world)['dependency_hash']!=slot_catalog['dependency_hash']:raise ConfigError('revision','保存前に経路調査の参照が変わりました',code='conflict')
