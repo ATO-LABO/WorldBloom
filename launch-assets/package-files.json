@@ -1043,5 +1043,17 @@
   "tests/world_description_navigation.cjs": "591af0add9c632b288605ab23f7a2a8c3195292d555100fd4ec2a712a2c4da74",
   "scripts/browser_checks/requirements.txt": "36a0e87367467eec76adca0a6939ed2bccbb1040cd5fece031cb28e1220a68e2",
   "scripts/browser_checks/world_description.py": "82017e7f537a9fe1d37093b88c4d747f11f30b3edeac0d8a17d0327751afb007",
-  ".github/workflows/browser-navigation.yml": "b8f0c5132e6b88b8f17181f09cce914f8cb0e6819f7a0051f09e1857bac47b59"
+  ".github/workflows/browser-navigation.yml": "b8f0c5132e6b88b8f17181f09cce914f8cb0e6819f7a0051f09e1857bac47b59",
+  "engine/calendar_container_linux.py": "d1a2e023a1a7a2d0ff245b7b387fc5510bbf13497d33af9d1af845deb4a38777",
+  "engine/calendar_fs.py": "037ff344737ec2eecdb7c8d2cf6967d86a56746f239da63471421666809deb16",
+  "engine/calendar_spool.py": "f24bbc68406130799ec5b7fa775d1d3f44093d481307a8b3d1401ccf96fea026",
+  "engine/calendar_windows_io.py": "d027d2b37105b6c8d2cc178ecb1b25c54e09314f68e08161b49db241dc143c3a",
+  "engine/calendar_windows_spool.py": "0047a272d985468247b3b1f7362572ce5c6c120445c292442838a4605fbfd72b",
+  "engine/calendar_windows_writer.py": "73ed52486407438d9fd842a0839a1da1d754ebe01a3575b66f2798aba479c28f",
+  "tests/calendar_windows_native_fixture_support.py": "0933f0280b67ca1183a88d89917cc5f1b4039360fda1dce9e1500215a49f38d2",
+  "tests/test_calendar_native_foundation.py": "0898ccb4c311d8c2121b8e77bbea55d6afaed6690b1b0823830f8c1077a29166",
+  "tests/test_calendar_windows_io.py": "5123ac157b55647130f20dd79635bb19150b89fbdb18f2056424fed22f82c473",
+  "tests/test_calendar_windows_native_gates.py": "8c692abbb8d6b280398056132d9de3b0ac2cf0a9ebb1b557bef15064e9ff21e1",
+  "tests/test_calendar_windows_spool.py": "8dfdd37efc43aa137dc0ea8f4683b181a4f32ef1c18b8b3c216d35c67860b903",
+  "tests/test_calendar_windows_writer.py": "334b546e0d0db4b3a3ceec4229a98ce05a8331d7a2d1729b45d872aac977cd71"
 }
