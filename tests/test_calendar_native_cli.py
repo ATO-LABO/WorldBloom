@@ -206,13 +206,74 @@ class NativeCalendarCLITests(unittest.TestCase):
 
     def test_removed_input_labels_after_capture_do_not_affect_run_or_projection(self):
         real = native.run_calendar_generation
-        def removing(*args, **kwargs):
-            self.project.rename(self.root/'removed-input-label')
-            return real(*args, **kwargs)
-        with patch.object(native, 'run_calendar_generation', side_effect=removing):
+        hits = []
+        with ExitStack() as guard:
+            def removing(*args, **kwargs):
+                if os.name == 'nt':
+                    # Windows retains ancestor handles by design. Guard input
+                    # names through run, projection and publication instead.
+                    import builtins
+                    import io
+                    from engine.calendar_windows_io import WindowsProjectDirectory
+                    source = os.path.normcase(os.path.abspath(self.project))
+                    def reject_input(path):
+                        if isinstance(path, (str, bytes, os.PathLike)):
+                            name = os.path.normcase(os.path.abspath(os.fsdecode(path)))
+                            if name == source or name.startswith(source + os.sep):
+                                hits.append(name)
+                                raise AssertionError('input name reopened')
+                    real_init = WindowsProjectDirectory.__init__
+                    def opening_directory(directory, path, **kwargs):
+                        reject_input(path)
+                        return real_init(directory, path, **kwargs)
+                    guard.enter_context(patch.object(WindowsProjectDirectory, '__init__', opening_directory))
+                    for module, name in (
+                            (builtins, 'open'), (io, 'open'), (os, 'open'),
+                            (os, 'stat'), (os, 'lstat'), (os, 'listdir'),
+                            (os, 'scandir'), (os, 'access'), (os, 'readlink'),
+                            (os.path, 'realpath'), (Path, 'resolve'),
+                            (Path, 'glob'), (Path, 'rglob'),
+                            (Path, 'walk'), (os, 'walk')):
+                        real_call = getattr(module, name)
+                        def accessing(path='.', *args, _call=real_call, **kw):
+                            reject_input(path)
+                            return _call(path, *args, **kw)
+                        guard.enter_context(patch.object(module, name, accessing))
+                    # Include metadata/existence branches, not just content reads.
+                    world = self.project/'world.yaml'
+                    probes = (
+                        lambda: builtins.open(world, 'rb'), lambda: io.open(world, 'rb'),
+                        lambda: world.read_bytes(), lambda: os.open(world, os.O_RDONLY),
+                        lambda: open_calendar_capture(world),
+                        lambda: native.capture_choices(self.project/'choices.json'),
+                        lambda: world.stat(), lambda: world.lstat(),
+                        lambda: world.exists(), lambda: world.is_file(),
+                        lambda: self.project.is_dir(), lambda: world.resolve(),
+                        lambda: list(self.project.iterdir()),
+                        lambda: list(self.project.glob('*.yaml')),
+                        lambda: list(self.project.rglob('*.yaml')),
+                        lambda: list(self.project.walk()), lambda: list(os.walk(self.project)),
+                        lambda: os.stat(world), lambda: os.lstat(world),
+                        lambda: os.listdir(self.project), lambda: os.scandir(self.project),
+                        lambda: os.access(world, os.R_OK), lambda: os.readlink(world),
+                        lambda: os.path.realpath(world))
+                    for index, reading in enumerate(probes):
+                        with self.subTest(guard_probe=index), self.assertRaisesRegex(
+                                AssertionError, 'input name reopened'):
+                            reading()
+                    self.assertEqual(len(hits), len(probes))
+                    hits.clear()
+                else:
+                    self.project.rename(self.root/'removed-input-label')
+                return real(*args, **kwargs)
+            guard.enter_context(patch.object(native, 'run_calendar_generation', side_effect=removing))
             result = self.run_native(until=1442)
+            self.assertEqual(hits, [])
         self.assertEqual(result['status'], 'checkpointed')
-        self.assertFalse(self.project.exists())
+        if os.name == 'nt':
+            self.assertTrue(self.project.exists())
+        else:
+            self.assertFalse(self.project.exists())
 
     def test_native_route_uses_no_legacy_writer_or_output_path_read(self):
         original = Path.open

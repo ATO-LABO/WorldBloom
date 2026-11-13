@@ -103,8 +103,68 @@ class GenericGenerationRecordTests(unittest.TestCase):
             project_calendar_generation_record(execution.selection,data,other)
 
     def test_removed_input_names_do_not_change_projection(self):
-        _rt,execution,data=self.saved();self.project.rename(self.root/'renamed')
-        prepared=project_calendar_generation_record(execution.selection,data,self.factory)
+        _rt,execution,data=self.saved()
+        with ExitStack() as guard:
+            if os.name == 'nt':
+                # Retained Windows ancestry deliberately prevents renames. Prove
+                # projection uses captured bytes without weakening that policy.
+                import builtins
+                import io
+                from engine.calendar_windows_io import WindowsProjectDirectory
+                source = os.path.normcase(os.path.abspath(self.project))
+                hits = []
+                def reject_input(path):
+                    if isinstance(path, (str, bytes, os.PathLike)):
+                        name = os.path.normcase(os.path.abspath(os.fsdecode(path)))
+                        if name == source or name.startswith(source + os.sep):
+                            hits.append(name)
+                            raise AssertionError('input name reopened')
+                real_init = WindowsProjectDirectory.__init__
+                def opening_directory(directory, path, **kwargs):
+                    reject_input(path)
+                    return real_init(directory, path, **kwargs)
+                guard.enter_context(patch.object(WindowsProjectDirectory, '__init__', opening_directory))
+                for module, name in (
+                        (builtins, 'open'), (io, 'open'), (os, 'open'),
+                        (os, 'stat'), (os, 'lstat'), (os, 'listdir'),
+                        (os, 'scandir'), (os, 'access'), (os, 'readlink'),
+                        (os.path, 'realpath'), (Path, 'resolve'),
+                        (Path, 'glob'), (Path, 'rglob'),
+                        (Path, 'walk'), (os, 'walk')):
+                    real_call = getattr(module, name)
+                    def accessing(path='.', *args, _call=real_call, **kwargs):
+                        reject_input(path)
+                        return _call(path, *args, **kwargs)
+                    guard.enter_context(patch.object(module, name, accessing))
+                # Include metadata/existence branches, not just content reads.
+                world = self.project/'world.yaml'
+                probes = (
+                    lambda: builtins.open(world, 'rb'), lambda: io.open(world, 'rb'),
+                    lambda: world.read_bytes(), lambda: os.open(world, os.O_RDONLY),
+                    lambda: open_calendar_capture(world),
+                    lambda: native.capture_choices(self.project/'choices.json'),
+                    lambda: world.stat(), lambda: world.lstat(),
+                    lambda: world.exists(), lambda: world.is_file(),
+                    lambda: self.project.is_dir(), lambda: world.resolve(),
+                    lambda: list(self.project.iterdir()),
+                    lambda: list(self.project.glob('*.yaml')),
+                    lambda: list(self.project.rglob('*.yaml')),
+                    lambda: list(self.project.walk()), lambda: list(os.walk(self.project)),
+                    lambda: os.stat(world), lambda: os.lstat(world),
+                    lambda: os.listdir(self.project), lambda: os.scandir(self.project),
+                    lambda: os.access(world, os.R_OK), lambda: os.readlink(world),
+                    lambda: os.path.realpath(world))
+                for index, reading in enumerate(probes):
+                    with self.subTest(guard_probe=index), self.assertRaisesRegex(
+                            AssertionError, 'input name reopened'):
+                        reading()
+                self.assertEqual(len(hits), len(probes))
+                hits.clear()
+            else:
+                self.project.rename(self.root/'renamed')
+            prepared=project_calendar_generation_record(execution.selection,data,self.factory)
+            if os.name == 'nt':
+                self.assertEqual(hits, [])
         self.assertEqual(prepared.ledger,execution.layers)
 
     def test_closed_capture_rejects_projection(self):
