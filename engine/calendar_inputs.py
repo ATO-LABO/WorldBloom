@@ -218,7 +218,12 @@ def _file_manifest(files):
 
 
 def _subject_data(world, config, files):
-    contract = _yaml(files[config["contract"]])
+    return _subject_values(world, config, _yaml(files[config["contract"]]),
+                           {item["id"]: _yaml(files[item["path"]]) for item in config["subjects"]})
+
+
+def _subject_values(world, config, contract, definitions):
+    """Validate detached authored values without any filesystem lookup."""
     ids = {item["id"] for item in config["subjects"]}
     if not isinstance(contract.get("roles"), dict) or set(contract["roles"]) != ids:
         raise ValueError("Contract roles must exactly match declared subjects")
@@ -243,7 +248,7 @@ def _subject_data(world, config, files):
         raise ValueError("Subject ids collide with place/item/fact identities")
     output = {}
     for item in config["subjects"]:
-        value = _yaml(files[item["path"]])
+        value = definitions[item["id"]]
         if value.get("id") != item["id"]:
             raise ValueError("Declared subject id differs from YAML id")
         ranges = value.get("range")
@@ -367,7 +372,7 @@ def load_project(world_path):
     return world, people
 
 
-def _json_file(path):
+def _json_text(text):
     def pairs(values):
         result = {}
         for key, value in values:
@@ -375,15 +380,22 @@ def _json_file(path):
                 raise ValueError("Duplicate fixed-version JSON key")
             result[key] = value
         return result
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > FILE_LIMIT:
-        raise ValueError("Fixed version manifest is missing, unsafe or oversized")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs,
+        value = json.loads(text, object_pairs_hook=pairs,
                            parse_constant=lambda s: (_ for _ in ()).throw(ValueError("Non-finite " + s)))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    except (UnicodeError, json.JSONDecodeError) as error:
         raise ValueError("Unreadable fixed version") from error
     _finite_json(value)
     return value
+
+
+def _json_file(path):
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > FILE_LIMIT:
+        raise ValueError("Fixed version manifest is missing, unsafe or oversized")
+    try:
+        return _json_text(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError) as error:
+        raise ValueError("Unreadable fixed version") from error
 
 
 def _manifest_shape(value):
@@ -425,9 +437,16 @@ def validate_fixed_version(world_path, config, calendar):
             raise ValueError("Required fixed version is missing")
         return None
     version = _json_file(path)
+    result = _validate_fixed_values(world.name, raw, config, calendar, _file_manifest(files), version)
+    _exact_tree(world.parent, files)
+    return result
+
+
+def _validate_fixed_values(world_name, raw, config, calendar, actual_manifest, version):
+    """Schema3 semantic validation over the same acquired bytes."""
     if (not isinstance(version, dict) or set(version) != VERSION_KEYS
             or type(version["schema_version"]) is not int or version["schema_version"] != SCHEMA_VERSION
-            or version["contract"] != MODE or version["world"] != world.name
+            or version["contract"] != MODE or version["world"] != world_name
             or version["engine_supported"] is not True or version["execution_ready"] is not True):
         raise ValueError("Unsupported fixed version schema; schema2 is not migrated implicitly")
     if config.get("fixed_version") is not True or validate_execution_config(version["configuration"]) != config:
@@ -437,23 +456,22 @@ def validate_fixed_version(world_path, config, calendar):
     if version["id"] != _digest({key: value for key, value in version.items() if key != "id"}):
         raise ValueError("Fixed version checksum mismatch")
     _manifest_shape(version["inputs"]); _manifest_shape(version["source_inputs"])
-    if set(version["inputs"]) != set(files) or set(version["source_inputs"]) != set(files):
+    if set(version["inputs"]) != set(actual_manifest) or set(version["source_inputs"]) != set(actual_manifest):
         raise ValueError("Fixed version input declaration differs")
-    if version["inputs"] != _file_manifest(files):
+    if version["inputs"] != actual_manifest:
         raise ValueError("Fixed input bytes changed")
-    if any(version["source_inputs"][name] != version["inputs"][name] for name in files if name != world.name):
+    if any(version["source_inputs"][name] != version["inputs"][name] for name in actual_manifest if name != world_name):
         raise ValueError("Unchanged dependency provenance differs from source input")
     if not isinstance(version["source_world"], str):
         raise ValueError("Source world UTF8 text required")
     original = version["source_world"].encode("utf-8")
-    if version["source_inputs"][world.name] != {"size_bytes": len(original), "sha256": hashlib.sha256(original).hexdigest()}:
+    if version["source_inputs"][world_name] != {"size_bytes": len(original), "sha256": hashlib.sha256(original).hexdigest()}:
         raise ValueError("Source world bytes differ from recorded provenance")
     original_definition = _yaml_text(version["source_world"])
     original_config = validate_execution_config(original_definition.get("slot_execution"))
     original_definition["slot_execution"] = {**original_config, "fixed_version": True}
     if original_definition != raw:
         raise ValueError("Snapshot changed source world beyond explicit fixed_version flag")
-    _exact_tree(world.parent, files)
     return deepcopy(version)
 
 
@@ -519,3 +537,36 @@ def freeze_project(world_path, destination, metadata=None):
         # Only the directory exclusively created by this call is removed.
         shutil.rmtree(target)
         raise
+
+
+@_validation_boundary
+def subjects_from_capture(capture):
+    from engine.subject import Subject
+    capture.assert_live()
+    config = capture.config
+    definitions = _subject_values(capture.yaml('world'), config, capture.yaml('contract'),
+                                 {r['id']: capture.yaml('subject:' + r['id']) for r in config['subjects']})
+    return {r['id']: Subject.from_definition(definitions[r['id']],
+                source=capture.display_source.parent / r['path']) for r in config['subjects']}
+
+
+@_validation_boundary
+def load_captured_project(capture, *, provenance_style='generic'):
+    """Private explicit input-only constructor; the caller owns capture lifetime."""
+    from engine.world import World
+    from engine.calendar_v2 import compile_calendar
+    if provenance_style not in ('generic', 'melos') or provenance_style == 'melos' and capture.profile != 'melos':
+        raise ValueError('Unsupported captured provenance projection')
+    people = subjects_from_capture(capture)
+    world = World(capture.yaml('world'), capture.display_source, calendar_capture=capture)
+    calendar = compile_calendar(world.slot_contract['calendar'], timezone=world.slot_contract['timezone'],
+                                scheduled_events=list(world.scheduled_events))
+    version = capture.validate_fixed_version(world.slot_execution, calendar)
+    if provenance_style == 'generic':
+        manifest = capture.core_manifest()
+        world.calendar_subject_sources = {r['id']: manifest[r['path']]['sha256'] for r in capture.config['subjects']}
+        world.calendar_subject_specs = {ident: subject_spec(person) for ident, person in people.items()}
+        world.calendar_input_provenance = {'world': capture.world_name, 'configuration': capture.config,
+            'inputs': manifest, 'fixed_version_id': None if version is None else version['id']}
+    capture._accept_world(world, provenance_style)
+    return world, people

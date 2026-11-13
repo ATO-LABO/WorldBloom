@@ -128,6 +128,11 @@ def _load_action_graph(
         raw_graph = read_project_yaml(source, str(graph_path.relative_to(source.parent.resolve())))
     else:
         raw_graph = load_yaml(graph_path)
+    return _action_graph_value(raw_graph, graph_path)
+
+
+def _action_graph_value(raw_graph, graph_path):
+    """Validate graph values; the source label is diagnostic only."""
     if not isinstance(raw_graph, dict):
         raise ValueError(
             f"Action graph must contain a mapping: {graph_path}"
@@ -207,7 +212,14 @@ class World:
         source: Path,
         *,
         action_graph_path: str | Path | None = None,
+        calendar_capture=None,
     ) -> None:
+        self.calendar_capture = calendar_capture
+        if calendar_capture is not None:
+            calendar_capture.assert_definition(definition, source)
+            if action_graph_path is not None:
+                raise ValueError("Calendar project graph must be explicitly declared in its world")
+            definition = deepcopy(definition)
         self.source = source
         self.purpose_preparation_definition = deepcopy(definition)
         self.name = str(definition["name"])
@@ -390,13 +402,13 @@ class World:
             else None
         )
 
-        self.action_graph, self.action_graph_enabled = (
-            _load_action_graph(
-                definition,
-                source,
-                action_graph_path,
-            )
-        )
+        if calendar_capture is None:
+            self.action_graph, self.action_graph_enabled = _load_action_graph(definition, source, action_graph_path)
+        elif calendar_capture.has_role('graph'):
+            self.action_graph, self.action_graph_enabled = _action_graph_value(
+                calendar_capture.yaml('graph'), source.parent / calendar_capture.member('graph').logical_name)
+        else:
+            self.action_graph, self.action_graph_enabled = {"nodes": [], "edges": []}, False
         raw_genre = self.action_graph.get("genre")
         if raw_genre is None:
             self.genres = frozenset()
@@ -774,7 +786,10 @@ class World:
         self._namespace_base: (
             tuple[tuple[int, ...], dict[str, str]] | None
         ) = None
-        configure_phase2(self, definition, source)
+        if calendar_capture is None:
+            configure_phase2(self, definition, source)
+        else:
+            configure_phase2(self, definition, source, effects_value=[], effects_source=None)
         self.offers: dict[
             tuple[str, str],
             dict[str, Any],
