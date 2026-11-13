@@ -857,12 +857,26 @@ class NativeWindowsReaderTests(unittest.TestCase):
                 reader.exact_tree(files, version)
 
     def test_exact_tree_same_size_mtime_rewrite_has_changed_metadata(self):
+        import time
+
         with self.reader() as reader:
             files, version = self.collect(reader)
+            baseline = files["world.yaml"]._metadata
             old = self.world.stat()
+            # Make the timestamp premise explicit, not a retry-until-pass loop.
+            # A fixed delay is not a guarantee: an unchanged ChangeTime must fail.
+            time.sleep(0.05)
             self.world.write_bytes(b"REPLACED\r\n")
             os.utime(self.world, ns=(old.st_atime_ns, old.st_mtime_ns))
-            # ChangeTime is checked too. This is not an adversarial ABA proof.
+            replacement = reader.read("world.yaml")
+            observed = replacement._metadata
+            self.assertEqual(observed.identity, baseline.identity)
+            self.assertEqual(observed.size, baseline.size)
+            self.assertEqual(observed.write, baseline.write)
+            self.assertNotEqual(observed.change, baseline.change,
+                                "Fixture premise failed: native ChangeTime did not change")
+            # Keep the original files/version. ChangeTime is checked too.
+            # This is not an adversarial ABA proof.
             with self.assertRaises(ValueError):
                 reader.exact_tree(files, version)
 
