@@ -4,7 +4,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Run outputs live in C:\Projects\WorldBloom-local (never in the repo)
+# Local run outputs
 runs/
 *.parquet
 
