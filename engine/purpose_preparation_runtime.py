@@ -45,8 +45,15 @@ def read_record(project):
         raise ValueError('Unsafe preparation source path')
     if path.stat().st_size > MAX_BYTES:
         raise ValueError('Preparation settings exceed size limit')
+    return decode_record(path.read_bytes())
+
+
+def decode_record(data):
+    """Decode one captured settings record, preserving absent/disabled distinction."""
+    if len(data) > MAX_BYTES:
+        raise ValueError('Preparation settings exceed size limit')
     try:
-        record = json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=_unique,
+        record = json.loads(data.decode('utf-8'), object_pairs_hook=_unique,
                             parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Nonfinite preparation JSON')))
     except (UnicodeError, json.JSONDecodeError, RecursionError) as error:
         raise ValueError('Invalid preparation JSON') from error

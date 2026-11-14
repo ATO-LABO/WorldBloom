@@ -87,9 +87,17 @@ class Simulation:
         time_pressure: dict[str, Any] | None = None,
         time_pressure_sources: dict[str, Any] | None = None,
         purpose_preparation: dict[str, Any] | bool | None = None,
+        *,
+        calendar_capture=None,
     ) -> None:
         self.seed = int(seed)
         self.world = world
+        bound_capture = getattr(world, "calendar_capture", None)
+        if calendar_capture is not None and calendar_capture is not bound_capture:
+            raise ValueError("Simulation capture differs from World binding")
+        self.calendar_capture = bound_capture
+        if bound_capture is not None:
+            bound_capture.assert_world(world)
         self.subjects = {
             subject_id: subjects[subject_id]
             for subject_id in sorted(subjects)
@@ -134,7 +142,11 @@ class Simulation:
         if (isinstance(getattr(self.world, 'slot_execution', None), dict)
                 and self.world.slot_execution.get('mode') == 'calendar_promises_v2'):
             from engine.calendar_inputs import read_subjects, subject_spec
-            declared = read_subjects(self.world.source, self.world.slot_execution)
+            if self.calendar_capture is None:
+                declared = read_subjects(self.world.source, self.world.slot_execution)
+            else:
+                from engine.calendar_inputs import subjects_from_capture
+                declared = subjects_from_capture(self.calendar_capture)
             expected = {actor: subject_spec(person) for actor, person in declared.items()}
             actual = {actor: subject_spec(person) for actor, person in self.subjects.items()}
             if actual != expected:
@@ -171,6 +183,8 @@ class Simulation:
                 self._time_pressure = TimePressure(enabled_pressure, time_pressure_sources, self.world, self.subjects)
         self.verb_engine = VerbEngine(self.world, self.rng)
         from engine.purpose_preparation_runtime import load_runtime
+        if self.calendar_capture is not None and purpose_preparation is None:
+            purpose_preparation = self.calendar_capture.preparation_value()
         self._purpose_preparation = load_runtime(self.world, self._initial_subject_specs, purpose_preparation)
         if (self._purpose_preparation is not None and hasattr(self, '_time_pressure')
                 and self._purpose_preparation.plan.get('pressure', {}).get('enabled') is True):

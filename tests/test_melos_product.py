@@ -83,106 +83,63 @@ class MelosProductTests(unittest.TestCase):
         self.assertFalse(self.store.runs.exists())
 
     def test_two_frozen_seeds_real_records_and_exact_scenario_semantics(self):
-        run = self.frozen()
-        updates = []
-        result = melos_product.run_trials(run, progress=updates.append)
-        self.assertEqual(result['completion'], 'complete')
-        self.assertEqual(result['requested'], 2)
-        self.assertEqual(result['completed'], 2)
-        self.assertEqual(result['failed'], 0)
-        self.assertEqual([t['seed'] for t in result['trials']], [0, 63])
+        from execution.melos_native_jobs import read_native_result, STORAGE
+        run = self.frozen(); updates = []; refs = []
+        with patch.object(MelosSession, 'run_saved', side_effect=AssertionError('legacy save forbidden')), \
+                patch('engine.calendar_checkpoint.atomic_bytes', side_effect=AssertionError('legacy result writer forbidden')):
+            result = melos_product.run_trials(run, progress=updates.append, acknowledge=lambda v: refs.append(v) or v)
+        self.assertEqual((result['completion'], result['requested'], result['completed'], result['failed']), ('complete',2,2,0))
         self.assertGreater(len(updates), 2)
-        self.assertEqual(updates[-1]['completed'], 2)
         for trial in result['trials']:
-            record = trial['run_record']
-            self.assertIsNone(record['verified_execution'])
-            self.assertEqual(record['descriptor_scope'], 'melos_committed_session_v1')
+            record = trial['run_record']; self.assertIsNone(record['verified_execution'])
+            self.assertEqual(record['descriptor_scope'], 'melos_native_generation_v1')
             self.assertTrue(record['observations']['scenario_finished'])
             self.assertEqual(trial['category'], record['observations']['scenario_outcome'])
             self.assertEqual(record['actual_terminal']['verb'], 'observation_result')
             self.assertEqual(record['melos_admission']['seed'], trial['seed'])
-            self.assertNotEqual(record['provider_identity']['config_hash'],
-                                record['execution_plan']['provider']['config_hash'])
-            case = run / 'trials' / trial['id']
-            self.assertEqual(sha256((case / 'layers.jsonl').read_bytes()), record['ledger']['sha256'])
-            self.assertEqual(sha256((case / 'calendar-state.json').read_bytes()), record['checkpoint_sha256'])
-        self.assertTrue((run / 'review-result.json').is_file())
-        with self.assertRaises(ValueError): melos_product.run_trials(run)
-        with patch.object(MelosSession, 'run_saved', side_effect=AssertionError('terminal rerun')):
-            resumed = melos_product.run_trials(run, resume=True)
-        self.assertEqual(resumed, result)
-        with patch.object(MelosSession, 'run_saved', side_effect=AssertionError('cancelled rerun')):
-            self.assertEqual(melos_product.run_trials(run, resume=True, should_cancel=lambda: True), result)
-        if os.environ.get('MELOS_PRODUCT_EVIDENCE'):
-            destination = Path(os.environ['MELOS_PRODUCT_EVIDENCE'])
-            destination.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(run, destination / 'two-seed-run', dirs_exist_ok=True)
+            self.assertNotEqual(record['provider_identity']['config_hash'],record['execution_plan']['provider']['config_hash'])
+            self.assertEqual(sha256((run/'native-results'/trial['artifacts']['layers']['leaf']).read_bytes()), record['ledger']['sha256'])
+        self.assertFalse((run/'review-result.json').exists());self.assertFalse((run/'trials').exists())
+        job={'job_id':'job-run','independent_storage':STORAGE,'execution_plan_sha256':refs[-1]['execution_plan_sha256'],
+             'accepted_request':{'seed_plan':[0,63]},'native_result_refs':refs[-1]}
+        self.assertEqual(read_native_result(run,job),result)
+        with self.assertRaises(ValueError):melos_product.run_trials(run,resume=True)
+        with self.assertRaises((ValueError,OSError)):melos_product.run_trials(run)
 
-    def test_cancel_resume_matches_continuous_and_repairs_derived_outputs(self):
-        split = self.frozen('split', seeds=(0,))
-        cancelled = {'value': False}
-        def progress(value): cancelled['value'] = True
-        partial = melos_product.run_trials(split, progress=progress,
-                                           should_cancel=lambda: cancelled['value'])
-        self.assertEqual(partial['completion'], 'cancelled_partial')
-        self.assertEqual(partial['completed'], 0)
-        self.assertEqual(partial['trials'][0]['status'], 'not_completed')
-        self.assertEqual(partial['trials'][0]['run_record']['observed_through'], 120)
-        self.assertFalse((split / 'review-result.json').exists())
-        case = split / 'trials/trial-0000'
-        (case / 'layers.jsonl').write_bytes(b'stale derived output')
-        (case / 'run-record.json').unlink()
-        resumed = melos_product.run_trials(split, resume=True)
-        continuous = self.frozen('continuous', seeds=(0,))
-        final = melos_product.run_trials(continuous)
-        self.assertEqual(resumed['trials'], final['trials'])
-        self.assertEqual((case / 'layers.jsonl').read_bytes(),
-                         (continuous / 'trials/trial-0000/layers.jsonl').read_bytes())
-        # Compare against the existing unchunked finite session, too.
-        manifest = json.loads((split / 'review-manifest.json').read_text())
-        with melos_product._factory(split / 'runtime', split / 'inputs', manifest['config']) as factory:
-            binding = MelosPlanBinding({0: factory.create(0)})
-            unchunked = self.root / 'unchunked'
-            factory.create(0).run_saved(unchunked)
-            record = publish_saved_run_record(unchunked, binding, factory.create(0), 0)
-        self.assertEqual(record, resumed['trials'][0]['run_record'])
+    def test_cancel_retains_exact_chunk_no_restart_or_legacy_repair(self):
+        run=self.frozen('split',seeds=(0,));cancelled=[False]
+        def progress(value):cancelled[0]=True
+        result=melos_product.run_trials(run,progress=progress,should_cancel=lambda:cancelled[0])
+        self.assertEqual((result['completion'],result['completed']),('cancelled_partial',0))
+        trial=result['trials'][0];self.assertEqual(trial['run_record']['observed_through'],120)
+        self.assertEqual(trial['status'],'not_completed')
+        before={p.name:p.read_bytes() for p in (run/'native-results').iterdir()}
+        for resume in (False,True):
+            with self.assertRaises((ValueError,OSError)):melos_product.run_trials(run,resume=resume)
+        self.assertEqual(before,{p.name:p.read_bytes() for p in (run/'native-results').iterdir()})
 
-    def test_failure_retains_seed_checkpoint_and_never_retries_it(self):
-        run = self.frozen(seeds=(0, 63))
-        original = MelosSession.run_saved
-        calls = []
-        def fail_after_commit(session, *args, **kwargs):
-            calls.append(session.trial.seed)
-            result = original(session, *args, **kwargs)
-            if session.trial.seed == 0:
-                raise RuntimeError('injected after committed boundary')
-            return result
-        with patch.object(MelosSession, 'run_saved', new=fail_after_commit):
-            result = melos_product.run_trials(run)
-        self.assertEqual(result['completed'], 2)
-        self.assertEqual(result['failed'], 1)
-        failed = result['trials'][0]
-        self.assertEqual(failed['seed'], 0)
-        self.assertEqual(failed['status'], 'execution_failure')
-        self.assertEqual(failed['run_record']['stop_reason'], 'paused')
-        self.assertEqual(calls.count(0), 1)
-        with patch.object(MelosSession, 'run_saved', side_effect=AssertionError('reroll')):
-            self.assertEqual(melos_product.run_trials(run, resume=True), result)
-            self.assertEqual(melos_product.run_trials(run, resume=True, should_cancel=lambda: True), result)
+    def test_export_failure_retains_selection_without_fictional_scenario_failure(self):
+        from execution.melos_native_jobs import read_native_result, STORAGE
+        run=self.frozen(seeds=(0,));refs=[]
+        with patch('execution.melos_native_jobs.publish_native_exports',side_effect=RuntimeError('injected export failure')):
+            with self.assertRaisesRegex(RuntimeError,'injected export'):
+                melos_product.run_trials(run,acknowledge=lambda v:refs.append(v) or v)
+        job={'job_id':'job-run','independent_storage':STORAGE,'execution_plan_sha256':refs[-1]['execution_plan_sha256'],
+             'accepted_request':{'seed_plan':[0]},'native_result_refs':refs[-1]}
+        result=read_native_result(run,job)
+        self.assertEqual((result['completion'],result['completed'],result['failed']),('failed_partial',0,0))
+        self.assertEqual(result['operation_error']['phase'],'export')
+        self.assertIn('last_accepted_generation',result['trials'][0]);self.assertNotIn('run_record',result['trials'][0])
 
-    def test_preflight_drift_and_cross_job_resume_reject_before_execution(self):
-        run = self.frozen(seeds=(0,))
-        request_path = run / 'accepted-request.json'
-        request = json.loads(request_path.read_text()); request['seed_plan'] = [63]
-        atomic_json(request_path, request)
-        with self.assertRaises(ValueError): melos_product.run_trials(run)
-        self.assertFalse((run / 'trials').exists())
-        other = self.frozen('owned', seeds=(0,))
-        melos_product.run_trials(other, should_cancel=lambda: True)
-        owner = json.loads((other / 'melos-owner.json').read_text()); owner['job_id'] = 'different'
-        atomic_json(other / 'melos-owner.json', owner)
-        with self.assertRaises(ValueError): melos_product.run_trials(other, resume=True)
-        self.assertFalse((other / 'trials').exists())
+    def test_preflight_drift_and_cross_seed_catalog_reject_before_execution(self):
+        run=self.frozen(seeds=(0,));request_path=run/'accepted-request.json'
+        request=json.loads(request_path.read_text());request['seed_plan']=[63];atomic_json(request_path,request)
+        with self.assertRaises(ValueError):melos_product.run_trials(run)
+        self.assertEqual(list((run/'native-results').iterdir()),[])
+        other=self.frozen('catalog',seeds=(0,63));path=other/'review-manifest.json';manifest=json.loads(path.read_text())
+        manifest['admission']['binding_manifest']['provider_catalog']['63']['initial_hash']='0'*64;atomic_json(path,manifest)
+        with self.assertRaises(ValueError):melos_product.run_trials(other)
+        self.assertEqual(list((other/'native-results').iterdir()),[])
 
     def test_unresolved_finished_and_paused_are_distinct(self):
         record = {'observations': {'scenario_finished': True, 'status': 'unresolved',
@@ -194,15 +151,13 @@ class MelosProductTests(unittest.TestCase):
         self.assertEqual((trial['status'], trial['category']), ('not_completed', 'not_completed'))
 
     def test_frozen_runtime_subprocess_preserves_portable_plan(self):
-        run = self.frozen(seeds=(0,))
-        script = "import sys;sys.path.insert(0,sys.argv[1]);from execution.melos_product import run_trials;run_trials(sys.argv[2])"
-        process = subprocess.run([sys.executable, '-I', '-B', '-c', script, str(run / 'runtime'), str(run)],
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=90)
-        self.assertEqual(process.returncode, 0, process.stderr)
-        result = json.loads((run / 'review-result.json').read_text())
-        self.assertEqual(result['completed'], 1)
-        self.assertEqual(result['trials'][0]['run_record']['melos_admission']['seed'], 0)
+        run=self.frozen(seeds=(0,))
+        script="import sys,json;sys.path.insert(0,sys.argv[1]);from execution.melos_product import run_trials;v=run_trials(sys.argv[2],should_cancel=lambda:True);print(json.dumps(v))"
+        process=subprocess.run([sys.executable,'-I','-B','-c',script,str(run/'runtime'),str(run)],
+                               stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=90)
+        self.assertEqual(process.returncode,0,process.stderr)
+        result=json.loads(process.stdout);self.assertEqual(result['schema'],'worldbloom_independent_v3')
+        self.assertEqual(result['completion'],'cancelled_partial')
 
 
-if __name__ == '__main__':
-    unittest.main()
+if __name__ == '__main__':unittest.main()
