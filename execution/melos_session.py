@@ -285,6 +285,12 @@ class MelosSession:
         return {'state':state,'sha256':_hash(state)}
 
     def restore_state(self,snapshot):
+        try:
+            self._restore_state(snapshot)
+        except (KeyError, TypeError, AttributeError, IndexError, OverflowError) as exc:
+            raise ValueError('Malformed Melos session checkpoint') from exc
+
+    def _restore_state(self,snapshot):
         if type(snapshot) is not dict or set(snapshot)!={'state','sha256'}:raise ValueError('Invalid session envelope')
         s=_json(snapshot['state'])
         if snapshot['sha256']!=_hash(s) or set(s)!=set(self.export_state()['state']) or s['schema']!='melos_session_v1':raise ValueError('Invalid session state')
@@ -413,8 +419,13 @@ class MelosSession:
                         break
                 elif self.phase=='finalize':self._finalize()
                 if _commit is not None:_commit(self.export_state())
-            except BaseException:
-                self.restore_state(before)
+            except BaseException as primary:
+                try:
+                    self.restore_state(before)
+                except BaseException as rollback:
+                    if isinstance(primary, Exception) and not isinstance(rollback, Exception):
+                        raise rollback from primary
+                    raise primary from rollback
                 raise
         return deepcopy(self.trial.state)
 
@@ -424,6 +435,8 @@ class MelosSession:
         A crash before the next commit may redo in-memory work, never published
         effects. This does not register a product independent-trials profile.
         """
+        if getattr(self.rt, 'calendar_capture', None) is not None:
+            raise ValueError('Captured calendar prototype is input-only; legacy save writers are unavailable')
         expected={'family':'melos_approved_session_v1','identity':self.stage.identity,
                   'provider':provider_snapshot(self.stage.provider)['identity'],
                   'python':list(sys.version_info[:3])}

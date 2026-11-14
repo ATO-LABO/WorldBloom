@@ -101,8 +101,17 @@ def prepare_run(configs,job,folder):
         materialize(staging/'runtime',code);verify_files(staging/'runtime',runtime['files'])
         atomic_json(staging/'execution-plan.json',admission['execution_plan'])
         atomic_json(staging/'accepted-request.json',request)
-        atomic_json(staging/'review-manifest.json',{'schema_version':1,'job_id':job['job_id'],
-                    'inputs':inputs,'runtime':runtime,'admission':admission,'config':config})
+        manifest={'schema_version':1,'job_id':job['job_id'],
+                  'inputs':inputs,'runtime':runtime,'admission':admission,'config':config}
+        if 'storage' in admission:
+            from execution.melos_native_jobs import STORAGE, is_native_storage
+            if not is_native_storage(admission['storage']):
+                raise ValueError('Unsupported independent storage')
+            manifest['storage']=deepcopy(STORAGE)
+            # Outer creation is explicit, create-only, before native ownership.
+            # The owner will reject links/reparse ancestors and compare ancestry.
+            (staging/'native-results').mkdir(exist_ok=False)
+        atomic_json(staging/'review-manifest.json',manifest)
         publish_directory(staging,final)
     from execution.provenance import python_executable
     # ProcessTree owns the isolated Python gate and inserts UTF-8 itself.
@@ -111,8 +120,9 @@ def prepare_run(configs,job,folder):
           '--run',str(final),'--control',str(configs.control),'--job',job['job_id'],'--nonce',job['nonce']]
     return {'argv':argv,'runtime_manifest_sha256':sha256(canonical(runtime))}
 
-def receipt(run,records):
-    run=Path(run);manifest=json.loads((run/'review-manifest.json').read_text(encoding='utf-8'))
+def receipt(run,records,*,manifest=None):
+    run=Path(run)
+    if manifest is None:manifest=json.loads((run/'review-manifest.json').read_text(encoding='utf-8'))
     admission=manifest['admission'];cap=admission['capability'];plan=admission['execution_plan']
     slots={r['seed']:r for r in records}
     published=[slots.get(seed,{'id':f'trial-{i:04d}','seed':seed,'status':'not_completed','category':'not_completed',

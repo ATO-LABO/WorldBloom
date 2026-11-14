@@ -40,8 +40,13 @@ def _atomic(method):
         before = self.export_state()
         try:
             return method(self, *args, **kwargs)
-        except BaseException:
-            self.restore_state(before)
+        except BaseException as primary:
+            try:
+                self.restore_state(before)
+            except BaseException as rollback:
+                if isinstance(primary, Exception) and not isinstance(rollback, Exception):
+                    raise rollback from primary
+                raise primary from rollback
             raise
     return guarded
 
@@ -86,10 +91,7 @@ class MelosActionStage:
         self.identity = _json({'schema': 1, 'adapter': 'melos_action_stage_v1',
             'implementation': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             'trial_sources': closure, 'inputs': input_hashes, 'sources': source_hashes,
-            'config': _hash({'scenario': trial.scenario, 'parameters': trial.p,
-                             'goals': trial.goals, 'seed': trial.seed,
-                             'arm': trial.arm, 'reference': trial.reference,
-                             'genome': trial.genome.to_dict(), 'contract': trial.rt.contract})})
+            'config': self._configuration_hash()})
         self.rt.enable_adapter_journal({'adapter': 'melos_action_stage_v1',
             'schema_version': 1, 'source_hash': self.identity['implementation'],
             'config_hash': _hash(self.identity)})
@@ -233,6 +235,44 @@ class MelosActionStage:
             'provider': provider_snapshot(self.provider) if self.provider is not None else None})
         return {'state': state, 'sha256': _hash(state)}
 
+    def _configuration_hash(self):
+        trial = self.trial
+        return _hash({'scenario': trial.scenario, 'parameters': trial.p,
+                      'goals': trial.goals, 'seed': trial.seed,
+                      'arm': trial.arm, 'reference': trial.reference,
+                      'genome': trial.genome.to_dict(), 'contract': trial.rt.contract})
+
+    def _staging_trial(self):
+        """Detach mutable state without copying or unbinding capture ownership."""
+        capture = self.rt.calendar_capture
+        if capture is None:
+            return deepcopy(self.trial)
+        from execution.melos_factory import MelosSessionFactory
+        factory = getattr(self, '_captured_factory', None)
+        if type(factory) is not MelosSessionFactory or factory._calendar_capture is not capture:
+            raise ValueError('Captured restore requires its approved factory binding')
+        capture.assert_world(self.rt.world)
+        capture.assert_provenance(self.rt.world)
+        if (self.rt.sim.calendar_capture is not capture
+                or self.trial.sim is not self.rt.sim
+                or self.rt.world is not self.rt.sim.world
+                or self.rt.people is not self.rt.sim.subjects
+                or self.rt.sim.slot_runtime is not self.rt
+                or self.rt.sim.time_kernel is not self.rt.time_kernel):
+            raise ValueError('Captured session runtime binding differs')
+        if self._configuration_hash() != self.identity['config']:
+            raise ValueError('Captured session configuration changed')
+        live_inputs = self.rt.inputs()
+        live_provider = provider_snapshot(self.provider)['identity']
+        fresh = factory.create(self.trial.seed)
+        if (fresh.stage.identity != self.identity or type(fresh.trial) is not type(self.trial)
+                or fresh.rt.calendar_capture is not capture
+                or fresh.rt.inputs() != live_inputs
+                or type(fresh.stage.provider) is not type(self.provider)
+                or provider_snapshot(fresh.stage.provider)['identity'] != live_provider):
+            raise ValueError('Staging factory differs from captured session identity')
+        return fresh.trial
+
     def restore_state(self, snapshot):
         """Validate a detached complete state before mutating the live Trial."""
         try:
@@ -292,8 +332,9 @@ class MelosActionStage:
             counted[decision['actor']] += 1
         if counted != e['count']:
             raise ValueError('Choice counts differ from history')
-        # Both the core and dynamic-command validation occur on a detached copy.
-        staged = deepcopy(self.trial)
+        # Fresh factory staging borrows the same live capture but detaches all
+        # mutable world/people/runtime state. Capture is never copied or closed.
+        staged = self._staging_trial()
         staged.rt.restore_state(s['runtime'])
         if any(e['vitality'][a] != staged.rt.people[a].vitality for a in actors):
             raise ValueError('Conflicting core/external vitality')

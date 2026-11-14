@@ -43,6 +43,7 @@ class MelosConnectedTests(unittest.TestCase):
         self.assertTrue(current['termination_confirmed'],current)
         status,result=fixture.http(server,'GET','/api/independent/jobs/'+job['job_id']+'/result')
         self.assertEqual(status,200,result);self.assertEqual(result['completed'],1);self.assertEqual(result['failed'],0)
+        self.assertEqual(result['schema'],'worldbloom_independent_v3');self.assertEqual(result['storage']['kind'],'melos_independent_native_v1')
         record=result['trials'][0]['run_record'];self.assertTrue(record['product_profile_active']);self.assertIsNone(record['verified_execution'])
         self.assertTrue(record['observations']['fixed_two_minute_report']['completed'])
         code="const fs=require('fs'),crypto=require('crypto'),a=require('./viewer/static/purpose-workspace.js');const r=JSON.parse(fs.readFileSync(0,'utf8'));a.verifyRunRecord(r,s=>crypto.createHash('sha256').update(s).digest('hex')).then(()=>console.log(JSON.stringify(a.melosObservationCounts(r.trials)))).catch(e=>{console.error(e);process.exitCode=1;});"
