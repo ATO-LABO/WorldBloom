@@ -34,7 +34,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python -B .github/ci/ci_plan.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: policy-plan-a${{ github.run_attempt }}
           path: policy-plan.json
@@ -74,7 +74,7 @@ jobs:
           WB_SYNTAX_OUTCOME: ${{ steps.syntax.outcome }}
           WB_JAVASCRIPT_OUTCOME: ${{ steps.javascript.outcome }}
         run: python -B .github/ci/ci_outcomes.py basic --output policy-basic/selected-outcomes.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: policy-basic-a${{ github.run_attempt }}
@@ -116,7 +116,7 @@ jobs:
         env:
           WB_PYTHON_OUTCOME: ${{ steps.python.outcome }}
         run: python -B .github/ci/ci_outcomes.py windows --output policy-windows/selected-outcomes.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: policy-windows-py${{ matrix.python }}-a${{ github.run_attempt }}
@@ -196,7 +196,7 @@ jobs:
         run: python -B -c "import json,os,pathlib; p=pathlib.Path(os.environ['WB_REGRESSION_EVIDENCE_DIR']); p.mkdir(parents=True,exist_ok=True); (p/'gate-outcomes.json').write_text(json.dumps({k:os.environ['WB_'+k.upper()+'_OUTCOME'] for k in ('python','javascript','before','after')}),encoding='utf-8')"
       - name: Preserve diagnostic evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: regression-diagnostics-${{ matrix.os }}-py${{ matrix.python }}-part-${{ matrix.shard }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/worldbloom-regression-evidence
@@ -236,7 +236,7 @@ jobs:
         run: python -B -c "import os; assert all(os.environ[k]=='success' for k in ('WB_CLASSIFICATION','WB_BASIC','WB_SHARDS','WB_SECRETS'))"
       - name: Require complete successful census for this environment
         run: python -B tests/regression_partition.py --aggregate regression-evidence --output census-verification.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: regression-census-${{ matrix.os }}-py${{ matrix.python }}-a${{ github.run_attempt }}
           path: census-verification.json
@@ -296,7 +296,7 @@ jobs:
           path: policy-evidence
       - name: Fail closed on classification, jobs and complete census
         run: python -B .github/ci/ci_gate.py --evidence policy-evidence --receipt ci-receipt.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: policy-receipt-a${{ github.run_attempt }}
           path: ci-receipt.json
