@@ -75,7 +75,7 @@ python -m unittest discover -s tests -v
 `viewer/app_desktop.py`（pywebview の起動エントリ）と `viewer/build_exe.cmd`（PyInstaller のビルドスクリプト）で、閲覧専用の `WorldBloom.exe` とフル機能の `WorldBloom-Studio.exe` の2本を作ります。
 
 1. `viewer\build_exe.cmd` を実行すると、PyInstaller の dist フォルダに `WorldBloom.exe` と `WorldBloom-Studio.exe` が生成されます（`app_desktop.py` 1本から、実行時のファイル名で動作モードを切り替える設計です）
-2. 配布フォルダを組み立てます。各 exe と同じ場所に `app/` フォルダを作り、次を丸ごとコピーします: `viewer/` `execution/` `gapengine/` `engine/` `scripts/` `templates/` `projects/` `requirements.txt`（閲覧専用の配布物には `samples/` も同梱します）
+2. 配布フォルダを組み立てます。各 exe と同じ場所に `app/` フォルダを作り、次を丸ごとコピーします: `viewer/` `execution/` `gapengine/` `engine/` `scripts/` `templates/` `projects/` `samples/` `requirements.txt`（Studio版にも `samples/` を同梱します）
 3. 自作パッケージ（`viewer`/`execution`/`gapengine`/`engine`/`scripts`）は exe に焼き込まず、配布フォルダの `app/` に生ファイルとして置いたものを実行時に動的 import（`importlib.import_module`）する設計です。再ビルド後は、PyInstaller の build フォルダにできる `PYZ-00.toc` を開き、`viewer.` `execution.` `gapengine.` `engine.` `scripts.` で始まるエントリが無いことを確認してください（あれば、古いコードが exe 内に焼き込まれてしまっています）
 4. Studio 版は、配布前にテストで作られた `runs/`・`control/` フォルダを配布フォルダから削除してください（無ければ初回起動時に自動生成されます）
 

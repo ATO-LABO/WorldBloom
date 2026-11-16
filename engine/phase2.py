@@ -105,17 +105,23 @@ def _load_effect_library(
     return _as_sequence(raw, label="effects"), path
 
 
+_EFFECTS_UNSET = object()
+
+
 def configure_phase2(
     world: World,
     definition: dict[str, Any],
     source: Path,
+    *,
+    effects_value=_EFFECTS_UNSET,
+    effects_source=None,
 ) -> None:
-    """Load and syntax-check optional Phase 2 configuration."""
+    """Load and syntax-check Phase 2, or consume an explicitly supplied value."""
 
-    raw_effects, effects_path = _load_effect_library(
-        definition,
-        source,
-    )
+    if effects_value is _EFFECTS_UNSET:
+        raw_effects, effects_path = _load_effect_library(definition, source)
+    else:
+        raw_effects, effects_path = _as_sequence(effects_value, label="effects"), effects_source
     effect_ids = [str(entry.get("id", "")) for entry in raw_effects]
     if any(not effect_id for effect_id in effect_ids):
         raise ValueError("Effect id is required")
