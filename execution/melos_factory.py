@@ -4,7 +4,8 @@ Original external source bytes remain unchanged. Two AST-only packaging edits
 remove its top-level sys.path insertion and inject the explicit input parent as
 ROOT. The isolated runner gets a hash-bound world loader. All scenario/action
 code is compiled unchanged. No external trial runner
-or main entrypoint is called. Inputs must retain the approved melos-input name.
+or main entrypoint is called. The default path requires melos-input; the private
+capture path uses that name only as a lexical selector, never a filesystem mirror.
 """
 import ast
 from copy import deepcopy
@@ -24,6 +25,7 @@ from gapengine.genome import Genome
 from gapengine.melos_choice_provider import MelosChoiceProvider
 
 TRANSFORM_VERSION = 'approved_melos_root_binding_v2'
+CAPTURE_TRANSFORM_VERSION = 'approved_melos_capture_binding_v1'
 # Approved received sources, frozen 2026-10-14. Caller catalogs cannot expand
 # this allowlist; a new source revision requires explicit reviewed code change.
 _APPROVED_SOURCES = {
@@ -104,17 +106,29 @@ class MelosSessionFactory:
     """Own an isolated ROOT namespace and create only approved baseline slots.
 
     The explicit catalogs must equal the built-in approved revision as well as
-    actual disk bytes. The namespace is path-bound: freeze/materialize the
-    source and input roots before constructing a durable ExecutionPlan.
+    actual disk bytes on the default path. The private calendar_capture path
+    instead borrows a caller-owned live capture and never revisits input paths.
+    Its logical melos-input selector may differ from the diagnostic folder name.
+    Installed executable sources remain path-verified on every create.
     """
     def __init__(self, source_dir, input_dir, *, approved_source_hashes,
-                 approved_input_hashes, genome):
-        if Path(source_dir).is_symlink() or Path(input_dir).is_symlink():
+                 approved_input_hashes, genome, calendar_capture=None):
+        self._calendar_capture = calendar_capture
+        if Path(source_dir).is_symlink() or (calendar_capture is None and Path(input_dir).is_symlink()):
             raise ValueError('Profile root links are unsupported')
         self.source_dir = Path(source_dir).resolve()
-        self.input_dir = Path(input_dir).resolve()
-        if self.input_dir.name != 'melos-input':
-            raise ValueError('Approved melos-input layout required')
+        if calendar_capture is None:
+            self.input_dir = Path(input_dir).resolve()
+            if self.input_dir.name != 'melos-input':
+                raise ValueError('Approved melos-input layout required')
+        else:
+            # Display paths are labels only. Do not resolve, stat or open them.
+            self.input_dir = Path(input_dir)
+            if self.input_dir != calendar_capture.display_source.parent:
+                raise ValueError('Input selector differs from captured project')
+        self._logical_root = self.input_dir.parent
+        self._transform_version = (TRANSFORM_VERSION if calendar_capture is None
+                                   else CAPTURE_TRANSFORM_VERSION)
         if approved_source_hashes != _APPROVED_SOURCES or approved_input_hashes != _APPROVED_INPUTS:
             raise ValueError('Caller catalogs do not authorize a different profile revision')
         if type(genome) is not Genome:
@@ -128,37 +142,74 @@ class MelosSessionFactory:
         if hashlib.sha256(source).hexdigest() != _APPROVED_SOURCES[path.name]:
             raise ValueError('Source changed during factory construction')
         name = '_worldbloom_melos_'+digest({'source': str(path), 'input': str(self.input_dir),
-                                          'transform': TRANSFORM_VERSION})
+                                          'transform': self._transform_version})
         with _LOCK:
             module = types.ModuleType(name)
             module.__file__ = str(path)
-            module.__dict__['_APPROVED_INPUT_PARENT'] = self.input_dir.parent
+            module.__dict__['_APPROVED_INPUT_PARENT'] = self._logical_root
             previous = sys.modules.get(name)
             sys.modules[name] = module
             try:
                 exec(compile(_transform(source, str(path)), str(path), 'exec'), module.__dict__)
-                approved_path = self.input_dir / "world.yaml"
-                def from_yaml(world_path):
-                    if Path(world_path) != approved_path:
-                        raise ValueError("World is outside the approved Melos input")
-                    return load_approved_world(approved_path)
-
-                module.World = types.SimpleNamespace(from_yaml=from_yaml)
+                if calendar_capture is None:
+                    approved_path = self.input_dir / "world.yaml"
+                    def from_yaml(world_path):
+                        if Path(world_path) != approved_path:
+                            raise ValueError("World is outside the approved Melos input")
+                        return load_approved_world(approved_path)
+                    module.World = types.SimpleNamespace(from_yaml=from_yaml)
+                else:
+                    self._bind_capture(module)
             except BaseException:
                 if previous is None: sys.modules.pop(name, None)
                 else: sys.modules[name] = previous
                 raise
             self._module = module
-        if module.ROOT != self.input_dir.parent or Path(inspect.getsourcefile(module.Trial)) != path:
+        if module.ROOT != self._logical_root or Path(inspect.getsourcefile(module.Trial)) != path:
             raise ValueError('Isolated source/root identity unavailable')
 
     def _verify(self):
         _verified(self.source_dir, _APPROVED_SOURCES, '.py')
-        _verified(self.input_dir, _APPROVED_INPUTS, '.yaml')
+        if self._calendar_capture is None:
+            _verified(self.input_dir, _APPROVED_INPUTS, '.yaml')
+        else:
+            capture = self._calendar_capture
+            capture.assert_live()
+            if capture.profile != 'melos' or capture.world_name != 'world.yaml':
+                raise ValueError('Approved Melos capture required')
+            capture.validate_profile()
+            for name, expected in _APPROVED_INPUTS.items():
+                role = ('subject:' + Path(name).stem if name.startswith('subjects/')
+                        else Path(name).stem)
+                if hashlib.sha256(capture.bytes(role)).hexdigest() != expected:
+                    raise ValueError('Captured bytes differ from approved Melos inputs')
+
+    def _bind_capture(self, module):
+        from engine.calendar_inputs import load_captured_project, subjects_from_capture
+        capture = self._calendar_capture
+        # Frozen Trial spells melos-input literally. ROOT is a logical namespace,
+        # not a materialized directory; World.source retains the captured label.
+        selector = self._logical_root / 'melos-input/world.yaml'
+
+        def from_yaml(world_path):
+            capture.assert_live()
+            if Path(world_path) != selector:
+                raise ValueError('World is outside the approved Melos selector')
+            world, _ = load_captured_project(capture, provenance_style='melos')
+            return world
+
+        def read_subjects(world_path, config):
+            capture.assert_live()
+            if Path(world_path) != capture.display_source or config != capture.config:
+                raise ValueError('Subjects selector differs from captured project')
+            return subjects_from_capture(capture)
+
+        module.World = types.SimpleNamespace(from_yaml=from_yaml)
+        module.read_subjects = read_subjects
 
     @property
     def identity(self):
-        return {'profile': 'melos_approved_ninegene_v1', 'transform': TRANSFORM_VERSION,
+        return {'profile': 'melos_approved_ninegene_v1', 'transform': self._transform_version,
                 'transform_source_hash': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                 'sources': deepcopy(_APPROVED_SOURCES), 'inputs': deepcopy(_APPROVED_INPUTS),
                 'genome': deepcopy(self._genome), 'product_active': True}
@@ -167,10 +218,21 @@ class MelosSessionFactory:
         if type(seed) is not int or not 0 <= seed <= 2147483647:
             raise ValueError('Bounded nonnegative integer seed required')
         self._verify()
-        if self._module.ROOT != self.input_dir.parent:
+        if self._module.ROOT != self._logical_root:
             raise ValueError('Factory input namespace changed')
         genome = Genome.from_dict(deepcopy(self._genome))
-        trial = self._module.Trial(genome, seed)
-        return MelosSession(trial, input_hashes=deepcopy(_APPROVED_INPUTS),
-                            source_hashes=deepcopy(_APPROVED_SOURCES),
-                            choice_provider=MelosChoiceProvider(genome, seed))
+        if self._calendar_capture is None:
+            trial = self._module.Trial(genome, seed)
+        else:
+            scenario = self._calendar_capture.yaml('scenario')
+            if not isinstance(scenario, dict) or not scenario:
+                raise ValueError('Nonempty approved scenario required')
+            trial = self._module.Trial(genome, seed, scenario=deepcopy(scenario))
+        session = MelosSession(trial, input_hashes=deepcopy(_APPROVED_INPUTS),
+                               source_hashes=deepcopy(_APPROVED_SOURCES),
+                               choice_provider=MelosChoiceProvider(genome, seed))
+        # This binding is an in-memory staging capability, never checkpoint
+        # data or a pathname fallback. The caller still owns the live capture.
+        if self._calendar_capture is not None:
+            session.stage._captured_factory = self
+        return session

@@ -9,6 +9,7 @@ import hashlib
 import inspect
 from pathlib import Path
 import re
+from types import FunctionType, MethodType
 
 from engine.execution_plan import ExecutionPlan, digest
 from execution.melos_session import MelosSession
@@ -75,35 +76,152 @@ def _closure(session):
     return {name: _file(path) for name, path in paths.items()}
 
 
-def _data(value):
+def _data(value, *, captured=False):
     if isinstance(value, dict):
-        return {k: _data(v) for k, v in value.items()}
+        return {k: _data(v, captured=captured) for k, v in value.items()}
     if isinstance(value, (set, frozenset)):
-        return sorted(_data(v) for v in value)
+        return sorted(_data(v, captured=captured) for v in value)
     if isinstance(value, (list, tuple)):
-        return [_data(v) for v in value]
+        return [_data(v, captured=captured) for v in value]
     if isinstance(value, Path):
-        return str(value.resolve())
+        return str(value) if captured else str(value.resolve())
     if is_dataclass(value):
-        return _data(asdict(value))
+        return _data(asdict(value), captured=captured)
     if hasattr(value, '__dict__'):
         return {'class': type(value).__module__+'.'+type(value).__qualname__,
-                'fields': _data(vars(value))}
+                'fields': _data(vars(value), captured=captured)}
     return deepcopy(value)
 
 
-def _effective(trial):
+def _effective(trial, *, captured=False):
     runtime_inputs = deepcopy(trial.rt.inputs())
     runtime_inputs.pop('adapter_journal_identity', None)
     runtime_state = trial.rt.export_state()
     runtime_state.pop('adapter_journal', None)
     runtime_state.pop('actor_vitality', None)
-    return _data({'scenario': trial.scenario, 'parameters': trial.p, 'goals': trial.goals,
-                  'world': vars(trial.rt.world), 'contract': trial.rt.contract,
+    # The capture is an owned resource, not semantic configuration. Keep every
+    # other world field, including live mutable configuration and diagnostic
+    # labels. Captured labels are compared lexically, never resolved or read.
+    world = dict(vars(trial.rt.world))
+    if captured:
+        world.pop('calendar_capture')
+    effective = {'scenario': trial.scenario, 'parameters': trial.p, 'goals': trial.goals,
+                  'world': world, 'contract': trial.rt.contract,
                   'axis': asdict(trial.rt.time_kernel.axis),
                   'inputs': runtime_inputs, 'initial_runtime': runtime_state,
                   'external': {name: getattr(trial, name) for name in
-                      ('state', 'info', 'evidence', 'count', 'decisions', 'serial', 'notes')}})
+                      ('state', 'info', 'evidence', 'count', 'decisions', 'serial', 'notes')}}
+    if captured:
+        # These live compiled/transient values are not all in export_state().
+        # Recompute them in the fresh factory too, rather than trusting hashes.
+        effective['runtime_configuration'] = {name: getattr(trial.rt, name) for name in
+            ('commands', 'task_windows', 'energy_rules', '_facility_events',
+             '_observation_buffer', '_active_at_tick', '_generation_persistence_started',
+             'registry', 'time_kernel')}
+        effective['lifecycle_configuration'] = {name: getattr(trial.rt.lifecycle, name)
+            for name in ('start_key', 'finish_key', 'actor_key')}
+        effective['simulation_configuration'] = {name: getattr(trial.sim, name) for name in
+            ('precedent', 'record_explanations', 'terminal_policy', '_initial_subject_specs',
+             '_observed_ending_ids', '_instant_pending', '_decision_context', 'turn', 'day',
+             'slot', '_last_fact_turn', '_previous_snapshot_layers', '_forced', '_fallback')}
+        effective['verb_configuration'] = {name: value for name, value in
+            vars(trial.sim.verb_engine).items() if name not in ('world', 'rng')}
+    return _data(effective, captured=captured)
+
+
+def _captured_links(rt, pristine):
+    """Check owned aliases/callbacks without invoking a caller's replacement."""
+    for live, fresh in ((rt, pristine), (rt.world, pristine.world),
+                        (rt.sim, pristine.sim), (rt.time_kernel, pristine.time_kernel),
+                        (rt.lifecycle, pristine.lifecycle), (rt.registry, pristine.registry),
+                        (rt.sim.verb_engine, pristine.sim.verb_engine),
+                        (rt.world.relations, pristine.world.relations)):
+        if type(live) is not type(fresh):
+            raise ValueError('Captured runtime implementation differs')
+    if (set(rt.world.subjects) != set(rt.people)
+            or any(rt.world.subjects[name] is not person for name, person in rt.people.items())
+            or rt.sim.verb_engine.world is not rt.world
+            or rt.sim.verb_engine.rng is not rt.sim.rng):
+        raise ValueError('Captured execution owner differs')
+    # These two approved closures each contain exactly the owning runtime or
+    # world. Matching function labels/empty __dict__ cannot prove that binding.
+    for live, fresh, owner in (
+            (rt.lifecycle.pending, pristine.lifecycle.pending, rt),
+            (rt.world.relations._affinity_cap_resolver,
+             pristine.world.relations._affinity_cap_resolver, rt.world)):
+        if (type(live) is not FunctionType or live.__code__ is not fresh.__code__
+                or live.__globals__ is not fresh.__globals__
+                or live.__defaults__ != fresh.__defaults__
+                or live.__kwdefaults__ != fresh.__kwdefaults__
+                or live.__closure__ is None or len(live.__closure__) != 1
+                or live.__closure__[0].cell_contents is not owner):
+            raise ValueError('Captured execution callback owner differs')
+    resolver = rt.world.relations._target_resolver
+    if (type(resolver) is not MethodType or resolver.__self__ is not rt.world
+            or resolver.__func__ is not pristine.world.relations._target_resolver.__func__):
+        raise ValueError('Captured relation resolver owner differs')
+
+
+def _captured_pristine(session, inputs):
+    """Verify ownership/bytes, then reconstruct without reopening input labels.
+
+    A capture is not a cached-hash approval. Actual bytes and member metadata
+    must agree with the built-in profile; live values are compared separately.
+    This is in-memory admission only, not output or publication authority.
+    """
+    from engine.calendar_capture import CalendarCapture
+    from execution.melos_adapter import MelosActionStage
+    from execution.melos_factory import MelosSessionFactory, approved_catalogs
+    rt = session.rt
+    capture = rt.calendar_capture
+    factory = getattr(session.stage, '_captured_factory', None)
+    if capture is None:
+        if (getattr(rt.world, 'calendar_capture', None) is not None
+                or getattr(rt.sim, 'calendar_capture', None) is not None
+                or factory is not None):
+            raise ValueError('Captured session ownership binding differs')
+        return None
+    if (type(capture) is not CalendarCapture or type(session.stage) is not MelosActionStage
+            or type(factory) is not MelosSessionFactory
+            or factory._calendar_capture is not capture):
+        raise ValueError('Captured admission requires its approved factory binding')
+    if rt.store is not None or rt.sim._writer is not None:
+        raise ValueError('Pristine captured admission cannot own an output writer')
+    capture.assert_world(rt.world)
+    capture.assert_provenance(rt.world)
+    capture.validate_profile()
+    if (rt.sim.calendar_capture is not capture or session.trial.sim is not rt.sim
+            or rt.world is not rt.sim.world or rt.people is not rt.sim.subjects
+            or rt.sim.slot_runtime is not rt or rt.sim.time_kernel is not rt.time_kernel
+            or rt.lifecycle.kernel is not rt.time_kernel):
+        raise ValueError('Captured session runtime binding differs')
+    expected = approved_catalogs()['inputs']
+    actual = {}
+    core = {}
+    for name in expected:
+        role = 'subject:' + Path(name).stem if name.startswith('subjects/') else Path(name).stem
+        raw = capture.bytes(role)
+        member = capture.member(role)
+        record = {'size_bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+        if member.logical_name != name or member.manifest() != record:
+            raise ValueError('Captured input metadata differs from actual bytes')
+        actual[name] = record['sha256']
+        if role != 'scenario':
+            core[name] = record
+    if actual != expected or inputs != actual or capture.core_manifest() != core:
+        raise ValueError('Input catalog differs from approved captured bytes')
+    if capture.has_role('manifest'):
+        raw = capture.bytes('manifest')
+        if capture.member('manifest').manifest() != {
+                'size_bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}:
+            raise ValueError('Captured source manifest differs from actual bytes')
+    fresh = factory.create(session.trial.seed)
+    if (type(fresh.trial) is not type(session.trial)
+            or fresh.rt.calendar_capture is not capture
+            or fresh.stage.identity != session.stage.identity):
+        raise ValueError('Captured factory differs from admitted session')
+    _captured_links(rt, fresh.rt)
+    return fresh
 
 
 def _descriptor(session):
@@ -111,10 +229,13 @@ def _descriptor(session):
         raise ValueError('Exact approved finite session/provider required')
     t = session.trial; rt = session.rt
     inputs = _catalog(session.stage.identity['inputs'])
-    actual = {p.relative_to(rt.world.source.parent).as_posix(): _file(p)
-              for p in sorted(rt.world.source.parent.rglob('*.yaml'))}
-    if inputs != actual:
-        raise ValueError('Input catalog differs from actual project YAML files')
+    fresh = _captured_pristine(session, inputs)
+    captured = fresh is not None
+    if not captured:
+        actual = {p.relative_to(rt.world.source.parent).as_posix(): _file(p)
+                  for p in sorted(rt.world.source.parent.rglob('*.yaml'))}
+        if inputs != actual:
+            raise ValueError('Input catalog differs from actual project YAML files')
     sources = _catalog(session.stage.identity['sources'])
     folder = Path(inspect.getsourcefile(type(t))).parent
     for name, expected in sources.items():
@@ -123,12 +244,17 @@ def _descriptor(session):
             raise ValueError('Declared external source differs from actual file')
     if t.reference or t.arm != 'baseline' or t.seed != session.stage.provider.config.seed or rt.sim.seed != t.seed:
         raise ValueError('Unapproved baseline/seed binding')
-    # Reconstruct from the actual approved file-backed constructor. A matching
+    # Reconstruct from the approved constructor and, when present, its capture.
+    # A matching
     # caller catalog and self-consistent stage do not authorize an overridden
     # scenario, parameters, goals, world, or initial state.
-    pristine = type(t)(deepcopy(t.genome), t.seed)
-    if _effective(t) != _effective(pristine):
+    pristine = fresh.trial if captured else type(t)(deepcopy(t.genome), t.seed)
+    if _effective(t, captured=captured) != _effective(pristine, captured=captured):
         raise ValueError('Effective trial differs from pristine approved inputs')
+    # Include the full provider RNG/transcript, journal, stage and session
+    # continuations. Matching identity hashes cannot authorize a dynamic state.
+    if captured and _initial_hash(session) != _initial_hash(fresh):
+        raise ValueError('Captured session differs from pristine factory state')
     expected_provider = MelosChoiceProvider(t.genome, t.seed).checkpoint_identity()
     if session.stage.provider.checkpoint_identity() != expected_provider:
         raise ValueError('Genome/CFG/focus actor/RNG provider differs')
@@ -154,7 +280,7 @@ def _descriptor(session):
                       'vitality': deepcopy(rt.world.vitality),
                       'slot_contract': deepcopy(rt.world.slot_contract),
                       'slot_execution': deepcopy(rt.world.slot_execution),
-                      'scheduled_events': deepcopy(rt.world.scheduled_events)})}
+                      'scheduled_events': deepcopy(rt.world.scheduled_events)}, captured=captured)}
 
 
 class MelosPlanBinding:

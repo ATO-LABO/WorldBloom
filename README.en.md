@@ -11,7 +11,7 @@
 
 <a href="https://youtu.be/Yozi2qb2IQg"><img src="https://img.youtube.com/vi/Yozi2qb2IQg/maxresdefault.jpg" width="640" alt="Thumbnail of the three-minute WorldBloom overview video"></a>
 
-[![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio--portable.zip-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip)
+[![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest)
 [![Public Viewer](https://img.shields.io/badge/View_in_browser-Public_Viewer-2e7d4f?style=for-the-badge&logo=googlechrome&logoColor=white)](https://ato-labo.github.io/WorldBloom/)
 [![Three-minute Video](https://img.shields.io/badge/3_minute_overview-YouTube-c4302b?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/Yozi2qb2IQg)
 [![Documentation](https://img.shields.io/badge/Documentation-English-6f42c1?style=for-the-badge&logo=readthedocs&logoColor=white)](https://ato-labo.github.io/WorldBloom/docs/en/)
@@ -65,7 +65,7 @@ This README describes the current repository source. Windows downloads contain t
 
 **Detailed instructions: [Documentation](https://ato-labo.github.io/WorldBloom/docs/en/) ([Installation](https://ato-labo.github.io/WorldBloom/docs/en/getting-started/install/) / [Quickstart](https://ato-labo.github.io/WorldBloom/docs/en/getting-started/quickstart/)).**
 
-- **A. Use the executable (Windows)**: extract [WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) and open `WorldBloom-Studio.exe`. You can choose a world, run GA experiments, sift through results, and generate synopses and prose. Running GA experiments also requires a separate installation of Python 3.12 or later and PyYAML.
+- **A. Use the executable (Windows)**: download the distribution ZIP from Assets on the [latest release](https://github.com/ATO-LABO/WorldBloom/releases/latest), extract it, and open `WorldBloom-Studio.exe`. You can choose a world, run GA experiments, sift through results, and generate synopses and prose. Running GA experiments also requires a separate installation of Python 3.12 or later and PyYAML.
 - **B. Browse without installing anything**: the [Public Viewer](https://ato-labo.github.io/WorldBloom/) lets you read the grids, synopses, and prose from three experiments: Momotaro, romance, and detective fiction.
 - **C. Run from source**: use `git clone`, then `pip install -r requirements.txt` (Python 3.12 or later). The [Installation](https://ato-labo.github.io/WorldBloom/docs/en/getting-started/install/) guide covers opening the bundled `samples/` in the viewer, running the GA yourself, and other setup steps.
   Regression testing targets Python 3.12 and 3.13 on Ubuntu and Windows.
