@@ -178,6 +178,9 @@ class CalendarPlanning:
         energy = rt.energy_rules
         stamina = min(actor.stamina_max, actor.stamina-spent)
         def step(verb, args, label, duration, cost, effects, meta, assumptions=None, recovery=0):
+            from engine.stamina import planned_cost
+            cost = planned_cost(self.world, verb, cost)
+            if not self.world.mechanics_enabled('stamina_management'): recovery = 0
             if point+duration > rt.end or cost > stamina+1e-9: return
             extra = self._promise_effects(actor, state, effects, point+duration)
             yield {'verb': verb, 'args': args, 'label': label, 'duration': duration,
@@ -192,7 +195,7 @@ class CalendarPlanning:
                 if not self._open(dest, point+minutes): continue
                 yield from step('move', [dest], dest+'へ移動', minutes, minutes*energy['move_per_minute'],
                                 [assignment(('zone', actor.id), dest)], {'to': dest})
-        if 'rest' in allowed and self.world.genre_allows('rest'):
+        if self.world.mechanics_enabled('stamina_management') and 'rest' in allowed and self.world.genre_allows('rest'):
             recovery = min(actor.stamina_max-stamina, energy['rest_minutes']*energy['rest_per_minute'])
             if recovery > 1e-9:
                 yield from step('rest', [], '休息する', energy['rest_minutes'], 0, [],
@@ -266,7 +269,7 @@ class CalendarPlanning:
                 effects = [assignment(('zone', actor.id), dest)]
                 if self.planner._safe(self.world, actor, root, {**state, ('zone',actor.id):dest}, {('zone',actor.id)}) is None:
                     continue
-                cost = minutes*rt.energy_rules['move_per_minute']
+                cost = minutes*rt.energy_rules['move_per_minute'] if self.world.mechanics_enabled('stamina_management') else 0
                 if cost > actor.stamina: continue
                 step = {'verb':'move','args':[dest],'label':dest+'で進捗を確認する', 'duration':minutes,
                         'completion_delay':minutes,'cost':cost,'effects':effects,'assumptions':[], 'meta':{'to':dest}}

@@ -41,7 +41,7 @@ class WorldEditorTests(unittest.TestCase):
             self.assertNotIn('プレビュー用の例文',html)
             self.assertNotIn('元の世界設定には保存されません',html)
             self.assertIn('/worlds/momotaro?view=advanced',html)
-            for screen in ('overview','people','places','story','time'):
+            for screen in ('overview','people','places','items','time','checks'):
                 self.assertIn(f'data-screen="{screen}"',html)
         self.assertEqual(before,self.current()['revision'])
         status,html=self.get('/worlds/momotaro?view=advanced')
@@ -54,7 +54,7 @@ class WorldEditorTests(unittest.TestCase):
         original=deepcopy(self.current()['world'])
         subjects={p:p.read_bytes() for p in (self.repo/'projects/momotaro/subjects').glob('*.yaml')}
         edits=[('overview',{'name':'新しい桃太郎','text':'概要'},None),
-               ('intro',{'text':'始まり'},None),('time',{'days':8,'slots':['朝','夜']},None),
+               ('intro',{'text':'始まり'},None),
                ('place',{'note':'新しい村の説明'},'村'),
                ('route',{'item':'船','cost':2.5},{'from':'海','index':1}),
                ('add-place',{'name':'港','description':'新しい港'},None)]
@@ -62,11 +62,28 @@ class WorldEditorTests(unittest.TestCase):
             status,result=self.submit(operation,values,target)
             self.assertEqual(status,200,result)
             self.assertEqual(result,self.current())
+
+        revision=self.current()['revision']
+        status,inspection=self.submit('time-basic-inspect',{},revision=revision)
+        self.assertEqual(status,200,inspection)
+        settings={**inspection['current'],'days':8,'slots':['朝','夜']}
+        status,preview=self.submit('time-basic-check',{'settings':settings},revision=revision)
+        self.assertEqual(status,200,preview)
+        self.assertTrue(preview['can_apply'],preview)
+        self.assertTrue(preview['warnings'],preview)
+        self.assertEqual(self.current()['revision'],revision)
+        status,result=self.submit('time-basic',{'settings':settings,'confirmation':preview['confirmation']},
+                                  revision=revision)
+        self.assertEqual(status,200,result)
+        self.assertEqual(result.pop('time_backup')['before_revision'],revision)
+        self.assertEqual(result,self.current())
+
         world=self.current()['world']
         for key in original:
             if key not in ('name','overview','initial_story','time','zones','routes'):
                 self.assertEqual(original[key],world[key],key)
         self.assertEqual(world['time']['days'],8)
+        self.assertEqual(world['time']['slots'],['朝','夜'])
         self.assertEqual(world['zones'][0]['note'],'新しい村の説明')
         self.assertEqual(world['zones'][-1],{'name':'港','note':'新しい港'})
         self.assertEqual(world['routes']['海'][1]['cost'],2.5)
@@ -184,7 +201,10 @@ class WorldEditorTests(unittest.TestCase):
         # other non-identifier value) with a 400, not a 500 or a written
         # path-traversing gapengine value.
         before = self.current()['revision']
-        for template_id in ('..', '', '../projects', '../templates/basic'):
+        for template_id in ('..', '', '../projects', '../templates/basic',
+                            '/tmp/basic', 'C:/basic', 'C:basic', 'a\\b',
+                            'a//b', './basic', 'basic/..', 'basic:stream',
+                            'basic\x00', None, True, 1, [], {}):
             with self.subTest(template_id=template_id):
                 status, error = self.submit('genre', {'template_id': template_id})
                 self.assertEqual(status, 400, error)
@@ -192,18 +212,79 @@ class WorldEditorTests(unittest.TestCase):
         world = self.current()['world']
         self.assertNotIn('..', yaml.safe_dump(world))
 
-    def test_genre_operation_survives_non_dict_gapengine(self):
-        # A world.yaml with a corrupt/non-mapping gapengine (e.g. imported
-        # with "gapengine: something-else") must not 500 when a genre is
-        # picked afterward; the corrupt value is simply replaced.
+    def _install_goal_rule(self, *, end=1):
         store = LibraryStore(self.repo)
-        world = yaml.safe_load(store.read('world', 'momotaro', 'world.yaml'))
-        world['gapengine'] = 'not-a-mapping'
-        store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
-        status, result = self.submit('genre', {'template_id': 'basic'})
+        world = self.current()['world']
+        world['concerns'] = {'version': 2, 'conditions': [{
+            'id': 'alive', 'label': '主人公が生存', 'mode': 'maintain',
+            'visibility': 'public',
+            'test': {'kind': 'vitality', 'actor': world['protagonist'], 'allowed': ['alive']},
+        }]}
+        world['goal_rules'] = {'version': 1, 'definitions': [{
+            'condition': 'alive', 'success': {'condition': 'alive'},
+            'failure': {'not': {'condition': 'alive'}}, 'period': {'start': 1, 'end': end},
+        }]}
+        store.write('world', 'momotaro', 'world.yaml',
+                    yaml.safe_dump(world, allow_unicode=True, sort_keys=False))
+        return world
+
+    def test_genre_edit_with_goals_never_enters_time_runtime_validation(self):
+        # CodeQL's reported path joined the mutually exclusive genre and
+        # time branches. Exercise the actual HTTP operation with goals present.
+        world = self._install_goal_rule()
+        with patch('engine.world.World', side_effect=AssertionError('genre is not time')) as runtime:
+            status, result = self.submit('genre', {'template_id': 'basic'})
         self.assertEqual(status, 200, result)
-        saved = yaml.safe_load((self.repo / 'projects/momotaro/world.yaml').read_text(encoding='utf-8'))
-        self.assertEqual(saved['gapengine']['action_graph'], 'templates/basic/action_graph.yaml')
+        runtime.assert_not_called()
+        self.assertEqual(result['world']['time'], world['time'])
+        self.assertEqual(result['world']['goal_rules'], world['goal_rules'])
+        self.assertEqual(result['world']['gapengine']['action_graph'],
+                         'templates/basic/action_graph.yaml')
+
+    def test_time_edit_still_validates_goal_runtime_before_saving(self):
+        world = self._install_goal_rule()
+        requested = {'days': world['time']['days'] + 1, 'slots': world['time']['slots']}
+        with patch('engine.world.World', wraps=World) as runtime:
+            status, result = self.submit('time', requested)
+        self.assertEqual(status, 200, result)
+        # transition() checks the candidate first; the goal-specific check is
+        # still performed, in the time branch, before the atomic save.
+        self.assertEqual(runtime.call_count, 2)
+        self.assertEqual(runtime.call_args.args[0]['time'], {**world['time'], **requested})
+        self.assertEqual(result['world']['time'], {**world['time'], **requested})
+        self.assertEqual(result['world']['gapengine'], world['gapengine'])
+
+    def test_time_goal_validation_failure_preserves_world_bytes(self):
+        world = self._install_goal_rule()
+        path = self.repo / 'projects/momotaro/world.yaml'
+        before = path.read_bytes()
+        requested = {'days': world['time']['days'], 'slots': world['time']['slots']}
+        # Isolate the goal-specific validation from transition's earlier check.
+        with patch('execution.time_basic.transition', return_value=([], [])), \
+                patch('engine.world.World', side_effect=ValueError('invalid goal period')):
+            status, error = self.submit('time', requested)
+        self.assertEqual(status, 400, error)
+        self.assertIn('time', error['field_errors'])
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_time_edit_without_goals_keeps_existing_runtime_validation(self):
+        world = self.current()['world']
+        self.assertIsNone(world.get('goal_rules'))
+        requested = {'days': world['time']['days'], 'slots': world['time']['slots']}
+        with patch('engine.world.World', wraps=World) as runtime:
+            status, result = self.submit('time', requested)
+        self.assertEqual(status, 200, result)
+        self.assertEqual(runtime.call_count, 1)  # transition(), without a goal-specific check.
+        self.assertEqual(result['world']['gapengine'], world['gapengine'])
+
+    def test_invalid_rule_reference_cannot_replace_current_world(self):
+        store = LibraryStore(self.repo)
+        original = store.read('world', 'momotaro', 'world.yaml')
+        world = yaml.safe_load(original)
+        world['gapengine'] = 'not-a-mapping'
+        with self.assertRaisesRegex(ConfigError, '共通ルール参照'):
+            store.write('world', 'momotaro', 'world.yaml', yaml.safe_dump(world, allow_unicode=True))
+        self.assertEqual(store.read('world', 'momotaro', 'world.yaml'), original)
 
     def test_failed_atomic_save_preserves_original(self):
         store=LibraryStore(self.repo)

@@ -347,6 +347,8 @@ class JobStore:
                 job.update(execution_plan_sha256=review_admission['execution_plan_sha256'],
                            accepted_request=deepcopy(request),knowledge_scope=review_admission['capability']['knowledge_scope'],
                            progress={'requested':len(request['seed_plan']),'completed':0,'failed':0,'phase':'queued'})
+                if 'storage' in review_admission:
+                    job['independent_storage']=deepcopy(review_admission['storage'])
                 atomic_json(pending / 'independent-plan.json', review_admission)
             if patching:
                 # No output_id: a world_patch job never owns an OutputStore
@@ -404,6 +406,21 @@ class JobStore:
         if job.get('state') not in worker.TERMINAL or not job.get('termination_confirmed'):
             raise ConfigError('job_id','実行の終了確認を待ってください',code='conflict')
         root=contained(self.configs.runs,job['run_id'])
+        # Read exact refs from trusted control state, never adjacent output
+        # manifests or conventional filenames for the new native discriminator.
+        with self._lock():
+            raw=self._read(jid)
+            storage=raw.get('independent_storage')
+            if storage is not None:
+                from execution.melos_native_jobs import is_native_storage, read_native_result
+                if not is_native_storage(storage):
+                    raise ConfigError('result','未対応の保存形式です',code='snapshot_changed')
+                try:
+                    return read_native_result(root,raw)
+                except FileNotFoundError as error:
+                    raise ConfigError('result','確認済みの保存結果はありません',code='not_found') from error
+                except (ValueError,KeyError,TypeError,UnicodeError) as error:
+                    raise ConfigError('result','保存結果の参照と内容が一致しません',code='snapshot_changed') from error
         name='review-result.json' if job['state']=='succeeded' else 'partial-review.json'
         path=contained(root,name)
         if not path.is_file():raise ConfigError('result','保存済み結果はありません',code='not_found')

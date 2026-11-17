@@ -1,9 +1,11 @@
 ---
-ja_rev: "0f3d14749bf3"
+ja_rev: "1f9a4616f266"
 ---
 # Templates
 
 A "genre" (`templates/<genre>/`) defines a world's grammar, and a "world" (`projects/<world>/`) defines a concrete setting that uses that grammar. A genre can be shared across multiple worlds (e.g. `templates/momotaro_plus2` is referenced from `projects/momotaro_plus2`).
+
+For current-format requirements and the runnable sample, see “Current world format and optional mechanics” at the end of this page.
 
 ## Layout of `templates/<genre>/`
 
@@ -256,3 +258,13 @@ range: {zones: [村], entry: 村}
 ```
 
 Everything except `traits` (fixed disposition, outside the GA's reach) is a seven layers initial value. `relations` is the initial value of the relation matrix `world.relations[a][b] = {affinity, awareness}`, readable from the predicate evaluator as `stance(a,b) = affinity(a→b)`.
+
+## Current world format and optional mechanics
+
+Current execution and editing entry points require `world_format_version: 1`. `action_usage` contains `version: 2`, `engine_contract: normal_turn_v2`, `catalog_version: 1`, and `enabled`. Entries are references such as `verb:move`, `recipe:<item name>`, and `response:<response ID>`; `verb:rest` is required. `mechanics` contains `version: 1` and boolean `stamina_management` and `budgeted_purchases` fields. Classification categories alone do not grant actions.
+
+The bundled current sample is **`projects/momotaro_plus3_new` + `templates/momotaro_plus3`**. Legacy worlds remain on disk but cannot be run, edited, or adopted unchanged. A ZIP can still be retained in a draft; while format errors remain, that draft cannot pass validation, be adopted, or run. Older YAML fragments on this page explain individual fields, rather than forming complete loadable worlds. Create new worlds through the UI; do not overwrite legacy originals to migrate them.
+
+- **Stamina**: world `stamina` contains `default_max` (default 10), `default_recover_per_slot` (1), `exhausted_ratio` (0.2), `default_action_cost` (1), and `passive_recovery` (false). A person's `stamina` contains `max`, `current`, and `recover_per_slot`. `action_cost_adjustments` supplies per-verb cost adjustments. `zero_behavior: rest` forces rest at zero; `death` makes zero stamina an independent cause of death. Omitting it adds neither behavior. Disabling stamina management disables these stamina constraints.
+- **Equipment and item effects**: an item's `modifier` represents its ability effect. The editor's strength value is saved as `modifier.value`. Acquisition channels, holders, relationship changes on giving, and whether an item can be an objective are separate settings.
+- **Money**: `economy.version: 1` stores `preset`, `name`, `unit`, and `asset` under `currency`, and `name` and `amount` under `reference_prices.meal`. A person's balance is the inventory quantity of the currency asset. Yen, dollar, yuan, euro, and custom currency are display choices, not automatic exchange rates. `budgeted_purchases` controls purchase balance checks and payment. Disabling it does not turn explicitly unknown-price or non-tradable items into free goods.

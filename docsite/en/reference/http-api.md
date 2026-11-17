@@ -1,5 +1,5 @@
 ---
-ja_rev: "a473ad0137a8"
+ja_rev: "a0d4d96bc6e6"
 ---
 # HTTP API
 
@@ -8,7 +8,7 @@ ja_rev: "a473ad0137a8"
 
 ## When it's enabled
 
-- Starting with just `python viewer/server.py --runs <runs>` (no `--control`), there's no `job_store`, so `/api/...` returns `503 unavailable` for **GET as well as POST**. The only exceptions are `GET /api/status/local` and `POST /api/status/local/preload`/`POST /api/status/local/unload`, which never go through `job_store` and always work.
+- Starting with just `python viewer/server.py --runs <runs>` (no `--control`), there's no `job_store`, so `/api/...` returns `503 unavailable` for **GET as well as POST**. `GET /api/status/local` and `POST /api/status/local/preload`/`POST /api/status/local/unload` do not require `job_store`. Neither does the world route survey, `GET /api/worlds/<id>/routes` (see below).
 - Starting with `--control <control>` enables `ConfigStore` and `JobStore`, making the config/job/generation APIs in the table below available.
 - The distributed **Viewer exe** (the read-only viewer) rejects every POST outright with `403 "read-only build"`, via `viewer/app_desktop.py`'s `_ReadOnlyHandler.do_POST`, even if `--control` is passed (to prevent writes into `samples/`). The adopt/select checkboxes on screen are still clickable in this build in appearance, but clicking them returning 403 is by design. The **Studio exe** has no such restriction and runs with full functionality.
 
@@ -29,7 +29,7 @@ ja_rev: "a473ad0137a8"
 | POST | `/api/configs/preview` | Preview a run config without saving it (scale, ETA, etc.) |
 | POST | `/api/configs` | Save a run-setting config |
 | POST | `/api/configs/<id>/duplicate` | Duplicate a run-setting config (implemented in `viewer/workbench_pages.py`) |
-| GET | `/api/settings/output` | Current values on the ⚙ 全体設定 (Global settings) "文章生成" (Text generation) tab |
+| GET | `/api/settings/output` | Current generation backend and limits used by ⚙ 全体設定 (Global settings) → AIの設定 (AI settings) |
 | POST | `/api/settings/output` | Update text-generation settings (backend/model/limits) |
 | POST | `/api/settings/output/api-key` | Save the anthropic/openai API key (write-only; can't be read back) |
 | GET | `/api/settings/output/models` | List of selectable models (ollama/llama-server query the real server) |
@@ -73,3 +73,23 @@ Editing a world/genre is functionally independent of GA experiments. Every handl
 | POST | `/api/runs/<rid>/world-patch` | Propose or check a world self-expansion patch (`propose`/`check`; requires `job_store`, `viewer/run_catalog.py`) |
 
 There's more beyond this — `viewer/run_catalog.py` (`/api/runs`, `/api/selected`) and `viewer/workbench_pages.py` (mostly GET routes for screen display) — but these are all internal APIs matching UI operations on screen. See each file's `dispatch()`/`_resolve()` for the exact list.
+
+## World drafts, refinements, and world conditions
+
+These internal APIs are also handled by `viewer/library_pages.py`. Updating a draft and adopting it as a world are separate operations.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/world-draft-generation` | World-generation availability under current settings |
+| POST | `/api/world-drafts` | Request world-draft generation |
+| GET | `/api/world-drafts/<token>` | Draft state and content |
+| POST | `/api/world-drafts/<token>/{stage,cancel,validate,adopt}` | Stage edited content, cancel, validate, or adopt a draft as a world |
+| POST | `/api/world-drafts/<token>/refine` | Create a draft-refinement candidate |
+| GET | `/api/world-drafts/<token>/refinements/<request_id>` | Get a candidate (`capabilities` lists supported operations) |
+| POST | `/api/world-drafts/<token>/{apply-refinement,cancel-refinement,save-refinement-input}` | Apply/cancel a candidate or save input |
+| GET | `/api/worlds/<id>/action-usage` | Read action and mechanics settings |
+| POST | `/api/worlds/<id>/action-usage/{check,save}` | Validate/save action and mechanics settings |
+| GET / POST | `/api/worlds/<id>/route-goal` | Read/save goal settings |
+| POST | `/api/worlds/<id>/route-goal/validate` | Validate goal settings |
+
+Refinement requests carry `revision`, `request_id`, `mode`, `prompt`, `preset`, and `targets`. Applying a candidate requires `revision`, `request_id`, `candidate_id`, `candidate_hash`, and `acknowledged_warnings`, preventing overwrites of stale drafts. A refinement supports at most 16 operations, with neither partial application nor automatic publication as a world. Supported areas include character descriptions, places, routes, items, schedules, and action constraints. Adding characters, changing goals, renaming/deleting entities, and adding forced actions are unsupported.

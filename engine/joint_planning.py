@@ -52,7 +52,9 @@ class JointPlanning:
                 cost=next((float(c['per_unit']['numerator']/c['per_unit']['denominator'])*duration
                            for c in rt.definitions[inst['definition_id']]['costs']
                            if actor.id in inst['roles'][c['role']]),0)
-                if cost+spent>actor.stamina: continue
+                from engine.stamina import adjusted_cost
+                cost=adjusted_cost(world,rt.definitions[inst['definition_id']]['provider'],cost)
+                if world.mechanics_enabled('stamina_management') and cost+spent>actor.stamina: continue
             except ValueError: continue
             missing=[a for a in rt.people(inst) if not (inst['consents'].get(a) and actor.id in inst['received'].get(a,[]))]
             assumptions=[{'kind':'joint_consent','actor':a,'segment':inst['id'],'expected':'accepted'}

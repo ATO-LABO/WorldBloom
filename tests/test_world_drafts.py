@@ -302,7 +302,7 @@ class DraftHTTPTests(unittest.TestCase):
         status, raw = self.request('/worlds/new?method=ai')
         self.assertEqual(status, 200)
         self.assertIn('モック応答'.encode(), raw)
-        self.assertIn(b'world-draft.js', raw)
+        self.assertIn(b'creation-workflow.js', raw)
         for asset, content_type in (("world-draft.js", b"application/javascript"), ("world-draft.css", b"text/css")):
             asset_status, asset_raw = self.request('/static/'+asset)
             self.assertEqual(asset_status, 200, asset)

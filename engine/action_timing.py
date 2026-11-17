@@ -3,14 +3,18 @@
 No story identifiers or alternate chooser. Domain effects remain in VerbEngine.
 """
 from copy import deepcopy
+from engine.action_constraints import response_actor_allowed, work_span, worked_units, rules as action_rules, time_allowed
 
 from engine.action_lifecycle import ActionLifecycle
 from engine.concerns import shape
 
 
 def step_timing(world, actor, verb, args, duration, cost, *, turn, elapsed=0, hops=1):
+    from engine.stamina import planned_cost
     runtime = getattr(world, 'action_timing', None)
-    if runtime is None: return duration, cost, max(0, duration - 1)
+    if runtime is None:
+        mapped=planned_cost(world,verb,cost/duration)*duration if verb=='respond' and duration else planned_cost(world,verb,cost)
+        return duration,mapped,max(0,duration-1)
     return runtime.plan_step(actor, verb, args, duration, cost, turn=turn, elapsed=elapsed, hops=hops)
 
 
@@ -41,6 +45,7 @@ class ActionTiming:
         self.sequence = 0
 
     def bind(self, world):
+        self.world = world
         if world.slot_execution is not None and (getattr(world,'social_planner',None) is None or
                 any(v in {'move','respond','rest'} for v in self.rules)):
             raise ValueError('Action timing rules currently integrate ordinary logical execution only')
@@ -51,52 +56,76 @@ class ActionTiming:
 
     def attach(self, simulation):
         self.sim = simulation
+        self.world = simulation.world
         self.lifecycle = ActionLifecycle(simulation.time_kernel, lambda: self.pending)
 
     def plan_step(self, actor, verb, args, duration, cost, *, turn, elapsed=0, hops=1):
+        from engine.stamina import planned_cost
         rule = self.rules.get(verb)
-        if rule is None: return duration, cost, max(0, duration - 1)
+        if rule is None:
+            mapped=planned_cost(self.world,verb,cost/duration)*duration if verb=='respond' and duration else planned_cost(self.world,verb,cost)
+            return duration,mapped,max(0,duration-1)
+        cost = planned_cost(self.world, verb, cost)
         pending = self.pending.get(actor.id)
         if not elapsed and pending and (pending['action'].verb, pending['action'].args) == (verb, tuple(args)):
             remaining = max(0, pending['finish'] - (turn - 1))
             return remaining, max(0, pending['cost'] - pending['spent']), remaining
-        duration = duration if rule['duration'] in {'work_steps','protocol_steps'} else rule['duration'] * (hops if verb == 'move' else 1)
+        duration = self.work_duration(verb,duration,hops)
+        from engine.action_usage import reference
+        duration = work_span(self.world,reference(verb,args),turn+elapsed-1,duration)
         return duration, cost, duration
+
+    def work_duration(self, verb, duration, hops=1):
+        rule = self.rules[verb]
+        return duration if rule['duration'] in {'work_steps','protocol_steps'} else rule['duration']*(hops if verb=='move' else 1)
 
     def prepaid(self, actor, action):
         return self.completing is not None and self.completing['actor'] == actor.id and self.completing['action'] is action
 
     def _spec(self, world, actor, action, turn):
+        from engine.action_constraints import denial as constraint_denial
+        restricted = constraint_denial(world,actor,action.verb,action.args,turn)
+        if restricted: raise ValueError(restricted)
+        if not world.action_usage_allows(action.verb, action.args):
+            raise ValueError('action_disabled')
         from engine.phase2 import available_verbs
         rule = self.rules[action.verb]
-        if actor.vitality not in {'alive', 'revived'} or action.verb not in available_verbs(world, actor, turn=turn,
-                day=(turn - 1)//len(world.slots) + 1) or not world.genre_allows(action.verb):
+        if actor.vitality not in {'alive', 'revived'} or not (action.verb=='rest' and action.meta.get('stamina_forced_rest')) and (action.verb not in available_verbs(world, actor, turn=turn,
+                day=(turn - 1)//len(world.slots) + 1) or not world.genre_allows(action.verb)):
             raise ValueError('actor_or_action_unavailable')
         if action.verb == 'move':
             if len(action.args) != 1: raise ValueError('invalid_destination')
             path = world.reachable_paths(actor).get(action.args[0])
             if path is None: raise ValueError('unreachable')
             duration, cost, _ = self.plan_step(actor, 'move', action.args, 1, path.cost, turn=turn, hops=path.hops)
+            work_duration = self.work_duration('move',1,path.hops)
             label = str(action.args[0]) + 'へ移動'
         elif action.verb == 'respond':
             if len(action.args) != 1 or action.args[0] not in world.responses.actions: raise ValueError('unknown_response_action')
             spec = world.responses.actions[action.args[0]]
-            if actor.id not in spec['actors'] or actor.zone != spec['zone']: raise ValueError('response_site_or_capability_unavailable')
+            if not response_actor_allowed(world,spec,actor.id) or actor.zone != spec['zone']: raise ValueError('response_site_or_capability_unavailable')
             if set(spec['requires']) - actor.knowledge or any(not actor.has_item(i,n) for i,n in spec['items'].items()):
                 raise ValueError('response_requirements_unavailable')
             duration, cost, _ = self.plan_step(actor, 'respond', action.args, spec['steps'], spec['cost'] * spec['steps'], turn=turn)
+            work_duration = self.work_duration('respond',spec['steps'])
             label = spec['label']
         elif action.verb=='rest':
             if action.args: raise ValueError('invalid_rest')
             duration, cost, _ = self.plan_step(actor, 'rest', (), 1, 0, turn=turn)
+            work_duration = self.work_duration('rest',1)
             label = '休息する'
         else:
             social=getattr(world,'social_planner',None)
             raw=social.wait_duration(world,action.args) if action.verb=='await_response' else 1
             duration,cost,_=self.plan_step(actor,action.verb,action.args,raw,0,turn=turn)
+            work_duration = self.work_duration(action.verb,raw)
             label=(action.meta.get('goal_plan',{}).get('steps') or [{}])[0].get('label',action.verb)
+        if (action.verb=='rest' and action.meta.get('stamina_forced_rest')):cost=0
         if actor.stamina < cost: raise ValueError('insufficient_stamina')
+        from engine.action_usage import reference
+        limited = action_rules(world).get(reference(action.verb,action.args),{}).get('slots') is not None
         return {'duration': duration, 'cost': cost, 'label': label, 'interruptible': rule['interruptible'],
+                **({'work_duration':work_duration} if limited else {}),
                 **({'route':list(path.route)} if action.verb=='move' else {})}
 
     def _reason(self, world, actor, pending):
@@ -117,13 +146,18 @@ class ActionTiming:
         return deepcopy(world.planner.view(world, actor)) if world.planner is not None and world.planner.owns(actor) else None
 
     def record(self, pending, phase, *, reason=None):
-        return {'id': pending['id'], 'phase': phase, 'actor': pending['actor'], 'verb': pending['action'].verb,
+        record = {'id': pending['id'], 'phase': phase, 'actor': pending['actor'], 'verb': pending['action'].verb,
             'args': list(pending['action'].args), 'label': pending['label'], 'origin': pending['origin'],
             'start': pending['start'], 'finish': pending['finish'], 'unit': self.sim.time_kernel.axis.unit,
             'start_label': self.sim.time_kernel.axis.label(pending['start']),
             'finish_label': self.sim.time_kernel.axis.label(pending['finish']),
             'selected_at': pending['start'] + 1, 'duration': pending['finish']-pending['start'],
             'spent': pending['spent'], 'cost': pending['cost'], 'interruptible': pending['interruptible'], 'reason': reason}
+        if 'work_duration' in pending:
+            record.update(work_duration=pending['work_duration'],work_done=pending['work_done'],paused=pending['paused'],
+                          elapsed_intervals=pending['cursor']-pending['start'],pause_intervals=pending['cursor']-pending['start']-pending['work_done'])
+            if pending.get('last_work') is not None:record['last_work_label']=self.sim.time_kernel.axis.label(pending['last_work'])
+        return record
 
     def start(self, actor, action):
         world, turn = self.sim.world, self.sim.turn
@@ -145,6 +179,7 @@ class ActionTiming:
         pending = {'id': 'activity-' + str(self.sequence), 'actor': actor.id, 'action': action,
             'origin': actor.zone, 'start': window.start, 'finish': window.finish, 'cursor': window.start,
             'cost': spec['cost'], 'spent': 0.0, 'label': spec['label'], 'interruptible': spec['interruptible']}
+        if 'work_duration' in spec:pending.update(work_duration=spec['work_duration'],work_done=0,paused=False,last_work=None)
         if 'route' in spec: pending['route']=spec['route']
         reason = self._reason(world, actor, pending)
         if reason:
@@ -167,12 +202,23 @@ class ActionTiming:
             pending = self.pending[aid]; actor = world.subjects[aid]; action = pending['action']
             if now <= pending['cursor']: continue
             before = sim._capture()
-            fraction = (min(now, pending['finish']) - pending['start']) / (pending['finish'] - pending['start'])
+            limited = 'work_duration' in pending
+            if limited:
+                from engine.action_usage import reference
+                ref = reference(action.verb,action.args)
+                done = min(pending['work_duration'],worked_units(world,ref,pending['start'],min(now,pending['finish'])))
+                pending['work_done'] = done
+                pending['last_work'] = pending['start']+work_span(world,ref,pending['start'],done)-1 if done else None
+                fraction = done/pending['work_duration']
+            else:
+                fraction = (min(now, pending['finish']) - pending['start']) / (pending['finish'] - pending['start'])
             due = max(0, round(pending['cost'] * fraction - pending['spent'], 4))
+            if not world.action_usage_allows(action.verb, action.args): due = 0
             paid = -actor.change_stamina(-due)
-            pending['spent'] = round(pending['spent'] + paid, 4); pending['cursor'] = now
+            pending['spent'] = round(pending['spent'] + paid, 4); pending['cursor'] = min(now,pending['finish']) if limited else now
             sim.verb_engine._update_exhausted(actor)
             reason = self._reason(world, actor, pending)
+            if not world.action_usage_allows(action.verb, action.args): reason = 'action_disabled'
             if paid + 0.0001 < due: reason = 'insufficient_stamina'
             phase, result, details, markers = 'progress', 'ongoing', {}, []
             if reason:
@@ -184,7 +230,12 @@ class ActionTiming:
                 finally: self.completing = None
                 sim.verb_engine._update_exhausted(actor)
                 phase = 'failed' if result in {'invalid','failed'} else 'completed'
-            if phase != 'progress':
+            elif limited:
+                paused = not time_allowed(world,ref,sim.turn)
+                phase = 'paused' if paused else 'resumed' if pending['paused'] else 'progress'
+                pending['paused'] = paused
+            if phase not in {'progress','paused','resumed'}:
+                if limited:pending['paused']=False
                 self.lifecycle.interrupt(aid); actor.in_transit = False
                 if phase=='failed' and 'social_event' not in details and world.social_planner is not None:
                     world.social_planner.after_action(world,actor,action,result,details,sim.turn)
@@ -197,6 +248,9 @@ class ActionTiming:
     def reconsider(self, actor, writer):
         world = self.sim.world; pending = self.pending.get(actor.id)
         if pending is None or not pending['interruptible'] or pending['view'] is None: return
+        if 'work_duration' in pending:
+            from engine.action_usage import reference
+            if not time_allowed(world,reference(pending['action'].verb,pending['action'].args),self.sim.turn):return
         current = self._view(world, actor)
         if current == pending['view']: return
         prior_view = pending['view']
@@ -219,4 +273,4 @@ class ActionTiming:
             self.sim._write_activity(writer, actor, pending['action'], 'unfinished', details, [], self.sim._capture())
 
     def snapshot(self):
-        return {'version': 1, 'pending': [self.record(p,'progress') for p in self.pending.values()], 'history': deepcopy(self.history)}
+        return {'version': 1, 'pending': [self.record(p,'paused' if p.get('paused') else 'progress') for p in self.pending.values()], 'history': deepcopy(self.history)}

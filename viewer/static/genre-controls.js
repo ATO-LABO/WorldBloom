@@ -1,0 +1,15 @@
+/* Direct zero-stamina policy editing; existing world revision endpoint owns storage. */
+window.WorldBloomStaminaZero={mount(host,{getValue,editable,save,onStateChange=()=>{}}){
+ const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
+ let saved=getValue()||'',draft=saved,busy=false,blocked=false,message='';
+ const form=node('form'),fieldset=node('fieldset'),legend=node('legend','','体力が0になった時'),note=node('p','ui-hint'),error=node('p','ui-error'),status=node('p','ui-hint'),actions=node('div','ui-footer'),reset=node('button','ui-button','変更を戻す'),submit=node('button','ui-button ui-button--confirm','変更を保存'),radios=[];
+ form.dataset.staminaZeroForm='';fieldset.append(legend);error.setAttribute('role','alert');error.setAttribute('tabindex','-1');status.setAttribute('role','status');reset.type='button';submit.type='submit';reset.dataset.staminaZeroReset='';submit.dataset.staminaZeroSave='';
+ for(const[value,title]of [['death','死亡する'],['rest','次の行動を休息にする']]){const label=node('label','ui-inline'),input=node('input');input.type='radio';input.name='stamina-zero-behavior';input.value=value;input.dataset.staminaZero=value;input.setAttribute('aria-label',title);input.onchange=()=>{if(!editable||busy||blocked)return;draft=value;message='';sync();};label.append(input,document.createTextNode(' '+title));fieldset.append(label);radios.push(input);}
+ actions.append(status,reset,submit);form.append(fieldset,note,error,actions);host.append(form);
+ const dirty=()=>draft!==saved;
+ function sync(){for(const radio of radios){radio.checked=radio.value===draft;radio.disabled=!editable||busy||blocked;}reset.disabled=!editable||busy||blocked||!dirty();submit.disabled=!editable||busy||blocked||!dirty()||!['death','rest'].includes(draft);error.textContent=message;note.textContent=draft==='death'?'体力が0になると死亡します。戦闘の「死亡あり」とは別に適用されます。':draft==='rest'?'行動開始時に0ならその行動を休息にします。行動中に0になった場合は次の行動から休息します。':'未設定の世界は従来の動作を保ちます。選択して保存すると設定を変更できます。';status.textContent=busy?'保存中…':dirty()?'未保存の変更があります。':saved?'保存済みの設定です。':'未設定です。';onStateChange({dirty:dirty(),busy,blocked});}
+ function discard(){if(busy)return;draft=saved;message='';sync();}
+ reset.onclick=()=>{if(reset.disabled||!confirm('未保存の変更を元に戻しますか？'))return;discard();radios.find(r=>r.checked)?.focus();};
+ form.onsubmit=async event=>{event.preventDefault();if(submit.disabled||busy||blocked||!editable)return;busy=true;message='';sync();try{await save('stamina-zero',null,{zero_behavior:draft});const value=getValue();if(value!==draft){const error=Error('保存結果を確認できません。再読み込みして確認してください。');error.blocked=true;throw error;}saved=value;busy=false;sync();radios.find(r=>r.checked)?.focus();}catch(errorValue){busy=false;blocked=!!errorValue.blocked;message=(errorValue.message||'保存できませんでした。')+(blocked?' 入力を控えてから再読み込みして確認してください。':'');sync();error.focus();}};
+ sync();return {hasPending:()=>dirty()||busy,canLeave(){if(busy)return false;if(!dirty())return true;if(!confirm('入力中の変更を破棄しますか？'))return false;discard();return true;},discard};
+}};

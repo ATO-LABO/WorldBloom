@@ -82,7 +82,46 @@
     if(Array.isArray(v)){v.forEach(x=>jsonEvidence(x,depth+1));return;}
     mapping(v,'実行記録');Object.values(v).forEach(x=>jsonEvidence(x,depth+1));
   }
-  function isMelosRecord(r){return r.descriptor_scope==='melos_committed_session_v1';}
+  function isNativeMelosRecord(r){return r.descriptor_scope==='melos_native_generation_v1';}
+  function isMelosRecord(r){return r.descriptor_scope==='melos_committed_session_v1'||isNativeMelosRecord(r);}
+  function isIndependent(r){return r&&['worldbloom_independent_v2','worldbloom_independent_v3'].includes(r.schema);}
+  function stream(v,name){if(typeof v!=='string'||!/^[a-f0-9]{32}$/.test(v))fail(name+'が不正です。');}
+  function selectedGeneration(v){
+    keys(v,['leaf','expected'],'selected generation');keys(v.expected,['sha256','size','stream_id','ordinal'],'generation reference');
+    const e=v.expected;hash(e.sha256,'generation');integer(e.size,'generation size',21,33556500);stream(e.stream_id,'generation stream');integer(e.ordinal,'generation ordinal');
+    string(v.leaf,'generation leaf',200);
+    const m=/^wbgen-([a-f0-9]{32})-(\d{20})-([a-f0-9]{64})\.wbg$/.exec(v.leaf);
+    if(!m||m[1]!==e.stream_id||m[2]!==String(e.ordinal).padStart(20,'0')||m[3]!==e.sha256)fail('generation leafと期待参照が異なります。');
+  }
+  function nativeArtifact(v,selected,publication,role){
+    keys(v,['leaf','sha256','size'],'native artifact');hash(v.sha256,'artifact');integer(v.size,'artifact size',0,33554432);string(v.leaf,'artifact leaf',240);
+    const m=/^wbexport-([a-f0-9]{32})-(\d{20})-([a-f0-9]{64})-([a-f0-9]{32})-(layers\.jsonl|result\.json|run-record\.json)$/.exec(v.leaf),e=selected.expected;
+    if(!m||m[1]!==e.stream_id||m[2]!==String(e.ordinal).padStart(20,'0')||m[3]!==e.sha256||m[4]!==publication||m[5]!==role)fail('native artifactと保存世代の対応が不正です。');
+  }
+  function validateNativeRecord(r){
+    const s=r.storage;keys(s,['kind','selected_generation','publication_id','restart_authority'],'native storage');
+    if(s.kind!=='native_generation_exports_v1'||s.restart_authority!==false||r.independent_ui_verified!==false||r.native_ui_admission!=='not_connected'||r.verified_execution!==null)fail('native保存形式または検証状態が不正です。');
+    selectedGeneration(s.selected_generation);stream(s.publication_id,'publication id');
+    nativeArtifact(r.ledger,s.selected_generation,s.publication_id,'layers.jsonl');nativeArtifact(r.result,s.selected_generation,s.publication_id,'result.json');
+    for(const k of ['generation_sha256','checkpoint_sha256','session_state_sha256','result_sha256','saved_revision_hash'])hash(r[k],k);
+    if(r.generation_sha256!==s.selected_generation.expected.sha256||r.result_sha256!==r.result.sha256)fail('native保存hashの対応が不正です。');
+  }
+  function validateNativeTrial(t){
+    if(Object.hasOwn(t,'last_accepted_generation'))selectedGeneration(t.last_accepted_generation);
+    if(Object.hasOwn(t,'operation_error'))operationError(t.operation_error);
+    if(!Object.hasOwn(t,'run_record')){
+      if(Object.hasOwn(t,'selected_generation')||Object.hasOwn(t,'artifacts')||t.status!=='not_completed'||t.category!=='not_completed')fail('native出力のない試行に保存成果物の参照または完了判定があります。');
+      return;
+    }
+    const r=t.run_record;if(!isNativeMelosRecord(r))fail('native試行のRunRecord形式が異なります。');
+    if(t.status!==(r.observations.scenario_finished?'observed':'not_completed'))fail('native試行状態が保存された完了状態と異なります。');
+    selectedGeneration(t.selected_generation);keys(t.artifacts,['layers','result','run_record'],'trial artifacts');
+    if(canonical(t.selected_generation)!==canonical(r.storage.selected_generation))fail('試行とRunRecordの保存世代が異なります。');
+    for(const [key,role] of [['layers','layers.jsonl'],['result','result.json'],['run_record','run-record.json']])nativeArtifact(t.artifacts[key],t.selected_generation,r.storage.publication_id,role);
+    if(t.status!=='observed'&&t.category!==t.status)fail('未完了・失敗の試行区分が状態と異なります。');
+    if(canonical(t.artifacts.layers)!==canonical(r.ledger)||canonical(t.artifacts.result)!==canonical(r.result)||t.source!==t.artifacts.run_record.leaf||canonical(t.evidence_refs)!==canonical([t.artifacts.layers.leaf,t.artifacts.result.leaf,t.artifacts.run_record.leaf]))fail('試行と保存成果物の参照が異なります。');
+  }
+  function operationError(v){keys(v,['phase','error_type','error'],'operation error');for(const k of ['phase','error_type','error'])string(v[k],k);}
   function validateMelosAdmission(r){
     const p=r.execution_plan,a=r.melos_admission;
     if(!p||p.sampler.id!=='melos_finite_session_v1'||p.provider.id!=='melos_predeclared_seed_providers_v1'||p.classification.id!=='melos_physical_evidence_v1'||r.verified_execution!==null)fail('Melosの明示した実行契約が不正です。');
@@ -115,7 +154,8 @@
       if(!raw.configured_target_ending.length||raw.configured_target_ending.length>1000||new Set(raw.configured_target_ending).size!==raw.configured_target_ending.length)fail('目標結末の件数または重複が不正です。');
       raw.configured_target_ending.forEach(v=>string(v,'configured_target_ending',4000));
     }else if(raw.configured_target_ending!==null)string(raw.configured_target_ending,'configured_target_ending',4000);
-    mapping(raw.ledger,'ledger');string(raw.ledger.path,'ledger path',500);hash(raw.ledger.sha256,'ledger');
+    if(isNativeMelosRecord(raw))validateNativeRecord(raw);
+    else {if(raw.storage?.kind==='native_generation_exports_v1'||Object.hasOwn(raw,'generation_sha256'))fail('native保存形式が不明です。');mapping(raw.ledger,'ledger');string(raw.ledger.path,'ledger path',500);hash(raw.ledger.sha256,'ledger');}
     hash(raw.run_spec_hash,'run_spec');if(typeof raw.engine_hash!=='string'||!/^[a-f0-9]{12,64}$/.test(raw.engine_hash))fail('engine hashが不正です。');
     string(raw.stop_reason,'stop_reason',200);mapping(raw.observations,'observations');mapping(raw.input_hashes,'input_hashes');
     if(raw.provider_identity!==null)mapping(raw.provider_identity,'provider_identity');
@@ -128,14 +168,19 @@
     return {kind:'common_run_record',id:'run-record:'+raw.run_id+':'+raw.ledger.sha256,world:'共通実行記録',plan_verification:raw.execution_plan===null?'no_plan':'unchecked',record:JSON.parse(JSON.stringify(raw))};
   }
   function validateReceipt(raw){
-    if(raw&&raw.schema==='worldbloom_independent_v2')return validateIndependent(raw);
+    if(isIndependent(raw))return validateIndependent(raw);
     if(raw&&raw.kind==='common_run_record')return validateRunRecord(raw.record);
     if(raw&&raw.schema_version===1&&Object.hasOwn(raw,'run_id'))return validateRunRecord(raw);
     return validate(raw);
   }
   function validateIndependent(raw){
     mapping(raw,'independent receipt');jsonEvidence(raw);
-    if(raw.schema!=='worldbloom_independent_v2'||raw.schema_version!==2||raw.method!=='independent_trials'||raw.population!=='unselected'||raw.selection!=='none'||raw.reference_guided!==false)fail('独立試行の実行種別が不正です。');
+    const native=raw.schema==='worldbloom_independent_v3';
+    if(!isIndependent(raw)||raw.schema_version!==(native?3:2)||raw.method!=='independent_trials'||raw.population!=='unselected'||raw.selection!=='none'||raw.reference_guided!==false)fail('独立試行の実行種別が不正です。');
+    if(native){keys(raw.storage,['kind','restart_authority'],'receipt storage');if(raw.storage.kind!=='melos_independent_native_v1'||raw.storage.restart_authority!==false||raw.execution_profile!=='melos_approved_ninegene_v1')fail('native独立試行の保存形式が不正です。');}
+    else if(Object.hasOwn(raw,'storage'))fail('旧形式にnative保存形式を混在できません。');
+    if(native&&Object.hasOwn(raw,'operation_error'))operationError(raw.operation_error);
+    if(native&&((raw.completion==='failed_partial')!==Object.hasOwn(raw,'operation_error')))fail('保存・実行エラーと完了区分が一致しません。');
     for(const k of ['id','world','sampling_rule','classification_rule','source','knowledge_scope'])string(raw[k],k);
     for(const k of ['world_revision','policy_revision','engine_revision','settings_version','execution_plan_sha256'])hash(raw[k],k);
     if(raw.execution_plan_id!==raw.execution_plan_sha256)fail('計画IDとhashが一致しません。');
@@ -143,7 +188,7 @@
     raw.seed_plan.forEach(s=>integer(s,'seed',0,2147483647));
     if(Object.hasOwn(raw,'execution_profile')&&raw.execution_profile!=='melos_approved_ninegene_v1')fail('独立試行profileが未対応です。');
     if(!Array.isArray(raw.trials)||raw.trials.length!==raw.seed_plan.length||raw.requested!==raw.seed_plan.length)fail('全試行と母数が一致しません。');
-    if(!['complete','partial','cancelled_partial'].includes(raw.completion))fail('完了区分が不正です。');
+    if(!(native?['complete','partial','cancelled_partial','failed_partial']:['complete','partial','cancelled_partial']).includes(raw.completion))fail('完了区分が不正です。');
     integer(raw.completed,'completed',0,raw.requested);
     const ids=new Set();let completed=0;
     raw.trials.forEach((t,i)=>{
@@ -153,6 +198,7 @@
       if(!Array.isArray(t.evidence_refs)||!t.evidence_refs.length||t.evidence_refs.length>100)fail('試行の根拠がありません。');t.evidence_refs.forEach(e=>string(e,'evidence',500));
       if(t.status!=='not_completed')completed++;
       if(t.status==='observed'&&!Object.hasOwn(t,'run_record'))fail('完了試行の保存記録がありません。');
+      if(!native&&(Object.hasOwn(t,'selected_generation')||Object.hasOwn(t,'artifacts')||Object.hasOwn(t,'last_accepted_generation')||isNativeMelosRecord(t.run_record||{})))fail('旧形式にnative試行を混在できません。');
       if(Object.hasOwn(t,'run_record')){
         validateRunRecord(t.run_record);
         const r=t.run_record;
@@ -165,13 +211,15 @@
         else {const actual=r.verified_execution;
         if(!actual||actual.seed!==t.seed||actual.execution_kind!=='independent_trials'||canonical(actual.provider)!==canonical(r.execution_plan.provider))fail('実seedまたはproviderの拘束記録が不正です。');}
       }
+      if(native)validateNativeTrial(t);
     });
     if(completed!==raw.completed||(raw.completion==='complete'&&completed!==raw.requested))fail('完了数と試行状態が一致しません。');
+    if(native&&(raw.failed!==0||raw.unresolved!==raw.trials.filter(t=>t.category==='unresolved').length))fail('native試行の失敗数・未確定数が保存記録と異なります。');
     return JSON.parse(JSON.stringify(raw));
   }
   async function verifyRunRecord(raw,digestText){
     const normalized=validateReceipt(raw);
-    if(normalized.schema==='worldbloom_independent_v2'){
+    if(isIndependent(normalized)){
       for(const t of normalized.trials)if(Object.hasOwn(t,'run_record'))await verifyRunRecord(t.run_record,digestText);
       return normalized;
     }
@@ -248,13 +296,27 @@
     }
     snapshot() {return {mode:this.mode,world:this.world,note:this.note,history:this.history,selected:this.selected};}
   }
-  const api={validate,validateReceipt,validateIndependent,validateRunRecord,validateExecutionPlan,verifyRunRecord,recordIntegrity,canonical,summarize,melosObservationCounts,State,MAX_BYTES};
+  const NOTE_KEY='worldbloom-work-note-v1:';
+  function readWorkNote(id){
+    const key=NOTE_KEY+encodeURIComponent(id);
+    for(const name of ['localStorage','sessionStorage'])try{const store=global[name],value=store&&store.getItem(key);if(typeof value==='string')return value.slice(0,3000);}catch(_){}
+    try{const old=JSON.parse(global.sessionStorage.getItem(KEY)||'{}');return old.world===id&&typeof old.note==='string'?old.note.slice(0,3000):'';}catch(_){return '';}
+  }
+  function writeWorkNote(id,value){
+    for(const name of ['localStorage','sessionStorage'])try{const store=global[name];if(store){store.setItem(NOTE_KEY+encodeURIComponent(id),String(value).slice(0,3000));return true;}}catch(_){}
+    return false;
+  }
+  function receiptInWorld(receipt,id,aliases=[]){return !id||receipt.kind==='common_run_record'||receipt.world===id||aliases.includes(receipt.world);}
+  const api={readWorkNote,writeWorkNote,receiptInWorld,validate,validateReceipt,validateIndependent,validateRunRecord,validateExecutionPlan,verifyRunRecord,recordIntegrity,canonical,summarize,melosObservationCounts,State,MAX_BYTES};
   if (typeof module !== 'undefined' && module.exports) module.exports=api;
   global.WorldBloomPurpose=api;
   if (typeof document==='undefined') return;
   let saved={}, storageOK=true;
   try {saved=JSON.parse(sessionStorage.getItem(KEY)||'{}')||{};} catch (_) {storageOK=false;}
   const state=new State(saved), root=document.querySelector('[data-purpose-root]');
+  const scopedWorld=root?.dataset?.worldReview||'';let worldAliases=[];try{worldAliases=JSON.parse(root?.dataset?.worldAliases||'[]');}catch(_){}
+  if(scopedWorld){state.world=scopedWorld;state.switchMode('review');}
+  const assertWorld=receipt=>{if(!receiptInWorld(receipt,scopedWorld,worldAliases))fail('別の世界の結果です。対象の世界を開いて読み込んでください。');};
   const q=s=>root&&root.querySelector(s);
   const status=q('[data-purpose-status]'), result=q('[data-purpose-result]'), history=q('[data-purpose-history]');
   const file=q('[data-purpose-file]'), importButton=q('[data-purpose-import]'), cancelButton=q('[data-purpose-cancel]');
@@ -265,6 +327,7 @@
     try {
       // Other pages own only purpose; an old BFCache page must not erase receipts.
       const fresh=JSON.parse(sessionStorage.getItem(KEY)||'{}')||{};
+      if(root&&scopedWorld){for(const receipt of new State(fresh).history)if(!state.history.some(r=>r.id===receipt.id))state.history.push(receipt);}
       const value=root?state.snapshot():{...fresh,mode:state.mode};
       sessionStorage.setItem(KEY,JSON.stringify(value));storageOK=true;
     } catch (_) {storageOK=false;}
@@ -294,7 +357,7 @@
   for (const el of document.querySelectorAll('[data-purpose-link]')) el.addEventListener('click',()=>setMode(el.dataset.purposeLink));
   const requested=new URLSearchParams(location.search).get('mode');
   if(MODES.includes(requested)) {
-    state.switchMode(requested);
+    state.switchMode(scopedWorld?'review':requested);
   }
   renderMode();persist();
   global.addEventListener('pageshow',event=>{
@@ -305,13 +368,14 @@
   const world=q('[data-purpose-world]'), note=q('[data-purpose-note]'), run=q('[data-purpose-run]');
   world.value=state.world;
   if(world.value!==state.world) {const missing=document.createElement('option');missing.value=state.world;missing.textContent=state.world+'（現在の一覧にはありません）';world.append(missing);world.value=state.world;}
-  note.value=state.note;
-  function updateInputs() {state.world=world.value;state.note=note.value; if(run)run.href='/jobs'+(state.world?'?world='+encodeURIComponent(state.world):'');persist();}
+  note.value=scopedWorld?readWorkNote(scopedWorld):state.note;
+  function updateInputs() {state.world=world.value;state.note=note.value;if(scopedWorld)writeWorkNote(scopedWorld,note.value); if(run)run.href=state.world?'/jobs?world='+encodeURIComponent(state.world):'/worlds';persist();}
   world.addEventListener('change',updateInputs);note.addEventListener('input',updateInputs);updateInputs();
   function element(tag,text,parent) {const el=document.createElement(tag);if(text!==undefined) el.textContent=text;if(parent)parent.append(el);return el;}
   function renderCommonRecord(wrapper){
     const r=wrapper.record,p=r.execution_plan;
     const integrity=recordIntegrity(r);
+    if(scopedWorld)element('p','この共通記録だけでは世界の一致を確認できません。この世界の独立試行の集計には含めません。',result);
     element('h3',r.run_id+' · 読み込んだ単回RunRecord',result);
     if(r.observations.contract_fixture===true)element('p','契約テスト用のfixtureです。物語の実走行結果ではありません。',result);
     element('p','設定上の目標、実際の終端、観測範囲を別々に表示します。この単回記録から独立試行の結末分布を集計しません。',result);
@@ -329,7 +393,7 @@
       ['全run入力hash（RunRecord.run_spec_hash）',r.run_spec_hash],['時間契約hash（time_contract_hashes.run_spec_hash）',r.time_contract_hashes?r.time_contract_hashes.run_spec_hash:'記録なし'],
       ['時間契約の意味hash',r.time_contract_hashes?r.time_contract_hashes.semantic_hash:'記録なし'],
       ['時間契約の表示hash',r.time_contract_hashes?r.time_contract_hashes.presentation_hash:'記録なし'],['エンジンhash',r.engine_hash],
-      ['読込記録の識別（run_id＋ledger hash）',wrapper.id],['台帳',r.ledger.path+' / SHA-256 '+r.ledger.sha256],['ExecutionPlan hash',r.execution_plan_hash||'記録なし']];
+      ['読込記録の識別（run_id＋ledger hash）',wrapper.id],['台帳',(isNativeMelosRecord(r)?r.ledger.leaf:r.ledger.path)+' / SHA-256 '+r.ledger.sha256],['ExecutionPlan hash',r.execution_plan_hash||'記録なし']];
     if(p){
       fields.push(['計画した試行数',String(p.planned_trials)+'（このJSONは単回結果）'],['事前seed',p.predeclared_seeds.join(', ')],
         ['sampler',canonical(p.sampler)],['provider（計画）',canonical(p.provider)],['選別・育種・原作誘導',canonical(p.selection)],
@@ -348,13 +412,17 @@
   }
   function renderResult() {
     copyEpoch++;if(copyStatus)copyStatus.textContent='';if(copyFallback){copyFallback.hidden=true;copyFallback.value='';}
-    history.replaceChildren();state.history.forEach((r,i)=>{const opt=element('option',r.world+' · '+r.id,history);opt.value=String(i);});
-    history.value=String(state.selected);history.disabled=!state.history.length;result.replaceChildren();
+    const visible=state.history.map((r,i)=>({r,i})).filter(({r})=>receiptInWorld(r,scopedWorld,worldAliases));
+    if(scopedWorld&&!visible.some(({i})=>i===state.selected))state.selected=visible[0]?.i??-1;
+    history.replaceChildren();visible.forEach(({r,i})=>{const opt=element('option',r.world+' · '+r.id,history);opt.value=String(i);});
+    history.value=String(state.selected);history.disabled=!visible.length;result.replaceChildren();
     const r=state.history[state.selected];if(!r)return;
     if(r.kind==='common_run_record'){renderCommonRecord(r);return;}
-    if(r.schema==='worldbloom_independent_v2'){
+    if(isIndependent(r)){
       element('h3',r.world+' ・ 保存済み独立CPU試行',result);
       element('p','母数 '+r.requested+'件、処理済み '+r.completed+'件。'+r.completion+'。未完了・実行失敗も母数に含めます。',result);
+      if(r.schema==='worldbloom_independent_v3')element('p','native保存世代に対応した読取専用の結果です。計画の宣言、保存された実provider、独立した実動作検証は別です。この画面は独立検証の合格や再開権限を付与しません。保存・出力のエラーは物語の失敗として集計しません。',result);
+      if(r.schema==='worldbloom_independent_v3'&&r.operation_error)element('p','保存・実行処理のエラー：'+r.operation_error.phase+' / '+r.operation_error.error_type+' / '+r.operation_error.error,result);
       const melos=r.execution_profile==='melos_approved_ninegene_v1';
       if(melos){element('p','承認済みMelos設定です。Melosの通常9遺伝子は固定中立値、ほかの5人物は固定の基礎重みを使います。行為者別ActorViewと観測済み情報で選択します。',result);if(r.provider_assumptions){const assumptions=element('details',undefined,result);element('summary','承認済みの検証用対応表・対象人物',assumptions);element('pre',JSON.stringify(r.provider_assumptions,null,2),assumptions);}const c=melosObservationCounts(r.trials);element('p','保存時点で根拠がある件数：王城への物理到着 '+c.physical_arrival+'件、2分の報告完了 '+c.report_completed+'件、120分の婚礼完了 '+c.wedding_completed+'件。保存記録なし '+c.missing_records+'件。',result);}
       else {element('p','知識の扱い：'+r.knowledge_scope+'。既存互換の候補生成です。人物の未観測情報を完全に遮断できたという保証はありません。',result);
@@ -397,7 +465,7 @@
   function copyUI(){if(copyButton)copyButton.disabled=!state.history[state.selected];}
   api.acceptSavedResult=async function(raw){
     const token=state.begin();if(token===null)throw new Error('結果の読込中です。');busyUI();
-    try {const receipt=await verifyRunRecord(raw);if(token!==state.generation)return false;state.complete(token,receipt);renderResult();copyUI();persist();return true;}
+    try {const receipt=await verifyRunRecord(raw);if(token!==state.generation)return false;assertWorld(receipt);state.complete(token,receipt);renderResult();copyUI();persist();return true;}
     catch(error){if(token===state.generation)state.cancel();throw error;}
     finally{busyUI();}
   };
@@ -428,8 +496,9 @@
       if(token!==state.generation)return;
       try {
         let receipt=validateReceipt(JSON.parse(current.result));
-        if(receipt.kind==='common_run_record'||receipt.schema==='worldbloom_independent_v2')receipt=await verifyRunRecord(receipt);
+        if(receipt.kind==='common_run_record'||isIndependent(receipt))receipt=await verifyRunRecord(receipt);
         if(token!==state.generation)return;
+        assertWorld(receipt);
         if(state.complete(token,receipt)){renderResult();copyUI();persist();status.textContent='保存済み結果を読み込みました。新規実行は行っていません。';}
       }
       catch(e){if(token!==state.generation)return;state.cancel();status.textContent=e.message+' 過去結果は保持しています。';}

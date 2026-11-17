@@ -1,5 +1,5 @@
 ---
-ja_rev: "e674e39fa36b"
+ja_rev: "af6af567a70d"
 ---
 # CLI
 
@@ -20,7 +20,7 @@ Runs one deterministic MAP-Elites experiment. `--project` (world), `--template` 
 Example:
 
 ```powershell
-python scripts/evolve.py --project projects/momotaro_plus2 --template templates/momotaro_plus2 `
+python scripts/evolve.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 `
   --out ../WorldBloom-data/runs/my-exp --generations 20 --population 100 --seeds 3
 ```
 
@@ -99,7 +99,7 @@ Copies just the minimal set of files the distributed viewer (Viewer exe) needs t
 
 ## viewer/server.py — start the screens
 
-Without `--control`, it runs as a read-only viewer where every write API is rejected (see [HTTP API](http-api.md)).
+Without `--control`, management features such as world editing and GA execution are unavailable. Candidate selection can still be saved, so this is not a fully write-protected mode. It differs from the distributed Viewer’s `read_only` setting, which rejects all POST requests (see [HTTP API](http-api.md)).
 
 ```
 --8<-- "cli/server.txt"

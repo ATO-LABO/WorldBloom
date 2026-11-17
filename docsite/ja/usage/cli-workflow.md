@@ -5,7 +5,7 @@ sources:
   - "scripts/narrate.py"
   - "scripts/random_baseline.py"
   - "templates/"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 
 # CLI での作業手順
@@ -15,30 +15,30 @@ Studio 画面を使わず、コマンドラインだけで GA 実験からあら
 ## 1. GA 実験を回す
 
 ```
-python scripts/evolve.py --project projects/momotaro --template templates/momotaro \
+python scripts/evolve.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 \
   --out <出力先>/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
 ```
 
-- `--project` / `--template` は同梱の `basic` / `momotaro` / `momotaro_plus` / `momotaro_plus2` / `detective` / `romance` が使えます（`templates/` 配下の一覧。`basic` は共通の基本ルールで、それ単体をジャンルとして指定することはあまりありません）
+- 現行形式の同梱例は `--project projects/momotaro_plus3_new --template templates/momotaro_plus3` です。旧 `momotaro`・`momotaro_plus2`・`detective`・`romance` などはディスクに残っていますが、現行ローダーではそのまま実行できません。新規作成した世界では、その世界に対応する設定を使ってください。
 - 出力先はリポジトリ外を推奨します（`.gitignore` は `runs/` を無視しますが、リポジトリ内に大量の実験出力を置くべきではありません）
 - `--personality-growth` を付けると[性格の成長](../concepts/personality-growth.md)が有効になります（既定オフ）。有効かつジャンルの `qd.yaml` に `arc_bins` があれば、下記の `selection.json` のセルキーが3項（例 `I|low|small`）になることがあります
-- 所要時間の目安: 世代数×個体数×seed数にほぼ比例します。既定の規模（20世代×100個体×3seed）は20コアで約1時間が目安です（並列数は[設定](settings.md)の「計算」で指定します）
+- 所要時間は世代数・個体数・seed数と世界の複雑さに依存します。まず小さい規模で動作を確認し、実測に応じて増やしてください。CLIの並列数は `--processes` で指定します。
 - 完了すると `<出力先>/exp1/archive.json` に格子（アーカイブ）が書き出されます。`cells=<件数>` は結末に到達して格子に残った代表個体の数です
 
 無作為な方針だけで結末に届く割合と多様性を測る対照実験も行えます。
 
 ```
-python scripts/random_baseline.py --project projects/momotaro --template templates/momotaro --out <出力先>/baseline
+python scripts/random_baseline.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 --out <出力先>/baseline
 ```
 
 ## 2. あらすじ・本文を生成する
 
 ```
 python scripts/synopsize.py --archive <出力先>/exp1/archive.json --runs <出力先>/exp1 \
-  --out <出力先>/exp1/synopses.json --backend ollama --project projects/momotaro --template templates/momotaro
+  --out <出力先>/exp1/synopses.json --backend ollama --project projects/momotaro_plus3_new --template templates/momotaro_plus3
 
 python scripts/narrate.py --archive <出力先>/exp1/archive.json --selection <出力先>/exp1/selection.json \
-  --out <出力先>/exp1/stories --backend ollama --project projects/momotaro --template templates/momotaro
+  --out <出力先>/exp1/stories --backend ollama --project projects/momotaro_plus3_new --template templates/momotaro_plus3
 ```
 
 - `--backend` は `claude-cli` / `codex-cli` / `anthropic` / `openai` / `ollama` / `llama-server` / `none` から選べます（[LLM バックエンド](llm-backends.md#model-defaults)を参照）。`none` を指定すると LLM を呼び出さず、プロンプトだけを保存します

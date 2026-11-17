@@ -11,7 +11,7 @@
 
 <a href="https://youtu.be/Yozi2qb2IQg"><img src="https://img.youtube.com/vi/Yozi2qb2IQg/maxresdefault.jpg" width="640" alt="WorldBloom 3分ダイジェスト動画のサムネイル"></a>
 
-[![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio--portable.zip-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip)
+[![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest)
 [![公開ビューア](https://img.shields.io/badge/%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E8%A6%8B%E3%82%8B-%E5%85%AC%E9%96%8B%E3%83%93%E3%83%A5%E3%83%BC%E3%82%A2-2e7d4f?style=for-the-badge&logo=googlechrome&logoColor=white)](https://ato-labo.github.io/WorldBloom/)
 [![3分動画](https://img.shields.io/badge/3%E5%88%86%E3%81%A7%E3%82%8F%E3%81%8B%E3%82%8B-YouTube-c4302b?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/Yozi2qb2IQg)
 [![ドキュメント](https://img.shields.io/badge/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88-ato--labo.github.io-6f42c1?style=for-the-badge&logo=readthedocs&logoColor=white)](https://ato-labo.github.io/WorldBloom/docs/)
@@ -40,7 +40,7 @@
 
 ## 仕組み（要約）
 
-主体は7層構造（力・認識・資源・段階・身分・目的物・伏線）＋ vitality で表現し、遺伝子は行動系列ではなく「戦略ベクトル」（9スカラー）です。固定シードで走らせたシミュレーションのうち、固定結末に到達したものだけを MAP-Elites 格子（主導カテゴリ I〜VI × volatility）に残します。**出来事の生成に LLM は関与しません。**格子に残ったあらすじは人が読んで選び、選ばれた道のりだけを LLM が本文化します。
+主体は7層構造（力・認識・資源・段階・身分・目的物・伏線）＋ vitality で表現し、遺伝子は行動系列ではなく「戦略ベクトル」（9スカラー）です。固定シードで走らせたシミュレーションのうち、固定結末に到達したものだけを MAP-Elites 格子（主導カテゴリ I〜VI × volatility）に残します。**基本のシミュレーションは LLM なしで出来事を作ります。**任意の合理性チェック（κ > 0）を有効にすると、OllamaまたはJevの判定を行動候補の重みに使いますが、出来事の列を直接書かせるものではありません。格子に残ったあらすじは人が読んで選び、選ばれた道のりだけを LLM が本文化します。
 
 StorySim（同作者の別プロジェクト。世界と人物をシミュレートし、面白かったログを物語に書き起こす方式）から要素を切り取って再構築したもので、フォークではありません。
 
@@ -48,6 +48,8 @@ StorySim（同作者の別プロジェクト。世界と人物をシミュレー
 
 ## できること
 
+- **3段階で世界を作る**: 下書きを用意し、内容を整え、確認して新しい世界として採用。途中の保存・再開ができ、任意のAI生成・精緻化案は差分を確認してから反映
+- **世界の条件を編集する**: 人物・場所・持ち物と入手方法・時間・行動・結末を画面で確認し、保存して実験へ進む
 - **QD 格子での探索と選定（Sifting / Screening）**: 主導カテゴリ×volatilityの格子から気に入った展開を選び、あらすじ・本文だけを生成
 - **世界の自己拡張**: 実験結果から世界設定の拡張案を提案させ、承認/却下したうえで拡張あり/なしの結果を比較
 - **系譜・転機の可視化**: 世代を追った戦略の推移と、物語の転機をグラフで表示
@@ -57,12 +59,16 @@ GPU 調停・進捗表示など運用まわりの機能は、ドキュメント�
 
 ## 試し方
 
+このREADMEはリポジトリの現行ソースを説明しています。Windows配布版は [Releases](https://github.com/ATO-LABO/WorldBloom/releases) に添付された版で、ソースの新機能がすべて含まれるとは限りません。公開ビューアは保存済みサンプルの閲覧用です。
+
 **詳しい手順は → [ドキュメントサイト](https://ato-labo.github.io/WorldBloom/docs/)（[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/) / [クイックスタート](https://ato-labo.github.io/WorldBloom/docs/getting-started/quickstart/)）**
 
-- **A. exe で（Windows）**: [WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) を展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます（GA実験の実行には Python 3.12以上＋PyYAML が別途必要）。
+- **A. exe で（Windows）**: [最新リリース](https://github.com/ATO-LABO/WorldBloom/releases/latest) の Assets から配布ZIPをダウンロード・展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます（GA実験の実行には Python 3.12以上＋PyYAML が別途必要）。
 - **B. ブラウザで見るだけ**: インストール不要の [公開ビューア](https://ato-labo.github.io/WorldBloom/) で、桃太郎・恋愛・探偵の3実験の格子・あらすじ・本文を読めます。
 - **C. ソースから**: `git clone` して `pip install -r requirements.txt`（Python 3.12以上）。同梱の `samples/` をビューアで見る、自分で GA を回すなどの手順はドキュメントサイトの[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)にまとめています。
-  回帰検査はPython 3.12/3.13とUbuntu/Windowsで行います。
+  回帰検査の対象はPython 3.12/3.13とUbuntu/Windowsです。
+
+**世界ファイルの互換性**: 現行ソースは新形式（`world_format_version: 1`）の世界のみを編集・実行します。まず同梱の「桃太郎＋3」（`projects/momotaro_plus3_new`）か、新規作成画面で確定した世界を使ってください。旧世界は自動変換しません。元データと過去の実行結果を保持し、詳しくは[世界を作る](https://ato-labo.github.io/WorldBloom/docs/usage/create-world/)を参照してください。
 
 自分で進化を回す・あらすじ/本文を生成し直す・LLM バックエンドの設定・GPU ガードなどの使い方は、ドキュメントサイトの[使い方](https://ato-labo.github.io/WorldBloom/docs/usage/create-world/)を参照してください。コマンドの引数や settings.json の全項目は[リファレンス](https://ato-labo.github.io/WorldBloom/docs/reference/cli/)、困ったときは[トラブルシューティング](https://ato-labo.github.io/WorldBloom/docs/guides/troubleshooting/)へ。開発者向け（回帰テスト・決定論の約束など）は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
@@ -104,12 +110,14 @@ engine/      7層の主体・世界・動詞・勝負解決・述語評価・vit
 gapengine/   遺伝子・Policy・分類器・前例表・QD・進化ループ・あらすじ化・説明抽出
 execution/   ビューアから進化・出力ジョブを操作するための設定/ジョブ/権限境界
 viewer/      HTTP ビューア（標準ライブラリのみ。格子・あらすじ・本文・実行管理画面）
-scripts/     進化・あらすじ化・本文化・無作為基準・静的公開・サンプル抽出などの実行スクリプト
+scripts/     GA実験・文章生成・公開用出力・モック起動のスクリプト
+tools/       ローカル起動、世界データの移行・比較ツール
+launch-assets/  ローカル起動用のファイル一覧と同梱の世界データ
 templates/   ジャンルテンプレート（行動グラフ・修飾ルール・正典プライア・QD軸・伏線ライブラリ）
-projects/    世界と主体の初期状態（7層）。momotaro / detective / romance
-samples/     ビューアで開ける最小サンプル（3実験。scripts/pack_samples.py で生成）
+projects/    実験に使う世界と主体の初期状態。現行形式の例は momotaro_plus3_new
+samples/     ビューアで閲覧できる実行結果（3実験。scripts/pack_samples.py で生成）
 tests/       回帰テスト（unittest）
-docs/        設計書・実装計画・開示文書
+docs/        リポジトリ内の設計書・開発手順・開示文書
 docsite/     ドキュメントサイトの原稿（日英、MkDocs）。main への push で自動公開
 ```
 

@@ -12,6 +12,7 @@ import yaml
 from execution import time_settings as ts, world_editor
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
+from saved_world_fixtures import current_world_yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,9 +25,9 @@ class TimeSettingsTests(unittest.TestCase):
         self.project = self.repo / 'projects/festival'
         shutil.copytree(ROOT / 'samples/route_goals/cultural_festival', self.project)
         self.world_path = self.project / 'world.yaml'
-        world = yaml.safe_load(self.world_path.read_text())
+        world = yaml.safe_load(self.world_path.read_bytes())
         world['scheduled_events'] = [{'id': 'opening', 'day': 1, 'slot': '15:00', 'label': '開演', 'targets': ['実行委員']}]
-        self.world_path.write_text(yaml.safe_dump(world, allow_unicode=True))
+        self.world_path.write_bytes(current_world_yaml(world).encode('utf-8'))
         self.store = LibraryStore(self.repo)
         self.settings = ts.default_settings()
         self.settings['period'] = {'start_date': '2026-10-12', 'end_date': '2026-10-14'}

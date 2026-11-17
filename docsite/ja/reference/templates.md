@@ -1,5 +1,12 @@
 ---
 sources:
+  - "execution/draft_native.py"
+  - "projects/momotaro_plus3_new/world.yaml"
+  - "execution/item_acquisition.py"
+  - "engine/economy.py"
+  - "engine/stamina.py"
+  - "engine/action_usage.py"
+  - "engine/world_format.py"
   - "templates/momotaro/action_graph.yaml"
   - "templates/momotaro/canon.yaml"
   - "templates/momotaro/effects.yaml"
@@ -17,11 +24,13 @@ sources:
   - "engine/world.py"
   - "engine/sim.py"
   - "templates/momotaro_plus2/rules.yaml"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # テンプレート
 
 「ジャンル」（`templates/<ジャンル>/`）が世界の文法を、「世界」（`projects/<世界>/`）がその文法を使った具体的な舞台を定義します。ジャンルは複数の世界から共有できます（例: `templates/momotaro_plus2` は `projects/momotaro_plus2` から参照されます）。
+
+現行形式の要件と実行できるサンプルは、このページ末尾の「現在の世界形式と任意の仕組み」を参照してください。
 
 ## `templates/<ジャンル>/` の構成
 
@@ -274,3 +283,13 @@ range: {zones: [村], entry: 村}
 ```
 
 `traits`（固定気質。GA の対象外）以外はすべて7層の初期値です。`relations` は関係行列 `world.relations[a][b] = {affinity, awareness}` の初期値で、`stance(a,b) = affinity(a→b)` として述語評価器から読めます。
+
+## 現在の世界形式と任意の仕組み
+
+現在の実行・編集入口は `world_format_version: 1` を要求します。`action_usage` は `version: 2`、`engine_contract: normal_turn_v2`、`catalog_version: 1` と `enabled` を持ちます。`enabled` は `verb:move`、`recipe:<品物名>`、`response:<応答ID>` などの参照で、`verb:rest` は必須です。`mechanics` は `version: 1` と真偽値の `stamina_management`・`budgeted_purchases` を持ちます。分類カテゴリだけでは行動を許可しません。
+
+同梱の現行サンプルは **`projects/momotaro_plus3_new` + `templates/momotaro_plus3`** です。旧世界はディスク上に残りますが、そのまま実行・編集・採用はできません。ZIPから元ファイルを保持した下書きを作ることはできますが、形式エラーが残る下書きは検証を通過せず、採用・実行できません。このページの旧サンプルの YAML 断片は各項目の説明であり、単独で読み込める完全な世界定義ではありません。新しい世界は画面から作成してください。旧形式を直接上書きして移行しないでください。
+
+- **体力**: 世界の `stamina` に `default_max`（既定10）、`default_recover_per_slot`（1）、`exhausted_ratio`（0.2）、`default_action_cost`（1）、`passive_recovery`（false）を保存します。人物の `stamina` は `max`・`current`・`recover_per_slot`。`action_cost_adjustments` で動詞別のコスト補正を指定できます。`zero_behavior: rest` は体力0で強制休息、`death` は体力0を独立した死亡原因にします。省略時はこの追加動作をしません。体力管理を無効にするとこれらの体力制約も無効です。
+- **装備・品物の効果**: 品物の `modifier` が能力への効果を表します。画面の強さは `modifier.value` に保存されます。品物の入手経路、所持者、贈与時の関係変化、目標の対象かどうかも別々に設定します。
+- **金銭**: `economy.version: 1` の `currency` に `preset`・`name`・`unit`・`asset`、`reference_prices.meal` に `name`・`amount` を保存します。所持金は通貨資産の `inventory` 数量です。円・ドル・元・ユーロ・独自通貨は表示設定で、自動為替換算はしません。`budgeted_purchases` は購入時の残高確認・支払いを制御します。価格が不明な品物や売買不可の品物が、無効化によって自動的に無料販売されることはありません。

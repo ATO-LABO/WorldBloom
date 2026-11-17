@@ -1,10 +1,16 @@
 ---
-ja_rev: "62512f147383"
+ja_rev: "63986ac88ef0"
 ---
 
 # WorldBloom Docs
 
 A tool that lets you fix a story's **setting and ending first**, then tries thousands of simulated paths between them and picks the interesting ones that actually reach that ending. A genetic algorithm (GA) drives the simulation, and only the chosen paths are turned into prose by an LLM.
+
+## Working with the current source
+
+[Create a World](usage/create-world.md) takes you through three stages: prepare a draft, edit its contents, then review and adopt it. Save and resume drafts, review optional AI refinements, edit the confirmed world’s conditions, and run an experiment before [choosing results](usage/read-results.md) and [generating text](usage/generate-text.md).
+
+The current source edits and runs new-format worlds. For a first run, use 桃太郎＋3 (Momotaro +3, `momotaro_plus3_new`). Legacy worlds and previous results are retained, with no automatic format rewrite. EXE downloads follow their own Release contents, which differ from source changes.
 
 ## Three ways to try it
 

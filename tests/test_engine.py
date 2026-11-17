@@ -28,6 +28,7 @@ from engine.subject import (
 )
 from engine.verbs import HANDLED_VERBS, VerbEngine
 from engine.vitality import down, tick
+from frozen_world import load_frozen_world
 from engine.world import World
 
 
@@ -49,7 +50,7 @@ class FixedRandom(random.Random):
 
 
 def load_fixture() -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(WORLD_PATH)
+    world = load_frozen_world(WORLD_PATH)
     subjects = {
         subject.id: subject
         for subject in (
@@ -2209,7 +2210,7 @@ class EngineTests(unittest.TestCase):
         )
 
     def test_world_rejects_subject_zone_id_collision(self) -> None:
-        world = World.from_yaml(WORLD_PATH)
+        world = load_frozen_world(WORLD_PATH)
         subjects = {
             subject.id: subject
             for subject in (
@@ -2233,7 +2234,7 @@ class EngineTests(unittest.TestCase):
             / "momotaro"
             / "action_graph.yaml"
         )
-        world = World.from_yaml(
+        world = load_frozen_world(
             WORLD_PATH,
             action_graph_path=explicit,
         )
@@ -3524,7 +3525,7 @@ class Phase4EngineTests(unittest.TestCase):
     def test_affinity_cap_clamps_initial_and_changed_affinity(
         self,
     ) -> None:
-        world = World.from_yaml(WORLD_PATH)
+        world = load_frozen_world(WORLD_PATH)
         subjects = self._load_subjects()
         actor = subjects["桃太郎"]
         actor.initial_relations["鬼"]["affinity"] = 0.8
@@ -3559,7 +3560,7 @@ class Phase4EngineTests(unittest.TestCase):
     def test_affinity_cap_stops_after_modifier_is_inactive(
         self,
     ) -> None:
-        world = World.from_yaml(WORLD_PATH)
+        world = load_frozen_world(WORLD_PATH)
         subjects = self._load_subjects()
         modifier = Modifier(
             id="test:temporary-affinity-cap",
@@ -3596,7 +3597,7 @@ class Phase4EngineTests(unittest.TestCase):
     def test_affinity_cap_targets_do_not_limit_other_targets(
         self,
     ) -> None:
-        world = World.from_yaml(WORLD_PATH)
+        world = load_frozen_world(WORLD_PATH)
         subjects = self._load_subjects()
         subjects["桃太郎"].modifiers.append(
             Modifier(
@@ -3809,14 +3810,14 @@ class Phase4EngineTests(unittest.TestCase):
             )
 
             seed = 73
-            first_world = World.from_yaml(world_path)
+            first_world = load_frozen_world(world_path)
             first_simulation = Simulation(
                 seed,
                 first_world,
                 self._load_subjects(),
                 root / "first",
             )
-            second_world = World.from_yaml(world_path)
+            second_world = load_frozen_world(world_path)
             second_simulation = Simulation(
                 seed,
                 second_world,

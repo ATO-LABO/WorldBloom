@@ -1,4 +1,5 @@
 """Behavioral invariants for opt-in explanation recording."""
+from frozen_world import evolve_frozen
 import copy
 import json
 import random
@@ -11,6 +12,7 @@ from engine.actions import Action
 from engine.decision_record import record_distribution
 from engine.sim import Simulation
 from engine.subject import Subject
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.genome import Genome
 from gapengine.policy import Policy
@@ -21,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def fixture(genre):
     project = ROOT / "projects" / genre
     graph = ROOT / "templates" / genre / "action_graph.yaml"
-    world = World.from_yaml(project / "world.yaml", action_graph_path=graph)
+    world = load_frozen_world(project / "world.yaml", action_graph_path=graph)
     subjects = [Subject.from_yaml(p) for p in sorted((project / "subjects").glob("*.yaml"))]
     return world, {s.id: s for s in subjects}, yaml.safe_load(graph.read_text(encoding="utf-8"))
 
@@ -48,7 +50,7 @@ class RecordingTests(unittest.TestCase):
             common = {"project":project,"template":TEMPLATE,"ga_seed":3,"generations":1,
                       "population":3,"seeds":1,"seed_base":8,"keep":"all","record_explanations":True}
             for processes in (1,2):
-                evolve({**common,"out":root/str(processes),"processes":processes})
+                evolve_frozen({**common,"out":root/str(processes),"processes":processes})
             first = sorted((root/"1").rglob("layers.jsonl"))
             self.assertTrue(first)
             for path in first:

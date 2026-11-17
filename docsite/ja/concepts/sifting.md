@@ -1,19 +1,23 @@
 ---
 sources:
+  - "execution/world_refinements.py"
+  - "execution/world_drafts.py"
+  - "gapengine/rationality.py"
   - "viewer/sifting_pages.py"
   - "viewer/pages.py"
   - "viewer/compare_pages.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # Sifting
 
-Sifting（ふるい分け）は、[QD 格子](qd-map.md)に残った候補を人が読み、あらすじ・本文にする価値があるかを選ぶ工程です。WorldBloom で「面白いかどうか」を判断するのは常に人であり、LLM ではありません（LLM の役割は選ばれた道のりを文章にすることだけです）。
+Sifting（ふるい分け）は、[QD 格子](qd-map.md)に残った候補を人が読み、あらすじ・本文にする価値があるかを選ぶ工程です。WorldBloom で「面白いかどうか」を判断するのは常に人であり、LLM ではありません（この工程での LLM の役割は、選ばれた道のりの文章化です。別工程では世界案の生成・調整や、κ>0 の合理性判定にも使われます）。
 
 ## 画面の構成
 
-格子のセルをクリックすると、候補の詳細が3つのタブで開きます。
+格子のセルをクリックすると、候補の詳細が4つのタブで開きます。
 
 - **物語**: この候補のあらすじ（生成済みの場合）、結末、詳しい根拠・生成状況へのリンク
+- **行動ログ**: 記録された行動の一覧、人物による絞り込み、選択した行動の詳細
 - **選択とメモ**: 選定状態と自由記述のメモ
 - **実験データ**: 候補ID・世代・個体・seed などの実験データ、原記録（`layers.jsonl`）へのリンク
 

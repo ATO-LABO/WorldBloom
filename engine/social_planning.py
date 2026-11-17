@@ -4,6 +4,7 @@ Forecast replies never execute a peer action. Existing deliberation and actual
 typed physical operators remain the authority for every real result.
 """
 from copy import deepcopy
+from engine.action_constraints import effective_verbs
 import json
 
 from engine.actions import Action
@@ -137,7 +138,7 @@ class SocialPlanning:
             _,needed=world.planner._relevant(world,actor,root)
         self.expand(world,actor,needed)
         def offer(verb,args,label,effects,assumptions=()):
-            if verb in allowed and world.genre_allows(verb):
+            if verb in allowed and world.genre_allows(verb) and world.action_usage_allows(verb,args):
                 return [self._step(world,actor,verb,args,label,effects,turn,elapsed,assumptions)]
             return []
         for pid,binding in self.proposals.items():
@@ -280,7 +281,7 @@ class SocialPlanning:
             option=world.responses._option(world,actor,world.responses.actions[spec['action']],turn,day)
             better=any(not x['excluded'] and x['priority']>option['priority'] for x in world.responses.options(world,actor,turn,day))
             answer='accept' if not option['excluded'] and not better else 'refuse'
-            if 'answer_response' in actor.verbs: result.append((Action('answer_response',(rid,answer)),60))
+            if 'answer_response' in effective_verbs(world,actor): result.append((Action('answer_response',(rid,answer)),60))
         return result
 
     def deliberation_candidates(self,world,actor,turn):

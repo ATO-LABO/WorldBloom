@@ -16,7 +16,7 @@ from execution.provenance import read_json, contained, ConfigError
 from execution.worker import read_job, change, TERMINAL
 
 
-def credentials(path, backend):
+def credentials(path, backend, *, model=None):
     if backend == "none":
         return {}
     from gapengine.synopsis import _backend_config
@@ -24,6 +24,9 @@ def credentials(path, backend):
     if not isinstance(settings, dict):
         raise ValueError("invalid local settings")
     config = _backend_config(settings, backend)
+    if backend == "ollama" and model is not None:
+        from execution.output_settings import model_credentials
+        config = model_credentials(config, model)
     keys = ("command", "api_key", "base_url", "options", "think", "seed")
     return {key: config[key] for key in keys if key in config}
 
@@ -55,7 +58,7 @@ def run(control, output_id):
     output_settings = {}
     try:
         store.verify_artifacts(output_id)
-        auth = credentials(job.get("settings_path"), request["backend"])
+        auth = credentials(job.get("settings_path"), request["backend"], model=request["model"])
         output_settings = _output_settings(job.get("settings_path"))
     except (OSError, ValueError, ConfigError) as error:
         preflight_error = error
