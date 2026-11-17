@@ -38,7 +38,7 @@ class TargetObservationTests(unittest.TestCase):
     def test_saved_pre_fix_observation_is_not_misreported_as_stop(self):
         from engine.run_record import _saved_projection
         with tempfile.TemporaryDirectory() as d:
-            p=Path(d);rows=[{'kind':'header','terminal_policy':{'target_as_observation':True}},
+            p=Path(d);rows=[self.fixture(p)._header(),
                 {'kind':'event','turn':1,'verb':'ending','id':'goal','details':{}},
                 {'kind':'decision','turn':2,'verb':'move','details':{}}]
             (p/'layers.jsonl').write_text('\n'.join(json.dumps(r) for r in rows)+'\n')
