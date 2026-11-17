@@ -110,12 +110,14 @@ engine/      7層の主体・世界・動詞・勝負解決・述語評価・vit
 gapengine/   遺伝子・Policy・分類器・前例表・QD・進化ループ・あらすじ化・説明抽出
 execution/   ビューアから進化・出力ジョブを操作するための設定/ジョブ/権限境界
 viewer/      HTTP ビューア（標準ライブラリのみ。格子・あらすじ・本文・実行管理画面）
-scripts/     進化・あらすじ化・本文化・無作為基準・静的公開・サンプル抽出などの実行スクリプト
+scripts/     GA実験・文章生成・公開用出力・モック起動のスクリプト
+tools/       ローカル起動、世界データの移行・比較ツール
+launch-assets/  ローカル起動用のファイル一覧と同梱の世界データ
 templates/   ジャンルテンプレート（行動グラフ・修飾ルール・正典プライア・QD軸・伏線ライブラリ）
-projects/    世界と主体の初期状態。現行形式の例は momotaro_plus3_new、旧世界も保存
-samples/     ビューアで開ける最小サンプル（3実験。scripts/pack_samples.py で生成）
+projects/    実験に使う世界と主体の初期状態。現行形式の例は momotaro_plus3_new
+samples/     ビューアで閲覧できる実行結果（3実験。scripts/pack_samples.py で生成）
 tests/       回帰テスト（unittest）
-docs/        設計書・実装計画・開示文書
+docs/        リポジトリ内の設計書・開発手順・開示文書
 docsite/     ドキュメントサイトの原稿（日英、MkDocs）。main への push で自動公開
 ```
 
