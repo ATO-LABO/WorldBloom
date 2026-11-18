@@ -32,6 +32,7 @@ REVIEWED_VENDOR_EMAIL_HASHES = {
     # in the package's source maps; see docs/mkdocs-9.8.0-publication-review.md.
     '17168108f7ce26dfb278571f4db8dbafdb18ada6aadf54cba93fb629b73f9d48',  # bundle.c21346df.min.js.map
     'bcb8d79f2873cf66f17dcb6691f4ed3032dbf436a7b50339864da8910a55f694',  # workers/search.a7633da7.min.js.map
+    '62a31dbb1fa1c1a02c3df1a7e13589f83d0df903677be858b45eb3b3f04c4b17',  # MkDocs Material 9.8.1 bundle.a5f9d56c.min.js.map
 }
 CREDENTIAL_FIELDS = {
     'api_key', 'apikey', 'access_token', 'refresh_token', 'client_secret',

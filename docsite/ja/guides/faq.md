@@ -6,14 +6,14 @@ sources:
   - "docsite/ja/usage/gpu-guard.md"
   - "templates/"
   - "docsite/ja/concepts/personality-growth.md"
-reviewed: "53c98e6a1169e3a6f772c96460cb55c9c508abfe"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 
 # FAQ
 
 ## GA 実験（進化）に LLM は必要ですか？
 
-いいえ。GA 実験そのもの（世界のシミュレーション、遺伝子の進化、QD 格子への蓄積）に LLM は関与しません。LLM を使うのは、格子に残った候補を人が選んだあとの[あらすじ・本文の生成](../usage/generate-text.md)だけです。生成をせず結果だけ見たい場合は、⚙ 設定で接続先を「生成しない」（`none`）にすれば、プロンプトの保存だけを行い実際の生成はしません。詳しくは[LLM バックエンド](../usage/llm-backends.md)を参照してください。
+必須ではありません。基本のGAシミュレーション・進化・QD格子への蓄積はLLMなしで動きます。任意の[合理性層](../concepts/rationality-layer.md)（κ > 0）ではOllamaまたはJevが候補行動を判定し、その重みに反映します。LLMを使うのは、実行前のAIによる[世界作成・精緻化](../usage/create-world.md)と、実行後の[あらすじ・本文生成](../usage/generate-text.md)です。保存済みの結果を見るだけなら生成は不要です。CLIの文章生成では `--backend none` でプロンプト保存だけを行えます。画面の設定と対応する接続先は[LLM バックエンド](../usage/llm-backends.md)を参照してください。
 
 ## なぜ出来事の生成に LLM を使わないのですか？
 
@@ -25,11 +25,11 @@ reviewed: "53c98e6a1169e3a6f772c96460cb55c9c508abfe"
 
 ## GPU が無い PC でも使えますか？
 
-はい。GA 実験（進化）自体は GPU を必要としません。GPU が必要になるのは、あらすじ・本文の生成にローカル LLM（Ollama や llama-server）を使う場合だけです。GPU が無ければ、外部 API（Anthropic / OpenAI）や CLI 経由（Claude Code / Codex CLI）の接続先を使うか、生成をせずプロンプトの保存だけに留めることもできます。詳しくは[LLM バックエンド](../usage/llm-backends.md)・[GPU ガード](../usage/gpu-guard.md)を参照してください。
+はい。GA 実験（進化）自体は GPU を必要としません。ローカルLLMの速度や必要メモリはモデルと実行環境に依存します。CPUで動かせるモデルもありますが、大きなモデルの生成にはGPUが実用上必要になる場合があります。GPU が無ければ、外部 API（Anthropic / OpenAI）や CLI 経由（Claude Code / Codex CLI）の接続先を使うか、生成をせずプロンプトの保存だけに留めることもできます。詳しくは[LLM バックエンド](../usage/llm-backends.md)・[GPU ガード](../usage/gpu-guard.md)を参照してください。
 
 ## 結果が毎回同じなのはなぜですか？
 
-WorldBloom の個体評価は[決定論](../concepts/determinism.md)を設計の前提にしているためです。同じ世界・遺伝子・乱数の種・前例表・エンジンのコードなら、出力ログはバイト単位で一致します。逆に、エンジンのコード自体を変更すると、同じ設定でも別の物語になります。
+WorldBloom の個体評価は[決定論](../concepts/determinism.md)を設計の前提にしているためです。同じPythonバージョン・世界・遺伝子・乱数の種・前例表・エンジンのコードなら、出力ログはバイト単位で一致します。逆に、エンジンのコード自体を変更すると、同じ設定でも別の物語になります。
 
 ## 自分の物語世界を作れますか？
 
@@ -49,7 +49,7 @@ WorldBloom は StorySim（同作者の別プロジェクト）の延長ではな
 
 ## Windows 以外（Mac/Linux）でも使えますか？
 
-配布版 exe（Viewer / Studio）は Windows 向けのビルドのみです。Mac/Linux では、リポジトリを clone して Python から動かす方法（[インストール](../getting-started/install.md)のソース版の手順）を使ってください。
+配布版exe（Viewer / Studio）はWindows向けです。ソース版のジョブ管理はWindows/Linuxに対応し、Linuxにはプロセス監視の要件があります。macOSでのジョブ実行は対応対象ではありません。ブラウザーからの公開サンプル閲覧は利用できます。詳しくは[インストール](../getting-started/install.md)を参照してください。
 
 ## 公開ビューアと配布版 Studio の違いは？
 

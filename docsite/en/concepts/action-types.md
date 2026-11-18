@@ -1,5 +1,5 @@
 ---
-ja_rev: "f8d917944f66"
+ja_rev: "15650f017832"
 ---
 # Action Types I–VI
 
@@ -37,3 +37,7 @@ The range of categories used on the QD grid's vertical axis is declared in `temp
 | Romance (`romance`) | I, II, III only |
 
 Genres like detective and romance, which barely use identity swaps or external intervention, narrow the grid's axes to match the actual range of actions those genres cover.
+
+## Per-world action permissions
+
+I–VI are action **classifications**, separate from which actions a world permits. In the current format, `action_usage.enabled` and actor/time-slot constraints also filter candidates. Enabling an action does not bypass its inventory, location, knowledge, or other execution requirements. See [Templates](../reference/templates.md) for the format.

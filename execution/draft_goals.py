@@ -11,7 +11,8 @@ FIELDS = {
 }
 
 
-def compile_goal(raw, actor, people, places, items, facts, path, *, required=False):
+def compile_goal(raw, actor, people, places, items, facts, path, *, required=False,
+                 days=7, slots_per_day=4):
     def bad(message, field=""):
         raise ConfigError(path + field, message)
 
@@ -28,6 +29,8 @@ def compile_goal(raw, actor, people, places, items, facts, path, *, required=Fal
         bad("達成条件は0〜8件で指定してください", ".conditions")
     if (required or conditions) and not goal["description"]:
         bad("目標を文章で入力してください", ".description")
+    if type(days) is not int or days < 1 or type(slots_per_day) is not int or slots_per_day < 1:
+        bad("世界の日数と時間帯を確認してください")
     expressions = []
     for i, condition in enumerate(conditions):
         cp = f".conditions.{i}"
@@ -60,9 +63,9 @@ def compile_goal(raw, actor, people, places, items, facts, path, *, required=Fal
             expression = f"vitality({condition['person']!r}) in ['downed', 'dead']"
         elif kind == "survive":
             day = condition["day"]
-            if type(day) is not int or not 1 <= day <= 7:
-                bad("生存日数は1〜7の整数で指定してください", cp + ".day")
-            expression = f"turn >= {day * 4}"
+            if type(day) is not int or not 1 <= day <= days:
+                bad(f"生存日数は1〜{days}の整数で指定してください", cp + ".day")
+            expression = f"turn >= {day * slots_per_day}"
         else:
             expression = f"known({a}, {condition['fact']!r})"
         expressions.append(f"({expression})")

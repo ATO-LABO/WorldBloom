@@ -1,11 +1,11 @@
 ---
-ja_rev: "dfa0f78dbcbc"
+ja_rev: "b0616ed7ae88"
 ---
 # FAQ
 
 ## Does the GA experiment (evolution) need an LLM?
 
-No. No LLM is involved in the GA experiment itself (simulating the world, evolving the genome, accumulating results into the QD map). The LLM is only used for [generating synopses and full text](../usage/generate-text.md), after a person has chosen candidates left in the grid. If you just want to see results without generating text, set the backend to "生成しない" (Don't generate, `none`) in ⚙ 全体設定 (Global settings) — it only saves the prompts and skips actual generation. See [LLM Backends](../usage/llm-backends.md) for details.
+An LLM is not required. The base simulation, evolution, and accumulation into the QD grid run without one. With the optional [rationality layer](../concepts/rationality-layer.md) (κ > 0), Ollama or Jev judgments adjust candidate-action weights. LLMs are used for AI-assisted [world creation and refinement](../usage/create-world.md) before a run and [synopsis and prose generation](../usage/generate-text.md) afterward. Browsing saved results requires no generation. CLI text generation supports `--backend none` to save prompts without an LLM call. See [LLM Backends](../usage/llm-backends.md) for the current screen and backend choices.
 
 ## Why doesn't event generation use an LLM?
 
@@ -17,11 +17,11 @@ You can generate stories without evolving a policy (genome) at all, using only r
 
 ## Can I use it on a PC with no GPU?
 
-Yes. The GA experiment (evolution) itself doesn't need a GPU. A GPU is only needed if you use a local LLM (Ollama or llama-server) for synopsis/text generation. Without a GPU, you can use an external API (Anthropic / OpenAI) or a CLI-based backend (Claude Code / Codex CLI), or just save prompts without generating. See [LLM Backends](../usage/llm-backends.md) and [GPU Guard](../usage/gpu-guard.md) for details.
+Yes. The GA experiment (evolution) itself doesn't need a GPU. Local-LLM speed and memory needs depend on the model and runtime. Some models can run on a CPU, while larger models may need a GPU for practical generation speeds. Without a GPU, you can use an external API (Anthropic / OpenAI) or a CLI-based backend (Claude Code / Codex CLI), or just save prompts without generating. See [LLM Backends](../usage/llm-backends.md) and [GPU Guard](../usage/gpu-guard.md) for details.
 
 ## Why do I get the same result every time?
 
-Because WorldBloom's individual evaluation is designed around [determinism](../concepts/determinism.md). Given the same world, genome, random seed, precedent table, and engine code, the output log matches byte for byte. Conversely, changing the engine code itself produces a different story even with the same settings.
+Because WorldBloom's individual evaluation is designed around [determinism](../concepts/determinism.md). Given the same Python version, world, genome, random seed, precedent table, and engine code, the output log matches byte for byte. Conversely, changing the engine code itself produces a different story even with the same settings.
 
 ## Can I build my own story world?
 
@@ -41,7 +41,7 @@ The screens (the Viewer/Studio UI) are Japanese only. The bundled Momotaro, roma
 
 ## Does it run on something other than Windows (Mac/Linux)?
 
-The distributed exes (Viewer/Studio) are Windows builds only. On Mac/Linux, clone the repository and run it from Python instead (the from-source steps in [Install](../getting-started/install.md)).
+The distributed EXEs are Windows builds. Source-based job management supports Windows and Linux, with additional process-supervision requirements on Linux. macOS job execution is not supported. The public samples remain available in a browser. See [Install](../getting-started/install.md).
 
 ## What's the difference between the public viewer and the distributed Studio build?
 

@@ -1,9 +1,9 @@
 ---
-ja_rev: "a1cc08e22c99"
+ja_rev: "056e69a53d07"
 ---
 # Generate Text
 
-Generating the events themselves never involves an LLM. The LLM only comes in at two stages: turning candidates adopted in [Sifting](../concepts/sifting.md) into a **synopsis**, and turning that synopsis into **prose**. Before generating, choose an LLM connection under ⚙ 全体設定 (Global settings) (see [LLM Backends](llm-backends.md)).
+This page covers generating synopses and prose from experiment results. Synopses use representative grid candidates; prose uses candidates adopted in [Sifting](../concepts/sifting.md). Check [AI settings](settings.md#output-settings) before starting. AI is also used for optional world-draft generation/refinement and rationality judging when κ>0. GA exploration and text generation are separate stages.
 
 ## Kinds
 
@@ -42,8 +42,8 @@ The suggested retry method depends on the situation.
 - **問題を解消してから『未生成・失敗分を生成』で新規要求できます** (Once the problem is fixed, you can re-request via "Generate ungenerated/failed items"): when the cause is clear (e.g. a config mistake) and it's safe to just redo it
 - **結果不明です。二重生成の可能性を確認したうえで『結果不明の候補を確認して再生成』から明示的に再生成してください** (Result unknown. After checking for possible duplicate generation, explicitly regenerate via "Review unknown-result candidates and regenerate"): when success/failure couldn't be confirmed after the LLM call. Since the same content might get generated twice, this requires an explicit, confirmed action
 - **保存障害。LLM は再送せず『復旧』で保存済み証跡から復元します** (Save failure. The LLM is not re-sent; use "Recover" to restore from the saved evidence): when generation itself succeeded but saving it failed. This restores from saved evidence without calling the LLM again
-- **上限に達しました。上限を見直した新しい設定版で新規要求してください** (Limit reached. Re-request under a new settings version with a revised limit): when a limit such as generation count was hit. Here, "settings version" refers not to the GA run settings but to "生成の上限" (Generation limit) under the "文章生成" (Text generation) tab of ⚙ **全体設定** (Global settings) (see [Settings](settings.md#output-settings)). Saving a revised value creates a new settings version, which is used for generation requests from then on
+- **上限に達しました。上限を見直した新しい設定版で新規要求してください** (Limit reached. Re-request under a new settings version with a revised limit): when a limit such as generation count was hit. Here, "settings version" refers not to the GA run settings but to "生成の上限" (Generation limit) under ⚙ **全体設定** (Global settings) → "AIの設定" (AI settings) (see [Settings](settings.md#output-settings)). Saving a revised value creates a new settings version, which is used for generation requests from then on
 
 ## Reusing text-generation settings across experiments
 
-Text-generation settings (backend, model name, limits, etc.) are stored separately from run settings (the GA config), under the "文章生成" (Text generation) section of ⚙ **全体設定** (Global settings) (see [Settings](settings.md)). There is no per-experiment generation config, so generating from a different experiment reuses the same settings as-is. To change them, open ⚙ 全体設定 (Global settings) before generating.
+Text-generation settings (backend, model name, limits, etc.) are stored separately from run settings (the GA config), under the "AIの設定" (AI settings) section of ⚙ **全体設定** (Global settings) (see [Settings](settings.md)). There is no per-experiment generation config, so generating from a different experiment reuses the same settings as-is. Before generating, check "使用するAI" (AI to use) and "生成の上限" (Generation limit). You can select Gemma 4 and change limits on that screen; configure other models under `output` in [settings.json](../reference/settings-json.md).

@@ -22,11 +22,10 @@ class LauncherTests(unittest.TestCase):
             workspace=launcher.prepare(ROOT,Path(d)/'state')
             environment=dict(os.environ,PYTHONPATH=str(workspace),PYTHONNOUSERSITE='1')
             checked=subprocess.run([sys.executable,'-B','-c',
-                'import viewer.server; import engine.time_pressure; '
-                'import execution.time_pressure_settings; import engine.joint_activities; '
+                'import viewer.server; import engine.joint_activities; '
                 'import engine.activity_bookings; import engine.joint_planning; '
                 'import engine.work_registry; from engine.world import World; '
-                'World.from_yaml("projects/momotaro/world.yaml")'],
+                'World.from_yaml("projects/momotaro_plus3_new/world.yaml")'],
                 cwd=workspace,env=environment,capture_output=True,text=True,timeout=30)
             self.assertEqual(checked.returncode,0,checked.stdout+checked.stderr)
 

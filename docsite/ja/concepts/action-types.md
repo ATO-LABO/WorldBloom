@@ -1,11 +1,12 @@
 ---
 sources:
+  - "engine/action_usage.py"
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "templates/momotaro_plus2/action_graph.yaml"
   - "templates/detective/qd.yaml"
   - "templates/romance/qd.yaml"
   - "scripts/export_static.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # 行動タイプ I〜VI
 
@@ -43,3 +44,7 @@ QD 格子の縦軸に使うカテゴリの範囲は、`templates/<ジャンル>/
 | 恋愛（`romance`） | I, II, III のみ |
 
 探偵・恋愛のように身分の入れ替わりや外部介入をほとんど使わないジャンルでは、格子の軸を絞ることで、実際に起こりうる行動の幅に合わせた粒度になります。
+
+## 世界ごとの行動の許可
+
+I〜VI は行動の**分類**であり、世界で使える行動の設定とは別です。現行形式では `action_usage.enabled` と、人物・時間帯などの制約も候補を絞ります。世界設定で行動を許可しても、所持品・場所・知識などの実行条件を満たさなければ候補になりません。設定形式は[テンプレート](../reference/templates.md)を参照してください。

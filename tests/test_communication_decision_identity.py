@@ -16,7 +16,7 @@ from gapengine.communication_repeat import (
 )
 from gapengine.knowledge_text import describe_candidate_coarse, context_key
 from gapengine.festival_policy import build_policies
-from scripts.cultural_festival_probe import load
+from festival_fixture import load_frozen_festival
 
 
 def config(version=DECISION_VERSION, **changes):
@@ -238,7 +238,7 @@ class DecisionIdentityTests(unittest.TestCase):
 
     def test_runtime_first_and_repeat_completion_keep_one_original(self):
         with tempfile.TemporaryDirectory() as temp:
-            world, people = load()
+            world, people = load_frozen_festival()
             actor_id = world.slot_contract['actions']['sound_check']['actor']
             cfg = dict(version=DECISION_VERSION, epoch='native', completion_mode='explicit',
                        actor_tendencies={actor_id: 'reminder'})

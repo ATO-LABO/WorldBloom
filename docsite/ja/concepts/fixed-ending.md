@@ -1,9 +1,11 @@
 ---
 sources:
+  - "projects/momotaro_plus2/world.yaml"
+  - "projects/momotaro_plus3_new/world.yaml"
   - "docs/2026-09-11_gapengine-detailed-design.md"
   - "engine/world.py"
   - "gapengine/qd.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # 結末固定
 
@@ -13,7 +15,7 @@ WorldBloom は「面白い出来事が起きるように世界を調整する」
 
 結末は、[7層構造が共有する述語の語彙](seven-layers.md#predicates)を使った条件式（`when`）として、世界の定義に書きます。
 
-実物（`projects/momotaro_plus2/world.yaml`）の形式で示すと、`ending:` はこのようなリストです。`when` は述語文字列か `{agent, goal}` のどちらかの形式を取れます。
+旧世界（`projects/momotaro_plus2/world.yaml`）を説明用に引用すると、`ending:` はこのようなリストです。`when` は述語文字列か `{agent, goal}` のどちらかの形式を取れます。
 
 ```yaml
 ending:
@@ -28,6 +30,8 @@ ending:
 
 target_ending: [homecoming, homecoming_shared]
 ```
+
+現行の `projects/momotaro_plus3_new/world.yaml` は、目標結末として `purpose_mvz6xmq3_1`（`zone("桃太郎") == "村" and holds("桃太郎", "鬼ヶ島の宝物")`）を指定しています。上の旧世界はそのまま実行するための例ではありません。現在の世界形式は[テンプレート](../reference/templates.md)を参照してください。
 
 `holds`（所持）・`zone`（居場所）・`stance`（関係性）などの述語を組み合わせるだけで、恋愛（相互の stance がしきい値以上）や探偵（`confront` で正解を言い当てる）の結末も同じ仕組みで書けます。1つの世界に複数の結末候補を書いておき、そのうち `target_ending` に指定したものだけが実際の到達判定に使われます。
 

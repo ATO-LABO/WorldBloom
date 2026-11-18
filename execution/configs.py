@@ -375,12 +375,14 @@ def _capture_inputs(repo, spec, runs=None):
     # constructor. Keep the same checked, canonical boundary at this entry too.
     repo = contained(repo, ".").resolve()
     blobs, records = {}, {}
-    def add(path, *, calendar_manifest=False):
+    def add(path, *, calendar_manifest=False, preparation_record=False):
         relative = path.relative_to(repo).as_posix()
         path = contained(repo, relative)
         if not any(path.is_relative_to(repo / area) for area in ("projects", "templates")):
             raise ConfigError("inputs", "入力参照はprojects/templates内に限定します")
-        if path.suffix not in (".yaml", ".yml") and not (calendar_manifest and path.name == "execution-version.json"):
+        if (path.suffix not in (".yaml", ".yml")
+                and not (calendar_manifest and path.name == "execution-version.json")
+                and not (preparation_record and path.name == "purpose-preparation.json")):
             raise ConfigError("inputs", "入力参照はYAMLファイルに限定します")
         data = path.read_bytes()
         blobs[relative] = data
@@ -413,7 +415,16 @@ def _capture_inputs(repo, spec, runs=None):
         if pressure_path.is_symlink() or pressure_path.stat().st_size > MAX_BYTES:
             raise ConfigError("time_pressure.enabled", "期限根拠ファイルを確認してください")
         add(pressure_path)
+        from engine.purpose_preparation_runtime import FILENAME as preparation_filename
+        preparation_path = project / preparation_filename
+        if preparation_path.exists() or preparation_path.is_symlink():
+            add(preparation_path, preparation_record=True)
     declared_world = yaml.safe_load(blobs[world_key])
+    from engine.world_format import validate as validate_format
+    try:
+        validate_format(declared_world)
+    except ValueError as error:
+        raise ConfigError("world_format_version", str(error), code="unsupported") from error
     calendar_mode = (isinstance(declared_world, dict) and isinstance(declared_world.get('slot_execution'), dict)
                      and declared_world['slot_execution'].get('mode') == 'calendar_promises_v2')
     if calendar_mode:
@@ -586,6 +597,12 @@ def _describe(root, spec):
     template = root / "templates" / spec["template_id"]
     graph = template / "action_graph.yaml"
     definition = yaml.safe_load((project / 'world.yaml').read_bytes())
+    if "execution_profile" not in spec:
+        from engine.world_format import validate as validate_format
+        try:
+            validate_format(definition)
+        except ValueError as error:
+            raise ConfigError("world_format_version", str(error), code="unsupported") from error
     calendar_mode = (isinstance(definition.get('slot_execution'), dict)
                      and definition['slot_execution'].get('mode') == 'calendar_promises_v2')
     if calendar_mode:
@@ -594,7 +611,11 @@ def _describe(root, spec):
         people = list(subjects.values())
         subject_paths = [project / r['path'] for r in definition['slot_execution']['subjects']]
     else:
-        world = World.from_yaml(project / "world.yaml", action_graph_path=graph if graph.is_file() else None)
+        if "execution_profile" in spec:
+            from execution.melos_factory import load_approved_world
+            world = load_approved_world(project / "world.yaml")
+        else:
+            world = World.from_yaml(project / "world.yaml", action_graph_path=graph if graph.is_file() else None)
         subject_paths = sorted((project / 'subjects').glob('*.yaml'))
         people = [Subject.from_yaml(p) for p in subject_paths]
     if spec["evolution"]["target_ending"] is not None:

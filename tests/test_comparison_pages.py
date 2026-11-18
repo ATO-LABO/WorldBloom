@@ -91,10 +91,10 @@ class ComparisonTests(unittest.TestCase):
 
     def test_long_synopsis_and_missing_evidence_are_not_invented(self):
         path = self.exp / "synopses.json"
-        synopses = json.loads(path.read_text())
+        synopses = json.loads(path.read_text(encoding="utf-8"))
         prose = ('長いあらすじ <script>未照合</script>\n' * 500) + '最後まで保存された文章'
         synopses["entries"][0]["synopsis"] = prose
-        path.write_text(json.dumps(synopses))
+        path.write_text(json.dumps(synopses), encoding="utf-8")
         with patch.object(compare_pages.data, "cell_explanation", return_value=None):
             code, html, _ = self.host.get_status(self.url(["III|high"]))
         self.assertEqual(code, 200, html)

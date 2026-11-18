@@ -21,6 +21,7 @@ from execution.evolution_worker import EvolutionObserver, candidate_identity, lo
 from execution.provenance import ConfigError, atomic_json, canonical, read_json, sha256
 from gapengine.evolve import EvolutionCancelled, evolve
 from gapengine.qd import Archive
+from saved_world_fixtures import current_world_yaml, install_current_worlds
 from test_gapengine import make_reaching_project, ROOT, TEMPLATE
 from viewer.data import RunRepository
 from viewer.server import ViewerServer, ViewerHandler
@@ -149,6 +150,8 @@ class EvolutionExecutionTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.project = make_reaching_project(self.base)
+        world_path = self.project / "world.yaml"
+        world_path.write_bytes(current_world_yaml(yaml.safe_load(world_path.read_bytes())).encode("utf-8"))
         self.cfg = {"project": self.project, "template": TEMPLATE, "generations": 2,
                     "population": 3, "seeds": 2, "seed_base": 3, "ga_seed": 19,
                     "keep": "all", "record_explanations": True}
@@ -525,6 +528,7 @@ class EvolutionHttpTests(unittest.TestCase):
         shutil.copyfile(ROOT / "requirements.txt", self.repo / "requirements.txt")
         project = make_reaching_project(self.base)
         shutil.copytree(project, self.repo / "projects/momotaro", dirs_exist_ok=True)
+        install_current_worlds(self.repo, "momotaro")
         # Controlled slow seed in a private input repository: real GA, pool and
         # frozen worker still run. Production source is never modified.
         engine = self.repo / "gapengine/evolve.py"
@@ -629,6 +633,7 @@ class EvolutionHttpRouteRhoTests(unittest.TestCase):
         for name in ("engine", "gapengine", "scripts", "execution", "projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name, ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copyfile(ROOT / "requirements.txt", self.repo / "requirements.txt")
+        install_current_worlds(self.repo, "momotaro_plus2")
         self.configs = ConfigStore(self.repo, self.base / "control", self.base / "runs")
         self.configs.save({"label": "route", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
             "evolution": {"generations": 1, "population": 1, "seeds": 1, "processes": 1, "route_rho": 1.0}},
@@ -704,6 +709,7 @@ class EvolutionHttpPersonalityGrowthTests(unittest.TestCase):
         for name in ("engine", "gapengine", "scripts", "execution", "projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name, ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copyfile(ROOT / "requirements.txt", self.repo / "requirements.txt")
+        install_current_worlds(self.repo, "momotaro_plus2")
         self.configs = ConfigStore(self.repo, self.base / "control", self.base / "runs")
         self.configs.save({"label": "growth-on", "project_id": "momotaro_plus2", "template_id": "momotaro_plus2",
             "evolution": {"generations": 2, "population": 2, "seeds": 1, "processes": 1,
@@ -797,6 +803,7 @@ class EvolutionJobRationalityAndConsistencyTests(unittest.TestCase):
         for pkg in ("engine", "gapengine", "scripts", "execution", "projects", "templates"):
             shutil.copytree(ROOT / pkg, repo / pkg, ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copyfile(ROOT / "requirements.txt", repo / "requirements.txt")
+        install_current_worlds(repo, "momotaro_plus2")
         if remove_adapter:
             (repo / "execution/evolution_worker.py").unlink()
         configs = ConfigStore(repo, self.base / name / "control", self.base / name / "runs")
