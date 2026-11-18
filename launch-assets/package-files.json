@@ -548,7 +548,7 @@
   "scripts/jev_stage4_report.py": "1e236241449720fcd8e870e4d782d3fce4ba371d785bd186fc48d2f163a8b380",
   "scripts/narrate.py": "f7e76f15db50d8897dbc0da3677018378a9db30f8f1da2c18cb20109de920ed7",
   "scripts/pack_samples.py": "cd28167947ef2f1d587f05ba0929c0eb312f36c10ea79cc523a3c37df4e5d8a7",
-  "scripts/publication_guard.py": "cf18a58567e56052617d541b796b15ae55ed9cb21c8aadffe53d611794df5203",
+  "scripts/publication_guard.py": "3d5ce511ff1a9b2f4267d115cc2a597b1bd09b71d2a91ccd8e1d471e471f6ec9",
   "scripts/random_baseline.py": "5951432f85928fb35c80e326edbfdb2b42ad4d66295fcb7ce3d701dc6f857eb1",
   "scripts/rationality_probe.py": "70f8e2eb35d2a244f09586fc021234ac2672531314482c34dbf7d1a05565489a",
   "scripts/readable.py": "e6cf965f99e3b1fcb261a1adacb2c0b2bddadc804ee2a58cc0d371e851988d86",
