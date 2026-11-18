@@ -1,5 +1,5 @@
 ---
-ja_rev: "c183118f648a"
+ja_rev: "c463e80fb6e5"
 ---
 # Fixed Ending
 
@@ -9,7 +9,7 @@ Rather than "adjusting the world so interesting events happen," WorldBloom works
 
 An ending is written into the world's definition as a condition expression (`when`), using the [predicate vocabulary shared with the Seven Layers](seven-layers.md#predicates).
 
-Shown in the real (`projects/momotaro_plus2/world.yaml`) shape, `ending:` is a list like this. `when` can be either a predicate string or an `{agent, goal}` form.
+Using the legacy world (`projects/momotaro_plus2/world.yaml`) as an explanatory example, `ending:` is a list like this. `when` can be either a predicate string or an `{agent, goal}` form.
 
 ```yaml
 ending:
@@ -24,6 +24,8 @@ ending:
 
 target_ending: [homecoming, homecoming_shared]
 ```
+
+The current `projects/momotaro_plus3_new/world.yaml` targets `purpose_mvz6xmq3_1`, with condition `zone("桃太郎") == "村" and holds("桃太郎", "鬼ヶ島の宝物")`. The legacy example above is not a runnable current world. See [Templates](../reference/templates.md) for the current format.
 
 Combining predicates like `holds` (possession), `zone` (location), and `stance` (relationship) is enough to write endings for romance (mutual stance above a threshold) or detective stories (naming the culprit correctly with `confront`) using the same mechanism. A world can list multiple candidate endings, and only the one(s) named in `target_ending` are actually used for the reach check.
 

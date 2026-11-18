@@ -4,6 +4,7 @@ the acquired shift back into reweight() via Policy.current_genome())."""
 
 from __future__ import annotations
 
+from frozen_world import evolve_frozen
 import dataclasses
 import json
 import random
@@ -18,6 +19,7 @@ import yaml
 from engine.actions import Action
 from engine.sim import Simulation
 from engine.subject import Subject
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.evolve import _rule_ids, evolve
 from gapengine.genome import Genome
@@ -29,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def load_fixture(project: Path, template: Path) -> tuple[World, dict[str, Subject]]:
     action_graph = template / "action_graph.yaml"
-    world = World.from_yaml(
+    world = load_frozen_world(
         project / "world.yaml",
         action_graph_path=action_graph if action_graph.is_file() else None,
     )
@@ -435,10 +437,10 @@ class MetaEvolutionRuleIdsTests(unittest.TestCase):
                 "seeds": 1,
                 "processes": 1,
             }
-            with_outcome = evolve(
+            with_outcome = evolve_frozen(
                 {**common, "template": PLUS2_TEMPLATE, "out": root / "with_outcome"}
             )
-            without_outcome = evolve(
+            without_outcome = evolve_frozen(
                 {**common, "template": stripped_template, "out": root / "without_outcome"}
             )
             self.assertEqual(
@@ -487,8 +489,8 @@ class PersonalityGrowthCfgKeyTests(unittest.TestCase):
                 "template": MOMOTARO_TEMPLATE,
                 "processes": 1,
             }
-            plain = evolve({**common, "out": root / "plain"})
-            wrong_key = evolve(
+            plain = evolve_frozen({**common, "out": root / "plain"})
+            wrong_key = evolve_frozen(
                 {**common, "out": root / "wrong_key", "growth": {"enabled": True}}
             )
             self.assertEqual(

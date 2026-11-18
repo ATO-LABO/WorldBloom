@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 import http_failure_diagnostics as d
 import test_evolution_execution as evolution_tests
+import test_execution_jobs as job_tests
 
 
 class HttpFailureDiagnosticTests(unittest.TestCase):
@@ -101,3 +102,111 @@ class HttpFailureDiagnosticTests(unittest.TestCase):
         self.assertEqual(case.http.call_count, 2)  # One submit and the original poll only.
         artifact = next((self.root / "evidence/http-timeouts").glob("*.json"))
         self.assertEqual(json.loads(artifact.read_text(encoding="utf-8"))["last_http"]["progress"]["completed_seeds"], 3)
+
+    def startup_case(self):
+        case = job_tests.JobTests("test_http_response_while_running_and_restart")
+        case.jobs = SimpleNamespace(root=self.root, get=Mock(), cancel=Mock(), _read=Mock())
+        case.configs = SimpleNamespace(runs=self.root)
+        case.http = Mock()
+        return case, {"job_id": "job", "run_id": "run", "state": "queued"}
+
+    def assert_no_startup_calls(self, case):
+        for method in (case.http, case.jobs.get, case.jobs.cancel, case.jobs._read):
+            method.assert_not_called()
+
+    def test_started_success_does_not_collect_or_probe(self):
+        case, job = self.startup_case()
+        (self.run / "started.json").write_text("{}", encoding="utf-8")
+        with patch.object(job_tests, "record_http_timeout", create=True) as collect, \
+             patch.object(job_tests.worker, "probe") as probe:
+            self.assertEqual(case.started(job), self.run)
+        collect.assert_not_called()
+        probe.assert_not_called()
+        self.assert_no_startup_calls(case)
+
+    def test_started_timeout_preserves_assertion_and_original_wait(self):
+        case, job = self.startup_case()
+        original = AssertionError("startup marker timeout")
+        with patch.object(job_tests, "until", side_effect=original) as wait, \
+             patch.object(job_tests, "record_http_timeout", create=True) as collect, \
+             patch.dict("os.environ", {"WB_REGRESSION_EVIDENCE_DIR": str(self.root / "evidence")}):
+            with self.assertRaises(AssertionError) as raised:
+                case.started(job)
+        self.assertIs(raised.exception, original)
+        wait.assert_called_once()
+        self.assertEqual(wait.call_args.args[0].__self__, self.run / "started.json")
+        self.assertEqual(wait.call_args.args[0].__name__, "exists")
+        self.assertEqual(wait.call_args.kwargs, {})
+        collect.assert_called_once_with(evidence=str(self.root / "evidence"),
+            job_folder=self.job, run_root=self.run, last_http=job, http_status=None,
+            probe=job_tests.worker.probe)
+        self.assert_no_startup_calls(case)
+
+    def test_started_wait_still_has_sixty_second_deadline(self):
+        case, job = self.startup_case()
+        with patch.object(job_tests.time, "monotonic", side_effect=[0, 59.9, 60]) as clock, \
+             patch.object(job_tests.time, "sleep") as sleep, \
+             patch.object(job_tests, "record_http_timeout", create=True) as collect:
+            with self.assertRaisesRegex(AssertionError, "condition did not become true"):
+                case.started(job)
+        self.assertEqual(clock.call_count, 3)
+        sleep.assert_called_once_with(0.05)
+        collect.assert_called_once()
+        self.assert_no_startup_calls(case)
+
+    def test_started_diagnostic_and_argument_errors_preserve_assertion(self):
+        for broken_argument in (False, True):
+            with self.subTest(broken_argument=broken_argument):
+                case, job = self.startup_case()
+                if broken_argument:
+                    del job["job_id"]
+                original = AssertionError("original startup failure")
+                with patch.object(job_tests, "until", side_effect=original), \
+                     patch.object(job_tests, "record_http_timeout", create=True,
+                                  side_effect=RuntimeError("diagnostic unavailable")) as collect:
+                    with self.assertRaises(AssertionError) as raised:
+                        case.started(job)
+                self.assertIs(raised.exception, original)
+                self.assertEqual(collect.call_count, 0 if broken_argument else 1)
+                self.assert_no_startup_calls(case)
+
+    def test_started_non_assertion_failure_is_not_collected(self):
+        case, job = self.startup_case()
+        original = ValueError("unrelated failure")
+        with patch.object(job_tests, "until", side_effect=original), \
+             patch.object(job_tests, "record_http_timeout", create=True) as collect:
+            with self.assertRaises(ValueError) as raised:
+                case.started(job)
+        self.assertIs(raised.exception, original)
+        collect.assert_not_called()
+        self.assert_no_startup_calls(case)
+
+    def test_preparation_process_state_is_allowlisted_and_private(self):
+        private_fixture = "fixture-only-preparation@example.invalid"
+        identity = {"pid": 3, "image": private_fixture, "nonce": private_fixture}
+        for raw, answer in ((identity, "alive"), (identity, "dead"), (identity, "unknown"),
+                            (identity, "unexpected"), (identity, OSError("probe unavailable")),
+                            (private_fixture, "alive"), (None, "alive")):
+            with self.subTest(identity_is_mapping=isinstance(raw, dict), answer=str(answer)):
+                job = {"receipt": {"identity": {"pid": 1}}, "child_identity": {"pid": 2},
+                       "preparation_identity": raw, "nonce": private_fixture}
+                def probe(value):
+                    if value is raw:
+                        if isinstance(answer, Exception):
+                            raise answer
+                        return answer
+                    return "alive"
+                mock_probe = Mock(side_effect=probe)
+                with patch.object(d, "read_object", side_effect=[(job, "read"), ({}, "missing")]), \
+                     patch.object(d, "recent_events", return_value=([], "missing")):
+                    result, output = self.record(probe=mock_probe)
+                expected = answer if isinstance(raw, dict) and answer in ("alive", "dead", "unknown") else "unknown"
+                self.assertEqual(result["processes"], {"worker": "alive", "child": "alive", "preparation": expected})
+                self.assertEqual(mock_probe.call_count, 3 if isinstance(raw, dict) else 2)
+                self.assertNotIn(private_fixture, output)
+                self.assertNotIn('"pid"', output)
+                self.assertNotIn('"identity"', output)
+                self.assertNotIn('"nonce"', output)
+                artifact = next((self.root / "evidence/http-timeouts").glob("*.json"))
+                self.assertNotIn(private_fixture, artifact.read_text(encoding="utf-8"))
+                self.assertEqual(json.loads(artifact.read_text(encoding="utf-8")), result)

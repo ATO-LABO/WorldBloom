@@ -105,17 +105,23 @@ def _load_effect_library(
     return _as_sequence(raw, label="effects"), path
 
 
+_EFFECTS_UNSET = object()
+
+
 def configure_phase2(
     world: World,
     definition: dict[str, Any],
     source: Path,
+    *,
+    effects_value=_EFFECTS_UNSET,
+    effects_source=None,
 ) -> None:
-    """Load and syntax-check optional Phase 2 configuration."""
+    """Load and syntax-check Phase 2, or consume an explicitly supplied value."""
 
-    raw_effects, effects_path = _load_effect_library(
-        definition,
-        source,
-    )
+    if effects_value is _EFFECTS_UNSET:
+        raw_effects, effects_path = _load_effect_library(definition, source)
+    else:
+        raw_effects, effects_path = _as_sequence(effects_value, label="effects"), effects_source
     effect_ids = [str(entry.get("id", "")) for entry in raw_effects]
     if any(not effect_id for effect_id in effect_ids):
         raise ValueError("Effect id is required")
@@ -245,6 +251,10 @@ def configure_phase2(
             raise ValueError(
                 f"Trial grants must be a non-empty mapping at index {index}"
             )
+        if type(trial.get("transfer_item", False)) is not bool or trial.get("transfer_item") and "item" not in grants:
+            raise ValueError("transfer_item requires an item reward and a boolean value")
+        if "item_amount" in trial and ("item" not in grants or type(trial["item_amount"]) is not int or not 1 <= trial["item_amount"] <= 1000000000):
+            raise ValueError("item_amount requires an item reward and an integer from 1 to 1000000000")
         unknown_grants = set(grants) - {"fact", "item"}
         if unknown_grants:
             raise ValueError(
@@ -1072,8 +1082,10 @@ def available_verbs(
 ) -> set[str]:
     """Apply matching phase-rule allowlists and denylists."""
 
+    from engine.action_constraints import effective_verbs
+    base_verbs = effective_verbs(world, subject)
     if not world.phase_rules:
-        return set(subject.verbs)
+        return base_verbs
 
     present = world.present_subjects(subject.zone)
     namespace = world.namespace(
@@ -1088,7 +1100,7 @@ def available_verbs(
         if rule["predicate"].evaluate(namespace)
     ]
     if not matching:
-        return set(subject.verbs)
+        return base_verbs
 
     enable_lists = [
         set(rule["enable"])
@@ -1101,7 +1113,7 @@ def available_verbs(
         for verb in rule["disable"]
     }
 
-    available = set(subject.verbs)
+    available = base_verbs
     if enable_lists:
         enabled = set().union(*enable_lists)
         available.intersection_update(enabled)
@@ -1178,6 +1190,8 @@ def trial_options(
             required_item is not None
             and not subject.has_item(str(required_item))
         ):
+            continue
+        if trial.get("transfer_item") and not world.subjects[giver].has_item(str(trial["grants"]["item"]), trial.get("item_amount", 1)):
             continue
         result.append(trial)
     return result

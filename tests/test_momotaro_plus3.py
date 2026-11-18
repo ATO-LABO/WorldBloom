@@ -16,6 +16,7 @@ from engine.log import LayersWriter
 from engine.sim import Simulation
 from engine.subject import Subject
 from engine.verbs import VerbEngine
+from frozen_world import load_frozen_world
 from engine.world import World
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +25,7 @@ TEMPLATE = ROOT / "templates" / "momotaro_plus3"
 
 
 def load_fixture() -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(
+    world = load_frozen_world(
         PROJECT / "world.yaml",
         action_graph_path=TEMPLATE / "action_graph.yaml",
     )

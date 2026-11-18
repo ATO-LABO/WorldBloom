@@ -17,6 +17,7 @@ from pathlib import Path
 
 import yaml
 
+from saved_world_fixtures import install_current_worlds
 from world_patch_fixtures import write_approved
 
 from execution.configs import ConfigStore
@@ -64,6 +65,7 @@ class LibraryTestBase(unittest.TestCase):
         self.template = self.repo / "templates" / "momotaro"
         shutil.copytree(ROOT / "projects" / "momotaro", self.project, ignore=shutil.ignore_patterns("patches"))
         shutil.copytree(ROOT / "templates" / "momotaro", self.template)
+        install_current_worlds(self.repo, "momotaro")
         self.experiment = _published_only_experiment(self.root)
 
     def approve(self, project, add, title="小屋を足す"):
@@ -84,6 +86,7 @@ class LibraryTestBase(unittest.TestCase):
     def fresh_target(self, name="momotaro2"):
         target = self.repo / "projects" / name
         shutil.copytree(ROOT / "projects" / "momotaro", target, ignore=shutil.ignore_patterns("patches"))
+        install_current_worlds(self.repo, name)
         return target
 
 

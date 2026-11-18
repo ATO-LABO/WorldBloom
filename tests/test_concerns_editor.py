@@ -6,6 +6,8 @@ import shutil
 import tempfile
 import unittest
 
+from frozen_world import load_frozen_world
+from saved_world_fixtures import install_current_worlds
 from execution.library import LibraryStore
 from execution import world_editor
 from execution.provenance import ConfigError
@@ -19,6 +21,8 @@ class ConcernsEditorTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.repo=Path(self.temp.name)
         shutil.copytree(ROOT/'projects/secret_values',self.repo/'projects/secret_values')
+        shutil.copytree(ROOT / "templates/basic", self.repo / "templates/basic")
+        install_current_worlds(self.repo, "secret_values", template="basic")
         self.store=LibraryStore(self.repo)
         self.current=world_editor.snapshot(self.store,'secret_values')
 
@@ -68,7 +72,7 @@ class ConcernsEditorTests(unittest.TestCase):
         from gapengine.explanations import explain_rows
         from viewer.explanation_ui import panel
         target=Path(self.temp.name)/'runs'
-        run_batch(ROOT/'projects/secret_values/world.yaml',target,[0])
+        run_batch(ROOT/'projects/secret_values/world.yaml',target,[0], world_loader=load_frozen_world)
         rows=[json.loads(line) for line in (target/'seed-0000/layers.jsonl').read_text(encoding='utf8').splitlines()]
         explanation=explain_rows(rows,experiment='example',cell='cell')
         selected=next(item for item in explanation['decisions'] if item['verb']=='amend_proposal')

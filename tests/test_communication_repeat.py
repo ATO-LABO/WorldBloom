@@ -10,7 +10,7 @@ from engine.actions import Action
 from engine.sim import Simulation
 from gapengine.communication_repeat import CommunicationRepeat, VERSION
 from gapengine.festival_policy import build_policies
-from scripts.cultural_festival_probe import load
+from festival_fixture import load_frozen_festival
 
 
 def config(**extra):
@@ -213,7 +213,7 @@ class RepeatStateTests(unittest.TestCase):
 
 class PolicyConnectionTests(unittest.TestCase):
     def fixture(self, configured=True, completion_mode="native_one_slot"):
-        world, people = load()
+        world, people = load_frozen_festival()
         policies = build_policies(world.slot_contract, communication_config=config(completion_mode=completion_mode) if configured else None)
         lead = world.slot_contract["play"]["lead"]
         actor = people[lead]
@@ -303,7 +303,7 @@ class PolicyConnectionTests(unittest.TestCase):
         self.assertIsNone(policy.export_communication_state())
 
     def test_native_run_without_network_keeps_movement_and_activity_options(self):
-        world, people = load()
+        world, people = load_frozen_festival()
         policies = build_policies(world.slot_contract, communication_config=config())
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp, patch("socket.socket.connect", side_effect=AssertionError("network forbidden")):
             sim = Simulation(0, world, people, Path(tmp), policies=policies)

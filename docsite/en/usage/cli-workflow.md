@@ -1,5 +1,5 @@
 ---
-ja_rev: "428a94283bc2"
+ja_rev: "5538d402ac90"
 ---
 # CLI Workflow
 
@@ -8,30 +8,30 @@ How to go from a GA experiment to synopsis/text generation using only the comman
 ## 1. Run a GA experiment
 
 ```
-python scripts/evolve.py --project projects/momotaro --template templates/momotaro \
+python scripts/evolve.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 \
   --out <output dir>/exp1 --generations 20 --population 100 --seeds 3 --keep reached --processes 4
 ```
 
-- `--project` / `--template` can be any of the bundled `basic` / `momotaro` / `momotaro_plus` / `momotaro_plus2` / `detective` / `romance` (the full list is under `templates/`; `basic` holds the shared base rules and is rarely specified on its own as a genre)
+- The bundled current-format example is `--project projects/momotaro_plus3_new --template templates/momotaro_plus3`. Legacy worlds such as `momotaro`, `momotaro_plus2`, `detective`, and `romance` remain on disk but cannot run unchanged through the current loader. For a newly created world, use its corresponding settings.
 - An output directory outside the repository is recommended (`.gitignore` ignores `runs/`, but you shouldn't keep a large volume of experiment output inside the repository anyway)
 - Adding `--personality-growth` enables [personality growth](../concepts/personality-growth.md) (off by default). When it's on and the genre's `qd.yaml` declares `arc_bins`, the `selection.json` cell keys below can become three-part (e.g. `I|low|small`)
-- Rough time cost: scales close to linearly with generations × population × seeds. The default size (20 generations × 100 population × 3 seeds) takes about an hour on 20 cores as a guideline (the process count is set under "Compute" in [Settings](settings.md))
+- Runtime depends on generations, population, seeds, and world complexity. Start with a small run and scale up based on measured time. Set CLI concurrency with `--processes`.
 - On completion, the grid (archive) is written to `<output dir>/exp1/archive.json`. `cells=<count>` is the number of representative individuals that reached the ending and stayed in the grid
 
 You can also run a control experiment that measures the reach rate and diversity produced by purely random policies.
 
 ```
-python scripts/random_baseline.py --project projects/momotaro --template templates/momotaro --out <output dir>/baseline
+python scripts/random_baseline.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 --out <output dir>/baseline
 ```
 
 ## 2. Generate synopsis/text
 
 ```
 python scripts/synopsize.py --archive <output dir>/exp1/archive.json --runs <output dir>/exp1 \
-  --out <output dir>/exp1/synopses.json --backend ollama --project projects/momotaro --template templates/momotaro
+  --out <output dir>/exp1/synopses.json --backend ollama --project projects/momotaro_plus3_new --template templates/momotaro_plus3
 
 python scripts/narrate.py --archive <output dir>/exp1/archive.json --selection <output dir>/exp1/selection.json \
-  --out <output dir>/exp1/stories --backend ollama --project projects/momotaro --template templates/momotaro
+  --out <output dir>/exp1/stories --backend ollama --project projects/momotaro_plus3_new --template templates/momotaro_plus3
 ```
 
 - `--backend` can be `claude-cli` / `codex-cli` / `anthropic` / `openai` / `ollama` / `llama-server` / `none` (see [LLM Backends](llm-backends.md#model-defaults)). `none` skips the LLM call entirely and only saves the prompts

@@ -1,4 +1,5 @@
 """Proposal semantics and genuine cross-world execution, not prose matching."""
+from frozen_world import run_frozen
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -10,6 +11,7 @@ from engine.actions import Action, candidates
 from engine.deliberation import Deliberation
 from engine.sim import Simulation
 from engine.verbs import VerbEngine
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.deliberation_episode import load_episode, run_batch
 from gapengine.deliberation_story import scene_material
@@ -21,7 +23,7 @@ RESCUE = ROOT / "projects/rescue_council/world.yaml"
 
 class DeliberationTests(unittest.TestCase):
     def setUp(self):
-        self.world, self.people = load_episode(REFORM)
+        self.world, self.people = run_frozen(load_episode, REFORM)
         self.rt = self.world.deliberation
         self.engine = VerbEngine(self.world, random.Random(0))
         self.spec = self.rt.specs["main"]
@@ -169,7 +171,7 @@ class DeliberationTests(unittest.TestCase):
         self.assertEqual(self.rt.records["main"]["revision"], 0)
 
     def test_existing_world_is_opt_in_and_has_no_new_candidates(self):
-        world = World.from_yaml(ROOT / 'projects/momotaro/world.yaml')
+        world = load_frozen_world(ROOT / 'projects/momotaro/world.yaml')
         self.assertIsNone(world.deliberation)
 
     def test_all_reviewers_are_needed_and_required_support_is_not_affinity(self):
@@ -190,7 +192,7 @@ class EpisodeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             for project in (REFORM, RESCUE):
                 target = Path(temp) / project.parent.name
-                summary = run_batch(project, target, list(range(8)))
+                summary = run_frozen(run_batch, project, target, list(range(8)))
                 self.assertEqual(summary["trial_count"], 8)
                 self.assertEqual(summary["counts"].get("execution_failure", 0), 0)
                 trials = [json.loads(line) for line in (target / 'trials.jsonl').read_text(encoding='utf-8').splitlines()]
@@ -210,16 +212,16 @@ class EpisodeTests(unittest.TestCase):
     def test_seed_determinism_and_existing_output_not_overwritten(self):
         with tempfile.TemporaryDirectory() as temp:
             first, second = Path(temp)/'one', Path(temp)/'two'
-            run_batch(REFORM, first, [3]); run_batch(REFORM, second, [3])
+            run_frozen(run_batch, REFORM, first, [3]); run_frozen(run_batch, REFORM, second, [3])
             self.assertEqual((first/'seed-0003/layers.jsonl').read_bytes(), (second/'seed-0003/layers.jsonl').read_bytes())
             before = (first/'trials.jsonl').read_bytes()
-            with self.assertRaises(FileExistsError): run_batch(REFORM, first, [3])
+            with self.assertRaises(FileExistsError): run_frozen(run_batch, REFORM, first, [3])
             self.assertEqual((first/'trials.jsonl').read_bytes(), before)
 
     def test_prose_material_has_exact_speaker_statements_and_rejects_modified_ledger(self):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp)/'episode'
-            run_batch(REFORM, target, [4])
+            run_frozen(run_batch, REFORM, target, [4])
             folder = target/'seed-0004'
             material = scene_material(folder)
             self.assertEqual(material['final_state']['state']['婚姻制度'], '存続')

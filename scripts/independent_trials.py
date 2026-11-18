@@ -12,12 +12,12 @@ from engine.time_kernel import TimeActionKernel
 from execution.provenance import atomic_json,verify_files,sha256,canonical
 from execution.independent_review import receipt
 
-def run_trials(run,progress=None,should_cancel=None):
+def run_trials(run,progress=None,should_cancel=None,*,acknowledge=None):
     run=Path(run)
     manifest=json.loads((run/'review-manifest.json').read_text(encoding='utf-8'))
     if 'execution_profile' in manifest['config']:
         from execution.melos_product import run_trials as run_profile
-        return run_profile(run,progress,should_cancel)
+        return run_profile(run,progress,should_cancel,acknowledge=acknowledge)
     verify_files(run/'runtime',manifest['runtime']['files'])
     verify_files(run/'inputs',manifest['inputs']['files'])
     plan=ExecutionPlan(json.loads((run/'execution-plan.json').read_text(encoding='utf-8')))
@@ -69,7 +69,9 @@ def main():
     # A review admission never reads model settings; enforce that at runtime too.
     def deny(*args,**kwargs):raise RuntimeError('Network is disabled for CPU independent trials')
     socket.socket.connect=deny;socket.create_connection=deny
-    run_trials(a.run,progress,cancelled)
+    from execution.melos_native_jobs import acknowledge_control
+    def acknowledge(value):return acknowledge_control(folder.parent,folder,a.nonce,value)
+    run_trials(a.run,progress,cancelled,acknowledge=acknowledge)
     return 0
 
 if __name__=='__main__':raise SystemExit(main())

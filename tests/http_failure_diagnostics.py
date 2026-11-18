@@ -93,7 +93,8 @@ def record_http_timeout(*, evidence, job_folder, run_root, last_http, http_statu
         processes = {}
         receipt = job.get("receipt")
         identities = {"worker": (receipt.get("identity") if isinstance(receipt, dict) else None)
-                      or job.get("launch_identity"), "child": job.get("child_identity")}
+                      or job.get("launch_identity"), "child": job.get("child_identity"),
+                      "preparation": job.get("preparation_identity")}
         for label, identity in identities.items():
             try:
                 state = probe(identity) if isinstance(identity, dict) else "unknown"

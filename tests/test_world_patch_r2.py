@@ -23,6 +23,7 @@ from gapengine.world_patch import (EMPTY_STACK_DIGEST, PatchError, materialize, 
 from gapengine.world_patch_contract import contract_check, new_usage
 from gapengine.world_patch_inputs import inputs_digest, read_subjects, resolve_references, runtime_digest
 from gapengine.world_patch_trial import gate_status, seed_sets, run_trial
+from saved_world_fixtures import current_world_yaml
 from world_patch_fixtures import (ROOT, branch_entry_experiment, external_repo_experiment, frozen_experiment,
                                   frozen_experiment_with_external_reference, write_approved)
 
@@ -61,7 +62,7 @@ class Boundaries(unittest.TestCase):
     def write_materialized(self, p):
         world, people = materialize(self.world, self.people, [p])
         path = self.root / "patched.yaml"
-        path.write_text(yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+        path.write_text(current_world_yaml(world), encoding="utf-8")
         folder = self.root / "subjects"
         folder.mkdir()
         for name, person in people.items():
@@ -109,7 +110,7 @@ class Boundaries(unittest.TestCase):
         p = proposal("村")
         world, materialized_people = materialize(self.world, people, [p])
         path = self.root / "patched_n3.yaml"
-        path.write_text(yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+        path.write_text(current_world_yaml(world), encoding="utf-8")
         folder = self.root / "subjects_n3"
         folder.mkdir()
         for name, person in materialized_people.items():

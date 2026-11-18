@@ -1,5 +1,6 @@
 ---
 sources:
+  - "engine/world_format.py"
   - "viewer/run_settings.py"
   - "viewer/workbench_pages.py"
   - "execution/configs.py"
@@ -11,7 +12,7 @@ sources:
   - "execution/epoch_chain.py"
   - "gapengine/rationality.py"
   - "execution/rationality_settings.py"
-reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # 実行設定
 
@@ -92,8 +93,12 @@ reviewed: "780367c9518f18cdcc3cadd5907f8dfa2331d614"
 - **ジャンル**: 新規作成時のみ選べます（複製時は複製元と同じ）
 - **乱数の開始値**（seed_base、既定 0）・**進化の乱数**（ga_seed、既定 1）
 - 並列数（GA を同時に何プロセスで進めるか）はここではなく **⚙ 全体設定の「計算」** で指定します（[設定](settings.md)を参照）
-- **実行時間の上限**（execution_limits.wall_seconds、既定 3600秒）: この秒数を超えると実行を打ち切ります。κ（合理性判定、上記）を使う場合は既定で 21600 秒に引き上がります
+- **実行時間の上限**（execution_limits.wall_seconds、既定 3600秒）: この秒数を超えると実行を打ち切ります。新規作成時に Ollama の合理性判定が選ばれる場合は既定で 21600 秒に引き上がります（Jev は3600秒）
 
 ## 実行開始
 
 保存すると、その設定の実行条件画面（`/configs/<設定ID>`）に進みます。「この条件で実行へ →」を押すと実行画面（`/jobs`）が開き、「この設定で GA を回す」を押すと実行が始まります。実行中は世代の進捗バーが表示され、実行を止めても**閉じた世代までの結果は残ります**。実行が終わったら、同じ画面から「同じ設定でもう一度回す」で再実行できます。
+
+## 世界の条件と実行設定の違い
+
+行動の許可、人物・時間帯の制約、体力、品物・装備、金銭、主人公の目標は**世界設定**で編集します。この画面の GA の規模・乱数・保存方法とは別です。基本ルール（旧画面の「ジャンル」）は世界が参照するテンプレートです。新形式の同梱世界は「桃太郎＋3」（`momotaro_plus3_new`）で、基本ルールは `momotaro_plus3` です。旧世界用の設定はそのままでは新しく実行できません。

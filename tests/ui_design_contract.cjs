@@ -32,6 +32,10 @@ for (const name of fs.readdirSync(dir).filter(n => n.endsWith('.css'))) {
 const documentSource = fs.readFileSync(path.join(root,'viewer/pages.py'),'utf8');
 assert(documentSource.includes('/static/ui-tokens.css') && documentSource.includes('/static/ui.css'), 'Default renderer must include shared design');
 const shared=fs.readFileSync(path.join(dir,'ui.css'),'utf8');
+assert(shared.includes(':not([aria-current="false"])'), 'Inactive sidebar items must not receive the current-item style');
+assert(!/\.wp-nav/.test(fs.readFileSync(path.join(dir,'world-prototype.css'),'utf8')), 'World sidebar controls belong to the shared component');
+const rulesSource=fs.readFileSync(path.join(root,'viewer/world_advanced.py'),'utf8');
+assert(rulesSource.includes('class="ui-nav"')&&rulesSource.includes("page_class='settings-workspace'"), 'World rules must use the shared sidebar and settings shell');
 assert(shared.includes('.ui-edit-dialog,.wp-dialog'), 'Draft and saved-world edit dialogs must share their appearance');
 assert(!/\.wp-dialog\b/.test(fs.readFileSync(path.join(dir,'world-prototype.css'),'utf8')), 'Dialog appearance belongs to shared UI, not the world page');
 for (const name of ['world_create.py','global_settings.py']) {

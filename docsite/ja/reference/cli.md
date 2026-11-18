@@ -10,7 +10,7 @@ sources:
   - "scripts/export_static.py"
   - "scripts/pack_samples.py"
   - "viewer/server.py"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # CLI
 
@@ -29,7 +29,7 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 例:
 
 ```powershell
-python scripts/evolve.py --project projects/momotaro_plus2 --template templates/momotaro_plus2 `
+python scripts/evolve.py --project projects/momotaro_plus3_new --template templates/momotaro_plus3 `
   --out ../WorldBloom-data/runs/my-exp --generations 20 --population 100 --seeds 3
 ```
 
@@ -108,7 +108,7 @@ python scripts/evolve.py --project projects/momotaro_plus2 --template templates/
 
 ## viewer/server.py — 画面を起動する
 
-`--control` を付けない既定状態では、書き込み系のAPIはすべて拒否される閲覧専用として動きます（詳しくは[HTTP API](http-api.md)）。
+`--control` を付けない既定状態では、世界の編集やGA実行などの管理機能は使えません。ただし、候補の選定は保存できるため、完全な書込禁止モードではありません。すべてのPOSTを拒否する配布Viewerの `read_only` 設定とは異なります（詳しくは[HTTP API](http-api.md)）。
 
 ```
 --8<-- "cli/server.txt"

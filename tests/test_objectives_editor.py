@@ -7,6 +7,8 @@ import tempfile
 import unittest
 
 from execution import world_editor
+from frozen_world import load_frozen_world
+from saved_world_fixtures import install_current_worlds
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from gapengine.objective_episode import run_batch
@@ -21,6 +23,8 @@ class ObjectiveEditorTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.repo=Path(self.temp.name);self.folder=self.repo/'projects/village_objectives'
         shutil.copytree(ROOT/'projects/village_objectives',self.folder)
+        shutil.copytree(ROOT / "templates/basic", self.repo / "templates/basic")
+        install_current_worlds(self.repo, "village_objectives", template="basic")
         self.store=LibraryStore(self.repo);self.current=world_editor.snapshot(self.store,'village_objectives')
 
     def save(self,value,operation='goal-rules',revision=None):
@@ -73,7 +77,7 @@ class ObjectiveEditorTests(unittest.TestCase):
         self.assertIn('失敗確定',shown);self.assertIn('人物がこの結果を知っているとは限りません',shown)
 
     def test_batch_preserves_losing_characters_and_all_seeds_with_hashes(self):
-        output=self.repo/'batch';summary=run_batch(self.folder/'world.yaml',output,[0,1])
+        output=self.repo/'batch';summary=run_batch(ROOT/'projects/village_objectives/world.yaml',output,[0,1], world_loader=load_frozen_world)
         self.assertEqual(summary['trials'],2);self.assertEqual(summary['execution_failures'],0)
         records=[json.loads(line) for line in (output/'trials.jsonl').read_text(encoding='utf8').splitlines()]
         self.assertEqual([r['seed'] for r in records],[0,1])

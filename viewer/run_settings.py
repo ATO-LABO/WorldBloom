@@ -34,7 +34,7 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         world_field = (f'<input type="hidden" name="project_id" value="{E(selected)}">'
             f'<div class="rs-fixed"><span>世界</span><strong>{E(names.get(selected, selected))}</strong></div>')
         genre_field = (f'<input type="hidden" name="template_id" value="{E(values["template_id"])}">'
-            f'<p>ジャンル：{E(values["template_id"])}（複製元と同じ）</p>')
+            f'<p>基本ルール：{E(values["template_id"])}（複製元と同じ）</p>')
     else:
         options = '<option value="">世界を選ぶ…</option>' + ''.join(
             f'<option value="{E(p)}" data-genre="{E(metadata.get(p, {}).get("genre") or "")}"'
@@ -42,7 +42,7 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         world_field = ('<div class="field"><label for="f-project_id">世界</label>'
             f'<select id="f-project_id" name="project_id" data-field="project_id" required>{options}</select>'
             '<span class="field-error" data-error-for="project_id" role="alert"></span></div>')
-        genre_field = wb._select_field("ジャンル", "template_id", ["", *templates], values["template_id"])
+        genre_field = wb._select_field("基本ルール", "template_id", ["", *templates], values["template_id"])
         for ident, label in genre_names.items():
             genre_field = genre_field.replace(">"+E(ident)+"</option>", ">"+E(label)+"</option>")
     custom = bool(values["evolution.target_ending"])
@@ -88,12 +88,12 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         + wb._checkbox_field("使われなかった拡張を自動で枯らす", "growth.auto_retire", values["growth.auto_retire"])
         + '</div><p class="rs-muted">エポック＝世界が1周育つ単位（実験1本を回し、足りない場所の拡張を提案・検査・'
           '承認し、使われなかった拡張を枯らす）。連鎖では前のエポックの性格を次に引き継ぎます。</p>')
-    # WB-WORLDGROW-001 段階5b: 前の実験（同じ世界・同じジャンルで完了済みの実行）の
+    # WB-WORLDGROW-001 段階5b: 前の実験（同じ世界・同じ基本ルールで完了済みの実行）の
     # 最終アーカイブの genome だけを、この実験の第0世代に引き継ぐ。候補は
-    # 選択中の世界・ジャンルに属する設定から生まれた、run_id を持つ完了済み
+    # 選択中の世界・基本ルールに属する設定から生まれた、run_id を持つ完了済み
     # ジョブに限る（「完了」= succeeded/partial -- アーカイブが読める、既存の
     # 慣例と同じ判定）。この select はサーバー初期描画のみ（JS 未追従）なので、
-    # 画面で世界・ジャンルを切り替えても候補は更新されない -- ラベルに世界名を
+    # 画面で世界・基本ルールを切り替えても候補は更新されない -- ラベルに世界名を
     # 添えて、古い候補だと分かるようにする（Opus review R3）。
     selected_template = values["template_id"]
     seed_candidates = []

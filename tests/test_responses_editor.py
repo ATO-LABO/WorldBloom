@@ -5,6 +5,8 @@ import shutil
 import tempfile
 import unittest
 
+from frozen_world import load_frozen_world
+from saved_world_fixtures import install_current_worlds
 from execution.library import LibraryStore
 from execution import world_editor
 from execution.provenance import ConfigError
@@ -18,6 +20,8 @@ class ResponseEditorTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.repo=Path(self.temp.name)
         shutil.copytree(ROOT/'projects/village_response',self.repo/'projects/village_response')
+        shutil.copytree(ROOT / "templates/basic", self.repo / "templates/basic")
+        install_current_worlds(self.repo, "village_response", template="basic")
         self.store=LibraryStore(self.repo);self.current=world_editor.snapshot(self.store,'village_response')
 
     def save(self,value,operation='responses',revision=None):
@@ -54,7 +58,7 @@ class ResponseEditorTests(unittest.TestCase):
         from gapengine.response_episode import run_batch
         import hashlib
         output=self.repo/'batch'
-        summary=run_batch(ROOT/'projects/village_response/world.yaml',output,[0,1])
+        summary=run_batch(ROOT/'projects/village_response/world.yaml',output,[0,1], world_loader=load_frozen_world)
         self.assertEqual(summary['trials'],2)
         rows=[json.loads(line) for line in (output/'trials.jsonl').read_text(encoding='utf8').splitlines()]
         self.assertEqual(len(rows),2)

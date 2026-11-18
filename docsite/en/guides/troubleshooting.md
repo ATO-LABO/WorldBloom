@@ -1,5 +1,5 @@
 ---
-ja_rev: "3125b5bebb0d"
+ja_rev: "2de54ccc5905"
 ---
 # Troubleshooting
 
@@ -7,7 +7,7 @@ ja_rev: "3125b5bebb0d"
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Windows SmartScreen warns you | The distributed exe is unsigned | Click "More info" then "Run anyway". See [Install](../getting-started/install.md) |
+| Windows SmartScreen warns you | The distributed exe is unsigned | Verify the official Release source and any published checksum; do not run unknown files. See [Install](../getting-started/install.md) |
 | `pywebview の読み込みに失敗しました。配布フォルダが壊れている可能性があります。展開し直してください。` (Failed to load pywebview. The distribution folder may be corrupted. Please re-extract it.) | The distributed zip was extracted incompletely | Re-extract the zip |
 | `WorldBloom.exe と同じフォルダに app フォルダが見つかりません。` (No app folder found next to WorldBloom.exe.) (Studio shows `WorldBloom Studio.exe と同じフォルダに...`, "...next to WorldBloom Studio.exe") | Only the exe was moved / distributed on its own | Keep the distribution folder's layout intact (`WorldBloom.exe` / `WorldBloom-Studio.exe` alongside the `app/` folder) and place it together in the same location |
 | Studio shows "GA実験の実行にはPython 3.12以上（PyYAML導入済み）が別途必要です" (Running a GA experiment separately needs Python 3.12+ with PyYAML installed) | On Studio startup, `python`/`python3`/`py` wasn't found on PATH, or what was found is below 3.12 or missing PyYAML | Install from [python.org](https://www.python.org/downloads/), checking "Add python.exe to PATH" in the installer. After installing, run `pip install pyyaml` and restart Studio |
@@ -28,9 +28,9 @@ WorldBloom.exe (the read-only build) still shows on-screen controls like the ado
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| モデルを指定してください (Please specify a model) | No model name entered in ⚙ 全体設定 (Global settings) (no backend other than `claude-cli` fills this in automatically) | Enter a model name under the "文章生成" (Text generation) tab in ⚙ 全体設定 (Global settings). See [LLM Backends](../usage/llm-backends.md#model-defaults) |
+| モデルを指定してください (Please specify a model) | The saved generation settings have no model name (only `claude-cli` fills this in automatically) | Check the saved backend under ⚙ 全体設定 (Global settings) → AIの設定 (AI settings) → 使用するAI (AI to use). Select and save Gemma 4 on that screen; configure other models under `output` in [settings.json](../reference/settings-json.md). Also check that the model is installed and reachable. See [LLM Backends](../usage/llm-backends.md#model-defaults) |
 | 実行ファイルが見つかりません (Executable not found) | `claude-cli` / `codex-cli` is selected but the `claude`/`codex` command isn't on PATH | Install the relevant CLI and add it to PATH |
-| 資格情報がありません (No credentials) | `anthropic` / `openai` is selected but no API key is saved | Save a key under the "APIキー" (API key) field in ⚙ 全体設定 (Global settings) |
+| 資格情報がありません (No credentials) | `anthropic` / `openai` is selected but no API key is saved | Configure credentials for the selected backend. See [LLM Backends](../usage/llm-backends.md) for differences between the current screen and CLI |
 | そのモデルは見つかりません (That model was not found) | The given model name doesn't exist on the backend (not pulled in Ollama, doesn't exist on the API, etc.) | Verify the model name, or fetch it following [LLM Backends](../usage/llm-backends.md) |
 | サーバーに接続できません (Can't reach the server) | Ollama / llama-server itself isn't running, or `base_url` is wrong | Start the server (or set up auto-start via [GPU Guard](../usage/gpu-guard.md)), or check `base_url` |
 | settings.json を読めません (Can't read settings.json) | `settings.json` is corrupted or unreadable | Check the file's contents (JSON syntax) |
@@ -38,3 +38,11 @@ WorldBloom.exe (the read-only build) still shows on-screen controls like the ado
 | The response cuts off mid-way (`finish_reason: "length"`) | Especially with llama-server / Bonsai 2, `--reasoning-budget` wasn't specified when starting the server | Always include `--reasoning-budget` in the server startup command. See [LLM Backends](../usage/llm-backends.md#bonsai2-llama-server) |
 | Generation fails with `GpuBusy` | The GPU guard couldn't acquire a lease (another process is using the GPU) | Wait a while and retry, or finish the conflicting process. See [GPU Guard](../usage/gpu-guard.md#gpubusy) |
 | A generation result comes back "結果不明" (Unknown) | Success/failure couldn't be determined after the LLM call | After checking for possible duplicate generation, explicitly regenerate following the on-screen guidance. See [Generate Text](../usage/generate-text.md#retry) |
+
+## A world is rejected as a legacy format
+
+The current source edits and runs only new-format worlds. Choose 桃太郎＋3 (Momotaro +3, `momotaro_plus3_new`) or a world confirmed through the creation screen. Legacy worlds are not converted automatically. Do not add only a version number to force them through validation; keep their original files and past run outputs.
+
+## Draft saving or AI refinement stops
+
+For a conflict (409), compare the latest saved version with your local input and use the save-as-separate-copy option when appropriate. If a save outcome is uncertain, inspect the saved state rather than resending blindly. If validation rejects an AI candidate, inspect the reason instead of adopting only a partial request. See [Create a World](../usage/create-world.md).

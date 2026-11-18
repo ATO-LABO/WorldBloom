@@ -93,13 +93,18 @@ class SlotRuntime:
         return True
 
     def candidates(self, person):
+        from engine.stamina import forced_rest,zero_behavior
+        if person.vitality=='dead' or person.stamina<=0 and zero_behavior(self.world)=='death':return []
+        rest=forced_rest(self.world,person)
+        if rest is not None:return [(rest,1.0)]
+        from engine.stamina import adjusted_cost
         actions = [Action("wait", meta={"duration_slots": 1})]
         if self.available(person, "move"):
             for edge in self.world.routes.get(person.zone, ()):
                 if (edge.destination in person.range_zones
                         and edge.destination not in self.world._excluded_zones(person)
                         and self.world._route_allowed(person, edge)
-                        and person.stamina >= edge.cost):
+                        and person.stamina >= adjusted_cost(self.world,'move',edge.cost)):
                     actions.append(Action("move", (edge.destination,),
                         {"duration_slots": 1, "cost": edge.cost, "hops": 1}))
         actions.append(Action("practice", meta={"duration_slots": 1}))
@@ -135,6 +140,8 @@ class SlotRuntime:
                     for channel in channels:
                         actions.append(Action("dialogue", (peer, request["topic"], kind, channel),
                             {"duration_slots": 1, "target": peer, "request_id": request["id"]}))
+        from engine.stamina import adjusted_cost
+        actions=[a for a in actions if adjusted_cost(self.world,a.verb,a.meta.get('cost',0)) <= person.stamina]
         return [(a, 1.0) for a in sorted(actions, key=lambda a: (a.verb, a.args))]
 
     def emit(self, verb, actor=None, result="applied", **details):
@@ -146,7 +153,7 @@ class SlotRuntime:
             self.perceptions[name].append({"t": self.tick, "slot": self.sim.slot, **observation})
 
     def start(self, person, action, probability):
-        if action.verb == "rest":
+        if action.verb == "rest" and not action.meta.get("stamina_forced_rest"):
             action = Action("wait", meta={"duration_slots": 1})
         offered = self.candidates(person)
         canonical = next((a for a, _ in offered if (a.verb, a.args) == (action.verb, action.args)), None)
@@ -188,7 +195,8 @@ class SlotRuntime:
                 result, details = "failed", {"reason": "edge_unavailable_at_completion"}
             else:
                 actor.zone = edge.destination
-                actor.change_stamina(-edge.cost)
+                from engine.stamina import adjusted_cost
+                actor.change_stamina(-adjusted_cost(self.world,'move',edge.cost))
                 details = {"origin": pending["origin"], "dest": actor.zone, "hops": 1}
                 self.perceive(pending["audience"], {"kind": "departure", "subject": actor.id,
                                                    "origin": pending["origin"]})
@@ -256,8 +264,16 @@ class SlotRuntime:
                             "to": peer, "topic": topic, "intent": kind, "completed_t": self.tick})
                         if actor.id == self.lead and topic == "出演":
                             self.state["declines_to_perform"] = kind == "decline"
+        elif action.verb == "rest" and action.meta.get("stamina_forced_rest"):
+            details["stamina_delta"]=actor.change_stamina(actor.stamina_recover)
+            details["forced_by"]="stamina_zero"
         elif action.verb != "wait":
             raise ValueError("Unknown queued action")
+        if result != 'failed' and action.verb != 'move' and not action.meta.get('stamina_forced_rest'):
+            from engine.stamina import adjusted_cost
+            actor.change_stamina(-adjusted_cost(self.world,action.verb,0))
+        from engine.stamina import resolve_zero
+        zero_markers=resolve_zero(self.world,actor)
         after = self.sim._capture()
         repeat=action.meta.get('communication_repeat')
         if repeat is not None:
@@ -271,6 +287,7 @@ class SlotRuntime:
             "activity_delta": nested_diff(before_state, self.state), **details})
         self.writer.write(row)
         self.completed.append(row)
+        self.sim._write_markers(self.writer,zero_markers)
         if result == "failed":
             self.failures.append(row)
         elif action.verb not in ("move", "dialogue", "wait"):
@@ -343,7 +360,12 @@ class SlotRuntime:
         tick, slot = frame.at, frame.label["slot"]
         writer = self.writer
         for name in sim._action_order():
+            from engine.stamina import resolve_zero
+            sim._write_markers(self.writer,resolve_zero(self.world,self.people[name]))
+            if self.people[name].vitality=='dead':continue
             action, probability = sim.choose_action(self.people[name])
+            from engine.stamina import forced_rest
+            action=forced_rest(self.world,self.people[name]) or action
             self.start(self.people[name], action, probability)
 
     def run(self):

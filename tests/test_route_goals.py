@@ -14,6 +14,7 @@ import yaml
 from engine.actions import Action
 from engine.subject import Subject
 from engine.verbs import VerbEngine
+from frozen_world import load_frozen_world
 from engine.world import World
 from engine.world import Route as WorldRoute
 from gapengine.route_goals import resolve_goal
@@ -25,7 +26,7 @@ SAMPLE = ROOT / "samples/route_goals/cultural_festival"
 
 
 def fixture():
-    world = World.from_yaml(SAMPLE / "world.yaml")
+    world = load_frozen_world(SAMPLE / "world.yaml")
     people = {p.id: p for p in (Subject.from_yaml(f) for f in sorted((SAMPLE / "subjects").glob("*.yaml")))}
     world.bind_subjects(people)
     return world, people
