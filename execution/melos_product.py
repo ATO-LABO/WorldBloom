@@ -1,23 +1,20 @@
 """Explicit neutral Melos independent-trial adapter.
 
 This module does not register an API route. It reuses the approved finite session,
-real plan admission and authoritative checkpoint publisher. Minute chunks are
+real plan admission and native generation-bound publisher. Minute chunks are
 save/cancellation boundaries, never a shortened observation window.
 """
 from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
-import tempfile
 import json
 
 from engine.calendar_checkpoint import strict_json
 from engine.execution_plan import ExecutionPlan, digest
 from execution.melos_factory import MelosSessionFactory, approved_catalogs
 from execution.melos_plan import MelosPlanBinding
-from execution.melos_run_record import publish_saved_run_record
-from execution.provenance import (ConfigError, atomic_json, canonical, code_snapshot,
-                                  contained, directory_lock, identifier, materialize,
-                                  sha256, verify_files)
+from execution.provenance import (ConfigError, canonical, code_snapshot,
+                                  contained, identifier, sha256)
 from gapengine.genome import Genome
 
 PROFILE_ID = 'melos_approved_ninegene_v1'
@@ -44,29 +41,16 @@ def _profile(config):
 
 @contextmanager
 def _factory(runtime_root, input_root, config):
-    """Keep an exact-byte alias alive only when a project has a different name."""
+    """One live input capture, explicit frozen genome, no temporary path alias."""
+    from engine.calendar_capture import open_calendar_capture
     profile = _profile(config)
-    project = contained(input_root, 'projects/' + identifier(config['project_id']))
+    project = Path(input_root).absolute() / 'projects' / identifier(config['project_id'])
     catalog = approved_catalogs()
-    actual = {}
-    for path in project.rglob('*'):
-        if path.is_symlink():
-            raise ValueError('Linked profile inputs are unsupported')
-        if path.is_file():
-            relative = path.relative_to(project).as_posix()
-            actual[relative] = sha256(contained(project, relative).read_bytes())
-    if actual != catalog['inputs']:
-        raise ValueError('Saved project differs from exact approved input catalog')
-    source = contained(runtime_root, 'execution/approved_melos_sources')
-    with tempfile.TemporaryDirectory(prefix='wb-melos-profile-') as temporary:
-        target = project
-        if project.name != 'melos-input':
-            target = Path(temporary) / 'melos-input'
-            materialize(target, {name: contained(project, name).read_bytes()
-                                 for name in catalog['inputs']})
-        yield MelosSessionFactory(source, target,
+    genome = Genome.from_dict(deepcopy(profile['genome']))
+    with open_calendar_capture(project / 'world.yaml', profile='melos', capture_ancestry=True) as capture:
+        yield MelosSessionFactory(Path(runtime_root) / 'execution/approved_melos_sources', project,
             approved_source_hashes=catalog['sources'], approved_input_hashes=catalog['inputs'],
-            genome=Genome.from_dict(profile['genome']))
+            genome=genome, calendar_capture=capture)
 
 
 def _capability(config, inputs, runtime, factory):
@@ -121,7 +105,8 @@ def _admission(cap, request, factory):
             raise ConfigError(field, '入力または方針版が更新されています', code='conflict')
     sessions = {seed: factory.create(seed) for seed in request['seed_plan']}
     binding = MelosPlanBinding(sessions)
-    result = {'capability': cap, 'execution_plan': binding.plan.to_dict(),
+    result = {'storage': {'kind': 'melos_independent_native_v1', 'restart_authority': False},
+              'capability': cap, 'execution_plan': binding.plan.to_dict(),
               'execution_plan_sha256': binding.plan.sha256, 'binding_manifest': binding.manifest()}
     return result, binding
 
@@ -172,133 +157,16 @@ def _trial(case, seed, record, failure=None):
     return base
 
 
-def _receipt(run, records, *, cancelled=False):
-    from execution.independent_review import receipt
-    value = receipt(run, records)
-    value['completed'] = sum(r['status'] in ('observed', 'execution_failure') for r in records)
-    value['failed'] = sum(r['status'] == 'execution_failure' for r in records)
-    value['unresolved'] = sum(r.get('category') == 'unresolved' for r in records)
-    value['execution_profile'] = PROFILE_ID
-    value['provider_assumptions'] = deepcopy(_read(run, 'review-manifest.json')['admission']['capability']['provider_assumptions'])
-    value['completion'] = ('complete' if value['completed'] == value['requested'] else
-                           'cancelled_partial' if cancelled else 'partial')
-    return value
-
-
-def _publish_receipt(run, records, *, cancelled=False):
-    result = _receipt(run, records, cancelled=cancelled)
-    atomic_json(run / 'partial-review.json', result)
-    complete = result['completion'] == 'complete'
-    if complete:
-        atomic_json(run / 'review-result.json', result)
-    atomic_json(run / 'review-completion.json',
-                {key: result[key] for key in ('requested', 'completed', 'failed')} | {'complete': complete})
-    return result
-
-
-def run_trials(run, progress=None, should_cancel=None, *, resume=False):
-    """Run only admitted slots; explicit resume never reruns terminal/failure slots.
-
-    The outer job/process-tree owner must authorize a restart before passing
-    resume=True. Matching on-disk ownership is necessary, not restart authority.
-    A run-wide writer lock also rejects concurrent writers. Existing API retry
-    reconnects to its job; this module adds no public restart route.
-    """
-    run = Path(run).absolute()
-    manifest = _read(run, 'review-manifest.json')
-    request = _read(run, 'accepted-request.json')
-    verify_files(run / 'runtime', manifest['runtime']['files'])
-    verify_files(run / 'inputs', manifest['inputs']['files'])
-    plan = ExecutionPlan(_read(run, 'execution-plan.json'))
-    if (plan.to_dict() != manifest['admission']['execution_plan'] or
-            plan.sha256 != manifest['admission']['execution_plan_sha256']):
-        raise ValueError('Changed execution plan')
-    with _factory(run / 'runtime', run / 'inputs', manifest['config']) as factory:
-        cap = _capability(manifest['config'], manifest['inputs'], manifest['runtime'], factory)
-        admission, binding = _admission(cap, request, factory)
-        if admission != manifest['admission']:
-            raise ValueError('Frozen profile differs from admitted plan')
-        owner = _owner(manifest, request, admission)
-        with directory_lock(run, operation='melos.independent_trials'):
-            owner_path = contained(run, 'melos-owner.json')
-            trials = contained(run, 'trials')
-            if resume:
-                if _read(run, 'melos-owner.json') != owner:
-                    raise ValueError('Resume requires exact owned frozen job')
-            else:
-                if owner_path.exists() or trials.exists():
-                    raise ValueError('Existing trial output requires explicit owned resume')
-                atomic_json(owner_path, owner)
-            if trials.exists():
-                expected_names = {f'trial-{i:04d}' for i in range(plan.to_dict()['planned_trials'])}
-                if any(p.name not in expected_names or p.is_symlink() or not p.is_dir()
-                       for p in trials.iterdir()):
-                    raise ValueError('Unexpected or linked trial output')
-            records = []
-            cancelled = False
-            for ordinal, seed in enumerate(plan.to_dict()['predeclared_seeds']):
-                cancelled = cancelled or bool(should_cancel and should_cancel())
-                case = contained(trials, f'trial-{ordinal:04d}')
-                if cancelled and not case.exists():
-                    continue
-                pristine = factory.create(seed)
-                binding.bind_session(pristine, seed, plan=plan)
-                existed = case.exists()
-                if existed and not resume:
-                    raise ValueError('Existing slot output is protected')
-                case.mkdir(parents=True, exist_ok=resume)
-                checkpoint = contained(case, 'calendar-state.json')
-                record = (publish_saved_run_record(case, binding, pristine, seed)
-                          if checkpoint.exists() else None)
-                failure = None
-                if contained(case, 'failure.json').exists():
-                    envelope = _read(case, 'failure.json')
-                    failure = envelope['failure']
-                    if (envelope.get('sha256') != digest(failure) or
-                            failure.get('owner_sha256') != digest(owner) or
-                            failure.get('seed') != seed or failure.get('id') != case.name):
-                        raise ValueError('Failure evidence belongs to another slot/job')
-                if not cancelled and failure is None and (record is None or not record['observations']['scenario_finished']):
-                    session = factory.create(seed)
-                    binding.bind_session(session, seed, plan=plan)
-                    now = record['observed_through'] if record is not None else session.rt.now
-                    while True:
-                        if should_cancel and should_cancel():
-                            cancelled = True
-                            break
-                        try:
-                            session.run_saved(case, until=min(now + CHECKPOINT_MINUTES, session.rt.end),
-                                              resume=checkpoint.exists())
-                        except Exception as error:
-                            failure = {'schema': 'melos_execution_failure_v1', 'id': case.name,
-                                       'seed': seed, 'owner_sha256': digest(owner),
-                                       'error_type': type(error).__name__, 'error': str(error)}
-                            atomic_json(case / 'failure.json', {'failure': failure, 'sha256': digest(failure)})
-                            break
-                        now = session.rt.now
-                        if progress:
-                            progress({'requested': plan.to_dict()['planned_trials'],
-                                      'completed': sum(r['status'] != 'not_completed' for r in records),
-                                      'failed': sum(r['status'] == 'execution_failure' for r in records),
-                                      'phase': 'independent_trials', 'execution_profile': PROFILE_ID,
-                                      'seed': seed, 'observed_minute': now,
-                                      'calendar_horizon': session.rt.end})
-                        if session.finished:
-                            break
-                    if checkpoint.exists():
-                        record = publish_saved_run_record(case, binding, pristine, seed)
-                # No execution/checkpoint exists when cancellation won the race.
-                if record is None and failure is None:
-                    cancelled = True
-                    continue
-                trial = _trial(case, seed, record, failure)
-                atomic_json(case / 'classification.json', trial)
-                records.append(trial)
-                _publish_receipt(run, records, cancelled=cancelled)
-                if progress:
-                    progress({'requested': plan.to_dict()['planned_trials'],
-                              'completed': sum(r['status'] != 'not_completed' for r in records),
-                              'failed': sum(r['status'] == 'execution_failure' for r in records),
-                              'phase': 'independent_trials', 'execution_profile': PROFILE_ID,
-                              'seed': seed, 'status': trial['status']})
-            return _publish_receipt(run, records, cancelled=cancelled)
+def run_trials(run, progress=None, should_cancel=None, *, resume=False, acknowledge=None):
+    manifest = _read(Path(run), 'review-manifest.json')
+    storage = manifest.get('storage')
+    from execution.melos_native_jobs import is_native_storage
+    if is_native_storage(storage):
+        if resume:
+            raise ValueError('Native independent jobs have no restart authorization or resume route')
+        from execution.melos_native_jobs import run_native_trials
+        return run_native_trials(run, progress, should_cancel, acknowledge=acknowledge)
+    if storage is not None:
+        raise ValueError('Unknown independent storage discriminator')
+    # Saved legacy descriptors remain readable. New execution never downgrades.
+    raise ValueError('Legacy Melos jobs are read-only; no automatic storage migration')

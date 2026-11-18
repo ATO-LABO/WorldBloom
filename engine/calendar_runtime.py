@@ -44,7 +44,12 @@ def load_contract(world, config):
 
 def _load_contract(world, config):
     config = validate_execution_config(config)
-    value = read_project_yaml(world.source, config['contract'])
+    capture = getattr(world, 'calendar_capture', None)
+    if capture is None:
+        value = read_project_yaml(world.source, config['contract'])
+    else:
+        capture.assert_config(config)
+        value = capture.yaml('contract')
     required = {'version', 'calendar', 'timezone', 'start_time', 'end_time', 'travel_minutes',
                 'roles', 'tasks', 'materials', 'facility_hours', 'appraisal',
                 'assumptions', 'initial_task_knowledge'}
@@ -72,7 +77,10 @@ def _load_contract(world, config):
         raise ValueError('Invalid fixed appraisal coefficients')
     calendar = compile_calendar(value['calendar'], timezone=value['timezone'],
                                 scheduled_events=list(world.scheduled_events))
-    validate_fixed_version(world.source, config, calendar)
+    if capture is None:
+        validate_fixed_version(world.source, config, calendar)
+    else:
+        capture.validate_fixed_version(config, calendar)
     if world.days != len(calendar['days']):
         raise ValueError('World days and compiled calendar differ')
     if world.daily_events or world.thresholds or world.effect_library or getattr(world, 'phase_rules', ()):
@@ -142,7 +150,14 @@ def _load_contract(world, config):
 
 
 class CalendarRuntime:
-    def __init__(self, simulation):
+    def __init__(self, simulation, *, calendar_capture=None):
+        self.calendar_capture = getattr(simulation, "calendar_capture", None)
+        if calendar_capture is not None and calendar_capture is not self.calendar_capture:
+            raise ValueError("Runtime capture differs from Simulation binding")
+        if self.calendar_capture is not getattr(simulation.world, "calendar_capture", None):
+            raise ValueError("Runtime capture differs from World binding")
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_world(simulation.world)
         self.facts = None
         self.sim = simulation
         self.world = simulation.world
@@ -151,7 +166,9 @@ class CalendarRuntime:
         if self.contract != load_contract(self.world, self.world.slot_execution):
             raise ValueError('Runtime contract differs from the declared project input')
         provenance = getattr(self.world, 'calendar_input_provenance', None)
-        if provenance is not None:
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_provenance(self.world)
+        elif provenance is not None:
             for name, expected in provenance['inputs'].items():
                 data = safe_project_path(self.world.source, name).read_bytes()
                 if expected != {'size_bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}:
@@ -199,6 +216,9 @@ class CalendarRuntime:
         self.observations = {}
         self.done = False
         self.store = None
+        # Native stores are short-lived; persistence freezes configuration even
+        # after their handles close or a write has an uncertain outcome.
+        self._generation_persistence_started = False
         self.facilities = {}
         self._observation_buffer = None
         self._active_at_tick = set()
@@ -234,10 +254,14 @@ class CalendarRuntime:
 
     @property
     def now(self):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         return self.time_kernel.now
 
     @now.setter
     def now(self, value):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         # Explicit checkpoint restoration only; no boundary is replayed.
         self.time_kernel.restore_position(value)
 
@@ -317,13 +341,15 @@ class CalendarRuntime:
         self.appraisals[key] = desired
 
     def configure(self, commands):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         try:
             return self._configure(commands)
         except (TypeError, KeyError, AttributeError, OverflowError) as error:
             raise ValueError('Malformed explicit calendar choices') from error
 
     def _configure(self, commands):
-        if self.store is not None:
+        if self.store is not None or self._generation_persistence_started:
             raise ValueError('Choices are frozen for this run')
         if getattr(self, '_adapter_journal', None) is not None:
             if commands != self.commands:
@@ -419,13 +445,15 @@ class CalendarRuntime:
         return deepcopy(identity)
 
     def enable_adapter_journal(self, identity):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         """Opt in before persistence; this does not intercept arbitrary _start calls."""
         identity = self._adapter_identity(identity)
         if getattr(self, '_adapter_journal', None) is not None:
             if self._adapter_journal['identity'] != identity:
                 raise ValueError('Adapter journal identity mismatch')
             return
-        if self.store is not None or self.busy:
+        if self.store is not None or self._generation_persistence_started or self.busy:
             raise ValueError('Enable adapter journal before persistence or pending actions')
         self._adapter_journal = {'identity': identity, 'entries': {},
                                  'initial_rows': {'count': len(self.rows), 'sha256': digest(self.rows)}}
@@ -461,6 +489,8 @@ class CalendarRuntime:
                 raise ValueError('Invalid adapter task')
 
     def admit_adapter_command(self, command, *, proposal_id, candidate_id, effective_duration=None):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         """Record one explicit adapter admission separately from frozen choices."""
         journal = getattr(self, '_adapter_journal', None)
         if journal is None:
@@ -635,6 +665,8 @@ class CalendarRuntime:
         return deepcopy(journal), deepcopy(vitality), commands
 
     def candidates(self, actor):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         person = self.people[actor]
         result = [{'verb': 'wait', 'minutes': 1}]
         if actor in self.busy:
@@ -1048,6 +1080,8 @@ class CalendarRuntime:
         )
 
     def _tick(self, at):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         # Kept as a compatibility entry for frozen explicit adapters.
         return self.time_kernel.dispatch(at, self._boundary_plan())
 
@@ -1189,6 +1223,8 @@ class CalendarRuntime:
             self.emit(ident,event['verb'],**event['details'])
 
     def export_state(self):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         state = {'now': self.now, 'end': self.end, 'people': self._people(),
                 'energy': deepcopy(self.energy),
                 'relations': self.world.relations.snapshot(), 'ledger': deepcopy(self.ledger),
@@ -1215,7 +1251,57 @@ class CalendarRuntime:
             state['deliberation']=self.world.deliberation.snapshot() if self.world.deliberation else None
         return state
 
+    def _validate_event_rows(self, rows, now):
+        """Check the emitted envelope and summary inputs before live adoption.
+
+        Extension-specific evidence is checked by its owning validator below.
+        This common gate prevents malformed rows from reaching runtime consumers
+        or derived exports even when the generation checksum is valid.
+        """
+        fields = {'kind', 'id', 'turn', 'day', 'slot', 'absolute_minute',
+                  'date', 'time', 'timezone', 'subject', 'verb', 'result',
+                  'args', 'delta', 'details'}
+        if not isinstance(rows, list):
+            raise ValueError('Invalid event collection')
+        seen = set()
+        for row in rows:
+            if not isinstance(row, dict) or set(row) != fields:
+                raise ValueError('Invalid event envelope')
+            ident = row['id']
+            if type(ident) is not str or not ident or ident in seen:
+                raise ValueError('Duplicate/missing event identity')
+            seen.add(ident)
+            at = integer(row['absolute_minute'], 'event minute', 0, now)
+            label = time_label(self.calendar, at)
+            if (row['kind'] != 'event' or type(row['turn']) is not int or row['turn'] != at
+                    or type(row['day']) is not int or row['day'] != at//1440+1
+                    or row['slot'] != label['time']
+                    or any(row[key] != value for key, value in label.items())):
+                raise ValueError('Invalid event time envelope')
+            if (any(type(row[key]) is not str or not row[key] for key in ('verb', 'result'))
+                    or (row['subject'] is not None
+                        and (type(row['subject']) is not str or row['subject'] not in self.people))
+                    or not isinstance(row['args'], list)
+                    or row['delta'] != {'actor': {}, 'targets': {}, 'relations': [], 'objective': None}
+                    or not isinstance(row['details'], dict)):
+                raise ValueError('Invalid event data envelope')
+            details = row['details']
+            causes = details.get('caused_by')
+            if not isinstance(causes, list) or any(type(c) is not str or not c for c in causes):
+                raise ValueError('Invalid event causes')
+            if row['verb'] in ('action_completed', 'work_interrupted'):
+                choice = details.get('choice')
+                if (not isinstance(choice, dict) or type(choice.get('verb')) is not str
+                        or not choice['verb'] or row['subject'] not in self.people):
+                    raise ValueError('Invalid terminal action choice')
+                started = integer(details.get('started_at'), 'action start', 0, at)
+                duration = integer(details.get('duration_minutes'), 'action duration', 0, at)
+                if duration != at-started:
+                    raise ValueError('Invalid terminal action duration')
+
     def restore_state(self, state):
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         try:
             return self._restore_state(state)
         except (TypeError, KeyError, AttributeError, IndexError, OverflowError) as exc:
@@ -1288,8 +1374,7 @@ class CalendarRuntime:
         parsed_registry = PromiseRegistry.from_state(state['promises'])
         if parsed_registry.actors != frozenset(self.people) or parsed_registry.tasks != frozenset(self.contract['tasks']) or parsed_registry.places != frozenset(self.world.zones):
             raise ValueError('Promise checkpoint catalogs differ')
-        if not isinstance(state['rows'], list) or any(not isinstance(row, dict) for row in state['rows']):
-            raise ValueError('Invalid event collection')
+        self._validate_event_rows(state['rows'], state['now'])
         for field in ('known_terms', 'known_tasks', 'knowledge'):
             if not isinstance(state[field], dict) or set(state[field]) != set(self.people):
                 raise ValueError('Invalid knowledge actor catalog')
@@ -1326,11 +1411,6 @@ class CalendarRuntime:
                 raise ValueError('Invalid knowledge state')
             if not set(state['known_tasks'][actor]) <= set(self.contract['tasks']):
                 raise ValueError('Unknown work knowledge')
-        ids = [r.get('id') for r in state['rows']]
-        if len(ids) != len(set(ids)) or any(not isinstance(i, str) or not i for i in ids):
-            raise ValueError('Duplicate/missing event identity')
-        if any(type(r.get('absolute_minute')) is not int or r['absolute_minute'] > state['now'] for r in state['rows']):
-            raise ValueError('Invalid event time')
         validate_observation_state(state['observations'], self.contract.get('observers', []),
                                    self.calendar, state['rows'], state['now'])
         def tuples(v):
@@ -1394,17 +1474,27 @@ class CalendarRuntime:
                 self.world.deliberation.records=deepcopy(state['deliberation']['proposals'])
 
     def inputs(self):
-        files = {'world': hashlib.sha256(self.world.source.read_bytes()).hexdigest(),
-                 'contract': hashlib.sha256((self.world.source.parent/self.world.slot_execution['contract']).read_bytes()).hexdigest()}
-        for name in ('execution-version.json',):
-            path = self.world.source.parent/name
-            if path.exists():
-                files[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_world(self.world)
+            self.calendar_capture.assert_provenance(self.world)
+            files = self.calendar_capture.legacy_runtime_files()
+        else:
+            files = {'world': hashlib.sha256(self.world.source.read_bytes()).hexdigest(),
+                     'contract': hashlib.sha256((self.world.source.parent/self.world.slot_execution['contract']).read_bytes()).hexdigest()}
+            for name in ('execution-version.json',):
+                path = self.world.source.parent/name
+                if path.exists():
+                    files[name] = hashlib.sha256(path.read_bytes()).hexdigest()
         result = {'files': files, 'contract': self.contract, 'calendar': self.calendar, 'seed': self.sim.seed,
                 'initial_subjects': self.initial, 'personality': {p: self.people[p].traits for p in self.people},
                 'subject_sources': getattr(self.world, 'calendar_subject_sources', None),
                 'input_provenance': getattr(self.world, 'calendar_input_provenance', None),
                 'initial_relations': self.initial_relations}
+        if hasattr(self, '_native_choices_identity'):
+            if self.calendar_capture is None:
+                raise ValueError('Native choices identity requires captured inputs')
+            choice_hash, choice_size = self._native_choices_identity
+            result['native_choices'] = {'sha256': choice_hash, 'size': choice_size}
         if getattr(self, '_adapter_journal', None) is not None:
             result['adapter_journal_identity'] = deepcopy(self._adapter_journal['identity'])
         if self.sim.execution_plan is not None:
@@ -1419,26 +1509,16 @@ class CalendarRuntime:
             result['decision_provider_identity'] = provider_snapshot(self.sim.decision_provider)['identity']
         return result
 
-    def _outputs(self):
-        header = {'kind': 'header', 'contract': 'calendar_promises_v2', 'schema_version': 2,
-                  'calendar': self.calendar, 'seed': self.sim.seed, 'initial_subjects': self.initial,
-                  'assumptions': self.contract['assumptions'], 'api_calls': 0, 'gpu': False}
-        if self.planning is not None:
-            header.update(protagonist=self.world.protagonist, planning={'config':self.world.planner.config,
-                          'domain':'native_calendar_tasks','selection_mechanism':'bounded_goal_search'})
-        if self.world.social_planner is not None:
-            header['social_planning']={'config':deepcopy(self.world.social_planner.config),'config_hash':digest(self.world.social_planner.config)}
-        if self.sim.execution_plan is not None:
-            header['execution_plan'] = self.sim.execution_plan.to_dict()
-            header['execution_plan_hash'] = self.sim.execution_plan.sha256
-            header['verified_execution'] = self.sim.verified_execution
-            header['time_contract_hashes'] = self.inputs()['time_contract_hashes']
-        if self.joint is not None:
-            header['joint_activities']={'version':1,'config':deepcopy(self.joint.config),'config_hash':digest(self.joint.config)}
-        if self.sim.decision_provider is not None:
-            header['decision_provider_identity'] = provider_snapshot(self.sim.decision_provider)['identity']
-        data = b''.join(canonical(row)+b'\n' for row in [header]+self.rows)
-        atomic_bytes(self.store.out/'layers.jsonl', data)
+    def _summary_bytes(self):
+        """Serialize without file I/O or changes to persisted simulation state.
+
+        Existing snapshot helpers may refresh derived caches. In particular,
+        Relations.snapshot() may do so even if later serialization fails.
+        The caller owns the runtime while exporting. This does not capture an
+        atomic snapshot against concurrent changes to the live simulation.
+        """
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
         usage = {p: {'work': 0, 'move': 0, 'communication': 0, 'wait': 0} for p in self.people}
         for row in self.rows:
             if row['verb'] in ('action_completed', 'work_interrupted'):
@@ -1460,11 +1540,42 @@ class CalendarRuntime:
             summary['fact_model'] = self.facts.export_state()
         if self.joint is not None: summary['joint_activities']=self.joint.snapshot()
         if self.planning is not None: summary['goal_planning'] = self.planning.snapshot()
-        atomic_bytes(self.store.out/'summary.json', canonical(summary))
+        return canonical(summary)
+
+    def _layers_bytes(self):
+        """Serialize derived event data without opening output paths."""
+        if self.calendar_capture is not None:
+            self.calendar_capture.assert_live()
+        header = {'kind': 'header', 'contract': 'calendar_promises_v2', 'schema_version': 2,
+                  'calendar': self.calendar, 'seed': self.sim.seed, 'initial_subjects': self.initial,
+                  'assumptions': self.contract['assumptions'], 'api_calls': 0, 'gpu': False}
+        if self.planning is not None:
+            header.update(protagonist=self.world.protagonist, planning={'config':self.world.planner.config,
+                          'domain':'native_calendar_tasks','selection_mechanism':'bounded_goal_search'})
+        if self.world.social_planner is not None:
+            header['social_planning']={'config':deepcopy(self.world.social_planner.config),'config_hash':digest(self.world.social_planner.config)}
+        if self.sim.execution_plan is not None:
+            header['execution_plan'] = self.sim.execution_plan.to_dict()
+            header['execution_plan_hash'] = self.sim.execution_plan.sha256
+            header['verified_execution'] = self.sim.verified_execution
+            header['time_contract_hashes'] = self.inputs()['time_contract_hashes']
+        if self.joint is not None:
+            header['joint_activities']={'version':1,'config':deepcopy(self.joint.config),'config_hash':digest(self.joint.config)}
+        if self.sim.decision_provider is not None:
+            header['decision_provider_identity'] = provider_snapshot(self.sim.decision_provider)['identity']
+        return b''.join(canonical(row)+b'\n' for row in [header]+self.rows)
+
+    def _outputs(self):
+        if self.calendar_capture is not None:
+            raise ValueError('Captured calendar prototype is input-only; legacy save writers are unavailable')
+        atomic_bytes(self.store.out/'layers.jsonl', self._layers_bytes())
+        atomic_bytes(self.store.out/'summary.json', self._summary_bytes())
         from engine.run_record import commit_run_record
         commit_run_record(self.sim)
 
     def run(self, *, until=None, resume=False):
+        if self.calendar_capture is not None:
+            raise ValueError('Captured calendar prototype is input-only; legacy save writers are unavailable')
         if self.planning is not None: self.enable_adapter_journal(self.planning.identity)
         self.sim.verify_execution(self.time_kernel.axis)
         project = self.world.source.parent.resolve()
@@ -1498,6 +1609,8 @@ class CalendarRuntime:
         return at
 
     def _run_locked(self, boundary, resume):
+        if self.calendar_capture is not None:
+            raise ValueError('Captured calendar prototype is input-only; legacy save writers are unavailable')
         if resume:
             state = self.store.load()
             self.restore_state(state)

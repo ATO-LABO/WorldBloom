@@ -11,7 +11,7 @@
 
 <a href="https://youtu.be/Yozi2qb2IQg"><img src="https://img.youtube.com/vi/Yozi2qb2IQg/maxresdefault.jpg" width="640" alt="WorldBloom 3分ダイジェスト動画のサムネイル"></a>
 
-[![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio--portable.zip-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip)
+[![Download WorldBloom Studio](https://img.shields.io/badge/Download-WorldBloom--Studio-2f6feb?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ATO-LABO/WorldBloom/releases/latest)
 [![公開ビューア](https://img.shields.io/badge/%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E8%A6%8B%E3%82%8B-%E5%85%AC%E9%96%8B%E3%83%93%E3%83%A5%E3%83%BC%E3%82%A2-2e7d4f?style=for-the-badge&logo=googlechrome&logoColor=white)](https://ato-labo.github.io/WorldBloom/)
 [![3分動画](https://img.shields.io/badge/3%E5%88%86%E3%81%A7%E3%82%8F%E3%81%8B%E3%82%8B-YouTube-c4302b?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/Yozi2qb2IQg)
 [![ドキュメント](https://img.shields.io/badge/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88-ato--labo.github.io-6f42c1?style=for-the-badge&logo=readthedocs&logoColor=white)](https://ato-labo.github.io/WorldBloom/docs/)
@@ -63,7 +63,7 @@ GPU 調停・進捗表示など運用まわりの機能は、ドキュメント�
 
 **詳しい手順は → [ドキュメントサイト](https://ato-labo.github.io/WorldBloom/docs/)（[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/) / [クイックスタート](https://ato-labo.github.io/WorldBloom/docs/getting-started/quickstart/)）**
 
-- **A. exe で（Windows）**: [WorldBloom-Studio-portable.zip](https://github.com/ATO-LABO/WorldBloom/releases/latest/download/WorldBloom-Studio-portable.zip) を展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます（GA実験の実行には Python 3.12以上＋PyYAML が別途必要）。
+- **A. exe で（Windows）**: [最新リリース](https://github.com/ATO-LABO/WorldBloom/releases/latest) の Assets から配布ZIPをダウンロード・展開して `WorldBloom-Studio.exe` を開くだけ。世界を選んでGA実験を実行し、Sifting・あらすじ/本文生成まで行えます（GA実験の実行には Python 3.12以上＋PyYAML が別途必要）。
 - **B. ブラウザで見るだけ**: インストール不要の [公開ビューア](https://ato-labo.github.io/WorldBloom/) で、桃太郎・恋愛・探偵の3実験の格子・あらすじ・本文を読めます。
 - **C. ソースから**: `git clone` して `pip install -r requirements.txt`（Python 3.12以上）。同梱の `samples/` をビューアで見る、自分で GA を回すなどの手順はドキュメントサイトの[インストール](https://ato-labo.github.io/WorldBloom/docs/getting-started/install/)にまとめています。
   回帰検査の対象はPython 3.12/3.13とUbuntu/Windowsです。
@@ -110,12 +110,14 @@ engine/      7層の主体・世界・動詞・勝負解決・述語評価・vit
 gapengine/   遺伝子・Policy・分類器・前例表・QD・進化ループ・あらすじ化・説明抽出
 execution/   ビューアから進化・出力ジョブを操作するための設定/ジョブ/権限境界
 viewer/      HTTP ビューア（標準ライブラリのみ。格子・あらすじ・本文・実行管理画面）
-scripts/     進化・あらすじ化・本文化・無作為基準・静的公開・サンプル抽出などの実行スクリプト
+scripts/     GA実験・文章生成・公開用出力・モック起動のスクリプト
+tools/       ローカル起動、世界データの移行・比較ツール
+launch-assets/  ローカル起動用のファイル一覧と同梱の世界データ
 templates/   ジャンルテンプレート（行動グラフ・修飾ルール・正典プライア・QD軸・伏線ライブラリ）
-projects/    世界と主体の初期状態。現行形式の例は momotaro_plus3_new、旧世界も保存
-samples/     ビューアで開ける最小サンプル（3実験。scripts/pack_samples.py で生成）
+projects/    実験に使う世界と主体の初期状態。現行形式の例は momotaro_plus3_new
+samples/     ビューアで閲覧できる実行結果（3実験。scripts/pack_samples.py で生成）
 tests/       回帰テスト（unittest）
-docs/        設計書・実装計画・開示文書
+docs/        リポジトリ内の設計書・開発手順・開示文書
 docsite/     ドキュメントサイトの原稿（日英、MkDocs）。main への push で自動公開
 ```
 
