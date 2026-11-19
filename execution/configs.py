@@ -375,14 +375,12 @@ def _capture_inputs(repo, spec, runs=None):
     # constructor. Keep the same checked, canonical boundary at this entry too.
     repo = contained(repo, ".").resolve()
     blobs, records = {}, {}
-    def add(path, *, calendar_manifest=False, preparation_record=False):
+    def add(path, *, calendar_manifest=False):
         relative = path.relative_to(repo).as_posix()
         path = contained(repo, relative)
         if not any(path.is_relative_to(repo / area) for area in ("projects", "templates")):
             raise ConfigError("inputs", "入力参照はprojects/templates内に限定します")
-        if (path.suffix not in (".yaml", ".yml")
-                and not (calendar_manifest and path.name == "execution-version.json")
-                and not (preparation_record and path.name == "purpose-preparation.json")):
+        if path.suffix not in (".yaml", ".yml") and not (calendar_manifest and path.name == "execution-version.json"):
             raise ConfigError("inputs", "入力参照はYAMLファイルに限定します")
         data = path.read_bytes()
         blobs[relative] = data
@@ -415,10 +413,15 @@ def _capture_inputs(repo, spec, runs=None):
         if pressure_path.is_symlink() or pressure_path.stat().st_size > MAX_BYTES:
             raise ConfigError("time_pressure.enabled", "期限根拠ファイルを確認してください")
         add(pressure_path)
-        from engine.purpose_preparation_runtime import FILENAME as preparation_filename
-        preparation_path = project / preparation_filename
-        if preparation_path.exists() or preparation_path.is_symlink():
-            add(preparation_path, preparation_record=True)
+        from engine.purpose_preparation_runtime import read_record
+        try:
+            preparation = read_record(project)
+        except (ValueError, OSError) as error:
+            raise ConfigError("time_pressure.enabled", "目的・準備の保存設定を確認してください") from error
+        if preparation:
+            from execution.purpose_preparation import _record
+            if _record(preparation)["pressure"]["enabled"]:
+                raise ConfigError("time_pressure.enabled", "時間的な切迫と目的・準備の期限補正は同時に有効にできません")
     declared_world = yaml.safe_load(blobs[world_key])
     from engine.world_format import validate as validate_format
     try:

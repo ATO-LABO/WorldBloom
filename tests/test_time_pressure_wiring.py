@@ -314,30 +314,60 @@ class ConfigAndWiringTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cfg_fingerprint"):
             module.evolve({**cfg, "resume": True})
 
-    def test_preparation_record_is_frozen_and_concurrent_deadlines_are_refused(self):
-        record = self.path.parent / "purpose-preparation.json"
-        record.write_text(
-            json.dumps({"version": 1, "enabled": False}), encoding="utf-8"
+    def test_concurrent_saved_deadline_settings_are_refused(self):
+        from execution import purpose_preparation
+        from execution.library import LibraryStore
+
+        world_path = self.path.parent / "world.yaml"
+        world = yaml.safe_load(world_path.read_bytes())
+        ending = world["ending"][0]
+        ending["when"] = (
+            f"zone({world['protagonist']!r}) == {world['zones'][-1]['name']!r}"
         )
-        self.store.save(
-            {**self.spec, "time_pressure": {"enabled": True}}, config_id="captured"
+        world["target_ending"] = [ending["id"]]
+        world_path.write_text(
+            yaml.safe_dump(world, allow_unicode=True), encoding="utf-8"
         )
-        manifest = self.store.prepare_run(
-            "captured", run_id="captured-run", job_id="captured-job"
+        spec = {**self.spec, "time_pressure": {"enabled": True}}
+        baseline = self.store.preview(spec)
+        library = LibraryStore(self.repo)
+        current = purpose_preparation.snapshot(library, "ship_planning")
+        self.assertTrue(current["available"])
+        candidate = next(
+            item
+            for item in current["candidates"]
+            if item["supported"] and item["status"] != "stale"
         )
-        captured = (
-            self.base
-            / "runs/captured-run/inputs/projects/ship_planning/purpose-preparation.json"
+        entry = {
+            "candidate_id": candidate["id"],
+            "day": world["time"]["days"],
+            "slot": world["time"]["slots"][-1],
+            "awareness": {"kind": "public"},
+        }
+        values = {
+            "managed_ids": [candidate["id"]],
+            "pressure": {"enabled": True, "entries": [entry]},
+        }
+        saved = purpose_preparation.save(
+            library,
+            "ship_planning",
+            {
+                "revision": current["revision"],
+                "values": values,
+            },
         )
-        self.assertEqual(captured.read_bytes(), record.read_bytes())
-        self.assertEqual(manifest["time_pressure"], PROFILE)
-        active_preparation = SimpleNamespace(plan={"pressure": {"enabled": True}})
-        with patch(
-            "engine.purpose_preparation_runtime.load_runtime",
-            return_value=active_preparation,
-        ):
-            with self.assertRaisesRegex(ConfigError, "cannot be enabled together"):
-                self.store.preview({**self.spec, "time_pressure": {"enabled": True}})
+        with self.assertRaisesRegex(ConfigError, "同時に有効にできません"):
+            self.store.preview(spec)
+        values["pressure"]["enabled"] = False
+        purpose_preparation.save(
+            library,
+            "ship_planning",
+            {
+                "revision": saved["revision"],
+                "values": values,
+            },
+        )
+        self.assertEqual(baseline, self.store.preview(spec))
 
     def test_run_form_restores_the_saved_switch(self):
         from html.parser import HTMLParser
