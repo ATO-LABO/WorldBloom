@@ -83,7 +83,10 @@ def candidate_row(c, *, grid=False):
             f'<label class="sf-choice" hidden><input type="checkbox" data-sf-choice="{E(cid)}"><span>対象にする</span></label>'
             f'<button type="button" data-sf-open="{E(cid)}"><span class="sf-row-title"><strong>{E(c["label"])}</strong><span data-row-state>{badge(c["state"])}</span></span>'
             + ('' if grid else f'<span class="sf-snippet">{E(c["synopsis"][:120] or c["synopsis_state"])}</span>')
-            + f'<small>品質 {E(c["quality_text"])} · {"到達" if c.get("reached") else "未到達"} · 第{E(c.get("generation"))}世代</small><small>{E(c.get("cell_key"))}</small></button>{usage}</article>')
+            + f'<small>品質 {E(c["quality_text"])} · {"到達" if c.get("reached") else "未到達"} · 第{E(c.get("generation"))}世代</small><small>{E(c.get("cell_key"))}</small>'
+            + ('<small class="ui-notice ui-notice--warning">要確認：Story v2 のあらすじ</small>' if c.get("synopsis_needs_review") and not c.get("synopsis_old") else '')
+            + ('<small>旧骨格のあらすじ</small>' if c.get("synopsis_old") else '')
+            + '</button>'+usage+'</article>')
 
 
 def candidates(handler, run_id, grid=False):
@@ -224,7 +227,7 @@ def generation_summary(handler,v,plan):
         # Freeze exactly the reviewed subset; later output changes cannot add targets.
         request = {**request, "candidate_ids": list(accepted),
                    "synopsis_refs": {cid:ref for cid,ref in request["synopsis_refs"].items() if cid in accepted}}
-    if request and request.get("pipeline") == "story_v1":
+    if request and request.get("pipeline") in ("story_v1", "story_v2"):
         request["story_refs"] = {cid:request["story_refs"][cid] for cid in accepted}
     m = len(accepted)
     text = "プロンプト保存" if prompt_only else "本文生成"
