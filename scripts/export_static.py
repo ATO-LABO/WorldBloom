@@ -7,8 +7,9 @@ selected story. No JS, no external assets.
 
 --out is wiped before writing. Never point it at a gh-pages checkout: that
 branch also holds the docs site under docs/ (published by
-.github/workflows/docs.yml). Export elsewhere, then copy index.html and
-stories/ over.
+.github/workflows/docs.yml). Export to a new disposable directory, never over the public site root.
+The signboard layout uses viewer/ and retains legacy stories/ URLs; follow
+site/README.md before preparing or updating a Pages tree.
 """
 from __future__ import annotations
 

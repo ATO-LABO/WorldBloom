@@ -240,3 +240,19 @@ Errors retain the input, save-in-flight blocks closing, and focus returns to
 the matching pencil. Exact saved file text is refreshed after a successful save
 before another file editor can be opened. This layout uses world-advanced.css
 for content geometry only, without expanding the legacy design exceptions.
+
+## Public Pages signboard (explicit content-specific layout)
+
+The public, read-only GitHub Pages entrance is not a Studio workflow screen.
+`site/index.html` and `site/signboard.css` implement the explicitly requested
+static signboard: definition, an existing public synopsis, three entry links,
+and the ATOM-BOX introduction. Its cream/green tokens follow `export_static.py`;
+it does not load application workspace controls or JavaScript. This exception
+is scoped to `site/` only and does not expand the viewer stylesheet exception
+list. New card/grid/focus styles are signboard-only; no decorative image assets
+or fixed Python-version requirements are introduced.
+
+Validate the signboard at desktop and narrow widths, keyboard skip/focus,
+all links, story/list navigation and browser Back/Forward. Shared viewer
+contracts still run unchanged. Preparation and publication are distinct; see
+`site/README.md` for the non-destructive staging and final approval boundary.
