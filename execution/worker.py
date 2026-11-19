@@ -20,8 +20,182 @@ import uuid
 import select
 import signal
 import threading
+import unicodedata
 
 TERMINAL = frozenset({"succeeded", "partial", "failed", "cancelled", "interrupted"})
+DELIVERY_GUARD_ENV = "WORLDBLOOM_DELIVERY_GUARD"
+DELIVERY_STATE_ENV = "WORLDBLOOM_DELIVERY_STATE"
+DELIVERY_ROOT_ENV = "WORLDBLOOM_DELIVERY_APP_ROOT"  # Internal, validated child context.
+
+
+class DeliveryGuardError(RuntimeError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def _delivery_mode():
+    mode = os.environ.get(DELIVERY_GUARD_ENV)
+    if mode not in (None, "0", "1"):
+        raise DeliveryGuardError("runtime_lease_config")
+    return mode == "1"
+
+
+def _delivery_state(app_root):
+    raw = os.environ.get(DELIVERY_STATE_ENV)
+    if not raw or not Path(raw).is_absolute() or not app_root or not Path(app_root).is_absolute():
+        raise DeliveryGuardError("runtime_lease_config")
+    state, root = Path(raw), Path(app_root)
+    for base in (state, root):
+        for p in (base, *base.parents):
+            if p.is_symlink() or getattr(p, "is_junction", lambda: False)():
+                raise DeliveryGuardError("linked_runtime_lease")
+            if p.exists() and getattr(p.lstat(), "st_file_attributes", 0) & 0x400:
+                raise DeliveryGuardError("linked_runtime_lease")
+    state, root = state.resolve(), root.resolve()
+    if state.parent == state or not root.is_dir():
+        raise DeliveryGuardError("runtime_lease_config")
+    roots = [root, root.parent] if root.name.casefold() == "app" else [root]
+    for application in roots:
+        if state == application or state.is_relative_to(application) or application.is_relative_to(state):
+            raise DeliveryGuardError("runtime_lease_config")
+    return state, root
+
+
+def _delivery_require_no_pending(state):
+    """Same fail-closed transaction gate as the bundled desktop guard."""
+    limit = 4 * 1024 * 1024
+    def plain(path):
+        for p in (path, *path.parents):
+            if p.is_symlink() or getattr(p, "is_junction", lambda: False)():
+                raise DeliveryGuardError("invalid_transaction_store")
+            if p.exists() and getattr(p.lstat(), "st_file_attributes", 0) & 0x400:
+                raise DeliveryGuardError("invalid_transaction_store")
+        if path.parent.is_dir():
+            for sibling in path.parent.iterdir():
+                if sibling.name.casefold() == path.name.casefold() and sibling.name != path.name:
+                    raise DeliveryGuardError("invalid_transaction_store")
+        return path
+    store = plain(state / "transactions")
+    if not store.exists():
+        return
+    if not store.is_dir():
+        raise DeliveryGuardError("invalid_transaction_store")
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise DeliveryGuardError("invalid_journal")
+            result[key] = value
+        return result
+    def invalid_constant(_):
+        raise DeliveryGuardError("invalid_journal")
+    for folder in store.iterdir():
+        name = folder.name
+        reserved = {"CON", "PRN", "AUX", "NUL", *[f"COM{i}" for i in range(1, 10)], *[f"LPT{i}" for i in range(1, 10)]}
+        if (name != unicodedata.normalize("NFC", name) or name in (".", "..")
+                or name.endswith((" ", ".")) or name.split(".")[0].upper() in reserved
+                or any(ord(c) < 32 or ord(c) == 127 or c in '\\<>:"|?*' for c in name)):
+            raise DeliveryGuardError("invalid_transaction_store")
+        plain(folder)
+        if not folder.is_dir():
+            raise DeliveryGuardError("invalid_transaction_store")
+        path = plain(folder / "journal.json")
+        if not path.exists():
+            continue  # Folder creation precedes any target code writes.
+        if not path.is_file() or path.stat().st_size > limit:
+            raise DeliveryGuardError("invalid_journal")
+        with path.open("rb") as stream:
+            raw = stream.read(limit + 1)
+        if len(raw) > limit:
+            raise DeliveryGuardError("invalid_journal")
+        try:
+            value = json.loads(raw, object_pairs_hook=pairs, parse_constant=invalid_constant)
+        except (ValueError, UnicodeError, RecursionError) as error:
+            raise DeliveryGuardError("invalid_journal") from error
+        if not isinstance(value, dict):
+            raise DeliveryGuardError("invalid_journal")
+        if value.get("status") not in ("committed", "rolled_back"):
+            raise DeliveryGuardError("recovery_required")
+
+
+@contextmanager
+def _delivery_shared_lock(path):
+    """Stdlib-only copy: this supervisor is copied and executed with -I.
+
+    Lock byte/flags match wb_delivery.lease; worker_sha256 covers this adapter.
+    No package import from the mutable AppRoot is needed before acquiring it.
+    """
+    for p in (path, *path.parents):
+        if p.is_symlink() or getattr(p, "is_junction", lambda: False)():
+            raise DeliveryGuardError("linked_runtime_lease")
+        if p.exists() and getattr(p.lstat(), "st_file_attributes", 0) & 0x400:
+            raise DeliveryGuardError("linked_runtime_lease")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for p in (path, *path.parents):
+        if p.is_symlink() or getattr(p, "is_junction", lambda: False)():
+            raise DeliveryGuardError("linked_runtime_lease")
+        if p.exists() and getattr(p.lstat(), "st_file_attributes", 0) & 0x400:
+            raise DeliveryGuardError("linked_runtime_lease")
+    with path.open("a+b") as stream:
+        if os.name == "nt":
+            class Overlapped(ctypes.Structure):
+                _fields_ = [("Internal", ctypes.c_size_t), ("InternalHigh", ctypes.c_size_t),
+                            ("Offset", wt.DWORD), ("OffsetHigh", wt.DWORD), ("hEvent", wt.HANDLE)]
+            api = ctypes.WinDLL("kernel32", use_last_error=True)
+            api.LockFileEx.argtypes = [wt.HANDLE, wt.DWORD, wt.DWORD, wt.DWORD, wt.DWORD, ctypes.POINTER(Overlapped)]
+            api.LockFileEx.restype = wt.BOOL
+            api.UnlockFileEx.argtypes = [wt.HANDLE, wt.DWORD, wt.DWORD, wt.DWORD, ctypes.POINTER(Overlapped)]
+            api.UnlockFileEx.restype = wt.BOOL
+            overlap = Overlapped()
+            handle = wt.HANDLE(__import__("msvcrt").get_osfhandle(stream.fileno()))
+            if not api.LockFileEx(handle, 1, 0, 1, 0, ctypes.byref(overlap)):
+                code = ctypes.get_last_error()
+                raise DeliveryGuardError("in_use" if code in (32, 33, 997) else "runtime_lease_error")
+            try:
+                yield
+            finally:
+                if not api.UnlockFileEx(handle, 0, 1, 0, ctypes.byref(overlap)):
+                    raise DeliveryGuardError("runtime_lease_unlock_error")
+        else:
+            import fcntl
+            try:
+                fcntl.flock(stream, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise DeliveryGuardError("in_use") from error
+            try:
+                yield
+            finally:
+                fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+@contextmanager
+def hold_delivery_lease(app_root, *, propagate_root=False):
+    if not _delivery_mode():
+        yield
+        return
+    state, root = _delivery_state(app_root)
+    with _delivery_shared_lock(state / "update.lock"):
+        _delivery_require_no_pending(state)
+        previous = os.environ.get(DELIVERY_ROOT_ENV)
+        if propagate_root:
+            os.environ[DELIVERY_ROOT_ENV] = str(root)
+        try:
+            yield
+        finally:
+            if propagate_root:
+                if previous is None:
+                    os.environ.pop(DELIVERY_ROOT_ENV, None)
+                else:
+                    os.environ[DELIVERY_ROOT_ENV] = previous
+
+
+def delivery_environment(app_root):
+    """Explicit child copy avoids changing the HTTP process's global env."""
+    if not _delivery_mode():
+        return None
+    _, root = _delivery_state(app_root)
+    return {**os.environ, DELIVERY_ROOT_ENV: str(root)}
 
 
 def _python_executable() -> str:
@@ -729,7 +903,7 @@ def watch(child, tree, jobs, folder, nonce, deadline):
     return read_job(jobs, folder), time.time() >= deadline
 
 
-def main(argv=None):
+def _main(argv=None):
     parser = argparse.ArgumentParser()
     for name in ("control", "runs", "repo", "job", "nonce"):
         parser.add_argument("--" + name, required=True)
@@ -859,7 +1033,34 @@ def main(argv=None):
             tree.close()
 
 
+def _guarded_entry(entrypoint, app_root, *args):
+    try:
+        guard = hold_delivery_lease(app_root, propagate_root=True)
+        guard.__enter__()
+    except (DeliveryGuardError, OSError, ValueError):
+        return 2
+    try:
+        return entrypoint(*args)
+    finally:
+        guard.__exit__(*sys.exc_info())
+
+
+def main(argv=None):
+    if os.environ.get(DELIVERY_GUARD_ENV) in (None, "0"):
+        return _main(argv)
+    # Parse only the bootstrap root here. The unchanged main still owns full
+    # argument, nonce, request and copied-worker digest verification.
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--repo")
+    args, _ = parser.parse_known_args(sys.argv[1:] if argv is None else argv)
+    return _guarded_entry(_main, args.repo, argv)
+
+
+def guarded_linux_guard(registry, input_fd, output_fd):
+    return _guarded_entry(_linux_guard, os.environ.get(DELIVERY_ROOT_ENV), registry, input_fd, output_fd)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--linux-guard":
-        raise SystemExit(_linux_guard(sys.argv[2], int(sys.argv[3]), int(sys.argv[4])))
+        raise SystemExit(guarded_linux_guard(sys.argv[2], int(sys.argv[3]), int(sys.argv[4])))
     raise SystemExit(main())

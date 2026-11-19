@@ -238,7 +238,7 @@ def _setup_studio(root: Path, server_module, data_module):
     return server_module.ViewerHandler, repository, job_store, settings_path
 
 
-def main() -> int:
+def _main() -> int:
     if webview is None:
         _show_error_native(
             "pywebview の読み込みに失敗しました。\n"
@@ -311,6 +311,73 @@ def main() -> int:
     server.shutdown()
     server.server_close()
     return 0
+
+
+def _delivery_context():
+    """Acquire the bundled guard before importing any external AppRoot code."""
+    mode = os.environ.get("WORLDBLOOM_DELIVERY_GUARD")
+    if mode != "1":
+        raise ValueError("delivery guard configuration")
+    raw = os.environ.get("WORLDBLOOM_DELIVERY_STATE")
+    if not raw or not Path(raw).is_absolute():
+        raise ValueError("delivery state must be absolute")
+    state = Path(raw)
+    for path in (state, *state.parents):
+        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+            raise ValueError("linked delivery state")
+        if path.exists() and getattr(path.lstat(), "st_file_attributes", 0) & 0x400:
+            raise ValueError("linked delivery state")
+    state = state.resolve()
+    if state.parent == state:
+        raise ValueError("delivery state cannot be a filesystem root")
+    root = resolve_app_root()
+    if root is None:
+        raise ValueError("delivery application root unavailable")
+    roots = [root]
+    if getattr(sys, "frozen", False):
+        roots.append(_exe_dir())
+    elif root.name.casefold() == "app":
+        roots.append(root.parent)
+    for application in roots:
+        application = application.resolve()
+        if state == application or state.is_relative_to(application) or application.is_relative_to(state):
+            raise ValueError("delivery state overlaps application")
+    # This static import is included by PyInstaller. For an unfrozen direct
+    # script, temporarily expose only this script's own bootstrap source root.
+    # Never import the guard from WORLDBLOOM_APP_ROOT before holding its lease.
+    bootstrap = str(Path(__file__).resolve().parents[1])
+    inserted = not getattr(sys, "frozen", False) and bootstrap not in sys.path
+    if inserted:
+        sys.path.insert(0, bootstrap)
+    try:
+        from wb_delivery.runtime_guard import from_environment
+    finally:
+        if inserted:
+            sys.path.remove(bootstrap)
+    return from_environment()
+
+
+def main() -> int:
+    if os.environ.get("WORLDBLOOM_DELIVERY_GUARD") in (None, "0"):
+        return _main()
+    try:
+        guard = _delivery_context()
+        guard.__enter__()
+    except Exception as error:
+        # The native error path does not read changing AppRoot assets or start
+        # the GUI/server. A busy or unknown guard must not enter the old main.
+        code = getattr(error, "code", None)
+        message = ("WorldBloomの更新中です。更新が終わってからもう一度起動してください。"
+                   if code == "in_use" else
+                   "前回の更新の復旧が必要なため、WorldBloomを起動できません。"
+                   if code == "recovery_required" else
+                   "起動保護の設定を確認できませんでした。WorldBloomを起動せず終了します。")
+        _show_error_native(message)
+        return 1
+    try:
+        return _main()
+    finally:
+        guard.__exit__(*sys.exc_info())
 
 
 if __name__ == "__main__":
