@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -1819,7 +1819,7 @@
                  [--population POPULATION] [--seeds SEEDS] [--seed-base SEED_BASE]
                  [--ga-seed GA_SEED] [--processes PROCESSES] [--keep {all,reached,exemplar}]
                  [--coevolve] [--meta-evolution]
-                 [--target-ending TARGET_ENDING [TARGET_ENDING ...]]
+                 [--target-ending TARGET_ENDING [TARGET_ENDING ...]] [--time-pressure]
                  [--record-explanations | --no-record-explanations]
                  [--world-expansion {off,detect,expand}] [--seed-genomes SEED_GENOMES]
                  [--kappa KAPPA] [--rationality-backend {ollama,jev,none}]
@@ -1847,6 +1847,8 @@ options:
   --meta-evolution      Evolve per-rule enable bits in addition to the nine scalar genes.
   --target-ending TARGET_ENDING [TARGET_ENDING ...]
                         Override target ending ids; any listed ending counts as reached.
+  --time-pressure       Use explicitly known deadline pressure (ordinary protagonist planning
+                        only).
   --record-explanations, --no-record-explanations
                         Record bounded choice candidates for the explanation viewer (default: on).
   --world-expansion {off,detect,expand}
@@ -2021,7 +2023,9 @@ under --runs (archive.json/summary.json/synopses.json/ selection.json/stories/) 
 contained static site under --out: one index.html with a MAP-Elites grid per experiment, plus one
 HTML page per selected story. No JS, no external assets. --out is wiped before writing. Never
 point it at a gh-pages checkout: that branch also holds the docs site under docs/ (published by
-.github/workflows/docs.yml). Export elsewhere, then copy index.html and stories/ over.
+.github/workflows/docs.yml). Export to a new disposable directory, never over the public site
+root. The signboard layout uses viewer/ and retains legacy stories/ URLs; follow site/README.md
+before preparing or updating a Pages tree.
 
 options:
   -h, --help            show this help message and exit
@@ -2168,7 +2172,7 @@ options:
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
     
   </body>

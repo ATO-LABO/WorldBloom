@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -1818,7 +1818,7 @@
                  [--population POPULATION] [--seeds SEEDS] [--seed-base SEED_BASE]
                  [--ga-seed GA_SEED] [--processes PROCESSES] [--keep {all,reached,exemplar}]
                  [--coevolve] [--meta-evolution]
-                 [--target-ending TARGET_ENDING [TARGET_ENDING ...]]
+                 [--target-ending TARGET_ENDING [TARGET_ENDING ...]] [--time-pressure]
                  [--record-explanations | --no-record-explanations]
                  [--world-expansion {off,detect,expand}] [--seed-genomes SEED_GENOMES]
                  [--kappa KAPPA] [--rationality-backend {ollama,jev,none}]
@@ -1846,6 +1846,8 @@ options:
   --meta-evolution      Evolve per-rule enable bits in addition to the nine scalar genes.
   --target-ending TARGET_ENDING [TARGET_ENDING ...]
                         Override target ending ids; any listed ending counts as reached.
+  --time-pressure       Use explicitly known deadline pressure (ordinary protagonist planning
+                        only).
   --record-explanations, --no-record-explanations
                         Record bounded choice candidates for the explanation viewer (default: on).
   --world-expansion {off,detect,expand}
@@ -2020,7 +2022,9 @@ under --runs (archive.json/summary.json/synopses.json/ selection.json/stories/) 
 contained static site under --out: one index.html with a MAP-Elites grid per experiment, plus one
 HTML page per selected story. No JS, no external assets. --out is wiped before writing. Never
 point it at a gh-pages checkout: that branch also holds the docs site under docs/ (published by
-.github/workflows/docs.yml). Export elsewhere, then copy index.html and stories/ over.
+.github/workflows/docs.yml). Export to a new disposable directory, never over the public site
+root. The signboard layout uses viewer/ and retains legacy stories/ URLs; follow site/README.md
+before preparing or updating a Pages tree.
 
 options:
   -h, --help            show this help message and exit
@@ -2167,7 +2171,7 @@ options:
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.footer", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
     
   </body>
