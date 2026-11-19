@@ -11,6 +11,8 @@ from engine.sim import Simulation
 from engine.subject import Subject
 from engine.world import World
 from execution import world_editor, person_values
+from frozen_world import load_frozen_world
+from saved_world_fixtures import install_current_worlds
 from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from gapengine.deliberation_episode import load_episode
@@ -33,7 +35,9 @@ class PersonValueTests(unittest.TestCase):
                 Subject.from_definition({**person, 'commitments':invalid})
 
     def test_personal_refs_empty_values_and_conflicts(self):
-        files, _ = world_editor._read(LibraryStore(ROOT), 'village_response')
+        project = ROOT / "projects/village_response"
+        paths = [project / "world.yaml", *(project / "subjects").glob("*.yaml")]
+        files = {path.relative_to(project).as_posix(): json.loads(path.read_bytes()) for path in paths}
         hero = next(p for r,p in files.items() if r!='world.yaml' and p['id']=='桃太郎')
         def bind(raw):
             w=World(raw['world.yaml'],ROOT/'projects/village_response/world.yaml')
@@ -67,7 +71,7 @@ class PersonValueTests(unittest.TestCase):
                 for seed in range(8):
                     runs=[]
                     for label,base in [('legacy',LEGACY),('personal',ROOT/'projects')]:
-                        w,p=loader(base/project/'world.yaml')
+                        w,p=loader(base/project/'world.yaml', world_loader=load_frozen_world)
                         sim=Simulation(seed,w,p,Path(temp)/project/str(seed)/label,record_explanations=True)
                         rows=[json.loads(line) for line in sim.run().read_text(encoding='utf8').splitlines()]
                         runs.append(([r for r in rows if r.get('kind') in ('decision','snapshot')],
@@ -80,8 +84,17 @@ class PersonValuesSaveTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.repo=Path(self.temp.name);self.base=self.repo/'projects/village_response'
         shutil.copytree(LEGACY/'village_response',self.base)
+        shutil.copytree(ROOT / "templates/basic", self.repo / "templates/basic")
+        install_current_worlds(self.repo, "village_response", template="basic")
         self.store=LibraryStore(self.repo)
         self.current=world_editor.snapshot(self.store,'village_response')
+
+    def load_current(self, path):
+        world = World.from_yaml(path)
+        people = [Subject.from_yaml(member) for member in sorted(path.parent.glob("subjects/*.yaml"))]
+        by_id = {person.id: person for person in people}
+        world.bind_subjects(by_id)
+        return world, by_id
 
     def bytes(self):return {p.relative_to(self.base).as_posix():p.read_bytes() for p in self.base.rglob('*.yaml')}
 
@@ -109,7 +122,7 @@ class PersonValuesSaveTests(unittest.TestCase):
         result=self.save({'commitments':[]})
         changed=[rel for rel,raw in self.bytes().items() if raw!=before[rel]]
         self.assertEqual(len(changed),1);self.assertTrue(changed[0].startswith('subjects/'))
-        w,p=load_response(self.base/'world.yaml')
+        w,p=self.load_current(self.base/'world.yaml')
         self.assertEqual(w.concerns.commitments_for(w,'桃太郎'),[])
         self.assertIn('no_commitment',w.responses.options(w,p['桃太郎'],1)[0]['excluded'])
 
@@ -132,7 +145,7 @@ class PersonValuesSaveTests(unittest.TestCase):
         outcomes=[]
         for label in ('valued','indifferent'):
             if label=='indifferent':self.current=self.save({'commitments':[]})
-            w,p=load_response(path)
+            w,p=self.load_current(path)
             sim=Simulation(0,w,p,self.repo/label,record_explanations=True)
             rows=[json.loads(line) for line in sim.run().read_text(encoding='utf8').splitlines()]
             actions=[r for r in rows if r.get('kind')=='decision' and r['subject']=='桃太郎']
@@ -165,7 +178,7 @@ class PersonValuesSaveTests(unittest.TestCase):
         self.assertEqual(interrupted,self.bytes())
         self.save()  # Roll back prepared bytes, then validate the original revision and save.
         self.assertFalse((self.base/person_values.JOURNAL).exists())
-        self.assertEqual(load_response(self.base/'world.yaml')[1]['桃太郎'].commitments[0]['priority'],7)
+        self.assertEqual(self.load_current(self.base/'world.yaml')[1]['桃太郎'].commitments[0]['priority'],7)
 
     def test_interrupted_save_never_overwrites_an_external_edit(self):
         original=person_values._replace;calls=0
@@ -190,7 +203,7 @@ class PersonValuesSaveTests(unittest.TestCase):
         self.assertEqual(caught.exception.code,'conflict')
         self.assertEqual(committed,self.bytes())
         self.assertFalse((self.base/person_values.JOURNAL).exists())
-        self.assertEqual(load_response(self.base/'world.yaml')[1]['桃太郎'].commitments[0]['priority'],7)
+        self.assertEqual(self.load_current(self.base/'world.yaml')[1]['桃太郎'].commitments[0]['priority'],7)
 
 
 if __name__=='__main__':unittest.main()

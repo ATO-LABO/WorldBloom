@@ -12,7 +12,7 @@ VERBS = {"rethink":"再考", "confront":"告発", "neutralize":"無効化", "pay
          "concede":"譲歩", "craft":"作成", "disguise":"変装", "donate":"寄付",
          "guard":"守り", "negotiate":"交渉", "plant":"伏線設置", "rescue":"救助",
          "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退",
-         "labor":"労働", "buy":"購入",
+         "labor":"労働", "buy":"購入", "start_relationship":"交際を始める",
          "respond":"現場での対処", "inspect_response":"現場の状況確認",
          "request_response":"対処の依頼", "answer_response":"依頼への返答", "await_response":"返事を待つ",
          "submit_proposal":"原案提示", "present_proposal":"案の説明", "review_proposal":"賛否の表明",

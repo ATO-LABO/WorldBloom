@@ -36,8 +36,8 @@ def _paths(store, world_id):
     project = store._base("world", world_id)
     if not project.is_dir():
         raise ConfigError("world_id", "世界がありません", code="not_found")
-    world = next(w for w in store.worlds() if w["id"] == world_id)
-    genre = world.get("genre")
+    world = yaml.safe_load(store.read("world", world_id, "world.yaml"))
+    genre = store._genre_of(world_id, world)
     if not genre:
         raise ConfigError("template_id", "先に世界のジャンルを選んでください")
     template = contained(store.repo, "templates/" + identifier(genre, "template_id"))

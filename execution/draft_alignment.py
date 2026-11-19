@@ -80,8 +80,10 @@ def review_prompt(name, overview, draft):
         '「相手と目的地に到着する」という文章ならreachとmeetが対応します。「案内する」という行為の目標は条件を空にして残します。'
         '情報の真相を既に知っているような導入や、始めから達成済みの目標も不一致です。'
         '概要にない人物名や小さな背景の補完は許されます。証拠が曖昧なら不一致としてください。'
-        'JSONだけを返します。形式は {"overview_matches":true,"goals":[{"person":"全人物を一度ずつ",'
-        '"matches":true,"reason":"対応する箇所と理由"}],"issues":[]}。'
+        'JSONだけを返します。goalsには下案の各人物を一度ずつ、人物名を正確に入れてください。形式は '
+        + json.dumps({'overview_matches': True, 'goals': [
+            {'person': p['name'], 'matches': True, 'reason': '対応する箇所と理由を記述'} for p in draft['people']
+        ], 'issues': []}, ensure_ascii=False) + '。'
         '問題があればoverview_matchesまたは該当matchesをfalseにし、issuesへ短い日本語の説明を入れます。\n'
         + json.dumps({'name':name, 'overview':overview, 'draft':draft},ensure_ascii=False))
 

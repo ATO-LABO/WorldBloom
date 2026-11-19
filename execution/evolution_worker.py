@@ -307,6 +307,11 @@ def main(argv=None):
            # is what evolve() actually reads.
            "seed_genomes": (contained(run, "inputs/seed_genomes.json")
                              if manifest["evolution"].get("seed_genomes") is not None else None)}
+    if manifest.get("time_pressure") is not None:
+        from engine.time_pressure import normalize_config
+        pressure = normalize_config(manifest["time_pressure"])
+        if pressure is not None:
+            cfg["time_pressure"] = pressure
 
     # WB-JEV-005: a Jev-backed run's api_key comes from settings.json (via
     # job["settings_path"], set by execution/jobs.py's submit()), never from

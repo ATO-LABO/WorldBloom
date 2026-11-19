@@ -1,17 +1,17 @@
 ---
 sources:
-  - "viewer/pages.py"
-  - "viewer/sifting_pages.py"
-  - "viewer/compare_pages.py"
-  - "viewer/lineage_pages.py"
-  - "viewer/server.py"
-  - "viewer/explanation_ui.py"
-  - "gapengine/scenes.py"
-  - "viewer/epoch_view.py"
-  - "viewer/run_workspace.py"
-  - "viewer/run_browse.py"
-  - "gapengine/qd.py"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+- viewer/pages.py
+- viewer/sifting_pages.py
+- viewer/compare_pages.py
+- viewer/lineage_pages.py
+- viewer/server.py
+- viewer/explanation_ui.py
+- gapengine/scenes.py
+- viewer/epoch_view.py
+- viewer/run_workspace.py
+- viewer/run_browse.py
+- gapengine/qd.py
+reviewed: 2e70a9b216b7b2a80a4228a10a928148060e8fc8
 ---
 # 結果を読む
 
@@ -30,11 +30,12 @@ GA 実験が終わる（または途中で止める）と、その実験の結�
 | 到達率 | その世代の全ラン（個体数×seed数）のうち、結末に届いた割合 |
 | q̄ | アーカイブ全体の品質 q の平均 |
 
-## 候補の詳細（Sifting の3タブ）
+## 候補の詳細（Sifting の4タブ）
 
-マスを開くと、候補の詳細が3つのタブに分かれて表示されます。
+マスを開くと、候補の詳細が4つのタブに分かれて表示されます。
 
 - **物語**: あらすじ（生成済みの場合）、結末、詳しい根拠・生成状況へのリンク
+- **行動ログ**: 記録された行動の一覧、人物による絞り込み、選択した行動の詳細
 - **選択とメモ**: 選定状態（✔採用／⏸保留／✖除外／○未分類）とメモの入力欄
 - **実験データ**: 候補ID・世代・個体・seed・到達・原記録（`layers.jsonl`）へのリンクなど
 

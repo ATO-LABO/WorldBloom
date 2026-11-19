@@ -3,7 +3,7 @@ from html.parser import HTMLParser
 import json
 from types import SimpleNamespace
 import unittest
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from viewer import screening_pages, sifting_pages, world_prototype
 
@@ -62,13 +62,18 @@ class HtmlBoundaryTests(unittest.TestCase):
 
     def test_world_config_url_has_server_owned_prefix_and_json_stays_inert(self):
         world = {"id": "javascript:alert(1)" + self.ATTACK, "name": "Fixture", "genre": self.ATTACK}
-        body = world_prototype.render(world, {"scheduled_events": [{
-            "id": self.ATTACK, "label": self.ATTACK, "__index": self.ATTACK,
-        }]}, [])
+        people = [{"id": name, "range": {"entry": "town"}} for name in ("hero", "rival")]
+        body = world_prototype.render(world, {
+            "zones": ["town"], "protagonist": "hero", "antagonist": "rival",
+            "target_ending": ["end"],
+            "scheduled_events": [{"id": self.ATTACK, "label": self.ATTACK, "__index": self.ATTACK}],
+        }, people)
         parser = Elements(body)
         self.assertFalse(any(tag == "img" for tag, _ in parser.elements))
+        next_link = next(attrs["href"] for tag, attrs in parser.elements if tag == "a" and "data-next" in attrs)
+        parsed = urlsplit(next_link)
+        self.assertEqual((parsed.scheme, parsed.netloc, parsed.path), ("", "", "/configs/new"))
+        self.assertEqual(parse_qs(parsed.query), {"project": [world["id"]], "template": [world["genre"]]})
         start = body.index('id="wp-data">') + len('id="wp-data">')
         model = json.loads(body[start:body.index('</script>', start)])
-        self.assertTrue(model["configUrl"].startswith("/configs/new?project="))
-        self.assertEqual(urlsplit(model["configUrl"]).scheme, "")
         self.assertEqual(model["world"]["scheduled_events"][0]["label"], self.ATTACK)

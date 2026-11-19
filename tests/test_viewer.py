@@ -97,7 +97,7 @@ def _wait_for_port_release(port: int, timeout: float = 10.0) -> None:
     )
 
 
-def _fixture_rows() -> list[dict[str, Any]]:
+def _fixture_rows(world_name: str = "桃太郎") -> list[dict[str, Any]]:
     return [
         {
             "antagonist": "鬼",
@@ -107,7 +107,7 @@ def _fixture_rows() -> list[dict[str, Any]]:
             "precedent_hash": "precedent",
             "protagonist": "桃太郎",
             "seed": 7,
-            "world": "桃太郎",
+            "world": world_name,
         },
         {
             "args": ["鬼ヶ島"],
@@ -241,7 +241,7 @@ def _fixture_rows() -> list[dict[str, Any]]:
     ]
 
 
-def _create_experiment(runs_root: Path) -> Path:
+def _create_experiment(runs_root: Path, *, world_name: str = "桃太郎") -> Path:
     experiment = runs_root / "exp-viewer"
     layers_path = (
         experiment
@@ -250,7 +250,7 @@ def _create_experiment(runs_root: Path) -> Path:
         / "seed-7"
         / "layers.jsonl"
     )
-    _write_jsonl(layers_path, _fixture_rows())
+    _write_jsonl(layers_path, _fixture_rows(world_name))
 
     elite = {
         "descriptor": {
@@ -311,7 +311,7 @@ def _create_experiment(runs_root: Path) -> Path:
                     "synopsis": "桃太郎は鬼を退け、宝物を村へ持ち帰った。",
                 }
             ],
-            "world": "桃太郎",
+            "world": world_name,
         },
     )
     story = experiment / "stories" / "III-high.md"
@@ -334,7 +334,7 @@ def _create_experiment(runs_root: Path) -> Path:
                 }
             ],
             "selected": ["III|high"],
-            "world": "桃太郎",
+            "world": world_name,
         },
     )
     return experiment
@@ -346,7 +346,8 @@ class ViewerServerTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             runs_root = Path(temporary) / "runs"
-            experiment = _create_experiment(runs_root)
+            world_name = "桃太郎＋3（新形式）"
+            experiment = _create_experiment(runs_root, world_name=world_name)
             port = _available_port()
             base_url = f"http://127.0.0.1:{port}"
 
@@ -380,13 +381,13 @@ class ViewerServerTests(unittest.TestCase):
                 self.assertIn('data-purpose-link="review"', landing)
                 index = _wait_for_page(base_url + "/worlds?mode=create")
                 self.assertIn("世界を選ぶ", index)
-                self.assertIn("桃太郎", index)
+                self.assertIn(world_name, index)
 
                 # The world page no longer lists its runs (WB-UI-024 moved
                 # 実行履歴 to the ② 実行 screen); this request runs without
                 # --control, so it checks that the read-only world page still
                 # renders with its single end-of-page CTA and no editor root.
-                world_page = _wait_for_page(base_url + "/worlds/momotaro")
+                world_page = _wait_for_page(base_url + "/worlds/momotaro_plus3_new")
                 self.assertIn('data-world-prototype', world_page)
                 # Read-only viewers reach saved experiments from the world page.
                 self.assertIn('href="/exp/exp-viewer"', world_page)

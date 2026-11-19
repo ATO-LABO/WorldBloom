@@ -1,15 +1,16 @@
 ---
-ja_rev: "c5140575ada7"
+ja_rev: "af9e2a9610d1"
 ---
 # Sifting
 
-Sifting is the process where a human reads the candidates left in the [QD Map](qd-map.md) and decides which are worth turning into a synopsis or prose. In WorldBloom, judging "is this interesting" is always done by a human, never by the LLM (the LLM's only role is turning the chosen path into prose).
+Sifting is the process where a human reads the candidates left in the [QD Map](qd-map.md) and decides which are worth turning into a synopsis or prose. In WorldBloom, judging "is this interesting" is always done by a human, never by the LLM (in this stage, the LLM turns the chosen path into prose; separate stages also use it for world-draft generation/refinement and optional κ>0 rationality evaluation).
 
 ## Screen layout
 
-Clicking a grid cell opens the candidate's detail across three tabs.
+Clicking a grid cell opens the candidate's detail across four tabs.
 
 - **物語 (Story)**: this candidate's synopsis (if generated), the ending, and links to detailed rationale/generation status
+- **行動ログ (Action log)**: recorded actions, filtering by actor, and details of the selected action
 - **選択とメモ (Choices & notes)**: the selection status and a free-text notes field
 - **実験データ (Run data)**: run data such as candidate ID, generation, individual, and seed, plus a link to the raw log (`layers.jsonl`)
 

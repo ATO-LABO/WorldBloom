@@ -25,6 +25,7 @@ from unittest import mock
 from execution.configs import ConfigStore
 from gapengine.route import load_route_config, plan
 from gapengine.route_paths import state_at, survey, timepoints, walk
+from saved_world_fixtures import install_current_worlds
 from viewer import data as viewer_data
 from viewer.data import RunRepository
 from viewer.server import ViewerHandler, ViewerServer
@@ -260,6 +261,7 @@ class RoutesApiTests(unittest.TestCase):
         self.repo.mkdir()
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, self.repo / name)
+        install_current_worlds(self.repo, "momotaro_plus2")
         self.control = self.base / "control"
         self.runs = self.base / "runs"
         self.runs.mkdir()
@@ -305,9 +307,10 @@ class RoutesApiTests(unittest.TestCase):
         sample = ROOT / "samples/route_goals/cultural_festival"
         project = self.repo / "projects/festival"
         shutil.copytree(sample, project)
-        raw = yaml.safe_load((project / "world.yaml").read_text())
+        raw = yaml.safe_load((project / "world.yaml").read_text(encoding="utf-8"))
         raw["gapengine"] = {"action_graph": "templates/momotaro/action_graph.yaml", "effects": "templates/momotaro/effects.yaml"}
-        (project / "world.yaml").write_text(yaml.safe_dump(raw, allow_unicode=True))
+        (project / "world.yaml").write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+        install_current_worlds(self.repo, "festival")
         status, payload = self.get("/api/worlds/festival/routes")
         self.assertEqual(status, 200, payload)
         self.assertEqual(payload["status"], "found")
@@ -323,6 +326,10 @@ class RoutesApiReadOnlyViewerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="wb-route-paths-viewer-")
         self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name) / "repo"
+        shutil.copytree(PROJECT, self.repo / "projects" / PROJECT.name)
+        shutil.copytree(TEMPLATE, self.repo / "templates" / TEMPLATE.name)
+        install_current_worlds(self.repo, PROJECT.name)
         self.server = ViewerServer(("127.0.0.1", 0), ViewerHandler)
         self.server.repository = RunRepository(Path(self.temp.name))
         self.server.job_store = None
@@ -342,7 +349,7 @@ class RoutesApiReadOnlyViewerTests(unittest.TestCase):
             conn.close()
 
     def test_momotaro_plus2_routes_ok_without_job_store(self) -> None:
-        with mock.patch.object(viewer_data, "ROOT", ROOT):
+        with mock.patch.object(viewer_data, "ROOT", self.repo):
             status, payload = self.get("/api/worlds/momotaro_plus2/routes")
         self.assertEqual(status, 200, payload)
         self.assertEqual(payload["status"], "ok")

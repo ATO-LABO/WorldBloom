@@ -399,8 +399,11 @@ class JointActivities:
                     raise ValueError('Role or actor unavailable')
                 if self.review(inst,actor)['excluded']: raise ValueError('Participant objective conflict')
                 rate = next((rational(c['per_unit']) for c in d['costs'] if c['role']==role['id']), Fraction(0))
-                need = rate * ((inst['finish']-self.kernel.now) if running else self._duration(inst))
-                if rational(actor.stamina) < need: raise ValueError('Insufficient participant stamina')
+                from engine.stamina import adjusted_rate
+                duration=(inst['finish']-inst['start']) if running else self._duration(inst)
+                rate=adjusted_rate(self.world,d['provider'],rate,duration)
+                need = rate * ((inst['finish']-self.kernel.now) if running else duration)
+                if self.world.mechanics_enabled('stamina_management') and rational(actor.stamina) < need: raise ValueError('Insufficient participant stamina')
         if d['provider']=='joint_move':
             if any(self.world.subjects[a].zone != bindings['transit_zone' if running else 'origin'] for a in actors):
                 raise ValueError('Participant relocated')
@@ -554,18 +557,26 @@ class JointActivities:
         if not elapsed: return
         d = self.definitions[inst['definition_id']]
         usable=Fraction(elapsed)
-        for cost in d['costs']:
-            rate=rational(cost['per_unit'])
+        from engine.stamina import adjusted_rate,adjustment
+        duration=inst['finish']-inst['start']
+        costs=list(d['costs'])
+        if adjustment(self.world,d['provider']):
+            configured={c['role'] for c in costs}
+            costs += [{'role':r['id'],'per_unit':{'numerator':0,'denominator':1}} for r in d['roles'] if r['id'] not in configured]
+        for cost in costs:
+            rate=adjusted_rate(self.world,d['provider'],rational(cost['per_unit']),duration)
             if rate:
                 for aid in inst['roles'][cost['role']]: usable=min(usable,rational(self.world.subjects[aid].stamina)/rate)
         inst['funding_failed']=usable<elapsed
-        for cost in d['costs']:
+        for cost in costs:
             for aid in inst['roles'][cost['role']]:
-                person = self.world.subjects[aid]; due=usable*rational(cost['per_unit'])
+                person = self.world.subjects[aid]; due=usable*adjusted_rate(self.world,d['provider'],rational(cost['per_unit']),duration)
                 exact=rational(self.energy[aid])
                 actual = exact if abs(float(exact)-person.stamina)<1e-10 else rational(person.stamina)
                 remaining = max(Fraction(0),actual-due)
                 self.energy[aid]=pair(remaining); person.stamina=float(remaining)
+                from engine.stamina import refresh_fatigue
+                refresh_fatigue(self.world, person)
                 if self.calendar: self.calendar.energy[aid]=pair(remaining)
                 inst['spent'][aid]=pair(rational(inst['spent'][aid])+min(actual,due))
         if d['progress']:

@@ -48,6 +48,10 @@ def navigation(content, *, label, class_name=""):
     return f'<nav class="ui-nav {_e(class_name)}" aria-label="{_e(label)}">{content}</nav>'
 
 
+def tabs(content, *, label, attrs=None):
+    return f'<nav class="ui-tabs" aria-label="{_e(label)}"{attributes(attrs)}>{content}</nav>'
+
+
 def field(label, control, *, required=False, class_name=""):
     badge = '<small class="ui-required">必須</small>' if required else ""
     return f'<label class="ui-field {_e(class_name)}"><span>{_e(label)}{badge}</span>{control}</label>'

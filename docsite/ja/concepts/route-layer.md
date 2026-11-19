@@ -1,5 +1,7 @@
 ---
 sources:
+  - "projects/momotaro_plus3_new/world.yaml"
+  - "templates/momotaro_plus3/route.yaml"
   - "gapengine/route.py"
   - "gapengine/policy.py"
   - "gapengine/scenes.py"
@@ -11,13 +13,13 @@ sources:
   - "gapengine/route_goals.py"
   - "gapengine/route_search.py"
   - "viewer/library_pages.py"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # 道筋層（寄り道に理由を持たせる）
 
 主人公は基本的に、結末へいちばん近い道筋をまっすぐ進みます。そこから外れる行動（寄り道）には、本来なら何か原因があるはずです——身体の都合、情報不足、思い込み、心情。**道筋層**は、GA が生成した主人公の各決定を「結末に対してどんな意味を持つ行動だったか」で分類し、理由のない寄り道を重み ρ で抑え、理由のある寄り道には動機表で理由を与える仕組みです。7層そのものは変更せず、[Policy](genome.md) が候補の重みを決める際の、もう1つの乗数として働きます。
 
-対応テンプレートは `route.yaml` を持つジャンルだけです。現在は桃太郎＋2（`momotaro_plus2`）のみで、それ以外のジャンルでは道筋層は存在せず、画面にも出ません。
+対応テンプレートは `route.yaml` を持つジャンルだけです。同梱テンプレートでは `momotaro_plus2` と `momotaro_plus3` が持ちます。現行世界 `momotaro_plus3_new` は `momotaro_plus3` を参照します。`route.yaml` がない基本ルールでは道筋層は存在せず、画面にも出ません。
 
 ## 行動の分類
 

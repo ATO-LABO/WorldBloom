@@ -25,7 +25,7 @@ def digest(value):
 
 def source_hash():
     root = Path(__file__).resolve().parents[1]
-    paths = list((root/'engine').glob('*.py'))+[root/'execution/provenance.py', root/'scripts/calendar_sim.py']
+    paths = list((root/'engine').glob('*.py'))+[root/'execution/provenance.py', root/'execution/calendar_native.py', root/'scripts/calendar_sim.py']
     files = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
     return digest(files)
 

@@ -81,7 +81,8 @@ class ExplanationViewerTests(unittest.TestCase):
         from viewer.explanation_ui import VERBS, verb_label
         expected = {"concede":"譲歩", "craft":"作成", "disguise":"変装", "donate":"寄付",
                     "guard":"守り", "negotiate":"交渉", "plant":"伏線設置", "rescue":"救助",
-                    "sabotage":"妨害", "sacrifice":"犠牲", "trial":"試練", "withdraw":"撤退"}
+                    "sabotage":"妨害", "sacrifice":"犠牲", "start_relationship":"交際を始める",
+                    "trial":"試練", "withdraw":"撤退"}
         from engine.verbs import HANDLED_VERBS, VerbEngine
         self.assertEqual(set(VERBS), set(HANDLED_VERBS))
         self.assertTrue(all(hasattr(VerbEngine, "_" + verb) for verb in HANDLED_VERBS))

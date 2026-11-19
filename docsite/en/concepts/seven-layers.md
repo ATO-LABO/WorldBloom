@@ -1,5 +1,5 @@
 ---
-ja_rev: "a8bfc67bd92a"
+ja_rev: "ceb18037ba47"
 ---
 # Seven Layers
 
@@ -15,7 +15,7 @@ WorldBloom's characters aren't represented as lines of dialogue or personality p
 | 6. Objective | Who's after what (`goal`) and who currently holds it (`world.objectives`) | Contests over a treasure. Transfer of possession and victory/defeat are handled separately |
 | 7. Delayed effects | Planted foreshadowing (`world.pending_effects`) and its resolution conditions | An earlier action pays off later. Unresolved foreshadowing is penalized in quality |
 
-On top of this there's **vitality**. It transitions `alive` → `downed` → `revived` / `dead`, and a downed character can return to `revived` via rescue by an ally or self-recovery. Death only happens when the winning side's action or item carries `lethal`. This lets a "pseudo death and revival" arise naturally as part of the story.
+On top of this there's **vitality**. It transitions `alive` → `downed` → `revived` / `dead`, and a downed character can return to `revived` via rescue by an ally or self-recovery. Combat death follows the lethality settings. Separately, enabling `stamina.zero_behavior: death` makes zero stamina a cause of death. This lets a "pseudo death and revival" arise naturally as part of the story.
 
 ## Identity layer { #identity-layer }
 
@@ -35,7 +35,7 @@ Three things: possessions `inventory`, reputation `reputation`, and drawable rel
 
 ## Vitality transitions { #vitality-transitions }
 
-An `alive` character who loses to a non-lethal action becomes `downed`. The only action available while downed is `rest`, but they automatically recover to `revived` after a set number of turns, or immediately via a present ally's `rescue` action. The number of turns before automatic recovery is shortened by the count of present allies whose `stance` is at or above a threshold (it's the headcount of qualifying allies that matters, not the graded strength of any one relationship). `dead` only happens through `lethal_chance`, when the winning side's action or item carries `lethal` — an ordinary defeat only downs the character. A character the template marks `lethal_exempt` is protected even from lethal actions (a genre-level convention, not the engine steering toward an ending). This mechanism lets a high-volatility turn — "downed, then saved by an ally, then the tables turn" — arise from the ordinary rules rather than as a special-cased event.
+An `alive` character who loses to a non-lethal action becomes `downed`. The only action available while downed is `rest`, but they automatically recover to `revived` after a set number of turns, or immediately via a present ally's `rescue` action. The number of turns before automatic recovery is shortened by the count of present allies whose `stance` is at or above a threshold (it's the headcount of qualifying allies that matters, not the graded strength of any one relationship). Combat death follows settings including `lethal_chance` and the winning side's `lethal` actions or items — an ordinary defeat only downs the character. A character the template marks `lethal_exempt` is protected even from lethal actions (a genre-level convention, not the engine steering toward an ending). This mechanism lets a high-volatility turn — "downed, then saved by an ally, then the tables turn" — arise from the ordinary rules rather than as a special-cased event.
 
 ## The relationship matrix (stance / bonds)
 
@@ -58,6 +58,6 @@ ending:
 
 This same vocabulary is passed to the LLM's synopsis prompt as the same dictionary.
 
-## No LLM is involved in generating events { #no-llm-in-simulation }
+## The event engine and rationality evaluation { #no-llm-in-simulation }
 
-Each turn, the protagonist enumerates the action candidates possible at that moment, multiplies the base weight (from temperament and world state) by the [genome](genome.md)'s multipliers, and draws once. Candidates that don't satisfy an action's premise (e.g. observe before neutralizing) never even make it into the candidate list, so causal consistency is guaranteed by construction. No LLM enters here at all — the sequence of events is purely a simulation result. Given the same world, the same genome, and the same random seed, the log matches byte for byte (see [Determinism](determinism.md) for details).
+Each turn, the protagonist enumerates the action candidates possible at that moment, multiplies the base weight (from temperament and world state) by the [genome](genome.md)'s multipliers, and draws once. Candidates that don't satisfy an action's premise (e.g. observe before neutralizing) never even make it into the candidate list, so causal consistency is guaranteed by construction. The engine generates the events themselves. Enabling rationality κ does call an evaluator (Ollama or Jev) to adjust candidate weights. Normal κ=0 execution does not make this external judgment. Given the same world, genome, random seed, precedent table, and rationality verdict table, the log matches byte for byte (see [Determinism](determinism.md) for details).

@@ -1,3 +1,4 @@
+from frozen_world import run_frozen
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -299,7 +300,7 @@ class GoalPlannerTests(unittest.TestCase):
 
     def test_optional_feature_does_not_change_unenabled_worlds(self):
         from gapengine.objective_episode import load_episode
-        w, p = load_episode(ROOT / 'projects/ship_negotiation/world.yaml')
+        w, p = run_frozen(load_episode, ROOT / 'projects/ship_negotiation/world.yaml')
         self.assertIsNone(w.planner)
         self.assertTrue(any(a.verb == 'negotiate' for a, _ in candidates(p['通信士'], w, SimpleNamespace(turn=1, day=1))))
 

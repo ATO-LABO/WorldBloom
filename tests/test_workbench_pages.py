@@ -23,6 +23,7 @@ import urllib.request
 
 import yaml
 
+from saved_world_fixtures import copy_current_world_repo, install_current_worlds
 from execution.configs import ConfigStore
 from execution.provenance import ConfigError, atomic_json, canonical, sha256, write_bytes
 from execution.worker import TERMINAL
@@ -112,7 +113,8 @@ class WorkbenchTests(unittest.TestCase):
         self.runs = self.base / "runs"
         self.runs.mkdir()
         self.control = self.base / "control"
-        self.configs = ConfigStore(ROOT, self.control, self.runs)
+        repo = copy_current_world_repo(ROOT, self.base / "repo", "romance", "momotaro", "detective")
+        self.configs = ConfigStore(repo, self.control, self.runs)
         self.configs.save({
             "label": "wb", "project_id": "romance", "template_id": "romance",
             "evolution": {"generations": 1, "population": 1, "seeds": 1},
@@ -258,15 +260,15 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("wb", body)
         self.assertIn("cfg-test", body)
 
-        # WB-UI-021: /configs carries the single 文章生成 card, defaulted from
-        # an absent settings.json (DEFAULT_BACKEND = llama-server).
+        # The AI settings page displays the saved backend separately from model selection.
         self.assertIn('<section class="gs-panel" id="output" data-gs-panel="output">', body)
         self.assertIn('data-wb="output-settings"', body)
-        self.assertIn(
-            '<select id="f-backend" name="backend" data-field="backend">',
-            body,
-        )
-        self.assertIn('<option value="llama-server" selected>', body)
+        self.assertIn('data-gs-saved', body)
+        self.assertIn('data-gs-gemma-profile', body)
+        self.assertNotIn('<select id="f-backend"', body)
+        status, saved_settings = self.http("GET", "/api/settings/output")
+        self.assertEqual(status, 200, saved_settings)
+        self.assertEqual(saved_settings["backend"], "llama-server")
 
         status, body, _ = self.get_status("/configs/cfg-test")
         self.assertEqual(status, 200, body)
@@ -640,6 +642,7 @@ class WorkbenchTests(unittest.TestCase):
         temp_repo = temp / "repo"
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, temp_repo / name)
+        install_current_worlds(temp_repo, "momotaro", "romance")
         store = ConfigStore(temp_repo, temp / "control", temp / "runs")
         config = store.save(
             {"label": "凍結テスト", "project_id": "momotaro", "template_id": "momotaro",
@@ -709,7 +712,7 @@ class WorkbenchTests(unittest.TestCase):
         # M3 (Opus review): growth.mode != off forces evolution.world_expansion
         # to "expand" (execution/configs.py normalize), which reads the
         # approved-patches stack under directory_lock(project/"patches") --
-        # self.configs here is ConfigStore(ROOT, ...) (real repo), so doing
+        # The shared configuration fixture has its own repository. Doing
         # this against project_id="romance" without redirecting .repo would
         # create projects/romance/patches/.write.lock in the actual working
         # tree. Same isolated-temp-copy pattern as
@@ -721,6 +724,7 @@ class WorkbenchTests(unittest.TestCase):
         temp_repo = temp / "repo"
         for name in ("projects", "templates"):
             shutil.copytree(ROOT / name, temp_repo / name)
+        install_current_worlds(temp_repo, "momotaro", "romance")
         real_patches = ROOT / "projects" / "romance" / "patches"
         self.addCleanup(lambda: self.assertFalse(real_patches.exists(),
                                                   "growth save must never touch the real repo's patches/"))
@@ -1158,7 +1162,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn('<nav class="phase-band"', body)
         self.assertNotIn('data-wb="world-picker"', body)
 
-        for path in ("/configs", "/jobs", "/worlds/romance"):
+        for path in ("/configs", "/jobs?world=romance", "/worlds/romance"):
             status, body, _ = self.get_status(path)
             self.assertEqual(status, 200, body)
             band = body[body.index('<nav class="phase-band"'):body.index("</nav>")]
@@ -1405,7 +1409,7 @@ class WorkbenchTests(unittest.TestCase):
         status, body, _ = self.get_status("/history")
         self.assertEqual(status, 200, body)
         self.assertIn("実行した探索を振り返り", body)
-        self.assertIn('href="/jobs">実行条件を確認 →</a>', body)
+        self.assertIn('href="/worlds">世界を選んで実行条件へ →</a>', body)
 
     def test_raw_log(self):
         self._legacy_experiment("exp-raw")

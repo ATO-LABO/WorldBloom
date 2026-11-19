@@ -1,5 +1,5 @@
 ---
-ja_rev: "42d7d0eb3f05"
+ja_rev: "af8a7ea99848"
 ---
 # Read Results
 
@@ -18,11 +18,12 @@ Overall experiment metrics appear at the top of the screen.
 | 到達率 (Reach rate) | Fraction of all runs in that generation (population × seeds) that reached the ending |
 | q̄ | Average quality q across the whole archive |
 
-## Candidate detail (Sifting's three tabs)
+## Candidate detail (Sifting's four tabs)
 
-Opening a cell shows the candidate's detail across three tabs:
+Opening a cell shows the candidate's detail across four tabs:
 
 - **物語 (Story)**: the synopsis (if generated), the ending, and links to detailed rationale/generation status
+- **行動ログ (Action log)**: recorded actions, filtering by actor, and details of the selected action
 - **選択とメモ (Choices & notes)**: the selection status (✔ Adopted / ⏸ Held / ✖ Excluded / ○ Unsorted) and a free-text notes field
 - **実験データ (Run data)**: candidate ID, generation, individual, seed, reach, a link to the raw log (`layers.jsonl`), etc.
 
