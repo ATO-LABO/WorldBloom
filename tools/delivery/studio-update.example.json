@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "startup_check": true,
+  "auto_apply": false,
+  "periodic_minutes": null,
+  "state": null,
+  "updater": {
+    "python": null,
+    "moduleRoot": null,
+    "configPath": null
+  }
+}

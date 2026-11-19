@@ -123,6 +123,10 @@ def _auto_synopsis_refs(job_store, run_id, candidate_ids):
     """The latest ok synopsize entry per candidate (output_id lexicographic order)."""
     pairs = []
     for output in sorted(_run_outputs(job_store, run_id, kind="synopsize"), key=lambda o: o["output_id"]):
+        # Story v2 responses are slot JSON and are never legacy narration
+        # input.  Its assembled prose is paired by the shared story reference.
+        if (output.get("request") or {}).get("pipeline") == "story_v2":
+            continue
         for entry in output.get("entries", []):
             if entry.get("status") == "ok":
                 pairs.append((output["output_id"], entry))
@@ -291,14 +295,31 @@ def build_confirmation(handler, run_id, query=None):
             errors.append("指定された設定が見つかりません")
             config_id = None
 
-    story_pipeline = kind == "narrate" and qval("pipeline") == "story_v1"
+    generation = None
+    check = None
+    if config is not None:
+        try:
+            generation = current_generation(getattr(handler.server, "settings_path", None))
+            check = generation["availability"]
+        except ConfigError:
+            check = {"available": False, "authentication": "unverified", "reason": "settings_unreadable"}
+
+    from execution.output_requests import supports_story_v2
+    story_v2 = bool(generation and supports_story_v2(generation["backend"], generation["model"]))
+    story_v1 = kind == "narrate" and qval("pipeline") == "story_v1" and not story_v2
+    story_pipeline = story_v1 or story_v2
     story_refs = {}
     if story_pipeline:
         from execution.story_store import StoryStore
         stories = StoryStore(job_store.configs.control)
         for cid in candidate_ids:
             current = stories.current(run_id,cid)
-            if not current or not current["confirmed"]:
+            if story_v2 and kind == "synopsize":
+                # The first synopsis may create the skeleton.  If one already
+                # exists, pin that exact (possibly still unconfirmed) version.
+                story_refs[cid] = (stories.reference(current["plan"]["plan_id"], require_confirmation=False)
+                                   if current else None)
+            elif not current or not current["confirmed"]:
                 errors.append(f"{_short_id(cid)}: 素材・骨格を整理して確認してください")
             else:
                 story_refs[cid] = stories.reference(current["plan"]["plan_id"])
@@ -319,21 +340,6 @@ def build_confirmation(handler, run_id, query=None):
             })
     acknowledge_unknown = bool(attempt_ids)
 
-    generation = None
-    check = None
-    if config is not None:
-        settings_path = getattr(handler.server, "settings_path", None)
-        try:
-            generation = current_generation(settings_path)
-            check = generation["availability"]
-        except ConfigError:
-            # A broken settings.json must not 500 this page -- fall back to
-            # an unavailable check so the block below still explains why,
-            # with no start button (review item 2).
-            generation = None
-            check = {"available": False, "authentication": "unverified",
-                      "reason": "settings_unreadable"}
-
     request_id = "req-" + uuid.uuid4().hex
     request = None
     # available=False must not offer a start button at all (the reason is
@@ -348,8 +354,10 @@ def build_confirmation(handler, run_id, query=None):
             "acknowledge_unknown": acknowledge_unknown, "attempt_ids": attempt_ids,
         }
 
-    if request is not None and story_pipeline:
+    if request is not None and story_v1:
         request.update(schema_version=2,pipeline="story_v1",story_refs=story_refs,synopsis_refs={})
+    elif request is not None and story_v2:
+        request.update(schema_version=3,pipeline="story_v2",story_refs=story_refs,synopsis_refs={})
     return dict(
         run_id=run_id, kind=kind, mode=mode, candidate_ids=candidate_ids, by_id=by_id,
         selection_revision=selected["revision"], config_id=config_id, config=config,
@@ -793,12 +801,17 @@ def _entry_article(entry, candidates_by_id, store, output_id, run_id, synopsis_r
         try:
             raw = verified(contained(store.folder(output_id), entry["text_ref"]), entry["text_sha256"])
             text = raw.decode("utf-8")
-            if store.request(output_id).get("pipeline") == "story_v1":
+            pipeline = store.request(output_id).get("pipeline")
+            if pipeline in ("story_v1", "story_v2"):
                 from execution.story_service import read_story_output
                 result = read_story_output(store,output_id,cid)
                 text = result["text"] if result else None
+                if pipeline == "story_v2":
+                    from viewer.screening_view import review_state
+                    if review_state(store, output_id, entry) == "pending":
+                        parts.append('<p class="ui-notice ui-notice--warning">要確認</p>')
                 parts.append(f'<p><a href="/stories/outputs/{_url(output_id)}/{_url(cid)}">本文と骨格・検査を比較 →</a></p>')
-            if store.request(output_id).get("pipeline") == "facts_v1":
+            if pipeline == "facts_v1":
                 from execution.fact_service import process_fact_output
                 checked = process_fact_output(store, output_id, cid)
                 text = checked["text"] if checked else None
@@ -838,7 +851,7 @@ def _entry_text(handler, output_id, candidate_id):
         raise ConfigError("candidate_id", "本文がありません", code="not_found")
     store = OutputStore(job_store.configs.control)
     raw = verified(contained(store.folder(output_id), entry["text_ref"]), entry["text_sha256"])
-    if store.request(output_id).get("pipeline") == "story_v1":
+    if store.request(output_id).get("pipeline") in ("story_v1", "story_v2"):
         from execution.story_service import read_story_output
         result = read_story_output(store,output_id,candidate_id)
         if not result or result["text"] is None:

@@ -37,7 +37,7 @@
   const c=items.get(id);if(!c)return;current=id;
   for(const row of $$('[data-candidate-id]')){const active=row.dataset.candidateId===id;row.classList.toggle('is-current',active);row.querySelector('[data-sf-open]')?.setAttribute('aria-pressed',String(active));}
   field('title',c.label);field('meta',`${labels[c.state]} · 品質 ${c.quality_text} · ${c.reached?'結末に到達':'未到達'}`);
-  field('story',c.synopsis||`${c.synopsis_state}。記録から内容を確認できます。`);
+  field('story',(c.synopsis_needs_review?'要確認：Story v2 のあらすじ。':'')+(c.synopsis||`${c.synopsis_state}。記録から内容を確認できます。`));
   field('ending',c.ending_text);
   for(const note of $$('[data-sf-note],[data-sf-action-note]')){note.value=pending.get(id)?.note??c.note;note.disabled=initial.running||mode!=='browse';}
   href('detail',c.detail_href||c.raw_href,c.detail_href?'物語と根拠を詳しく読む ↗':'原記録から内容を確認 ↗');href('raw',c.raw_href);href('output',c.output_href);
@@ -126,6 +126,6 @@
   const scroller=$('[data-sf-list]')||$('.sf-grid-scroll');if(scroller)scroller.scrollTop=remembered.scroll||0;
   $$('[data-sf-tab]').find(b=>b.dataset.sfTab===remembered.panel)?.click();
  }else if(initial.view==='list'||initial.view==='grid'){for(const e of $$('[name="sf-verdict"],[data-sf-note],[data-sf-prev],[data-sf-next]'))e.disabled=true;}
- window.addEventListener('wb-generation-entry',e=>{const d=e.detail;if(d.run_id!==initial.run_id)return;const c=items.get(d.candidate_id);if(!c)return;c.synopsis=d.text;c.synopsis_state='あらすじ生成済み';c.can_synopsis=false;c.status.synopsize='ok';c.output_href=`/outputs/${encodeURIComponent(d.output_id)}`;const row=$$('[data-candidate-id]').find(r=>r.dataset.candidateId===d.candidate_id);const snippet=row?.querySelector('.sf-snippet');if(snippet)snippet.textContent=d.text;if(current===d.candidate_id)select(current);});
+ window.addEventListener('wb-generation-entry',e=>{const d=e.detail;if(d.run_id!==initial.run_id)return;const c=items.get(d.candidate_id);if(!c)return;c.synopsis=d.text;c.synopsis_needs_review=d.pipeline==='story_v2';c.synopsis_state=c.synopsis_needs_review?'あらすじあり・要確認':'あらすじ生成済み';c.can_synopsis=false;c.status.synopsize='ok';c.output_href=`/outputs/${encodeURIComponent(d.output_id)}`;const row=$$('[data-candidate-id]').find(r=>r.dataset.candidateId===d.candidate_id);const snippet=row?.querySelector('.sf-snippet');if(snippet)snippet.textContent=d.text;if(current===d.candidate_id)select(current);});
  footer();
 })();

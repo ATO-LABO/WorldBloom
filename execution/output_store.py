@@ -61,8 +61,25 @@ class OutputStore:
                 raise ConfigError("schema_version", "未対応の生成要求版です")
             if version == 2 and (doc.get("pipeline") != "story_v1" or doc.get("kind") != "narrate"):
                 raise ConfigError("pipeline", "未対応の本文生成方式です")
-            if (version != 3 and "fact_refs" in doc) or (version == 3 and
-                    (doc.get("pipeline") != "facts_v1" or doc.get("kind") not in ("synopsize", "narrate"))):
+            if version == 3:
+                pipeline = doc.get("pipeline")
+                if pipeline not in ("facts_v1", "story_v2") or doc.get("kind") not in ("synopsize", "narrate"):
+                    raise ConfigError("pipeline", "未対応の生成方式です")
+                if pipeline == "facts_v1" and "story_refs" in doc:
+                    raise ConfigError("pipeline", "事実保持方式に骨格参照は指定できません")
+                if pipeline == "story_v2" and "fact_refs" in doc:
+                    raise ConfigError("pipeline", "Story v2 に事実入力参照は指定できません")
+                if pipeline == "story_v2":
+                    from execution.output_requests import supports_story_v2
+                    refs = doc.get("story_refs")
+                    expected_ref = {"material_id", "material_sha256", "plan_id", "plan_sha256", "confirmation_sha256"}
+                    if (not supports_story_v2(doc.get("backend"), doc.get("model"))
+                            or not isinstance(refs, dict) or set(refs) != set(ids)
+                            or any(not isinstance(ref, dict) or set(ref) != expected_ref
+                                   or (ref["confirmation_sha256"] is None and doc.get("kind") == "narrate")
+                                   for ref in refs.values())):
+                        raise ConfigError("story_refs", "固定した Gemma 4 の骨格参照が必要です")
+            elif "fact_refs" in doc:
                 raise ConfigError("pipeline", "未対応の事実保持方式です")
             doc["schema_version"] = version
             atomic_json(pending / "request.json", doc)
@@ -182,6 +199,8 @@ class AttemptSink:
                 "credentials": credentials or {}}
         if self.request.get("pipeline") == "story_v1":
             call["response_format"] = "story_json"
+        elif self.request.get("pipeline") == "story_v2":
+            call["response_format"] = "story_v2_json"
         return call
 
     def check(self, request):
