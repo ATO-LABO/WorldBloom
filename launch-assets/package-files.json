@@ -1091,5 +1091,7 @@
   "tests/purpose_native_generation_ui.cjs": "a5ff5567d1218cc2c3cc33c57d381e6af403e1243cc8b7cc370a9f087db39b98",
   "tests/test_melos_native_jobs.py": "de0e2c005fbf00d4db68f6080c724544caa0cee28959909028f6fd532fe97529",
   "tests/__init__.py": "a4f7d60ba9f12e7e8ed4332342b82dc6735d0766967b99f57e20b5c8ab24b4f9",
-  "tests/test_native_test_portability.py": "1334f1dc5e7fceeb7d5ae482a596723ee18e599b282e40d78087e3f83b55396e"
+  "tests/test_native_test_portability.py": "1334f1dc5e7fceeb7d5ae482a596723ee18e599b282e40d78087e3f83b55396e",
+  "tests/test_logical_calendar.py": "9865e00fb873f1d32e243eda539c849421fe0d69a4127ae80388515322a4c5fe",
+  "tests/test_logical_date_runtime.py": "d3b3540352089eca9b66752d04d963245a34d99698b3e01ec1c1c1e87baa648c"
 }
