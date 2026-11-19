@@ -172,7 +172,7 @@ def _comparison(handler,oid,cid):
     jobs,_=_context(handler)
     store=OutputStore(jobs.configs.control)
     req=store.request(oid);store.verify_artifacts(oid)
-    if req.get("pipeline")!="story_v1" or cid not in req["candidate_ids"]:
+    if req.get("pipeline") not in ("story_v1", "story_v2") or cid not in req["candidate_ids"]:
         raise ConfigError("story","二段階方式の本文ではありません")
     item=store.sink(oid,cid).current()
     result=read_story_output(store,oid,cid)
@@ -190,12 +190,16 @@ def _comparison(handler,oid,cid):
     adoption=(review or {}).get("adoption","pending")
     adoption_label={"pending":"レビュー待ち","accepted":"採用","revise":"要修正","rejected":"不採用"}.get(adoption,"不明")
     body+='<p>生成：'+E(_transport_label(store,oid,cid,item))+' · 検査：'+E((result or {}).get("validation",{}).get("structural_status","未検査"))+' · 採否：'+E(adoption_label)+'</p>'
-    body+='<button type="button" data-story-recheck>保存済み応答を再検査（再送なし）</button>'
+    if req.get("pipeline") == "story_v2":
+        body+='<p class="ui-notice ui-notice--warning">要確認：意味的なログ照合は未実施です。本文の採否とは別に確認してください。</p>'
+        body+='<button type="button" data-story-recheck>保存済み応答を構造確認（再送なし）</button>'
+    else:
+        body+='<button type="button" data-story-recheck>保存済み応答を再検査（再送なし）</button>'
     if result and result["text"]:
         body+='<div class="story-columns"><article><h2>本文</h2><div class="story-text">'+E(result["text"])+'</div></article>'
     else:
         body+='<div class="story-columns"><article><h2>本文</h2><p>読み取れる本文はまだありません。応答不明や形式不正の場合は生成記録を確認してください。</p>'
-        body+='<button type="button" data-story-recheck>保存済み応答を再検査（再送なし）</button></article>'
+        body+='<button type="button" data-story-recheck>' + ('保存済み応答を構造確認（再送なし）' if req.get("pipeline") == "story_v2" else '保存済み応答を再検査（再送なし）') + '</button></article>'
     byid={e["event_id"]:e for e in material["events"]}
     body+='<aside><h2>固定した骨格</h2><ol>'+''.join('<li>'+E(byid[i]["label"])+'</li>' for b in plan["beats"] for i in b["event_ids"])+'</ol></aside></div>'
     if result:
@@ -212,7 +216,7 @@ def _output_api(handler,parts,method):
     body=handler._request_json()
     oid,cid,action=parts[3:6]
     store=OutputStore(jobs.configs.control);store.verify_artifacts(oid)
-    if store.request(oid).get("pipeline")!="story_v1":
+    if store.request(oid).get("pipeline") not in ("story_v1", "story_v2"):
         raise ConfigError("story","二段階方式の本文ではありません")
     if action=="recheck" and body=={}:
         result=process_story_output(store,oid,cid)

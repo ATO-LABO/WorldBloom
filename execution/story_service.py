@@ -11,7 +11,7 @@ from execution.story_store import StoryStore
 from gapengine.story_materials import read_inputs, extract_materials
 from gapengine.story_plan import create_plan
 
-def organize(control, repo, raw, inputs, binding, *, length=None):
+def organize(control, repo, raw, inputs, binding, *, length=None, require_existing_match=False):
     code, runtime = code_snapshot(Path(repo))
     binding = {**deepcopy(binding), "runtime_manifest_sha256": sha256(canonical(runtime))}
     artifacts = {"inputs/layers.jsonl": raw, **{"inputs/"+p:b for p,b in inputs.items()},
@@ -31,6 +31,11 @@ def organize(control, repo, raw, inputs, binding, *, length=None):
     store = StoryStore(control)
     store.save_material(material, artifacts=artifacts)
     current = store.current(binding["run_id"], binding["candidate_id"])
+    if current and require_existing_match:
+        # A nullable reference means admission observed no current plan.  Even
+        # an identical plan appearing before preparation is a concurrent UI
+        # change, so never silently bind this request to it.
+        raise ConfigError("story_refs", "構成案が更新されています", code="conflict")
     if current and current["plan"]["material_ref"]["material_id"] == material["material_id"]:
         return current
     plan = create_plan(material, length=length)
@@ -69,9 +74,8 @@ def organize_experiment(control, repo, selected, project, template, *, run_id="a
 
 def process_story_output(store, output_id, cid):
     """Local-only processing of a saved model response. Safe to repeat."""
-    from gapengine.story_validation import inspect_story
     request = store.request(output_id)
-    if request.get("pipeline") != "story_v1":
+    if request.get("pipeline") not in ("story_v1", "story_v2"):
         return None
     store.verify_artifacts(output_id)
     item = store.sink(output_id, cid).current()
@@ -80,7 +84,12 @@ def process_story_output(store, output_id, cid):
     root = contained(store.folder(output_id), "inputs/story/" + cid)
     material, plan, _ = pinned_story(store.folder(output_id), cid, request)
     text = verified(contained(store.folder(output_id), item["text_ref"]), item["text_sha256"]).decode("utf-8")
-    result = inspect_story(text, material, plan)
+    if request.get("pipeline") == "story_v2":
+        from gapengine.story_v2 import inspect_story_v2
+        result = inspect_story_v2(text, material, plan, request["kind"])
+    else:
+        from gapengine.story_validation import inspect_story
+        result = inspect_story(text, material, plan)
     folder = store.sink(output_id, cid).folder
     data = canonical(result)
     name = "story-result-" + sha256(data)[:24] + ".json"
@@ -98,7 +107,8 @@ def read_story_output(store, output_id, cid):
     item = store.sink(output_id,cid).current()
     if not item or result["validation"]["raw_text_sha256"] != item.get("text_sha256"):
         raise ConfigError("story", "本文と検査記録の版が一致しません", code="snapshot_changed")
-    material, plan, _ = pinned_story(store.folder(output_id),cid,store.request(output_id))
+    request = store.request(output_id)
+    material, plan, _ = pinned_story(store.folder(output_id),cid,request)
     if (result["validation"]["material_sha256"] != material["content_sha256"]
             or result["validation"]["plan_sha256"] != sha256(canonical(plan))):
         raise ConfigError("story", "検査記録と固定した骨格の版が異なります", code="snapshot_changed")
@@ -144,19 +154,23 @@ def pinned_story(root, cid, request):
     from gapengine.story_materials import verify_material
     from gapengine.story_plan import validate_plan
     prefix = contained(root, "inputs/story/" + cid)
-    material, plan, confirmation = (read_json(prefix / name) for name in
-                                   ("materials.json", "plan.json", "confirmation.json"))
+    material, plan = (read_json(prefix / name) for name in ("materials.json", "plan.json"))
+    try:
+        confirmation = read_json(prefix / "confirmation.json")
+    except FileNotFoundError:
+        confirmation = None
     verify_material(material); validate_plan(material, plan)
     ref = request["story_refs"][cid]
     actual = {"material_id":material["material_id"],"material_sha256":material["content_sha256"],
               "plan_id":plan["plan_id"],"plan_sha256":sha256(canonical(plan)),
-              "confirmation_sha256":sha256(canonical(confirmation))}
+              "confirmation_sha256":sha256(canonical(confirmation)) if confirmation is not None else None}
     binding = material["source_binding"]
     source = next((s for s in request["sources"] if s["candidate_id"] == cid),None)
     if (actual != ref or binding["candidate_id"] != cid or binding["run_id"] != request["run_id"]
             or not source or source["source_log_sha256"] != binding["source_log_sha256"]
-            or confirmation.get("plan_id") != plan["plan_id"]
-            or confirmation.get("plan_sha256") != actual["plan_sha256"]
-            or confirmation.get("material_sha256") != material["content_sha256"]):
+            or (confirmation is not None and (confirmation.get("plan_id") != plan["plan_id"]
+                or confirmation.get("plan_sha256") != actual["plan_sha256"]
+                or confirmation.get("material_sha256") != material["content_sha256"]))
+            or (request.get("kind") == "narrate" and confirmation is None)):
         raise ConfigError("story_refs", "固定した骨格の参照が一致しません", code="snapshot_changed")
     return material, plan, confirmation

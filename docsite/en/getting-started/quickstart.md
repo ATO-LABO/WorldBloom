@@ -1,5 +1,5 @@
 ---
-ja_rev: "e75e12c5e28f"
+ja_rev: "71ad75ce097e"
 ---
 
 # Quickstart (one lap with Momotaro)
@@ -22,7 +22,7 @@ Confirm the settings and start the run; progress (generation, completed individu
 
 ## 4. Results (QD map) and Sifting
 
-When the run finishes, you see the QD map: a grid of leading category × volatility. Click a cell to open a candidate's detail, with three tabs: "**物語** (Story)", "**選択とメモ** (Choices & notes)", "**実験データ** (Run data)". Adopt candidates you like; the "**採用候補を確認（N件） →** (Review adopted candidates (N) →)" button at the bottom becomes clickable once you have at least one.
+When the run finishes, you see the QD map: a grid of leading category × volatility. Click a cell to open a candidate's detail, with four tabs: "**物語** (Story)", "**行動ログ** (Action log)", "**選択とメモ** (Choices & notes)", "**実験データ** (Run data)". Adopt candidates you like; the "**採用候補を確認（N件） →** (Review adopted candidates (N) →)" button at the bottom becomes clickable once you have at least one.
 
 ## 5. Generate synopsis/text (optional, needs an LLM)
 
