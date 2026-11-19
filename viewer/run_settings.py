@@ -24,6 +24,15 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         metadata[w["id"]] = {"name": names[w["id"]], "genre": w.get("genre"),
             "ending": "、".join(labels.get(k, k) for k in target) or "世界の既定の結末を使います。",
             "labels": labels, "protagonist": w.get("protagonist") or "未設定", "antagonist": w.get("antagonist") or "未設定"}
+    from execution.time_pressure_settings import snapshot as pressure_snapshot
+    from execution.provenance import ConfigError
+    pressure_store = LibraryStore(store.configs.repo)
+    for ident, item in metadata.items():
+        try:
+            pressure_data = pressure_snapshot(pressure_store, ident)
+            item["time_pressure"] = {**pressure_data["availability"], "source_count": len(pressure_data["settings"]["sources"])}
+        except (ConfigError, OSError, ValueError, TypeError, KeyError):
+            item["time_pressure"] = {"available": False, "source_count": None, "reason": "期限の根拠を確認できません。世界設定で参照先と保存状態を確認してください。"}
     parent_id = parent["config_id"] if parent else None
     parent_attr = f' data-parent="{E(parent_id)}"' if parent else ""
     def text(label, field, **kwargs):
@@ -152,6 +161,12 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
     else:
         rationality_section = ""
     route_section = wb._route_section(values, heading_prefix="05. ") if route is not None else ""
+    pressure = ('<section data-time-pressure-section><h2>時間的な切迫</h2><span data-time-pressure-help></span>' + wb._checkbox_field(
+        "時間的な切迫を行動選択に反映", "time_pressure.enabled",
+        bool(((parent or {}).get("time_pressure") or {}).get("enabled", False)),
+        desc="世界設定の根拠と、主人公が知っている時間の余裕に応じて、行動の選ばれやすさを変えます。既定オフ。")
+        + '<p class="ui-hint" data-time-pressure-availability role="status"></p>'
+        + f'<p><a data-time-pressure-link href="/worlds/{U(selected)}#screen=time&amp;tab=pressure">世界設定の「期限と切迫」を開く →</a></p></section>')
     advanced = ('<details class="cfg-adv"><summary>詳細設定 <span data-limit-summary></span></summary>'
         + genre_field + '<div class="rs-scale">'
         + number("乱数の開始値", "evolution.seed_base") + number("進化の乱数", "evolution.ga_seed")
@@ -171,7 +186,7 @@ def render(handler, values, *, projects, templates, worlds, parent=None, rationa
         '<section><h2>02. 探索の規模</h2><div class="rs-scale">' + scale
         + '</div><p class="rs-muted">同じ個体を、異なる初期条件で評価します。1世代あたり <span data-per-gen></span> 回。</p></section>'
         '<section><h2>03. 保存と進化</h2>' + keep + expansion + growth + seed_genomes + '<div class="rs-toggles">' + toggles + '</div></section>'
-        + rationality_section + route_section + advanced + '</div>'
+        + rationality_section + route_section + pressure + advanced + '</div>'
         + run_summary.render({k.removeprefix("evolution."): v for k, v in values.items() if k.startswith("evolution.")}, editable=True)
         + '</div><footer class="rw-footer rs-footer">'
         f'<a data-world-back href="{E(back)}">← 世界設定へ戻る</a>'
