@@ -256,10 +256,11 @@ def _run_mode_a(
     seed: int,
     turns: int | None,
     run_out: Path,
+    world_loader=None,
 ) -> list[dict[str, Any]]:
     action_graph_path = template / "action_graph.yaml"
     action_graph_path = action_graph_path if action_graph_path.is_file() else None
-    world = World.from_yaml(project / "world.yaml", action_graph_path=action_graph_path)
+    world = (world_loader or World.from_yaml)(project / "world.yaml", action_graph_path=action_graph_path)
     subjects = _load_subjects(project / "subjects")
     # Bind now (Simulation() below re-binds harmlessly -- see
     # tests/test_gapengine.py's load_fixture()) so the protagonist's static

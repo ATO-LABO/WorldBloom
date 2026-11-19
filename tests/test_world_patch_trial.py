@@ -19,6 +19,8 @@ from gapengine import world_patch_trial
 from gapengine.evolve import evolve
 from gapengine.rationality import RationalityTableMissError
 from gapengine.world_patch_trial import run_trial
+from saved_world_fixtures import install_current_worlds
+from viewer import data as viewer_data
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = ROOT / "projects" / "momotaro"
@@ -35,8 +37,9 @@ VALID_ADD = {
 def _make_fast_project(root: Path) -> Path:
     """A 1-day, guaranteed-homecoming momotaro copy -- keeps this fixture
     experiment's own evolve() run fast and non-flaky."""
-    project = root / "fast-project"
+    project = root / "projects" / "momotaro"
     shutil.copytree(PROJECT, project)
+    shutil.copytree(TEMPLATE, root / "templates" / "momotaro")
     world_path = project / "world.yaml"
     world_raw = yaml.safe_load(world_path.read_text(encoding="utf-8"))
     world_raw["time"] = {"days": 1, "slots": ["朝"]}
@@ -47,7 +50,20 @@ def _make_fast_project(root: Path) -> Path:
     }]
     world_path.write_text(yaml.safe_dump(world_raw, allow_unicode=True, sort_keys=False),
                            encoding="utf-8", newline="\n")
+    install_current_worlds(root, "momotaro")
     return project
+
+
+def _run_fast_trial(experiment: Path, patch: dict, work: Path):
+    # Non-frozen trial lookup uses the viewer's repository catalogue.
+    repo = experiment.parent
+    with unittest.mock.patch.object(viewer_data, "ROOT", repo):
+        viewer_data.resolve_genre.cache_clear()
+        try:
+            return run_trial(experiment, patch, work_dir=work, repo_root=repo,
+                             max_runs=2, seeds_per_run=2)
+        finally:
+            viewer_data.resolve_genre.cache_clear()
 
 
 class RunTrialTests(unittest.TestCase):
@@ -58,7 +74,7 @@ class RunTrialTests(unittest.TestCase):
         fast_project = _make_fast_project(root)
         evolve({
             "ga_seed": 29, "generations": 2, "keep": "all", "population": 5, "processes": 1,
-            "project": fast_project, "seed_base": 31, "seeds": 1, "template": TEMPLATE,
+            "project": fast_project, "seed_base": 31, "seeds": 1, "template": root / "templates" / "momotaro",
             "out": root / "experiment",
         })
         cls.experiment = root / "experiment"
@@ -72,7 +88,7 @@ class RunTrialTests(unittest.TestCase):
         # patch["trigger"]["zone"]/["verb"] and must report trigger=None.
         patch = {"id": "p-notrigger1", "title": "きっかけなしのパッチ", "add": VALID_ADD}
         with tempfile.TemporaryDirectory() as work:
-            result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+            result = _run_fast_trial(self.experiment, patch, Path(work))
 
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["total_runs"], 4)  # 2 individuals x 2 seeds, none failed
@@ -90,7 +106,7 @@ class RunTrialTests(unittest.TestCase):
         patch = {"id": "p-whiff1", "title": "空振りパッチ", "add": VALID_ADD,
                  "trigger": {"zone": "海", "verb": "investigate", "count": 10, "whiffs": 10}}
         with tempfile.TemporaryDirectory() as work:
-            result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+            result = _run_fast_trial(self.experiment, patch, Path(work))
         self.assertEqual(set(result["trigger"]), {"zone", "verb", "base", "patched"})
         self.assertEqual(result["trigger"]["zone"], "海")
         self.assertEqual(result["trigger"]["verb"], "investigate")
@@ -111,7 +127,7 @@ class RunTrialTests(unittest.TestCase):
         ]
         with unittest.mock.patch.object(world_patch_trial, "collect", side_effect=reports):
             with tempfile.TemporaryDirectory() as work:
-                result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+                result = _run_fast_trial(self.experiment, patch, Path(work))
         self.assertEqual(result["trigger"], {
             "kind": "ignorance", "zone": "海",
             "base": {"count": 7, "total": 10, "share": 0.7},
@@ -130,7 +146,7 @@ class RunTrialTests(unittest.TestCase):
         ]
         with unittest.mock.patch.object(world_patch_trial, "collect", side_effect=reports):
             with tempfile.TemporaryDirectory() as work:
-                result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+                result = _run_fast_trial(self.experiment, patch, Path(work))
         self.assertEqual(result["trigger"], {
             "kind": "blocked", "requirement": "has_item:縄",
             "base": {"count": 15, "lost_total": 15, "lost_rate": 0.5},
@@ -162,7 +178,7 @@ class RationalityTableMissTrialTests(unittest.TestCase):
         fast_project = _make_fast_project(root)
         evolve({
             "ga_seed": 29, "generations": 2, "keep": "all", "population": 5, "processes": 1,
-            "project": fast_project, "seed_base": 31, "seeds": 1, "template": TEMPLATE,
+            "project": fast_project, "seed_base": 31, "seeds": 1, "template": root / "templates" / "momotaro",
             "out": root / "experiment",
         })
         cls.experiment = root / "experiment"
@@ -184,7 +200,7 @@ class RationalityTableMissTrialTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as work:
             with unittest.mock.patch.object(world_patch_trial, "run_individual", side_effect=flaky):
-                result = run_trial(self.experiment, patch, work_dir=Path(work), max_runs=2, seeds_per_run=2)
+                result = _run_fast_trial(self.experiment, patch, Path(work))
 
         self.assertEqual(result["errors"], [])
         self.assertTrue(result["rationality_table_miss"])
@@ -234,6 +250,7 @@ def _frozen_route_experiment(root: Path, *, kappa: float | None = None):
     for package in ("engine", "gapengine", "scripts", "execution", "viewer"):
         shutil.copytree(ROOT / package, repo / package, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copyfile(ROOT / "requirements.txt", repo / "requirements.txt")
+    install_current_worlds(repo, "momotaro_plus2")
     store = ConfigStore(repo, root / "control", root / "runs")
     # Same generations/population/seeds as tests/test_lineage.py's
     # RouteLineageRerunTests (verified by hand to reach real archive cells

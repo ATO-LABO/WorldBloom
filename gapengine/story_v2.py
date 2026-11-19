@@ -4,14 +4,17 @@ The model may add prose to a slot, but it never owns the log-derived facts:
 those are inserted here after parsing, in source order.
 """
 import json
+import math
 import re
+import unicodedata
+from difflib import SequenceMatcher
 
 from execution.provenance import canonical, sha256
 from gapengine.story_materials import verify_material
 from gapengine.story_plan import validate_plan
 
 
-VERSION = "story-v2-1"
+VERSION = "story-v2-2"
 _KINDS = {"synopsize": "synopsis", "narrate": "story", "synopsis": "synopsis", "story": "story"}
 
 
@@ -87,6 +90,17 @@ def _fact_sentence(event, recovered=()):
         source = details.get("source") or neutralized.get("source")
         if event.get("result") == "neutralized" and target and source:
             return f"{actor}は{target}の{source}の力を封じた。"
+    elif verb == "sabotage":
+        target = details.get("target") or (event.get("target_ids") or [None])[0]
+        if event.get("result") == "sabotaged" and event.get("effective") is not False and target:
+            return f"{actor}は{target}を妨害した。"
+    elif verb == "payoff" and event.get("type") == "effect_applied" and event.get("result") == "applied":
+        applied = details.get("applied")
+        if isinstance(applied, dict) and applied.get("kind") == "stance":
+            a, b, delta = applied.get("a"), applied.get("b"), applied.get("delta")
+            if a and b and type(delta) in (int, float) and math.isfinite(delta) and delta:
+                change = "薄れた" if delta < 0 else "増した"
+                return f"{a}が{b}に向ける好意は{change}。"
     elif verb == "craft":
         if event.get("result") == "crafted" and details.get("item"):
             return f"{actor}は{details['item']}を作った。"
@@ -122,11 +136,13 @@ def _fact_sentence(event, recovered=()):
 def _packet(material, plan):
     validate_plan(material, plan)
     required = set(plan["required_event_ids"])
+    selected = {event_id for beat in plan["beats"] for event_id in beat["event_ids"]}
     hero = material["world"].get("protagonist")
     foe = material["world"].get("antagonist")
     central = {name for name in (hero, foe) if name}
     lost_to = set()
     slots = []
+    core_number = 0
     events = material["events"]
     for index, event in enumerate(events):
         event_id, verb = event["event_id"], event["verb"]
@@ -140,7 +156,8 @@ def _packet(material, plan):
                     or verb == "revived" and details.get("by") in central
                     or verb == "rescue" and (actor in central or details.get("target") in central)
                     or verb == "neutralize" and actor == hero and event.get("result") == "neutralized")
-        if event_id not in required and not relevant:
+        core = event_id in required or relevant
+        if not core and event_id not in selected:
             continue
         # A rescue and its immediate revival are two rows for one reported result.
         if verb == "rescue" and event_id not in required and any(
@@ -150,8 +167,13 @@ def _packet(material, plan):
         ):
             continue
         anchor = _fact_sentence(event, recovered)
+        if core:
+            core_number += 1
+        # Keep historical core slot IDs stable when context is added between
+        # them. Never bind an old saved response to a different source event.
+        slot_id = f"scene-{core_number:03d}" if core else "context-" + sha256(event_id.encode("utf-8"))[:12]
         slots.append({
-            "slot_id": f"scene-{len(slots) + 1:03d}", "event_id": event_id,
+            "slot_id": slot_id, "event_id": event_id, "core": core,
             "order": event["order"], "required": event_id in required, "render": True,
             "anchor": anchor,
             "review_reason": None if anchor else "固定文を安全に組み立てられません。原ログを確認してください。",
@@ -166,7 +188,9 @@ def build_story_v2_prompt(material, plan, kind):
     verify_material(material)
     packet = _packet(material, plan)
     task = "あらすじ" if kind == "synopsis" else "本文"
-    compact = "補足は必要な場面だけ短くしてください。" if kind == "synopsis" else "補足は場面を自然につなぐために必要な分だけ書いてください。"
+    compact = ("あらすじはcore=trueの主な転機を扱います。補足は必要な場面だけにしてください。"
+               if kind == "synopsis" else
+               "本文はcore=falseも含め、構成案に選ばれた経過を時系列で扱います。補足は場面を自然につなぐために必要な分だけ書いてください。")
     return (
         f"あなたは記録に基づく日本語の{task}を書く補助です。文字数の上限・下限はありません。\n"
         "アプリ側が各 slot_id に anchor の文章を差し込みます。返す text には anchor を書き写したり、同じ事実を言い換えたりしないでください。"
@@ -206,14 +230,30 @@ def _model_slots(raw_text, slot_ids, findings):
 def _without_fixed_sentences(text, fixed):
     pieces = re.split(r"(?<=[。！？])|\n+", text)
     def echo_key(part):
-        return re.sub(r"^(?:その後|その結果|そして|最後に|やがて|ついに)[、，,]?\s*", "", part.strip())
+        part = unicodedata.normalize("NFKC", part)
+        part = re.sub(r"^(?:その後|その結果|そして|最後に|やがて|ついに|最終的に)[、，,]?\s*", "", part.strip())
+        return re.sub(r"[\s、，,。！？!?]+", "", part)
 
-    return "".join(part.strip() for part in pieces if echo_key(part) not in fixed).strip()
+    keys = [echo_key(part) for part in fixed]
+    # Conservative near-copy removal, not a semantic correctness verdict.
+    # Model additions still require a separate human semantic review.
+    def repeats(part):
+        key = echo_key(part)
+        if not key:
+            return False
+        for fact in keys:
+            if key == fact:
+                return True
+            match = SequenceMatcher(None, key, fact, autojunk=False)
+            if match.real_quick_ratio() >= 0.84 and match.quick_ratio() >= 0.84 and match.ratio() >= 0.84:
+                return True
+        return False
+    return "".join(part.strip() for part in pieces if not repeats(part)).strip()
 
 
 def inspect_story_v2(raw_text, material, plan, kind):
     """Assemble optional model prose with mandatory source-order fact anchors."""
-    _kind(kind)
+    kind = _kind(kind)
     verify_material(material)
     packet = _packet(material, plan)
     findings = []
@@ -224,6 +264,8 @@ def inspect_story_v2(raw_text, material, plan, kind):
     paragraphs, sources, coverage = [], [], []
     for slot in packet["slots"]:
         if not slot["render"]:
+            continue
+        if kind == "synopsis" and not slot["core"]:
             continue
         parts = []
         if slot["anchor"]:
@@ -248,6 +290,8 @@ def inspect_story_v2(raw_text, material, plan, kind):
               "raw_text_sha256": sha256(raw_text.encode("utf-8")),
               "reference_encoding": "story_v2_slots", "text_sha256": sha256(text.encode("utf-8")) if text is not None else None,
               "material_sha256": material["content_sha256"], "plan_sha256": sha256(canonical(plan)),
+              "rendering_kind": kind,
+              "context_event_coverage": [event_id for event_id in coverage if event_id not in plan["required_event_ids"]],
               "structural_status": "failed" if any(f["severity"] == "error" for f in findings) else "passed",
               "findings": findings, "required_event_coverage": sorted(set(plan["required_event_ids"]) & set(coverage)),
               "semantic_review_status": "not_reviewed", "human_adoption": "pending",

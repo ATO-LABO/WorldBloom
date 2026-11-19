@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from frozen_world import evolve_frozen, modernize_cli_project
 import json
 import random
 import shutil
@@ -17,6 +18,7 @@ from engine.actions import Action, candidates
 from engine.sim import Simulation
 from engine.subject import BeliefAbout, Subject
 from engine.verbs import VerbEngine
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.classify import classify
 from gapengine.evolve import (
@@ -54,7 +56,7 @@ TEMPLATE = ROOT / "templates" / "momotaro"
 
 
 def load_fixture() -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(PROJECT / "world.yaml")
+    world = load_frozen_world(PROJECT / "world.yaml")
     subjects = [
         Subject.from_yaml(path)
         for path in sorted(
@@ -441,14 +443,14 @@ class GapEngineTests(unittest.TestCase):
                 "template": TEMPLATE,
             }
 
-            serial = evolve(
+            serial = evolve_frozen(
                 {
                     **common,
                     "out": root / "serial",
                     "processes": 1,
                 }
             )
-            parallel = evolve(
+            parallel = evolve_frozen(
                 {
                     **common,
                     "out": root / "parallel",
@@ -993,10 +995,13 @@ class Phase1GapEngineTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
+            project = output / "current-input"
+            shutil.copytree(PROJECT, project)
+            modernize_cli_project(project)
             result = baseline_main(
                 [
                     "--project",
-                    str(PROJECT),
+                    str(project),
                     "--template",
                     str(TEMPLATE),
                     "--out",
@@ -1467,14 +1472,14 @@ class Phase3GapEngineTests(unittest.TestCase):
                 "seeds": 1,
                 "template": TEMPLATE,
             }
-            serial = evolve(
+            serial = evolve_frozen(
                 {
                     **common,
                     "out": root / "serial",
                     "processes": 1,
                 }
             )
-            parallel = evolve(
+            parallel = evolve_frozen(
                 {
                     **common,
                     "out": root / "parallel",
@@ -2044,7 +2049,7 @@ class Phase4GapEngineTests(unittest.TestCase):
                         newline="\n",
                     )
                     with self.assertRaises(ValueError):
-                        World.from_yaml(
+                        load_frozen_world(
                             world_path,
                             action_graph_path=graph_path,
                         )
@@ -2097,20 +2102,20 @@ class Phase4GapEngineTests(unittest.TestCase):
                 "template": TEMPLATE,
             }
 
-            evolve(
+            evolve_frozen(
                 {
                     **common,
                     "out": root / "legacy",
                 }
             )
-            evolve(
+            evolve_frozen(
                 {
                     **common,
                     "meta_evolution": False,
                     "out": root / "explicit-off",
                 }
             )
-            evolve(
+            evolve_frozen(
                 {
                     **common,
                     "meta_evolution": True,
@@ -2184,9 +2189,9 @@ class Phase4GapEngineTests(unittest.TestCase):
                 "template": TEMPLATE,
             }
 
-            evolve({**common, "out": root / "legacy"})
-            evolve({**common, "world_expansion": "off", "out": root / "explicit-off"})
-            evolve({**common, "world_expansion": "detect", "out": root / "detect"})
+            evolve_frozen({**common, "out": root / "legacy"})
+            evolve_frozen({**common, "world_expansion": "off", "out": root / "explicit-off"})
+            evolve_frozen({**common, "world_expansion": "detect", "out": root / "detect"})
 
             def snapshot(name: str) -> dict[Path, bytes]:
                 base = root / name
@@ -2254,8 +2259,8 @@ class Phase4GapEngineTests(unittest.TestCase):
                 "ga_seed": 29, "generations": 1, "keep": "all", "population": 3,
                 "processes": 1, "seed_base": 31, "seeds": 1, "template": TEMPLATE,
             }
-            evolve({**common, "project": expanded_project, "out": root / "with-expansion"})
-            evolve({**common, "project": plain_project, "out": root / "no-expansion"})
+            evolve_frozen({**common, "project": expanded_project, "out": root / "with-expansion"})
+            evolve_frozen({**common, "project": plain_project, "out": root / "no-expansion"})
 
             with_summary = json.loads((root / "with-expansion" / "summary.json").read_text(encoding="utf-8"))
             no_summary = json.loads((root / "no-expansion" / "summary.json").read_text(encoding="utf-8"))
@@ -2353,8 +2358,8 @@ class SeedGenomesGapEngineTests(unittest.TestCase):
             root = Path(temporary)
             project = make_reaching_project(root)
             common = self._common(project)
-            evolve({**common, "out": root / "legacy"})
-            evolve({**common, "seed_genomes": None, "out": root / "explicit-none"})
+            evolve_frozen({**common, "out": root / "legacy"})
+            evolve_frozen({**common, "seed_genomes": None, "out": root / "explicit-none"})
 
             def snapshot(name: str) -> dict[Path, bytes]:
                 base = root / name
@@ -2373,7 +2378,7 @@ class SeedGenomesGapEngineTests(unittest.TestCase):
             root = Path(temporary)
             source_project = make_reaching_project(root / "source-project")
             source_common = self._common(source_project)
-            evolve({**source_common, "population": 6, "out": root / "source"})
+            evolve_frozen({**source_common, "population": 6, "out": root / "source"})
             source_archive = json.loads((root / "source" / "archive.json").read_text(encoding="utf-8"))
             expected_order = seed_genomes_from_archive(source_archive)
             self.assertGreater(len(expected_order), 0)
@@ -2383,8 +2388,8 @@ class SeedGenomesGapEngineTests(unittest.TestCase):
 
             seed_common = self._common(make_reaching_project(root / "seed-project"))
             seed_common["seed_genomes"] = seed_path
-            evolve({**seed_common, "out": root / "seeded-1"})
-            evolve({**seed_common, "out": root / "seeded-2"})
+            evolve_frozen({**seed_common, "out": root / "seeded-1"})
+            evolve_frozen({**seed_common, "out": root / "seeded-2"})
 
             def snapshot(name: str) -> dict[Path, bytes]:
                 base = root / name
@@ -2426,7 +2431,7 @@ class SeedGenomesGapEngineTests(unittest.TestCase):
             common = self._common(fewer_project)
             common["population"] = 3
             common["seed_genomes"] = seed_path
-            evolve({**common, "out": root / "fewer"})
+            evolve_frozen({**common, "out": root / "fewer"})
             population = json.loads((root / "fewer" / "g0" / "population.json").read_text(encoding="utf-8"))
             self.assertEqual(len(population), 3)
             self.assertTrue(all("seed_cell" in item for item in population))
@@ -2437,7 +2442,7 @@ class SeedGenomesGapEngineTests(unittest.TestCase):
             common2 = self._common(more_project)
             common2["population"] = 8
             common2["seed_genomes"] = seed_path
-            evolve({**common2, "out": root / "more"})
+            evolve_frozen({**common2, "out": root / "more"})
             population2 = json.loads((root / "more" / "g0" / "population.json").read_text(encoding="utf-8"))
             self.assertEqual(len(population2), 8)
             seeded = [item for item in population2 if "seed_cell" in item]
@@ -2460,7 +2465,7 @@ class SeedGenomesGapEngineTests(unittest.TestCase):
             common = self._common(project)
             common["meta_evolution"] = True
             common["seed_genomes"] = seed_path
-            evolve({**common, "out": root / "meta"})
+            evolve_frozen({**common, "out": root / "meta"})
             population = json.loads((root / "meta" / "g0" / "population.json").read_text(encoding="utf-8"))
             seeded = next(item for item in population if item.get("seed_cell") == "I|low")
             rule_bits = seeded["genome"]["rule_bits"]
@@ -2486,9 +2491,9 @@ class SeedGenomesGapEngineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source_project = make_reaching_project(root / "source-project")
-            evolve({**self._common(source_project), "out": root / "source"})
+            evolve_frozen({**self._common(source_project), "out": root / "source"})
 
-            seed_project = make_reaching_project(root / "seed-project")
+            seed_project = modernize_cli_project(make_reaching_project(root / "seed-project"))
             out_dir = root / "via-cli"
             exit_code = evolve_cli_main([
                 "--project", str(seed_project), "--template", str(TEMPLATE),
@@ -2512,9 +2517,9 @@ class SeedGenomesGapEngineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source_project = make_reaching_project(root / "source-project")
-            evolve({**self._common(source_project), "out": root / "source"})
+            evolve_frozen({**self._common(source_project), "out": root / "source"})
 
-            seed_project = make_reaching_project(root / "seed-project")
+            seed_project = modernize_cli_project(make_reaching_project(root / "seed-project"))
             out_dir = root / "via-cli-resume"
             base_args = [
                 "--project", str(seed_project), "--template", str(TEMPLATE),

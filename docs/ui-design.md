@@ -1,8 +1,89 @@
 # Shared WorldBloom viewer design
 
+Item definitions contain a stable reference, a user-facing name, descriptions,
+effects and acquisition channels. Initial holder/count assignments are separate
+subject state. Existing reference keys remain stable when display names change.
+The item table displays effects alongside holders; registration and topic modals
+use the shared fields/buttons/dialogs. Purchase, crafting and reward channels can
+coexist with investigation/labor. Transfer rewards consume the giver's existing
+stock; grant rewards create stock. Facts share registration and reward controls,
+with initial knowledge assignments instead of quantities. Drafts compile these
+same channels into world definitions and enable the required action verbs.
+
+Execution entry follows world list → opened world → that world's conditions.
+The run phase carries `world` in its link. A bare `/jobs` or an unknown world
+returns to `/worlds` before choosing any saved setting or inspecting active jobs.
+An explicitly identified saved configuration or job retains its own world;
+existing settings, execution history and results remain readable.
+
 New screens use the shared design by default. A different design requires an
 explicit user request or a documented content-specific need (for example, a
 story-reading layout). Every viewer layout carries the `ui-screen` baseline.
+
+Saved worlds and new-world drafts use the same ordered categories from
+`viewer/settings_navigation.py`: premise, people/relationships, places/movement,
+items/information, time/events, world rules, checks/investigation, and files. Existing
+leaf views remain subordinate to their owning category. Character roles live
+with people; the world's target ending lives with the premise. Goal verdict
+definitions are reachable from character goals and retain their shared condition
+references. Low-priority genres and rule definitions live under world rules.
+File editing has its own final sidebar entry. Saved worlds retain their existing
+setting-file editor; unadopted drafts expose their existing draft JSON. The JSON
+field is reused and parked when another category is selected, so navigation does
+not lose pending text or duplicate the editor. Shared precedent originals are edited
+in the shared-rule workspace, rather than through a world-local save. Legacy
+role URLs resolve to the new role/ending controls; field-scoped draft targets
+retain their existing server contract after their visual relocation.
+
+Items and information use the same tabbed tables in saved worlds and drafts.
+Each row represents one item/fact; people appear as related holders/knowers.
+Multiple holders and quantities wrap inside one cell. Topic pencils open only
+the relevant modal. Item holdings and initial knowledge save across people
+using the existing journalled multi-file transaction and revision boundary.
+Drafts accept both legacy `name/holder` items (one unit) and `name/holders`
+items with unique `person/count` rows; adoption preserves every quantity.
+Draft holder edits normalize only their selected item to the multiple-holder
+form, including AI previews. Information content/place use separate AI scopes.
+Acquisition source `count` means required action repetitions, not item quantity;
+`max` is the per-person acquisition limit. Draft initial knowledge, effects and
+acquisition channels use the same definitions as saved worlds and survive adoption.
+Narrow screens scroll the table inside the content area. Legacy draft tables
+may stack, but must not override the shared item table's header or row layout.
+
+World-settings subview tabs use `.ui-tabs` from `ui.css` and the automatically
+loaded `ui-tabs.js`. Selected tabs have the same orange underline, typography,
+spacing and minimum target size. Page styles must not redefine their appearance.
+The strip scrolls horizontally on narrow screens rather than shrinking labels.
+`ui.tabs()` renders server-owned strips; client renderers use the same class.
+Button groups share arrow/Home/End navigation and roving focus. Each workspace
+still owns activation, unsaved-input guards, URL state and panel contents.
+Disabling controls must preserve the selected tab. Cross-page links retain link
+semantics and use `aria-current`, with the same appearance as in-page tabs.
+Checks, route investigation, investigation conditions and world review share
+one navigation definition in `settings_navigation.py`.
+
+All three settings surfaces use the actual shared `ui-nav` component, including
+the world-rules page's `settings-workspace` shell. Sidebar width, label padding,
+typography, active markers and mobile wrapping have one owner in `ui.css` and
+`ui-tokens.css`. Page styles must not redefine navigation controls. Explicit
+`aria-current="false"` is inactive. Browser checks compare both links and buttons
+against a minimal shared-navigation reference, rather than only checking tokens.
+
+The new-world draft review uses a settings workspace with left section navigation,
+selected-object details, schematic place/route nodes and edges, and the existing
+affiliation-based person graph geometry. `draft-workspace.css` owns only this
+reading layout; controls, dialogs and bottom actions retain the shared owner.
+Editable blocks have a pencil in their own heading. A pencil opens only that
+topic in the shared native editing dialog. The AI action is inside this editor: it accepts revision
+instructions and fills the same fields with a candidate, which remains editable
+by hand. The shared choices are OK, regenerate, and cancel. Cancelling leaves the
+draft unchanged. AI candidates and human refinements are restricted to the chosen
+block on both client and server; confirming a candidate performs semantic
+revalidation. Draft application never adopts a world. Direct edits stay local
+until revalidation. Cancel, Escape, header close and backdrop click discard
+unaccepted input and restore focus to the pencil. During accepted application,
+all close actions are disabled until the result is known. Long topic input
+scrolls within the dialog while its heading and decision buttons remain visible.
 
 ## Ownership and loading
 
@@ -147,3 +228,15 @@ Native calendar goal choices use that same workspace. The reader preserves their
 original event/decision source lines and distinguishes journaled selection from
 native completion. Rest completion is a visible milestone with actual recovered
 stamina; date/time labels come from the execution calendar, not inferred slots.
+
+
+World advanced settings now use left navigation and a full-width reading body.
+Only selectable rule/file lists retain a local list/detail arrangement; the
+action catalog occupies the whole body. Form renderers also supply readouts,
+with controls converted to literal text. Each top-level topic opens its own
+shared native modal. Hidden sibling topics cannot be edited through the UI.
+Cancelling discards its draft; saving uses existing revision-checked endpoints.
+Errors retain the input, save-in-flight blocks closing, and focus returns to
+the matching pencil. Exact saved file text is refreshed after a successful save
+before another file editor can be opened. This layout uses world-advanced.css
+for content geometry only, without expanding the legacy design exceptions.

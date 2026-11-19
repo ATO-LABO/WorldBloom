@@ -44,6 +44,14 @@ categories:
     order: 99
 
 verbs:
+  start_relationship:
+    design: {category: III, slot: 関係の進展}
+    kinds:
+      - id: default
+        label: 交際する
+        precondition: 恋愛が有効で、同じ場所にいる生存中の相手との双方向の親密度が0.6以上。すでに交際中の組み合わせは除く。
+        target: 同じ場所にいる人物
+        effect: 双方に交際状態を記録する。親密度だけで自動的には始まらない。
   await_response:
     design: {category: none, slot: ""}
     kinds:

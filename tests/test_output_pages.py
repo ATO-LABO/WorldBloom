@@ -21,6 +21,7 @@ import urllib.error
 import urllib.request
 import uuid
 
+from saved_world_fixtures import copy_current_world_repo
 from execution.configs import ConfigStore
 from execution.generation import result as gen_result
 from execution.output_store import OutputStore
@@ -136,7 +137,8 @@ class OutputPagesTests(unittest.TestCase):
         self.runs = self.base / "runs"
         self.runs.mkdir()
         self.control = self.base / "control"
-        self.configs = ConfigStore(ROOT, self.control, self.runs)
+        repo = copy_current_world_repo(ROOT, self.base / "repo", "romance")
+        self.configs = ConfigStore(repo, self.control, self.runs)
         self.configs.save({
             "label": "wb", "project_id": "romance", "template_id": "romance",
             "evolution": {"generations": 1, "population": 1, "seeds": 1},

@@ -1,5 +1,6 @@
 ---
 sources:
+  - "execution/world_drafts.py"
   - "execution/output_settings.py"
   - "execution/evolution_settings.py"
   - "gapengine/gpu_guard.py"
@@ -11,7 +12,7 @@ sources:
   - ".gitignore"
   - "execution/rationality_settings.py"
   - "execution/evolution_settings.py"
-reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
+reviewed: "2e70a9b216b7b2a80a4228a10a928148060e8fc8"
 ---
 # settings.json
 
@@ -149,3 +150,9 @@ reviewed: "5f8da48fb2b8a4b0bb9d84af92e23ff7e7a6e381"
 ```
 
 APIキーは⚙設定の画面から保存すると、保存後は画面に値そのものが再表示されません（`has_api_key` の真偽値だけが返ります）。
+
+## モデル別の設定
+
+`output.<backend>.model_options` はモデル名をキーにしたオブジェクトです。各値は `think`（真偽値）と `options`（オブジェクト）を持ち、選択したモデルに一致すると接続先共通の `think` と `options` を置き換えます。他モデルの設定は変えません。その後、各バックエンドの送信時の既定値にマージされます。
+
+設定画面の Gemma 4 プロファイル（`profile: gemma4-e4b-qat`）は Ollama の `gemma4:e4b-it-qat` 専用です。`think: false`、`options: {num_ctx: 8192, temperature: 1.0, top_p: 0.95, top_k: 64, use_mmap: true}` をこのモデルだけに保存します。モデルを自動ダウンロードする機能ではありません。文章生成・世界案の生成では選択中モデルの設定を解決して使用します。

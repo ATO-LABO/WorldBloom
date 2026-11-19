@@ -1,23 +1,31 @@
 from pathlib import Path
 from copy import deepcopy
+import shutil
 from unittest.mock import patch
 import tempfile,unittest,json
 from execution.configs import ConfigStore
 from execution.jobs import JobStore
 from execution.independent_review import capability,admit,prepare_run
 from execution.provenance import ConfigError
+from saved_world_fixtures import install_current_worlds
 
 ROOT=Path(__file__).resolve().parents[1]
 class IndependentJobsTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.base=Path(self.tmp.name)
-        self.configs=ConfigStore(ROOT,self.base/'control',self.base/'runs')
+        repo=self.base/'repo'
+        for name in ('engine','gapengine','scripts','execution','projects/momotaro','templates/momotaro'):
+            shutil.copytree(ROOT/name,repo/name,ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copyfile(ROOT/'requirements.txt',repo/'requirements.txt')
+        install_current_worlds(repo,'momotaro')
+        self.configs=ConfigStore(repo,self.base/'control',self.base/'runs')
         self.config=self.configs.save({'label':'CPU independent fixture','project_id':'momotaro','template_id':'momotaro',
                                       'evolution':{'population':1,'generations':1,'seeds':1,'processes':1,'kappa':0,'route_rho':0}})
         self.jobs=JobStore(self.configs)
         from execution.provenance import code_snapshot
-        self.source_snapshot=code_snapshot(ROOT)
+        # Match capability and prepare_run even when Windows TEMP uses an alias.
+        self.source_snapshot=code_snapshot(self.configs.repo)
     def request(self):
         cap=capability(self.configs,self.config['config_id'])
         return {'request_id':'fixture-review','kind':'independent_trials','config_id':cap['config_id'],

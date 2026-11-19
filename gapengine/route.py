@@ -209,6 +209,9 @@ is a fine thing to log but the wrong thing to key a cause off of.
 
 from __future__ import annotations
 
+from engine.economy import purchasable
+from engine.income import labor_plan, quantity_asset, needed_quantity
+
 import math
 from collections import deque
 from pathlib import Path
@@ -890,12 +893,12 @@ def _acquire(
     # place of "material" and no knowledge requirement).
     price = definition.get("price")
     shop_zone = definition.get("shop_zone")
-    if price and shop_zone:
+    if purchasable(definition,world.mechanics_enabled('budgeted_purchases')):
         currency_h = 0.0
         currency_best: set[tuple[str, Any]] = set()
         currency_alt: set[tuple[str, Any]] = set()
         currency_ok = True
-        for currency, qty in sorted(price.items()):
+        for currency, qty in sorted((price or {}).items()) if world.mechanics_enabled('budgeted_purchases') else []:
             if subject.inventory.get(currency, 0) >= qty:
                 continue
             ch, cbest, calt = _acquire(
@@ -924,7 +927,10 @@ def _acquire(
     # 2. investigate/labor a source zone (labor is Phase B's stamina-costed
     # analogue of investigate's zone gather; same zone-travel + action-count
     # shape, so it shares this branch)
+    labor_zones = set()
     for source in definition.get("sources", []) or []:
+        if source.get('type') == 'labor' and not world.action_enabled('labor'):
+            continue
         if source.get("type") not in ("investigate", "labor") or not source.get("zone"):
             continue
         travel_h, travel_best, travel_alt = _travel(
@@ -938,6 +944,14 @@ def _acquire(
         deficit = max(1, needed - subject.inventory.get(item, 0))
         per_action = max(1, int(source.get("count", 1) or 1))
         gather_actions = math.ceil(deficit / per_action)
+        if source.get("type") == "labor":
+            zone = str(source["zone"])
+            if zone in labor_zones:
+                continue
+            labor_zones.add(zone)
+            gather_actions = labor_plan(item, definition, subject, zone, deficit)
+            if gather_actions is None:
+                continue
         options.append(
             (
                 travel_h + float(gather_actions),
@@ -946,10 +960,12 @@ def _acquire(
             )
         )
 
-    # 3. a trial's grant
+    # 3. a trial's grant (one receipt, not an unlimited income source).
     for trial in world.trials:
         grants = trial.get("grants") or {}
         if str(grants.get("item", "")) != item:
+            continue
+        if trial.get("item_amount", 1) < needed - subject.inventory.get(item, 0):
             continue
         trial_h, trial_best, trial_alt = _trial_cost(
             trial, subject, world, visiting, trial_reveal_facts
@@ -968,7 +984,11 @@ def _acquire(
     holder_id = world.holder(item)
     if holder_id is not None and holder_id != subject.id and holder_id in world.subjects:
         holder_subject = world.subjects[holder_id]
-        if _holder_appears_to_have(subject, holder_subject, item, world):
+        deficit = max(1, needed - subject.inventory.get(item, 0))
+        quantity_take = (not quantity_asset(world, item) or (
+            definition.get("lootable", False) and not definition.get("vehicle", False)
+            and holder_subject.has_item(item, deficit) and world.action_enabled("fight")))
+        if quantity_take and _holder_appears_to_have(subject, holder_subject, item, world):
             take_h, take_best, take_alt, _take_route = _acquire_from_subject(
                 item, holder_subject, subject, world, visiting, trial_reveal_facts,
                 is_objective=False,
@@ -991,6 +1011,8 @@ def _trial_cost(
     giver_id = str(trial.get("giver", ""))
     giver = world.subjects.get(giver_id)
     if giver is None or giver_id == subject.id:
+        return INF, frozenset(), frozenset()
+    if f"trial:{trial['id']}" in subject.phase or trial.get("transfer_item") and not giver.has_item(str(trial["grants"]["item"]), trial.get("item_amount", 1)):
         return INF, frozenset(), frozenset()
 
     best: set[tuple[str, Any]] = set()
@@ -1629,8 +1651,8 @@ def _leaf_tags(best_kinds: dict[str, set[Any]], world: World) -> list[tuple[str,
         # while a currency it needs is itself still an open "has_item" need,
         # buying is not yet actionable here.
         price = world.items.get(item, {}).get("price")
-        if price is not None:
-            if any(currency in best_kinds.get("has_item", ()) for currency in price):
+        if price is not None and purchasable(world.items[item],world.mechanics_enabled('budgeted_purchases')):
+            if world.mechanics_enabled('budgeted_purchases') and any(qty>0 and currency in best_kinds.get("has_item", ()) for currency,qty in price.items()):
                 continue
             leaves.append(("has_item", item))
             continue
@@ -1663,7 +1685,7 @@ def _leaf_tags(best_kinds: dict[str, set[Any]], world: World) -> list[tuple[str,
     return leaves
 
 
-def _leaf_zone(tag: tuple[str, Any], world: World) -> str | None:
+def _leaf_zone(tag: tuple[str, Any], world: World, subject: Subject | None = None, needed: int = 1) -> str | None:
     """Where ``tag`` (one of ``_leaf_tags``'s results) can actually be
     worked on -- None means "wherever the subject already is" (e.g. a
     recipe with no ``craft_zone``)."""
@@ -1678,6 +1700,42 @@ def _leaf_zone(tag: tuple[str, Any], world: World) -> str | None:
         shop_zone = definition.get("shop_zone")
         if shop_zone is not None:
             return str(shop_zone)
+        if subject is not None and quantity_asset(world, item):
+            # The first configured source may be exhausted or unable to provide
+            # the required quantity. Choose an actual remaining acquisition.
+            deficit = max(1, needed - subject.inventory.get(item, 0))
+            choices = []
+            visited = frozenset({("item", item)})
+            for source in definition.get("sources", []) or []:
+                zone = source.get("zone")
+                if not zone or source.get("type") not in ("investigate", "labor"):
+                    continue
+                if source.get("type") == "labor":
+                    if not world.action_enabled("labor"):
+                        continue
+                    actions = labor_plan(item, definition, subject, str(zone), deficit)
+                    if actions is None:
+                        continue
+                else:
+                    actions = math.ceil(deficit / max(1, int(source.get("count", 1) or 1)))
+                travel, _, _ = _travel(subject, world, str(zone), visited, {})
+                if travel != INF:
+                    choices.append((travel + actions, str(zone)))
+            for trial in world.trials:
+                if (trial.get("grants") or {}).get("item") != item or trial.get("item_amount", 1) < deficit:
+                    continue
+                cost, _, _ = _trial_cost(trial, subject, world, visited, {})
+                if cost != INF:
+                    choices.append((cost, world.subjects[str(trial["giver"])].zone))
+            holder_id = world.holder(item)
+            holder = world.subjects.get(holder_id)
+            if (holder is not None and holder.id != subject.id and definition.get("lootable", False)
+                    and not definition.get("vehicle", False) and holder.has_item(item, deficit)
+                    and world.action_enabled("fight") and _holder_appears_to_have(subject, holder, item, world)):
+                cost, _, _, _ = _acquire_from_subject(item, holder, subject, world, visited, {}, is_objective=False)
+                if cost != INF:
+                    choices.append((cost, holder.zone))
+            return min(choices)[1] if choices else None
         for source in definition.get("sources", []) or []:
             if source.get("type") in ("investigate", "labor") and source.get("zone"):
                 return str(source["zone"])
@@ -1917,9 +1975,9 @@ def _body_or_belief_cause(
 
     if verb in ("rest", "withdraw"):
         exhausted_ratio = world.stamina["exhausted_ratio"]
-        ratio = subject.stamina / subject.stamina_max if subject.stamina_max else 0.0
+        ratio = (subject.stamina / subject.stamina_max if subject.stamina_max else 0.0) if world.mechanics_enabled('stamina_management') else float('inf')
         if (
-            subject.exhausted
+            world.mechanics_enabled('stamina_management') and subject.exhausted
             or subject.vitality == "downed"
             or ratio <= exhausted_ratio
             or bool(action.meta.get("under_threat"))
@@ -2112,7 +2170,7 @@ def _prepare_move_milestone(
     excluded = frozenset(world._excluded_zones(subject))
     best: tuple[int, str, tuple[str, Any]] | None = None
     for tag in _leaf_tags(alt_kinds, world):
-        leaf_zone = _leaf_zone(tag, world)
+        leaf_zone = _leaf_zone(tag, world, subject, needed_quantity(str(tag[1]), alt_kinds, world))
         if leaf_zone is None:
             candidate = (0, str(tag), tag)
         else:
@@ -2771,7 +2829,7 @@ def annotate(
     milestone: str | None = None
     if not is_lost:
         leaves = _leaf_tags(best_kinds, world)
-        leaf_zones = [(tag, _leaf_zone(tag, world)) for tag in leaves]
+        leaf_zones = [(tag, _leaf_zone(tag, world, subject, needed_quantity(str(tag[1]), best_kinds, world))) for tag in leaves]
         # _leaf_tags only ever covers has_item/knows/stance_ge/win_fight
         # tags. A "fight" route's completion is already covered that way
         # (_acquire_from_subject always pairs "route":"fight" with a

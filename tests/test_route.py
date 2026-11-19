@@ -4,6 +4,7 @@ Notion 設計子ページ https://app.notion.com/p/3e5e21ef1cac81218cb0c01e4a604
 
 from __future__ import annotations
 
+from frozen_world import evolve_frozen
 import json
 import os
 import random
@@ -18,6 +19,7 @@ import yaml
 from engine.actions import Action
 from engine.sim import Simulation
 from engine.subject import Belief, Subject
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine.evolve import evolve
 from gapengine.genome import Genome
@@ -40,7 +42,7 @@ TEMPLATE = ROOT / "templates" / "momotaro_plus2"
 
 
 def load_fixture() -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(
+    world = load_frozen_world(
         PROJECT / "world.yaml",
         action_graph_path=TEMPLATE / "action_graph.yaml",
     )
@@ -713,7 +715,7 @@ class RouteEvolveWiringTests(unittest.TestCase):
         }
         if route_cfg is not None:
             cfg["route"] = route_cfg
-        evolve(cfg)
+        evolve_frozen(cfg)
         return out_dir
 
     def _header(self, out_dir: Path) -> dict:
@@ -1594,7 +1596,8 @@ def _hash_seed_script(seed: int, *, rho: float = 0.0) -> str:
         "import tempfile\n"
         "import yaml\n"
         "from engine.sim import Simulation\n"
-        "from engine.world import World\n"
+        f"import sys; sys.path.insert(0, {str(ROOT / 'tests')!r})\n"
+        "from frozen_world import load_frozen_world\nfrom engine.world import World\n"
         "from gapengine.evolve import _load_subjects\n"
         "from gapengine.genome import Genome\n"
         "from gapengine.policy import Policy\n"
@@ -1604,7 +1607,7 @@ def _hash_seed_script(seed: int, *, rho: float = 0.0) -> str:
         'cfg = yaml.safe_load((template / "action_graph.yaml").read_text(encoding="utf-8"))\n'
         "route = Route.from_config(load_route_config(template))\n"
         f"route.rho = {rho!r}\n"
-        'world = World.from_yaml(project / "world.yaml", action_graph_path=template / "action_graph.yaml")\n'
+        'world = load_frozen_world(project / "world.yaml", action_graph_path=template / "action_graph.yaml")\n'
         'subjects = _load_subjects(project / "subjects")\n'
         "policy = Policy(Genome.neutral(), precedent=None, cfg=cfg, route=route)\n"
         "with tempfile.TemporaryDirectory() as tmp:\n"
@@ -2052,7 +2055,8 @@ def _s2_hash_seed_script(seed: int) -> str:
         "import tempfile\n"
         "import yaml\n"
         "from engine.sim import Simulation\n"
-        "from engine.world import World\n"
+        f"import sys; sys.path.insert(0, {str(ROOT / 'tests')!r})\n"
+        "from frozen_world import load_frozen_world\nfrom engine.world import World\n"
         "from gapengine.evolve import _load_subjects\n"
         "from gapengine.genome import CATEGORIES, Genome\n"
         "from gapengine.policy import Policy\n"
@@ -2066,7 +2070,7 @@ def _s2_hash_seed_script(seed: int) -> str:
         "cw['I'] = 1.0\n"
         "cw['III'] = 0.05\n"
         "genome = Genome(category_weight=cw, risk_tolerance=1.0, stance_shift_bias=-0.5, novelty_drive=0.7)\n"
-        'world = World.from_yaml(project / "world.yaml", action_graph_path=template / "action_graph.yaml")\n'
+        'world = load_frozen_world(project / "world.yaml", action_graph_path=template / "action_graph.yaml")\n'
         'subjects = _load_subjects(project / "subjects")\n'
         "policy = Policy(genome, precedent=None, cfg=cfg, route=route)\n"
         "with tempfile.TemporaryDirectory() as tmp:\n"

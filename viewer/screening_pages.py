@@ -107,6 +107,8 @@ def render(handler, output_id=None):
         d = work["preferred"]
         url = href(query, candidate=work["candidate_id"], work_run=work["run_id"], output=None)
         row = f'<strong>{E(work["title"])}</strong><span class="sc-badge">{E(view.LABELS.get(d["status"], d["status"]))}</span>'
+        if d["status"] == "ok" and d.get("review_state") == "pending":
+            row += '<small class="ui-notice ui-notice--warning">要確認：Story v2 の本文</small>'
         if any(draft["active"] for draft in work["drafts"]):
             row += '<span class="sc-badge">別稿を生成中</span>'
         row += f'<p>{E((d["text"] or "本文はまだありません。生成情報で状態を確認できます。")[:95])}</p><small>{E(names.get(work["run_id"], work["run_id"]))} · {len(work["drafts"])}稿</small>'

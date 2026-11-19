@@ -26,6 +26,7 @@ from viewer.data import RunRepository
 from viewer.server import ViewerServer, ViewerHandler
 import test_execution_jobs as support
 from test_output import _write_archive, _write_rows
+from saved_world_fixtures import install_current_worlds
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXT = "二人は昔の約束を思い出し、すれ違いの理由を話し合って気持ちを確かめた。"
@@ -189,6 +190,7 @@ class OutputJobTests(unittest.TestCase):
         from gapengine.qd import read_rows
         from gapengine.synopsis import load_world_meta, build_synopsis_prompt, build_narration_prompt
         from gapengine.scenes import extract_scenes
+        install_current_worlds(self.repo, "detective")
         for genre in ("romance", "detective"):
             cfg = self.configs.save({"label":genre, "project_id":genre, "template_id":genre},
                 config_id="cfg-"+genre)
@@ -362,6 +364,7 @@ class OutputJobTests(unittest.TestCase):
         from test_gapengine import make_reaching_project
         source=make_reaching_project(self.base)
         shutil.copytree(source,self.repo/"projects"/"reaching")
+        install_current_worlds(self.repo, "reaching")
         cfg=self.configs.save({"label":"real-ga", "project_id":"reaching", "template_id":"momotaro",
             "evolution":{"generations":2,"population":2,"seeds":1,"keep":"all"}},config_id="cfg-reaching")
         ga=self.jobs.submit({"request_id":"real-ga","kind":"evolve","config_id":cfg["config_id"]})[0]

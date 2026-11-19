@@ -1,0 +1,24 @@
+/* Field-level layout only. Control appearance remains in ui.css. */
+.field-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ws-space-3);margin-bottom:var(--ws-space-3)}
+.field-card-head>h3,.field-card-head>h4{margin:0;min-width:0;flex:1}.field-card-head .entity-title{margin:0}
+.field-pencil{display:grid;place-items:center;flex:none;min-width:44px;min-height:44px;padding:var(--ws-space-2);border:1px solid var(--ws-line);border-radius:var(--ws-radius);background:var(--ws-surface);color:var(--ws-confirm)}
+.field-pencil svg{width:19px;height:19px;fill:currentColor}.field-pencil:hover{background:var(--ws-select-bg)}
+.field-edit-badge{font-size:var(--ws-fs-xs);color:var(--ws-confirm);white-space:nowrap}
+.field-editor{border-top:1px solid var(--ws-line);padding-top:var(--ws-space-3)}
+.field-editor .ui-field{margin-top:var(--ws-space-3)}.field-editor .wd-person{border:0;padding:0;margin:0;background:transparent}
+.field-editor .ui-card{margin-top:var(--ws-space-3)}.field-editor .ui-card:first-child{margin-top:0}
+.field-ai-area{margin-top:var(--ws-space-3);padding:var(--ws-space-3);border:1px solid var(--ws-line);border-radius:var(--ws-radius);background:var(--ws-panel-bg)}
+.field-ai-area>.ui-button{margin-top:var(--ws-space-2)}.field-ai-area>a{display:block;font-size:var(--ws-fs-sm);margin-top:var(--ws-space-2)}
+.field-status{font-size:var(--ws-fs-sm);color:var(--ws-confirm);line-height:var(--ws-line-height)}
+.field-edit-actions{display:flex;flex-wrap:wrap;gap:var(--ws-space-2);position:sticky;bottom:0;padding:var(--ws-space-3) 0 0;margin-top:var(--ws-space-3);border-top:1px solid var(--ws-line);background:var(--ws-surface);z-index:2}
+.field-edit-actions>.ui-button{flex:1;white-space:nowrap}.field-inputs{min-width:0}
+.wd.is-reviewing [data-wd-input],.wd.is-reviewing .wd-steps{display:none}.wd.is-reviewing>.ui-heading{margin-bottom:var(--ws-space-2)}
+.ui-edit-dialog.field-edit-dialog[open]{display:flex;flex-direction:column;overflow:hidden}
+.field-edit-dialog>.field-dialog-head{flex:none;margin-bottom:var(--ws-space-3);gap:var(--ws-space-3);align-items:flex-start}
+.field-dialog-head>h2{min-width:0;overflow-wrap:anywhere;flex:1}
+.field-dialog-close{flex:none;min-width:var(--ws-control-h)}
+.field-edit-dialog>.field-editor{display:flex;flex-direction:column;min-height:0;overflow:hidden;padding-top:0;border-top:0}
+.field-editor-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:var(--ws-space-1)}
+.field-edit-dialog .field-edit-actions{position:static;bottom:auto;flex:none;background:var(--ws-canvas);margin-top:var(--ws-space-3);padding-top:var(--ws-space-3)}
+.field-editor-body>.field-edit-badge{margin-top:0}
+@media(max-width:760px){.field-edit-actions>.ui-button{min-width:85px}.field-ai-area{padding:var(--ws-space-2)}}

@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const handlers=()=>({listeners:{},addEventListener(name,fn){this.listeners[name]=fn;}});
+const wrap=handlers(),button={...handlers(),parentElement:wrap,attributes:{},setAttribute(k,v){this.attributes[k]=v},getBoundingClientRect(){return{right:374,bottom:800,top:756};}},text={hidden:true,style:{},offsetWidth:320,offsetHeight:200};
+wrap.contains=x=>x===button||x===text;
+const root={querySelector:s=>s==='[data-cw-help]'?button:text},document={...handlers(),activeElement:null,querySelector:()=>root},window=handlers();
+const context={document,window,innerWidth:390,innerHeight:844};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../viewer/static/creation-prepare.js'),'utf8'),context);
+wrap.listeners.pointerenter({pointerType:'mouse'});assert.equal(text.hidden,false);assert.equal(button.attributes['aria-expanded'],'true');assert.equal(text.style.top,'556px');assert(parseInt(text.style.left)>=16);assert(parseInt(text.style.left)+320<=374);
+wrap.listeners.pointerleave();assert.equal(text.hidden,true);
+wrap.listeners.pointerenter({pointerType:'touch'});assert.equal(text.hidden,true);
+button.listeners.focus();assert.equal(text.hidden,false);document.listeners.keydown({key:'Escape',stopPropagation(){}});assert.equal(text.hidden,true);
+const ev={preventDefault(){},stopPropagation(){}};button.listeners.click(ev);assert.equal(text.hidden,false);document.listeners.pointerdown({target:{}});assert.equal(text.hidden,true);
+button.listeners.click(ev);assert.equal(text.hidden,false);button.listeners.click(ev);assert.equal(text.hidden,true);
+assert(!('fetch' in context));assert(!Object.keys(button.attributes).some(x=>x.includes('checked')));
+console.log('PASS help: hover open/leave, keyboard focus/Escape, touch-compatible explicit click and outside close, viewport-edge clamp, no selection or request API.');

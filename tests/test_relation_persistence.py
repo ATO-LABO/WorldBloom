@@ -9,6 +9,7 @@ from execution.library import LibraryStore
 from execution.provenance import ConfigError
 from execution import world_editor
 from engine.relations import Relations
+from saved_world_fixtures import current_world_yaml, install_current_worlds
 
 
 class RelationPersistenceTests(unittest.TestCase):
@@ -19,7 +20,7 @@ class RelationPersistenceTests(unittest.TestCase):
         base=self.repo/'projects'/'test'
         (base/'subjects').mkdir(parents=True)
         self.base=base
-        (base/'world.yaml').write_text(yaml.safe_dump({'name':'Test','zones':['村'],'unknown':{'kept':True}}),encoding='utf-8')
+        (base/'world.yaml').write_text(current_world_yaml({'name':'Test','zones':['村'],'unknown':{'kept':True}}),encoding='utf-8')
         self.a={'id':'A','description':'before','range':{'entry':'村'},'traits':{'social':.7},'relations':{'B':{'affinity':.9,'awareness':0,'extra':{'keep':1}}}}
         self.b={'id':'B','relations':{'A':{'affinity':-.4,'awareness':.2}}}
         for filename,p in [('a',self.a),('b',self.b)]:
@@ -69,12 +70,14 @@ class RelationPersistenceTests(unittest.TestCase):
 
     def test_saved_metadata_can_initialize_the_real_simulation(self):
         import shutil
+        from frozen_world import load_frozen_world
         from engine.world import World
         from engine.subject import Subject
         from engine.sim import Simulation
         root=Path(__file__).resolve().parents[1]
         project=self.repo/'projects/momotaro'
         shutil.copytree(root/'projects/momotaro',project)
+        install_current_worlds(self.repo, 'momotaro')
         graph=root/'templates/momotaro/action_graph.yaml'
         def load():
             world=World.from_yaml(project/'world.yaml',action_graph_path=graph)

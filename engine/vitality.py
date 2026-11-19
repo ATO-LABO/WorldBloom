@@ -70,6 +70,8 @@ def kill(
 ) -> list[dict[str, Any]]:
     if subject.vitality == "dead":
         return []
+    if not world.vitality.get('allow_death', True):
+        return []
 
     subject.vitality = "dead"
     subject.downed_since = None
@@ -115,6 +117,13 @@ def kill(
             )
         )
     return events
+
+
+def transition_value(world: World, subject: Subject, value: str) -> str:
+    """Preserve initial/history deaths while preventing a new fatal transition."""
+    if value == 'dead' and subject.vitality != 'dead' and not world.vitality.get('allow_death', True):
+        return 'downed'
+    return value
 
 
 def tick(

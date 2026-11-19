@@ -14,6 +14,7 @@ from execution.story_store import StoryStore
 
 import test_output_jobs as jobfixtures
 from test_story_pipeline import fixture
+from saved_world_fixtures import install_current_worlds
 
 
 class StoryV2JobTests(unittest.TestCase):
@@ -24,6 +25,7 @@ class StoryV2JobTests(unittest.TestCase):
 
     def setUp(self):
         jobfixtures.OutputJobTests.setUp(self)
+        install_current_worlds(self.repo, "momotaro_plus3")
         self.configs.save({
             "label": "momotaro", "project_id": "momotaro_plus3", "template_id": "momotaro_plus3",
             "evolution": {"generations": 1, "population": 1, "seeds": 1},

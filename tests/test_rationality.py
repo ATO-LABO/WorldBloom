@@ -7,6 +7,7 @@ skipped by instruction)."""
 
 from __future__ import annotations
 
+from frozen_world import evolve_frozen
 import contextlib
 import hashlib
 import json
@@ -24,6 +25,7 @@ import yaml
 from engine.actions import Action
 from engine.sim import Simulation
 from engine.subject import Subject
+from frozen_world import load_frozen_world
 from engine.world import World
 from gapengine import gpu_guard
 from gapengine.evolve import _merge_rationality_table, evolve
@@ -46,7 +48,7 @@ TEMPLATE = ROOT / "templates" / "momotaro"
 
 
 def load_fixture() -> tuple[World, dict[str, Subject]]:
-    world = World.from_yaml(PROJECT / "world.yaml")
+    world = load_frozen_world(PROJECT / "world.yaml")
     subjects = [
         Subject.from_yaml(path)
         for path in sorted(
@@ -468,7 +470,7 @@ class CandidateLabelsAndNegotiateOfferWiringTests(unittest.TestCase):
 
 class Momotaro2CandidateLabelYamlEvolveWiringTests(unittest.TestCase):
     """WB-JEV-004 Stage 4b: momotaro_plus2's own rationality.yaml declares
-    candidate_labels/describe_negotiate_offer -- run evolve()'s whole
+    candidate_labels/describe_negotiate_offer -- run evolve_frozen()'s whole
     cfg-resolution -> Rationality pipeline against it with backend "fake"
     (no Ollama/GPU, per this stage's verification rule) to prove
     gapengine.evolve actually loads and threads the two new knobs through
@@ -480,7 +482,7 @@ class Momotaro2CandidateLabelYamlEvolveWiringTests(unittest.TestCase):
         template = ROOT / "templates" / "momotaro_plus2"
         with tempfile.TemporaryDirectory() as temporary:
             out_dir = Path(temporary) / "out"
-            evolve(
+            evolve_frozen(
                 {
                     "project": project,
                     "template": template,
@@ -511,7 +513,7 @@ class RationalityReproducibilityTests(unittest.TestCase):
         # table_hash_at_start/judge_calls -- that field exists precisely to
         # show which table snapshot a run used. So the comparison here is
         # between two runs that both start from the *same already-full*
-        # table (the common evolve() case: generation N+1 reads the table
+        # table (the common evolve_frozen() case: generation N+1 reads the table
         # generation N finished with) -- not between the priming run and a
         # later one.
         with tempfile.TemporaryDirectory() as temporary:
@@ -553,7 +555,7 @@ class RationalityReproducibilityTests(unittest.TestCase):
 
 
 class RationalityTableRoundTripTests(unittest.TestCase):
-    """Plan §2 item 4: table JSON round trip, and evolve()'s
+    """Plan §2 item 4: table JSON round trip, and evolve_frozen()'s
     generation-end merge of rationality-new.jsonl files into the master
     table."""
 
@@ -972,14 +974,14 @@ class ChoiceJudgeTests(unittest.TestCase):
 
 
 class RationalityEvolveWiringTests(unittest.TestCase):
-    """Opus review P3/P4 item 4: evolve()'s cfg resolution order (yaml
+    """Opus review P3/P4 item 4: evolve_frozen()'s cfg resolution order (yaml
     default -> cfg override) and generation_summary's two new fields, using
     the "fake" backend injection point so this needs no Ollama/GPU."""
 
     def test_cfg_override_enables_rationality_and_reports_summary_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             out_dir = Path(temporary) / "out"
-            evolve(
+            evolve_frozen(
                 {
                     "project": PROJECT,
                     "template": TEMPLATE,
@@ -1005,7 +1007,7 @@ class RationalityEvolveWiringTests(unittest.TestCase):
     def test_yaml_default_stays_disabled_without_a_cfg_override(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             out_dir = Path(temporary) / "out"
-            evolve(
+            evolve_frozen(
                 {
                     "project": PROJECT,
                     "template": TEMPLATE,
@@ -1035,7 +1037,7 @@ class RationalityEvolveWiringTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             out_dir = Path(temporary) / "out"
-            evolve(
+            evolve_frozen(
                 {
                     "project": PROJECT,
                     "template": TEMPLATE,
@@ -1369,17 +1371,17 @@ class RationalityCoevolveWiringTests(unittest.TestCase):
     """Stage 2 re-review item 5: coevolve's antagonist-evaluation pass
     builds a run_individual job whose "genome" is a *protagonist* sample and
     "antagonist_genome" is the coevolving individual under evaluation (see
-    evolve()'s antagonist_jobs construction) -- Rationality must attach to
+    evolve_frozen()'s antagonist_jobs construction) -- Rationality must attach to
     that job's protagonist-role Policy (Opus review R4), the same as a
     main-pass job.
 
     This drives run_individual directly with such a job instead of going
-    through a full evolve() run: momotaro's default multi-day template
+    through a full evolve_frozen() run: momotaro's default multi-day template
     already gives RationalityHeaderTests/RationalityNonNeutralGenomeTests
     etc. several genuine decision points per run, so starting from an empty
     table (nothing cached yet) deterministically forces real judge calls on
     the *first* run regardless of which genome/antagonist pairing is used --
-    unlike a full evolve() generation 0, where the antagonist pass always
+    unlike a full evolve_frozen() generation 0, where the antagonist pass always
     re-visits exactly the same (genome, seed) pair the main pass already
     scored moments earlier under the same coarse-situation cache, so it
     reliably writes *zero* new entries (verified empirically; the coarse,
@@ -1387,7 +1389,7 @@ class RationalityCoevolveWiringTests(unittest.TestCase):
     not a bug). Using the real out_dir path shape
     (`generation_dir/antagonist/ind-0/`) still exercises the exact file this
     test needs to prove exists, and folds it through the real
-    _merge_rationality_table -- the same two functions evolve() itself
+    _merge_rationality_table -- the same two functions evolve_frozen() itself
     calls for this wiring."""
 
     def test_antagonist_shaped_job_writes_and_merges_protagonist_rationality(
@@ -1441,7 +1443,7 @@ class RationalityCoevolveWiringTests(unittest.TestCase):
                 "rationality_table_path": str(table_path),
             }
 
-            result = run_individual(job)
+            result = run_individual({**job, "_world_loader": load_frozen_world})
 
             self.assertGreater(result["rationality_judge_calls"], 0)
             new_entries_path = (
@@ -1466,7 +1468,7 @@ class RationalityCoevolveWiringTests(unittest.TestCase):
 
 
 class GpuLeaseWiringTests(unittest.TestCase):
-    """WB-JEV-001: evolve() must only take the machine-wide GPU lease
+    """WB-JEV-001: evolve_frozen() must only take the machine-wide GPU lease
     (gapengine.gpu_guard.gpu_lease) when a real Ollama call is actually
     imminent (kappa > 0 and backend == "ollama"), never for kappa<=0,
     "none" or "fake" -- and a GpuBusy from that lease must surface as a
@@ -1496,7 +1498,7 @@ class GpuLeaseWiringTests(unittest.TestCase):
         }
         if rationality_override is not None:
             cfg["rationality"] = rationality_override
-        evolve(cfg)
+        evolve_frozen(cfg)
 
     def test_kappa_zero_never_takes_the_gpu_lease(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

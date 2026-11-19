@@ -1,6 +1,7 @@
 from pathlib import Path
 import json,tempfile,unittest
 from unittest.mock import patch
+from frozen_world import load_frozen_world
 from engine.world import World
 from engine.subject import Subject
 from engine.sim import Simulation
@@ -8,7 +9,7 @@ from engine.sim import Simulation
 ROOT=Path(__file__).resolve().parents[1]
 class TargetObservationTests(unittest.TestCase):
     def fixture(self,out,observe=True):
-        p=ROOT/'projects/momotaro';world=World.from_yaml(p/'world.yaml');world.days=1;world.slots=world.slots[:3]
+        p=ROOT/'projects/momotaro';world=load_frozen_world(p/'world.yaml');world.days=1;world.slots=world.slots[:3]
         people={s.id:s for s in (Subject.from_yaml(f) for f in sorted((p/'subjects').glob('*.yaml')))}
         return Simulation(0,world,people,out,terminal_policy={'target_as_observation':observe,'death_stops':True})
 
@@ -37,7 +38,7 @@ class TargetObservationTests(unittest.TestCase):
     def test_saved_pre_fix_observation_is_not_misreported_as_stop(self):
         from engine.run_record import _saved_projection
         with tempfile.TemporaryDirectory() as d:
-            p=Path(d);rows=[{'kind':'header','terminal_policy':{'target_as_observation':True}},
+            p=Path(d);rows=[self.fixture(p)._header(),
                 {'kind':'event','turn':1,'verb':'ending','id':'goal','details':{}},
                 {'kind':'decision','turn':2,'verb':'move','details':{}}]
             (p/'layers.jsonl').write_text('\n'.join(json.dumps(r) for r in rows)+'\n')

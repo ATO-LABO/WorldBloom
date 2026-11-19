@@ -49,13 +49,28 @@ def _read(store, ident):
             _bad("content", f"{rel} は項目と値の形式で指定してください")
         values[rel] = value
         revisions[rel] = sha256(raw)
+    try:
+        from engine.world_format import validate
+        validate(values["world.yaml"])
+    except ValueError as error:
+        raise ConfigError("world_format_version",str(error),code="unsupported") from error
     return values, sha256(canonical(revisions))
 
 
-def _model(ident, files, revision):
+def _model(ident, files, revision, source):
     world = files["world.yaml"]
-    return {"id": ident, "name": world.get("name") or ident, "world": world,
-            "people": [value for rel, value in files.items() if rel != "world.yaml"],
+    from engine.action_types import for_world, label, features
+    selected = for_world(world, source)
+    from engine.economy import PRESETS, summary
+    from engine.person_presentation import stamina_map
+    from engine.stamina_catalog import catalog
+    people = [value for rel, value in files.items() if rel != "world.yaml"]
+    return {"id": ident, "name": world.get("name") or ident, "world": world, "action_types": selected, "action_type_label": label(selected), "mechanic_features": sorted(features(world)),
+            "people": people,
+            "time_basic_version": 1, "person_balance_version": 1,
+            "stamina_action_catalog": catalog(world),
+            "person_stamina": stamina_map(world, people),
+            "economy_state": summary(world, people), "economy_presets": list(PRESETS),
             "overview": world.get("overview") or "", "intro": world.get("initial_story") or "",
             "revision": revision,
             # WB-TIMEEVENT-001: verb -> argument kinds, so the time screen's
@@ -73,7 +88,7 @@ def snapshot(store, ident):
         files, revision = _read(store, ident)
         _, confirmed = _read(store, ident)
         if revision == confirmed and not contained(base, person_values.JOURNAL).exists():
-            return _model(ident, files, revision)
+            return _model(ident, files, revision, _base(store, ident)/"world.yaml")
     raise ConfigError("revision", "設定の保存中です。少し待って再読み込みしてください", code="conflict")
 
 
@@ -83,14 +98,30 @@ def save(store, ident, body):
     operation, target, values = body["operation"], body["target"], body["values"]
     allowed = {
         "overview": {"text", "name"}, "intro": {"text"}, "time": {"days", "slots"},
+        "time-basic-inspect": set(), "time-basic-check": {"settings"}, "time-basic": {"settings","confirmation"},
+        "stamina-settings": {"default_max", "default_recover_per_slot", "exhausted_ratio", "default_action_cost", "passive_recovery"},
+        "person-stamina": {"max", "current", "recover_per_slot"},
+        "action-stamina": {"adjustment"},
+        "economy-settings": {"changes"},
+        "economy-income": {"entries"},
+        "economy-currency": {"preset","name","unit","asset"},
+        "economy-balance": {"amount"},
+        "person-balance": {"amount"},
+        "economy-reference": {"name","amount"},
+        "economy-item": {"trade","amount","shop_zone"},
         "person": {"description", "personality", "target", "deliver_to"},
         "place": {"note"}, "add-person": {"name", "description", "entry"},
         "add-place": {"name", "description"}, "state": {"entry", "knowledge"},
         "route": {"item", "cost"},
+        "item-topic": {"topic", "value"},
+        "add-item": {"name", "content", "holders", "acquisition", "effects"},
+        "add-fact": {"name", "content", "known", "acquisition"},
+        "fact-topic": {"topic", "value"},
         "relation": {"label"},
         "roles": {"protagonist", "antagonist", "target_ending"},
         "file": {"content"},
         "genre": {"template_id"},
+        "stamina-zero": {"zero_behavior"},
         "add-event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "event": {"id", "label", "day", "slot", "targets", "verb", "args", "item_name", "item_count", "stress_delta"},
         "remove-event": set(),
@@ -107,8 +138,14 @@ def save(store, ident, body):
     if not isinstance(operation, str) or operation not in allowed or not isinstance(values, dict):
         _bad("values", "編集項目を確認してください")
     optional = {"affiliation"} if operation in ("person", "add-person") else set()
+    if operation == 'economy-currency':
+        optional = {'custom'}
     if not allowed[operation] <= set(values) or not set(values) <= allowed[operation] | optional:
         _bad("values", "編集項目を確認してください")
+    if operation in {'time-basic-inspect','time-basic-check'}:
+        if target is not None:_bad('target','時間設定の対象は空で指定してください')
+        from execution.time_basic import read
+        return read(store,ident,body)
     with directory_lock(_base(store, ident)):
         person_values.recover(_base(store, ident))
         files, revision = _read(store, ident)
@@ -119,7 +156,28 @@ def save(store, ident, body):
         names = [z if isinstance(z, str) else z["name"] for z in zones]
         people = [(rel, p) for rel, p in files.items() if rel != "world.yaml"]
         rel, updated = "world.yaml", deepcopy(world)
-        if operation in {"person-commitments","concerns","concerns-check","responses","responses-check","goal-rules","goal-rules-check","planning","planning-check"}:
+        if operation == 'time-basic':
+            if target is not None:_bad('target','時間設定の対象は空で指定してください')
+            from execution.time_basic import apply_checked
+            return apply_checked(store,ident,files,revision,values)
+        if operation.startswith('economy-') or operation in ('person-balance', 'item-topic', 'fact-topic', 'add-item', 'add-fact'):
+            from execution.items_editor import apply
+            from engine.world import World
+            from engine.subject import Subject
+            if operation.startswith('economy-') or operation=='person-balance':
+                from execution.economy_editor import apply as apply_economy
+                candidate = apply_economy(files,operation,target,values)
+            else:
+                candidate = apply(files, operation, target, values)
+            try:
+                runtime = World(candidate['world.yaml'], _base(store, ident)/'world.yaml')
+                runtime.bind_subjects({p['id']: Subject.from_definition(p) for rel, p in candidate.items() if rel != 'world.yaml'})
+            except (ValueError, KeyError, TypeError, AttributeError) as error:
+                _bad('value', '持ち物・情報の設定を確認してください。'+str(error))
+            person_values.write_changes(store, ident, files, candidate)
+            saved, revision = _read(store, ident)
+            return _model(ident, saved, revision, _base(store, ident)/'world.yaml')
+        elif operation in {"person-commitments","concerns","concerns-check","responses","responses-check","goal-rules","goal-rules-check","planning","planning-check"}:
             from engine.world import World
             from engine.subject import Subject
             try:
@@ -172,7 +230,7 @@ def save(store, ident, body):
                 return {'valid':True,'conditions':len(runtime.concerns.conditions) if runtime.concerns else 0}
             person_values.write_changes(store, ident, files, candidate)
             saved, revision = _read(store, ident)
-            return _model(ident, saved, revision)
+            return _model(ident, saved, revision, _base(store, ident) / "world.yaml")
         elif operation == "file":
             if not isinstance(target, str) or target not in files:
                 _bad("target", "登録された世界・人物ファイルを指定してください")
@@ -263,6 +321,27 @@ def save(store, ident, body):
             updated["overview"] = _text(values["text"], "text")
         elif operation == "intro":
             updated["initial_story"] = _text(values["text"], "text")
+        elif operation == 'action-stamina':
+            from engine.stamina import action_verbs
+            from execution.stamina_editor import number
+            if not isinstance(target,str) or target not in action_verbs(): _bad('target','登録された行動を指定してください')
+            delta=number(values['adjustment'],'adjustment',-100000,100000)
+            updated['stamina']={**(updated.get('stamina') or {})}
+            changes=dict(updated['stamina'].get('action_cost_adjustments',{}))
+            if delta: changes[target]=delta
+            else: changes.pop(target,None)
+            if changes: updated['stamina']['action_cost_adjustments']=changes
+            else: updated['stamina'].pop('action_cost_adjustments',None)
+        elif operation == 'stamina-settings':
+            from execution.stamina_editor import settings
+            updated['stamina'] = {**(updated.get('stamina') or {}), **settings(values)}
+        elif operation == 'person-stamina':
+            from execution.stamina_editor import person as stamina_person
+            matches = [(r,p) for r,p in people if p.get('id') == target]
+            if len(matches) != 1: _bad('target', '人物を指定してください')
+            rel, previous = matches[0]
+            updated = deepcopy(previous)
+            updated['stamina'] = {**(updated.get('stamina') or {}), **stamina_person(values)}
         elif operation == "time":
             days = values["days"]
             if type(days) is not int or not 1 <= days <= 10000:
@@ -270,7 +349,28 @@ def save(store, ident, body):
             slots = _list(values["slots"], "slots")
             if not slots:
                 _bad("slots", "時間帯を1つ以上指定してください")
-            updated["time"] = {**(updated.get("time") or {}), "days": days, "slots": slots}
+            if world.get('slot_execution') is not None:_bad('time','Calendarや旧実行方式の期間は、契約を含む新しい実行版で設定してください')
+            candidate=deepcopy(world);candidate['time']={**(world.get('time') or {}),'days':days,'slots':slots}
+            from execution.time_basic import transition,dependency
+            pressure,time_dependency_hash=dependency(_base(store,ident))
+            errors,warnings=transition(world,candidate,[p for _,p in people],_base(store,ident)/'world.yaml',pressure)
+            from execution import time_slot_references as slot_refs
+            slot_catalog=slot_refs.snapshot(store,ident,world)
+            ref_errors,ref_warnings=slot_refs.validate(slot_catalog,slots,days)
+            errors.extend(e for e in ref_errors if e not in errors);warnings.extend(w for w in ref_warnings if w not in warnings)
+            if errors:_bad('time',' / '.join(e['message'] for e in errors[:8]))
+            if warnings:_bad('time','時間の基本設定で影響を確認してから適用してください。'+' / '.join(w['message'] for w in warnings[:5]))
+            updated['time']=candidate['time']
+            # Keep runtime validation in the time operation. A genre edit must
+            # not share this data-flow boundary with user-selected file paths.
+            if world.get('goal_rules') is not None:
+                from engine.world import World
+                from engine.subject import Subject
+                try:
+                    runtime = World(updated, _base(store, ident)/'world.yaml')
+                    runtime.bind_subjects({p['id']:Subject.from_definition(p) for _,p in people})
+                except (ValueError,KeyError,TypeError) as error:
+                    _bad('time', '達成・失敗の判定期間を含めて時間の範囲を確認してください。'+str(error))
         elif operation == "place":
             if not isinstance(target, str) or names.count(target) != 1:
                 _bad("target", "場所を一意に特定できません")
@@ -314,6 +414,10 @@ def save(store, ident, body):
             else:
                 route.pop("requires_item", None)
             route["cost"] = cost
+        elif operation == 'stamina-zero':
+            if values['zero_behavior'] not in ('rest','death'):
+                _bad('zero_behavior','体力0での動作を選んでください')
+            updated['stamina']={**(updated.get('stamina') or {}),'zero_behavior':values['zero_behavior']}
         elif operation == "genre":
             # WB-WORLD-IMPORT-001: lets a world imported without a genre (or
             # any world) pick/switch its templates/<id>/ afterward. Other
@@ -458,14 +562,11 @@ def save(store, ident, body):
                     events[target] = base_event
                 updated["scheduled_events"] = events
         _validate_rel("world", rel)
-        if operation == 'time' and world.get('goal_rules') is not None:
-            from engine.world import World
-            from engine.subject import Subject
-            try:
-                runtime = World(updated, _base(store, ident)/'world.yaml')
-                runtime.bind_subjects({p['id']:Subject.from_definition(p) for _,p in people})
-            except (ValueError,KeyError,TypeError) as error:
-                _bad('time', '達成・失敗の判定期間を含めて時間の範囲を確認してください。'+str(error))
+        if operation == 'time':
+            if dependency(_base(store,ident))[1]!=time_dependency_hash:raise ConfigError('revision','保存前に目標または期限の参照が変わりました',code='conflict')
+            if slot_refs.snapshot(store,ident,world)['dependency_hash']!=slot_catalog['dependency_hash']:raise ConfigError('revision','保存前に経路調査の参照が変わりました',code='conflict')
+            from execution.time_basic import backup, settings_for
+            backup(_base(store,ident),ident,revision,(_base(store,ident)/'world.yaml').read_bytes(),yaml.safe_dump(updated,allow_unicode=True,sort_keys=False),settings_for(updated))
         # One atomic file replacement per operation; the rest of the world is untouched.
         store._write_file("world", ident, rel, yaml.safe_dump(updated, allow_unicode=True, sort_keys=False))
         return snapshot(store, ident)
